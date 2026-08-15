@@ -1,0 +1,55 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ls.augment.com'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'ls.augment.com'
+        minSdk 28
+        targetSdk 36
+        versionCode 20035
+        versionName '2.0.0-alpha1-test20035'
+    }
+
+    // CI/local builds may inject the private development signing material via
+    // environment variables. The key is deliberately not stored in source.
+    def injectedStore = System.getenv('LS_AUGMENT_KEYSTORE')
+    if (injectedStore != null && file(injectedStore).isFile()) {
+        signingConfigs {
+            lsAugmentDev {
+                storeFile file(injectedStore)
+                storeType 'PKCS12'
+                storePassword System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: 'lsaugment'
+                keyAlias System.getenv('LS_AUGMENT_KEY_ALIAS') ?: 'ls_augment'
+                keyPassword System.getenv('LS_AUGMENT_KEY_PASSWORD') ?:
+                        (System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: 'lsaugment')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            if (signingConfigs.findByName('lsAugmentDev') != null) {
+                signingConfig signingConfigs.lsAugmentDev
+            }
+        }
+        release { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+dependencies {
+    // Modern libxposed API 102 is supplied by LSPosed/Vector at runtime.
+    // Never package it into the LS_Augment APK.
+    compileOnly 'io.github.libxposed:api:102.0.0'
+}

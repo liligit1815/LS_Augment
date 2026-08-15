@@ -1,0 +1,280 @@
+#!/system/bin/sh
+. /data/adb/modules/ls_augment/bin/common.sh
+
+CTL_TMP1=''
+CTL_TMP2=''
+CTL_LOCKED=0
+ctl_cleanup() {
+  [ -n "$CTL_TMP1" ] && rm -f "$CTL_TMP1" 2>/dev/null || true
+  [ -n "$CTL_TMP2" ] && rm -f "$CTL_TMP2" 2>/dev/null || true
+  if [ "$CTL_LOCKED" -eq 1 ]; then release_action_lock; CTL_LOCKED=0; fi
+}
+trap 'ctl_cleanup; exit 130' 1 2 15
+
+json_error() {
+  je_code="$1"
+  if [ -n "$2" ]; then
+    printf '{"success":false,"code":"%s","target":"%s"}\n' "$je_code" "$2"
+  else
+    printf '{"success":false,"code":"%s"}\n' "$je_code"
+  fi
+}
+
+json_action_error() {
+  ja_target="${1:-$LAST_ACTION_TARGET}"
+  ja_code="${LAST_ACTION_ERROR_CODE:-STATE_VERIFY_FAILED}"
+  ja_rc="${LAST_ACTION_PM_RC:-1}"
+  ja_attempts="${LAST_ACTION_ATTEMPTS:-0}"
+  ja_state="$(target_public_state "${LAST_ACTION_STATE:-error}")"
+  ja_transport="${LAST_ACTION_TRANSPORT:-none}"
+  printf '{"success":false,"code":"%s","target":"%s","pmRc":%s,"attempts":%s,"actualState":"%s","transport":"%s"}\n' \
+    "$ja_code" "$ja_target" "$ja_rc" "$ja_attempts" "$ja_state" "$ja_transport"
+}
+
+lock_or_error() {
+  lo_name="$1"
+  if acquire_action_lock "$lo_name" >/dev/null; then
+    CTL_LOCKED=1
+    return 0
+  fi
+  json_error ACTION_BUSY
+  return 30
+}
+
+json_state() {
+  refresh_runtime_state >/dev/null 2>&1 || { json_error STATE_VERIFY_FAILED; return 1; }
+  js_summary="$(read_runtime_summary)"
+  IFS='|' read -r js_state js_total js_visible js_hidden js_missing js_error <<EOT
+$js_summary
+EOT
+  js_public="$(summary_public_name "$js_state")"
+  printf '{"success":true,"code":"OK","state":"%s","total":%s,"visible":%s,"hidden":%s,"missing":%s,"error":%s,"targets":[' \
+    "$js_public" "$js_total" "$js_visible" "$js_hidden" "$js_missing" "$js_error"
+  js_first=1
+  if [ -f "$STATE_FILE" ]; then
+    while IFS='|' read -r js_uid js_pkg js_st || [ -n "$js_uid$js_pkg$js_st" ]; do
+      [ -z "$js_uid$js_pkg" ] && continue
+      [ "$js_first" -eq 1 ] || printf ','
+      js_first=0
+      printf '{"target":"%s:%s","state":"%s"}' "$js_uid" "$js_pkg" "$(target_public_state "$js_st")"
+    done <"$STATE_FILE"
+  fi
+  printf ']}\n'
+}
+
+json_state_one() {
+  jso_target="$1"
+  is_valid_target "$jso_target" || { json_error INVALID_TARGET "$jso_target"; return 2; }
+  jso_uid="${jso_target%%:*}"; jso_pkg="${jso_target#*:}"
+  jso_state="$(package_state "$jso_uid" "$jso_pkg")"
+  jso_public="$(target_public_state "$jso_state")"
+  if is_managed_target "$jso_target"; then jso_managed=true; else jso_managed=false; fi
+  printf '{"success":true,"code":"OK","target":"%s","state":"%s","managed":%s}\n' \
+    "$jso_target" "$jso_public" "$jso_managed"
+}
+
+snapshot_or_error() {
+  soe_file="$1"
+  snapshot_targets "$soe_file"
+  soe_rc=$?
+  if [ "$soe_rc" -ne 0 ]; then
+    case "$soe_rc" in
+      10) json_error CONFIG_MISSING ;;
+      11) json_error CONFIG_UNREADABLE ;;
+      12) json_error CONFIG_EMPTY ;;
+      13) json_error CONFIG_INVALID ;;
+      *) json_error CONFIG_ERROR ;;
+    esac
+    return "$soe_rc"
+  fi
+  return 0
+}
+
+command_targets_list() {
+  CTL_TMP1="$RUNTIME_DIR/.ctl.targets.$$"
+  snapshot_targets "$CTL_TMP1"
+  ctl_rc=$?
+  case "$ctl_rc" in
+    0) ;;
+    10|12) : >"$CTL_TMP1" ;;
+    *) json_error CONFIG_ERROR; return "$ctl_rc" ;;
+  esac
+  ctl_count="$(grep -c . "$CTL_TMP1" 2>/dev/null || true)"; [ -n "$ctl_count" ] || ctl_count=0
+  printf '{"success":true,"code":"OK","count":%s,"targets":[' "$ctl_count"
+  ctl_first=1
+  while IFS= read -r ctl_target || [ -n "$ctl_target" ]; do
+    [ -z "$ctl_target" ] && continue
+    [ "$ctl_first" -eq 1 ] || printf ','
+    ctl_first=0
+    printf '"%s"' "$ctl_target"
+  done <"$CTL_TMP1"
+  printf ']}\n'
+}
+
+command_targets_save() {
+  lock_or_error SAVE || return $?
+  CTL_TMP1="$RUNTIME_DIR/.ctl.save.$$"
+  CTL_TMP2="$RUNTIME_DIR/.ctl.old.$$"
+  : >"$CTL_TMP1" || { json_error WRITE_CONFIG_FAILED; return 5; }
+
+  for ctl_target in "$@"; do
+    is_valid_target "$ctl_target" || { json_error INVALID_TARGET "$ctl_target"; return 2; }
+    printf '%s\n' "$ctl_target" >>"$CTL_TMP1"
+  done
+  sort -u "$CTL_TMP1" -o "$CTL_TMP1" 2>/dev/null || true
+
+  if snapshot_targets "$CTL_TMP2"; then
+    while IFS=: read -r ctl_uid ctl_pkg || [ -n "$ctl_uid$ctl_pkg" ]; do
+      [ -z "$ctl_uid$ctl_pkg" ] && continue
+      grep -Fxq "$ctl_uid:$ctl_pkg" "$CTL_TMP1" && continue
+      show_one "$ctl_uid" "$ctl_pkg" CONFIG_RESTORE >/dev/null 2>&1 || { json_error RESTORE_REMOVED_TARGET_FAILED "$ctl_uid:$ctl_pkg"; return 7; }
+    done <"$CTL_TMP2"
+  fi
+
+  write_targets_atomic "$CTL_TMP1" || { json_error WRITE_CONFIG_FAILED; return 5; }
+  sync_hook_mirror >/dev/null 2>&1 || { json_error MIRROR_UPDATE_FAILED; return 8; }
+  ctl_count="$(grep -c . "$CTL_TMP1" 2>/dev/null || true)"; [ -n "$ctl_count" ] || ctl_count=0
+  printf '{"success":true,"code":"OK","count":%s}\n' "$ctl_count"
+}
+
+command_action_all() {
+  ctl_mode="$1"; ctl_name="$2"
+  lock_or_error "$ctl_name" || return $?
+  CTL_TMP1="$RUNTIME_DIR/.ctl.action.$$"
+  snapshot_or_error "$CTL_TMP1" || return $?
+  reset_action_error
+  apply_snapshot "$ctl_mode" "$CTL_TMP1" >/dev/null
+  ctl_action_rc=$?
+  if [ "$ctl_action_rc" -ne 0 ]; then
+    # Mirror actual PM truth even after a failed action, but do not mask the
+    # underlying PM error with a generic state-verification error.
+    sync_hook_mirror >/dev/null 2>&1 || true
+    json_action_error "$LAST_ACTION_TARGET"
+    return 1
+  fi
+  sync_hook_mirror >/dev/null 2>&1 || { json_error MIRROR_UPDATE_FAILED; return 8; }
+  json_state
+}
+
+command_action_one() {
+  ctl_mode="$1"; ctl_target="$2"; ctl_name="$3"
+  is_valid_target "$ctl_target" || { json_error INVALID_TARGET "$ctl_target"; return 2; }
+  ctl_uid="${ctl_target%%:*}"; ctl_pkg="${ctl_target#*:}"
+
+  # Hiding an unmanaged target would create a PM-hidden app that is absent from
+  # runtime state and Settings mirror. Reject it. Showing is deliberately allowed
+  # even when unmanaged so an orphaned/legacy hidden app can always be recovered.
+  if [ "$ctl_mode" = hidden ] && ! is_managed_target "$ctl_target"; then
+    json_error TARGET_NOT_MANAGED "$ctl_target"
+    return 14
+  fi
+
+  lock_or_error "$ctl_name" || return $?
+  case "$ctl_mode" in
+    hidden) hide_one "$ctl_uid" "$ctl_pkg" >/dev/null ;;
+    visible) show_one "$ctl_uid" "$ctl_pkg" >/dev/null ;;
+    *) json_error BAD_COMMAND; return 2 ;;
+  esac
+  ctl_rc=$?
+  if [ "$ctl_rc" -ne 0 ]; then
+    sync_hook_mirror >/dev/null 2>&1 || true
+    json_action_error "$ctl_target"
+    return 1
+  fi
+  sync_hook_mirror >/dev/null 2>&1 || { json_error MIRROR_UPDATE_FAILED "$ctl_target"; return 8; }
+  json_state_one "$ctl_target"
+}
+
+command_toggle() {
+  lock_or_error TOGGLE || return $?
+  CTL_TMP1="$RUNTIME_DIR/.ctl.toggle.$$"
+  snapshot_or_error "$CTL_TMP1" || return $?
+  ctl_agg="$(aggregate_state_file "$CTL_TMP1")"
+  # Android's vendor shell parses `${value%%|*}` inconsistently and can
+  # return an empty prefix even when aggregate_state_file returned data.
+  # Split the six-field record with the same POSIX read pattern used by the
+  # state JSON path instead of relying on shell pattern expansion.
+  IFS='|' read -r ctl_state ctl_total ctl_visible ctl_hidden ctl_missing ctl_error <<EOT
+$ctl_agg
+EOT
+  case "$ctl_state" in
+    visible) ctl_target=hidden ;;
+    hidden|mixed|error) ctl_target=visible ;;
+    *) json_error CONFIG_EMPTY; return 12 ;;
+  esac
+  reset_action_error
+  apply_snapshot "$ctl_target" "$CTL_TMP1" >/dev/null
+  ctl_rc=$?
+  if [ "$ctl_rc" -ne 0 ]; then
+    sync_hook_mirror >/dev/null 2>&1 || true
+    json_action_error "$LAST_ACTION_TARGET"
+    return 1
+  fi
+  sync_hook_mirror >/dev/null 2>&1 || { json_error MIRROR_UPDATE_FAILED; return 8; }
+  json_state
+}
+
+command_sync() {
+  lock_or_error SYNC || return $?
+  sync_hook_mirror >/dev/null 2>&1 || { json_error MIRROR_UPDATE_FAILED; return 8; }
+  json_state
+}
+
+command_health() {
+  ensure_targets_file >/dev/null 2>&1
+  ctl_core=false; ctl_targets=false; ctl_companion=false; ctl_hook=false
+  [ -x "$MODDIR/bin/augmentctl" ] && ctl_core=true
+  [ -f "$TARGETS_CONF" ] && ctl_targets=true
+  dumpsys package "$COMPANION_PKG" 2>/dev/null | grep -Fq "Package [$COMPANION_PKG]" && ctl_companion=true
+  ctl_hook_raw="$(settings get global "$HOOK_ACTIVE_KEY" 2>/dev/null)"
+  [ -n "$ctl_hook_raw" ] && [ "$ctl_hook_raw" != null ] && ctl_hook=true
+  printf '{"success":true,"code":"OK","core":%s,"targets":%s,"companion":%s,"settingsHook":%s,"pmTransport":"null-fd"}\n' \
+    "$ctl_core" "$ctl_targets" "$ctl_companion" "$ctl_hook"
+}
+
+ctl_rc=0
+case "$1" in
+  targets)
+    shift
+    case "$1" in
+      list|'') command_targets_list || ctl_rc=$? ;;
+      save) shift; command_targets_save "$@" || ctl_rc=$? ;;
+      *) json_error BAD_COMMAND; ctl_rc=2 ;;
+    esac
+    ;;
+  state)
+    shift
+    if [ "$#" -gt 0 ]; then json_state_one "$1" || ctl_rc=$?; else json_state || ctl_rc=$?; fi
+    ;;
+  hide)
+    shift
+    if [ "$#" -eq 0 ]; then command_action_all hidden HIDE || ctl_rc=$?; else command_action_one hidden "$1" HIDE || ctl_rc=$?; fi
+    ;;
+  show)
+    shift
+    if [ "$#" -eq 0 ]; then command_action_all visible SHOW || ctl_rc=$?; else command_action_one visible "$1" SHOW || ctl_rc=$?; fi
+    ;;
+  toggle) command_toggle || ctl_rc=$? ;;
+  sync) command_sync || ctl_rc=$? ;;
+  health) command_health || ctl_rc=$? ;;
+  ''|help|--help|-h)
+    cat <<'HELP'
+LS_Augment Core CLI
+  augmentctl targets list
+  augmentctl targets save [USER_ID:PACKAGE ...]
+  augmentctl state [USER_ID:PACKAGE]
+  augmentctl hide [USER_ID:PACKAGE]
+  augmentctl show [USER_ID:PACKAGE]
+  augmentctl toggle
+  augmentctl sync
+  augmentctl health
+
+Safety rule:
+  hide USER_ID:PACKAGE requires the target to already exist in targets.conf.
+  show USER_ID:PACKAGE is allowed for unmanaged targets as a recovery path.
+HELP
+    ;;
+  *) json_error BAD_COMMAND; ctl_rc=2 ;;
+esac
+ctl_cleanup
+exit "$ctl_rc"

@@ -1,0 +1,73 @@
+name: Build LS_Augment 2.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android 16 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore optional development signing key
+        if: ${{ secrets.LS_AUGMENT_SIGNING_P12 != '' }}
+        env:
+          SIGNING_P12_B64: ${{ secrets.LS_AUGMENT_SIGNING_P12 }}
+        run: |
+          mkdir -p .signing
+          printf '%s' "$SIGNING_P12_B64" | base64 -d > .signing/dev-signing.p12
+          chmod 0600 .signing/dev-signing.p12
+
+      - name: Static and pure Java checks
+        run: |
+          chmod +x tools/*.sh build-module.sh build-source.sh
+          ./tools/run-java-tests.sh
+          python3 tools/check-modern-xposed.py
+          python3 tools/check-project.py
+
+      - name: Build single APK
+        env:
+          LS_AUGMENT_KEYSTORE: ${{ github.workspace }}/.signing/dev-signing.p12
+          LS_AUGMENT_STORE_PASSWORD: ${{ secrets.LS_AUGMENT_STORE_PASSWORD }}
+          LS_AUGMENT_KEY_ALIAS: ls_augment
+          LS_AUGMENT_KEY_PASSWORD: ${{ secrets.LS_AUGMENT_KEY_PASSWORD }}
+        run: gradle -p android :app:assembleDebug
+
+      - name: Verify APK
+        run: |
+          python3 tools/check-modern-xposed.py android/app/build/outputs/apk/debug/app-debug.apk
+          python3 tools/check-binary-manifest.py android/app/build/outputs/apk/debug/app-debug.apk
+          python3 tools/check_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Prepare deliverables
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/LS_Augment-v2.0.0-alpha1-test20001.apk
+          (cd out && sha256sum LS_Augment-v2.0.0-alpha1-test20001.apk > LS_Augment-v2.0.0-alpha1-test20001.apk.sha256)
+          ./build-source.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LS_Augment-v2.0.0-alpha1-test20003
+          path: |
+            out/LS_Augment-v2.0.0-alpha1-test20001.apk
+            out/LS_Augment-v2.0.0-alpha1-test20001.apk.sha256
+            out/LS_Augment-v2.0.0-alpha1-test20001-source.zip
+            out/LS_Augment-v2.0.0-alpha1-test20001-source.zip.sha256

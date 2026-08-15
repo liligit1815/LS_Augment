@@ -1,0 +1,27 @@
+.gradle/
+**/build/
+out/
+module/apk/LS_Augment.apk
+local.properties
+*.iml
+.idea/
+module/logs/*.log
+reference/legacy-ksu/module/apk/
+reference/legacy-ksu/module/logs/
+isSpeedModeEnable()Z
+预期效果.mp4
+测试0028.mp4
+测试2009.mp4
+__pycache__/
+*.py[cod]
+work/
+
+# 本地文档（不上传 GitHub）
+PROJECT_REQUIREMENTS.md
+DEVELOPMENT.md
+ROADMAP.md
+INTEGRATION_TEST.md
+RECENTS_TEST_ANALYSIS_20260814.md
+RECENTS_UPGRADE_TEST_REPORT_20260815.md
+SHOULDER_KEYS_PLAN.md
+design-qa.md

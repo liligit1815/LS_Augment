@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/ic_launcher_background" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+    <item
+        android:width="82dp"
+        android:height="82dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_ls_augment_boat" />
+</layer-list>

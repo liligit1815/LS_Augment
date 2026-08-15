@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f5fb" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>LS_Augment</title>
+  <link rel="stylesheet" href="./style.css?v=170" />
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2v20M4.2 6.5l15.6 11M19.8 6.5l-15.6 11M8.2 4.2 12 7l3.8-2.8M8.2 19.8 12 17l3.8 2.8M3.5 10.1 7.8 12l-4.3 1.9M20.5 10.1 16.2 12l4.3 1.9"/></svg>
+      </div>
+      <div class="brand-copy">
+        <div class="title-line"><h1>LS_Augment</h1><span class="version">test10040</span></div>
+        <p>礼舟红魔设备功能增强</p>
+      </div>
+      <button id="refresh" class="round-btn" aria-label="刷新">
+        <svg viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18.7 6.3L20 11M4 13l1.3 4.7A7 7 0 0 0 17.9 15"/></svg>
+      </button>
+    </header>
+
+    <nav id="pageNav" class="page-nav" aria-label="主导航">
+      <button class="page-tab active" data-page="overview"><span>总览</span><small>状态</small></button>
+      <button class="page-tab" data-page="apps"><span>应用</span><small>管理</small></button>
+      <button class="page-tab" data-page="automation"><span>自动化</span><small>锁屏</small></button>
+      <button class="page-tab" data-page="tools"><span>工具</span><small>诊断</small></button>
+    </nav>
+
+    <section class="page-view active" data-page-view="overview">
+      <section class="status-card">
+        <div class="status-top">
+          <div>
+            <div class="kicker">当前状态</div>
+            <div id="stateTitle" class="status-title">正在检测…</div>
+            <div id="stateDetail" class="status-detail">读取 PackageManager 状态</div>
+          </div>
+          <div id="stateBadge" class="status-orb neutral"><span></span></div>
+        </div>
+        <div class="action-dual"><button id="hideNow" class="action-main">隐藏指定应用</button><button id="showNow" class="action-secondary">显示指定应用</button></div>
+        <div class="legend">
+          <span><i class="dot active"></i>磁贴亮：应用显示</span>
+          <span><i class="dot inactive"></i>磁贴灭：应用隐藏</span>
+        </div>
+      </section>
+
+      <div class="overview-grid">
+        <button class="overview-card automation-overview" data-go-page="automation">
+          <span class="overview-icon">◷</span><span><strong>锁屏自动隐藏</strong><small id="automationSummary">未开启</small></span><span class="overview-arrow">›</span>
+        </button>
+      </div>
+      <div class="safe-note overview-note">所有操作只改变指定用户的 PackageManager 显示状态，不卸载应用，也不删除应用数据。</div>
+    </section>
+
+    <section class="page-view" data-page-view="apps">
+      <section class="section-block app-config-block">
+        <div class="section-title-row">
+          <div><div class="kicker">应用配置</div><h2>选择需要控制的应用</h2></div>
+          <span id="selectedPill" class="count-pill">0 个</span>
+        </div>
+
+        <details id="appListDetails" class="app-list-details">
+          <summary><span><strong>应用列表</strong><small id="appListSummary">点击展开管理应用</small></span><span class="chevron">⌄</span></summary>
+          <div class="app-list-content">
+            <div id="userTabs" class="user-tabs"></div>
+            <div class="search-wrap">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+              <input id="search" type="search" placeholder="搜索应用或包名" autocomplete="off" />
+            </div>
+            <div class="list-toolbar"><span id="activeUserLabel">当前空间</span><label class="compact-switch"><input id="showSystem" type="checkbox" /><span class="switch-ui"></span><span>系统应用</span></label></div>
+            <div class="sort-toolbar">
+              <span class="sort-label">排序</span>
+              <select id="sortMode" aria-label="应用主排序方式"><option value="name-asc">名称 A → Z</option><option value="name-desc">名称 Z → A</option><option value="install-desc">安装时间：最新优先</option><option value="install-asc">安装时间：最早优先</option></select>
+              <label class="pin-selected-toggle" title="将当前用户空间已勾选的应用置于列表顶部"><input id="pinSelected" type="checkbox" /><span class="pin-check">✓</span><span>已勾选置顶</span></label>
+              <span id="resultCount" class="result-count"></span>
+            </div>
+            <div id="appList" class="app-list"><div class="empty">展开后读取应用列表…</div></div>
+          </div>
+        </details>
+      </section>
+    </section>
+
+    <section class="page-view" data-page-view="automation">
+      <section class="section-block">
+        <div class="section-title-row"><div><div class="kicker">自动化</div><h2>锁屏自动隐藏</h2></div><span id="autoActive" class="count-pill">未开启</span></div>
+        <div class="setting-row"><div><strong>锁屏时自动隐藏</strong><p>设备锁屏或熄屏后隐藏已保存的应用；解锁后保持隐藏，必须由你手动显示。</p></div><label class="large-switch"><input id="autoLockHide" type="checkbox"/><span></span></label></div>
+        <div class="setting-row select-row"><div><strong>作用范围</strong><p>推荐使用当前用户，避免影响其他用户空间或工作资料。</p></div><select id="autoScope"><option value="current">当前用户</option><option value="all">所有已配置用户</option></select></div>
+        <button id="saveAutomation" class="action-main wide-action">保存自动化设置</button>
+        <div class="automation-status"><strong id="automationState">正在检测…</strong><p id="automationHint">事件监听状态</p></div>
+      </section>
+      <section class="info-card"><strong>对功耗的影响</strong><p id="automationPower">本机使用轻量屏幕状态检测，每 2 秒读取一次内核状态，不使用前台服务或唤醒锁；只有从亮屏变为熄屏时才执行一次隐藏。功耗会略高于纯事件监听，但明显低于频繁读取系统诊断信息。</p></section>
+    </section>
+
+    <section class="page-view tools-view" data-page-view="tools">
+      <section class="tools-intro">
+        <div class="tools-intro-icon">⌁</div>
+        <div><div class="kicker">工具与诊断</div><h2>把常用操作放在手边</h2><p>先看运行状态，再执行对应操作；危险的恢复和日志清理已单独分区。</p></div>
+      </section>
+
+      <div class="tools-grid">
+        <section class="tool-panel tool-panel-status">
+          <div class="tool-panel-head"><div><div class="tool-eyebrow">运行状态</div><strong id="companionTitle">检测 Companion…</strong></div><span id="companionDot" class="health-dot"></span></div>
+          <p id="companionHint" class="tool-panel-copy">Companion 提供 API 102 Settings Hook、Quick Settings 磁贴和红魔肩键资格 Hook。</p>
+          <div class="config-source"><div><strong>当前配置来源</strong><p>KernelSU Core 使用此文件；Settings Hook 读取由 Core 同步的活动隐藏镜像。</p></div><code id="configSource">/data/adb/ls_augment/targets.conf</code></div>
+        </section>
+
+        <section class="tool-panel">
+          <div class="tool-panel-head"><div><div class="tool-eyebrow">快速操作</div><strong>系统集成</strong></div><span class="tool-panel-tag">常用</span></div>
+          <div class="tool-action-list">
+            <button id="addTile" class="tool-action"><span class="tool-action-icon">◇</span><span><strong>添加 / 恢复磁贴</strong><small>重新向系统控制中心发起添加请求</small></span><span class="tool-action-arrow">›</span></button>
+            <button id="installCompanion" class="tool-action"><span class="tool-action-icon">⇩</span><span><strong>安装 / 更新 Companion</strong><small>更新磁贴与 API 102 Settings Hook</small></span><span class="tool-action-arrow">›</span></button>
+            <button id="refreshSettings" class="tool-action"><span class="tool-action-icon">↻</span><span><strong>刷新 / 验证 Settings Hook</strong><small>停止设置应用，让 Hook 重新加载</small></span><span class="tool-action-arrow">›</span></button>
+          </div>
+        </section>
+
+        <section class="tool-panel">
+          <div class="tool-panel-head"><div><div class="tool-eyebrow">磁贴显示</div><strong>自定义名称和说明</strong></div><span class="tool-panel-tag">个性化</span></div>
+          <p class="tool-panel-copy">修改后重新展开控制中心即可看到新名称；功能状态仍由 Core 负责。</p>
+          <div class="tile-customize">
+            <label>磁贴名称<input id="tileLabelInput" maxlength="30" placeholder="LS_Augment"></label>
+            <label>磁贴说明<input id="tileDescriptionInput" maxlength="60" placeholder="应用隐藏"></label>
+          </div>
+          <button id="saveTilePresentation" class="secondary wide-secondary">保存磁贴显示</button>
+        </section>
+
+        <section class="tool-panel tool-panel-recovery">
+          <div class="tool-panel-head"><div><div class="tool-eyebrow">安全恢复</div><strong>一键显示所有已配置应用</strong></div><span class="tool-panel-tag warning">兜底</span></div>
+          <p class="tool-panel-copy">当应用列表或磁贴不可用时，直接按持久化配置恢复显示；不会卸载应用，也不会删除数据。</p>
+          <button id="restoreAll" class="recovery-btn">恢复所有已配置应用</button>
+          <p class="recovery-hint">执行前请确认你确实希望让全部已配置目标恢复显示。</p>
+        </section>
+
+        <section class="tool-panel log-panel">
+          <div class="log-head">
+            <div><div class="tool-eyebrow">诊断记录</div><strong>动作日志</strong><code>/data/adb/modules/ls_augment/logs/action.log</code></div>
+            <div class="mini-actions"><button id="refreshLog">刷新</button><button id="clearLog">清空</button></div>
+          </div>
+          <pre id="logView" class="log-view">暂无日志</pre>
+        </section>
+      </div>
+      <div class="safe-note">KernelSU Core 负责 <code>pm hide/unhide --user</code>，LSPosed Companion 仅精确过滤 Settings 对应 <code>(userId, packageName)</code> 条目。</div>
+    </section>
+  </main>
+
+  <div class="bottom-bar">
+    <div class="bottom-copy"><strong id="bottomCount">未选择应用</strong><span id="dirtyText">配置已同步</span></div>
+    <button id="save" class="save-btn">保存配置</button>
+  </div>
+  <div id="message" class="snackbar" role="status"></div>
+
+  <script type="module" src="./app.js?v=170"></script>
+</body>
+</html>

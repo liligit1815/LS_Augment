@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">LS_Augment</string>
+    <string name="app_description">红魔系统增强、空间隐藏与 LSPosed 功能管理。</string>
+    <string name="tile_label">LS_Augment</string>
+    <string name="automation_channel">锁屏自动隐藏</string>
+    <string name="automation_notification">锁屏自动隐藏已启用</string>
+</resources>

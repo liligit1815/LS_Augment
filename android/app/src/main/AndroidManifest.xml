@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Required by hide management, DoubleApp expansion and shoulder app discovery. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <queries>
+        <package android:name="io.github.lsf.augment" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="com.zte.mifavor.launcher" />
+        <package android:name="com.android.systemui" />
+        <package android:name="com.zte.beautify" />
+        <package android:name="com.zte.beautifyadapter" />
+        <package android:name="com.zte.cn.doubleapp" />
+        <package android:name="cn.nubia.gameassist" />
+    </queries>
+
+    <application
+        android:name=".AugmentApplication"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:label="@string/app_name"
+        android:description="@string/app_description"
+        android:icon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LSAugment.Transparent">
+
+        <!-- Modern module metadata lives under META-INF/xposed/. -->
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="LS_Augment"
+            android:theme="@style/Theme.LSAugment.Settings">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="LS_Augment"
+            android:targetActivity=".SettingsActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity
+            android:name=".FeatureActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+
+        <activity
+            android:name=".HideAppsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+
+        <activity
+            android:name=".TileSetupActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.LSAugment.Transparent" />
+
+        <service
+            android:name=".AugmentTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".ScreenAutomationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user-enabled hide action once when the screen turns off." />
+        </service>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name=".LSConfigProvider"
+            android:authorities="ls.augment.com.config"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            tools:ignore="ExportedContentProvider" />
+    </application>
+</manifest>

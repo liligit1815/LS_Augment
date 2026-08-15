@@ -1,0 +1,21 @@
+<resources>
+    <style name="Theme.LSAugment.Transparent" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <style name="Theme.LSAugment.Settings" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#3791F4</item>
+        <item name="android:windowBackground">#E8F4FF</item>
+        <item name="android:navigationBarColor">#F8FCFF</item>
+        <item name="android:statusBarColor">#E8F4FF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+</resources>
