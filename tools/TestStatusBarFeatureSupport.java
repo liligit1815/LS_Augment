@@ -35,12 +35,13 @@ public final class TestStatusBarFeatureSupport {
                 "seconds in a custom pattern controls refresh frequency");
         require(seconds.text.endsWith("\nII"), "quoted literal is supported");
 
-        StatusBarClockFormatter.FormatResult invalid = StatusBarClockFormatter.formatDetailed(
+        StatusBarClockFormatter.FormatResult extended = StatusBarClockFormatter.formatDetailed(
                 calendar.getTimeInMillis(), Locale.CHINA,
                 true, false, false, false, "HH:mm", "II");
-        require(!invalid.valid && invalid.error.contains("第二行"),
-                "invalid pattern is reported instead of silently replaced");
-        require(!StatusBarClockFormatter.requiresSecondUpdates("'ss'", "E"),
+        require(extended.valid && extended.text.contains("\n")
+                        && !extended.text.endsWith("\nII"),
+                "extended earthly-branch hour token is formatted");
+        require(!StatusBarClockFormatter.needsSecondRefresh("'ss'", "E"),
                 "quoted seconds are literals");
 
         ls.augment.com.StatusBarLayoutSpec.ParseResult layout =

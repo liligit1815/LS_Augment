@@ -19,8 +19,9 @@ public final class LSConfigProvider extends ContentProvider {
             "ls.augment.com", "com.android.settings", "com.android.systemui",
             "com.zte.beautify", "com.zte.beautifyadapter", "com.zte.cn.doubleapp",
             "com.zte.mifavor.launcher",
-            "cn.nubia.gamelauncher", "cn.nubia.gameassist", "cn.nubia.gamehelpmodule",
-            "cn.nubia.gamehelperline"));
+            "cn.nubia.gamelauncher", "cn.nubia.gameassist", "cn.nubia.gamelab",
+            "cn.nubia.gamehelpmodule",
+            "cn.nubia.gamehelperline", "com.zte.game.plugintrigger", "system", "android"));
     @Override
     public boolean onCreate() { return true; }
 

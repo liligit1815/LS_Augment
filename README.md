@@ -2,7 +2,7 @@
 
 LS_Augment 是面向红魔 11S Pro / Android 16 / RedMagicOS 11.5 的Root + LSPosed 增强工具。
 
-当前开发版本：`2.0.0-alpha1-test20035`（versionCode `20035`）<br>
+当前开发版本以 `android/version.properties` 为唯一来源；构建过程不会自动修改版本号。<br>
 正式包名：`ls.augment.com`<br>
 LSPosed API：Modern libxposed API 102
 
@@ -45,7 +45,7 @@ LSPosed API：Modern libxposed API 102
 
 ## 安装与使用
 
-1. 安装 APK：`adb install LS_Augment-v2.0.0-alpha1-test20035.apk`。
+1. 安装 APK：`adb install LS_Augment-v<版本号>.apk`。
 2. 打开 LS_Augment，按需授予 Root；若拒绝，应用不会反复请求，可在诊断页主动重新授权。
 3. 在 LSPosed 中启用模块并确认静态作用域，重启手机后生效。
 4. 后续修改参数：保存后需重启对应作用域（功能详情页提供“重启作用域”按钮），直接重启手机也可以；状态栏参数为实时生效。

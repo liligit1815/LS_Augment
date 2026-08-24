@@ -18,8 +18,24 @@ final class FeatureSettings {
     static final String SYSTEMUI_MASTER = "ls_augment_systemui_master";
     static final String SHOULDER_ENABLED = "ls_augment_shoulder_enabled";
     static final String SHOULDER_DIAGNOSTICS = "ls_augment_shoulder_diagnostics";
+    static final String TGK_RAPID_FIRE_ENABLED = "ls_augment_tgk_rapid_fire_enabled";
+    static final String TGK_RAPID_FIRE_COUNT = "ls_augment_tgk_rapid_fire_count";
+    static final String TGK_RAPID_FIRE_NATIVE_STATE =
+            "ls_augment_tgk_rapid_fire_native_state";
+    static final String TGK_RAPID_FIRE_NATIVE_LAST_HIT =
+            "ls_augment_tgk_rapid_fire_native_last_hit";
+    static final String TGK_RAPID_FIRE_NATIVE_LAST_ERROR =
+            "ls_augment_tgk_rapid_fire_native_last_error";
     static final String COMBO_SPEED_ENABLED = "ls_augment_combo_speed_enabled";
     static final String COMBO_SPEED_RATE = "ls_augment_combo_speed_rate";
+    static final String AI_TRIGGER_ENABLED = "ls_augment_ai_trigger_enabled";
+    static final String AI_TRIGGER_TEMPLATE_SCAN_MS = "ls_augment_ai_template_scan_ms";
+    static final String AI_TRIGGER_CLICK_MS = "ls_augment_ai_click_ms";
+    static final String AI_TRIGGER_COOLDOWN_MS = "ls_augment_ai_cooldown_ms";
+    static final String AI_TRIGGER_YOLO_SCAN_MS = "ls_augment_ai_yolo_scan_ms";
+    static final String FREEFORM_ENABLED = "ls_augment_freeform_enabled";
+    static final String FREEFORM_UNLIMITED = "ls_augment_freeform_unlimited";
+    static final String FREEFORM_ALL_APPS = "ls_augment_freeform_all_apps";
     static final String DOUBLE_ANY_APP = "ls_augment_doubleapp_any_app";
     static final String DOUBLE_LOW_MEMORY = "ls_augment_doubleapp_low_memory";
 
@@ -52,10 +68,13 @@ final class FeatureSettings {
     static final String STATUSBAR_CLOCK_TEXT_ALIGN =
             "ls_augment_statusbar_clock_text_align";
     static final String STATUSBAR_CLOCK_WIDTH_DP = "ls_augment_statusbar_clock_width_dp";
-    static final String STATUSBAR_NET_SPEED = "ls_augment_statusbar_net_speed";
     static final String STATUSBAR_THERMAL = "ls_augment_statusbar_thermal";
     static final String STATUSBAR_BATTERY_POWER = "ls_augment_statusbar_battery_power";
     static final String STATUSBAR_NOTIFICATION_MAX = "ls_augment_statusbar_notification_max";
+    static final String STATUSBAR_ICON_SCALE = "ls_augment_statusbar_icon_scale";
+    static final String STATUSBAR_DEBUG_OVERLAY = "ls_augment_statusbar_debug_overlay";
+    static final String STATUSBAR_NOTIFICATION_HIDE = "ls_augment_statusbar_notification_hide";
+    static final String STATUSBAR_DUAL_ROW_GAP_DP = "ls_augment_statusbar_dual_row_gap_dp";
 
     static final String DOUBLE_ACTIVE = "ls_augment_doubleapp_active";
     static final String DOUBLE_INSTALLED = "ls_augment_doubleapp_installed";
@@ -83,8 +102,9 @@ final class FeatureSettings {
             STATUSBAR_CLOCK_FONT_FAMILY, STATUSBAR_CLOCK_SIZE_SP,
             STATUSBAR_CLOCK_WEIGHT, STATUSBAR_CLOCK_LETTER_SPACING,
             STATUSBAR_CLOCK_LINE_SPACING_DP, STATUSBAR_CLOCK_TEXT_ALIGN,
-            STATUSBAR_CLOCK_WIDTH_DP, STATUSBAR_NET_SPEED, STATUSBAR_THERMAL,
-            STATUSBAR_BATTERY_POWER, STATUSBAR_NOTIFICATION_MAX
+            STATUSBAR_CLOCK_WIDTH_DP, STATUSBAR_THERMAL,
+            STATUSBAR_BATTERY_POWER, STATUSBAR_NOTIFICATION_MAX,
+            STATUSBAR_ICON_SCALE, STATUSBAR_DEBUG_OVERLAY, STATUSBAR_NOTIFICATION_HIDE
     };
     static final String BEAUTIFY_COMPAT = "ls_augment_beautify_compat";
     static final String BEAUTIFY_UNLIMITED_TRIAL = "ls_augment_beautify_unlimited_trial";

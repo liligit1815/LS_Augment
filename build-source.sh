@@ -2,7 +2,17 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT="$ROOT/out"
-NAME="LS_Augment-v2.0.0-alpha1-test20035-source.zip"
+VERSION_FILE="$ROOT/android/version.properties"
+if [[ ! -f "$VERSION_FILE" ]]; then
+  echo "Missing version file: $VERSION_FILE" >&2
+  exit 2
+fi
+VERSION="$(sed -n 's/^versionName=//p' "$VERSION_FILE" | tail -1 | tr -d '\r')"
+if [[ -z "$VERSION" ]]; then
+  echo "Missing versionName in $VERSION_FILE" >&2
+  exit 2
+fi
+NAME="LS_Augment-v${VERSION}-source.zip"
 
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   for candidate in python3 python; do

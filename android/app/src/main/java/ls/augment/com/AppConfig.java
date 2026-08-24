@@ -37,8 +37,18 @@ final class AppConfig {
     static final String GAME_MASTER = "ls_augment_game_master";
     static final String SHOULDER_ENABLED = "ls_augment_shoulder_enabled";
     static final String SHOULDER_DIAGNOSTICS = "ls_augment_shoulder_diagnostics";
+    static final String TGK_RAPID_FIRE_ENABLED = "ls_augment_tgk_rapid_fire_enabled";
+    static final String TGK_RAPID_FIRE_COUNT = "ls_augment_tgk_rapid_fire_count";
     static final String COMBO_SPEED_ENABLED = "ls_augment_combo_speed_enabled";
     static final String COMBO_SPEED_RATE = "ls_augment_combo_speed_rate";
+    static final String AI_TRIGGER_ENABLED = "ls_augment_ai_trigger_enabled";
+    static final String AI_TRIGGER_TEMPLATE_SCAN_MS = "ls_augment_ai_template_scan_ms";
+    static final String AI_TRIGGER_CLICK_MS = "ls_augment_ai_click_ms";
+    static final String AI_TRIGGER_COOLDOWN_MS = "ls_augment_ai_cooldown_ms";
+    static final String AI_TRIGGER_YOLO_SCAN_MS = "ls_augment_ai_yolo_scan_ms";
+    static final String FREEFORM_ENABLED = "ls_augment_freeform_enabled";
+    static final String FREEFORM_UNLIMITED = "ls_augment_freeform_unlimited";
+    static final String FREEFORM_ALL_APPS = "ls_augment_freeform_all_apps";
     static final String SUPER_MIRROR_LOW_MODE = "ls_augment_super_mirror_low_mode";
     static final String SUPER_MIRROR_DIABLO_COEXIST = "ls_augment_super_mirror_diablo_coexist";
 
@@ -72,10 +82,13 @@ final class AppConfig {
     static final String STATUSBAR_CLOCK_TEXT_ALIGN =
             "ls_augment_statusbar_clock_text_align";
     static final String STATUSBAR_CLOCK_WIDTH_DP = "ls_augment_statusbar_clock_width_dp";
-    static final String STATUSBAR_NET_SPEED = "ls_augment_statusbar_net_speed";
     static final String STATUSBAR_THERMAL = "ls_augment_statusbar_thermal";
     static final String STATUSBAR_BATTERY_POWER = "ls_augment_statusbar_battery_power";
     static final String STATUSBAR_NOTIFICATION_MAX = "ls_augment_statusbar_notification_max";
+    static final String STATUSBAR_ICON_SCALE = "ls_augment_statusbar_icon_scale";
+    static final String STATUSBAR_DEBUG_OVERLAY = "ls_augment_statusbar_debug_overlay";
+    static final String STATUSBAR_NOTIFICATION_HIDE = "ls_augment_statusbar_notification_hide";
+    static final String STATUSBAR_DUAL_ROW_GAP_DP = "ls_augment_statusbar_dual_row_gap_dp";
 
     static final String APP_MASTER = "ls_augment_app_master";
     static final String DOUBLE_ANY_APP = "ls_augment_doubleapp_any_app";
@@ -89,15 +102,18 @@ final class AppConfig {
 
     private static final Set<String> BOOLEAN_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             HIDE_MASTER, TILE_ENABLED, RECENTS_ENABLED, RECENTS_MEMORY_ENABLED, GAME_MASTER,
-            SHOULDER_ENABLED, SHOULDER_DIAGNOSTICS, COMBO_SPEED_ENABLED,
+            SHOULDER_ENABLED, SHOULDER_DIAGNOSTICS, TGK_RAPID_FIRE_ENABLED,
+            COMBO_SPEED_ENABLED, AI_TRIGGER_ENABLED,
+            FREEFORM_ENABLED, FREEFORM_UNLIMITED, FREEFORM_ALL_APPS,
             SUPER_MIRROR_LOW_MODE,
             SUPER_MIRROR_DIABLO_COEXIST, SYSTEMUI_MASTER, STATUSBAR_DUAL_LEFT,
             STATUSBAR_DUAL_RIGHT, STATUSBAR_CLOCK_ACROSS, STATUSBAR_FREE_POSITION,
             STATUSBAR_CLOCK_CUSTOM,
             STATUSBAR_CLOCK_24H, STATUSBAR_CLOCK_SECONDS, STATUSBAR_CLOCK_PERIOD,
-            STATUSBAR_CLOCK_WEEK, STATUSBAR_NET_SPEED, STATUSBAR_THERMAL,
+            STATUSBAR_CLOCK_WEEK, STATUSBAR_THERMAL,
             STATUSBAR_BATTERY_POWER, APP_MASTER, DOUBLE_ANY_APP, DOUBLE_LOW_MEMORY,
-            BEAUTIFY_UNLIMITED_TRIAL, AUTOMATION_ENABLED
+            BEAUTIFY_UNLIMITED_TRIAL, AUTOMATION_ENABLED, STATUSBAR_DEBUG_OVERLAY,
+            STATUSBAR_NOTIFICATION_HIDE
     )));
 
     private static final Map<String, String> DEFAULTS;
@@ -117,6 +133,11 @@ final class AppConfig {
         values.put(RECENTS_MEMORY_GAP_DP,
                 RecentsRecommendedConfig.MEMORY_GAP_DP_SERIALIZED);
         values.put(COMBO_SPEED_RATE, "2");
+        values.put(TGK_RAPID_FIRE_COUNT, "20");
+        values.put(AI_TRIGGER_TEMPLATE_SCAN_MS, "180");
+        values.put(AI_TRIGGER_CLICK_MS, "25");
+        values.put(AI_TRIGGER_COOLDOWN_MS, "180");
+        values.put(AI_TRIGGER_YOLO_SCAN_MS, "400");
         values.put(STATUSBAR_HEIGHT_DP, "0");
         values.put(STATUSBAR_LEFT_MARGIN_DP, "0");
         values.put(STATUSBAR_RIGHT_MARGIN_DP, "0");
@@ -133,6 +154,10 @@ final class AppConfig {
         values.put(STATUSBAR_CLOCK_TEXT_ALIGN, "center");
         values.put(STATUSBAR_CLOCK_WIDTH_DP, "0");
         values.put(STATUSBAR_NOTIFICATION_MAX, "0");
+        values.put(STATUSBAR_ICON_SCALE, "1.00");
+        values.put(STATUSBAR_DEBUG_OVERLAY, "0");
+        values.put(STATUSBAR_NOTIFICATION_HIDE, "0");
+        values.put(STATUSBAR_DUAL_ROW_GAP_DP, "0");
         values.put(AUTOMATION_SCOPE, "current");
         DEFAULTS = Collections.unmodifiableMap(values);
     }
@@ -287,6 +312,11 @@ final class AppConfig {
         if (RECENTS_MEMORY_TEXT_SP.equals(key)) return integer(value, 10, 20);
         if (RECENTS_MEMORY_GAP_DP.equals(key)) return integer(value, 0, 32);
         if (COMBO_SPEED_RATE.equals(key)) return integer(value, 1, 10);
+        if (TGK_RAPID_FIRE_COUNT.equals(key)) return integer(value, 10, 50);
+        if (AI_TRIGGER_TEMPLATE_SCAN_MS.equals(key)) return integer(value, 80, 2000);
+        if (AI_TRIGGER_CLICK_MS.equals(key)) return integer(value, 10, 500);
+        if (AI_TRIGGER_COOLDOWN_MS.equals(key)) return integer(value, 50, 30000);
+        if (AI_TRIGGER_YOLO_SCAN_MS.equals(key)) return integer(value, 150, 1500);
         if (STATUSBAR_HEIGHT_DP.equals(key)) return integer(value, 0, 96);
         if (STATUSBAR_CLOCK_SIZE_SP.equals(key)) return decimal(value, 0.0f, 40.0f);
         if (STATUSBAR_CLOCK_WEIGHT.equals(key)) return integer(value, 100, 900);
@@ -296,6 +326,8 @@ final class AppConfig {
         if (STATUSBAR_CLOCK_LINE_SPACING_DP.equals(key)) return decimal(value, 0.0f, 32.0f);
         if (STATUSBAR_CLOCK_WIDTH_DP.equals(key)) return integer(value, 0, 240);
         if (STATUSBAR_NOTIFICATION_MAX.equals(key)) return integer(value, 0, 20);
+        if (STATUSBAR_ICON_SCALE.equals(key)) return decimal(value, 0.5f, 2.0f);
+        if (STATUSBAR_DUAL_ROW_GAP_DP.equals(key)) return integer(value, 0, 64);
         if (key.contains("_margin_dp")) return integer(value, 0, 64);
         return null;
     }

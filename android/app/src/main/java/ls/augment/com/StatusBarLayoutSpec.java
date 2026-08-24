@@ -2,6 +2,7 @@ package ls.augment.com;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -33,7 +34,7 @@ public final class StatusBarLayoutSpec {
         String[] entries = clean.split(";", -1);
         for (String entry : entries) {
             String[] parts = entry.split(",", -1);
-            if (parts.length != 3 || !ID.matcher(parts[0]).matches()) {
+            if (parts.length < 3 || parts.length > 4 || !ID.matcher(parts[0]).matches()) {
                 return ParseResult.invalid("位置配置格式无效：" + entry);
             }
             if (values.containsKey(parts[0])) {
@@ -42,12 +43,31 @@ public final class StatusBarLayoutSpec {
             try {
                 int x = Integer.parseInt(parts[1]);
                 int y = Integer.parseInt(parts[2]);
+                boolean hidden = false;
+                float scale = 1.0f;
+                if (parts.length == 4) {
+                    String fourth = parts[3].trim();
+                    if (fourth.equalsIgnoreCase("hidden")) {
+                        hidden = true;
+                    } else if (fourth.startsWith("hidden:") || fourth.startsWith("Hidden:")) {
+                        hidden = true;
+                        String scaleStr = fourth.substring(7);
+                        if (!scaleStr.isEmpty()) {
+                            scale = Float.parseFloat(scaleStr);
+                        }
+                    } else {
+                        scale = Float.parseFloat(fourth);
+                    }
+                }
                 if (x < 0 || x > 1000 || y < 0 || y > 1000) {
                     return ParseResult.invalid("位置坐标超出 0–1000：" + parts[0]);
                 }
-                values.put(parts[0], new Position(x, y));
+                if (scale < 0.5f || scale > 2.0f) {
+                    return ParseResult.invalid("图标缩放超出 0.5–2.0：" + parts[0]);
+                }
+                values.put(parts[0], new Position(x, y, scale, hidden));
             } catch (NumberFormatException error) {
-                return ParseResult.invalid("位置坐标不是整数：" + parts[0]);
+                return ParseResult.invalid("位置坐标或缩放不是数字：" + parts[0]);
             }
         }
         return ParseResult.valid(new StatusBarLayoutSpec(values));
@@ -65,9 +85,15 @@ public final class StatusBarLayoutSpec {
         StringBuilder value = new StringBuilder();
         for (Map.Entry<String, Position> entry : positions.entrySet()) {
             if (value.length() > 0) value.append(';');
+            Position p = entry.getValue();
             value.append(entry.getKey()).append(',')
-                    .append(entry.getValue().x).append(',')
-                    .append(entry.getValue().y);
+                    .append(p.x).append(',').append(p.y);
+            if (p.hidden) {
+                value.append(",hidden");
+            }
+            if (p.scale != 1.0f) {
+                value.append(',').append(String.format(Locale.ROOT, "%.2f", p.scale));
+            }
         }
         return value.toString();
     }
@@ -85,13 +111,28 @@ public final class StatusBarLayoutSpec {
     public static final class Position {
         public final int x;
         public final int y;
+        public final float scale;
+        public final boolean hidden;
 
         public Position(int x, int y) {
+            this(x, y, 1.0f, false);
+        }
+
+        public Position(int x, int y, float scale) {
+            this(x, y, scale, false);
+        }
+
+        public Position(int x, int y, float scale, boolean hidden) {
             if (x < 0 || x > 1000 || y < 0 || y > 1000) {
                 throw new IllegalArgumentException("position outside 0..1000");
             }
+            if (scale < 0.5f || scale > 2.0f) {
+                throw new IllegalArgumentException("scale outside 0.5..2.0");
+            }
             this.x = x;
             this.y = y;
+            this.scale = scale;
+            this.hidden = hidden;
         }
     }
 

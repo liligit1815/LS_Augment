@@ -50,7 +50,9 @@ public final class FeatureActivity extends Activity {
     static final String MODULE_RECENTS_STACK = "recents_stack";
     static final String MODULE_RECENTS_MEMORY = "recents_memory";
     static final String MODULE_SHOULDER = "shoulder";
+    static final String MODULE_AI_TRIGGER = "ai_trigger";
     static final String MODULE_COMBO_SPEED = "combo_speed";
+    static final String MODULE_FREEFORM = "freeform";
     static final String MODULE_SUPER_RESOLUTION = "super_resolution";
     static final String MODULE_DIABLO_COEXIST = "diablo_coexist";
     static final String MODULE_STATUS_LAYOUT = "status_layout";
@@ -71,6 +73,7 @@ public final class FeatureActivity extends Activity {
     private final Map<String, Slider> sliders = new LinkedHashMap<>();
     private final Map<String, Choice> choices = new LinkedHashMap<>();
     private final Map<String, PositionControl> positionControls = new LinkedHashMap<>();
+    private final Map<String, IconControl> iconControls = new LinkedHashMap<>();
     private final LinkedHashMap<String, StatusBarLayoutSpec.Position> positionValues =
             new LinkedHashMap<>();
     private AppConfig config;
@@ -164,7 +167,9 @@ public final class FeatureActivity extends Activity {
             case MODULE_RECENTS_STACK: buildRecentsStack(); break;
             case MODULE_RECENTS_MEMORY: buildRecentsMemory(); break;
             case MODULE_SHOULDER: buildShoulder(); break;
+            case MODULE_AI_TRIGGER: buildAiTrigger(); break;
             case MODULE_COMBO_SPEED: buildComboSpeed(); break;
+            case MODULE_FREEFORM: buildFreeform(); break;
             case MODULE_SUPER_RESOLUTION: buildSuperResolution(); break;
             case MODULE_DIABLO_COEXIST: buildDiabloCoexist(); break;
             case MODULE_STATUS_LAYOUT: buildStatusLayout(); break;
@@ -236,7 +241,38 @@ public final class FeatureActivity extends Activity {
         addSwitch(shoulder, AppConfig.SHOULDER_ENABLED, "启用全应用肩键",
                 "无需再选择应用；系统组件、LS_Augment 与 Root/LSPosed 管理器不会被放行。", false);
         addSwitch(shoulder, AppConfig.SHOULDER_DIAGNOSTICS, "详细诊断", "仅排查时开启；默认使用低频诊断。", false);
+        addSwitch(shoulder, AppConfig.TGK_RAPID_FIRE_ENABLED, "肩键极速连点",
+                "突破红魔原生约 10 次/秒上限；当前版本验证左、右肩键，按住后连续产生点击。", false);
         page.addView(shoulder, ui.margins(0, 0, 0, 12));
+
+        LinearLayout rapid = new LinearLayout(this);
+        rapid.setOrientation(LinearLayout.VERTICAL);
+        addSlider(rapid, AppConfig.TGK_RAPID_FIRE_COUNT, "点击频率（10～50 次/秒）", 10, 50, false);
+        page.addView(ui.collapsible("连点参数", "建议先从 20 次/秒开始；40～50 次/秒可能被个别游戏丢弃。",
+                rapid, false), ui.margins(0, 0, 0, 12));
+    }
+
+    private void buildAiTrigger() {
+        LinearLayout ai = detailCard("AI 触发器极速响应",
+                "同时优化游戏插件模板扫描、点击队列和 GameAssist 的 YOLO 扫描；保留原厂识别阈值，"
+                        + "并增加同一画面的模板复核，避免模板消失后继续点击。\n"
+                        + "所有数值都有安全下限，避免把主线程或输入队列压垮。");
+        addSwitch(ai, AppConfig.AI_TRIGGER_ENABLED, "启用极速触发",
+                "关闭时完全回到红魔原生触发周期。首次启用后重启游戏作用域。", false);
+        page.addView(ai, ui.margins(0, 0, 0, 12));
+
+        LinearLayout speed = new LinearLayout(this);
+        speed.setOrientation(LinearLayout.VERTICAL);
+        addSlider(speed, AppConfig.AI_TRIGGER_TEMPLATE_SCAN_MS,
+                "模板扫描间隔 ms（80～2000）", 80, 600, false);
+        addSlider(speed, AppConfig.AI_TRIGGER_CLICK_MS,
+                "点击队列间隔 ms（10～500）", 10, 200, false);
+        addSlider(speed, AppConfig.AI_TRIGGER_COOLDOWN_MS,
+                "策略冷却 ms（50～2000）", 50, 2000, false);
+        addSlider(speed, AppConfig.AI_TRIGGER_YOLO_SCAN_MS,
+                "YOLO 扫描间隔 ms（150～1500）", 150, 1000, false);
+        page.addView(ui.collapsible("响应参数", "推荐值为 180 / 25 / 180 / 400；出现误触时逐项调高。",
+                speed, false), ui.margins(0, 0, 0, 12));
     }
 
     private void buildComboSpeed() {
@@ -252,6 +288,20 @@ public final class FeatureActivity extends Activity {
         page.addView(ui.collapsible("速度参数",
                 "仅可选择整数倍率；1× 为原速，范围为 1× 至 10×。", speed, false),
                 ui.margins(0, 0, 0, 12));
+    }
+
+    private void buildFreeform() {
+        LinearLayout freeform = detailCard("小窗增强",
+                "解除红魔自由窗口的数量限制，并强制普通应用（包括美图秀秀）进入小窗。"
+                        + "系统关键界面仍保留保护名单；不兼容应用可能出现画面裁切或触控错位。"
+                        + "配置保存后约 1 秒读取；首次安装或更新模块代码需要重启手机。\n");
+        addSwitch(freeform, AppConfig.FREEFORM_ENABLED, "启用小窗增强",
+                "总开关关闭时保持系统和红魔原生小窗策略。", true);
+        addSwitch(freeform, AppConfig.FREEFORM_UNLIMITED, "解除小窗数量上限",
+                "允许同时创建并最小化超过三个自由窗口。", false);
+        addSwitch(freeform, AppConfig.FREEFORM_ALL_APPS, "全应用支持小窗",
+                "强制放行普通应用的自由窗口资格；系统关键页面仍不强制改写。", false);
+        page.addView(freeform, ui.margins(0, 0, 0, 12));
     }
 
     private void buildSuperResolution() {
@@ -279,7 +329,9 @@ public final class FeatureActivity extends Activity {
         addSwitch(master, AppConfig.STATUSBAR_DUAL_RIGHT, "右侧双排", "右侧增加第二排实时信息。", false);
         addSwitch(master, AppConfig.STATUSBAR_CLOCK_ACROSS, "时钟跨双排", "将系统时钟在双排高度内纵向居中。", false);
         addSwitch(master, AppConfig.STATUSBAR_FREE_POSITION, "自由定位",
-                "允许组件和单个系统图标进入包括中间区域在内的任意位置；风险只提示，不限制。", false);
+                "关闭时位置仍会生效，但图标不会超出状态栏边界；开启后允许进入包括中间区域在内的任意位置，风险只提示，不限制。", false);
+        addSwitch(master, AppConfig.STATUSBAR_DEBUG_OVERLAY, "调试框线",
+                "在状态栏上绘制外框、双排分隔线与组件包围盒，直观看到当前布局状态。", false);
         page.addView(master, ui.margins(0, 0, 0, 12));
         LinearLayout spacing = new LinearLayout(this);
         spacing.setOrientation(LinearLayout.VERTICAL);
@@ -288,6 +340,7 @@ public final class FeatureActivity extends Activity {
         addNumber(spacing, AppConfig.STATUSBAR_RIGHT_MARGIN_DP, "右边距 dp", false);
         addNumber(spacing, AppConfig.STATUSBAR_TOP_MARGIN_DP, "上边距 dp", false);
         addNumber(spacing, AppConfig.STATUSBAR_BOTTOM_MARGIN_DP, "下边距 dp", false);
+        addNumber(spacing, AppConfig.STATUSBAR_DUAL_ROW_GAP_DP, "双排间距 dp（0 自动）", false);
         page.addView(ui.collapsible("尺寸与边距", "默认均为 0，跟随系统原值；修改后按真实状态栏重新测量。", spacing, false),
                 ui.margins(0, 0, 0, 12));
 
@@ -298,20 +351,19 @@ public final class FeatureActivity extends Activity {
         addPosition(components, "system_icons", "系统图标组", 760, 500);
         addPosition(components, "battery", "电池", 930, 500);
         addPosition(components, "fan", "散热风扇", 600, 500);
-        addPosition(components, "metric.net", "网速", 180, 760);
         addPosition(components, "metric.thermal", "温度", 420, 760);
         addPosition(components, "metric.power", "电流与功率", 820, 760);
         page.addView(ui.collapsible("组件位置",
-                "开启某项自定义位置后拖动横向/纵向滑杆；手机状态栏就是实时预览。", components, false),
+                "调整系统图标组、通知图标组、电池、散热风扇和温度/电流等组件的位置；配置会实时生效到状态栏。", components, false),
                 ui.margins(0, 0, 0, 12));
 
         LinearLayout icons = new LinearLayout(this);
         icons.setOrientation(LinearLayout.VERTICAL);
         statusIconControls = icons;
-        for (String slot : DEVICE_STATUS_ICON_BASELINE) addStatusIconSlot(slot);
+        for (String slot : DEVICE_STATUS_ICON_BASELINE) addStatusIconSlot(slot, false);
         addDiscoveredStatusIconSlots();
-        page.addView(ui.collapsible("单个系统图标（本机动态清单）",
-                "这里不是固定的 26 项：以本机注册基线起步，运行时发现的新图标会继续加入。未激活图标的位置会在它出现时使用。",
+        page.addView(ui.collapsible("系统图标（本机动态清单）",
+                "这里不是固定的 26 项：以本机注册基线起步，运行时发现的新图标会继续加入。每个图标可独立控制隐藏、位置和缩放。",
                 icons, false), ui.margins(0, 0, 0, 12));
     }
 
@@ -322,27 +374,84 @@ public final class FeatureActivity extends Activity {
 
     private void addDiscoveredStatusIconSlots() {
         String discovered = diagnostic("ls_augment_statusbar_discovered_icons");
-        for (String slot : discovered.split(",")) addStatusIconSlot(slot.trim());
+        LinkedHashMap<String, String> visibility = new LinkedHashMap<>();
+        for (String entry : discovered.split(",")) {
+            String[] parts = entry.split(":", 2);
+            String slot = parts[0].trim();
+            String state = parts.length > 1 ? parts[1].trim() : "visible";
+            visibility.put(slot, state);
+        }
+        for (String slot : visibility.keySet()) {
+            addStatusIconSlot(slot, "gone".equals(visibility.get(slot)));
+        }
     }
 
-    private void addStatusIconSlot(String slot) {
+    private void addStatusIconSlot(String slot, boolean initiallyHidden) {
         if (statusIconControls == null || !slot.matches("[A-Za-z0-9_.:-]{1,80}")
                 || renderedStatusIconSlots.containsKey(slot)) return;
         renderedStatusIconSlots.put(slot, Boolean.TRUE);
         boolean wasLoading = loading;
         loading = true;
         String id = "slot." + slot;
-        addPosition(statusIconControls, id, iconLabel(slot), 760, 500);
-        PositionControl control = positionControls.get(id);
-        if (control != null && !positionValues.isEmpty()) {
-            control.load(positionValues.get(id));
+
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(ui.text(iconLabel(slot), 13, ui.text, true),
+                new LinearLayout.LayoutParams(0, -2, 1.0f));
+        Switch hidden = new Switch(this);
+        ui.styleSwitch(hidden);
+        hidden.setChecked(initiallyHidden);
+        heading.addView(hidden, new LinearLayout.LayoutParams(-2, -2));
+        block.addView(heading, ui.wrap());
+
+        PositionControl positionControl = new PositionControl(
+                id, iconLabel(slot), 760, 500, hidden, positionBar(), positionBar(),
+                positionInput(id + ".x"), positionInput(id + ".y"),
+                ui.text("", 11.5f, ui.muted, false),
+                ui.text("", 11.5f, ui.muted, false));
+        positionControls.put(id, positionControl);
+
+        LinearLayout xRow = new LinearLayout(this);
+        xRow.setOrientation(LinearLayout.HORIZONTAL);
+        xRow.setGravity(Gravity.CENTER_VERTICAL);
+        xRow.addView(positionControl.xValue, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        xRow.addView(positionControl.xInput, new LinearLayout.LayoutParams(ui.dp(64), -2));
+        block.addView(xRow, ui.wrap());
+        block.addView(positionControl.x, ui.wrap());
+
+        LinearLayout yRow = new LinearLayout(this);
+        yRow.setOrientation(LinearLayout.HORIZONTAL);
+        yRow.setGravity(Gravity.CENTER_VERTICAL);
+        yRow.addView(positionControl.yValue, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        yRow.addView(positionControl.yInput, new LinearLayout.LayoutParams(ui.dp(64), -2));
+        block.addView(yRow, ui.wrap());
+        block.addView(positionControl.y, ui.wrap());
+
+        Slider scaleSlider = new Slider("scale:" + id, id + " 图标缩放", 50, 200, true,
+                scaleBar(), ui.text("", 12, ui.muted, false));
+        sliders.put("scale:" + id, scaleSlider);
+        block.addView(scaleSlider.text, ui.margins(0, 8, 0, 0));
+        block.addView(scaleSlider.bar, ui.wrap());
+
+        IconControl iconControl = new IconControl(id, iconLabel(slot), hidden, positionControl, scaleSlider);
+        iconControls.put(id, iconControl);
+        if (!positionValues.isEmpty()) {
+            iconControl.load(positionValues.get(id));
         }
+
+        statusIconControls.addView(block, ui.margins(0, 8, 0, 8));
+        statusIconControls.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
         loading = wasLoading;
     }
 
     private void buildStatusClock() {
         LinearLayout clock = detailCard("双行自定义时钟",
-                "两行分别使用标准日期格式；第二行留空就是单行。格式错误会保留上一次有效结果并明确提示。");
+                "两行分别使用标准日期格式；第二行留空就是单行。格式错误会保留上一次有效结果。"
+                        + " 扩展：N 农历月、e 农历日、Y 干支年、A 生肖、G 公元、t 节气；"
+                        + " 其余字母走系统 SimpleDateFormat；不支持的字母将原样显示。");
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_CUSTOM, "自定义时钟", "替换 SystemUI 时钟文本。", false);
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_24H, "24 小时制", "第一行留空时使用；关闭为 12 小时制。", false);
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_SECONDS, "显示秒", "第一行留空时使用；自定义格式含 s/S 时会自动按秒刷新。", false);
@@ -350,7 +459,7 @@ public final class FeatureActivity extends Activity {
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_WEEK, "显示星期", "使用当前语言的星期格式。", false);
         addNumber(clock, AppConfig.STATUSBAR_CLOCK_PATTERN, "第一行格式（如 yy:MM-HH:mm）", true);
         addNumber(clock, AppConfig.STATUSBAR_CLOCK_PATTERN_SECOND,
-                "第二行格式（如 E；固定文字 II 请写 'II'）", true);
+                "第二行格式（如 E/N/e；固定文字用单引号，如 'II'）", true);
         page.addView(clock, ui.margins(0, 0, 0, 12));
 
         LinearLayout font = new LinearLayout(this);
@@ -374,10 +483,11 @@ public final class FeatureActivity extends Activity {
     private void buildStatusMetrics() {
         LinearLayout metrics = detailCard("实时数据",
                 "每一类数据都是可单独定位的真实状态栏组件；读取失败不会破坏原生状态栏。");
-        addSwitch(metrics, AppConfig.STATUSBAR_NET_SPEED, "实时网速", "显示设备总实时速率。", false);
         addSwitch(metrics, AppConfig.STATUSBAR_THERMAL, "温度", "显示可读取的 CPU/GPU/电池温度。", false);
         addSwitch(metrics, AppConfig.STATUSBAR_BATTERY_POWER, "电流与功率", "根据电池电流和电压计算。", false);
         addNumber(metrics, AppConfig.STATUSBAR_NOTIFICATION_MAX, "通知图标最大数量（0 原生）", false);
+        addSwitch(metrics, AppConfig.STATUSBAR_NOTIFICATION_HIDE, "隐藏全部通知图标",
+                "开启后状态栏通知图标组完全隐藏；优先于最大数量生效。", false);
         page.addView(metrics, ui.margins(0, 0, 0, 12));
     }
 
@@ -605,31 +715,56 @@ public final class FeatureActivity extends Activity {
         heading.addView(enabled, new LinearLayout.LayoutParams(-2, -2));
         block.addView(heading, ui.wrap());
 
+        LinearLayout xRow = new LinearLayout(this);
+        xRow.setOrientation(LinearLayout.HORIZONTAL);
+        xRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView xValue = ui.text("", 11.5f, ui.muted, false);
+        xRow.addView(xValue, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        EditText xInput = positionInput(id + ".x");
+        xRow.addView(xInput, new LinearLayout.LayoutParams(ui.dp(64), -2));
         SeekBar x = positionBar();
-        TextView yValue = ui.text("", 11.5f, ui.muted, false);
-        SeekBar y = positionBar();
-        block.addView(xValue, ui.margins(0, 3, 0, 0));
+        block.addView(xRow, ui.wrap());
         block.addView(x, ui.wrap());
-        block.addView(yValue, ui.wrap());
+
+        LinearLayout yRow = new LinearLayout(this);
+        yRow.setOrientation(LinearLayout.HORIZONTAL);
+        yRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView yValue = ui.text("", 11.5f, ui.muted, false);
+        yRow.addView(yValue, new LinearLayout.LayoutParams(0, -2, 1.0f));
+        EditText yInput = positionInput(id + ".y");
+        yRow.addView(yInput, new LinearLayout.LayoutParams(ui.dp(64), -2));
+        SeekBar y = positionBar();
+        block.addView(yRow, ui.wrap());
         block.addView(y, ui.wrap());
 
         PositionControl control = new PositionControl(
-                id, label, defaultX, defaultY, enabled, x, y, xValue, yValue);
+                id, label, defaultX, defaultY, enabled, x, y, xInput, yInput, xValue, yValue);
         enabled.setOnCheckedChangeListener((button, checked) -> {
             control.render();
             markDirty();
         });
-        SeekBar.OnSeekBarChangeListener listener = new SeekBar.OnSeekBarChangeListener() {
+        SeekBar.OnSeekBarChangeListener barListener = new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                control.syncInputFromBar();
                 control.render();
                 if (fromUser) markDirty();
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         };
-        x.setOnSeekBarChangeListener(listener);
-        y.setOnSeekBarChangeListener(listener);
+        x.setOnSeekBarChangeListener(barListener);
+        y.setOnSeekBarChangeListener(barListener);
+        TextWatcher inputWatcher = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                control.syncBarFromInput();
+                control.render();
+                markDirty();
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        };
+        xInput.addTextChangedListener(inputWatcher);
+        yInput.addTextChangedListener(inputWatcher);
         x.setProgress(defaultX);
         y.setProgress(defaultY);
         control.render();
@@ -638,9 +773,28 @@ public final class FeatureActivity extends Activity {
         card.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
     }
 
+    private EditText positionInput(String key) {
+        EditText input = new EditText(this);
+        ui.styleInput(input);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setEms(5);
+        input.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        return input;
+    }
+
     private SeekBar positionBar() {
         SeekBar bar = new SeekBar(this);
         bar.setMax(1000);
+        bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
+        bar.setThumbTintList(ColorStateList.valueOf(ui.accent));
+        return bar;
+    }
+
+    private SeekBar scaleBar() {
+        SeekBar bar = new SeekBar(this);
+        bar.setMax(150);
+        bar.setProgress(50);
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
         bar.setThumbTintList(ColorStateList.valueOf(ui.accent));
         return bar;
@@ -750,6 +904,9 @@ public final class FeatureActivity extends Activity {
             StatusBarLayoutSpec.Position position = positionValues.get(control.id);
             control.load(position);
         }
+        for (IconControl control : iconControls.values()) {
+            control.load(positionValues.get(control.id));
+        }
         loading = false;
         dirty = false;
         changeGeneration = 0L;
@@ -775,25 +932,20 @@ public final class FeatureActivity extends Activity {
         for (Map.Entry<String, EditText> entry : inputs.entrySet()) updates.put(entry.getKey(), entry.getValue().getText().toString());
         for (Slider slider : sliders.values()) updates.put(slider.key, slider.serialized());
         for (Choice choice : choices.values()) updates.put(choice.key, choice.selected);
-        if (!positionControls.isEmpty()) {
-            for (PositionControl control : positionControls.values()) {
-                if (control.enabled.isChecked()) {
-                    positionValues.put(control.id, new StatusBarLayoutSpec.Position(
-                            control.x.getProgress(), control.y.getProgress()));
-                } else {
-                    positionValues.remove(control.id);
-                }
+        if (!iconControls.isEmpty()) {
+            for (IconControl control : iconControls.values()) {
+                control.save(positionValues);
             }
             updates.put(AppConfig.STATUSBAR_LAYOUT_SPEC,
                     StatusBarLayoutSpec.serialize(positionValues));
         }
-        if (enabledIn(updates, AppConfig.SHOULDER_ENABLED, AppConfig.COMBO_SPEED_ENABLED,
+        if (enabledIn(updates, AppConfig.SHOULDER_ENABLED, AppConfig.TGK_RAPID_FIRE_ENABLED,
+                AppConfig.AI_TRIGGER_ENABLED, AppConfig.COMBO_SPEED_ENABLED,
                 AppConfig.SUPER_MIRROR_LOW_MODE, AppConfig.SUPER_MIRROR_DIABLO_COEXIST)) {
             updates.put(AppConfig.GAME_MASTER, "1");
         }
         if (enabledIn(updates, AppConfig.STATUSBAR_DUAL_LEFT, AppConfig.STATUSBAR_DUAL_RIGHT,
                 AppConfig.STATUSBAR_FREE_POSITION, AppConfig.STATUSBAR_CLOCK_CUSTOM,
-                AppConfig.STATUSBAR_NET_SPEED,
                 AppConfig.STATUSBAR_THERMAL, AppConfig.STATUSBAR_BATTERY_POWER)) {
             updates.put(AppConfig.SYSTEMUI_MASTER, "1");
         }
@@ -840,7 +992,15 @@ public final class FeatureActivity extends Activity {
             if (MODULE_SHOULDER.equals(section)) {
                 prefix = statusLine("肩键安装", diagnostic("ls_augment_shoulder_installed"))
                         + statusLine("最近命中", diagnostic("ls_augment_shoulder_last_hit"))
-                        + statusLine("最近错误", diagnostic("ls_augment_shoulder_last_error"));
+                        + statusLine("连点调速", diagnostic("ls_augment_tgk_rapid_fire_installed"))
+                        + statusLine("连点最近命中", diagnostic("ls_augment_tgk_rapid_fire_last_hit"))
+                        + statusLine("原生节拍", diagnostic("ls_augment_tgk_rapid_fire_native_state"))
+                        + statusLine("原生最近命中", diagnostic("ls_augment_tgk_rapid_fire_native_last_hit"))
+                        + statusLine("最近错误", diagnostic("ls_augment_tgk_rapid_fire_native_last_error"));
+            } else if (MODULE_AI_TRIGGER.equals(section)) {
+                prefix = statusLine("AI Hook", diagnostic("ls_augment_ai_trigger_installed"))
+                        + statusLine("最近命中", diagnostic("ls_augment_ai_trigger_last_hit"))
+                        + statusLine("最近错误", diagnostic("ls_augment_ai_trigger_last_error"));
             } else if (MODULE_COMBO_SPEED.equals(section)) {
                 prefix = statusLine("速度 Hook", diagnostic("ls_augment_combo_speed_installed"))
                         + statusLine("文件缓存", diagnostic("ls_augment_combo_speed_cache_last_hit"))
@@ -851,6 +1011,10 @@ public final class FeatureActivity extends Activity {
                         + statusLine("最近命中", diagnostic("ls_augment_super_mirror_last_hit"))
                         + statusLine("最近错误", diagnostic("ls_augment_super_mirror_last_error"));
             }
+        } else if (MODULE_FREEFORM.equals(section)) {
+            prefix = statusLine("小窗 Hook", diagnostic("ls_augment_freeform_installed"))
+                    + statusLine("最近命中", diagnostic("ls_augment_freeform_last_hit"))
+                    + statusLine("最近错误", diagnostic("ls_augment_freeform_last_error"));
         } else if (isStatusModule()) {
             prefix = statusLine("实时链路", statusBarRealtimeState(
                     diagnostic("ls_augment_systemui_last_hit")))
@@ -916,7 +1080,6 @@ public final class FeatureActivity extends Activity {
     private static String humanIssue(String value) {
         if (value == null || value.isEmpty() || "none".equals(value)) return "无";
         String localized = value
-                .replace("metric.net", "网速")
                 .replace("metric.thermal", "温度")
                 .replace("metric.power", "电流与功率")
                 .replace("system_icons", "系统图标组")
@@ -1039,7 +1202,9 @@ public final class FeatureActivity extends Activity {
             case MODULE_RECENTS_STACK: return "横向重叠任务";
             case MODULE_RECENTS_MEMORY: return "后台内存标签";
             case MODULE_SHOULDER: return "全应用肩键";
+            case MODULE_AI_TRIGGER: return "AI 触发器";
             case MODULE_COMBO_SPEED: return "一键连招速度";
+            case MODULE_FREEFORM: return "小窗增强";
             case MODULE_SUPER_RESOLUTION: return "性能模式超分";
             case MODULE_DIABLO_COEXIST: return "超分与破坏神";
             case MODULE_STATUS_LAYOUT: return "状态栏布局";
@@ -1059,7 +1224,9 @@ public final class FeatureActivity extends Activity {
             case MODULE_RECENTS_STACK: return "连续视觉堆叠；保留原生分页、手势与任务动作。";
             case MODULE_RECENTS_MEMORY: return "控制最近任务底部的唯一整机内存数据。";
             case MODULE_SHOULDER: return "第三方 App 自动适配，红魔 TGK 继续负责实体按键。";
+            case MODULE_AI_TRIGGER: return "降低模板、点击队列与 YOLO 的等待间隔。";
             case MODULE_COMBO_SPEED: return "为游戏助手的一键连招设置播放倍率，不改原始录制。";
+            case MODULE_FREEFORM: return "解除小窗创建与最小化限制，并放行普通应用进入自由窗口。";
             case MODULE_SUPER_RESOLUTION: return "扩展红魔原生超分辨率的性能模式资格。";
             case MODULE_DIABLO_COEXIST: return "控制超分辨率与破坏神模式的互斥行为。";
             case MODULE_STATUS_LAYOUT: return "在真实状态栏中实时调整双排、尺寸、组件和单个图标位置。";
@@ -1079,6 +1246,7 @@ public final class FeatureActivity extends Activity {
             case MODULE_RECENTS_STACK:
             case MODULE_RECENTS_MEMORY: return "重启系统桌面后生效";
             case MODULE_SHOULDER:
+            case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
             case MODULE_SUPER_RESOLUTION:
             case MODULE_DIABLO_COEXIST: return MODULE_COMBO_SPEED.equals(section)
@@ -1088,6 +1256,8 @@ public final class FeatureActivity extends Activity {
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS:
                 return "修改会自动保存并直接反馈；仅首次安装或更新模块代码后需重启一次 SystemUI";
+            case MODULE_FREEFORM:
+                return "配置保存后约 1 秒读取；首次安装或更新模块代码需重启手机";
             case MODULE_DOUBLE_APP:
             case MODULE_BEAUTIFY: return "重启应用增强作用域后生效";
             default: return "立即生效";
@@ -1099,12 +1269,14 @@ public final class FeatureActivity extends Activity {
             case MODULE_RECENTS_STACK:
             case MODULE_RECENTS_MEMORY: return ScopeRestartDialog.LAUNCHER;
             case MODULE_SHOULDER:
+            case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
             case MODULE_SUPER_RESOLUTION:
             case MODULE_DIABLO_COEXIST: return ScopeRestartDialog.GAMES;
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS: return ScopeRestartDialog.SYSTEM_UI;
+            case MODULE_FREEFORM: return ScopeRestartDialog.DEVICE;
             case MODULE_DOUBLE_APP:
             case MODULE_BEAUTIFY: return ScopeRestartDialog.APPS;
             default: return ScopeRestartDialog.SETTINGS;
@@ -1116,7 +1288,8 @@ public final class FeatureActivity extends Activity {
     }
 
     private boolean isGameModule() {
-        return MODULE_SHOULDER.equals(section) || MODULE_COMBO_SPEED.equals(section)
+        return MODULE_SHOULDER.equals(section) || MODULE_AI_TRIGGER.equals(section)
+                || MODULE_COMBO_SPEED.equals(section)
                 || MODULE_SUPER_RESOLUTION.equals(section)
                 || MODULE_DIABLO_COEXIST.equals(section);
     }
@@ -1174,11 +1347,14 @@ public final class FeatureActivity extends Activity {
         final Switch enabled;
         final SeekBar x;
         final SeekBar y;
+        final EditText xInput;
+        final EditText yInput;
         final TextView xValue;
         final TextView yValue;
 
         PositionControl(String id, String label, int defaultX, int defaultY,
-                Switch enabled, SeekBar x, SeekBar y, TextView xValue, TextView yValue) {
+                Switch enabled, SeekBar x, SeekBar y,
+                EditText xInput, EditText yInput, TextView xValue, TextView yValue) {
             this.id = id;
             this.label = label;
             this.defaultX = defaultX;
@@ -1186,6 +1362,8 @@ public final class FeatureActivity extends Activity {
             this.enabled = enabled;
             this.x = x;
             this.y = y;
+            this.xInput = xInput;
+            this.yInput = yInput;
             this.xValue = xValue;
             this.yValue = yValue;
         }
@@ -1194,19 +1372,87 @@ public final class FeatureActivity extends Activity {
             x.setProgress(position == null ? defaultX : position.x);
             y.setProgress(position == null ? defaultY : position.y);
             enabled.setChecked(position != null);
+            syncInputFromBar();
             render();
+        }
+
+        void syncInputFromBar() {
+            syncInputFromBar(xInput, x);
+            syncInputFromBar(yInput, y);
+        }
+
+        void syncInputFromBar(EditText input, SeekBar bar) {
+            input.setText(String.valueOf(bar.getProgress()));
+        }
+
+        void syncBarFromInput() {
+            syncBarFromInput(xInput, x);
+            syncBarFromInput(yInput, y);
+        }
+
+        void syncBarFromInput(EditText input, SeekBar bar) {
+            String raw = input.getText().toString().trim();
+            if (raw.isEmpty()) return;
+            try {
+                int value = Integer.parseInt(raw);
+                bar.setProgress(Math.max(0, Math.min(1000, value)));
+            } catch (NumberFormatException ignored) { }
         }
 
         void render() {
             boolean active = enabled.isChecked();
             x.setEnabled(active);
             y.setEnabled(active);
-            x.setAlpha(active ? 1.0f : 0.35f);
-            y.setAlpha(active ? 1.0f : 0.35f);
-            xValue.setText(String.format(Locale.CHINA, "横向位置：%.1f%%",
-                    x.getProgress() / 10.0f));
-            yValue.setText(String.format(Locale.CHINA, "纵向位置：%.1f%%",
-                    y.getProgress() / 10.0f));
+            xInput.setEnabled(active);
+            yInput.setEnabled(active);
+            float alpha = active ? 1.0f : 0.35f;
+            x.setAlpha(alpha); y.setAlpha(alpha);
+            xInput.setAlpha(alpha); yInput.setAlpha(alpha);
+            xValue.setText(String.format(Locale.CHINA, "横向 %d / 纵向 %d",
+                    x.getProgress(), y.getProgress()));
+            yValue.setText(String.format(Locale.CHINA, "%.1f%% / %.1f%%",
+                    x.getProgress() / 10.0f, y.getProgress() / 10.0f));
+        }
+    }
+
+    private static final class IconControl {
+        final String id;
+        final Switch hidden;
+        final PositionControl position;
+        final Slider scale;
+
+        IconControl(String id, String label, Switch hidden,
+                PositionControl position, Slider scale) {
+            this.id = id;
+            this.hidden = hidden;
+            this.position = position;
+            this.scale = scale;
+        }
+
+        void load(StatusBarLayoutSpec.Position pos) {
+            hidden.setChecked(pos != null && pos.hidden);
+            position.load(pos);
+            if (pos != null && pos.scale != 1.0f) {
+                scale.setValue((int) Math.round(pos.scale * 100f));
+            }
+        }
+
+        void save(LinkedHashMap<String, StatusBarLayoutSpec.Position> positionValues) {
+            if (hidden.isChecked()) {
+                StatusBarLayoutSpec.Position pos = positionValues.get(id);
+                int x = pos != null ? pos.x : position.x.getProgress();
+                int y = pos != null ? pos.y : position.y.getProgress();
+                float s = scale.percent ? scale.value() / 100f : scale.value();
+                positionValues.put(id, new StatusBarLayoutSpec.Position(x, y, s, true));
+            } else {
+                StatusBarLayoutSpec.Position pos = positionValues.get(id);
+                if (pos != null && pos.hidden) {
+                    int x = pos.x;
+                    int y = pos.y;
+                    float s = scale.percent ? scale.value() / 100f : scale.value();
+                    positionValues.put(id, new StatusBarLayoutSpec.Position(x, y, s, false));
+                }
+            }
         }
     }
 

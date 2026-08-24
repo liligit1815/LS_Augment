@@ -317,8 +317,8 @@ public final class SettingsActivity extends Activity {
         switch (category) {
             case HIDE: return "应用隐藏、自动化与快捷恢复";
             case RECENTS: return "横向重叠与整机内存标签";
-            case GAME: return "肩键、一键连招速度、超分辨率与破坏神策略";
-            case SYSTEM: return "双排布局、时钟与实时数据";
+            case GAME: return "肩键、AI 触发器、一键连招速度、超分辨率与破坏神策略";
+            case SYSTEM: return "小窗增强、双排布局、时钟与实时数据";
             case APPS: return "红魔双开扩展与主题无限期试用";
             case TOOLS: return "桌面入口、诊断、日志与恢复";
             default: return "模块运行状态与版本";
@@ -349,9 +349,12 @@ public final class SettingsActivity extends Activity {
     }
 
     private void renderGame() {
-        beginPanel("功能开关", "肩键、一键连招速度、超分辨率与破坏神共存策略。", true);
+        beginPanel("功能开关", "肩键、AI 触发器、一键连招速度、超分辨率与破坏神共存策略。", true);
         addModule("肩键全应用", "自动放行已安装、已启用的第三方 App。",
                 AppConfig.SHOULDER_ENABLED, FeatureActivity.MODULE_SHOULDER,
+                ScopeRestartDialog.GAMES, null);
+        addModule("AI 触发器极速", "降低模板、点击队列和 YOLO 的等待间隔。",
+                AppConfig.AI_TRIGGER_ENABLED, FeatureActivity.MODULE_AI_TRIGGER,
                 ScopeRestartDialog.GAMES, null);
         addModule("一键连招速度", "调整游戏助手录制连招的播放倍率。",
                 AppConfig.COMBO_SPEED_ENABLED, FeatureActivity.MODULE_COMBO_SPEED,
@@ -365,15 +368,18 @@ public final class SettingsActivity extends Activity {
     }
 
     private void renderSystem() {
-        beginPanel("状态栏功能", "Android 16 SystemUI 布局与实时信息。", true);
+        beginPanel("小窗与状态栏", "Android 16 小窗策略、SystemUI 布局与实时信息。", true);
+        addModule("小窗增强", "解除窗口数量上限，并强制普通应用进入小窗。",
+                AppConfig.FREEFORM_ENABLED, FeatureActivity.MODULE_FREEFORM,
+                ScopeRestartDialog.DEVICE, null);
         addModule("状态栏布局", "左右双排、跨排时钟、高度与安全边距。",
                 AppConfig.SYSTEMUI_MASTER, FeatureActivity.MODULE_STATUS_LAYOUT,
                 ScopeRestartDialog.SYSTEM_UI, null);
         addModule("时钟格式", "12/24 小时、秒、时段、星期和自定义格式。",
                 AppConfig.STATUSBAR_CLOCK_CUSTOM, FeatureActivity.MODULE_STATUS_CLOCK,
                 ScopeRestartDialog.SYSTEM_UI, null);
-        addModule("实时数据", "网速、温度、电流、功率和通知数量。",
-                AppConfig.STATUSBAR_NET_SPEED, FeatureActivity.MODULE_STATUS_METRICS,
+        addModule("实时数据", "温度、电流、功率和通知数量。",
+                AppConfig.STATUSBAR_THERMAL, FeatureActivity.MODULE_STATUS_METRICS,
                 ScopeRestartDialog.SYSTEM_UI, null);
     }
 
@@ -532,9 +538,13 @@ public final class SettingsActivity extends Activity {
         }
         if (FeatureActivity.MODULE_SHOULDER.equals(module)
                 || FeatureActivity.MODULE_COMBO_SPEED.equals(module)
+                || FeatureActivity.MODULE_AI_TRIGGER.equals(module)
                 || FeatureActivity.MODULE_SUPER_RESOLUTION.equals(module)
                 || FeatureActivity.MODULE_DIABLO_COEXIST.equals(module)) {
             return android.R.drawable.ic_menu_manage;
+        }
+        if (FeatureActivity.MODULE_FREEFORM.equals(module)) {
+            return android.R.drawable.ic_menu_view;
         }
         if (FeatureActivity.MODULE_STATUS_LAYOUT.equals(module)
                 || FeatureActivity.MODULE_STATUS_CLOCK.equals(module)
@@ -587,6 +597,8 @@ public final class SettingsActivity extends Activity {
 
     private String masterFor(String key) {
         if (AppConfig.SHOULDER_ENABLED.equals(key)
+                || AppConfig.AI_TRIGGER_ENABLED.equals(key)
+                || AppConfig.TGK_RAPID_FIRE_ENABLED.equals(key)
                 || AppConfig.COMBO_SPEED_ENABLED.equals(key)
                 || AppConfig.SUPER_MIRROR_LOW_MODE.equals(key)
                 || AppConfig.SUPER_MIRROR_DIABLO_COEXIST.equals(key)) return AppConfig.GAME_MASTER;
@@ -614,8 +626,8 @@ public final class SettingsActivity extends Activity {
         switch (category) {
             case HIDE: return new String[]{"消失吧APP", "隐藏、自动化与快捷入口。"};
             case RECENTS: return new String[]{"最近任务", "横向重叠视觉和整机内存数据。"};
-            case GAME: return new String[]{"游戏增强", "肩键、一键连招速度、超分辨率与破坏神策略。"};
-            case SYSTEM: return new String[]{"状态栏", "Android 16 布局、时钟与实时数据。"};
+            case GAME: return new String[]{"游戏增强", "肩键、AI 触发器、一键连招速度、超分辨率与破坏神策略。"};
+            case SYSTEM: return new String[]{"状态栏", "小窗增强、Android 16 布局、时钟与实时数据。"};
             case APPS: return new String[]{"应用增强", "红魔双开扩展与主题无限期试用。"};
             case TOOLS: return new String[]{"工具", "桌面入口、运行诊断与恢复。"};
             default: return new String[]{"概览", "先确认运行状态，再进入具体功能。"};

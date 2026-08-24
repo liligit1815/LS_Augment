@@ -1,15 +1,49 @@
 plugins { id 'com.android.application' }
 
+def versionFile = rootProject.file('version.properties')
+if (!versionFile.isFile()) {
+    throw new GradleException("Missing version source: ${versionFile.absolutePath}")
+}
+
+def versionProps = new Properties()
+versionFile.withInputStream { versionProps.load(it) }
+def versionCodeText = versionProps.getProperty('versionCode', '').trim()
+def appVersionName = versionProps.getProperty('versionName', '').trim()
+int appVersionCode
+try {
+    appVersionCode = Integer.parseInt(versionCodeText)
+} catch (NumberFormatException ignored) {
+    throw new GradleException("Invalid versionCode in ${versionFile.absolutePath}: ${versionCodeText}")
+}
+if (appVersionCode <= 0 || !appVersionName.matches('^\\S+-test' + appVersionCode + '$')) {
+    throw new GradleException(
+            "versionName must end with test${appVersionCode}: ${appVersionName}")
+}
+println "Building LS_Augment ${appVersionName} (${appVersionCode})"
+
 android {
     namespace 'ls.augment.com'
     compileSdk 36
+    ndkVersion '27.2.12479018'
 
     defaultConfig {
         applicationId 'ls.augment.com'
         minSdk 28
         targetSdk 36
-        versionCode 20035
-        versionName '2.0.0-alpha1-test20035'
+        ndk {
+            // The current RedMagic target and libinputreader are arm64. The
+            // native feature fails closed on other ABIs while the APK keeps
+            // all Java-only features available.
+            abiFilters 'arm64-v8a'
+        }
+        versionCode appVersionCode
+        versionName appVersionName
+
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17 -fno-exceptions -fno-rtti'
+            }
+        }
     }
 
     // CI/local builds may inject the private development signing material via
@@ -45,6 +79,19 @@ android {
 
     buildFeatures {
         buildConfig true
+        prefab true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            pickFirsts += ['**/libshadowhook.so', '**/libshadowhook_nothing.so']
+        }
     }
 }
 
@@ -52,4 +99,7 @@ dependencies {
     // Modern libxposed API 102 is supplied by LSPosed/Vector at runtime.
     // Never package it into the LS_Augment APK.
     compileOnly 'io.github.libxposed:api:102.0.0'
+    // v2.0.0 is the first Android 16-capable release whose AAR metadata is
+    // compatible with this project's compileSdk 36 toolchain.
+    implementation 'com.bytedance.android:shadowhook:2.0.0'
 }

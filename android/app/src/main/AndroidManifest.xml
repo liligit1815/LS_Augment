@@ -19,6 +19,7 @@
         <package android:name="com.zte.beautifyadapter" />
         <package android:name="com.zte.cn.doubleapp" />
         <package android:name="cn.nubia.gameassist" />
+        <package android:name="cn.nubia.gamelab" />
     </queries>
 
     <application

@@ -1,4 +1,5 @@
 .gradle/
+**/.cxx/
 **/build/
 out/
 module/apk/LS_Augment.apk

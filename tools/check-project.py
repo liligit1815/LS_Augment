@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -9,7 +10,6 @@ checks = {
     'new application id': (app / 'build.gradle', "applicationId 'ls.augment.com'"),
     'new namespace': (app / 'build.gradle', "namespace 'ls.augment.com'"),
     'android 16 compile sdk': (app / 'build.gradle', 'compileSdk 36'),
-    '2.0 alpha version': (app / 'build.gradle', "versionName '2.0.0-alpha1-test20035'"),
     'loaded module version probe': (src / 'SettingsActivity.java',
                                     'ls_augment_probe_version'),
     'modern entry': (app / 'src/main/resources/META-INF/xposed/java_init.list',
@@ -113,12 +113,43 @@ checks = {
                                  'AppConfig.COMBO_SPEED_RATE, "播放倍率（×）", 1, 10, false'),
     'recents dismiss settle frames': (src / 'hook/LauncherRecentsStackHook.java',
                                       'DISMISS_SETTLE_FRAMES'),
+    'AI trigger speed hook': (src / 'hook/AiTriggerSpeedHook.java',
+                              'FAST_TEMPLATE_SCAN_MS'),
+    'freeform hook': (src / 'hook/FreeformHook.java',
+                      'WINDOW_REPLY_ICON_MANAGER'),
+    'TGK rapid-fire system hook': (src / 'hook/TgkRapidFireSystemHook.java',
+                                   'OEM_MAX_CPS'),
+    'TGK native build': (app / 'src/main/cpp/CMakeLists.txt',
+                         'tgk_rapid_native.cpp'),
+    'ShadowHook dependency': (app / 'build.gradle',
+                              'com.bytedance.android:shadowhook:2.0.0'),
 }
 
 for name, (path, needle) in checks.items():
     assert path.is_file(), f'{name}: missing {path}'
     text = path.read_text(encoding='utf-8')
     assert needle in text, f'{name}: missing {needle}'
+
+version_file = root / 'android/version.properties'
+assert version_file.is_file(), f'missing version source: {version_file}'
+version = {}
+for line in version_file.read_text(encoding='utf-8').splitlines():
+    if '=' in line and not line.lstrip().startswith('#'):
+        key, value = line.split('=', 1)
+        version[key.strip()] = value.strip()
+version_code = version.get('versionCode', '')
+version_name = version.get('versionName', '')
+assert version_code.isdigit() and int(version_code) > 0, \
+    f'invalid versionCode: {version_code}'
+assert re.fullmatch(r'\S+-test\d+', version_name), \
+    f'invalid versionName: {version_name}'
+assert version_name.endswith('test' + version_code), \
+    'versionName test suffix must equal versionCode'
+gradle_text = (app / 'build.gradle').read_text(encoding='utf-8')
+assert 'versionCode appVersionCode' in gradle_text
+assert 'versionName appVersionName' in gradle_text
+assert 'new FileOutputStream(versionFile)' not in gradle_text, \
+    'Gradle configuration must never mutate version.properties'
 
 recents_hook_text = (src / 'hook/LauncherRecentsStackHook.java').read_text(
     encoding='utf-8')
@@ -166,8 +197,10 @@ assert scope == {
     'com.android.settings', 'com.android.systemui', 'com.zte.beautify',
     'com.zte.beautifyadapter',
     'com.zte.cn.doubleapp', 'com.zte.mifavor.launcher',
-    'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamehelperline',
-    'cn.nubia.gamehelpmodule'
+    'com.zte.recommend', 'com.zte.game.plugintrigger',
+    'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',
+    'cn.nubia.gamehelperline', 'cn.nubia.gamehelpmodule',
+    'system', 'android'
 }, scope
 assert 'com.smallcircle.heartvoice' not in scope
 
@@ -185,6 +218,11 @@ assert not (app / 'libs/xposed-api-stub.jar').exists()
 builder = (root / 'build-module.sh').read_text(encoding='utf-8')
 assert 'KernelSU.zip' not in builder
 assert ':app:assembleDebug' in builder
+assert 'android/version.properties' in builder
+
+source_builder = (root / 'build-source.sh').read_text(encoding='utf-8')
+assert 'android/version.properties' in source_builder
+assert 'LS_Augment-v${VERSION}-source.zip' in source_builder
 
 manifest_text = (app / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 assert 'android.permission.INTERNET' not in manifest_text, \

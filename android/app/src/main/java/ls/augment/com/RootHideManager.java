@@ -33,7 +33,7 @@ final class RootHideManager {
     static {
         LinkedHashSet<String> values = new LinkedHashSet<>();
         Collections.addAll(values,
-                "android", "com.android.systemui", "com.android.settings",
+                "android", "system", "com.android.systemui", "com.android.settings",
                 "ls.augment.com", "io.github.lsf.augment",
                 "me.weishu.kernelsu", "me.weishu.kernelsu.debug",
                 "com.rifsxd.ksunext", "org.lsposed.manager",

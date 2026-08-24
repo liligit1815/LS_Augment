@@ -4,6 +4,8 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.database.ContentObserver;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.net.TrafficStats;
@@ -58,7 +60,6 @@ final class SystemUiHook {
             Uri.parse("content://ls.augment.com.config/config");
 
     private static final int TAG_OVERLAY = 0x6c730001;
-    private static final int TAG_METRIC_NET = 0x6c730002;
     private static final int TAG_METRIC_THERMAL = 0x6c730003;
     private static final int TAG_METRIC_POWER = 0x6c730004;
 
@@ -395,6 +396,15 @@ final class SystemUiHook {
         }
         Context context = container.getContext();
         if (!FeatureSettings.enabled(context, FeatureSettings.SYSTEMUI_MASTER)) return;
+        if (FeatureSettings.enabled(context, FeatureSettings.STATUSBAR_NOTIFICATION_HIDE, false)) {
+            for (int index = 0; index < container.getChildCount(); index++) {
+                View child = container.getChildAt(index);
+                if (child.getVisibility() != View.VISIBLE) continue;
+                FORCED_ICON_VISIBILITY.put(child, child.getVisibility());
+                child.setVisibility(View.GONE);
+            }
+            return;
+        }
         int max = FeatureSettings.integer(
                 context, FeatureSettings.STATUSBAR_NOTIFICATION_MAX, 0, 0, 20);
         if (max <= 0) return;
@@ -585,10 +595,10 @@ final class SystemUiHook {
         int lastWidth = -1;
         int lastHeight = -1;
         FrameLayout overlay;
-        TextView net;
         TextView thermal;
         TextView power;
         MetricsState metrics;
+        View debugOverlay;
         StatusBarLayoutSpec layout = StatusBarLayoutSpec.empty();
         StatusBarLayoutSpec lastValidLayout = StatusBarLayoutSpec.empty();
         String layoutParseError = "";
@@ -739,13 +749,11 @@ final class SystemUiHook {
 
         void createMetricsOverlay() {
             Context context = root.getContext();
-            boolean networkEnabled = FeatureSettings.enabled(
-                    context, FeatureSettings.STATUSBAR_NET_SPEED);
             boolean thermalEnabled = FeatureSettings.enabled(
                     context, FeatureSettings.STATUSBAR_THERMAL);
             boolean powerEnabled = FeatureSettings.enabled(
                     context, FeatureSettings.STATUSBAR_BATTERY_POWER);
-            if (!networkEnabled && !thermalEnabled && !powerEnabled) return;
+            if (!thermalEnabled && !powerEnabled) return;
 
             overlay = new FrameLayout(context);
             overlay.setTag(TAG_OVERLAY, Boolean.TRUE);
@@ -758,10 +766,9 @@ final class SystemUiHook {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
             TextView clock = clockView();
-            if (networkEnabled) net = addMetric(TAG_METRIC_NET, clock);
             if (thermalEnabled) thermal = addMetric(TAG_METRIC_THERMAL, clock);
             if (powerEnabled) power = addMetric(TAG_METRIC_POWER, clock);
-            metrics = new MetricsState(root, net, thermal, power);
+            metrics = new MetricsState(root, thermal, power);
             metrics.start();
         }
 
@@ -787,12 +794,12 @@ final class SystemUiHook {
 
                 Map<String, List<View>> iconViews = new LinkedHashMap<>();
                 collectIconViews(root, iconViews);
-                publishSlots(iconViews.keySet());
-                if (freePosition) {
-                    applyCommonPositions(measured);
-                    applyIconPositions(iconViews, measured);
-                }
+                publishSlots(iconViews);
+                applyCommonPositions(measured);
+                applyIconPositions(iconViews, measured);
+                applyIconScale(iconViews);
                 publishLayoutDiagnostics(measured);
+                updateDebugOverlay(measured, iconViews);
             } catch (Throwable error) {
                 publish(FeatureSettings.SYSTEMUI_LAST_ERROR,
                         "STATUSBAR_MEASURE:" + error.getClass().getSimpleName()
@@ -805,7 +812,10 @@ final class SystemUiHook {
             View left = leftSide();
             View right = rightSide();
             int height = Math.max(root.getHeight(), root.getMeasuredHeight());
-            int rowShift = Math.min(Math.max(0, height / 4), dp(context, 14));
+            int configuredGap = FeatureSettings.integer(context,
+                    FeatureSettings.STATUSBAR_DUAL_ROW_GAP_DP, 0, 0, 64);
+            int rowShift = configuredGap > 0 ? dp(context, configuredGap)
+                    : Math.min(Math.max(0, height / 4), dp(context, 14));
             int vertical = dp(context, FeatureSettings.integer(context,
                     FeatureSettings.STATUSBAR_TOP_MARGIN_DP, 0, 0, 80)
                     - FeatureSettings.integer(context,
@@ -823,10 +833,14 @@ final class SystemUiHook {
                         vertical + (dualRight ? -rowShift : 0));
             }
             TextView clock = clockView();
-            if (clock != null && dualLeft && clockAcross && left != null) {
-                // The parent moved to the first row; cancel only the clock's Y
-                // shift so it remains centred across the real two-row height.
-                applyOffset(clock, 0.0f, rowShift);
+            if (clock != null && clockAcross) {
+                if (dualLeft && left != null) {
+                    // The parent moved to the first row; cancel only the clock's Y
+                    // shift so it remains centred across the real two-row height.
+                    applyOffset(clock, 0.0f, rowShift);
+                } else if (dualRight && right != null) {
+                    applyOffset(clock, 0.0f, rowShift);
+                }
             }
             if (clock != null && FeatureSettings.enabled(
                     context, FeatureSettings.STATUSBAR_CLOCK_CUSTOM)) {
@@ -837,7 +851,6 @@ final class SystemUiHook {
         void applyMetricPositions(Map<String, View> measured) {
             int leftY = dualLeft ? 760 : 500;
             int rightY = dualRight ? 760 : 500;
-            placeMetric("metric.net", net, 180, leftY, measured);
             placeMetric("metric.thermal", thermal, 420, leftY, measured);
             placeMetric("metric.power", power, 820, rightY, measured);
         }
@@ -845,7 +858,7 @@ final class SystemUiHook {
         void placeMetric(String id, TextView view, int defaultX, int defaultY,
                 Map<String, View> measured) {
             if (view == null || overlay == null) return;
-            StatusBarLayoutSpec.Position custom = freePosition ? layout.get(id) : null;
+            StatusBarLayoutSpec.Position custom = layout.get(id);
             int x = custom == null ? defaultX : custom.x;
             int y = custom == null ? defaultY : custom.y;
             view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
@@ -880,14 +893,20 @@ final class SystemUiHook {
                 String id = "slot." + entry.getKey();
                 StatusBarLayoutSpec.Position position = layout.get(id);
                 if (position == null) continue;
-                for (View view : entry.getValue()) applyAbsoluteCentre(view, position);
-                if (!entry.getValue().isEmpty()) measured.put(id, entry.getValue().get(0));
+                int visibility = position.hidden ? View.GONE : View.VISIBLE;
+                for (View view : entry.getValue()) {
+                    view.setVisibility(visibility);
+                    if (visibility == View.VISIBLE) applyAbsoluteCentre(view, position);
+                }
+                if (!entry.getValue().isEmpty() && visibility == View.VISIBLE) {
+                    measured.put(id, entry.getValue().get(0));
+                }
             }
         }
 
         void applyAbsoluteCentre(View view, StatusBarLayoutSpec.Position position) {
             if (view.getWidth() <= 0 || view.getHeight() <= 0) return;
-            allowOverflow(view);
+            if (freePosition) allowOverflow(view);
             int[] rootLocation = new int[2];
             int[] viewLocation = new int[2];
             root.getLocationOnScreen(rootLocation);
@@ -928,13 +947,26 @@ final class SystemUiHook {
             }
         }
 
-        void publishSlots(Set<String> values) {
-            ArrayList<String> slots = new ArrayList<>(values);
+        void publishSlots(Map<String, List<View>> iconViews) {
+            ArrayList<String> slots = new ArrayList<>(iconViews.keySet());
             slots.sort(String.CASE_INSENSITIVE_ORDER);
-            String joined = join(slots, ",");
-            if (joined.equals(lastSlots)) return;
-            lastSlots = joined;
-            publish(FeatureSettings.SYSTEMUI_DISCOVERED_ICONS, joined);
+            StringBuilder joined = new StringBuilder();
+            for (String slot : slots) {
+                if (joined.length() > 0) joined.append(',');
+                List<View> views = iconViews.get(slot);
+                boolean visible = false;
+                for (View view : views) {
+                    if (view.getVisibility() == View.VISIBLE) {
+                        visible = true;
+                        break;
+                    }
+                }
+                joined.append(slot).append(':').append(visible ? "visible" : "gone");
+            }
+            String value = joined.toString();
+            if (value.equals(lastSlots)) return;
+            lastSlots = value;
+            publish(FeatureSettings.SYSTEMUI_DISCOVERED_ICONS, value);
         }
 
         void publishLayoutDiagnostics(Map<String, View> measured) {
@@ -1074,11 +1106,11 @@ final class SystemUiHook {
         void clearAugmentation() {
             if (metrics != null) metrics.stop();
             metrics = null;
-            net = null;
             thermal = null;
             power = null;
             if (overlay != null && overlay.getParent() == root) root.removeView(overlay);
             overlay = null;
+            removeDebugOverlay();
             clearOffsets();
             restoreClips();
         }
@@ -1101,6 +1133,75 @@ final class SystemUiHook {
             clips.clear();
         }
 
+        void applyIconScale(Map<String, List<View>> iconViews) {
+            float globalScale = FeatureSettings.decimal(root.getContext(),
+                    FeatureSettings.STATUSBAR_ICON_SCALE, 1.0f, 0.5f, 2.0f);
+            Context context = root.getContext();
+            for (Map.Entry<String, List<View>> entry : iconViews.entrySet()) {
+                String perKey = "scale:slot." + entry.getKey();
+                float scale = FeatureSettings.decimal(context, perKey, globalScale, 0.5f, 2.0f);
+                if (scale == 1.0f) continue;
+                for (View view : entry.getValue()) {
+                    view.setScaleX(scale);
+                    view.setScaleY(scale);
+                }
+            }
+            applyMetricScale(context, "metric.thermal", globalScale, thermal);
+            applyMetricScale(context, "metric.power", globalScale, power);
+        }
+
+        void applyMetricScale(Context context, String perKey, float globalScale, TextView view) {
+            if (view == null) return;
+            float scale = FeatureSettings.decimal(context, "scale:" + perKey, globalScale, 0.5f, 2.0f);
+            if (scale != 1.0f) { view.setScaleX(scale); view.setScaleY(scale); }
+        }
+
+        void updateDebugOverlay(Map<String, View> measured,
+                                Map<String, List<View>> iconViews) {
+            boolean enabled = FeatureSettings.enabled(
+                    root.getContext(), FeatureSettings.STATUSBAR_DEBUG_OVERLAY, false);
+            if (!enabled) {
+                removeDebugOverlay();
+                return;
+            }
+            if (debugOverlay == null) createDebugOverlay();
+            if (debugOverlay instanceof DebugOverlayView) {
+                LinkedHashMap<String, Rect> allBounds = new LinkedHashMap<>();
+                for (Map.Entry<String, View> entry : measured.entrySet()) {
+                    Rect rect = boundsInRoot(entry.getValue());
+                    if (rect != null) allBounds.put(entry.getKey(), rect);
+                }
+                for (Map.Entry<String, List<View>> entry : iconViews.entrySet()) {
+                    for (View view : entry.getValue()) {
+                        Rect rect = boundsInRoot(view);
+                        if (rect != null) {
+                            allBounds.put("slot." + entry.getKey(), rect);
+                        }
+                    }
+                }
+                ((DebugOverlayView) debugOverlay).update(
+                        root.getWidth(), root.getHeight(),
+                        dualLeft, dualRight, allBounds);
+            }
+        }
+
+        void createDebugOverlay() {
+            if (debugOverlay != null) return;
+            DebugOverlayView overlay = new DebugOverlayView(root.getContext());
+            overlay.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            root.addView(overlay);
+            debugOverlay = overlay;
+        }
+
+        void removeDebugOverlay() {
+            if (debugOverlay != null && debugOverlay.getParent() != null) {
+                root.removeView(debugOverlay);
+            }
+            debugOverlay = null;
+        }
+
         void detach() {
             attached = false;
             handler.removeCallbacksAndMessages(null);
@@ -1120,6 +1221,88 @@ final class SystemUiHook {
     private static final class Offset {
         float dx;
         float dy;
+    }
+
+    private static final class DebugOverlayView extends View {
+        private final Paint paint = new Paint();
+        private final Paint textPaint = new Paint();
+        private int statusWidth;
+        private int statusHeight;
+        private boolean dualLeft;
+        private boolean dualRight;
+        private LinkedHashMap<String, Rect> bounds = new LinkedHashMap<>();
+
+        DebugOverlayView(Context context) {
+            super(context);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(3);
+            paint.setAntiAlias(true);
+            textPaint.setColor(0xFFFFFFFF);
+            textPaint.setTextSize(28);
+            textPaint.setAntiAlias(true);
+            setClickable(false);
+            setFocusable(false);
+        }
+
+        void update(int width, int height,
+                    boolean dualLeft, boolean dualRight,
+                    LinkedHashMap<String, Rect> bounds) {
+            this.statusWidth = width;
+            this.statusHeight = height;
+            this.dualLeft = dualLeft;
+            this.dualRight = dualRight;
+            this.bounds = bounds;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (statusWidth <= 0 || statusHeight <= 0) return;
+
+            // Outer border
+            paint.setColor(0xFFFF4444);
+            paint.setStrokeWidth(3);
+            paint.setStyle(Paint.Style.STROKE);
+            canvas.drawRect(0, 0, statusWidth - 1, statusHeight - 1, paint);
+
+            // Dual row divider
+            if (dualLeft || dualRight) {
+                paint.setColor(0xFF00FFFF);
+                paint.setStrokeWidth(2);
+                int midY = statusHeight / 2;
+                canvas.drawLine(0, midY, statusWidth, midY, paint);
+            }
+
+            // Component / icon bounding boxes
+            for (Map.Entry<String, Rect> entry : bounds.entrySet()) {
+                Rect r = entry.getValue();
+                int left = r.left;
+                int top = r.top;
+                int right = r.right;
+                int bottom = r.bottom;
+                if (bottom < 0 || top > statusHeight) continue;
+
+                int fillColor = entry.getKey().startsWith("slot.")
+                        ? 0x22FFFF44 : 0x22FF00FF;
+                int strokeColor = entry.getKey().startsWith("slot.")
+                        ? 0xFFFFFF00 : 0xFF00FF00;
+
+                paint.setColor(fillColor);
+                paint.setStyle(Paint.Style.FILL);
+                canvas.drawRect(left, top, right, bottom, paint);
+
+                paint.setColor(strokeColor);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(1);
+                canvas.drawRect(left, top, right, bottom, paint);
+
+                String label = entry.getKey();
+                canvas.drawText(label, left + 4, top + 24, textPaint);
+            }
+
+            // Size annotation
+            canvas.drawText(statusWidth + "×" + statusHeight, 8, statusHeight - 12, textPaint);
+        }
     }
 
     private static final class ClipState {
@@ -1267,7 +1450,6 @@ final class SystemUiHook {
 
     private static final class MetricsState implements Runnable {
         final ViewGroup root;
-        final TextView net;
         final TextView thermal;
         final TextView power;
         final Handler handler = new Handler(Looper.getMainLooper());
@@ -1276,9 +1458,8 @@ final class SystemUiHook {
         long lastTime = -1L;
         boolean running;
 
-        MetricsState(ViewGroup root, TextView net, TextView thermal, TextView power) {
+        MetricsState(ViewGroup root, TextView thermal, TextView power) {
             this.root = root;
-            this.net = net;
             this.thermal = thermal;
             this.power = power;
         }
@@ -1307,7 +1488,7 @@ final class SystemUiHook {
             View clockView = findByNames(root, "clock", "status_bar_clock");
             if (clockView instanceof TextView) {
                 TextView source = (TextView) clockView;
-                for (TextView metric : new TextView[]{net, thermal, power}) {
+                for (TextView metric : new TextView[]{thermal, power}) {
                     if (metric == null) continue;
                     metric.setTextColor(source.getTextColors());
                     metric.setTypeface(source.getTypeface());
@@ -1320,7 +1501,6 @@ final class SystemUiHook {
             lastBytes = bytes;
             lastTime = now;
 
-            if (net != null) net.setText(StatusBarMetricsFormatter.rate(rate));
             if (thermal != null) {
                 ArrayList<String> parts = new ArrayList<>();
                 Double cpu = thermalReader.cpu();

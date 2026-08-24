@@ -15,6 +15,8 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
+import ls.augment.com.BuildConfig;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -31,20 +33,22 @@ import io.github.libxposed.api.XposedInterface.HookHandle;
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
+import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam;
 
 /**
  * LS_Augment Modern Xposed entry. libxposed API 102 only.
  *
  * The APK's Root bridge owns the real per-user PackageManager state. This
  * module is scoped to Settings, Launcher/Quickstep, SystemUI, Beautify,
- * DoubleApp, and the OEM game-assist packages. Settings keeps the exact
+ * DoubleApp, GameLab, and the OEM game-assist packages. Settings keeps the exact
  * userId:packageName filtering path. The shoulder-key hooks only
  * relax OEM package-eligibility gates and leave TGK/InputManager execution,
  * mapping, persistence, and lifecycle ownership to the ROM.
  */
 public final class AugmentModule extends XposedModule {
     private static final String TAG = "LS_Augment";
-    private static final String VERSION = "2.0.0-alpha1-test20035";
+    /** Keep diagnostics tied to the APK actually installed on the device. */
+    private static final String VERSION = BuildConfig.VERSION_NAME;
     private static final String SETTINGS_PACKAGE = "com.android.settings";
     private static final String SETTINGS_PROCESS = "com.android.settings";
     private static final String SYSTEMUI_PACKAGE = "com.android.systemui";
@@ -52,8 +56,16 @@ public final class AugmentModule extends XposedModule {
     private static final String BEAUTIFY_ADAPTER_PACKAGE = "com.zte.beautifyadapter";
     private static final String DOUBLE_APP_PACKAGE = "com.zte.cn.doubleapp";
     private static final String LAUNCHER_PACKAGE = "com.zte.mifavor.launcher";
+    private static final String WINDOW_REPLY_UI_PACKAGE = "com.zte.recommend";
     private static final String GAME_SPACE_PACKAGE = "cn.nubia.gamelauncher";
     private static final String GAME_ASSIST_PACKAGE = "cn.nubia.gameassist";
+    private static final String GAME_LAB_PACKAGE = "cn.nubia.gamelab";
+    private static final String AI_TRIGGER_PACKAGE = "com.zte.game.plugintrigger";
+    // LSPosed uses the process name "system" for system_server on this
+    // RedMagicOS build. Some releases expose it as "android", so keep both
+    // aliases to make the module portable across firmware.
+    private static final String SYSTEM_SERVER_PACKAGE = "system";
+    private static final String LEGACY_SYSTEM_SERVER_PACKAGE = "android";
     private static final String GAME_HELPER_PACKAGE = "cn.nubia.gamehelpmodule";
     private static final String GAME_HELPER_LINE_PACKAGE = "cn.nubia.gamehelperline";
     private static final String TGK_HELPER_CLASS = "cn.nubia.tgk.TgkHelper";
@@ -145,6 +157,7 @@ public final class AugmentModule extends XposedModule {
     private volatile String processName = "";
     private volatile String readyPackageName = "";
     private volatile boolean moduleLoaded;
+    private volatile boolean systemServerProcess;
     private volatile boolean packageReady;
     private volatile boolean adapterClassFound;
     private volatile boolean rebuildHookInstalled;
@@ -158,6 +171,11 @@ public final class AugmentModule extends XposedModule {
     private volatile boolean comboSpeedMotionFileHookInstalled;
     private volatile boolean comboSpeedManagerHookInstalled;
     private volatile boolean comboSpeedPreviewHooksInstalled;
+    private volatile boolean aiTriggerHooksInstalled;
+    private volatile boolean tgkRapidFireHooksInstalled;
+    private volatile boolean tgkRapidFireSystemHooksInstalled;
+    private volatile boolean freeformHooksInstalled;
+    private volatile boolean freeformIconHooksInstalled;
     private volatile boolean recentsHooksInstalled;
     private volatile String recentsSetupError = "";
     private volatile boolean systemUiHooksInstalled;
@@ -182,16 +200,46 @@ public final class AugmentModule extends XposedModule {
     }
 
     @Override
+    public void onSystemServerStarting(SystemServerStartingParam param) {
+        // API 102 exposes system_server through this lifecycle callback, not
+        // through PackageReady. Its ClassLoader owns services.jar and can see
+        // ActivityTaskManagerService/ActivityTaskSupervisor vendor methods.
+        systemServerProcess = true;
+        readyPackageName = SYSTEM_SERVER_PACKAGE;
+        logInfo("SYSTEM_SERVER_STARTING process=" + processName);
+        installFreeformHooks(param.getClassLoader());
+        installTgkRapidFireSystemHooks(param.getClassLoader());
+    }
+
+    @Override
     public void onPackageReady(PackageReadyParam param) {
         readyPackageName = param.getPackageName();
+        if (systemServerProcess) {
+            // system_server can publish PackageReady events for framework
+            // packages hosted in the same process (for example
+            // com.android.providers.settings). Detaching on one of those
+            // events also disables the hooks installed above.
+            logInfo("SYSTEM_SERVER_PACKAGE_READY ignored package=" + readyPackageName
+                    + " process=" + processName);
+            return;
+        }
+        // Keep one small, privileged witness outside feature-specific code so
+        // a scope/configuration problem can be distinguished from a failed
+        // method lookup.  This is written through the same provider bridge as
+        // the normal diagnostics and is harmless when no context is available.
+        writePackageReadyWitness(readyPackageName);
         if (!SETTINGS_PACKAGE.equals(readyPackageName)
                 && !SYSTEMUI_PACKAGE.equals(readyPackageName)
                 && !BEAUTIFY_PACKAGE.equals(readyPackageName)
                 && !BEAUTIFY_ADAPTER_PACKAGE.equals(readyPackageName)
                 && !DOUBLE_APP_PACKAGE.equals(readyPackageName)
                 && !LAUNCHER_PACKAGE.equals(readyPackageName)
+                && !WINDOW_REPLY_UI_PACKAGE.equals(readyPackageName)
                 && !GAME_SPACE_PACKAGE.equals(readyPackageName)
                 && !GAME_ASSIST_PACKAGE.equals(readyPackageName)
+                && !GAME_LAB_PACKAGE.equals(readyPackageName)
+                && !AI_TRIGGER_PACKAGE.equals(readyPackageName)
+                && !isSystemServerPackage(readyPackageName)
                 && !GAME_HELPER_PACKAGE.equals(readyPackageName)
                 && !GAME_HELPER_LINE_PACKAGE.equals(readyPackageName)) {
             logInfo("DETACH non-target package=" + readyPackageName
@@ -202,6 +250,23 @@ public final class AugmentModule extends XposedModule {
 
         if (GAME_SPACE_PACKAGE.equals(readyPackageName)) {
             installGameSpaceShoulderHooks(param.getClassLoader());
+            installTgkRapidFireHooks(param.getClassLoader());
+            return;
+        }
+        if (AI_TRIGGER_PACKAGE.equals(readyPackageName)) {
+            installAiTriggerHooks(param.getClassLoader(), AI_TRIGGER_PACKAGE);
+            return;
+        }
+        if (GAME_LAB_PACKAGE.equals(readyPackageName)) {
+            installAiTriggerHooks(param.getClassLoader(), GAME_LAB_PACKAGE);
+            return;
+        }
+        if (isSystemServerPackage(readyPackageName)) {
+            // Keep the module attached if a framework package-ready event is
+            // also delivered, but never install server hooks with this app
+            // package ClassLoader. onSystemServerStarting owns that work.
+            logInfo("SYSTEM_SERVER_PACKAGE_READY ignored package=" + readyPackageName
+                    + " process=" + processName);
             return;
         }
         if (GAME_HELPER_PACKAGE.equals(readyPackageName)) {
@@ -215,12 +280,17 @@ public final class AugmentModule extends XposedModule {
             return;
         }
         if (GAME_ASSIST_PACKAGE.equals(readyPackageName)) {
+            installAiTriggerHooks(param.getClassLoader(), GAME_ASSIST_PACKAGE);
             installGameAssistShoulderHooks(param.getClassLoader());
             installSuperMirrorHooks(param.getClassLoader());
             return;
         }
         if (LAUNCHER_PACKAGE.equals(readyPackageName)) {
             installLauncherRecentsHooks(param.getClassLoader());
+            return;
+        }
+        if (WINDOW_REPLY_UI_PACKAGE.equals(readyPackageName)) {
+            installFreeformIconHooks(param.getClassLoader());
             return;
         }
         if (SYSTEMUI_PACKAGE.equals(readyPackageName)) {
@@ -327,6 +397,42 @@ public final class AugmentModule extends XposedModule {
     private synchronized void installSuperMirrorHooks(ClassLoader classLoader) {
         if (superMirrorHooksInstalled) return;
         superMirrorHooksInstalled = SuperMirrorDiabloHook.install(this, classLoader) > 0;
+    }
+
+    private synchronized void installAiTriggerHooks(ClassLoader classLoader, String packageName) {
+        if (aiTriggerHooksInstalled) return;
+        int installed = AiTriggerSpeedHook.install(this, classLoader, packageName);
+        aiTriggerHooksInstalled = installed > 0;
+        logInfo("AI_TRIGGER_READY package=" + packageName + " installed=" + installed);
+    }
+
+    private synchronized void installTgkRapidFireHooks(ClassLoader classLoader) {
+        if (tgkRapidFireHooksInstalled) return;
+        int installed = TgkRapidFireHook.install(this, classLoader);
+        tgkRapidFireHooksInstalled = installed > 0;
+        logInfo("TGK_RAPID_FIRE_READY installed=" + installed);
+    }
+
+    private synchronized void installTgkRapidFireSystemHooks(ClassLoader classLoader) {
+        if (tgkRapidFireSystemHooksInstalled) return;
+        int installed = TgkRapidFireSystemHook.install(this, classLoader);
+        tgkRapidFireSystemHooksInstalled = installed > 0;
+        logInfo("TGK_RAPID_FIRE_SYSTEM_READY installed=" + installed);
+    }
+
+    private synchronized void installFreeformHooks(ClassLoader classLoader) {
+        if (freeformHooksInstalled) return;
+        int installed = FreeformHook.install(this, classLoader);
+        freeformHooksInstalled = installed > 0;
+        logInfo("FREEFORM_READY installed=" + installed);
+    }
+
+    private synchronized void installFreeformIconHooks(ClassLoader classLoader) {
+        if (freeformIconHooksInstalled) return;
+        int installed = FreeformHook.installIconHost(this, classLoader);
+        freeformIconHooksInstalled = installed > 0;
+        logInfo("FREEFORM_ICON_HOST_READY installed=" + installed
+                + " process=" + processName);
     }
 
     /** Install the explicit GameSpace eligibility gates from the device report. */
@@ -2056,6 +2162,11 @@ public final class AugmentModule extends XposedModule {
         return isShoulderTarget(packageName, false);
     }
 
+    private static boolean isSystemServerPackage(String packageName) {
+        return SYSTEM_SERVER_PACKAGE.equals(packageName)
+                || LEGACY_SYSTEM_SERVER_PACKAGE.equals(packageName);
+    }
+
     /**
      * Check whether a package may use the shoulder-key path.  The optional
      * fallback is deliberately only used by the OEM GameHelper/GameHelperLine
@@ -2568,6 +2679,21 @@ public final class AugmentModule extends XposedModule {
             Settings.Global.putString(context.getContentResolver(), key, value);
         } catch (Throwable ignored) {
             // Probe failure must never crash Settings.
+        }
+    }
+
+    private void writePackageReadyWitness(String packageName) {
+        try {
+            Context context = FeatureSettings.from(null);
+            String value = (packageName == null ? "" : packageName)
+                    + "|process=" + processName;
+            FeatureSettings.diagnostic(context, "ls_augment_debug_last_package_ready", value);
+            if (packageName != null && !packageName.isEmpty()) {
+                String suffix = packageName.replaceAll("[^A-Za-z0-9_]", "_");
+                FeatureSettings.diagnostic(context, "ls_augment_debug_ready_" + suffix, value);
+            }
+        } catch (Throwable ignored) {
+            // Diagnostics must never affect package loading.
         }
     }
 

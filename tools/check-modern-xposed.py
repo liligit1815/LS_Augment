@@ -21,10 +21,15 @@ assert set(scope.read_text(encoding='utf-8').split()) == {
     'com.zte.beautifyadapter',
     'com.zte.cn.doubleapp',
     'com.zte.mifavor.launcher',
+    'com.zte.recommend',
     'cn.nubia.gamelauncher',
     'cn.nubia.gameassist',
+    'cn.nubia.gamelab',
     'cn.nubia.gamehelperline',
     'cn.nubia.gamehelpmodule',
+    'com.zte.game.plugintrigger',
+    'system',
+    'android',
 }
 props = {}
 for line in prop.read_text(encoding='utf-8').splitlines():
@@ -39,10 +44,18 @@ assert set(props) == {'minApiVersion', 'targetApiVersion', 'staticScope'}, props
 g = gradle.read_text(encoding='utf-8')
 assert "compileOnly 'io.github.libxposed:api:102.0.0'" in g
 assert 'de.robv.android.xposed' not in g
-version_name_match = re.search(r"versionName\s+'([^']+)'", g)
-version_code_match = re.search(r'versionCode\s+(\d+)', g)
-assert version_name_match, 'missing Android versionName'
-assert version_code_match, 'missing Android versionCode'
+# versionCode/versionName are derived from android/version.properties at
+# configuration time; the source-side diagnostic version must follow the APK.
+vp = {}
+for line in (root / 'android' / 'version.properties').read_text(encoding='utf-8').splitlines():
+    line = line.strip()
+    if line and not line.startswith('#') and '=' in line:
+        k, v = line.split('=', 1)
+        vp[k] = v
+assert 'version.properties' in g, 'gradle must read version.properties'
+assert re.fullmatch(r'\S+-test\d+', vp['versionName']), vp['versionName']
+assert vp['versionName'].endswith('test' + vp['versionCode']), \
+    'versionName test suffix must equal versionCode'
 m = manifest.read_text(encoding='utf-8')
 for legacy in ('xposedmodule','xposedminversion','xposedscope','xposeddescription'):
     assert legacy not in m, f'legacy manifest metadata remains: {legacy}'
@@ -50,8 +63,8 @@ s = source.read_text(encoding='utf-8')
 assert 'extends XposedModule' in s
 assert '.setId("ls_augment.api102.' in s
 assert 'detach(); // API 102' in s
-assert f'VERSION = "{version_name_match.group(1)}"' in s, \
-    'APK versionName and LSPosed diagnostic version differ'
+assert 'VERSION = BuildConfig.VERSION_NAME' in s, \
+    'diagnostic version must follow the APK versionName'
 assert 'de.robv.android.xposed' not in s
 assert not (app / 'src/main/assets/xposed_init').exists()
 
