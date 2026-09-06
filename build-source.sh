@@ -30,17 +30,8 @@ fi
 
 mkdir -p "$OUT"
 rm -f "$OUT/$NAME" "$OUT/$NAME.sha256"
-if command -v zip >/dev/null 2>&1; then
-  (
-    cd "$ROOT/.."
-    zip -qr "$OUT/$NAME" "$(basename "$ROOT")" \
-      -x '*/.git/*' '*/.signing/*' '*/out/*' '*/android/.gradle/*' \
-         '*/android/app/build/*' '*/module/apk/*' '*/work/*' \
-         '*.apk' '*.mp4' '*/LSPosed_*.zip' '*.jks' '*.keystore' '*.p12' \
-         '*.pem' '*.key' '*heartvoice*' '*HeartVoice*' '*.DS_Store'
-  )
-else
-  "$PYTHON_BIN" - "$ROOT/.." "$(basename "$ROOT")" "$OUT/$NAME" <<'PY'
+"$PYTHON_BIN" - "$ROOT/.." "$(basename "$ROOT")" "$OUT/$NAME" <<'PY'
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -49,26 +40,50 @@ workspace = Path(sys.argv[1])
 project_name = sys.argv[2]
 output = Path(sys.argv[3])
 project = workspace / project_name
+excluded_dirs = {
+    '.git', '.signing', '.idea', '.gradle', '.cxx', 'build', 'out', 'work',
+    'node_modules', '.next', '.vinext', '.wrangler', 'dist', '__pycache__',
+}
+excluded_suffixes = {
+    '.apk', '.idsig', '.aab', '.apks', '.xapk', '.mp4', '.webm', '.mov',
+    '.jks', '.keystore', '.p12', '.pfx', '.pem', '.key',
+    '.pyc', '.pyo', '.class', '.log', '.tsbuildinfo', '.iml',
+}
+launcher_inputs = {
+    'redmagic-launcher/original.apk',
+    'redmagic-launcher/tooling/framework-res-NX809J.apk',
+    'redmagic-launcher/framework/cache/1.apk',
+}
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-    for path in sorted(project.rglob('*')):
-        relative_path = path.relative_to(workspace).as_posix()
-        if not path.is_file():
-            continue
-        wrapped = f'/{relative_path}'
-        if '/.git/' in wrapped or '/.signing/' in wrapped or '/out/' in wrapped \
-                or '/android/.gradle/' in wrapped or '/android/app/build/' in wrapped \
-                or '/module/apk/' in wrapped or '/work/' in wrapped \
-                or path.suffix.lower() in {'.apk', '.mp4', '.jks', '.keystore', '.p12', '.pem', '.key'} \
-                or 'heartvoice' in path.name.lower() \
-                or (path.parent == project and path.name.startswith('LSPosed_') and path.suffix.lower() == '.zip') \
-                or path.name == '.DS_Store':
-            continue
-        info = zipfile.ZipInfo.from_file(path, relative_path)
-        info.compress_type = zipfile.ZIP_DEFLATED
-        mode = 0o100755 if (path.suffix == '.sh' or relative_path.endswith('/bin/augmentctl')) else 0o100644
-        info.external_attr = mode << 16
-        archive.writestr(info, path.read_bytes())
+    for directory, dirs, files in os.walk(project):
+        folder = Path(directory)
+        relative_folder = folder.relative_to(project).as_posix()
+        dirs[:] = sorted(d for d in dirs if d not in excluded_dirs
+                         and not (folder == project and d in {'Logs', 'audit-report', 'backup'})
+                         and not (relative_folder == 'redmagic-launcher/helper-src' and d.startswith('build'))
+                         and not (relative_folder.endswith('module') and d in {'apk', 'logs'})
+                         and not (folder / d).is_symlink())
+        for name in sorted(files):
+            path = folder / name
+            relative = path.relative_to(project).as_posix()
+            public_certificate = relative == 'tools/signing/dev41-test-cert.pem'
+            if path.is_symlink() or not path.is_file():
+                continue
+            if (path.suffix.lower() in excluded_suffixes
+                    and relative not in launcher_inputs and not public_certificate):
+                continue
+            if name in {'.git', 'local.properties', '.DS_Store'} or 'heartvoice' in name.lower():
+                continue
+            if name.endswith(('-source.zip', '-source.zip.sha256')):
+                continue
+            if folder == project and name.startswith('LSPosed_') and path.suffix.lower() == '.zip':
+                continue
+            relative_path = path.relative_to(workspace).as_posix()
+            info = zipfile.ZipInfo.from_file(path, relative_path)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            mode = 0o100755 if (path.suffix == '.sh' or relative_path.endswith('/bin/augmentctl')) else 0o100644
+            info.external_attr = mode << 16
+            archive.writestr(info, path.read_bytes())
 PY
-fi
 (cd "$OUT" && sha256sum "$NAME" > "$NAME.sha256")
 echo "Built: $OUT/$NAME"

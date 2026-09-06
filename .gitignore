@@ -1,21 +1,56 @@
+# 可重新生成的构建产物和依赖
 .gradle/
-**/.cxx/
-**/build/
+.cxx/
+build/
 out/
-module/apk/LS_Augment.apk
-local.properties
-*.iml
-.idea/
-module/logs/*.log
+node_modules/
+.next/
+.vinext/
+.wrangler/
+dist/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+*.class
+/redmagic-launcher/helper-src/build*/
+
+# 安装包和源码压缩包；桌面回编译的三份输入需要保留
+*.apk
+*.apk.idsig
+*.aab
+*.apks
+*.xapk
+*-source.zip
+*-source.zip.sha256
+!/redmagic-launcher/original.apk
+!/redmagic-launcher/tooling/framework-res-NX809J.apk
+!/redmagic-launcher/framework/cache/1.apk
+
+# 历史诊断、截图录像工作目录和本地备份
+*.log
+*.mp4
+*.webm
+*.mov
+/Logs/
+/audit-report/
+/backup/
+work/
 reference/legacy-ksu/module/apk/
 reference/legacy-ksu/module/logs/
 isSpeedModeEnable()Z
-预期效果.mp4
-测试0028.mp4
-测试2009.mp4
-__pycache__/
-*.py[cod]
-work/
+
+# 个人开发环境与私有签名材料；公开证书可以保留
+local.properties
+*.iml
+.idea/
+.signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*-private.pem
+.DS_Store
 
 # 本地文档（不上传 GitHub）
 PROJECT_REQUIREMENTS.md
