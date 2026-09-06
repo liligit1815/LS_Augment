@@ -12,7 +12,6 @@ import java.util.concurrent.Executors;
 /** User-initiated, fixed-template target process restarts. */
 final class ScopeRestartDialog {
     static final String SETTINGS = "settings";
-    static final String LAUNCHER = "launcher";
     static final String SYSTEM_UI = "systemui";
     static final String DEVICE = "device";
     static final String APPS = "apps";
@@ -20,15 +19,14 @@ final class ScopeRestartDialog {
 
     private static final String[] LABELS = {
             "隐藏列表（系统设置）",
-            "最近任务（系统桌面）",
             "状态栏（SystemUI）",
             "小窗核心（重启手机）",
-            "应用增强（双开与主题商店）",
-            "游戏增强（游戏空间）",
+            "应用增强（安装兼容、双开与主题商店）",
+            "游戏增强（游戏空间与风扇）",
             "全部作用域"
     };
     private static final String[] IDS = {
-            SETTINGS, LAUNCHER, SYSTEM_UI, DEVICE, APPS, GAMES, "all"
+            SETTINGS, SYSTEM_UI, DEVICE, APPS, GAMES, "all"
     };
 
     private ScopeRestartDialog() { }
@@ -75,24 +73,21 @@ final class ScopeRestartDialog {
         switch (scope) {
             case SETTINGS:
                 return "am force-stop com.android.settings";
-            case LAUNCHER:
-                return "am force-stop com.zte.mifavor.launcher; "
-                        + "am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1";
             case SYSTEM_UI:
                 return "killall com.android.systemui";
             case DEVICE:
                 return "reboot";
             case APPS:
-                return "am force-stop com.zte.cn.doubleapp; am force-stop com.zte.beautify; "
+                return "am force-stop cn.nubia.neostore; am force-stop com.mi.health; am force-stop com.zte.cn.doubleapp; am force-stop com.zte.beautify; "
                         + "am force-stop com.zte.beautifyadapter";
             case GAMES:
                 return "am force-stop cn.nubia.gamelauncher; am force-stop cn.nubia.gameassist; "
                         + "am force-stop cn.nubia.gamelab; "
                         + "am force-stop cn.nubia.gamehelpmodule; "
-                        + "am force-stop com.zte.game.plugintrigger";
+                        + "am force-stop com.zte.game.plugintrigger; "
+                        + "killall cn.nubia.fan >/dev/null 2>&1 || true";
             default:
                 return "am force-stop com.android.settings; "
-                        + "am force-stop com.zte.mifavor.launcher; "
                         + "killall com.android.systemui; "
                         + "am force-stop com.zte.cn.doubleapp; am force-stop com.zte.beautify; "
                         + "am force-stop com.zte.beautifyadapter; "
@@ -100,7 +95,7 @@ final class ScopeRestartDialog {
                         + "am force-stop cn.nubia.gamelab; "
                         + "am force-stop cn.nubia.gamehelpmodule; "
                         + "am force-stop com.zte.game.plugintrigger; "
-                        + "am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1";
+                        + "killall cn.nubia.fan >/dev/null 2>&1 || true";
         }
     }
 }

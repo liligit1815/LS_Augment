@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="6.0dp" android:insetRight="6.0dp" android:insetTop="6.0dp" android:insetBottom="6.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ripple android:color="@android:color/transparent">
+        <item>
+            <selector>
+                <item android:state_pressed="true">
+                    <nine-patch android:src="@drawable/btn_color_pressed" android:tint="@color/btn_color_pressed" />
+                </item>
+                <item android:state_enabled="false">
+                    <nine-patch android:src="@drawable/btn_color_disabled" android:tint="@color/btn_color_disabled" />
+                </item>
+                <item>
+                    <nine-patch android:src="@drawable/btn_color_default" android:tint="@color/btn_color_default" />
+                </item>
+            </selector>
+        </item>
+    </ripple>
+</inset>

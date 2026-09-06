@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.zte.mifavor.widget.ListViewZTE android:id="@id/zte_popup_list" android:layout_width="wrap_content" android:layout_height="match_parent" android:listSelector="@android:color/transparent" android:cacheColorHint="@null" android:divider="@null" />
+</LinearLayout>

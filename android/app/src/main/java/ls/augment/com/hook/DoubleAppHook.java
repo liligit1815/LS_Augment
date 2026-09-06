@@ -76,7 +76,7 @@ final class DoubleAppHook {
                                 wrapper.getStringExtra("doubleapp_calling_package"))) {
                             return chain.proceed();
                         }
-                        Intent real = wrapper.getParcelableExtra("doubleLay_intent", Intent.class);
+                        Intent real = android.os.Build.VERSION.SDK_INT>=33 ? wrapper.getParcelableExtra("doubleLay_intent", Intent.class) : wrapper.getParcelableExtra("doubleLay_intent");
                         if (real == null) return chain.proceed();
                         String packageName = real.getPackage();
                         if (real.getComponent() != null) {

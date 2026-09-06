@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetTop="@dimen/mfvc_medium_padding" android:insetBottom="@dimen/mfvc_medium_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <selector android:autoMirrored="true">
+        <item android:state_enabled="false">
+            <nine-patch android:src="@drawable/spinner_default" android:alpha="0.26" />
+        </item>
+        <item android:state_pressed="true">
+            <nine-patch android:src="@drawable/spinner_pressed" />
+        </item>
+        <item>
+            <nine-patch android:src="@drawable/spinner_default" />
+        </item>
+    </selector>
+</inset>

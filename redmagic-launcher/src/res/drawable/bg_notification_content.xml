@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="?popupColorTertiary" />
+    <item android:height="1.5dp" android:top="0.0dp">
+        <shape>
+            <gradient android:startColor="#14000000" android:endColor="@android:color/transparent" android:angle="270.0" android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

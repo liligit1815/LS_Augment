@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$add_dialpackup__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="dialpackup" android:animation="@drawable/$add_dialpackup__1" />
+    <target android:name="path_1" android:animation="@drawable/$add_dialpackup__2" />
+    <target android:name="path" android:animation="@drawable/$add_dialpackup__3" />
+    <target android:name="add" android:animation="@drawable/$add_dialpackup__4" />
+</animated-vector>

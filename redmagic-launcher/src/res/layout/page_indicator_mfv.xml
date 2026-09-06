@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.pageindicators.MfvPageIndicatorImpl android:layout_gravity="center|bottom" android:id="@id/mfv_page_indicator" android:layout_width="wrap_content" android:layout_height="wrap_content" launcher:windowSize="@integer/config_maxNumberOfPageIndicatorsToShow"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:launcher="http://schemas.android.com/apk/res-auto" />

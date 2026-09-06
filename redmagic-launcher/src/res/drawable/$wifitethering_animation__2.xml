@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="125" android:startOffset="550" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" android:propertyName="strokeAlpha"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" />

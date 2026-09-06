@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape android:shape="rectangle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:topLeftRadius="@dimen/mfvc_dial_area_radius" android:topRightRadius="@dimen/mfvc_dial_area_radius" />
+    <solid android:color="#e0e0e0" />
+</shape>

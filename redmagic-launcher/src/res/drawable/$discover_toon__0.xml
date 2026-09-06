@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="discover_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path_2" android:fillColor="#8f8f8f" android:pathData="M 20.051 8.914 C 20.423 9.873 20.636 10.909 20.636 12 C 20.636 16.77 16.77 20.636 12 20.636 C 10.902 20.636 9.858 20.422 8.893 20.046 C 6.97 21.285 5.276 22 4.102 22 C 2.469 22 0.955 20.647 2.953 16.772 C 3.26 17.349 3.625 17.905 4.051 18.429 C 3.768 19.127 3.35 20.296 4.102 20.296 C 6.671 20.296 11.961 15.573 13.801 13.735 C 15.187 12.351 21.609 5.157 20.223 3.78 C 19.964 3.517 18.779 3.937 18.438 4.077 C 17.913 3.65 17.354 3.282 16.774 2.975 C 17.993 2.35 19.062 2 19.877 2 C 20.682 2 21.164 2.314 21.425 2.575 C 22.853 4.001 21.324 6.953 20.051 8.914 Z M 12.743 12.653 C 14.964 10.435 16.898 8.077 18.213 6.01 C 16.643 4.381 14.442 3.364 12 3.364 C 7.23 3.364 3.364 7.23 3.364 12 C 3.364 14.428 4.369 16.618 5.982 18.188 C 8.079 16.87 10.482 14.908 12.743 12.653 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

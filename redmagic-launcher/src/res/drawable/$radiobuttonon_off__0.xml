@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="radiobuttonon_off" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="circle" android:fillColor="#0f87f7" android:pathData="M 12 22 C 6.486 22 2 17.514 2 12 C 2 6.485 6.486 2 12 2 C 17.514 2 22 6.485 22 12 C 22 17.514 17.514 22 12 22 Z M 12 11.975 C 11.986 11.975 11.975 11.986 11.975 12 C 11.975 12.014 11.986 12.025 12 12.025 C 12.014 12.025 12.025 12.014 12.025 12 C 12.025 11.986 12.014 11.975 12 11.975 Z" android:strokeWidth="1.0" />
+    <group android:name="inner" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="inner_1" android:fillColor="#ffffff" android:pathData="M 12 7 C 9.239 7 7 9.239 7 12 C 7 14.761 9.239 17 12 17 C 14.761 17 17 14.761 17 12 C 17 9.239 14.761 7 12 7" android:strokeWidth="1.0" />
+    </group>
+</vector>

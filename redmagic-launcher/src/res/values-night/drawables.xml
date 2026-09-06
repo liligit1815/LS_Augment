@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <drawable name="acb_bg">@color/mfvc_appbar_bg_color_dark</drawable>
+    <drawable name="acb_bg_card">@color/mfvc_appbar_card_bg_color_dark</drawable>
+    <drawable name="bg">@color/mfvc_bg_color_dark</drawable>
+    <drawable name="bg_card">@color/mfvc_card_bg_color_dark</drawable>
+    <drawable name="bottombar_bg">@color/mfvc_bottom_bg_color_dark</drawable>
+    <drawable name="bottombar_bg_card">@color/mfvc_bottom_card_bg_color_dark</drawable>
+    <drawable name="bottombar_tab_bg">@color/mfvc_bottom_tab_bg_color_dark</drawable>
+    <drawable name="progressbar_slider_disabled_light">@drawable/progressbar_slider_disabled_dark</drawable>
+    <drawable name="progressbar_slider_light">@drawable/progressbar_slider_dark</drawable>
+    <drawable name="progressbar_slider_pressed_light">@drawable/progressbar_slider_pressed_dark</drawable>
+    <drawable name="statusbar_bg">@color/mfvc_appbar_bg_color_dark</drawable>
+    <drawable name="statusbar_bg_card">@color/mfvc_appbar_card_bg_color_dark</drawable>
+    <drawable name="subtab_bg">@color/mfvc_appbar_bg_color_dark</drawable>
+    <drawable name="subtab_bg_card">@color/mfvc_appbar_card_bg_color_dark</drawable>
+</resources>

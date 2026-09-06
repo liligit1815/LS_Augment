@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">%d napja</item>
+        <item quantity="other">%d napja</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">%d perce</item>
+        <item quantity="other">%d perce</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">%d éve</item>
+        <item quantity="other">%d éve</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d új értesítés</item>
+        <item quantity="other">%d új értesítés</item>
+    </plurals>
+</resources>

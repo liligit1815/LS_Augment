@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@id/ai_custom_widget_clock_hour_layer">
+        <rotate android:drawable="@drawable/ai_custom_widget_clock_hour" android:fromDegrees="300.0" android:toDegrees="5300.0" android:pivotX="50.0%" android:pivotY="50.0%" />
+    </item>
+    <item android:id="@id/ai_custom_widget_clock_minute_layer">
+        <rotate android:drawable="@drawable/ai_custom_widget_clock_minute" android:fromDegrees="60.0" android:toDegrees="1060.0" android:pivotX="50.0%" android:pivotY="50.0%" />
+    </item>
+</layer-list>

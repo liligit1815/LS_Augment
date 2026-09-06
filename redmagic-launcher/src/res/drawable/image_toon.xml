@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$image_toon__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="point" android:animation="@drawable/$image_toon__1" />
+    <target android:name="image_end" android:animation="@drawable/$image_toon__2" />
+    <target android:name="group" android:animation="@drawable/$image_toon__3" />
+    <target android:name="path" android:animation="@drawable/$image_toon__4" />
+    <target android:name="group_2" android:animation="@drawable/$image_toon__5" />
+</animated-vector>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.settings.desktopclock.FrameLayoutEffect android:id="@id/lockscreen_clock_style_container" android:background="@drawable/clock_bg_corner_default" android:layout_width="@dimen/clock_style_menu_item_width" android:layout_height="@dimen/clock_style_menu_item_height"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.android.launcher3.settings.desktopclock.DesktopClockStyleItem android:layout_gravity="center" android:id="@id/lockscreen_clock_item" android:layout_width="match_parent" android:layout_height="wrap_content" app:show_scene="2" />
+</com.android.launcher3.settings.desktopclock.FrameLayoutEffect>

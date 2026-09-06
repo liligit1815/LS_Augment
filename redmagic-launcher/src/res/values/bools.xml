@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="MF_config_materialPreferenceIconSpaceReserved">false</bool>
+    <bool name="abc_action_bar_embed_tabs">true</bool>
+    <bool name="abc_config_actionMenuItemAllCaps">true</bool>
+    <bool name="config_ascii_7bit_support_for_long_message">false</bool>
+    <bool name="config_enableTaskSnapshotPreloading">true</bool>
+    <bool name="config_enableTaskSnapshotPreloading_low">false</bool>
+    <bool name="config_largeHeap">false</bool>
+    <bool name="config_launcher_show_unread_number">true</bool>
+    <bool name="config_materialPreferenceIconSpaceReserved">false</bool>
+    <bool name="config_setup_mms_data">false</bool>
+    <bool name="config_showAllAppButton">false</bool>
+    <bool name="config_sms_ringtone_incall">false</bool>
+    <bool name="desktop_form_factor">false</bool>
+    <bool name="enable_forced_themed_icon">false</bool>
+    <bool name="enable_mipop_zte">true</bool>
+    <bool name="enable_theme_zte">true</bool>
+    <bool name="floating_rotation_button_position_left">true</bool>
+    <bool name="force_dark_allowed">true</bool>
+    <bool name="home_settings_allow_divider">false</bool>
+    <bool name="home_settings_icon_space_reserved">false</bool>
+    <bool name="isLightStatusBar">true</bool>
+    <bool name="mtrl_btn_textappearance_all_caps">true</bool>
+    <bool name="simple_cache_enable_im_memory">false</bool>
+</resources>

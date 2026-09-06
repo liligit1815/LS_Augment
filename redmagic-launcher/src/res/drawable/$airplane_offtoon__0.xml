@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="airplane_offtoon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group">
+        <path android:name="path" android:fillColor="#000" android:pathData="M 8.198 20.991 L 10.577 14.41 C 10.667 14.162 10.483 13.901 10.22 13.901 L 6.315 13.901 L 4.33 16.581 C 4.26 16.687 4.141 16.75 4.014 16.75 L 2.88 16.75 C 2.611 16.75 2.428 16.478 2.528 16.229 L 4.291 12.318 C 4.372 12.114 4.372 11.887 4.291 11.683 L 2.528 7.771 C 2.428 7.522 2.611 7.25 2.88 7.25 L 4.014 7.25 C 4.141 7.25 4.259 7.313 4.33 7.419 L 6.315 10.1 L 10.146 10.1 C 10.408 10.1 10.591 9.841 10.504 9.594 L 8.193 3.006 C 8.106 2.759 8.289 2.5 8.551 2.5 L 9.529 2.5 C 9.645 2.5 9.755 2.553 9.827 2.645 L 15.45 9.775 C 15.612 9.98 15.859 10.1 16.12 10.1 L 19.602 10.1 C 20.755 10.1 21.668 11.129 21.474 12.319 C 21.322 13.253 20.446 13.9 19.5 13.9 L 16.219 13.9 C 15.958 13.9 15.711 14.02 15.549 14.225 L 9.926 21.355 C 9.855 21.447 9.745 21.5 9.629 21.5 L 8.555 21.5 C 8.292 21.5 8.109 21.238 8.198 20.991 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$wlan_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="wifi1" android:animation="@drawable/$wlan_animation__1" />
+    <target android:name="wifi2" android:animation="@drawable/$wlan_animation__2" />
+    <target android:name="wifi3" android:animation="@drawable/$wlan_animation__3" />
+    <target android:name="wifi4" android:animation="@drawable/$wlan_animation__4" />
+    <target android:name="wifi0" android:animation="@drawable/$wlan_animation__5" />
+</animated-vector>

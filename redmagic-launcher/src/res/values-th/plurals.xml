@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">%d วันที่แล้ว</item>
+        <item quantity="other">%d วันที่แล้ว</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">%d นาทีที่แล้ว</item>
+        <item quantity="other">%d นาทีที่แล้ว</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">%d ปีที่แล้ว</item>
+        <item quantity="other">%d ปีที่แล้ว</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">การแจ้งเตือนใหม่ %d รายการ</item>
+        <item quantity="other">การแจ้งเตือนใหม่ %d รายการ</item>
+    </plurals>
+</resources>

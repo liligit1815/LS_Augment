@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape android:shape="rectangle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/mock_app_icon" />
+    <corners android:radius="@dimen/gesture_tutorial_taskbar_icon_corner_radius" />
+</shape>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="query_builder_surface" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="path" android:fillColor="#4c4c4c" android:pathData="M 12 22 C 6.486 22 2 17.514 2 12 C 2 6.486 6.486 2 12 2 C 17.514 2 22 6.486 22 12 C 22 17.514 17.514 22 12 22 Z M 12 3.5 C 7.313 3.5 3.5 7.313 3.5 12 C 3.5 16.687 7.313 20.5 12 20.5 C 16.687 20.5 20.5 16.687 20.5 12 C 20.5 7.313 16.687 3.5 12 3.5 Z M 15.855 14.634 L 12.425 12.321 L 12.425 6.819 C 12.425 6.405 12.089 6.069 11.675 6.069 C 11.261 6.069 10.925 6.405 10.925 6.819 L 10.925 12.718 C 10.925 12.742 10.937 12.763 10.939 12.786 C 10.944 12.838 10.954 12.886 10.969 12.935 C 10.983 12.981 10.999 13.023 11.022 13.065 C 11.044 13.107 11.07 13.143 11.1 13.181 C 11.132 13.221 11.166 13.256 11.206 13.288 C 11.225 13.304 11.235 13.325 11.256 13.339 L 15.015 15.876 C 15.144 15.963 15.289 16.004 15.434 16.004 C 15.675 16.004 15.912 15.888 16.057 15.674 C 16.289 15.332 16.198 14.866 15.855 14.634 Z" android:strokeWidth="1.0" />
+    <clip-path android:name="mask" android:pathData="M 0 0 L 24 0 L 24 0 L 0 0 L 0 0 Z" />
+    <path android:name="round" android:fillColor="#079efb" android:pathData="M 12 22 C 6.486 22 2 17.514 2 12 C 2 6.486 6.486 2 12 2 C 17.514 2 22 6.486 22 12 C 22 17.514 17.514 22 12 22 Z" android:strokeWidth="1.0" />
+    <group android:name="group" android:pivotX="11.69" android:pivotY="12.72">
+        <path android:name="minute" android:fillColor="#4c4c4c" android:pathData="M 11.676 13.469 C 11.262 13.469 10.926 13.133 10.926 12.719 L 10.926 6.819 C 10.926 6.405 11.262 6.069 11.676 6.069 C 12.09 6.069 12.426 6.405 12.426 6.819 L 12.426 12.718 C 12.426 13.133 12.09 13.469 11.676 13.469 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_1" android:pivotX="11.69" android:pivotY="12.72">
+        <path android:name="hour" android:fillColor="#4c4c4c" android:pathData="M 15.435 16.006 C 15.29 16.006 15.145 15.965 15.016 15.878 L 11.257 13.341 C 10.914 13.109 10.823 12.643 11.055 12.299 C 11.286 11.955 11.754 11.864 12.096 12.097 L 15.856 14.634 C 16.199 14.866 16.29 15.332 16.058 15.676 C 15.912 15.89 15.676 16.006 15.435 16.006 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

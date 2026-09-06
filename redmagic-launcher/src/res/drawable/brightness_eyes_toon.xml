@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$brightness_eyes_toon__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="eye" android:animation="@drawable/$brightness_eyes_toon__1" />
+    <target android:name="light" android:animation="@drawable/$brightness_eyes_toon__2" />
+</animated-vector>

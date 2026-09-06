@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="400" android:valueFrom="0" android:valueTo="-180" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="274" android:valueFrom="1" android:valueTo="0.7" android:valueType="floatType" android:propertyName="scaleX" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="274" android:valueFrom="1" android:valueTo="0.7" android:valueType="floatType" android:propertyName="scaleY" />
+</set>

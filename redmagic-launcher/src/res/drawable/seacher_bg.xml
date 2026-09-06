@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape android:shape="rectangle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <size android:height="@dimen/gs_btn_setting_size" />
+    <corners android:radius="@dimen/gs_btn_setting_size_half" />
+    <solid android:color="@color/gs_btn_icon_color" />
+</shape>

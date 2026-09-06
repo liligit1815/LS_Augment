@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:showDividers="middle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditText android:id="@id/filter_box" android:background="@drawable/rounded_action_button" android:padding="12.0dp" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginLeft="16.0dp" android:layout_marginTop="4.0dp" android:layout_marginRight="16.0dp" android:hint="@string/developer_options_filter_hint" android:maxLines="1" android:drawablePadding="8.0dp" android:layout_weight="1.0" android:inputType="text" android:imeOptions="actionDone" android:drawableStart="@drawable/ic_allapps_search" android:drawableTint="?android:textColorSecondary" android:layout_marginHorizontal="@dimen/developer_options_filter_margins" />
+</LinearLayout>

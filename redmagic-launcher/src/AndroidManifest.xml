@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="36" android:compileSdkVersionCodename="16" package="com.zte.mifavor.launcher" platformBuildVersionCode="36" platformBuildVersionName="16">
+    <uses-permission android:name="android.permission.BROADCAST_CLOSE_SYSTEM_DIALOGS"/>
+    <uses-permission android:name="android.permission.CONTROL_REMOTE_APP_TRANSITION_ANIMATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.START_TASKS_FROM_RECENTS"/>
+    <uses-permission android:name="android.permission.REMOVE_TASKS"/>
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_TASKS"/>
+    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW"/>
+    <uses-permission android:name="android.permission.STATUS_BAR"/>
+    <uses-permission android:name="android.permission.STATUS_BAR_SERVICE"/>
+    <uses-permission android:name="android.permission.STOP_APP_SWITCHES"/>
+    <uses-permission android:name="android.permission.SET_ORIENTATION"/>
+    <uses-permission android:name="android.permission.READ_FRAME_BUFFER"/>
+    <uses-permission android:name="android.permission.MANAGE_ACCESSIBILITY"/>
+    <uses-permission android:name="android.permission.MONITOR_INPUT"/>
+    <uses-permission android:name="android.permission.ALLOW_SLIPPERY_TOUCHES"/>
+    <uses-permission android:name="android.permission.ACCESS_SHORTCUTS"/>
+    <uses-permission android:name="android.permission.SYSTEM_APPLICATION_OVERLAY"/>
+    <uses-permission android:name="android.permission.ACCESS_HIDDEN_PROFILES_FULL"/>
+    <permission android:name="com.zte.mifavor.launcher.permission.START_WIDGET_PICKER_ACTIVITY" android:protectionLevel="signature|privileged"/>
+    <permission android:name="launchermfv.permission.RECENT_CLEAR" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.READ_TASK" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.RECENT_CLEAR_BLACKLIST" android:protectionLevel="normal"/>
+    <permission android:name="launchermfv.permission.SPLITSELECT" android:protectionLevel="signatureOrSystem"/>
+    <uses-permission android:name="zte.permission.READ_STRATEGY"/>
+    <uses-permission android:name="zte.permission.WRITE_STRATEGY"/>
+    <uses-permission android:name="zte.permission.LAUNCH_POWER_SAVER_ACTIVITY"/>
+    <uses-permission android:name="android.permission.ALLOW_SLIPPERY_TOUCHES"/>
+    <queries>
+        <package android:name="com.zte.distservice.relayservice"/>
+    </queries>
+    <uses-permission android:name="systemui.permission.read_client_provider"/>
+    <permission android:name="launchermfv.permission.nubia" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.UPDATE_LIMIT_APPS"/>
+    <uses-permission android:name="android.permission.ZTE_HS_INTERFACE"/>
+    <uses-permission android:name="zte.permission.BIND_DATA_COLLECTION"/>
+    <uses-permission android:name="com.zte.beautifyadapter.applytheme"/>
+    <uses-permission android:name="cn.nubia.permission.applytheme"/>
+    <uses-permission android:name="zte.permission.PUSH_MESSAGE_1eaf99b7"/>
+    <uses-permission android:name="com.zte.heartyservice.permission.READ_SETTINGS"/>
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="suggest.permission.signature"/>
+    <uses-permission android:name="suggest.permission.provider.read"/>
+    <uses-permission android:name="miboard.permission.signature.writeprovider"/>
+    <uses-permission android:name="com.zte.notice.strategy.PERMISSION"/>
+    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.SET_WALLPAPER"/>
+    <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS"/>
+    <uses-permission android:name="android.permission.BIND_APPWIDGET"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
+    <uses-permission android:name="android.permission.READ_DEVICE_CONFIG"/>
+    <uses-permission android:name="android.permission.ROTATE_SURFACE_FLINGER"/>
+    <uses-permission android:name="android.permission.WAKEUP_SURFACE_FLINGER"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="com.zte.multscr.permission.ACCESS_PROVIDER"/>
+    <permission android:description="@string/permdesc_read_settings" android:label="@string/permlab_read_settings" android:name="launchermfv.permission.READ_SETTINGS" android:protectionLevel="normal"/>
+    <permission android:description="@string/permdesc_write_settings" android:label="@string/permlab_write_settings" android:name="launchermfv.permission.WRITE_SETTINGS" android:protectionLevel="signatureOrSystem"/>
+    <uses-permission android:name="launchermfv.permission.READ_SETTINGS"/>
+    <uses-permission android:name="launchermfv.permission.WRITE_SETTINGS"/>
+    <permission android:name="launchermfv.permission.RECEIVE_LAUNCH_BROADCASTS" android:protectionLevel="signature"/>
+    <permission android:name="launchermfv.permission.USE_BACKUP_SERVICE"/>
+    <permission android:name="launchermfv.permission.Z_BACKUP_SERVICE"/>
+    <permission android:name="launchermfv.permission.Z_RECOVER_SERVICE"/>
+    <permission android:name="launchermfv.permission.USE_ONLINE_RECEIVER"/>
+    <permission android:name="launchermfv.permission.USE_BACKUP_RESTORE" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.READ_APP_UNREAD_BADGE"/>
+    <permission android:name="launchermfv.permission.DYNAMIC_SHOW_HIDDEN_APPS" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.SETTING" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.SET_SUBSCRIPT" android:protectionLevel="signatureOrSystem"/>
+    <uses-permission android:name="com.android.launcher3.permission.READ_SETTINGS"/>
+    <uses-permission android:name="com.android.launcher3.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.MANAGE_USERS"/>
+    <uses-permission android:name="com.zte.mifavor.stat.USER_STAT"/>
+    <uses-permission android:name="launcheradapter.permission.USE_ADAPTER_SERVICE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="launcheradapter.permission.BatchUninstallService"/>
+    <uses-permission android:name="launcheradapter.permission.READ_ADAPTER"/>
+    <uses-permission android:name="miboard.permission.startmiboard"/>
+    <uses-permission android:name="com.android.calendar.permission.ACCESS_PROVIDER"/>
+    <uses-permission android:name="theme.permission.READ_DOWNLOADED_RESOURCE"/>
+    <uses-permission android:name="theme.permission.LOCAL_RESOURCE"/>
+    <uses-permission android:name="zte.permission.PUSH_MESSAGE_3e4f5a41"/>
+    <uses-permission android:name="easymode.permission.provider.call"/>
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
+    <uses-permission android:name="android.permission.READ_SEARCH_INDEXABLES"/>
+    <uses-permission android:name="android.permission.SET_WALLPAPER_COMPONENT"/>
+    <uses-permission android:name="zte.com.market.permission.READ_DOWNLOADS"/>
+    <uses-permission android:name="android.permission.USE_RESERVED_DISK"/>
+    <uses-permission android:name="com.zte.privacyzone.permission.READ_SETTINGS"/>
+    <uses-permission android:name="android.permission.READ_COMPAT_CHANGE_CONFIG"/>
+    <uses-permission android:name="android.permission.LOG_COMPAT_CHANGE"/>
+    <uses-permission android:name="splitScreenGroup.permission.CHANGE_SHORTCUT"/>
+    <permission android:name="huawei.android.permission.HW_SIGNATURE_OR_SYSTEM"/>
+    <uses-permission android:name="huawei.android.permission.HW_SIGNATURE_OR_SYSTEM"/>
+    <uses-permission android:name="recommend.permission.provider.call"/>
+    <uses-permission android:name="com.zte.halo.app.permission.AI_VERSION"/>
+    <uses-permission android:name="com.zte.systemui.permission.UNLOCK_SPACE"/>
+    <uses-permission android:name="systemui.permission.read_privatespace_provider"/>
+    <uses-permission android:name="com.android.systemui.permission.fileprovider"/>
+    <uses-permission android:name="com.aicd.client.permission.WIDGET_PROVIDER"/>
+    <uses-permission android:name="com.aicd.client.permission.RECEIVE_BROADCAST"/>
+    <permission android:name="launchermfv.permission.UNLOCK_ANIMATION" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="launchermfv.permission.GS_LAUNCHER_DATA" android:protectionLevel="signatureOrSystem"/>
+    <permission android:name="com.zte.mifavor.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
+    <uses-permission android:name="com.zte.mifavor.launcher.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
+    <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:backupAgent="com.android.launcher3.LauncherBackupAgent" android:backupInForeground="true" android:defaultToDeviceProtectedStorage="true" android:directBootAware="true" android:enableOnBackInvokedCallback="true" android:extractNativeLibs="false" android:fullBackupContent="@xml/backupscheme" android:fullBackupOnly="true" android:hardwareAccelerated="true" android:icon="@drawable/ic_launcher_home" android:label="@string/application_myos_name" android:largeHeap="@bool/config_largeHeap" android:name="com.android.launcher3.LauncherApplication" android:restoreAnyVersion="true" android:supportsRtl="true" android:theme="@style/LauncherTheme" android:usesCleartextTraffic="true">
+        <service android:directBootAware="true" android:exported="true" android:name="com.android.quickstep.TouchInteractionService" android:permission="android.permission.STATUS_BAR_SERVICE">
+            <intent-filter>
+                <action android:name="android.intent.action.QUICKSTEP_SERVICE"/>
+            </intent-filter>
+        </service>
+        <activity android:clearTaskOnLaunch="true" android:configChanges="mcc|mnc|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize" android:enableOnBackInvokedCallback="false" android:excludeFromRecents="true" android:launchMode="singleTask" android:name="com.android.quickstep.RecentsActivity" android:resizeableActivity="true" android:resumeWhilePausing="true" android:screenOrientation="behind" android:stateNotNeeded="true" android:taskAffinity="" android:theme="@style/LauncherTheme"/>
+        <provider android:authorities="com.zte.mifavor.launcher" android:exported="true" android:grantUriPermissions="true" android:multiprocess="true" android:name="com.android.quickstep.LauncherSearchIndexablesProvider" android:permission="android.permission.READ_SEARCH_INDEXABLES">
+            <intent-filter>
+                <action android:name="android.content.action.SEARCH_INDEXABLES_PROVIDER"/>
+            </intent-filter>
+        </provider>
+        <provider android:authorities="com.zte.mifavor.launcher.overview.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="androidx.core.content.FileProvider">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/overview_file_provider_paths"/>
+        </provider>
+        <activity android:clearTaskOnLaunch="true" android:excludeFromRecents="true" android:exported="false" android:launchMode="singleTask" android:name="com.android.launcher3.proxy.ProxyActivityStarter" android:theme="@style/ProxyActivityStarterTheme"/>
+        <activity android:autoRemoveFromRecents="true" android:configChanges="orientation" android:excludeFromRecents="true" android:exported="true" android:label="@string/gesture_tutorial_title" android:name="com.android.quickstep.interaction.GestureSandboxActivity" android:theme="@style/GestureTutorialActivity">
+            <intent-filter>
+                <action android:name="com.android.quickstep.action.GESTURE_SANDBOX"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:excludeFromRecents="true" android:exported="true" android:label="@string/allset_title" android:name="com.android.quickstep.interaction.AllSetActivity" android:permission="android.permission.REBOOT" android:theme="@style/AllSetTheme">
+            <intent-filter>
+                <action android:name="com.android.quickstep.action.GESTURE_ONBOARDING_ALL_SET"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTop" android:name="com.android.launcher3.WidgetPickerActivity" android:permission="com.zte.mifavor.launcher.permission.START_WIDGET_PICKER_ACTIVITY" android:showOnLockScreen="true" android:theme="@style/WidgetPickerActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.PICK"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <activity android:clearTaskOnLaunch="true" android:configChanges="mcc|mnc|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize" android:enabled="true" android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:name="com.android.launcher3.uioverrides.QuickstepLauncher" android:resizeableActivity="true" android:resumeWhilePausing="true" android:screenOrientation="unspecified" android:stateNotNeeded="true" android:taskAffinity="" android:windowSoftInputMode="adjustPan">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <action android:name="android.intent.action.SHOW_WORK_APPS"/>
+                <category android:name="android.intent.category.HOME"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.MONKEY"/>
+                <category android:name="android.intent.category.LAUNCHER_APP"/>
+            </intent-filter>
+            <meta-data android:name="com.android.launcher3.grid.control" android:value="com.zte.mifavor.launcher.grid_control"/>
+        </activity>
+        <activity android:clearTaskOnLaunch="true" android:configChanges="mcc|mnc|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize" android:exported="true" android:launchMode="singleTask" android:name="com.android.quickstep.SplitActivity" android:permission="launchermfv.permission.SPLITSELECT" android:resizeableActivity="true" android:resumeWhilePausing="true" android:screenOrientation="unspecified" android:stateNotNeeded="true" android:taskAffinity="" android:theme="@style/LauncherTheme">
+            <intent-filter>
+                <action android:name="com.android.quickstep.action.SPLITSELECT"/>
+            </intent-filter>
+        </activity>
+        <activity android:excludeFromRecents="true" android:exported="false" android:name="com.android.launcher3.settings.ChooseLockHelperExt" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme" android:windowSoftInputMode="stateAlwaysHidden"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:icon="@drawable/ic_concern_mode" android:label="@string/settings_concern_mode_title" android:name="com.android.launcher3.settings.ConcernModeActivity" android:screenOrientation="behind" android:theme="@style/ActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:icon="@drawable/ic_standard_mode" android:label="@string/settings_home_layout_standard" android:name="com.android.launcher3.settings.StandardModeActivity" android:screenOrientation="behind" android:theme="@style/ActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/settings_home_layout_title" android:name="com.android.launcher3.settings.ConcernStandardFeatureModeActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/settings_feature_phone_mode_title" android:name="com.android.launcher3.settings.FeaturePhoneModeActivity" android:screenOrientation="behind" android:theme="@style/ActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+        </activity>
+        <receiver android:exported="true" android:name="com.android.launcher3.InternalBroadcastReceiver">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE"/>
+                <data android:host="6868" android:scheme="android_secret_code"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.zte.mifavor.launcher.JumpToAIFutureSettings"/>
+            </intent-filter>
+        </receiver>
+        <provider android:authorities="com.android.launcher3.healthyUseMobile" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.resource.HealthyUseMobileProvider" android:readPermission="launchermfv.permission.UPDATE_LIMIT_APPS"/>
+        <receiver android:exported="true" android:name="com.android.launcher3.SessionCommitReceiver">
+            <intent-filter>
+                <action android:name="android.content.pm.action.SESSION_COMMITTED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.android.launcher3.AppWidgetsRestoredReceiver">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_HOST_RESTORED"/>
+            </intent-filter>
+        </receiver>
+        <service android:exported="true" android:label="@string/notification_dots_service_title" android:name="com.android.launcher3.notification.NotificationListener" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+        <meta-data android:name="android.nfc.disable_beam_default" android:value="true"/>
+        <activity android:autoRemoveFromRecents="true" android:excludeFromRecents="true" android:exported="true" android:name="com.android.launcher3.dragndrop.AddItemActivity" android:theme="@style/AddItemActivityThemeMfv">
+            <intent-filter>
+                <action android:name="android.content.pm.action.CONFIRM_PIN_SHORTCUT"/>
+                <action android:name="android.content.pm.action.CONFIRM_PIN_APPWIDGET"/>
+            </intent-filter>
+        </activity>
+        <provider android:authorities="com.zte.mifavor.launcher.settings" android:exported="true" android:name="com.android.launcher3.LauncherProvider" android:readPermission="launchermfv.permission.READ_SETTINGS" android:writePermission="launchermfv.permission.WRITE_SETTINGS"/>
+        <provider android:authorities="com.zte.mifavor.launcher.grid_control" android:exported="true" android:name="com.android.launcher3.graphics.LauncherCustomizationProvider" android:permission="android.permission.BIND_WALLPAPER"/>
+        <provider android:authorities="com.zte.mifavor.launcher.TestInfo" android:enabled="false" android:exported="true" android:name="com.android.launcher3.testing.TestInformationProvider" android:readPermission="android.permission.WRITE_SECURE_SETTINGS" android:writePermission="android.permission.WRITE_SECURE_SETTINGS"/>
+        <activity android:enabled="true" android:exported="true" android:launchMode="singleTop" android:name="com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher" android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.SECONDARY_HOME"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <property android:name="android.window.PROPERTY_ACTIVITY_EMBEDDING_SPLITS_ENABLED" android:value="true"/>
+        <meta-data android:name="enableVisitNotch" android:value="true"/>
+        <meta-data android:name="zte_appuid" android:value="3309774"/>
+        <meta-data android:name="marketinfo" android:value="preload"/>
+        <meta-data android:name="enhanced" android:value="true"/>
+        <meta-data android:name="com.zte.mifavor.launcher.tools_key" android:value="@string/ai_tools_key"/>
+        <uses-library android:name="org.apache.http.legacy" android:required="false"/>
+        <activity android:autoRemoveFromRecents="true" android:configChanges="keyboardHidden|navigation|orientation|screenSize" android:exported="true" android:label="@string/settings_title" android:name="com.android.launcher3.settings.SettingsActivityMFV" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES"/>
+                <action android:name="com.android.settings.action.IA_SETTINGS"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="com.android.settings.category" android:value="com.android.settings.category.ia.homepage"/>
+            <meta-data android:name="com.android.settings.title" android:resource="@string/settings_title_in_settings"/>
+            <meta-data android:name="com.android.settings.order" android:value="-233"/>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:configChanges="keyboardHidden|navigation|orientation|screenSize" android:exported="true" android:label="@string/settings_subscript_title_R" android:name="com.android.launcher3.settings.SubscriptActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.android.settings.action.IA_SETTINGS"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="com.android.settings.category" android:value="com.android.settings.category.ia.notifications"/>
+            <meta-data android:name="com.android.settings.order" android:value="1"/>
+            <meta-data android:name="com.android.settings.title" android:resource="@string/settings_subscript_title_R"/>
+        </activity>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/settings_desktop_grid_title" android:name="com.android.launcher3.settings.DesktopGridActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/settings_home_layout_title" android:name="com.android.launcher3.settings.HomeScreenLayoutActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/settings_recent_style_switch_title" android:name="com.android.launcher3.settings.RecentAppStyleActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/custom_content_switch_title_selection" android:name="com.android.launcher3.settings.CustomPageSelectionLayoutActivity" android:permission="launchermfv.permission.SET_SUBSCRIPT" android:screenOrientation="behind" android:theme="@style/SettingsActivityTheme"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="true" android:label="@string/desktop_clock_style" android:name="com.android.launcher3.settings.desktopclock.DesktopClockSettingsActivity" android:screenOrientation="portrait" android:theme="@style/ClockStyleSettingsActivity"/>
+        <activity android:exported="false" android:name="com.android.launcher3.mfvUtil.DefaultErrorActivity" android:theme="@style/ErrorActivityTranslucent"/>
+        <activity android:autoRemoveFromRecents="true" android:exported="false" android:name="com.android.launcher3.mfvUtil.PermissionGrantDialog" android:theme="@style/Theme.ZTE.Light.Dialog.Alert"/>
+        <activity android:autoRemoveFromRecents="true" android:configChanges="mcc|mnc|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize" android:exported="false" android:name="com.android.launcher3.FoldHelpTipAty" android:screenOrientation="portrait" android:showOnLockScreen="true" android:showWhenLocked="true" android:theme="@style/AntiPinchHandModeAtyTheme" android:windowSoftInputMode="stateAlwaysHidden"/>
+        <provider android:authorities="com.zte.mifavor.launcher.resource" android:exported="false" android:name="com.android.launcher3.resource.ResourceDatabaseProvider"/>
+        <provider android:authorities="com.zte.mifavor.launcher.resourceprovider" android:enabled="true" android:exported="true" android:name="com.android.launcher3.backup.BackupProvider" android:permission="launchermfv.permission.USE_BACKUP_RESTORE"/>
+        <provider android:authorities="com.zte.mifavor.launcher.quickstep.taskprovider" android:enabled="true" android:exported="true" android:name="com.android.launcher3.resource.TaskProvider" android:permission="launchermfv.permission.READ_TASK"/>
+        <provider android:authorities="com.zte.mifavor.launcher.dynamicshowhiddenapps" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.resource.DynamicShowHiddenAppsProvider" android:permission="launchermfv.permission.DYNAMIC_SHOW_HIDDEN_APPS"/>
+        <provider android:authorities="com.zte.mifavor.launcher.share.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="com.android.launcher3.ShareFileProvider">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/provider_paths"/>
+        </provider>
+        <provider android:authorities="com.zte.mifavor.launcher.unreadbadge" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.resource.UnReadInfoProvider" android:readPermission="launchermfv.permission.READ_APP_UNREAD_BADGE"/>
+        <provider android:authorities="com.android.badge" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.resource.WechatUnreadProvider" android:readPermission="android.permission.READ_APP_BADGE"/>
+        <provider android:authorities="com.android.launcher3.cornermark.unreadbadge" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.resource.OtherUnreadProvider" android:readPermission="android.permission.READ_APP_BADGE"/>
+        <provider android:authorities="com.miui.personalassistant.widget.external" android:exported="true" android:name="com.android.launcher3.widget.MFVWidgetProvider"/>
+        <service android:exported="true" android:name="com.android.launcher3.backup.BackupWeShareService" android:permission="launchermfv.permission.USE_BACKUP_SERVICE">
+            <intent-filter>
+                <action android:name="com.ume.BackupInfo"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:name="com.android.launcher3.ZBackupService" android:permission="launchermfv.permission.Z_BACKUP_SERVICE">
+            <intent-filter>
+                <action android:name="com.android.launcher3.Backup"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:name="com.android.launcher3.ZRecoverService" android:permission="launchermfv.permission.Z_RECOVER_SERVICE">
+            <intent-filter>
+                <action android:name="com.android.launcher3.Recover"/>
+            </intent-filter>
+        </service>
+        <receiver android:exported="true" android:name="com.android.launcher3.resource.ResourceOnline" android:permission="launchermfv.permission.USE_ONLINE_RECEIVER">
+            <intent-filter>
+                <action android:name="wallpaper_download_ztefs"/>
+                <action android:name="wallpaper_delete_ztefs"/>
+                <action android:name="theme_download_ztefs"/>
+                <action android:name="theme_delete_ztefs"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:enabled="true" android:exported="true" android:name="com.android.launcher3.InstallShortcutReceiver" android:permission="com.android.launcher.permission.INSTALL_SHORTCUT">
+            <intent-filter>
+                <action android:name="com.android.launcher.action.INSTALL_SHORTCUT"/>
+                <action android:name="cn.nubia.launcher.gamespace.action.INSTALL_SHORTCUT"/>
+            </intent-filter>
+        </receiver>
+        <provider android:authorities="cn.nubia.launcher.unreadMark" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.nubia.NubiaUnreadMarkProvider" android:readPermission="launchermfv.permission.nubia"/>
+        <provider android:authorities="com.android.launcher3.unlockAnimation" android:exported="true" android:name="com.android.launcher3.UnlockAnimationProvider" android:readPermission="launchermfv.permission.UNLOCK_ANIMATION"/>
+        <receiver android:exported="true" android:name="com.android.launcher3.stk.SimCardLoadReceiver">
+            <intent-filter android:priority="100">
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.USER_INITIALIZE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SIM_STATE_CHANGED"/>
+            </intent-filter>
+        </receiver>
+        <provider android:authorities="com.zte.mifavor.launcher.GSOuterProvider" android:exported="true" android:multiprocess="true" android:name="com.android.launcher3.globalsearch.GSOuterProvider" android:permission="launchermfv.permission.GS_LAUNCHER_DATA"/>
+        <meta-data android:name="ZteExtResVersion" android:value="MiFavor 16.0.010.001 2026-04-14 10:39"/>
+        <uses-library android:name="androidx.window.extensions" android:required="false"/>
+        <uses-library android:name="androidx.window.sidecar" android:required="false"/>
+        <activity android:excludeFromRecents="true" android:name="androidx.slice.compat.SlicePermissionActivity"/>
+        <receiver android:directBootAware="false" android:enabled="true" android:exported="true" android:name="androidx.profileinstaller.ProfileInstallReceiver" android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION"/>
+            </intent-filter>
+        </receiver>
+        <meta-data android:name="ZteWidgetVersion" android:value="16.0.010.001 2026-04-15 12:07"/>
+        <receiver android:exported="true" android:name="com.zte.toolsdk.producer.ToolsReceiver"/>
+        <receiver android:name="com.zte.toolsdk.producer.RemoteViewsReceiver"/>
+        <provider android:authorities="com.zte.mifavor.launcher.sharedprefsprovider" android:exported="true" android:name="com.zte.toolsdk.consumer.SharedPrefsContentProvider"/>
+        <provider android:authorities="com.zte.mifavor.launcher.cardprovider" android:enabled="true" android:exported="true" android:name="com.zte.toolsdk.consumer.CardContentProvider"/>
+        <provider android:authorities="com.zte.mifavor.launcher.animationendprovider" android:enabled="true" android:exported="true" android:name="com.zte.toolsdk.producer.AnimationEndContentProvider"/>
+    </application>
+</manifest>

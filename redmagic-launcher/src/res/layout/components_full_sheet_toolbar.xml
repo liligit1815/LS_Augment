@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/component_toolbar" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/component_toolbar_height"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <View android:layout_gravity="center_horizontal" android:id="@id/component_collapse" android:background="@drawable/component_sheet_collapse_bg" android:layout_width="@dimen/component_toolbar_collapse_bar_width" android:layout_height="@dimen/component_toolbar_collapse_bar_height" android:layout_marginTop="@dimen/bottom_sheet_handle_margin" android:layout_marginBottom="@dimen/bottom_sheet_handle_margin" />
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/component_toolbar_title_bar_height">
+        <ImageView android:id="@id/component_back" android:background="@drawable/toolbar_back_button_bg" android:visibility="gone" android:layout_width="@dimen/component_sheet_back_touch_area_size" android:layout_height="@dimen/component_sheet_back_touch_area_size" android:layout_marginLeft="@dimen/component_sheet_back_margin_left" android:src="@drawable/arrow_back_appbar" android:scaleType="centerInside" android:tint="@color/mfv_common_acb_icon" android:layout_centerVertical="true" />
+        <TextView android:textSize="@dimen/component_title_text_size" android:textColor="@color/widget_toolbar_title_color" android:id="@id/component_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerInParent="true" />
+    </RelativeLayout>
+    <FrameLayout android:id="@id/search_bar_container" android:visibility="gone" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18.0dp" android:elevation="0.100000024dp" />
+</LinearLayout>

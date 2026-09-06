@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="265" android:startOffset="10" android:valueFrom="1" android:valueTo="0" android:valueType="floatType" android:propertyName="trimPathEnd" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="311" android:startOffset="289" android:valueFrom="1" android:valueTo="0" android:valueType="floatType" android:propertyName="trimPathStart" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="25" android:startOffset="575" android:valueFrom="1" android:valueTo="1" android:valueType="floatType" android:propertyName="trimPathEnd" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="25" android:startOffset="200" android:valueFrom="1" android:valueTo="0" android:valueType="floatType" android:propertyName="strokeAlpha" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="36" android:startOffset="289" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" android:propertyName="strokeAlpha" />
+</set>

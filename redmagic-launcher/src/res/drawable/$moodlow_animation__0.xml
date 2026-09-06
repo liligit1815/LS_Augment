@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="moodlow" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group_2">
+        <path android:name="path_6" android:pathData="M 7.75 15.75 L 16.25 15.75" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <group android:name="group2">
+        <path android:name="path_5" android:fillColor="#000000" android:pathData="M 8.136 7.583 C 7.738 7.583 7.357 7.741 7.075 8.022 C 6.794 8.304 6.636 8.685 6.636 9.083 C 6.636 9.481 6.794 9.862 7.075 10.144 C 7.357 10.425 7.738 10.583 8.136 10.583 C 8.534 10.583 8.915 10.425 9.197 10.144 C 9.478 9.862 9.636 9.481 9.636 9.083 C 9.636 8.685 9.478 8.304 9.197 8.022 C 8.915 7.741 8.534 7.583 8.136 7.583 Z M 15.844 7.583 C 15.446 7.583 15.065 7.741 14.783 8.022 C 14.502 8.304 14.344 8.685 14.344 9.083 C 14.344 9.481 14.502 9.862 14.783 10.144 C 15.065 10.425 15.446 10.583 15.844 10.583 C 16.242 10.583 16.623 10.425 16.905 10.144 C 17.186 9.862 17.344 9.481 17.344 9.083 C 17.344 8.685 17.186 8.304 16.905 8.022 C 16.623 7.741 16.242 7.583 15.844 7.583 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group1">
+        <path android:name="path" android:pathData="M 12 2.75 C 9.548 2.75 7.193 3.725 5.459 5.459 C 3.725 7.193 2.75 9.548 2.75 12 C 2.75 14.452 3.725 16.807 5.459 18.541 C 7.193 20.275 9.548 21.25 12 21.25 C 14.452 21.25 16.807 20.275 18.541 18.541 C 20.275 16.807 21.25 14.452 21.25 12 C 21.25 9.548 20.275 7.193 18.541 5.459 C 16.807 3.725 14.452 2.75 12 2.75 Z" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeMiterLimit="10.0" />
+    </group>
+</vector>

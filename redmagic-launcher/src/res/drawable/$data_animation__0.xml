@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="data" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group">
+        <path android:name="left" android:pathData="M 8.145 3.721 L 8.145 20.222 L 3.919 15.269" android:strokeColor="#000000" android:strokeWidth="1.5005" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" android:strokeAlpha="0.0" />
+        <path android:name="path" android:pathData="M 8.145 3.721 L 8.145 20.222 L 3.919 15.269" android:strokeColor="#000000" android:strokeWidth="1.5005" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <group android:name="group_1">
+        <path android:name="right" android:pathData="M 15.854 20.246 L 15.854 3.746 L 20.08 8.699" android:strokeColor="#000000" android:strokeWidth="1.5005" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" android:strokeAlpha="0.0" />
+        <path android:name="path_1" android:pathData="M 15.854 20.246 L 15.854 3.746 L 20.08 8.699" android:strokeColor="#000000" android:strokeWidth="1.5005" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+</vector>

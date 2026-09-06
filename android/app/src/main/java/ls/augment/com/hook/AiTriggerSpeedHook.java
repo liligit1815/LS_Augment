@@ -11,7 +11,10 @@ import android.util.Log;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -67,10 +70,10 @@ final class AiTriggerSpeedHook {
             "com.zte.game.plugintrigger.policy.TriggerInfo";
     private static final int TEMPLATE_SEARCH_MARGIN_X = 48;
     private static final int TEMPLATE_SEARCH_MARGIN_Y = 80;
-    /** Fast mode keeps one detector task in flight and polls at most every 40 ms. */
-    private static final long FAST_TEMPLATE_SCAN_MS = 40L;
-    /** Five milliseconds is the lowest safe delay before injecting the down event. */
-    private static final long FAST_TOUCH_DOWN_MS = 5L;
+    /** Template matching below 80 ms is intentionally unsupported. */
+    private static final long MIN_TEMPLATE_SCAN_MS = 80L;
+    /** Preserve event ordering and the schema's 10 ms click floor. */
+    private static final long MIN_TOUCH_DOWN_MS = 10L;
     /** Small neighbourhood around the configured scene rectangle for the hot path. */
     private static final int FAST_VALIDATE_RADIUS = 4;
     private static final int FAST_VALIDATE_ANCHORS = 32;
@@ -86,6 +89,8 @@ final class AiTriggerSpeedHook {
     private static final String TRACE_TAG = "LS_Augment_AI";
 
     private static final String ENABLED = FeatureSettings.AI_TRIGGER_ENABLED;
+    private static final String GAME_MASTER = FeatureSettings.GAME_MASTER;
+    private static final String DIAGNOSTICS = FeatureSettings.AI_TRIGGER_DIAGNOSTICS;
     private static final String TEMPLATE_SCAN = FeatureSettings.AI_TRIGGER_TEMPLATE_SCAN_MS;
     private static final String CLICK_DELAY = FeatureSettings.AI_TRIGGER_CLICK_MS;
     private static final String COOLDOWN = FeatureSettings.AI_TRIGGER_COOLDOWN_MS;
@@ -93,11 +98,12 @@ final class AiTriggerSpeedHook {
 
     private static volatile Config cachedConfig;
     private static volatile long lastConfigRead;
-    private static volatile long lastDiagnostic;
     private static final AtomicLong TRACE_SEQUENCE = new AtomicLong();
     private static final ThreadLocal<SceneFrame> LAST_SCENE_FRAME = new ThreadLocal<>();
     /** Template Mats are stable for a policy lifetime; retain their decoded pixels by identity. */
     private static final Map<Object, TemplateSnapshot> TEMPLATE_CACHE = new WeakHashMap<>();
+    private static final Map<Object, FrameRecognition> FRAME_CACHE = new WeakHashMap<>();
+    private static final Map<String, Long> LAST_ENGINE_DIAGNOSTIC = new HashMap<>();
 
     private AiTriggerSpeedHook() { }
 
@@ -409,6 +415,9 @@ final class AiTriggerSpeedHook {
         Long replacement = replacementFor(module, chain.getThisObject(),
                 what, originalDelay, packageName);
         traceTouchSchedule(chain.getThisObject(), packageName, what, originalDelay, replacement);
+        if (replacement != null && alreadyQueued(chain.getThisObject(), what)) {
+            return Boolean.TRUE;
+        }
         return replacement == null ? chain.proceed()
                 : chain.proceed(new Object[]{chain.getArg(0), replacement});
     }
@@ -422,6 +431,9 @@ final class AiTriggerSpeedHook {
         Long replacement = replacementFor(module, chain.getThisObject(), what,
                 originalDelay, packageName);
         traceTouchSchedule(chain.getThisObject(), packageName, what, originalDelay, replacement);
+        if (replacement != null && alreadyQueued(chain.getThisObject(), what)) {
+            return Boolean.TRUE;
+        }
         return replacement == null ? chain.proceed()
                 : chain.proceed(new Object[]{chain.getArg(0), replacement});
     }
@@ -494,6 +506,15 @@ final class AiTriggerSpeedHook {
         return what >= 101 && what <= 104;
     }
 
+    private static boolean alreadyQueued(Object owner, int what) {
+        if (!(owner instanceof Handler) || isTouchMessage(what)) return false;
+        try {
+            return ((Handler) owner).hasMessages(what);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private static Object interceptGameLabPostDelayed(AugmentModule module, Chain chain)
             throws Throwable {
         Config config = config(module, chain.getThisObject());
@@ -502,9 +523,8 @@ final class AiTriggerSpeedHook {
         if (!config.enabled || delay != 2000L || !isGameLabDetectRunnable(callback)) {
             return chain.proceed();
         }
-        long target = Math.max(FAST_TEMPLATE_SCAN_MS,
-                Math.min(delay, Math.min((long) config.templateScanMs,
-                        FAST_TEMPLATE_SCAN_MS)));
+        long target = AiTriggerTimingPolicy.scanDelay(
+                delay, config.templateScanMs, MIN_TEMPLATE_SCAN_MS);
         traceStage("GAMELAB_SCAN_POST originalDelay=" + delay + " scheduledDelay=" + target
                 + " runnable=" + callback.getClass().getName());
         hit(module, GAME_LAB_PACKAGE + "|scan_post|" + delay + "->" + target);
@@ -538,9 +558,8 @@ final class AiTriggerSpeedHook {
         Handler handler = (Handler) handlerValue;
         Runnable runnable = (Runnable) runnableValue;
         long original = intField(toy, "MSG_DELAY_TIME", 2000);
-        long target = Math.max(FAST_TEMPLATE_SCAN_MS,
-                Math.min(original, Math.min((long) config.templateScanMs,
-                        FAST_TEMPLATE_SCAN_MS)));
+        long target = AiTriggerTimingPolicy.scanDelay(
+                original, config.templateScanMs, MIN_TEMPLATE_SCAN_MS);
         handler.removeCallbacks(runnable);
         traceStage("GAMELAB_SCAN_SCHEDULE owner=" + toy.getClass().getName()
                 + " originalDelay=" + original + " scheduledDelay=" + target);
@@ -657,7 +676,8 @@ final class AiTriggerSpeedHook {
         String reason = null;
         if (PLUGIN_PACKAGE.equals(packageName)) {
             if (TEMPLATE_HANDLER.equals(handler) && delay == 2000L) {
-                target = config.templateScanMs;
+                target = AiTriggerTimingPolicy.scanDelay(
+                        delay, config.templateScanMs, MIN_TEMPLATE_SCAN_MS);
                 reason = "template_scan";
             } else if (CLICK_HANDLER.equals(handler)) {
                 // TouchScreenPlugin's three delayed messages are one click
@@ -669,7 +689,8 @@ final class AiTriggerSpeedHook {
                 // Keep the transaction ordered while shortening its internal
                 // timings to the configured极速 click delay.
                 if (what == 102 && delay == 50L) {
-                    target = FAST_TOUCH_DOWN_MS;
+                    target = Math.max(MIN_TOUCH_DOWN_MS,
+                            Math.min((long) config.clickDelayMs, delay));
                     reason = "touch_down";
                 } else if (what == 103 && delay == 450L) {
                     target = Math.max(config.clickDelayMs + 25L,
@@ -700,7 +721,7 @@ final class AiTriggerSpeedHook {
             }
         } else if (GAME_ASSIST_PACKAGE.equals(packageName)
                 && YOLO_HANDLER.equals(handler) && what == 2 && delay == 1500L) {
-            target = config.yoloScanMs;
+            target = AiTriggerTimingPolicy.scanDelay(delay, config.yoloScanMs, 150L);
             reason = "yolo_scan";
         }
         if (target < 0 || target >= delay) {
@@ -804,7 +825,7 @@ final class AiTriggerSpeedHook {
                         + "->" + delayMs);
             }
         } catch (Throwable error) {
-            module.logFeatureError("AI_POLICY_RESCHEDULE_FAILED", error);
+            error(module, "plugin", "policy_reschedule", error);
         }
     }
 
@@ -825,9 +846,7 @@ final class AiTriggerSpeedHook {
                         (int[]) idsValue);
             }
         } catch (Throwable error) {
-            module.logFeatureError("AI_GAMELAB_SCENE_RESTORE_FAILED", error);
-            writeDiagnostic(module, "last_error", "scene_restore|"
-                    + error.getClass().getSimpleName());
+            error(module, "gamelab", "scene_restore", error);
         }
         return result;
     }
@@ -974,9 +993,18 @@ final class AiTriggerSpeedHook {
         Config config = config(module, chain.getThisObject());
         if (!config.enabled) return chain.proceed();
 
+        Object scene = chain.getThisObject();
+        Object template = readField(scene, "mSceneTemplateSrc");
+        long frameDigest = frameDigest(chain.getArg(0));
+        if (isRepeatedNonMatch(scene, template, frameDigest, config.templateScanMs)) {
+            hit(module, GAME_LAB_PACKAGE + "|same_frame_skip");
+            return Boolean.FALSE;
+        }
+
         Object consumerValue = chain.getArg(2);
         if (!(consumerValue instanceof Consumer)) {
             hit(module, GAME_LAB_PACKAGE + "|reject_consumer");
+            rememberFrame(scene, template, frameDigest, false);
             return Boolean.FALSE;
         }
         Consumer<Object> consumer = (Consumer<Object>) consumerValue;
@@ -985,23 +1013,27 @@ final class AiTriggerSpeedHook {
         LAST_SCENE_FRAME.remove();
         try {
             Object result = chain.proceed(new Object[]{chain.getArg(0), chain.getArg(1), buffer});
-            if (!(result instanceof Boolean) || !((Boolean) result)) return result;
+            if (!(result instanceof Boolean) || !((Boolean) result)) {
+                rememberFrame(scene, template, frameDigest, false);
+                return result;
+            }
             int policyId = intField(chain.getThisObject(), "mPolicyId", -1);
             traceStage("RECOGNITION_MATCH policy=" + policyId
                     + " pendingEvents=" + pending.size());
             SceneFrame frame = LAST_SCENE_FRAME.get();
-            Object template = readField(chain.getThisObject(), "mSceneTemplateSrc");
             if (frame == null || frame.scene != chain.getThisObject()
                     || !hasMatchingForeground(frame, template)) {
                 traceStage("RECOGNITION_REJECT_TEMPLATE policy=" + policyId);
                 hit(module, GAME_LAB_PACKAGE + "|reject_template|"
                         + policyId);
+                rememberFrame(scene, template, frameDigest, false);
                 return Boolean.FALSE;
             }
             if (pending.isEmpty()) {
                 traceStage("RECOGNITION_REJECT_EMPTY_EVENT policy=" + policyId);
                 hit(module, GAME_LAB_PACKAGE + "|reject_empty_event|"
                         + policyId);
+                rememberFrame(scene, template, frameDigest, false);
                 return Boolean.FALSE;
             }
             traceStage("ACTION_EVENT_DELIVERY_BEGIN policy=" + policyId
@@ -1012,6 +1044,7 @@ final class AiTriggerSpeedHook {
             hit(module, GAME_LAB_PACKAGE + "|verified|"
                     + policyId);
             traceStage("RECOGNITION_VERIFIED policy=" + policyId);
+            rememberFrame(scene, template, frameDigest, true);
             return result;
         } finally {
             LAST_SCENE_FRAME.remove();
@@ -1169,6 +1202,43 @@ final class AiTriggerSpeedHook {
         }
     }
 
+    private static long frameDigest(Object frame) {
+        if (frame == null) return Long.MIN_VALUE;
+        try {
+            MatPixels pixels = MatPixels.read(frame);
+            if (pixels == null) return Long.MIN_VALUE;
+            long value = 1469598103934665603L;
+            value = (value ^ pixels.rows) * 1099511628211L;
+            value = (value ^ pixels.cols) * 1099511628211L;
+            value = (value ^ pixels.channels) * 1099511628211L;
+            value = (value ^ Arrays.hashCode(pixels.values)) * 1099511628211L;
+            return value;
+        } catch (Throwable ignored) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    private static boolean isRepeatedNonMatch(Object owner, Object template,
+            long digest, int scanMs) {
+        if (owner == null || template == null || digest == Long.MIN_VALUE) return false;
+        synchronized (FRAME_CACHE) {
+            FrameRecognition previous = FRAME_CACHE.get(owner);
+            return previous != null && previous.template == template
+                    && previous.digest == digest && !previous.matched
+                    && SystemClock.uptimeMillis() - previous.checkedAt
+                    <= Math.max(500L, Math.min(5000L, scanMs * 4L));
+        }
+    }
+
+    private static void rememberFrame(Object owner, Object template,
+            long digest, boolean matched) {
+        if (owner == null || template == null || digest == Long.MIN_VALUE) return;
+        synchronized (FRAME_CACHE) {
+            FRAME_CACHE.put(owner, new FrameRecognition(
+                    template, digest, matched, SystemClock.uptimeMillis()));
+        }
+    }
+
     private static int matchingAnchors(MatPixels screen, MatPixels sample,
             List<Integer> anchors, int left, int top, double[] screenBackground) {
         int matched = 0;
@@ -1238,9 +1308,11 @@ final class AiTriggerSpeedHook {
             try {
                 Context context = FeatureSettings.from(owner);
                 value = new Config(
-                        FeatureSettings.enabled(context, ENABLED, false),
-                        FeatureSettings.integer(context, TEMPLATE_SCAN, 180, 40, 2000),
-                        FeatureSettings.integer(context, CLICK_DELAY, 25, 5, 500),
+                        FeatureSettings.enabled(context, GAME_MASTER, false)
+                                && FeatureSettings.enabled(context, ENABLED, false),
+                        FeatureSettings.enabled(context, DIAGNOSTICS, false),
+                        FeatureSettings.integer(context, TEMPLATE_SCAN, 180, 80, 2000),
+                        FeatureSettings.integer(context, CLICK_DELAY, 25, 10, 500),
                         FeatureSettings.integer(context, COOLDOWN, 180, 50, 30000),
                         FeatureSettings.integer(context, YOLO_SCAN, 400, 150, 1500));
             } catch (Throwable ignored) {
@@ -1257,7 +1329,10 @@ final class AiTriggerSpeedHook {
      * does not write Settings.Global on the hot path, so timing is unaffected.
      */
     private static void traceStage(String value) {
+        Config current = cachedConfig;
+        if (current == null || !current.enabled || !current.diagnostics) return;
         try {
+            HookTelemetry.detail("AI",value);
             long sequence = TRACE_SEQUENCE.incrementAndGet();
             Log.i(TRACE_TAG, "AI_STAGE seq=" + sequence
                     + " wall=" + System.currentTimeMillis()
@@ -1276,13 +1351,31 @@ final class AiTriggerSpeedHook {
 
     private static void hit(AugmentModule module, String value) {
         long now = System.currentTimeMillis();
-        if (now - lastDiagnostic < 500L) return;
-        lastDiagnostic = now;
-        writeDiagnostic(module, "last_hit", value + "|" + now);
         String scoped = value.startsWith(PLUGIN_PACKAGE) ? "plugin"
                 : value.startsWith(GAME_LAB_PACKAGE) ? "gamelab"
                 : value.startsWith(GAME_ASSIST_PACKAGE) ? "assist" : "other";
+        synchronized (LAST_ENGINE_DIAGNOSTIC) {
+            Long previous = LAST_ENGINE_DIAGNOSTIC.get(scoped);
+            if (previous != null && now - previous < 5000L) return;
+            LAST_ENGINE_DIAGNOSTIC.put(scoped, now);
+        }
+        writeDiagnostic(module, "last_hit", value + "|" + now);
         writeDiagnostic(module, "last_hit_" + scoped, value + "|" + now);
+    }
+
+    private static void error(AugmentModule module, String engine, String stage,
+            Throwable error) {
+        long now = System.currentTimeMillis();
+        String scoped = "error:" + engine;
+        synchronized (LAST_ENGINE_DIAGNOSTIC) {
+            Long previous = LAST_ENGINE_DIAGNOSTIC.get(scoped);
+            if (previous != null && now - previous < 5_000L) return;
+            LAST_ENGINE_DIAGNOSTIC.put(scoped, now);
+        }
+        if (module != null) module.logFeatureError(
+                "AI_" + stage.toUpperCase(Locale.ROOT), error);
+        writeDiagnostic(module, "last_error", engine + '|' + stage + '|'
+                + (error == null ? "unknown" : error.getClass().getSimpleName()) + '|' + now);
     }
 
     private static void writeDiagnostic(AugmentModule module, String suffix, String value) {
@@ -1618,17 +1711,33 @@ final class AiTriggerSpeedHook {
         }
     }
 
+    private static final class FrameRecognition {
+        final Object template;
+        final long digest;
+        final boolean matched;
+        final long checkedAt;
+
+        FrameRecognition(Object template, long digest, boolean matched, long checkedAt) {
+            this.template = template;
+            this.digest = digest;
+            this.matched = matched;
+            this.checkedAt = checkedAt;
+        }
+    }
+
     private static final class Config {
-        static final Config DISABLED = new Config(false, 180, 25, 180, 400);
+        static final Config DISABLED = new Config(false, false, 180, 25, 180, 400);
         final boolean enabled;
+        final boolean diagnostics;
         final int templateScanMs;
         final int clickDelayMs;
         final int cooldownMs;
         final int yoloScanMs;
 
-        Config(boolean enabled, int templateScanMs, int clickDelayMs,
+        Config(boolean enabled, boolean diagnostics, int templateScanMs, int clickDelayMs,
                 int cooldownMs, int yoloScanMs) {
             this.enabled = enabled;
+            this.diagnostics = diagnostics;
             this.templateScanMs = templateScanMs;
             this.clickDelayMs = clickDelayMs;
             this.cooldownMs = cooldownMs;

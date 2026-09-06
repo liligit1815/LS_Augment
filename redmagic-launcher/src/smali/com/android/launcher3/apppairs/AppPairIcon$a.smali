@@ -1,0 +1,124 @@
+.class Lcom/android/launcher3/apppairs/AppPairIcon$a;
+.super Landroid/util/FloatProperty;
+.source "AppPairIcon.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/android/launcher3/apppairs/AppPairIcon;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "Landroid/util/FloatProperty<",
+        "Lcom/android/launcher3/apppairs/AppPairIcon;",
+        ">;"
+    }
+.end annotation
+
+
+# direct methods
+.method constructor <init>(Ljava/lang/String;)V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0, p1}, Landroid/util/FloatProperty;-><init>(Ljava/lang/String;)V
+
+    .line 2
+    .line 3
+    .line 4
+    return-void
+.end method
+
+
+# virtual methods
+.method public a(Lcom/android/launcher3/apppairs/AppPairIcon;)Ljava/lang/Float;
+    .locals 0
+
+    .line 1
+    invoke-static {p1}, Lcom/android/launcher3/apppairs/AppPairIcon;->b(Lcom/android/launcher3/apppairs/AppPairIcon;)Lcom/android/launcher3/apppairs/AppPairIconGraphic;
+
+    .line 2
+    .line 3
+    .line 4
+    move-result-object p0
+
+    .line 5
+    invoke-virtual {p0}, Lcom/android/launcher3/apppairs/AppPairIconGraphic;->getHoverScale()F
+
+    .line 6
+    .line 7
+    .line 8
+    move-result p0
+
+    .line 9
+    invoke-static {p0}, Ljava/lang/Float;->valueOf(F)Ljava/lang/Float;
+
+    .line 10
+    .line 11
+    .line 12
+    move-result-object p0
+
+    .line 13
+    return-object p0
+.end method
+
+.method public b(Lcom/android/launcher3/apppairs/AppPairIcon;F)V
+    .locals 0
+
+    .line 1
+    invoke-static {p1}, Lcom/android/launcher3/apppairs/AppPairIcon;->b(Lcom/android/launcher3/apppairs/AppPairIcon;)Lcom/android/launcher3/apppairs/AppPairIconGraphic;
+
+    .line 2
+    .line 3
+    .line 4
+    move-result-object p0
+
+    .line 5
+    invoke-virtual {p0, p2}, Lcom/android/launcher3/apppairs/AppPairIconGraphic;->setHoverScale(F)V
+
+    .line 6
+    .line 7
+    .line 8
+    return-void
+.end method
+
+.method public bridge synthetic get(Ljava/lang/Object;)Ljava/lang/Object;
+    .locals 0
+
+    .line 1
+    check-cast p1, Lcom/android/launcher3/apppairs/AppPairIcon;
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, p1}, Lcom/android/launcher3/apppairs/AppPairIcon$a;->a(Lcom/android/launcher3/apppairs/AppPairIcon;)Ljava/lang/Float;
+
+    .line 4
+    .line 5
+    .line 6
+    move-result-object p0
+
+    .line 7
+    return-object p0
+.end method
+
+.method public bridge synthetic setValue(Ljava/lang/Object;F)V
+    .locals 0
+
+    .line 1
+    check-cast p1, Lcom/android/launcher3/apppairs/AppPairIcon;
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, p1, p2}, Lcom/android/launcher3/apppairs/AppPairIcon$a;->b(Lcom/android/launcher3/apppairs/AppPairIcon;F)V
+
+    .line 4
+    .line 5
+    .line 6
+    return-void
+.end method

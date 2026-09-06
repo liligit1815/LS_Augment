@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="moodbad" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group_2">
+        <path android:name="path_6" android:pathData="M 7.589 16.447 C 8.224 14.627 9.956 13.318 11.993 13.318 C 14.032 13.318 15.765 14.628 16.398 16.451" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <group android:name="group">
+        <path android:name="path_2" android:fillColor="#000000" android:pathData="M 17.344 9.083 C 17.344 9.911 16.672 10.583 15.844 10.583 C 15.016 10.583 14.344 9.911 14.344 9.083 C 14.344 8.255 15.016 7.583 15.844 7.583 C 16.672 7.583 17.344 8.255 17.344 9.083 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_1">
+        <path android:name="path_3" android:fillColor="#000000" android:pathData="M 8.156 7.583 C 8.984 7.583 9.656 8.255 9.656 9.083 C 9.656 9.911 8.984 10.583 8.156 10.583 C 7.328 10.583 6.656 9.911 6.656 9.083 C 6.656 8.255 7.328 7.583 8.156 7.583 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group1">
+        <path android:name="path" android:pathData="M 12 2.75 C 9.548 2.75 7.193 3.725 5.459 5.459 C 3.725 7.193 2.75 9.548 2.75 12 C 2.75 14.452 3.725 16.807 5.459 18.541 C 7.193 20.275 9.548 21.25 12 21.25 C 14.452 21.25 16.807 20.275 18.541 18.541 C 20.275 16.807 21.25 14.452 21.25 12 C 21.25 9.548 20.275 7.193 18.541 5.459 C 16.807 3.725 14.452 2.75 12 2.75 Z" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeMiterLimit="10.0" />
+    </group>
+</vector>

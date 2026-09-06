@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="6.0dp" android:insetRight="6.0dp" android:insetTop="6.0dp" android:insetBottom="6.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <selector>
+        <item android:state_pressed="true">
+            <nine-patch android:src="@drawable/btn_default_bg_mfvx" android:tint="@color/mfvc_white_elements_color_transp_8" />
+        </item>
+        <item android:state_enabled="false">
+            <nine-patch android:src="@drawable/btn_default_bg_mfvx" android:tint="@color/mfvc_white_elements_color_transp_12" />
+        </item>
+        <item>
+            <nine-patch android:src="@drawable/btn_default_bg_mfvx" android:tint="@color/mfvc_white_elements_color_transp_12" />
+        </item>
+    </selector>
+</inset>

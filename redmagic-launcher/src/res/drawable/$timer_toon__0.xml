@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="timer_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group">
+        <path android:name="top" android:fillColor="#8f8f8f" android:pathData="M 15.25 1.742 C 15.25 2.234 14.85 2.635 14.358 2.635 L 9.642 2.635 C 9.15 2.635 8.75 2.235 8.75 1.742 C 8.75 1.251 9.15 0.85 9.642 0.85 L 14.359 0.85 C 14.85 0.85 15.25 1.25 15.25 1.742 Z" android:strokeWidth="1.0" />
+    </group>
+    <path android:name="bg" android:fillColor="#8f8f8f" android:pathData="M 21.5 12.851 C 21.5 18.089 17.238 22.35 12 22.35 C 6.762 22.35 2.5 18.089 2.5 12.851 C 2.5 7.612 6.762 3.35 12 3.35 C 14.215 3.35 16.374 4.137 18.082 5.565 C 18.101 5.58 18.132 5.58 18.152 5.561 L 19.383 4.332 C 19.756 3.961 20.409 3.962 20.778 4.331 C 21.162 4.715 21.162 5.341 20.779 5.727 L 19.523 6.98 C 19.505 6.999 19.503 7.027 19.519 7.049 C 20.796 8.701 21.5 10.762 21.5 12.851 Z" android:strokeWidth="1.0" />
+    <group android:name="group_1" android:pivotX="12.0" android:pivotY="12.85">
+        <path android:name="zhizhen" android:fillColor="#ffffff" android:pathData="M 12.9 8.651 C 12.9 8.155 12.496 7.751 12 7.751 C 11.504 7.751 11.1 8.155 11.1 8.651 L 11.1 12.85 C 11.1 13.346 11.504 13.75 12 13.75 C 12.496 13.75 12.9 13.346 12.9 12.85 L 12.9 8.651 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

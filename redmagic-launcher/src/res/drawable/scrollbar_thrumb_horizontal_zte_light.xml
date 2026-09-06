@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<nine-patch android:src="@drawable/scrollbar_handle_horizontal_zte_light" android:tint="@color/mfv_common_scroll_bar"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

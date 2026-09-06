@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:layout_width="match_parent" android:layout_height="64.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.zte.mifavor.widget.EditTextZTE android:layout_gravity="top" android:id="@id/input" android:layout_width="match_parent" android:layout_height="52.0dp" android:hint="" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding" style="@style/mfvc_primary_font" />
+    <TextView android:gravity="start|top" android:layout_gravity="bottom" android:id="@id/errorMessage" android:layout_width="match_parent" android:layout_height="22.0dp" android:text="" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding" style="@style/mfvc_common_tf_wrong_font" />
+</FrameLayout>

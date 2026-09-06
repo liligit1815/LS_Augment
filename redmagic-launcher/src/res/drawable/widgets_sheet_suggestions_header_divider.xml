@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape android:shape="rectangle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/components_sheet_suggestions_header_divider_color" />
+    <size android:height="1.0dp" />
+</shape>

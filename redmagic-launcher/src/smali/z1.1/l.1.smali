@@ -1,0 +1,46 @@
+.class public final synthetic Lz1/l;
+.super Ljava/lang/Object;
+.source "R8$$SyntheticClass"
+
+# interfaces
+.implements Lcom/android/launcher3/util/a2;
+
+
+# instance fields
+.field public final synthetic g:Lz1/m;
+
+
+# direct methods
+.method public synthetic constructor <init>(Lz1/m;)V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    .line 2
+    .line 3
+    .line 4
+    iput-object p1, p0, Lz1/l;->g:Lz1/m;
+
+    .line 5
+    .line 6
+    return-void
+.end method
+
+
+# virtual methods
+.method public final close()V
+    .locals 0
+
+    .line 1
+    iget-object p0, p0, Lz1/l;->g:Lz1/m;
+
+    .line 2
+    .line 3
+    invoke-static {p0}, Lz1/m;->b(Lz1/m;)V
+
+    .line 4
+    .line 5
+    .line 6
+    return-void
+.end method

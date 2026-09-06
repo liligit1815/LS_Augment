@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$fullscreen_fullscreenexit__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="fullscreen_upleft1" android:animation="@drawable/$fullscreen_fullscreenexit__1" />
+    <target android:name="fullscreen_upleft2" android:animation="@drawable/$fullscreen_fullscreenexit__2" />
+    <target android:name="fullscreen_upright1" android:animation="@drawable/$fullscreen_fullscreenexit__3" />
+    <target android:name="fullscreen_upright2" android:animation="@drawable/$fullscreen_fullscreenexit__4" />
+    <target android:name="fullscreen_downright1" android:animation="@drawable/$fullscreen_fullscreenexit__5" />
+    <target android:name="fullscreen_downright2" android:animation="@drawable/$fullscreen_fullscreenexit__6" />
+    <target android:name="fullscreen_downleft1" android:animation="@drawable/$fullscreen_fullscreenexit__7" />
+    <target android:name="fullscreen_downleft2" android:animation="@drawable/$fullscreen_fullscreenexit__8" />
+</animated-vector>

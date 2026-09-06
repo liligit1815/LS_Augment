@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.secondarydisplay.SecondaryDragLayer android:id="@id/drag_layer" android:padding="@dimen/dynamic_grid_edge_margin" android:clipChildren="false" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <GridView android:theme="@style/HomeScreenElementTheme" android:layout_gravity="center|top" android:id="@id/workspace_grid" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_margin="@dimen/dynamic_grid_edge_margin" android:layout_marginBottom="100.0dp" />
+    <ImageButton android:layout_gravity="end|bottom" android:id="@id/all_apps_button" android:background="@drawable/bg_all_apps_button" android:padding="16.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="40.0dp" android:src="@drawable/ic_apps" android:onClick="onAppsButtonClicked" android:contentDescription="@string/all_apps_button_label" />
+    <com.android.launcher3.allapps.SecondaryLauncherAllAppsContainerView android:layout_gravity="end|bottom" android:id="@id/apps_view" android:background="@drawable/round_rect_primary" android:focusable="false" android:visibility="invisible" android:saveEnabled="false" android:clipChildren="true" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent" />
+</com.android.launcher3.secondarydisplay.SecondaryDragLayer>

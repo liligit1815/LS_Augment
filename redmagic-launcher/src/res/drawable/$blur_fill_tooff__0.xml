@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="blur_fill_tooff" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="blur_fill">
+        <path android:name="blur_fill_lines" android:fillColor="#000" android:pathData="M 2.281 4.755 C 2.051 4.755 1.82 4.667 1.644 4.491 L 1.588 4.434 C 1.236 4.083 1.236 3.513 1.588 3.162 C 1.94 2.81 2.509 2.81 2.86 3.162 L 2.917 3.219 C 3.269 3.571 3.269 4.141 2.917 4.492 C 2.742 4.667 2.512 4.755 2.281 4.755 Z" android:strokeWidth="1.0" android:fillAlpha="0.0" />
+        <clip-path android:name="mask" android:pathData="M 0 0 L 0 24 L 24 24 L 24 0 L 0 0 Z M 3.522 3.449 C 3.292 3.449 3.061 3.361 2.885 3.185 L 2.861 3.161 C 2.51 2.81 2.51 2.24 2.861 1.889 C 3.213 1.537 3.782 1.537 4.133 1.889 L 4.158 1.913 C 4.51 2.265 4.51 2.835 4.158 3.186 C 3.983 3.362 3.752 3.449 3.522 3.449 Z" />
+        <path android:name="path" android:fillColor="#000" android:pathData="M 18.911 9.164 L 13.341 1.842 C 13.041 1.447 12.52 1.249 12 1.249 C 11.48 1.249 10.96 1.446 10.661 1.841 L 5.062 9.201 C 4.069 10.582 3.5 12.344 3.5 14.032 C 3.5 18.487 7.393 22.25 12 22.25 C 16.608 22.25 20.5 18.487 20.5 14.032 C 20.5 12.343 19.925 10.575 18.911 9.164 Z M 12.499 19.531 C 12.003 19.531 11.599 19.127 11.599 18.631 C 11.599 18.135 12.003 17.731 12.499 17.731 C 14.209 17.731 15.6 16.339 15.6 14.629 C 15.6 14.133 16.004 13.729 16.5 13.729 C 16.996 13.729 17.4 14.133 17.4 14.629 C 17.4 17.331 15.202 19.531 12.499 19.531 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

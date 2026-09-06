@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <PreferenceCategory android:key="category_settings_preference_key_prompt" app:allowDividerAbove="true" app:allowDividerBelow="false" />
+    <com.zte.mifavor.androidx.preference.PreferenceZTE android:persistent="true" android:title="@string/settings_prompt" android:key="@string/settings_preference_key_prompt" app:iconSpaceReserved="false" />
+    <PreferenceCategory android:key="category_settings_preference_key_open" app:allowDividerAbove="true" app:allowDividerBelow="true" />
+    <PreferenceCategory android:key="category03" app:allowDividerAbove="false" app:allowDividerBelow="true" />
+</androidx.preference.PreferenceScreen>

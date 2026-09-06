@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="outer_lockoff_on" android:height="24.0dp" android:width="28.0dp" android:viewportWidth="28.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group">
+        <path android:name="path_1" android:pathData="M 15.7 8.179 L 15.7 6.892 C 15.7 4.841 17.357 3.179 19.4 3.179 C 21.443 3.179 23.1 4.842 23.1 6.892 L 23.1 8.179" android:strokeColor="#000000" android:strokeWidth="2.45" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <path android:name="path" android:fillColor="#000" android:pathData="M 20.099 10.727 L 20.092 10.531 C 19.984 9.212 18.856 8.178 17.524 8.178 L 6.476 8.178 C 5.056 8.178 3.9 9.328 3.9 10.74 L 3.9 19.436 C 3.9 20.85 5.056 22 6.476 22 L 17.524 22 C 18.944 22 20.1 20.85 20.1 19.437 L 20.099 10.727 Z M 12.977 15.726 L 12.892 15.77 L 12.893 17.652 C 12.893 18.099 12.562 18.469 12.131 18.532 L 12 18.542 C 11.507 18.542 11.106 18.143 11.106 17.652 L 11.105 15.769 L 11.022 15.726 C 10.505 15.419 10.16 14.888 10.102 14.286 L 10.093 14.103 C 10.093 13.055 10.946 12.206 11.999 12.206 C 13.051 12.206 13.905 13.055 13.905 14.103 C 13.906 14.78 13.545 15.388 12.977 15.726 Z" android:strokeWidth="1.0" />
+</vector>

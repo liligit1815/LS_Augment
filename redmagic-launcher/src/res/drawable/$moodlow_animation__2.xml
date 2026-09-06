@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="50" android:startOffset="50" android:valueFrom="#8a000000" android:valueTo="#ffad0a" android:valueType="colorType" android:propertyName="strokeColor" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="250" android:startOffset="50" android:valueFrom="M 7.75 15.75 L 12 15.75 L 16.25 15.75" android:valueTo="M 9 15.75 L 12 15.75 L 15 15.75" android:valueType="pathType" android:propertyName="pathData" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="200" android:startOffset="350" android:valueFrom="M 9 15.75 L 12 15.75 L 15 15.75" android:valueTo="M 7.75 15.75 L 12 15.75 L 16.25 15.75" android:valueType="pathType" android:propertyName="pathData" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="200" android:startOffset="625" android:valueFrom="M 7.75 15.75 L 12 15.75 L 16.25 15.75" android:valueTo="M 9 15.75 L 12 15.75 L 15 15.75" android:valueType="pathType" android:propertyName="pathData" />
+    <objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="200" android:startOffset="874" android:valueFrom="M 9 15.75 L 12 15.75 L 15 15.75" android:valueTo="M 7.75 15.75 L 12 15.75 L 16.25 15.75" android:valueType="pathType" android:propertyName="pathData" />
+</set>

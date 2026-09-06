@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.iconarrange.MenuIconArrange android:id="@id/menu_icon_arrange" style="@style/BaseWidthHeightDims.MenuTabsSelector"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.widget.ComponentsFullSheet android:orientation="vertical" android:id="@id/container" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.android.launcher3.views.SpringRelativeLayout android:layout_width="match_parent" android:layout_height="match_parent" android:elevation="4.0dp">
+        <com.android.launcher3.widget.ComponentsRecyclerView android:id="@id/components_container" android:paddingBottom="@dimen/components_container_padding_bottom" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="@dimen/component_recycle_view_margin_top" />
+        <include layout="@layout/toolbar_render_view" />
+        <include layout="@layout/components_full_sheet_toolbar" />
+        <TextView android:id="@id/fast_scroller_popup" android:layout_alignParentTop="true" android:layout_marginEnd="@dimen/fastscroll_popup_margin" android:layout_alignParentEnd="true" style="@style/FastScrollerPopup" />
+        <com.android.launcher3.widget.ComponentRecyclerViewFastScroller android:id="@id/fast_scroller" android:visibility="gone" android:layout_width="@dimen/fastscroll_width" android:layout_height="match_parent" android:layout_alignParentTop="true" android:layout_marginEnd="@dimen/fastscroll_end_margin" android:layout_alignParentEnd="true" />
+    </com.android.launcher3.views.SpringRelativeLayout>
+</com.android.launcher3.widget.ComponentsFullSheet>

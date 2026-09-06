@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="0.0dp" android:insetRight="0.0dp" android:insetTop="0.0dp" android:insetBottom="0.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <layer-list>
+        <item android:drawable="@drawable/mfv_dial_btn_bg" />
+        <item android:gravity="center" android:height="@dimen/mfvc_dial_on_icon_size" android:width="@dimen/mfvc_dial_on_icon_size" android:drawable="@drawable/call_full_dailer" />
+    </layer-list>
+</inset>

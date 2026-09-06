@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="80" android:startOffset="120" android:valueFrom="0" android:valueTo="-15" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="110" android:startOffset="200" android:valueFrom="-15" android:valueTo="10" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:interpolator/linear_out_slow_in" android:duration="90" android:startOffset="310" android:valueFrom="10" android:valueTo="0" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="80" android:startOffset="120" android:valueFrom="1" android:valueTo="0.95" android:valueType="floatType" android:propertyName="scaleX" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="80" android:startOffset="120" android:valueFrom="1" android:valueTo="0.95" android:valueType="floatType" android:propertyName="scaleY" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="110" android:startOffset="200" android:valueFrom="0.95" android:valueTo="1" android:valueType="floatType" android:propertyName="scaleX" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="110" android:startOffset="200" android:valueFrom="0.95" android:valueTo="1" android:valueType="floatType" android:propertyName="scaleY" />
+</set>

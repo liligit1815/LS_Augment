@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$vibration_notifications__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="notifications_linecenter" android:animation="@drawable/$vibration_notifications__1" />
+    <target android:name="down" android:animation="@drawable/$vibration_notifications__2" />
+    <target android:name="vibration_left" android:animation="@drawable/$vibration_notifications__3" />
+    <target android:name="vibration_right" android:animation="@drawable/$vibration_notifications__4" />
+    <target android:name="group" android:animation="@drawable/$vibration_notifications__5" />
+    <target android:name="vibration_right_1" android:animation="@drawable/$vibration_notifications__6" />
+    <target android:name="vibration_left_1" android:animation="@drawable/$vibration_notifications__7" />
+</animated-vector>

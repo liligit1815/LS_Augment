@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="refresh" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="refresh_line" android:pathData="M 21.234 12.537 C 20.957 17.396 16.928 21.25 12 21.25 C 6.892 21.25 2.75 17.109 2.75 12 C 2.75 6.892 6.892 2.75 12 2.75 C 15.435 2.75 18.432 4.623 20.027 7.401" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+        <group android:name="group_1" android:pivotX="12.0" android:pivotY="12.0">
+            <path android:name="path" android:fillColor="#000" android:pathData="M 18.134 4.838 C 17.725 5.101 17.729 5.609 17.922 5.885 C 17.927 5.892 17.943 5.912 17.943 5.912 L 17.976 5.953 L 17.99 5.969 L 18.002 5.98 L 18.008 5.99 L 16.221 7.777 C 16.11 7.888 16.092 8.073 16.177 8.244 C 16.205 8.301 16.243 8.351 16.287 8.394 C 16.377 8.484 16.492 8.544 16.61 8.556 L 16.936 8.597 L 20.732 8.597 C 20.732 8.597 21.065 8.6 21.158 8.464 C 21.23 8.359 21.248 8.224 21.169 8.039 C 20.686 6.909 19.989 5.849 19.068 4.929 L 19.039 4.9 L 19.005 4.873 L 18.988 4.858 L 18.977 4.85 L 18.961 4.839 C 18.961 4.839 18.576 4.553 18.134 4.838 Z" android:strokeWidth="1.0" />
+        </group>
+    </group>
+</vector>

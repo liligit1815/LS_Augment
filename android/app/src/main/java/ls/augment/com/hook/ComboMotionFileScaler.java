@@ -9,58 +9,63 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Comparator;
 
-/** Creates a private, disposable motion file with scaled MotionEvent times. */
+/** Worker-side transformation for one-key-combo recordings. */
 final class ComboMotionFileScaler {
-    private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
+    static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
+    static final String ALGORITHM_VERSION = "motion-time-v3";
     private static final String CACHE_DIRECTORY = "ls_augment_combo";
-    private static final String CACHE_FILE_PREFIX = "motion-v2-";
+    private static final String CACHE_FILE_PREFIX = "motion-v3-";
 
     private ComboMotionFileScaler() { }
 
-    static synchronized Result scale(File cacheDir, String sourcePath, float rate) {
-        if (cacheDir == null || sourcePath == null || sourcePath.trim().isEmpty()) {
-            return Result.failure("missing_path");
+    /** This method is called only by {@link ComboMotionCache}'s single worker. */
+    static Result scale(File cacheDir, ComboMotionCache.Request request) {
+        if (cacheDir == null || request == null || !request.valid) {
+            return Result.failure("invalid_request");
         }
-        if (!ComboSpeedPolicy.isValidRate(rate)) {
+        if (!ComboSpeedPolicy.isValidRate(request.rate)) {
             return Result.failure("invalid_rate");
         }
 
-        File source = new File(sourcePath);
+        File source = new File(request.normalizedPath);
         if (!source.isFile()) return Result.failure("source_missing");
-        long fileLength = source.length();
-        if (fileLength <= 0L || fileLength > MAX_FILE_BYTES) {
-            return Result.failure("source_size_" + fileLength);
-        }
-        long modifiedTime = source.lastModified();
-        String identity = ComboSpeedPolicy.cacheIdentity(
-                source.getName(), modifiedTime, rate);
-        String fileIdentity = ComboSpeedPolicy.cacheFileIdentity(source.getName());
-        if (identity == null || fileIdentity == null) {
-            return Result.failure("cache_identity");
+        if (source.length() != request.size || source.lastModified() != request.modifiedAt) {
+            return Result.failure("source_changed_before_read");
         }
 
+        File pending = null;
         try {
             File directory = new File(cacheDir, CACHE_DIRECTORY);
-            if ((!directory.isDirectory() && !directory.mkdirs())
-                    || !directory.isDirectory()) {
+            if ((!directory.isDirectory() && !directory.mkdirs()) || !directory.isDirectory()) {
                 return Result.failure("cache_unavailable");
             }
-            File destination = new File(
-                    directory, CACHE_FILE_PREFIX + identity + ".json");
-            File pending = new File(
-                    directory, CACHE_FILE_PREFIX + identity + ".pending");
-            String sourcePrefix = CACHE_FILE_PREFIX + fileIdentity + "-m";
-            String currentRevisionPrefix = sourcePrefix + modifiedTime + "-x";
-            cleanupLegacyFiles(directory);
-            cleanupSupersededFiles(directory, sourcePrefix,
-                    currentRevisionPrefix, destination, pending);
+
+            byte[] sourceBytes = readBytes(source, MAX_FILE_BYTES);
+            if (source.length() != request.size || source.lastModified() != request.modifiedAt) {
+                return Result.failure("source_changed_during_read");
+            }
+            String contentDigest = sha256(sourceBytes);
+            if (!contentDigest.equals(request.contentDigest)) {
+                return Result.failure("source_digest_changed");
+            }
+            String identity = sha256((ALGORITHM_VERSION + "\n"
+                    + request.normalizedPath + "\n" + request.size + "\n"
+                    + request.modifiedAt + "\n" + request.contentDigest + "\n"
+                    + Math.round(request.rate)).getBytes(StandardCharsets.UTF_8));
+            File destination = new File(directory, CACHE_FILE_PREFIX + identity + ".json");
+            cleanupWorkerSide(directory, destination);
             if (isUsableCache(destination)) {
-                if (pending.exists()) pending.delete();
                 return Result.cacheHit(destination.getAbsolutePath(), identity);
             }
 
-            JSONObject root = new JSONObject(readUtf8(source));
+            JSONObject root = new JSONObject(new String(sourceBytes, StandardCharsets.UTF_8));
             JSONArray events = root.optJSONArray("events");
             if (events == null || events.length() == 0) {
                 return Result.failure("events_missing");
@@ -70,8 +75,7 @@ final class ComboMotionFileScaler {
             long sourceLastSample = Long.MIN_VALUE;
             for (int index = 0; index < events.length(); index++) {
                 JSONObject event = events.optJSONObject(index);
-                if (event == null || !event.has("sampleEventTime")
-                        || !event.has("downTime")) {
+                if (event == null || !event.has("sampleEventTime") || !event.has("downTime")) {
                     return Result.failure("event_schema_" + index);
                 }
                 long sampleTime = event.getLong("sampleEventTime");
@@ -86,75 +90,37 @@ final class ComboMotionFileScaler {
             long outputLastSample = Long.MIN_VALUE;
             for (int index = 0; index < events.length(); index++) {
                 JSONObject event = events.getJSONObject(index);
-                long scaledDownTime = ComboSpeedPolicy.scaleTimestamp(
-                        event.getLong("downTime"), origin, rate);
-                long scaledSampleTime = ComboSpeedPolicy.scaleTimestamp(
-                        event.getLong("sampleEventTime"), origin, rate);
-                event.put("downTime", scaledDownTime);
-                event.put("sampleEventTime", scaledSampleTime);
-                outputLastSample = Math.max(outputLastSample, scaledSampleTime);
+                long scaledDown = ComboSpeedPolicy.scaleTimestamp(
+                        event.getLong("downTime"), origin, request.rate);
+                long scaledSample = ComboSpeedPolicy.scaleTimestamp(
+                        event.getLong("sampleEventTime"), origin, request.rate);
+                event.put("downTime", scaledDown);
+                event.put("sampleEventTime", scaledSample);
+                outputLastSample = Math.max(outputLastSample, scaledSample);
             }
 
-            writeUtf8(pending, root.toString());
-            if (destination.exists() && !destination.delete()) {
-                pending.delete();
-                return Result.failure("cache_replace");
+            byte[] output = root.toString().getBytes(StandardCharsets.UTF_8);
+            if (output.length <= 0 || output.length > MAX_FILE_BYTES * 2L) {
+                return Result.failure("output_size_" + output.length);
             }
-            if (!pending.renameTo(destination)) {
-                pending.delete();
-                return Result.failure("cache_commit");
-            }
+            pending = new File(directory, CACHE_FILE_PREFIX + identity + ".pending-"
+                    + Long.toUnsignedString(System.nanoTime()));
+            writeAndSync(pending, output);
+            publishAtomically(pending, destination);
+            pending = null;
 
             long sourceSpan = Math.max(0L, sourceLastSample - origin);
             long outputSpan = Math.max(0L, outputLastSample - origin);
-            cleanupSupersededFiles(directory, sourcePrefix,
-                    currentRevisionPrefix, destination, pending);
             return Result.generated(destination.getAbsolutePath(), identity,
                     events.length(), sourceSpan, outputSpan);
         } catch (Throwable error) {
             return Result.failure(error.getClass().getSimpleName());
+        } finally {
+            if (pending != null && pending.isFile()) pending.delete();
         }
     }
 
-    private static boolean isUsableCache(File file) {
-        return file.isFile() && file.length() > 0L && file.length() <= MAX_FILE_BYTES;
-    }
-
-    /** Remove files created by the pre-cache implementation. */
-    private static void cleanupLegacyFiles(File directory) {
-        File[] files = directory.listFiles();
-        if (files == null) return;
-        for (File file : files) {
-            String name = file.getName();
-            if (file.isFile() && name.startsWith("motion-")
-                    && !name.startsWith(CACHE_FILE_PREFIX)) {
-                file.delete();
-            }
-        }
-    }
-
-    /**
-     * A new recording with the same file name gets a new modification time.
-     * Keep all integer-rate variants for the current revision and discard
-     * only variants that belong to an older revision of that same recording.
-     */
-    private static void cleanupSupersededFiles(
-            File directory, String sourcePrefix, String currentRevisionPrefix,
-            File destination, File pending) {
-        File[] files = directory.listFiles();
-        if (files == null) return;
-        for (File file : files) {
-            if (!file.isFile() || file.equals(destination) || file.equals(pending)) continue;
-            String name = file.getName();
-            if (name.endsWith(".pending")
-                    || (name.startsWith(sourcePrefix)
-                    && !name.startsWith(currentRevisionPrefix))) {
-                file.delete();
-            }
-        }
-    }
-
-    private static String readUtf8(File source) throws IOException {
+    private static byte[] readBytes(File source, long maximumBytes) throws IOException {
         try (FileInputStream input = new FileInputStream(source);
              ByteArrayOutputStream output = new ByteArrayOutputStream(
                      (int) Math.min(source.length(), 64L * 1024L))) {
@@ -163,20 +129,104 @@ final class ComboMotionFileScaler {
             int read;
             while ((read = input.read(buffer)) != -1) {
                 total += read;
-                if (total > MAX_FILE_BYTES) throw new IOException("motion_too_large");
+                if (total > maximumBytes) throw new IOException("motion_too_large");
                 output.write(buffer, 0, read);
             }
-            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+            return output.toByteArray();
         }
     }
 
-    private static void writeUtf8(File destination, String value) throws IOException {
-        byte[] data = value.getBytes(StandardCharsets.UTF_8);
-        try (FileOutputStream output = new FileOutputStream(destination, false)) {
-            output.write(data);
+    /** Worker-side source fingerprint used as part of every in-memory and disk cache key. */
+    static String contentDigest(File source, long maximumBytes) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (FileInputStream input = new FileInputStream(source)) {
+            byte[] buffer = new byte[8192];
+            long total = 0L;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > maximumBytes) throw new IOException("motion_too_large");
+                digest.update(buffer, 0, read);
+            }
+        }
+        return hex(digest.digest());
+    }
+
+    private static void writeAndSync(File file, byte[] value) throws IOException {
+        try (FileOutputStream output = new FileOutputStream(file, false)) {
+            output.write(value);
             output.flush();
             output.getFD().sync();
         }
+    }
+
+    private static void publishAtomically(File pending, File destination) throws IOException {
+        try {
+            Files.move(pending.toPath(), destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            // Publishing through a copy/non-atomic fallback could expose a
+            // truncated JSON file after power loss. Keep this playback on the
+            // OEM source instead.
+            throw new IOException("atomic_move_unsupported", unsupported);
+        }
+    }
+
+    private static boolean isUsableCache(File file) {
+        if (!file.isFile() || file.length() <= 0L
+                || file.length() > MAX_FILE_BYTES * 2L) return false;
+        try {
+            JSONObject root = new JSONObject(new String(
+                    readBytes(file, MAX_FILE_BYTES * 2L), StandardCharsets.UTF_8));
+            JSONArray events = root.optJSONArray("events");
+            if (events == null || events.length() == 0) return false;
+            for (int index = 0; index < events.length(); index++) {
+                JSONObject event = events.optJSONObject(index);
+                if (event == null || !event.has("sampleEventTime")
+                        || !event.has("downTime")
+                        || event.getLong("sampleEventTime") < 0L
+                        || event.getLong("downTime") < 0L) return false;
+            }
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** Cache cleanup is intentionally worker-only and never runs in a playback Hook. */
+    private static void cleanupWorkerSide(File directory, File keep) {
+        File[] files = directory.listFiles();
+        if (files == null) return;
+        long now = System.currentTimeMillis();
+        for (File file : files) {
+            if (!file.isFile() || file.equals(keep)) continue;
+            String name = file.getName();
+            if (name.contains(".pending-") || name.startsWith("motion-v2-")
+                    || (now - file.lastModified()) > 7L * 24L * 60L * 60L * 1000L) {
+                file.delete();
+            }
+        }
+        files = directory.listFiles((dir, name) -> name.startsWith(CACHE_FILE_PREFIX)
+                && name.endsWith(".json"));
+        if (files == null || files.length <= 32) return;
+        Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+        for (int index = 32; index < files.length; index++) {
+            if (!files[index].equals(keep)) files[index].delete();
+        }
+    }
+
+    private static String sha256(byte[] value) throws Exception {
+        return hex(MessageDigest.getInstance("SHA-256").digest(value));
+    }
+
+    private static String hex(byte[] digest) {
+        StringBuilder out = new StringBuilder(digest.length * 2);
+        for (byte item : digest) {
+            int value = item & 0xff;
+            if (value < 0x10) out.append('0');
+            out.append(Integer.toHexString(value));
+        }
+        return out.toString();
     }
 
     static final class Result {
@@ -202,6 +252,11 @@ final class ComboMotionFileScaler {
             this.error = error;
         }
 
+        Result asPublishedHit() {
+            return success ? new Result(true, true, outputPath, cacheIdentity,
+                    eventCount, sourceSpanMs, outputSpanMs, "") : this;
+        }
+
         static Result generated(String outputPath, String cacheIdentity, int eventCount,
                 long sourceSpanMs, long outputSpanMs) {
             return new Result(true, false, outputPath, cacheIdentity, eventCount,
@@ -209,8 +264,7 @@ final class ComboMotionFileScaler {
         }
 
         static Result cacheHit(String outputPath, String cacheIdentity) {
-            return new Result(true, true, outputPath, cacheIdentity,
-                    0, 0L, 0L, "");
+            return new Result(true, true, outputPath, cacheIdentity, 0, 0L, 0L, "");
         }
 
         static Result failure(String error) {

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.zte.mifavor.utils.ShadowDrawable app:ad_bgColor="@color/mfv_common_loading_toast_bg_color" app:ad_radius="@dimen/loading_toast_bg_radius" app:ad_shadowColor="@color/mfvc_primary_foreground_color_transp_7" app:ad_shadowOffsetY="@dimen/loading_toast_bg_shadow_offset_y" app:ad_shadowSize="@dimen/loading_toast_bg_shadow_size"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" />

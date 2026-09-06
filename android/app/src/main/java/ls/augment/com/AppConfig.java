@@ -4,163 +4,108 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
-/** APK-private authoritative configuration plus best-effort Settings.Global mirrors. */
+/** APK-private authoritative configuration plus one atomic early-boot snapshot. */
 final class AppConfig {
+    /** Serializes multi-key preference snapshots across all AppConfig instances. */
+    private static final Object CONFIG_LOCK = new Object();
+    /** Prevents an older Root mirror from completing after a newer revision. */
+    private static final Object MIRROR_LOCK = new Object();
     private static final String PRIVATE_INITIALIZED = "private_initialized_v2";
-    private static final String RUNTIME_INITIALIZED = "runtime_initialized_v2";
+    private static final String RUNTIME_SNAPSHOT_INITIALIZED =
+            "runtime_snapshot_initialized_v1";
+    private static final String SNAPSHOT_REVISION = "snapshot_revision_v1";
+    private static final String SNAPSHOT_UPDATED_AT = "snapshot_updated_at_v1";
+    private static final String RETIRED_RECENTS_CLEANED = "retired_recents_cleaned_v1";
+    private static final String LEGACY_GLOBAL_CLEANED = "legacy_global_cleaned_v1";
     static final String PROVIDER_AUTHORITY = "ls.augment.com.config";
     static final String PREFS = "ls_augment_config_v2";
     static final String DIAGNOSTICS = "ls_augment_diagnostics_v2";
 
-    static final String HIDE_MASTER = "ls_augment_hide_master";
-    static final String HIDE_TARGETS = "ls_augment_hide_targets_v2";
+    static final String HIDE_MASTER = ConfigSchema.HIDE_MASTER;
+    static final String HIDE_TARGETS = ConfigSchema.HIDE_TARGETS;
     static final String HIDDEN_MIRROR = "ls_augment_hidden_targets";
     static final String TILE_STATE = "ls_augment_tile_state";
-    static final String TILE_ENABLED = "ls_augment_tile_enabled";
-    static final String TILE_LABEL = "ls_augment_tile_label";
-    static final String TILE_DESCRIPTION = "ls_augment_tile_description";
+    static final String TILE_ENABLED = ConfigSchema.TILE_ENABLED;
+    static final String TILE_LABEL = ConfigSchema.TILE_LABEL;
+    static final String TILE_DESCRIPTION = ConfigSchema.TILE_DESCRIPTION;
 
-    static final String RECENTS_ENABLED = "ls_augment_recents_enabled";
-    static final String RECENTS_COMPRESSION = "ls_augment_recents_compression";
-    static final String RECENTS_FRONT_OVERLAP = "ls_augment_recents_front_overlap";
-    static final String RECENTS_MEMORY_ENABLED = "ls_augment_recents_memory_enabled";
-    static final String RECENTS_MEMORY_TEXT_SP = "ls_augment_recents_memory_text_sp";
-    static final String RECENTS_MEMORY_GAP_DP = "ls_augment_recents_memory_gap_dp";
+    static final String GAME_MASTER = ConfigSchema.GAME_MASTER;
+    static final String SHOULDER_ENABLED = ConfigSchema.SHOULDER_ENABLED;
+    static final String SHOULDER_DIAGNOSTICS = ConfigSchema.SHOULDER_DIAGNOSTICS;
+    static final String TGK_RAPID_FIRE_ENABLED = ConfigSchema.TGK_RAPID_FIRE_ENABLED;
+    static final String TGK_RAPID_FIRE_COUNT = ConfigSchema.TGK_RAPID_FIRE_COUNT;
+    static final String TGK_RAPID_FIRE_COMPAT_TOKEN =
+            ConfigSchema.TGK_RAPID_FIRE_COMPAT_TOKEN;
+    static final String TGK_RAPID_FIRE_TEST_SESSION =
+            ConfigSchema.TGK_RAPID_FIRE_TEST_SESSION;
+    static final String COMBO_SPEED_ENABLED = ConfigSchema.COMBO_SPEED_ENABLED;
+    static final String COMBO_SPEED_RATE = ConfigSchema.COMBO_SPEED_RATE;
+    static final String AI_TRIGGER_ENABLED = ConfigSchema.AI_TRIGGER_ENABLED;
+    static final String AI_TRIGGER_DIAGNOSTICS = ConfigSchema.AI_TRIGGER_DIAGNOSTICS;
+    static final String AI_TRIGGER_TEMPLATE_SCAN_MS = ConfigSchema.AI_TRIGGER_TEMPLATE_SCAN_MS;
+    static final String AI_TRIGGER_CLICK_MS = ConfigSchema.AI_TRIGGER_CLICK_MS;
+    static final String AI_TRIGGER_COOLDOWN_MS = ConfigSchema.AI_TRIGGER_COOLDOWN_MS;
+    static final String AI_TRIGGER_YOLO_SCAN_MS = ConfigSchema.AI_TRIGGER_YOLO_SCAN_MS;
+    static final String FREEFORM_ENABLED = ConfigSchema.FREEFORM_ENABLED;
+    static final String FREEFORM_UNLIMITED = ConfigSchema.FREEFORM_UNLIMITED;
+    static final String FREEFORM_ALL_APPS = ConfigSchema.FREEFORM_ALL_APPS;
+    static final String FREEFORM_EXCLUDED_APPS = ConfigSchema.FREEFORM_EXCLUDED_APPS;
+    static final String SUPER_MIRROR_LOW_MODE = ConfigSchema.SUPER_MIRROR_LOW_MODE;
+    static final String SUPER_MIRROR_DIABLO_COEXIST = ConfigSchema.SUPER_MIRROR_DIABLO_COEXIST;
+    static final String FAN_FIXED_ENABLED = ConfigSchema.FAN_FIXED_ENABLED;
+    static final String FAN_UNLOCK_MAX = ConfigSchema.FAN_UNLOCK_MAX;
+    static final String FAN_TARGET_RPM = ConfigSchema.FAN_TARGET_RPM;
 
-    static final String GAME_MASTER = "ls_augment_game_master";
-    static final String SHOULDER_ENABLED = "ls_augment_shoulder_enabled";
-    static final String SHOULDER_DIAGNOSTICS = "ls_augment_shoulder_diagnostics";
-    static final String TGK_RAPID_FIRE_ENABLED = "ls_augment_tgk_rapid_fire_enabled";
-    static final String TGK_RAPID_FIRE_COUNT = "ls_augment_tgk_rapid_fire_count";
-    static final String COMBO_SPEED_ENABLED = "ls_augment_combo_speed_enabled";
-    static final String COMBO_SPEED_RATE = "ls_augment_combo_speed_rate";
-    static final String AI_TRIGGER_ENABLED = "ls_augment_ai_trigger_enabled";
-    static final String AI_TRIGGER_TEMPLATE_SCAN_MS = "ls_augment_ai_template_scan_ms";
-    static final String AI_TRIGGER_CLICK_MS = "ls_augment_ai_click_ms";
-    static final String AI_TRIGGER_COOLDOWN_MS = "ls_augment_ai_cooldown_ms";
-    static final String AI_TRIGGER_YOLO_SCAN_MS = "ls_augment_ai_yolo_scan_ms";
-    static final String FREEFORM_ENABLED = "ls_augment_freeform_enabled";
-    static final String FREEFORM_UNLIMITED = "ls_augment_freeform_unlimited";
-    static final String FREEFORM_ALL_APPS = "ls_augment_freeform_all_apps";
-    static final String SUPER_MIRROR_LOW_MODE = "ls_augment_super_mirror_low_mode";
-    static final String SUPER_MIRROR_DIABLO_COEXIST = "ls_augment_super_mirror_diablo_coexist";
-
-    static final String SYSTEMUI_MASTER = "ls_augment_systemui_master";
-    static final String STATUSBAR_DUAL_LEFT = "ls_augment_statusbar_dual_left";
-    static final String STATUSBAR_DUAL_RIGHT = "ls_augment_statusbar_dual_right";
-    static final String STATUSBAR_CLOCK_ACROSS = "ls_augment_statusbar_clock_across";
-    static final String STATUSBAR_HEIGHT_DP = "ls_augment_statusbar_height_dp";
-    static final String STATUSBAR_LEFT_MARGIN_DP = "ls_augment_statusbar_left_margin_dp";
-    static final String STATUSBAR_RIGHT_MARGIN_DP = "ls_augment_statusbar_right_margin_dp";
-    static final String STATUSBAR_TOP_MARGIN_DP = "ls_augment_statusbar_top_margin_dp";
-    static final String STATUSBAR_BOTTOM_MARGIN_DP = "ls_augment_statusbar_bottom_margin_dp";
-    static final String STATUSBAR_FREE_POSITION = "ls_augment_statusbar_free_position";
-    static final String STATUSBAR_LAYOUT_SPEC = "ls_augment_statusbar_layout_spec";
-    static final String STATUSBAR_CLOCK_CUSTOM = "ls_augment_statusbar_clock_custom";
-    static final String STATUSBAR_CLOCK_PATTERN = "ls_augment_statusbar_clock_pattern";
-    static final String STATUSBAR_CLOCK_PATTERN_SECOND =
-            "ls_augment_statusbar_clock_pattern_second";
-    static final String STATUSBAR_CLOCK_24H = "ls_augment_statusbar_clock_24h";
-    static final String STATUSBAR_CLOCK_SECONDS = "ls_augment_statusbar_clock_seconds";
-    static final String STATUSBAR_CLOCK_PERIOD = "ls_augment_statusbar_clock_period";
-    static final String STATUSBAR_CLOCK_WEEK = "ls_augment_statusbar_clock_week";
-    static final String STATUSBAR_CLOCK_FONT_FAMILY =
-            "ls_augment_statusbar_clock_font_family";
-    static final String STATUSBAR_CLOCK_SIZE_SP = "ls_augment_statusbar_clock_size_sp";
-    static final String STATUSBAR_CLOCK_WEIGHT = "ls_augment_statusbar_clock_weight";
+    static final String SYSTEMUI_MASTER = ConfigSchema.SYSTEMUI_MASTER;
+    static final String STATUSBAR_DUAL_LEFT = ConfigSchema.STATUSBAR_DUAL_LEFT;
+    static final String STATUSBAR_DUAL_RIGHT = ConfigSchema.STATUSBAR_DUAL_RIGHT;
+    static final String STATUSBAR_CLOCK_ACROSS = ConfigSchema.STATUSBAR_CLOCK_ACROSS;
+    static final String STATUSBAR_HEIGHT_DP = ConfigSchema.STATUSBAR_HEIGHT_DP;
+    static final String STATUSBAR_LEFT_MARGIN_DP = ConfigSchema.STATUSBAR_LEFT_MARGIN_DP;
+    static final String STATUSBAR_RIGHT_MARGIN_DP = ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP;
+    static final String STATUSBAR_TOP_MARGIN_DP = ConfigSchema.STATUSBAR_TOP_MARGIN_DP;
+    static final String STATUSBAR_BOTTOM_MARGIN_DP = ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP;
+    static final String STATUSBAR_FREE_POSITION = ConfigSchema.STATUSBAR_FREE_POSITION;
+    static final String STATUSBAR_LAYOUT_SPEC = ConfigSchema.STATUSBAR_LAYOUT_SPEC;
+    static final String STATUSBAR_CLOCK_CUSTOM = ConfigSchema.STATUSBAR_CLOCK_CUSTOM;
+    static final String STATUSBAR_CLOCK_PATTERN = ConfigSchema.STATUSBAR_CLOCK_PATTERN;
+    static final String STATUSBAR_CLOCK_PATTERN_SECOND = ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND;
+    static final String STATUSBAR_CLOCK_24H = ConfigSchema.STATUSBAR_CLOCK_24H;
+    static final String STATUSBAR_CLOCK_SECONDS = ConfigSchema.STATUSBAR_CLOCK_SECONDS;
+    static final String STATUSBAR_CLOCK_PERIOD = ConfigSchema.STATUSBAR_CLOCK_PERIOD;
+    static final String STATUSBAR_CLOCK_WEEK = ConfigSchema.STATUSBAR_CLOCK_WEEK;
+    static final String STATUSBAR_CLOCK_FONT_FAMILY = ConfigSchema.STATUSBAR_CLOCK_FONT_FAMILY;
+    static final String STATUSBAR_CLOCK_SIZE_SP = ConfigSchema.STATUSBAR_CLOCK_SIZE_SP;
+    static final String STATUSBAR_CLOCK_WEIGHT = ConfigSchema.STATUSBAR_CLOCK_WEIGHT;
     static final String STATUSBAR_CLOCK_LETTER_SPACING =
-            "ls_augment_statusbar_clock_letter_spacing";
+            ConfigSchema.STATUSBAR_CLOCK_LETTER_SPACING;
     static final String STATUSBAR_CLOCK_LINE_SPACING_DP =
-            "ls_augment_statusbar_clock_line_spacing_dp";
-    static final String STATUSBAR_CLOCK_TEXT_ALIGN =
-            "ls_augment_statusbar_clock_text_align";
-    static final String STATUSBAR_CLOCK_WIDTH_DP = "ls_augment_statusbar_clock_width_dp";
-    static final String STATUSBAR_THERMAL = "ls_augment_statusbar_thermal";
-    static final String STATUSBAR_BATTERY_POWER = "ls_augment_statusbar_battery_power";
-    static final String STATUSBAR_NOTIFICATION_MAX = "ls_augment_statusbar_notification_max";
-    static final String STATUSBAR_ICON_SCALE = "ls_augment_statusbar_icon_scale";
-    static final String STATUSBAR_DEBUG_OVERLAY = "ls_augment_statusbar_debug_overlay";
-    static final String STATUSBAR_NOTIFICATION_HIDE = "ls_augment_statusbar_notification_hide";
-    static final String STATUSBAR_DUAL_ROW_GAP_DP = "ls_augment_statusbar_dual_row_gap_dp";
+            ConfigSchema.STATUSBAR_CLOCK_LINE_SPACING_DP;
+    static final String STATUSBAR_CLOCK_TEXT_ALIGN = ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN;
+    static final String STATUSBAR_CLOCK_WIDTH_DP = ConfigSchema.STATUSBAR_CLOCK_WIDTH_DP;
+    static final String STATUSBAR_THERMAL = ConfigSchema.STATUSBAR_THERMAL;
+    static final String STATUSBAR_BATTERY_POWER = ConfigSchema.STATUSBAR_BATTERY_POWER;
+    static final String STATUSBAR_NOTIFICATION_MAX = ConfigSchema.STATUSBAR_NOTIFICATION_MAX;
+    static final String STATUSBAR_ICON_SCALE = ConfigSchema.STATUSBAR_ICON_SCALE;
+    static final String STATUSBAR_DEBUG_OVERLAY = ConfigSchema.STATUSBAR_DEBUG_OVERLAY;
+    static final String STATUSBAR_NOTIFICATION_HIDE = ConfigSchema.STATUSBAR_NOTIFICATION_HIDE;
+    static final String STATUSBAR_DUAL_ROW_GAP_DP = ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP;
 
-    static final String APP_MASTER = "ls_augment_app_master";
-    static final String DOUBLE_ANY_APP = "ls_augment_doubleapp_any_app";
-    static final String DOUBLE_LOW_MEMORY = "ls_augment_doubleapp_low_memory";
-    static final String BEAUTIFY_UNLIMITED_TRIAL = "ls_augment_beautify_unlimited_trial";
+    static final String APP_MASTER = ConfigSchema.APP_MASTER;
+    static final String DOUBLE_ANY_APP = ConfigSchema.DOUBLE_ANY_APP;
+    static final String DOUBLE_LOW_MEMORY = ConfigSchema.DOUBLE_LOW_MEMORY;
+    static final String BEAUTIFY_UNLIMITED_TRIAL = ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL;
+    static final String ALLOW_SIGNATURE_MISMATCH = ConfigSchema.ALLOW_SIGNATURE_MISMATCH;
 
-    static final String AUTOMATION_ENABLED = "ls_augment_automation_enabled";
-    static final String AUTOMATION_SCOPE = "ls_augment_automation_scope";
+    static final String AUTOMATION_ENABLED = ConfigSchema.AUTOMATION_ENABLED;
+    static final String AUTOMATION_SCOPE = ConfigSchema.AUTOMATION_SCOPE;
     static final String AUTOMATION_LAST_EVENT = "ls_augment_automation_last_event";
     static final String AUTOMATION_LAST_ERROR = "ls_augment_automation_last_error";
 
-    private static final Set<String> BOOLEAN_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            HIDE_MASTER, TILE_ENABLED, RECENTS_ENABLED, RECENTS_MEMORY_ENABLED, GAME_MASTER,
-            SHOULDER_ENABLED, SHOULDER_DIAGNOSTICS, TGK_RAPID_FIRE_ENABLED,
-            COMBO_SPEED_ENABLED, AI_TRIGGER_ENABLED,
-            FREEFORM_ENABLED, FREEFORM_UNLIMITED, FREEFORM_ALL_APPS,
-            SUPER_MIRROR_LOW_MODE,
-            SUPER_MIRROR_DIABLO_COEXIST, SYSTEMUI_MASTER, STATUSBAR_DUAL_LEFT,
-            STATUSBAR_DUAL_RIGHT, STATUSBAR_CLOCK_ACROSS, STATUSBAR_FREE_POSITION,
-            STATUSBAR_CLOCK_CUSTOM,
-            STATUSBAR_CLOCK_24H, STATUSBAR_CLOCK_SECONDS, STATUSBAR_CLOCK_PERIOD,
-            STATUSBAR_CLOCK_WEEK, STATUSBAR_THERMAL,
-            STATUSBAR_BATTERY_POWER, APP_MASTER, DOUBLE_ANY_APP, DOUBLE_LOW_MEMORY,
-            BEAUTIFY_UNLIMITED_TRIAL, AUTOMATION_ENABLED, STATUSBAR_DEBUG_OVERLAY,
-            STATUSBAR_NOTIFICATION_HIDE
-    )));
-
-    private static final Map<String, String> DEFAULTS;
-    static {
-        LinkedHashMap<String, String> values = new LinkedHashMap<>();
-        for (String key : BOOLEAN_KEYS) values.put(key, "0");
-        values.put(TILE_ENABLED, "1");
-        values.put(HIDE_TARGETS, "");
-        values.put(TILE_LABEL, "LS_Augment");
-        values.put(TILE_DESCRIPTION, "应用隐藏");
-        values.put(RECENTS_COMPRESSION,
-                RecentsRecommendedConfig.COMPRESSION_SERIALIZED);
-        values.put(RECENTS_FRONT_OVERLAP,
-                RecentsRecommendedConfig.FRONT_OVERLAP_SERIALIZED);
-        values.put(RECENTS_MEMORY_TEXT_SP,
-                RecentsRecommendedConfig.MEMORY_TEXT_SP_SERIALIZED);
-        values.put(RECENTS_MEMORY_GAP_DP,
-                RecentsRecommendedConfig.MEMORY_GAP_DP_SERIALIZED);
-        values.put(COMBO_SPEED_RATE, "2");
-        values.put(TGK_RAPID_FIRE_COUNT, "20");
-        values.put(AI_TRIGGER_TEMPLATE_SCAN_MS, "180");
-        values.put(AI_TRIGGER_CLICK_MS, "25");
-        values.put(AI_TRIGGER_COOLDOWN_MS, "180");
-        values.put(AI_TRIGGER_YOLO_SCAN_MS, "400");
-        values.put(STATUSBAR_HEIGHT_DP, "0");
-        values.put(STATUSBAR_LEFT_MARGIN_DP, "0");
-        values.put(STATUSBAR_RIGHT_MARGIN_DP, "0");
-        values.put(STATUSBAR_TOP_MARGIN_DP, "0");
-        values.put(STATUSBAR_BOTTOM_MARGIN_DP, "0");
-        values.put(STATUSBAR_LAYOUT_SPEC, "");
-        values.put(STATUSBAR_CLOCK_PATTERN, "");
-        values.put(STATUSBAR_CLOCK_PATTERN_SECOND, "");
-        values.put(STATUSBAR_CLOCK_FONT_FAMILY, "sans-serif");
-        values.put(STATUSBAR_CLOCK_SIZE_SP, "0.00");
-        values.put(STATUSBAR_CLOCK_WEIGHT, "400");
-        values.put(STATUSBAR_CLOCK_LETTER_SPACING, "0.00");
-        values.put(STATUSBAR_CLOCK_LINE_SPACING_DP, "0.00");
-        values.put(STATUSBAR_CLOCK_TEXT_ALIGN, "center");
-        values.put(STATUSBAR_CLOCK_WIDTH_DP, "0");
-        values.put(STATUSBAR_NOTIFICATION_MAX, "0");
-        values.put(STATUSBAR_ICON_SCALE, "1.00");
-        values.put(STATUSBAR_DEBUG_OVERLAY, "0");
-        values.put(STATUSBAR_NOTIFICATION_HIDE, "0");
-        values.put(STATUSBAR_DUAL_ROW_GAP_DP, "0");
-        values.put(AUTOMATION_SCOPE, "current");
-        DEFAULTS = Collections.unmodifiableMap(values);
-    }
+    private static final Map<String, String> DEFAULTS = ConfigSchema.defaults();
 
     private final Context context;
     private final SharedPreferences prefs;
@@ -168,25 +113,54 @@ final class AppConfig {
     AppConfig(Context context) {
         this.context = context.getApplicationContext();
         this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        initializePrivateDefaults();
+        synchronized (CONFIG_LOCK) {
+            if (!prefs.getBoolean("approved_ui_migration_v1",false)) {
+                boolean oldEnabled=getBoolean(ConfigSchema.HEALTH_ENABLED);
+                prefs.edit().putString(ConfigSchema.HEALTH_MULTIPLY_ENABLED,oldEnabled?"1":"0")
+                    .putString(ConfigSchema.HEALTH_PLAN_ENABLED,oldEnabled&&!get(ConfigSchema.HEALTH_PLAN).isEmpty()?"1":"0")
+                    .putString(ConfigSchema.STATUSBAR_CLOCK_ROWS,get(ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND).isEmpty()?"1":"2")
+                    .putBoolean("approved_ui_migration_v1",true).commit();
+            }
+            if (!prefs.getBoolean("freeform_independent_migration_v1",false)) {
+                SharedPreferences.Editor migration=prefs.edit().putBoolean("freeform_independent_migration_v1",true);
+                if (!getBoolean(FREEFORM_ENABLED)) migration.putString(FREEFORM_UNLIMITED,"0").putString(FREEFORM_ALL_APPS,"0");
+                migration.commit();
+            }
+            initializePrivateDefaults();
+            initializeSnapshotMetadata();
+        }
     }
 
     private void initializePrivateDefaults() {
         if (prefs.getBoolean(PRIVATE_INITIALIZED, false)) return;
         SharedPreferences.Editor editor = prefs.edit();
         for (Map.Entry<String, String> entry : DEFAULTS.entrySet()) {
-            editor.putString(entry.getKey(), entry.getValue());
+            // Preserve values written by an older build even if its migration
+            // marker is missing or was interrupted. Only genuinely new keys
+            // receive their schema defaults.
+            if (!prefs.contains(entry.getKey())) {
+                editor.putString(entry.getKey(), entry.getValue());
+            }
         }
         editor.putBoolean(PRIVATE_INITIALIZED, true).commit();
+    }
+
+    private void initializeSnapshotMetadata() {
+        long revision = prefs.getLong(SNAPSHOT_REVISION, 0L);
+        long updatedAt = prefs.getLong(SNAPSHOT_UPDATED_AT, 0L);
+        if (revision > 0L && updatedAt > 0L) return;
+        long now = Math.max(1L, System.currentTimeMillis());
+        prefs.edit()
+                .putLong(SNAPSHOT_REVISION, 1L)
+                .putLong(SNAPSHOT_UPDATED_AT, now)
+                .commit();
     }
 
     String get(String key) {
         String fallback = DEFAULTS.get(key);
         String value = prefs.getString(key, fallback == null ? "" : fallback);
-        // Preserve an existing integral value such as "4.00" from test20018,
-        // while exposing only the new integer representation to the UI,
-        // provider, snapshots, and runtime mirror.
-        return COMBO_SPEED_RATE.equals(key) ? normalizedComboRate(value) : value;
+        String normalized = ConfigSchema.normalize(key, value);
+        return normalized == null ? (fallback == null ? "" : fallback) : normalized;
     }
 
     boolean getBoolean(String key) {
@@ -203,23 +177,70 @@ final class AppConfig {
     }
 
     Map<String, String> snapshot() {
+        synchronized (CONFIG_LOCK) {
+            return snapshotLocked();
+        }
+    }
+
+    String diagnostic(String key) {
+        return context.getSharedPreferences(DIAGNOSTICS, Context.MODE_PRIVATE).getString(key, "");
+    }
+
+    private Map<String, String> snapshotLocked() {
         LinkedHashMap<String, String> result = new LinkedHashMap<>();
         for (String key : DEFAULTS.keySet()) result.put(key, get(key));
         return result;
     }
 
-    synchronized SaveResult save(Map<String, String> updates) {
+    ConfigSnapshot configSnapshot() {
+        synchronized (CONFIG_LOCK) {
+            ConfigSnapshot result = ConfigSnapshot.create(
+                    Math.max(1L, prefs.getLong(SNAPSHOT_REVISION, 1L)),
+                    Math.max(1L, prefs.getLong(SNAPSHOT_UPDATED_AT, 1L)),
+                    snapshotLocked());
+            return result == null ? ConfigSnapshot.safeDefaults() : result;
+        }
+    }
+
+    SaveResult save(Map<String, String> updates) {
         LinkedHashMap<String, String> clean = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : updates.entrySet()) {
-            String value = validate(entry.getKey(), entry.getValue());
+            String value = ConfigSchema.normalize(entry.getKey(), entry.getValue());
             if (value == null) return new SaveResult(false, "配置值无效：" + entry.getKey());
             clean.put(entry.getKey(), value);
         }
-        SharedPreferences.Editor editor = prefs.edit();
-        for (Map.Entry<String, String> entry : clean.entrySet()) {
-            editor.putString(entry.getKey(), entry.getValue());
+        ConfigSnapshot runtime;
+        synchronized (CONFIG_LOCK) {
+            LinkedHashMap<String, String> next = new LinkedHashMap<>(snapshotLocked());
+            next.putAll(clean);
+            if (ConfigSchema.truthy(next.get(TGK_RAPID_FIRE_ENABLED))) {
+                RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(
+                        next.get(TGK_RAPID_FIRE_COMPAT_TOKEN));
+                boolean compatible = token != null && token.validFor(
+                        RapidFireCompatibility.currentFingerprint(context));
+                boolean explicitlyEnabling = ConfigSchema.truthy(
+                        clean.get(TGK_RAPID_FIRE_ENABLED));
+                if (!compatible && explicitlyEnabling) {
+                    return new SaveResult(false, "肩键极速连点尚未通过本机兼容性测试");
+                }
+                if (!compatible) {
+                    clean.put(TGK_RAPID_FIRE_ENABLED, "0");
+                    next.put(TGK_RAPID_FIRE_ENABLED, "0");
+                }
+            }
+            long now = Math.max(1L, System.currentTimeMillis());
+            long revision = Math.max(prefs.getLong(SNAPSHOT_REVISION, 1L) + 1L, now);
+            runtime = ConfigSnapshot.create(revision, now, next);
+            if (runtime == null) return new SaveResult(false, "无法生成完整配置快照");
+
+            SharedPreferences.Editor editor = prefs.edit();
+            for (Map.Entry<String, String> entry : clean.entrySet()) {
+                editor.putString(entry.getKey(), entry.getValue());
+            }
+            editor.putLong(SNAPSHOT_REVISION, revision);
+            editor.putLong(SNAPSHOT_UPDATED_AT, now);
+            if (!editor.commit()) return new SaveResult(false, "无法写入应用配置");
         }
-        if (!editor.commit()) return new SaveResult(false, "无法写入应用配置");
         // The provider is the authoritative cross-process source. Notify
         // SystemUI immediately after the private commit so visual feedback is
         // not delayed by (or dependent on) the Root Settings.Global mirror.
@@ -229,13 +250,49 @@ final class AppConfig {
         } catch (Throwable ignored) {
             // The Settings.Global mirror below is the compatibility fallback.
         }
-        RootShell.Result mirror = mirror(clean);
+        AuditLog.write(context,"CONFIG_SAVE","keys="+String.join(",",clean.keySet()));
+        RootShell.Result mirror = mirror(runtime);
         return new SaveResult(true, mirror.isSuccess() ? "配置已保存并同步" :
                 "配置已保存；Root 运行镜像暂未同步：" + mirror.publicError());
     }
 
     synchronized RootShell.Result mirrorAll() {
-        return mirror(snapshot());
+        return mirror(configSnapshot());
+    }
+
+    /**
+     * Disables settings consumed by retired launcher hooks. This one-time
+     * migration also turns off the former launcher-only CorePatch switch so
+     * an old system_server cannot keep accepting replacements after update.
+     */
+    synchronized RootShell.Result cleanupRetiredRuntimeSettings() {
+        if (prefs.getBoolean(RETIRED_RECENTS_CLEANED, false)) {
+            return new RootShell.Result(0, "已清理旧最近任务配置", false);
+        }
+        RootShell.Result result = RootShell.run(
+                "settings put global ls_augment_recents_enabled 0; "
+                        + "settings put global ls_augment_recents_memory_enabled 0; "
+                        + "settings put global ls_augment_recents_native_enabled 0; "
+                        + "settings put global ls_augment_corepatch_enabled 0; "
+                        + "settings delete global ls_augment_recents_compression; "
+                        + "settings delete global ls_augment_recents_front_overlap; "
+                        + "settings delete global ls_augment_recents_memory_text_sp; "
+                        + "settings delete global ls_augment_recents_memory_gap_dp",
+                null, 8, 4096);
+        if (result.isSuccess()) {
+            prefs.edit()
+                    .remove("ls_augment_recents_enabled")
+                    .remove("ls_augment_recents_memory_enabled")
+                    .remove("ls_augment_recents_native_enabled")
+                    .remove("ls_augment_corepatch_enabled")
+                    .remove("ls_augment_recents_compression")
+                    .remove("ls_augment_recents_front_overlap")
+                    .remove("ls_augment_recents_memory_text_sp")
+                    .remove("ls_augment_recents_memory_gap_dp")
+                    .putBoolean(RETIRED_RECENTS_CLEANED, true)
+                    .commit();
+        }
+        return result;
     }
 
     /**
@@ -244,130 +301,77 @@ final class AppConfig {
      * defaults and clears any stale hidden-target mirror.
      */
     synchronized RootShell.Result initializeRuntimeMirrorsIfNeeded() {
-        if (prefs.getBoolean(RUNTIME_INITIALIZED, false)) {
-            return new RootShell.Result(0, "运行镜像已初始化", false);
+        ConfigSnapshot expected = configSnapshot();
+        if (prefs.getBoolean(RUNTIME_SNAPSHOT_INITIALIZED, false)) {
+            // A persisted marker alone is not proof that Settings.Global still
+            // contains a usable snapshot. It can disappear after an OTA,
+            // manual recovery, or an interrupted migration while app data is
+            // retained. Validate both revision and checksum before skipping
+            // publication so early-boot hooks never remain on safe defaults.
+            RootShell.Result existing = RootShell.run(
+                    "settings get global " + ConfigSchema.GLOBAL_SNAPSHOT,
+                    null, 6, 320 * 1024);
+            ConfigSnapshot mirrored = existing.isSuccess()
+                    ? ConfigSnapshot.parse(existing.output) : null;
+            if (mirrored != null
+                    && mirrored.revision == expected.revision
+                    && mirrored.checksum.equals(expected.checksum)) {
+                return new RootShell.Result(0, "运行镜像已初始化", false);
+            }
         }
-        RootShell.Result values = mirror(snapshot());
+        RootShell.Result values = mirror(expected);
         if (!values.isSuccess()) return values;
         RootShell.Result reset = RootShell.run(
                 "settings delete global " + HIDDEN_MIRROR
                         + " >/dev/null 2>&1 || true; settings put global "
                         + TILE_STATE + " EMPTY", null, 8, 4096);
-        if (reset.isSuccess()) prefs.edit().putBoolean(RUNTIME_INITIALIZED, true).commit();
+        if (reset.isSuccess()) {
+            prefs.edit().putBoolean(RUNTIME_SNAPSHOT_INITIALIZED, true).commit();
+        }
         return reset;
     }
 
-    private RootShell.Result mirror(Map<String, String> values) {
-        if (context.getSharedPreferences(DIAGNOSTICS, Context.MODE_PRIVATE)
-                .getBoolean("root_prompt_suppressed", false)) {
-            return new RootShell.Result(126, "请在诊断页主动点击“重新申请 Root 授权”", false);
+    synchronized RootShell.Result cleanupLegacyGlobalSettingsAfterHandshake() {
+        if (prefs.getBoolean(LEGACY_GLOBAL_CLEANED, false)) {
+            return new RootShell.Result(0, "旧逐键运行配置已清理", false);
         }
         StringBuilder command = new StringBuilder("set -e;");
-        for (Map.Entry<String, String> entry : values.entrySet()) {
-            if (HIDE_TARGETS.equals(entry.getKey())) continue;
-            command.append(" settings put global ")
-                    .append(entry.getKey()).append(' ')
-                    .append(RootShell.quote(entry.getValue())).append(';');
+        for (String key : ConfigSchema.runtimeKeys()) {
+            command.append(" settings delete global ").append(key).append(';');
         }
-        // GameHelperModule is privileged, but this ROM can leave its overlay
-        // AppOp in the default/rejected state after an OTA or reboot. One-key
-        // combo opens its editor through that overlay, so keep the vendor
-        // permission in the allowed state whenever shoulder support is synced.
-        if (truthy(values.get(SHOULDER_ENABLED))) {
-            command.append(" appops set cn.nubia.gamehelpmodule")
-                    .append(" SYSTEM_ALERT_WINDOW allow;");
+        RootShell.Result result = RootShell.run(command.toString(), null, 12, 16 * 1024);
+        if (result.isSuccess()) {
+            prefs.edit().putBoolean(LEGACY_GLOBAL_CLEANED, true).commit();
         }
-        if (command.length() == 6) return new RootShell.Result(0, "", false);
-        return RootShell.run(command.toString());
+        return result;
     }
 
-    private static String validate(String key, String raw) {
-        if (!DEFAULTS.containsKey(key)) return null;
-        String value = raw == null ? "" : raw.replace('\r', ' ').replace('\n', ' ').trim();
-        if (BOOLEAN_KEYS.contains(key)) return truthy(value) ? "1" : "0";
-        if (HIDE_TARGETS.equals(key)) {
-            return value.length() <= 64 * 1024 ? value : null;
+    private RootShell.Result mirror(ConfigSnapshot runtime) {
+        synchronized (MIRROR_LOCK) {
+            if (context.getSharedPreferences(DIAGNOSTICS, Context.MODE_PRIVATE)
+                    .getBoolean("root_prompt_suppressed", false)) {
+                return new RootShell.Result(126, "请在诊断页主动点击“重新申请 Root 授权”", false);
+            }
+            if (runtime == null) return new RootShell.Result(2, "invalid_snapshot", false);
+            synchronized (CONFIG_LOCK) {
+                long latest = Math.max(1L, prefs.getLong(SNAPSHOT_REVISION, 1L));
+                if (runtime.revision < latest) {
+                    return new RootShell.Result(0, "snapshot_superseded", false);
+                }
+            }
+            StringBuilder command = new StringBuilder("set -e; settings put global ")
+                    .append(ConfigSchema.GLOBAL_SNAPSHOT).append(' ')
+                    .append(RootShell.quote(runtime.serialize())).append(';');
+            // GameHelperModule is privileged, but this ROM can leave its overlay
+            // AppOp in the default/rejected state after an OTA or reboot. One-key
+            // combo opens its editor through that overlay, so keep the vendor
+            // permission in the allowed state whenever shoulder support is synced.
+            if (ConfigSchema.truthy(runtime.get(SHOULDER_ENABLED))) {
+                command.append(" appops set cn.nubia.gamehelpmodule")
+                        .append(" SYSTEM_ALERT_WINDOW allow;");
+            }
+            return RootShell.run(command.toString());
         }
-        if (TILE_LABEL.equals(key)) return truncate(value, 30, "LS_Augment");
-        if (TILE_DESCRIPTION.equals(key)) return truncate(value, 60, "应用隐藏");
-        if (STATUSBAR_CLOCK_PATTERN.equals(key)
-                || STATUSBAR_CLOCK_PATTERN_SECOND.equals(key)) {
-            return value.length() <= 80 ? value : null;
-        }
-        if (STATUSBAR_LAYOUT_SPEC.equals(key)) {
-            if (value.length() > 16 * 1024) return null;
-            return StatusBarLayoutSpec.parse(value).valid ? value : null;
-        }
-        if (STATUSBAR_CLOCK_FONT_FAMILY.equals(key)) {
-            return value.length() <= 40 && value.matches("[A-Za-z0-9 _.-]*")
-                    ? (value.isEmpty() ? "sans-serif" : value) : null;
-        }
-        if (STATUSBAR_CLOCK_TEXT_ALIGN.equals(key)) {
-            return "left".equals(value) || "right".equals(value)
-                    ? value : "center";
-        }
-        if (AUTOMATION_SCOPE.equals(key)) return "all".equals(value) ? "all" : "current";
-        if (RECENTS_COMPRESSION.equals(key)) return decimal(value, 0.12f, 0.90f);
-        if (RECENTS_FRONT_OVERLAP.equals(key)) return decimal(value, 0.20f, 0.60f);
-        if (RECENTS_MEMORY_TEXT_SP.equals(key)) return integer(value, 10, 20);
-        if (RECENTS_MEMORY_GAP_DP.equals(key)) return integer(value, 0, 32);
-        if (COMBO_SPEED_RATE.equals(key)) return integer(value, 1, 10);
-        if (TGK_RAPID_FIRE_COUNT.equals(key)) return integer(value, 10, 50);
-        if (AI_TRIGGER_TEMPLATE_SCAN_MS.equals(key)) return integer(value, 80, 2000);
-        if (AI_TRIGGER_CLICK_MS.equals(key)) return integer(value, 10, 500);
-        if (AI_TRIGGER_COOLDOWN_MS.equals(key)) return integer(value, 50, 30000);
-        if (AI_TRIGGER_YOLO_SCAN_MS.equals(key)) return integer(value, 150, 1500);
-        if (STATUSBAR_HEIGHT_DP.equals(key)) return integer(value, 0, 96);
-        if (STATUSBAR_CLOCK_SIZE_SP.equals(key)) return decimal(value, 0.0f, 40.0f);
-        if (STATUSBAR_CLOCK_WEIGHT.equals(key)) return integer(value, 100, 900);
-        if (STATUSBAR_CLOCK_LETTER_SPACING.equals(key)) {
-            return decimal(value, -0.20f, 1.00f);
-        }
-        if (STATUSBAR_CLOCK_LINE_SPACING_DP.equals(key)) return decimal(value, 0.0f, 32.0f);
-        if (STATUSBAR_CLOCK_WIDTH_DP.equals(key)) return integer(value, 0, 240);
-        if (STATUSBAR_NOTIFICATION_MAX.equals(key)) return integer(value, 0, 20);
-        if (STATUSBAR_ICON_SCALE.equals(key)) return decimal(value, 0.5f, 2.0f);
-        if (STATUSBAR_DUAL_ROW_GAP_DP.equals(key)) return integer(value, 0, 64);
-        if (key.contains("_margin_dp")) return integer(value, 0, 64);
-        return null;
-    }
-
-    private static boolean truthy(String value) {
-        return "1".equals(value) || "true".equalsIgnoreCase(value)
-                || "yes".equalsIgnoreCase(value) || "on".equalsIgnoreCase(value);
-    }
-
-    private static String decimal(String value, float min, float max) {
-        try {
-            float number = Float.parseFloat(value);
-            if (Float.isNaN(number) || number < min || number > max) return null;
-            return String.format(java.util.Locale.US, "%.2f", number);
-        } catch (Throwable ignored) { return null; }
-    }
-
-    private static String integer(String value, int min, int max) {
-        try {
-            int number = Integer.parseInt(value);
-            return number >= min && number <= max ? String.valueOf(number) : null;
-        } catch (Throwable ignored) { return null; }
-    }
-
-    private static String normalizedComboRate(String value) {
-        try {
-            float number = Float.parseFloat(value);
-            int rounded = Math.round(number);
-            return !Float.isNaN(number) && !Float.isInfinite(number)
-                    && number == rounded && rounded >= 1 && rounded <= 10
-                    ? String.valueOf(rounded) : "1";
-        } catch (Throwable ignored) {
-            return "1";
-        }
-    }
-
-    private static String truncate(String value, int max, String fallback) {
-        if (value.isEmpty()) return fallback;
-        int count = value.codePointCount(0, value.length());
-        return count <= max ? value : value.substring(0, value.offsetByCodePoints(0, max));
     }
 
     static final class SaveResult {

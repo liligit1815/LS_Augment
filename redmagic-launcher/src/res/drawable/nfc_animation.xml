@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$nfc_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="square" android:animation="@drawable/$nfc_animation__1" />
+    <target android:name="path" android:animation="@drawable/$nfc_animation__2" />
+    <target android:name="left" android:animation="@drawable/$nfc_animation__3" />
+    <target android:name="right" android:animation="@drawable/$nfc_animation__4" />
+</animated-vector>

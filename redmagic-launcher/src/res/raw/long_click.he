@@ -1,0 +1,19 @@
+{
+  "Metadata": {
+    "Created": "2022-01-27",
+    "Description": "Haptic editor design",
+    "Version": 1
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Parameters": {
+          "Frequency": 45,
+          "Intensity": 100
+        },
+        "Type": "transient",
+        "RelativeTime": 0
+      }
+    }
+  ]
+}

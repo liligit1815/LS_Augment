@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <bitmap android:src="@drawable/fastscroll_thumb_mtrl_alpha" android:tint="@color/mfv_common_scroll_bar" android:alpha="41.0" />
+    </item>
+    <item>
+        <bitmap android:src="@drawable/fastscroll_thumb_mtrl_alpha" android:tint="@color/mfv_common_scroll_bar" />
+    </item>
+</selector>

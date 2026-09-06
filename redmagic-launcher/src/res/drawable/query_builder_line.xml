@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$query_builder_line__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$query_builder_line__1" />
+    <target android:name="hour" android:animation="@drawable/$query_builder_line__2" />
+    <target android:name="minute" android:animation="@drawable/$query_builder_line__3" />
+    <target android:name="path" android:animation="@drawable/$query_builder_line__4" />
+</animated-vector>

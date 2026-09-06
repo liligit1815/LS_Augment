@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$bluetooth_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="bluetooth0" android:animation="@drawable/$bluetooth_animation__1" />
+    <target android:name="bluetooth1" android:animation="@drawable/$bluetooth_animation__2" />
+    <target android:name="bluetooth2" android:animation="@drawable/$bluetooth_animation__3" />
+</animated-vector>

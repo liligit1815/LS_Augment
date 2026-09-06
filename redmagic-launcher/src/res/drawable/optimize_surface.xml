@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$optimize_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$optimize_surface__1" />
+    <target android:name="group_1" android:animation="@drawable/$optimize_surface__2" />
+    <target android:name="group" android:animation="@drawable/$optimize_surface__3" />
+    <target android:name="line" android:animation="@drawable/$optimize_surface__4" />
+    <target android:name="line1" android:animation="@drawable/$optimize_surface__5" />
+    <target android:name="zhizhen1" android:animation="@drawable/$optimize_surface__6" />
+    <target android:name="zhizhen" android:animation="@drawable/$optimize_surface__7" />
+</animated-vector>

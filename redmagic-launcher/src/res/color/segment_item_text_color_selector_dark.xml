@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="true" android:color="@color/mfv_common_actb_txt_fc" />
+    <item android:state_enabled="false" android:color="@color/mfv_common_list_primary_txt_dark" />
+    <item android:color="@color/mfv_common_list_primary_txt_dark" />
+</selector>

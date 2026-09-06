@@ -5,21 +5,18 @@
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <package android:name="io.github.lsf.augment" />
         <package android:name="org.lsposed.manager" />
-        <package android:name="com.zte.mifavor.launcher" />
         <package android:name="com.android.systemui" />
         <package android:name="com.zte.beautify" />
         <package android:name="com.zte.beautifyadapter" />
         <package android:name="com.zte.cn.doubleapp" />
         <package android:name="cn.nubia.gameassist" />
         <package android:name="cn.nubia.gamelab" />
+        <package android:name="cn.nubia.fan" />
     </queries>
 
     <application
@@ -35,6 +32,8 @@
 
         <!-- Modern module metadata lives under META-INF/xposed/. -->
 
+        <activity android:name=".HideMenuActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ConfigTransferActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
@@ -65,6 +64,15 @@
             android:exported="false"
             android:theme="@style/Theme.LSAugment.Settings" />
 
+        <activity android:name=".StatusBarSettingsActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+        <activity android:name=".HealthSettingsActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+        <activity android:name=".LauncherCustomizationActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+        <activity android:name=".IconCropActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
+
         <activity
             android:name=".HideAppsActivity"
             android:exported="false"
@@ -86,15 +94,6 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-        </service>
-
-        <service
-            android:name=".ScreenAutomationService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Runs the user-enabled hide action once when the screen turns off." />
         </service>
 
         <receiver

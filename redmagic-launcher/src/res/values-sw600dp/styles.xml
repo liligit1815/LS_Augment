@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="CellStyleDefault">
+        <item name="iconDrawablePadding">7.0dp</item>
+    </style>
+    <style name="DropTargetButton" parent="@style/DropTargetButtonBase">
+        <item name="android:fontFamily">variable-title-large</item>
+    </style>
+    <style name="Widget.Design.TabLayout" parent="@style/Base.Widget.Design.TabLayout">
+        <item name="tabGravity">center</item>
+        <item name="tabMode">fixed</item>
+    </style>
+</resources>

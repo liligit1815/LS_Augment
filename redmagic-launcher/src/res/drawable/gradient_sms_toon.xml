@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$gradient_sms_toon__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="group" android:animation="@drawable/$gradient_sms_toon__2" />
+    <target android:name="icon" android:animation="@drawable/$gradient_sms_toon__3" />
+</animated-vector>

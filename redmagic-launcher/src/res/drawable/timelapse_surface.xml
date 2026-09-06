@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$timelapse_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$timelapse_surface__1" />
+    <target android:name="group_1" android:animation="@drawable/$timelapse_surface__2" />
+    <target android:name="outer" android:animation="@drawable/$timelapse_surface__3" />
+    <target android:name="pointer" android:animation="@drawable/$timelapse_surface__4" />
+    <target android:name="group" android:animation="@drawable/$timelapse_surface__5" />
+    <target android:name="all" android:animation="@drawable/$timelapse_surface__6" />
+</animated-vector>

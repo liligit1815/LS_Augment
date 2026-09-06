@@ -33,6 +33,7 @@ final class TilePresentation {
         String label = label(context);
         String description = description(context);
         String stateText = stateDescription(state);
+        tile.setIcon(icon(context));
         tile.setLabel(label);
         if (Build.VERSION.SDK_INT >= 29) tile.setSubtitle(description);
         if (Build.VERSION.SDK_INT >= 30) tile.setStateDescription(stateText);
@@ -40,6 +41,17 @@ final class TilePresentation {
                 ? label + "，" + stateText
                 : label + "，" + description + "，" + stateText;
         tile.setContentDescription(content);
+    }
+
+    static android.graphics.drawable.Icon icon(Context context) {
+        try {
+            String hash = new AppConfig(context).get(ConfigSchema.TILE_ICON);
+            if (!hash.isEmpty()) {
+                android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeFile(LauncherIconStore.file(context,hash).getPath());
+                if(bitmap!=null)return android.graphics.drawable.Icon.createWithBitmap(bitmap);
+            }
+        } catch(Exception ignored) { }
+        return android.graphics.drawable.Icon.createWithResource(context,R.drawable.ic_tile);
     }
 
     private static String value(Context context, String key, String fallback, int maxCodePoints) {

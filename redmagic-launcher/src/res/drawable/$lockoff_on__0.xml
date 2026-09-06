@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="locktolockopen3" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="14.5" android:pivotY="9.5">
+        <path android:name="path_2" android:pathData="M 14.497 8.832 L 14.497 6.4 C 14.497 4.191 12.706 2.4 10.497 2.4 C 8.287 2.4 6.497 4.191 6.497 6.4 L 6.497 8.832" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <path android:name="path_1" android:fillColor="#000" android:pathData="M 12.25 13.925 C 12.25 14.622 11.839 15.22 11.25 15.501 L 11.25 17.825 C 11.25 18.239 10.914 18.575 10.5 18.575 C 10.086 18.575 9.75 18.239 9.75 17.825 L 9.75 15.501 C 9.16 15.22 8.75 14.622 8.75 13.925 C 8.75 12.958 9.533 12.175 10.5 12.175 C 11.465 12.175 12.25 12.958 12.25 13.925 Z M 18.75 10.625 L 18.75 20.126 C 18.75 21.366 17.74 22.376 16.5 22.376 L 4.5 22.376 C 3.259 22.376 2.25 21.366 2.25 20.126 L 2.25 10.625 C 2.25 9.384 3.259 8.375 4.5 8.375 L 16.5 8.375 C 17.74 8.375 18.75 9.384 18.75 10.625 Z M 17.25 10.625 C 17.25 10.211 16.914 9.875 16.5 9.875 L 4.5 9.875 C 4.086 9.875 3.75 10.211 3.75 10.625 L 3.75 20.126 C 3.75 20.54 4.086 20.876 4.5 20.876 L 16.5 20.876 C 16.914 20.876 17.25 20.54 17.25 20.126 L 17.25 10.625 Z" android:strokeWidth="1.0" />
+</vector>

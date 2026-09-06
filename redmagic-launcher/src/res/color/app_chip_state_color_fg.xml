@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="true" android:state_pressed="true" android:color="@color/materialColorOnSurface" android:alpha="0.15" />
+    <item android:state_enabled="true" android:color="@color/materialColorOnSurface" android:alpha="0.11" android:state_hovered="true" />
+    <item android:color="@android:color/transparent" />
+</selector>

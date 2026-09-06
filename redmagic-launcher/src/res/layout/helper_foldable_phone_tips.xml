@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/mfvc_large_padding" android:paddingEnd="@dimen/mfvc_large_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <TextView android:textAppearance="@style/mfvc_pop_title_font" android:gravity="center_horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/helper_foldable_phone_tips_title_margin_top_bottom" android:text="@string/help_foldable_tips_title" android:paddingStart="@dimen/helper_foldable_phone_tips_padding_start_end" android:paddingEnd="@dimen/helper_foldable_phone_tips_padding_start_end" />
+    <TextView android:text="@string/help_foldable_tips_content_1" style="@style/HelpFoldablePhoneTipsTextStyle" />
+    <TextView android:text="@string/help_foldable_tips_content_2" style="@style/HelpFoldablePhoneTipsTextStyle" />
+    <TextView android:text="@string/help_foldable_tips_content_3" style="@style/HelpFoldablePhoneTipsTextStyle" />
+    <TextView android:text="@string/help_foldable_tips_content_4" style="@style/HelpFoldablePhoneTipsTextStyle" />
+    <TextView android:text="@string/help_foldable_tips_content_5" style="@style/HelpFoldablePhoneTipsTextStyle" />
+</LinearLayout>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:paddingBottom="128.0dp" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:layout_gravity="center_horizontal" android:orientation="vertical" android:background="@drawable/loading_toast_background_zte" android:paddingTop="12.0dp" android:paddingBottom="12.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="12.0dp" android:paddingEnd="12.0dp">
+        <LinearLayout android:layout_gravity="center_horizontal" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:adjustViewBounds="true" android:maxWidth="344.0dp" android:minHeight="@dimen/loading_toast_height" android:layout_weight="1.0" android:layout_marginStart="24.0dp" android:layout_marginEnd="24.0dp">
+            <include android:layout_gravity="center_vertical" android:layout_width="28.0dp" android:layout_height="28.0dp" layout="@layout/loading" />
+            <View android:id="@id/space" android:layout_width="8.0dp" android:layout_height="match_parent" />
+            <TextView android:textAppearance="@style/TextAppearance.ZTE.Light" android:textSize="15.0sp" android:textColor="@color/mfv_common_pop_primary_txt" android:gravity="start" android:layout_gravity="center_vertical" android:id="@android:id/message" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dp" android:layout_marginBottom="16.0dp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

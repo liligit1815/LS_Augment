@@ -20,13 +20,13 @@ final class AuditLog {
         if (context == null) return;
         try {
             File file = new File(context.getFilesDir(), "ls_augment.log");
-            if (file.length() > MAX_BYTES) compact(file);
             String clean = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
             if (clean.length() > 800) clean = clean.substring(0, 800);
             String line = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date())
-                    + " [" + category + "] " + clean + "\n";
-            try (FileOutputStream output = new FileOutputStream(file, true)) {
-                output.write(line.getBytes(StandardCharsets.UTF_8));
+                    + " [" + category + "] " + clean;
+            if(BoundedLog.append(file,line,MAX_BYTES,KEEP_BYTES)){
+                android.content.SharedPreferences stats=context.getSharedPreferences("diagnostic-retention",0);
+                stats.edit().putLong("basic_rotations",stats.getLong("basic_rotations",0)+1).apply();
             }
         } catch (Throwable ignored) { }
     }
@@ -35,23 +35,8 @@ final class AuditLog {
         try {
             File file = new File(context.getFilesDir(), "ls_augment.log");
             if (!file.isFile()) return "";
-            byte[] data = new byte[(int) Math.min(file.length(), MAX_BYTES)];
-            try (FileInputStream input = new FileInputStream(file)) {
-                int read = input.read(data);
-                return read <= 0 ? "" : new String(data, 0, read, StandardCharsets.UTF_8);
-            }
+            return new String(BoundedLog.tail(file,MAX_BYTES),StandardCharsets.UTF_8);
         } catch (Throwable error) { return "log_read_failed:" + error.getClass().getSimpleName(); }
     }
 
-    private static void compact(File file) throws Exception {
-        byte[] data = new byte[(int) Math.min(file.length(), MAX_BYTES)];
-        int read;
-        try (FileInputStream input = new FileInputStream(file)) { read = input.read(data); }
-        int start = Math.max(0, read - KEEP_BYTES);
-        while (start < read && data[start] != '\n') start++;
-        if (start < read) start++;
-        try (FileOutputStream output = new FileOutputStream(file, false)) {
-            output.write(data, start, read - start);
-        }
-    }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:height="24.0dp" android:width="24.0dp" android:autoMirrored="true" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android">
+    <path android:fillColor="@drawable/$outer_music_color__0" android:pathData="M20.047,2.5c0.345,0 0.625,0.28 0.625,0.626v13.135l-0.007,0.06l0.007,0.167c0,1.768 -1.457,3.215 -3.301,3.333l-0.243,0.008c-1.957,0 -3.544,-1.496 -3.544,-3.341s1.587,-3.341 3.544,-3.341c0.363,0 0.714,0.052 1.044,0.147l-0.001,-7.298c0,-0.393 -0.346,-0.696 -0.736,-0.644L9.978,6.35C9.656,6.393 9.415,6.669 9.415,6.995l0.001,10.937L9.409,18l0.007,0.16c0,1.768 -1.457,3.215 -3.301,3.333L5.871,21.5c-1.957,0 -3.544,-1.496 -3.544,-3.341s1.587,-3.341 3.544,-3.341c0.363,0 0.713,0.051 1.042,0.147l0,-10.169c0,-0.346 0.28,-0.626 0.625,-0.626L20.047,2.5z" android:fillType="evenOdd" />
+</vector>

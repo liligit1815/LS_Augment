@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:Android="http://schemas.android.com/apk/res/android">
+    <item Android:drawable="@drawable/launcher_icon_arrange_select" />
+    <item Android:drawable="@drawable/launcher_edit_icon_arrange_bg" />
+</layer-list>

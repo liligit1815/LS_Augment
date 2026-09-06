@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.menu.MenuContainer android:layout_width="match_parent" android:layout_height="match_parent" android:paddingHorizontal="@dimen/mfvc_large_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <include android:id="@id/home_menu" layout="@layout/overview_panel_only" />
+    <include android:visibility="gone" layout="@layout/mifavor_effect_menutabs_view" />
+    <include android:visibility="gone" layout="@layout/mifavor_icon_arrange_menutabs_view" />
+</com.android.launcher3.menu.MenuContainer>

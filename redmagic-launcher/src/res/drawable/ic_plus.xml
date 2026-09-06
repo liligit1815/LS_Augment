@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:height="18.0dp" android:width="@dimen/widget_cell_add_button_drawable_width" android:viewportWidth="19.0" android:viewportHeight="18.0"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <path android:fillColor="#ffffff" android:pathData="M15.5,9.75H10.25V15H8.75V9.75H3.5V8.25H8.75V3H10.25V8.25H15.5V9.75Z" />
+</vector>

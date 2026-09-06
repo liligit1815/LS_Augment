@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/button_pressed_feedback_color" />
+                    <size android:height="@dimen/component_sheet_back_touch_area_size" android:width="@dimen/component_sheet_back_touch_area_size" />
+                </shape>
+            </item>
+            <item android:gravity="center" android:height="@dimen/component_arrow_back_size_ease" android:width="@dimen/component_arrow_back_size_ease" android:drawable="@drawable/toolbar_back_black_28dp" />
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <item android:gravity="center" android:height="@dimen/component_arrow_back_size_ease" android:width="@dimen/component_arrow_back_size_ease" android:drawable="@drawable/toolbar_back_black_28dp" />
+        </layer-list>
+    </item>
+</selector>

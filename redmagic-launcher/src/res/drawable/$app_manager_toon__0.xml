@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="app_manager_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path_1" android:fillColor="#8f8f8f" android:pathData="M 9.895 11.095 L 4.3 11.095 C 3.637 11.095 3.1 10.558 3.1 9.895 L 3.1 4.3 C 3.1 3.637 3.637 3.1 4.3 3.1 L 9.895 3.1 C 10.558 3.1 11.095 3.637 11.095 4.3 L 11.095 9.895 C 11.095 10.558 10.557 11.095 9.895 11.095 Z M 19.7 11.095 L 14.105 11.095 C 13.442 11.095 12.905 10.558 12.905 9.895 L 12.905 4.3 C 12.905 3.637 13.442 3.1 14.105 3.1 L 19.7 3.1 C 20.363 3.1 20.9 3.637 20.9 4.3 L 20.9 9.895 C 20.9 10.558 20.363 11.095 19.7 11.095 Z M 19.7 20.9 L 14.105 20.9 C 13.442 20.9 12.905 20.363 12.905 19.7 L 12.905 14.105 C 12.905 13.442 13.442 12.905 14.105 12.905 L 19.7 12.905 C 20.363 12.905 20.9 13.442 20.9 14.105 L 20.9 19.7 C 20.9 20.363 20.363 20.9 19.7 20.9 Z M 9.895 20.9 L 4.3 20.9 C 3.637 20.9 3.1 20.363 3.1 19.7 L 3.1 14.105 C 3.1 13.442 3.637 12.905 4.3 12.905 L 9.895 12.905 C 10.558 12.905 11.095 13.442 11.095 14.105 L 11.095 19.7 C 11.095 20.363 10.557 20.9 9.895 20.9 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

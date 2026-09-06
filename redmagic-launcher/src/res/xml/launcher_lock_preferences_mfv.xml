@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <Preference android:layout="@layout/preference_one_line_password" android:title="@string/unlock_set_unlock_pattern_title" android:key="choose_normal_pattern" />
+    <Preference android:layout="@layout/preference_one_line_password" android:title="@string/unlock_set_unlock_pin_title" android:key="choose_simple_password" />
+    <Preference android:layout="@layout/preference_one_line_password" android:title="@string/unlock_set_unlock_password_title" android:key="choose_complex_password" />
+</PreferenceScreen>

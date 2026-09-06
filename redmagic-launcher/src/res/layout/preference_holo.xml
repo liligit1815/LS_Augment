@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center_vertical" android:background="?android:activatedBackgroundIndicator" android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false" android:minHeight="?android:listPreferredItemHeight" android:paddingStart="0.0dp" android:paddingEnd="?android:scrollbarSize"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="match_parent" android:minWidth="@dimen/preference_icon_minWidth" android:paddingStart="20.0dp">
+        <ImageView android:layout_gravity="center" android:id="@android:id/icon" android:layout_width="48.0dp" android:layout_height="48.0dp" android:scaleType="centerInside" android:layout_marginEnd="@dimen/preference_item_padding_inner" />
+    </LinearLayout>
+    <RelativeLayout android:paddingTop="17.0dp" android:paddingBottom="16.0dp" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" android:paddingEnd="@dimen/preference_item_padding_inner">
+        <TextView android:textAppearance="?android:textAppearanceMedium" android:ellipsize="end" android:id="@android:id/title" android:fadingEdge="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
+        <TextView android:textAppearance="?android:textAppearanceSmall" android:textColor="@color/secondary_text_zte_light" android:id="@android:id/summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3.0dp" android:maxLines="10" android:layout_below="@android:id/title" android:layout_alignStart="@android:id/title" />
+    </RelativeLayout>
+    <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@android:id/widget_frame" android:layout_width="wrap_content" android:layout_height="match_parent" android:minWidth="@dimen/preference_widget_width" />
+</LinearLayout>

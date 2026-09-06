@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator android:interpolator="@interpolator/easy_ease_widget" android:duration="200" android:valueFrom="M 6.749 9.381 L 12 14.631 L 17.251 9.381" android:valueTo="M 6.749 14.631 L 12 9.381 L 17.251 14.631" android:valueType="pathType" android:propertyName="pathData"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" />

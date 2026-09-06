@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="bluetooth_anim" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="line" android:pathData="M 5.528 8.1 L 18.343 16.233 C 18.65 16.428 18.653 16.876 18.348 17.074 L 12.173 21.096 C 11.84 21.313 11.4 21.074 11.4 20.677 L 11.4 3.322 C 11.4 2.925 11.84 2.686 12.173 2.903 L 18.348 6.925 C 18.653 7.124 18.65 7.571 18.343 7.766 L 5.528 15.9" android:strokeColor="#000000" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+        <path android:name="path" android:pathData="M 5.528 8.1 L 18.343 16.233 C 18.65 16.428 18.653 16.876 18.348 17.074 L 12.173 21.096 C 11.84 21.313 11.4 21.074 11.4 20.677 L 11.4 3.322 C 11.4 2.925 11.84 2.686 12.173 2.903 L 18.348 6.925 C 18.653 7.124 18.65 7.571 18.343 7.766 L 5.528 15.9" android:strokeColor="#000000" android:strokeWidth="1.9" android:trimPathEnd="0.0" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+</vector>

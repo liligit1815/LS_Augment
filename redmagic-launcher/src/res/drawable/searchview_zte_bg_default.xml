@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<nine-patch android:src="@drawable/textfield_search_default" android:tint="@color/mfv_common_acb_search_bg" android:tintMode="src_atop"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,0 +1,7 @@
+'use client';
+import {StatusPreview,type Status} from './status-preview';
+import {StatusConfig} from './status-config';
+import type {Values} from './prototype-settings';
+export function StatusPage({page,state,values,set,setValue,tell,go,onBack,onRestart,onReset,backAsset}:{page:string,state:Status,values:Values,set:(s:Status)=>void,setValue:(k:string,v:unknown)=>void,tell:(s:string)=>void,go:(p:string)=>void,onBack:()=>void,onRestart:()=>void,onReset:()=>void,backAsset:string}){
+ return <div className="revision-page revision-feature-page status-page"><header className="revision-header"><button aria-label="返回上一页" onClick={onBack}><img src={backAsset} alt=""/></button><h1>状态栏</h1><button className="revision-restart" onClick={onRestart}>重启作用域</button></header><div className="status-fixed"><p>修改后自动保存，预览实时更新。</p><StatusPreview state={state} width={1124} height={250} clockRows={Number(values['clock:rows'])} notificationCount={Number(values['status-icons:0.0.0.0.4.0.5'])||0}/><nav className="status-tabs" aria-label="状态栏设置分类">{[['布局','status-layout'],['时钟','status-clock'],['硬件 / 网速','status-hardware'],['图标','status-icons']].map(([label,route])=><button aria-current={page===route?'page':undefined} key={route} onClick={()=>go(route)}>{label}</button>)}</nav></div><div className="revision-scroll status-scroll"><StatusConfig page={page} state={state} set={set} tell={tell} values={values} setValue={setValue}/><div className="revision-buttons"><button onClick={onReset}>恢复默认</button></div></div></div>;
+}

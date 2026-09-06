@@ -31,7 +31,7 @@ public final class TileSetupActivity extends Activity {
             return;
         }
         ComponentName component = new ComponentName(this, AugmentTileService.class);
-        Icon icon = Icon.createWithResource(this, R.drawable.ic_tile);
+        Icon icon = TilePresentation.icon(this);
         try {
             manager.requestAddTileService(
                     component,

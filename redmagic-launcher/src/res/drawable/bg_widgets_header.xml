@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetTop="@dimen/widget_list_entry_spacing"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ripple android:paddingTop="@dimen/widget_list_header_view_vertical_padding" android:paddingBottom="@dimen/widget_list_header_view_vertical_padding" android:color="?android:colorControlHighlight">
+        <item android:id="@android:id/mask" android:drawable="@drawable/bg_widgets_header_states" />
+        <item android:drawable="@drawable/bg_widgets_header_states" />
+    </ripple>
+</inset>

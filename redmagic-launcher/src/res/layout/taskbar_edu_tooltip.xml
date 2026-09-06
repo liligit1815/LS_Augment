@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.taskbar.TaskbarEduTooltip android:gravity="center" android:layout_gravity="center|bottom" android:orientation="vertical" android:paddingBottom="16.0dp" android:focusable="true" android:clipChildren="false" android:clipToPadding="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:importantForAccessibility="yes" android:layout_marginHorizontal="24.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:id="@id/content" android:background="@drawable/bg_taskbar_edu_tooltip" android:layout_width="wrap_content" android:layout_height="wrap_content" android:elevation="@dimen/taskbar_edu_tooltip_elevation" android:paddingHorizontal="@dimen/taskbar_edu_tooltip_horizontal_margin" android:paddingVertical="@dimen/taskbar_edu_tooltip_vertical_margin" />
+    <View android:id="@id/arrow" android:layout_width="@dimen/popup_arrow_width" android:layout_height="@dimen/popup_arrow_height" android:elevation="@dimen/taskbar_edu_tooltip_elevation" />
+</com.android.launcher3.taskbar.TaskbarEduTooltip>

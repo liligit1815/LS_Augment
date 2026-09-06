@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <corners android:radius="@dimen/widget_focus_ring_corner_radius" />
+            <stroke android:width="@dimen/widget_header_focus_ring_width" android:color="?widgetPickerTabBackgroundSelected" />
+        </shape>
+    </item>
+    <item android:top="@dimen/widget_header_background_border" android:bottom="@dimen/widget_header_background_border" android:start="@dimen/widget_header_background_border" android:end="@dimen/widget_header_background_border">
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/widget_list_top_bottom_corner_radius" />
+            <solid android:color="?widgetPickerHeaderBackgroundColor" />
+        </shape>
+    </item>
+</layer-list>

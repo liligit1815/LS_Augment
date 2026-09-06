@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="outer_vibration_notifications" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0">
+        <path android:name="path" android:fillColor="#000" android:pathData="M 15.262 21.5 L 8.734 21.5 C 8.011 21.5 7.55 21.168 7.259 20.894 C 6.964 20.617 6.631 20.091 6.631 19.398 L 6.631 16.904 L 6.631 11.506 L 6.631 4.603 C 6.631 3.478 7.529 2.501 8.733 2.501 L 15.261 2.501 C 16.408 2.501 17.367 3.431 17.367 4.603 L 17.367 19.398 C 17.367 19.924 17.163 20.466 16.784 20.857 C 16.414 21.238 15.881 21.5 15.262 21.5 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="vibration_left">
+        <path android:name="vibration_left_1" android:pathData="M 2.913 5.229 L 4.678 7.436 L 2.905 9.621 L 4.681 11.819 L 2.915 14.041 L 4.689 16.219 L 2.913 18.432" android:strokeColor="#000000" android:strokeWidth="1.82" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <group android:name="vibration_right">
+        <path android:name="vibration_right_1" android:pathData="M 21.087 5.229 L 19.322 7.436 L 21.095 9.621 L 19.319 11.819 L 21.085 14.041 L 19.311 16.219 L 21.087 18.432" android:strokeColor="#000000" android:strokeWidth="1.82" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    </group>
+    <group android:name="down" android:pivotX="12.0" android:pivotY="21.0" android:scaleX="0.0" android:scaleY="0.0">
+        <path android:name="notifications_down" android:fillColor="#000" android:pathData="M 13.875 19.932 C 13.875 20.851 13.033 21.6 11.998 21.6 C 10.965 21.6 10.125 20.852 10.125 19.932 C 10.125 19.752 10.266 19.6 10.432 19.6 L 13.564 19.6 C 13.736 19.6 13.875 19.749 13.875 19.932 Z" android:strokeWidth="1.0" android:strokeAlpha="0.0" />
+    </group>
+</vector>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="mfvc_appbar_sink_expanded_height">311.0dp</dimen>
+    <dimen name="mfvc_bottom_tab_padding01">44.0dp</dimen>
+    <dimen name="mfvc_bottom_tab_padding02">33.0dp</dimen>
+    <dimen name="mfvc_bottom_tab_padding03">8.0dp</dimen>
+    <dimen name="mfvc_bottom_tab_padding04">6.0dp</dimen>
+    <dimen name="mfvc_tp_ampm_width">96.0dp</dimen>
+    <dimen name="mfvc_tp_divider_width">8.0dp</dimen>
+    <dimen name="mfvc_tp_hour_width">88.0dp</dimen>
+    <dimen name="mfvc_tp_minute_width">88.0dp</dimen>
+    <dimen name="mfvc_xlarge_padding">24.0dp</dimen>
+    <dimen name="mfvc_xlarge_padding_02">20.0dp</dimen>
+    <dimen name="seekbar_tick_padding">34.0dp</dimen>
+    <dimen name="toolbar_padding_end">12.0dp</dimen>
+    <dimen name="toolbar_padding_start">8.0dp</dimen>
+</resources>

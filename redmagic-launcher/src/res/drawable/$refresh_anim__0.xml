@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="refresh_anim" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path_1" android:fillColor="#000" android:pathData="M 12 2 C 14.908 2 17.667 3.263 19.569 5.465 C 20.541 6.553 21.235 7.901 21.617 9.252 C 21.747 9.713 21.315 10.139 20.855 10.004 L 16.848 8.832 C 16.405 8.702 16.263 8.146 16.589 7.819 L 17.974 6.434 C 16.429 4.777 14.273 3.824 11.999 3.824 C 7.49 3.824 3.822 7.492 3.822 12.001 C 3.822 16.51 7.491 20.177 12 20.177 C 15.59 20.177 18.813 17.777 19.838 14.34 C 19.981 13.857 20.491 13.583 20.972 13.727 C 21.454 13.871 21.729 14.378 21.585 14.861 C 20.33 19.065 16.39 22 12 22 C 6.486 22 2 17.514 2 12 C 2 6.486 6.486 2 12 2 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

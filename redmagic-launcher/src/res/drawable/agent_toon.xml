@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$agent_toon__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="top" android:animation="@drawable/$agent_toon__1" />
+    <target android:name="left" android:animation="@drawable/$agent_toon__2" />
+    <target android:name="right" android:animation="@drawable/$agent_toon__3" />
+</animated-vector>

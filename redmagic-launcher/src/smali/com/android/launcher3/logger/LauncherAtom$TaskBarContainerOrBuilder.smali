@@ -1,0 +1,46 @@
+.class public interface abstract Lcom/android/launcher3/logger/LauncherAtom$TaskBarContainerOrBuilder;
+.super Ljava/lang/Object;
+.source "LauncherAtom.java"
+
+# interfaces
+.implements Lcom/google/protobuf/U;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/android/launcher3/logger/LauncherAtom;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x609
+    name = "TaskBarContainerOrBuilder"
+.end annotation
+
+
+# virtual methods
+.method public abstract getCardinality()I
+.end method
+
+.method public abstract synthetic getDefaultInstanceForType()Lcom/google/protobuf/T;
+.end method
+
+.method public abstract getIndex()I
+.end method
+
+.method public abstract getParentContainerCase()Lcom/android/launcher3/logger/LauncherAtom$TaskBarContainer$ParentContainerCase;
+.end method
+
+.method public abstract getTaskSwitcherContainer()Lcom/android/launcher3/logger/LauncherAtom$TaskSwitcherContainer;
+.end method
+
+.method public abstract hasCardinality()Z
+.end method
+
+.method public abstract hasIndex()Z
+.end method
+
+.method public abstract hasTaskSwitcherContainer()Z
+.end method
+
+.method public abstract synthetic isInitialized()Z
+.end method

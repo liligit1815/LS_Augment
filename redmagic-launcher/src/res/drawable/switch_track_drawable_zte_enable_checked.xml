@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<nine-patch android:src="@drawable/switch_track_off_bg" android:tint="@color/mfv_common_sw_bg_on"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

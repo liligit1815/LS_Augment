@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:topLeftRadius="@dimen/mfvc_topLeftRadius_color_seekbar" android:topRightRadius="@dimen/mfvc_topRightRadius_color_seekbar" android:bottomLeftRadius="@dimen/mfvc_bottomLeftRadius_color_seekbar" android:bottomRightRadius="@dimen/mfvc_bottomRightRadius_color_seekbar" />
+            <solid android:color="@color/pb_level_slider_11_color" />
+            <size android:height="20.0dp" android:width="20.0dp" />
+        </shape>
+    </item>
+    <item android:left="5.0dp" android:top="5.0dp" android:right="5.0dp" android:bottom="5.0dp">
+        <shape android:shape="oval">
+            <solid android:color="@color/progressbar_slider_11_color" />
+            <size android:height="10.0dp" android:width="10.0dp" />
+        </shape>
+    </item>
+</layer-list>

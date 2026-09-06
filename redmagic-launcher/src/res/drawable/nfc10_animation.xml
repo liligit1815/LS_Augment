@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$nfc10_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="left" android:animation="@drawable/$nfc10_animation__1" />
+    <target android:name="right" android:animation="@drawable/$nfc10_animation__2" />
+    <target android:name="nfc" android:animation="@drawable/$nfc10_animation__3" />
+    <target android:name="left1" android:animation="@drawable/$nfc10_animation__4" />
+    <target android:name="right1" android:animation="@drawable/$nfc10_animation__5" />
+</animated-vector>

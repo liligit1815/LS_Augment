@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="shopping_cart_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path_1" android:fillColor="#8f8f8f" android:pathData="M 17.972 18 C 18.938 18 19.722 18.784 19.722 19.75 C 19.722 20.716 18.938 21.5 17.972 21.5 C 17.006 21.5 16.222 20.716 16.222 19.75 C 16.222 18.783 17.005 18 17.972 18 Z M 5.722 19.75 C 5.722 20.716 6.506 21.5 7.472 21.5 C 8.438 21.5 9.222 20.716 9.222 19.75 C 9.222 18.784 8.438 18 7.472 18 C 6.506 18 5.722 18.783 5.722 19.75 Z M 20.468 4.717 L 7.143 4.717 C 7.121 4.717 6.879 3.907 6.864 3.862 C 6.24 2.325 4.362 1.5 2.943 1.5 C 2.423 1.5 2 1.923 2 2.444 C 2 2.965 2.423 3.388 2.944 3.388 C 3.798 3.388 4.8 3.908 5.09 4.517 L 7.63 15.282 C 7.875 16.33 8.804 17.058 9.874 17.058 L 17.469 17.058 C 17.989 17.058 18.413 16.635 18.413 16.114 C 18.413 15.593 17.99 15.17 17.469 15.17 L 9.873 15.17 C 9.68 15.17 9.509 15.036 9.464 14.851 L 9.137 13.076 L 17.807 13.076 C 18.424 13.076 18.988 12.705 19.226 12.132 L 21.878 6.85 C 22.303 5.839 21.56 4.717 20.468 4.717 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

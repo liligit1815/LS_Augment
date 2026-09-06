@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_mode_done">Дайын</string>
+    <string name="alwaysUse">Бұндай әрекетті үнемі осы қолданбамен аяқтау</string>
+    <string name="am">AM</string>
+    <string name="cancel">Өшіру</string>
+    <string name="date_picker_decrement_day_button">Күн азайту</string>
+    <string name="date_picker_decrement_month_button">Ай азайту</string>
+    <string name="date_picker_decrement_year_button">Жыл азайту</string>
+    <string name="date_picker_dialog_title">Күнін реттеу</string>
+    <string name="date_picker_increment_day_button">Күн арттыру</string>
+    <string name="date_picker_increment_month_button">Ай арттыру</string>
+    <string name="date_picker_increment_year_button">Жыл арттыру</string>
+    <string name="datetime_dialog_title">Күнді және уақытты орнату</string>
+    <string name="hour_picker_description">Сағаттар айналымының қозғалтқышы</string>
+    <string name="item_is_selected">%1$s таңдалды.</string>
+    <string name="lunar">Ай</string>
+    <string name="minute_picker_description">Минут айналымын қозғалтқыш</string>
+    <string name="pm">PM</string>
+    <string name="search_hint">Іздеу…</string>
+    <string name="select_day">Ай күнін таңдаңыз</string>
+    <string name="select_hours">Сағат таңдау</string>
+    <string name="select_minutes">Минут таңдау</string>
+    <string name="select_year">Жылды таңдау</string>
+    <string name="time_picker_decrement_hour_button">Сағат арттыру</string>
+    <string name="time_picker_decrement_minute_button">Минут арттыру</string>
+    <string name="time_picker_decrement_set_am_button">ТАҢҒЫ уақытты реттеу</string>
+    <string name="time_picker_dialog_title">Уақытты баптау</string>
+    <string name="time_picker_increment_hour_button">Сағат арттыру</string>
+    <string name="time_picker_increment_minute_button">Минут арттыру</string>
+    <string name="time_picker_increment_set_pm_button">КЕШКІ уақытты реттеу</string>
+    <string name="year_picker_description">Жыл тізімі</string>
+    <string name="zte_days_of_week_Fri">Жм</string>
+    <string name="zte_days_of_week_Mon">Дс</string>
+    <string name="zte_days_of_week_Sat">Сб</string>
+    <string name="zte_days_of_week_Sun">Жс</string>
+    <string name="zte_days_of_week_Thu">Бс</string>
+    <string name="zte_days_of_week_Tue">Сс</string>
+    <string name="zte_days_of_week_Wed">Ср</string>
+</resources>

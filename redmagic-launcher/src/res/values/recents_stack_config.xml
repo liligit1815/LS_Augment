@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Legacy v10 values retained for one release as a rollback reference. -->
+    <integer name="recents_stack_focus_center_percent">65</integer>
+    <integer name="recents_stack_secondary_center_percent">49</integer>
+    <integer name="recents_stack_alpha_step_percent">7</integer>
+    <integer name="recents_stack_incoming_distance_percent">78</integer>
+    <dimen name="recents_stack_peek">26.0dp</dimen>
+    <dimen name="recents_stack_y_step">0.0dp</dimen>
+
+    <!-- Xiaomi 6.01 calibrated geometry. All ratios use permille precision. -->
+    <integer name="recents_stack_focus_center_permille">538</integer>
+    <integer name="recents_stack_first_back_center_permille">372</integer>
+    <integer name="recents_stack_tail_gap_permille">56</integer>
+    <integer name="recents_stack_tail_decay_permille">310</integer>
+    <integer name="recents_stack_focus_scale_permille">1100</integer>
+    <integer name="recents_stack_scale_step_permille">26</integer>
+    <integer name="recents_stack_max_depth">4</integer>
+    <integer name="recents_stack_incoming_distance_permille">472</integer>
+    <integer name="recents_stack_incoming_scale_gain_permille">25</integer>
+    <integer name="recents_stack_min_back_scale_permille">895</integer>
+    <!-- Reserved for OTA-specific coordinate origins; current NX809J needs no correction. -->
+    <integer name="recents_stack_native_center_correction_permille">0</integer>
+
+    <!-- Xiaomi memory/empty-state overlay. -->
+    <dimen name="recents_stack_memory_top">5.0dp</dimen>
+    <dimen name="recents_stack_memory_container_height">65.0dp</dimen>
+    <dimen name="recents_stack_memory_end_padding">15.0dp</dimen>
+    <dimen name="recents_stack_memory_separator_height">12.0dp</dimen>
+</resources>

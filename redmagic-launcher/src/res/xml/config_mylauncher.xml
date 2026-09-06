@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config
+  xmlns:launcher="http://schemas.android.com/apk/res-auto/com.zte.mifavor.launcher">
+    <menutab launcher:tabLabel="@string/menu_tab_wallpaper" launcher:tabType="wallpaper">
+        <menuitem launcher:itemId="default_wallpaper_02" launcher:itemLabel="@string/default_wallpaper_02" launcher:itemSample="@drawable/default_wallpaper_02" launcher:itemSelected="true" launcher:wWallpaperSrcUri="@raw/default_wallpaper_02" />
+    </menutab>
+    <appHiddens launcher:packageName="com.android.inputmethod.latin" />
+    <appHiddens launcher:packageName="com.android.systemui" />
+    <appHiddens launcher:packageName="com.sohu.inputmethod.sogou" />
+    <appHiddens launcher:packageName="com.sohu.inputmethod.sogou.zte" />
+    <appHiddens launcher:packageName="com.utooo.huahualock.zte" />
+    <appHiddens launcher:packageName="com.qualcomm.qti.wlan.fccutil" />
+    <appHiddens launcher:packageName="com.dolby.daxappUI" />
+    <appHiddens launcher:packageName="com.android.launcher3" />
+    <appHiddens launcher:className="com.android.quicksearchbox.SearchActivity" launcher:packageName="com.android.quicksearchbox" />
+    <widgetOrder launcher:packageName="com.moji.zteweather" />
+    <widgetOrder launcher:packageName="cn.zte.music" />
+    <widgetOrder launcher:packageName="com.qiyi.video.zte" />
+    <widgetOrder launcher:packageName="com.zte.mifavor.launcher">
+        <widgetClassOrder launcher:className="com.zte.mifavor.launcherwidget.search.SearchWidget" />
+        <widgetClassOrder launcher:className="com.zte.mifavor.launcherwidget.time.TimeWidget4x1" />
+    </widgetOrder>
+    <widgetOrder launcher:packageName="com.android.calendar">
+        <widgetClassOrder launcher:className="com.android.calendar.widget.CalendarWidget" />
+        <widgetClassOrder launcher:className="com.android.calendar.widget.CalendarAppWidgetProvider" />
+    </widgetOrder>
+</config>

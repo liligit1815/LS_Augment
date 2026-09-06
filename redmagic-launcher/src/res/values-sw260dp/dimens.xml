@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="mfvc_appbar_primary_title_width">230.0dp</dimen>
+</resources>

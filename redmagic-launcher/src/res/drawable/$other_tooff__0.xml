@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="other_tooff" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="other" android:fillColor="#8f8f8f" android:pathData="M 12 2 C 6.486 2 2 6.486 2 12 C 2 17.514 6.486 22 12 22 C 17.514 22 22 17.514 22 12 C 22 6.486 17.514 2 12 2 Z M 7.5 13.25 C 6.812 13.25 6.25 12.688 6.25 12 C 6.25 11.314 6.812 10.75 7.5 10.75 C 8.187 10.75 8.75 11.314 8.75 12 C 8.75 12.687 8.187 13.25 7.5 13.25 Z M 12 13.25 C 11.312 13.25 10.75 12.688 10.75 12 C 10.75 11.314 11.312 10.75 12 10.75 C 12.687 10.75 13.25 11.314 13.25 12 C 13.25 12.687 12.687 13.25 12 13.25 Z M 16.5 13.25 C 15.812 13.25 15.25 12.688 15.25 12 C 15.25 11.314 15.812 10.75 16.5 10.75 C 17.187 10.75 17.75 11.314 17.75 12 C 17.75 12.687 17.187 13.25 16.5 13.25 Z" />
+        <group android:name="mask">
+            <clip-path android:name="mask1" android:pathData="M 0 0 L 24 0 L 24 24 L 0 24 L 0 0 Z" />
+            <path android:name="other_end" android:fillColor="#0f87f7" android:pathData="M 12 2 C 6.486 2 2 6.486 2 12 C 2 17.514 6.486 22 12 22 C 17.514 22 22 17.514 22 12 C 22 6.486 17.514 2 12 2 Z M 7.5 13.25 C 6.812 13.25 6.25 12.688 6.25 12 C 6.25 11.314 6.812 10.75 7.5 10.75 C 8.187 10.75 8.75 11.314 8.75 12 C 8.75 12.687 8.187 13.25 7.5 13.25 Z M 12 13.25 C 11.312 13.25 10.75 12.688 10.75 12 C 10.75 11.314 11.312 10.75 12 10.75 C 12.687 10.75 13.25 11.314 13.25 12 C 13.25 12.687 12.687 13.25 12 13.25 Z M 16.5 13.25 C 15.812 13.25 15.25 12.688 15.25 12 C 15.25 11.314 15.812 10.75 16.5 10.75 C 17.187 10.75 17.75 11.314 17.75 12 C 17.75 12.687 17.187 13.25 16.5 13.25 Z" android:strokeWidth="1.0" />
+        </group>
+    </group>
+</vector>

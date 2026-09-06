@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$language_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$language_surface__1" />
+    <target android:name="center_0" android:animation="@drawable/$language_surface__2" />
+    <target android:name="center_2_1" android:animation="@drawable/$language_surface__3" />
+    <target android:name="center_2_2" android:animation="@drawable/$language_surface__4" />
+    <target android:name="all" android:animation="@drawable/$language_surface__5" />
+</animated-vector>

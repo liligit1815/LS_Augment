@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_mode_done">সম্পন্ন হয়েছে</string>
+    <string name="alwaysUse">সর্বদা এই অ্যাপটি ব্যবহার করে এ জাতীয় ক্রিয়াকলাপ সম্পূর্ণ করুন</string>
+    <string name="am">AM</string>
+    <string name="cancel">বাতিল করুন</string>
+    <string name="date_picker_decrement_day_button">দিন কম করুন</string>
+    <string name="date_picker_decrement_month_button">মাস কম করুন</string>
+    <string name="date_picker_decrement_year_button">বছর কম করুন</string>
+    <string name="date_picker_dialog_title">তারিখ সেট করুন</string>
+    <string name="date_picker_increment_day_button">দিন বাড়ান</string>
+    <string name="date_picker_increment_month_button">মাস বাড়ান</string>
+    <string name="date_picker_increment_year_button">বছর বাড়ান</string>
+    <string name="datetime_dialog_title">তারিখ এবং সময় সে করুন</string>
+    <string name="hour_picker_description">বৃত্তাকার ঘন্টা নির্বাচকের স্লাইডার</string>
+    <string name="item_is_selected">"%1$s  নির্বাচিত হয়েছে।"</string>
+    <string name="lunar">চন্দ্র</string>
+    <string name="minute_picker_description">বৃত্তাকার মিনিট নির্বাচকের স্লাইডার</string>
+    <string name="pm">PM</string>
+    <string name="search_hint">অনুসন্ধান করুন…</string>
+    <string name="select_day">মাসের একটি দিন নির্বাচন করুন</string>
+    <string name="select_hours">ঘন্টা নির্বাচন করুন</string>
+    <string name="select_minutes">মিনিট নির্বাচন করুন</string>
+    <string name="select_year">একটি বছর নির্বাচন করুন</string>
+    <string name="time_picker_decrement_hour_button">ঘন্টা কমান</string>
+    <string name="time_picker_decrement_minute_button">মিনিট কমান</string>
+    <string name="time_picker_decrement_set_am_button">AM সেট করুন</string>
+    <string name="time_picker_dialog_title">সময় সেট করুন</string>
+    <string name="time_picker_increment_hour_button">ঘন্টা বাড়ান</string>
+    <string name="time_picker_increment_minute_button">মিনিট বাড়ান</string>
+    <string name="time_picker_increment_set_pm_button">PM সেট করুন</string>
+    <string name="year_picker_description">বছরের তালিকা</string>
+    <string name="zte_days_of_week_Fri">শুক্র</string>
+    <string name="zte_days_of_week_Mon">সোম</string>
+    <string name="zte_days_of_week_Sat">শনি</string>
+    <string name="zte_days_of_week_Sun">রবি</string>
+    <string name="zte_days_of_week_Thu">বৃহ</string>
+    <string name="zte_days_of_week_Tue">মঙ্গল</string>
+    <string name="zte_days_of_week_Wed">বুধ</string>
+</resources>

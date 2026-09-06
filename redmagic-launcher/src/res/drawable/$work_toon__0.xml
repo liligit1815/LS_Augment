@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="work_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="bottom" android:fillColor="#8f8f8f" android:pathData="M 21.5 14.201 L 21.5 18.95 C 21.5 19.944 20.694 20.75 19.7 20.75 L 4.3 20.75 C 3.306 20.75 2.5 19.944 2.5 18.95 L 2.5 14.201 L 10.3 14.201 L 10.3 15.25 C 10.3 15.305 10.345 15.35 10.4 15.35 L 13.6 15.35 C 13.655 15.35 13.7 15.305 13.7 15.25 L 13.7 14.201 L 21.5 14.201 Z" android:strokeWidth="1.0" />
+        <path android:name="top" android:fillColor="#8f8f8f" android:pathData="M 10.3 12.701 L 10.3 11.65 C 10.3 11.595 10.345 11.55 10.4 11.55 L 13.6 11.55 C 13.655 11.55 13.7 11.595 13.7 11.65 L 13.7 12.701 L 21.5 12.701 L 21.5 7.8 C 21.5 6.806 20.694 6 19.7 6 L 16.65 6 L 16.65 4.35 C 16.65 3.466 15.934 2.75 15.05 2.75 L 8.95 2.75 C 8.066 2.75 7.35 3.466 7.35 4.35 L 7.35 6 L 4.3 6 C 3.306 6 2.5 6.806 2.5 7.8 L 2.5 12.701 L 10.3 12.701 Z M 9.15 4.95 C 9.15 4.729 9.329 4.55 9.55 4.55 L 14.45 4.55 C 14.671 4.55 14.85 4.729 14.85 4.95 L 14.85 6 L 9.15 6 L 9.15 4.95 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <drawable name="acb_bg">@color/mfvc_appbar_bg_color</drawable>
+    <drawable name="acb_bg_card">@color/mfvc_appbar_card_bg_color</drawable>
+    <drawable name="bg">@color/mfvc_bg_color</drawable>
+    <drawable name="bg_card">@color/mfvc_card_bg_color</drawable>
+    <drawable name="bottombar_bg">@color/mfvc_bottom_bg_color</drawable>
+    <drawable name="bottombar_bg_card">@color/mfvc_bottom_card_bg_color</drawable>
+    <drawable name="bottombar_tab_bg">@color/mfvc_bottom_tab_bg_color</drawable>
+    <drawable name="list_divider_empty">#ff00ff00</drawable>
+    <drawable name="material_ic_keyboard_arrow_next_black_24dp">@drawable/material_ic_keyboard_arrow_right_black_24dp</drawable>
+    <drawable name="material_ic_keyboard_arrow_previous_black_24dp">@drawable/material_ic_keyboard_arrow_left_black_24dp</drawable>
+    <drawable name="mfv_button_bg_light">@drawable/btn_default_light_mfv50</drawable>
+    <drawable name="mfv_common_acb_sink_bg">@drawable/acb_bg</drawable>
+    <drawable name="mfv_common_acb_sink_bg_card">@drawable/acb_bg_card</drawable>
+    <drawable name="notification_bg_low_normal_mifavor">#2f2f2f</drawable>
+    <drawable name="notification_bg_normal_mifavor">#2f2f2f</drawable>
+    <drawable name="notification_bg_normal_pressed_mifavor">#68ab0a</drawable>
+    <drawable name="notification_template_icon_bg">#3333b5e5</drawable>
+    <drawable name="notification_template_icon_low_bg">#0cffffff</drawable>
+    <drawable name="progressbar_slider_dark">@drawable/progressbar_slider</drawable>
+    <drawable name="progressbar_slider_disabled_dark">@drawable/progressbar_slider_disabled</drawable>
+    <drawable name="progressbar_slider_disabled_light">@drawable/progressbar_slider_disabled</drawable>
+    <drawable name="progressbar_slider_light">@drawable/progressbar_slider</drawable>
+    <drawable name="progressbar_slider_pressed_dark">@drawable/progressbar_slider_pressed</drawable>
+    <drawable name="progressbar_slider_pressed_light">@drawable/progressbar_slider_pressed</drawable>
+    <drawable name="statusbar_bg">@color/mfvc_appbar_bg_color</drawable>
+    <drawable name="statusbar_bg_card">@color/mfvc_appbar_card_bg_color</drawable>
+    <drawable name="subtab_bg">@color/mfvc_appbar_bg_color</drawable>
+    <drawable name="subtab_bg_card">@color/mfvc_appbar_card_bg_color</drawable>
+</resources>

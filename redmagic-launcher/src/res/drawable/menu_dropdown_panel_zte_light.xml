@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetRight="@dimen/mfvc_medium_padding_01" android:insetTop="@dimen/mfvc_medium_padding" android:insetBottom="@dimen/mfvc_large_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <layer-list>
+        <item>
+            <nine-patch android:src="@drawable/app_bar_menu_bg" />
+        </item>
+        <item>
+            <shape android:shape="rectangle">
+                <corners android:topLeftRadius="@dimen/mfvc_topLeftRadius" android:topRightRadius="@dimen/mfvc_topRightRadius" android:bottomLeftRadius="@dimen/mfvc_bottomLeftRadius" android:bottomRightRadius="@dimen/mfvc_bottomRightRadius" />
+                <solid android:color="@color/mfv_common_overflow_menu_bg" />
+            </shape>
+        </item>
+    </layer-list>
+</inset>

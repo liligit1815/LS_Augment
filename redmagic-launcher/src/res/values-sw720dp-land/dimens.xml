@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="cell_layout_padding">20.0dp</dimen>
+    <dimen name="drop_target_bottom_margin">32.0dp</dimen>
+    <dimen name="drop_target_top_margin">0.0dp</dimen>
+    <dimen name="dynamic_grid_edge_margin">21.929993dp</dimen>
+    <dimen name="gesture_tutorial_menu_back_shape_bottom_margin">21.0dp</dimen>
+    <dimen name="gesture_tutorial_menu_button_height">580.0dp</dimen>
+    <dimen name="gesture_tutorial_menu_button_spacing">49.0dp</dimen>
+    <dimen name="gesture_tutorial_menu_done_button_top_spacing">24.0dp</dimen>
+    <dimen name="min_page_snap_velocity">5300.0dp</dimen>
+    <dimen name="spring_loaded_hotseat_top_margin">64.0dp</dimen>
+    <dimen name="widget_list_horizontal_margin">49.0dp</dimen>
+</resources>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<nine-patch android:src="@drawable/btn_small_default_border_mfvx" android:tint="@color/btn_default"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

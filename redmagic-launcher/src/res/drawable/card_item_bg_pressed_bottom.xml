@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="0.0dp" android:insetRight="0.0dp" android:insetTop="0.0dp" android:insetBottom="0.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <layer-list>
+        <item android:drawable="@drawable/card_item_bg_normal_bottom" />
+        <item android:drawable="@drawable/card_item_bg_pressed_foreground_edge" />
+    </layer-list>
+</inset>

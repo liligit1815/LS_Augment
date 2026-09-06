@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="@drawable/bg_two_pane_sheet_more_widgets_entry" android:layout_width="match_parent" android:layout_height="48.0dp" android:paddingHorizontal="@dimen/widget_list_row_header_two_panel_padding_horizontal"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <Space android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" />
+    <TextView android:textSize="@dimen/component_cell_text_size" android:textColor="@color/widget_title_color" android:ellipsize="end" android:id="@id/title" android:duplicateParentState="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/more_widget_component_title" android:maxLines="1" android:textFontWeight="400" />
+    <ImageView android:id="@id/icon" android:layout_width="@dimen/more_widgets_entry_icon_size" android:layout_height="@dimen/more_widgets_entry_icon_size" android:src="@drawable/expand_less" android:tint="@color/icon_widgets_chevron_right_icon_color" android:importantForAccessibility="no" android:tintMode="src_in" />
+    <Space android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" />
+</LinearLayout>

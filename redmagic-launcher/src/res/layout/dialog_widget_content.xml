@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:paddingTop="@dimen/mfvc_medium_padding" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingHorizontal="@dimen/mfvc_xlarge_padding" style="@style/LauncherThemeDialogAlert"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.zte.mifavor.widget.TextViewZTE android:textSize="@dimen/mfvc_primary_font_size" android:textColor="@color/mfvc_primary_foreground_color_transp_90" android:layout_gravity="center_horizontal" android:id="@id/dialog_tv" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/dialog_widget_add_again" android:breakStrategy="simple" />
+    <Space android:layout_width="match_parent" android:layout_height="@dimen/pop_up_view_vertical_space" />
+    <com.zte.mifavor.widget.CheckBoxZTE android:gravity="center_vertical" android:id="@id/dialog_cx" android:paddingLeft="@dimen/mfvc_large_padding" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="@dimen/pop_up_checkbox_min_height" android:text="@string/dialog_dont_remind_again" style="@style/mfvc_pop_label_font" />
+</LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.zte.mifavor.widget.SegmentScrollView android:gravity="center" android:id="@id/segment_scrollview" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_segmented_controls_height" android:paddingStart="@dimen/mfvc_segmented_controls_padding" android:paddingEnd="@dimen/mfvc_segmented_controls_padding" android:forceDarkAllowed="false"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:id="@id/segment_parent" android:layout_width="match_parent" android:layout_height="match_parent">
+        <ImageView android:id="@id/segment_view_bg" android:background="@drawable/segment_bg" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <ImageView android:id="@id/segment_selected_item_bg" android:background="@drawable/selector_item_bg" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_segmented_focused_height" android:layout_marginTop="@dimen/mfvc_segmented_bg_padding" />
+        <com.zte.mifavor.widget.SegmentSelector android:orientation="horizontal" android:id="@id/segment_selector" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_segmented_focused_height" android:layout_margin="@dimen/mfvc_segmented_bg_padding" />
+    </FrameLayout>
+</com.zte.mifavor.widget.SegmentScrollView>

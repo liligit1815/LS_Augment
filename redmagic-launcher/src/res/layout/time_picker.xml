@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_gravity="center" android:orientation="horizontal" android:id="@id/timePickerLayout" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layoutDirection="ltr">
+        <zte.com.cn.alarmclock.AlarmNumberPicker android:id="@id/hour" android:focusable="true" android:focusableInTouchMode="true" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <zte.com.cn.alarmclock.AlarmNumberPicker android:id="@id/divider" android:focusable="false" android:focusableInTouchMode="false" android:layout_width="10.0dp" android:layout_height="wrap_content" />
+        <zte.com.cn.alarmclock.AlarmNumberPicker android:id="@id/minute" android:focusable="true" android:focusableInTouchMode="true" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <zte.com.cn.alarmclock.AlarmNumberPicker android:id="@id/amPm" android:focusable="true" android:focusableInTouchMode="true" android:layout_width="105.0dp" android:layout_height="wrap_content" />
+</LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$flashlight_ontooff__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="off1" android:animation="@drawable/$flashlight_ontooff__1" />
+    <target android:name="off2" android:animation="@drawable/$flashlight_ontooff__2" />
+    <target android:name="off3" android:animation="@drawable/$flashlight_ontooff__3" />
+    <target android:name="group" android:animation="@drawable/$flashlight_ontooff__4" />
+    <target android:name="bottom" android:animation="@drawable/$flashlight_ontooff__5" />
+</animated-vector>

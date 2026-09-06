@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_mode_done">Valmis</string>
+    <string name="alwaysUse">Kasuta selleks toiminguks alati seda rakendust</string>
+    <string name="cancel">Tühista</string>
+    <string name="date_picker_decrement_day_button">Päeva vähendamine</string>
+    <string name="date_picker_decrement_month_button">Kuu vähendamine</string>
+    <string name="date_picker_decrement_year_button">Aasta vähendamine</string>
+    <string name="date_picker_dialog_title">Kuupäeva määramine</string>
+    <string name="date_picker_increment_day_button">Päeva suurendamine</string>
+    <string name="date_picker_increment_month_button">Kuu suurendamine</string>
+    <string name="date_picker_increment_year_button">Aasta suurendamine</string>
+    <string name="datetime_dialog_title">Kuupäeva ja kellaaja seadistamine</string>
+    <string name="hour_picker_description">Ringikujuline tunniliugur</string>
+    <string name="item_is_selected">%1$s on valitud.</string>
+    <string name="minute_picker_description">Ringikujuline minutiliugur</string>
+    <string name="search_hint">Otsimine …</string>
+    <string name="select_day">Valige vastava kuu päev</string>
+    <string name="select_hours">Tundide valimine</string>
+    <string name="select_minutes">Minutite valimine</string>
+    <string name="select_year">Valige aasta</string>
+    <string name="time_picker_decrement_hour_button">Tundide vähendamine</string>
+    <string name="time_picker_decrement_minute_button">Minutite vähendamine</string>
+    <string name="time_picker_decrement_set_am_button">AM-i seadmine</string>
+    <string name="time_picker_dialog_title">Kellaaja määramine</string>
+    <string name="time_picker_increment_hour_button">Tundide suurendamine</string>
+    <string name="time_picker_increment_minute_button">Minutite suurendamine</string>
+    <string name="time_picker_increment_set_pm_button">PM-i seadmine</string>
+    <string name="year_picker_description">Aastate loend</string>
+    <string name="zte_days_of_week_Fri">R</string>
+    <string name="zte_days_of_week_Mon">E</string>
+    <string name="zte_days_of_week_Sat">L</string>
+    <string name="zte_days_of_week_Sun">P</string>
+    <string name="zte_days_of_week_Thu">N</string>
+    <string name="zte_days_of_week_Tue">T</string>
+    <string name="zte_days_of_week_Wed">Kol</string>
+</resources>

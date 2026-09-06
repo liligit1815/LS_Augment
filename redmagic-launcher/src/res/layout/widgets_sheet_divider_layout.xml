@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:id="@id/widgets_list_divider" android:layout_width="match_parent" android:layout_height="24.0dp" android:paddingHorizontal="10.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:layout_gravity="center_vertical" android:layout_width="match_parent" android:layout_height="1.0dp" android:src="@drawable/widgets_sheet_divider" />
+</FrameLayout>

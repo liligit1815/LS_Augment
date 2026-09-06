@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/component_view_container" android:background="@drawable/third_part_component_view_back" android:paddingTop="@dimen/component_thirty_party_view_padding_top_bottom" android:paddingBottom="@dimen/component_thirty_party_view_padding_top_bottom" android:layout_width="match_parent" android:layout_height="wrap_content" android:divider="@drawable/all_apps_divider" android:showDividers="middle" android:paddingStart="@dimen/double_component_cell_margin_left" android:paddingEnd="@dimen/double_component_cell_margin_left" android:layout_marginStart="@dimen/component_thirty_party_cell_margin_left_right" android:layout_marginEnd="@dimen/component_thirty_party_cell_margin_left_right" style="@style/TextTitle"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+        <TextView android:textSize="@dimen/component_cell_text_size" android:textColor="@color/widget_title_color" android:gravity="center_vertical" android:id="@id/third_component_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:drawablePadding="@dimen/component_thirty_party_icon_padding_left" android:layout_alignParentLeft="true" />
+        <TextView android:textSize="@dimen/component_cell_text_small_size" android:textColor="@color/widget_title_color" android:gravity="center_vertical" android:id="@id/third_component_number" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentRight="true" android:layout_centerInParent="true" />
+    </RelativeLayout>
+</LinearLayout>

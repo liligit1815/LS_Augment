@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$gradient_thumb_up_tooff__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask1" android:animation="@drawable/$gradient_thumb_up_tooff__2" />
+    <target android:name="thumb_up_end" android:animation="@drawable/$gradient_thumb_up_tooff__3" />
+</animated-vector>

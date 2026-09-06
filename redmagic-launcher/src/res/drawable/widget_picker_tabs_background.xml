@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetTop="@dimen/widget_apps_tabs_vertical_padding" android:insetBottom="@dimen/widget_apps_tabs_vertical_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <ripple android:color="@color/accent_ripple_color">
+        <item android:id="@android:id/mask">
+            <shape android:shape="rectangle">
+                <corners android:radius="@dimen/all_apps_header_pill_corner_radius" />
+                <solid android:color="@color/accent_ripple_color" />
+            </shape>
+        </item>
+        <item>
+            <selector android:enterFadeDuration="100">
+                <item android:state_selected="false" android:id="@id/unselected">
+                    <shape android:shape="rectangle">
+                        <corners android:radius="@dimen/all_apps_header_pill_corner_radius" />
+                        <solid android:color="?widgetPickerTabBackgroundUnselected" />
+                    </shape>
+                </item>
+                <item android:state_selected="true" android:id="@id/selected">
+                    <shape android:shape="rectangle">
+                        <corners android:radius="@dimen/all_apps_header_pill_corner_radius" />
+                        <solid android:color="?widgetPickerTabBackgroundSelected" />
+                    </shape>
+                </item>
+            </selector>
+        </item>
+    </ripple>
+</inset>

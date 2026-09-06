@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.widget.WidgetCellTwoPane android:gravity="center_horizontal" android:orientation="vertical" android:focusable="true" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginBottom="38.0dp" android:layout_weight="1.0"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <include layout="@layout/widget_cell_content_widgets_sheet_mfv" />
+</com.android.launcher3.widget.WidgetCellTwoPane>

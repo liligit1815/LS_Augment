@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$castoff_on__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="surface1" android:animation="@drawable/$castoff_on__1" />
+    <target android:name="cast" android:animation="@drawable/$castoff_on__2" />
+    <target android:name="line1" android:animation="@drawable/$castoff_on__3" />
+    <target android:name="line2" android:animation="@drawable/$castoff_on__4" />
+    <target android:name="line3" android:animation="@drawable/$castoff_on__5" />
+    <target android:name="line4" android:animation="@drawable/$castoff_on__6" />
+</animated-vector>

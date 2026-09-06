@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$query_builder_toon__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="group" android:animation="@drawable/$query_builder_toon__1" />
+    <target android:name="group_1" android:animation="@drawable/$query_builder_toon__2" />
+    <target android:name="bg" android:animation="@drawable/$query_builder_toon__3" />
+</animated-vector>

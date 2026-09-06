@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator android:interpolator="@android:interpolator/fast_out_slow_in" android:duration="300" android:valueFrom="M 14.954 4.781 L 14.954 9.05 L 19.225 9.05" android:valueTo="M 15.712 4.023 L 19.98 4.023 L 19.98 8.293" android:valueType="pathType" android:propertyName="pathData"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" />

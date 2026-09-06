@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="0.0dp" android:insetRight="0.0dp" android:insetTop="0.0dp" android:insetBottom="0.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <shape android:shape="rectangle">
+        <corners android:radius="12.0dp" />
+        <solid android:color="@color/mfv_common_list_press" />
+    </shape>
+</inset>

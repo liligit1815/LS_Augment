@@ -7,14 +7,14 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /** Supports both standard and extended date-time patterns. */
-final class StatusBarClockFormatter {
+public final class StatusBarClockFormatter {
     private StatusBarClockFormatter() { }
 
-    static final class FormatResult {
-        final boolean valid;
-        final String text;
-        final String error;
-        final boolean refreshEverySecond;
+    public static final class FormatResult {
+        public final boolean valid;
+        public final String text;
+        public final String error;
+        public final boolean refreshEverySecond;
 
         private FormatResult(boolean valid, String text, String error,
                 boolean refreshEverySecond) {
@@ -35,7 +35,7 @@ final class StatusBarClockFormatter {
                 use24Hour, showSeconds);
     }
 
-    static FormatResult formatDetailed(long timestamp, Locale locale,
+    public static FormatResult formatDetailed(long timestamp, Locale locale,
             boolean use24Hour, boolean showSeconds, boolean showPeriod,
             boolean showWeek, String firstPattern, String secondPattern) {
         Locale safeLocale = locale == null ? Locale.getDefault() : locale;

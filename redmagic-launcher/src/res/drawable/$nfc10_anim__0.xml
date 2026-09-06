@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="nfc10_anim" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="nfc" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path_1" android:fillColor="#000" android:pathData="M 19.2 3 L 4.8 3 C 3.806 3 3 3.806 3 4.8 L 3 19.2 C 3 20.194 3.806 21 4.8 21 L 19.2 21 C 20.194 21 21 20.194 21 19.2 L 21 4.8 C 21 3.806 20.194 3 19.2 3 Z M 9.064 19.401 C 8.035 18.58 7.883 17.097 7.778 14.427 C 7.716 12.78 7.773 7.002 7.778 6.758 L 7.807 5.182 L 13.867 11.243 L 13.867 13.138 L 9.049 8.32 C 9.036 9.273 9.024 10.517 9.024 11.655 C 9.024 12.762 9.04 13.764 9.071 14.293 C 9.253 17.325 9.535 18.745 11.118 19.303 C 11.233 19.344 11.346 19.374 11.461 19.402 L 9.064 19.402 Z M 16.221 17.243 L 16.191 18.819 L 10.131 12.759 L 10.131 10.863 L 14.949 15.681 C 14.962 14.728 14.974 13.484 14.974 12.347 C 14.974 11.24 14.958 10.237 14.927 9.709 C 14.746 6.675 14.464 5.255 12.88 4.698 C 12.766 4.657 12.652 4.627 12.537 4.599 L 14.934 4.599 C 15.964 5.419 16.115 6.903 16.22 9.573 C 16.284 11.221 16.226 16.997 16.221 17.243 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

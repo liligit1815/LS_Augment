@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Narrow root process transport. Callers must construct commands from fixed
@@ -26,6 +27,11 @@ final class RootShell {
     }
 
     static Result run(String command, String stdin, long timeoutSeconds, int maxOutput) {
+        return run(command, stdin, timeoutSeconds, maxOutput, null);
+    }
+
+    static Result run(String command, String stdin, long timeoutSeconds, int maxOutput,
+            Consumer<String> onOutput) {
         Process process = null;
         OutputReader reader = null;
         try {
@@ -34,7 +40,7 @@ final class RootShell {
             process = new ProcessBuilder(su, "-c", command)
                     .redirectErrorStream(true)
                     .start();
-            reader = new OutputReader(process.getInputStream(), maxOutput);
+            reader = new OutputReader(process.getInputStream(), maxOutput, onOutput);
             Thread readThread = new Thread(reader, "ls-augment-root-output");
             readThread.setDaemon(true);
             readThread.start();
@@ -72,11 +78,13 @@ final class RootShell {
     private static final class OutputReader implements Runnable {
         private final InputStream input;
         private final int limit;
+        private final Consumer<String> onOutput;
         private final ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-        OutputReader(InputStream input, int limit) {
+        OutputReader(InputStream input, int limit, Consumer<String> onOutput) {
             this.input = input;
             this.limit = Math.max(1024, limit);
+            this.onOutput = onOutput;
         }
 
         @Override
@@ -89,6 +97,10 @@ final class RootShell {
                         Math.min(buffer.length, remaining))) >= 0) {
                     output.write(buffer, 0, count);
                     remaining -= count;
+                    if (onOutput != null) {
+                        try { onOutput.accept(text()); }
+                        catch (RuntimeException ignored) { }
+                    }
                 }
             } catch (IOException ignored) {
                 // The process result remains authoritative.

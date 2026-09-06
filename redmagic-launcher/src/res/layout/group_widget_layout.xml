@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.widget.group.GroupWidgetLayout android:orientation="horizontal" android:id="@id/group_widget_layout" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.android.launcher3.widget.group.GroupWidgetTextView android:id="@id/group_widget_text_mfvclr" android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    <com.android.launcher3.widget.group.GroupWidgetBackgroundLayout android:orientation="vertical" android:id="@android:id/background" android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    <com.android.launcher3.widget.group.GroupWidgetContainer android:id="@id/group_widget_other_widget_container" android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    <com.android.launcher3.widget.group.GroupWidgetIndicatorLayout android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toEndOf="@id/group_widget_other_widget_container" app:layout_constraintTop_toTopOf="parent">
+        <LinearLayout android:gravity="center" android:layout_width="match_parent" android:layout_height="match_parent">
+            <com.android.launcher3.pageindicators.MfvPageIndicatorImpl android:id="@id/group_widget_page_indicator_mfv" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+    </com.android.launcher3.widget.group.GroupWidgetIndicatorLayout>
+</com.android.launcher3.widget.group.GroupWidgetLayout>

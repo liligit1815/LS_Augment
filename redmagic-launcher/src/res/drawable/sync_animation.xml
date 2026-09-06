@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$sync_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="up_all" android:animation="@drawable/$sync_animation__1" />
+    <target android:name="up1" android:animation="@drawable/$sync_animation__2" />
+    <target android:name="down1" android:animation="@drawable/$sync_animation__3" />
+    <target android:name="up_line" android:animation="@drawable/$sync_animation__4" />
+    <target android:name="down_line" android:animation="@drawable/$sync_animation__5" />
+    <target android:name="path" android:animation="@drawable/$sync_animation__6" />
+    <target android:name="path_1" android:animation="@drawable/$sync_animation__7" />
+</animated-vector>

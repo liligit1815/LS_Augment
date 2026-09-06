@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources
+  xmlns:window="http://schemas.android.com/apk/res-auto">
+    <SplitPairRule window:clearTop="false" window:finishPrimaryWithSecondary="never" window:finishSecondaryWithPrimary="always" window:splitLayoutDirection="locale" window:splitMaxAspectRatioInPortrait="alwaysAllow" window:splitMinWidthDp="@integer/min_width_split" window:splitRatio="@dimen/activity_split_ratio">
+        <SplitPairFilter window:primaryActivityName="com.android.launcher3.settings.SettingsActivity" window:secondaryActivityName="com.android.launcher3.settings.SettingsActivity" />
+    </SplitPairRule>
+</resources>

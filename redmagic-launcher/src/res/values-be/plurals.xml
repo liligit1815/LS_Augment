@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">%d дзень таму</item>
+        <item quantity="few">%d дні таму</item>
+        <item quantity="many">%d дзён таму</item>
+        <item quantity="other">%d дня таму</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">%d хвіліну таму</item>
+        <item quantity="few">%d хвіліны таму</item>
+        <item quantity="many">%d хвілін таму</item>
+        <item quantity="other">%d хвіліны таму</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">%d год таму</item>
+        <item quantity="few">%d гады таму</item>
+        <item quantity="many">%d гадоў таму</item>
+        <item quantity="other">%d года таму</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d новае апавяшчэнне</item>
+        <item quantity="few">%d новыя апавяшчэнні</item>
+        <item quantity="many">%d новых апавяшчэнняў</item>
+        <item quantity="other">%d новага апавяшчэння</item>
+    </plurals>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$camerawideangleon_off__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="on" android:animation="@drawable/$camerawideangleon_off__1" />
+    <target android:name="on_line" android:animation="@drawable/$camerawideangleon_off__2" />
+</animated-vector>

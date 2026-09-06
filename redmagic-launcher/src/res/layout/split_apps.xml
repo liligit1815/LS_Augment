@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:fitsSystemWindows="true" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textSize="@dimen/exit_split_screen_button_text_size" android:textColor="#e6ffffff" android:gravity="center" android:layout_gravity="end" android:id="@id/exit_split_screen_button" android:background="@drawable/exit_split_button_bg" android:layout_width="@dimen/exit_split_screen_button_width" android:layout_height="@dimen/exit_split_screen_button_height" android:layout_marginTop="@dimen/exit_split_screen_button_margin" android:layout_marginBottom="@dimen/exit_split_screen_button_margin_bottom" android:text="@string/exit_split_screen" android:layout_marginStart="@dimen/exit_split_screen_button_margin" android:layout_marginEnd="@dimen/exit_split_screen_button_margin" />
+    <com.android.quickstep.views.SplitAppsRecyclerView android:id="@id/split_apps_list_view" android:focusable="true" android:clipToPadding="false" android:descendantFocusability="afterDescendants" android:layout_width="match_parent" android:layout_height="match_parent" />
+</LinearLayout>

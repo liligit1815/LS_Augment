@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="lock_toon" android:height="24.0dp" android:width="30.0dp" android:viewportWidth="30.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="top_lock" android:pathData="M 10 10.5 L 10 7.5 C 10 4.739 12.239 2.5 15 2.5 C 17.761 2.5 20 4.739 20 7.5 L 20 10.5" android:strokeColor="#040000" android:strokeWidth="2.0" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="bottom" android:fillColor="#040000" android:pathData="M 21.45 21 L 8.55 21 C 7.556 21 6.75 20.194 6.75 19.2 L 6.75 11.2 C 6.75 10.537 7.287 10 7.95 10 L 22.05 10 C 22.713 10 23.25 10.537 23.25 11.2 L 23.25 19.2 C 23.25 20.194 22.444 21 21.45 21 Z" android:strokeWidth="1.0" />
+</vector>

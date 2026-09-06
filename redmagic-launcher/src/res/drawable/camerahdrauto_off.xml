@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$camerahdrauto_off__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="off_start" android:animation="@drawable/$camerahdrauto_off__1" />
+    <target android:name="mask" android:animation="@drawable/$camerahdrauto_off__2" />
+    <target android:name="hdr_auto" android:animation="@drawable/$camerahdrauto_off__3" />
+</animated-vector>

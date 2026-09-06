@@ -90,7 +90,9 @@ android {
 
     packagingOptions {
         jniLibs {
-            pickFirsts += ['**/libshadowhook.so', '**/libshadowhook_nothing.so']
+            // system_server loads the module-owned rapid-fire library from
+            // ApplicationInfo.nativeLibraryDir during compatibility testing.
+            useLegacyPackaging = true
         }
     }
 }
@@ -99,7 +101,4 @@ dependencies {
     // Modern libxposed API 102 is supplied by LSPosed/Vector at runtime.
     // Never package it into the LS_Augment APK.
     compileOnly 'io.github.libxposed:api:102.0.0'
-    // v2.0.0 is the first Android 16-capable release whose AAR metadata is
-    // compatible with this project's compileSdk 36 toolchain.
-    implementation 'com.bytedance.android:shadowhook:2.0.0'
 }

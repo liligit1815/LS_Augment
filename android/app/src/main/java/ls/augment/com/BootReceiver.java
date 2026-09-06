@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-/** Restarts only the explicitly enabled foreground automation after normal boot/update. */
+/** Removes obsolete service state and signals the system-owned event listener. */
 public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -12,7 +12,9 @@ public final class BootReceiver extends BroadcastReceiver {
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)
                 || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
                 || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
-            ScreenAutomationService.sync(context, true);
+            ScreenAutomation.sync(context);
+            PendingResult pending = goAsync();
+            BatteryLifeControl.schedule(context, pending::finish);
         }
     }
 }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">Fa %d dia</item>
+        <item quantity="other">Fa %d dies</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">Fa %d min</item>
+        <item quantity="other">Fa %d min</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">Fa %d any</item>
+        <item quantity="other">Fa %d anys</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d notificació nova</item>
+        <item quantity="other">%d notificacions noves</item>
+    </plurals>
+</resources>

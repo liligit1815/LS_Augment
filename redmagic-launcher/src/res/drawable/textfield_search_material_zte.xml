@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <nine-patch android:src="@drawable/textfield_search_default_mtrl_alpha" android:tint="#00000000" />
+    </item>
+</selector>

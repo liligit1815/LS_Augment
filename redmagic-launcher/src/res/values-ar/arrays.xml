@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="day">
+        <item>يوم</item>
+    </string-array>
+    <string-array name="month">
+        <item>شهر</item>
+    </string-array>
+    <string-array name="year">
+        <item>سنة</item>
+    </string-array>
+</resources>

@@ -1,0 +1,71 @@
+{
+  "call_background": {
+    "priority": 5
+  },
+  "fraud_detection": {
+    "priority": 5
+  },
+  "timer_countdown": {
+    "priority": 3
+  },
+  "stopwatch_enabled": {
+    "priority": 3
+  },
+  "music_background": {
+    "priority": 2
+  },
+  "voice_assistant_companion": {
+    "priority": 5
+  },
+  "auto_execute": {
+    "priority": 5
+  },
+  "game_reminder": {
+    "priority": 4
+  },
+  "flashlight_on": {
+    "priority": 3
+  },
+  "recorder_background": {
+    "priority": 4
+  },
+  "screen_recording": {
+    "priority": 4
+  },
+  "hotspot_sharing": {
+    "priority": 3
+  },
+  "share_transfer": {
+    "priority": 4
+  },
+  "memory_triggered": {
+    "priority": 4
+  },
+  "proactive_service": {
+    "priority": 5
+  },
+  "screen_casting": {
+    "priority": 4
+  },
+  "multi_screen_sync_screen_casting": {
+    "priority": 4
+  },
+  "face_unlock": {
+    "priority": 5
+  },
+  "ai_call_summary_progress": {
+    "priority": 5
+  },
+  "ai_call_status": {
+    "priority": 5
+  },
+  "simultaneous_translation_summary_progress": {
+    "priority": 5
+  },
+  "simultaneous_translation_startup_status": {
+    "priority": 5
+  },
+  "notebook_ai_text_generation": {
+    "priority": 4
+  }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:id="@id/ai_future_widget_voice_mic_layout" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.android.launcher3.widget.custom.CustomWidgetTextView android:id="@id/ai_future_widget_voice_text_mfvclr" android:layout_width="0.0dp" android:layout_height="0.0dp" />
+    <com.airbnb.lottie.LottieAnimationView android:layout_gravity="center" android:id="@id/ai_future_widget_voice_mic_lottie_view" android:layout_width="match_parent" android:layout_height="match_parent" app:lottie_autoPlay="true" app:lottie_loop="true" />
+</FrameLayout>

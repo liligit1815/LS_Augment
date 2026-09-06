@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.LongClickTextView android:textSize="@dimen/long_click_text_size" android:textColor="@color/long_click_text_color_light" android:ellipsize="marquee" android:gravity="center" android:layout_gravity="center|bottom" android:orientation="horizontal" android:id="@id/long_click_help_textview_streamer" android:background="@drawable/long_click_help_text_bg_light" android:layout_width="@dimen/long_click_help_text_bg_width" android:layout_height="@dimen/long_click_help_text_bg_height" android:text="@string/long_click_text_help" android:maxLines="1" android:paddingStart="@dimen/long_click_text_padding" android:paddingEnd="@dimen/long_click_text_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

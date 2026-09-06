@@ -34,7 +34,7 @@ public final class StatusBarLayoutSpec {
         String[] entries = clean.split(";", -1);
         for (String entry : entries) {
             String[] parts = entry.split(",", -1);
-            if (parts.length < 3 || parts.length > 4 || !ID.matcher(parts[0]).matches()) {
+            if (parts.length < 3 || parts.length > 5 || !ID.matcher(parts[0]).matches()) {
                 return ParseResult.invalid("位置配置格式无效：" + entry);
             }
             if (values.containsKey(parts[0])) {
@@ -45,7 +45,7 @@ public final class StatusBarLayoutSpec {
                 int y = Integer.parseInt(parts[2]);
                 boolean hidden = false;
                 float scale = 1.0f;
-                if (parts.length == 4) {
+                if (parts.length >= 4) {
                     String fourth = parts[3].trim();
                     if (fourth.equalsIgnoreCase("hidden")) {
                         hidden = true;
@@ -59,10 +59,14 @@ public final class StatusBarLayoutSpec {
                         scale = Float.parseFloat(fourth);
                     }
                 }
+                if (parts.length == 5) {
+                    if (!hidden) return ParseResult.invalid("旧位置格式无效");
+                    scale = Float.parseFloat(parts[4]);
+                }
                 if (x < 0 || x > 1000 || y < 0 || y > 1000) {
                     return ParseResult.invalid("位置坐标超出 0–1000：" + parts[0]);
                 }
-                if (scale < 0.5f || scale > 2.0f) {
+                if (!Float.isFinite(scale) || scale < 0.5f || scale > 2.0f) {
                     return ParseResult.invalid("图标缩放超出 0.5–2.0：" + parts[0]);
                 }
                 values.put(parts[0], new Position(x, y, scale, hidden));
@@ -89,9 +93,8 @@ public final class StatusBarLayoutSpec {
             value.append(entry.getKey()).append(',')
                     .append(p.x).append(',').append(p.y);
             if (p.hidden) {
-                value.append(",hidden");
-            }
-            if (p.scale != 1.0f) {
+                value.append(",hidden:").append(String.format(Locale.ROOT, "%.2f", p.scale));
+            } else if (p.scale != 1.0f) {
                 value.append(',').append(String.format(Locale.ROOT, "%.2f", p.scale));
             }
         }
@@ -126,7 +129,7 @@ public final class StatusBarLayoutSpec {
             if (x < 0 || x > 1000 || y < 0 || y > 1000) {
                 throw new IllegalArgumentException("position outside 0..1000");
             }
-            if (scale < 0.5f || scale > 2.0f) {
+            if (!Float.isFinite(scale) || scale < 0.5f || scale > 2.0f) {
                 throw new IllegalArgumentException("scale outside 0.5..2.0");
             }
             this.x = x;

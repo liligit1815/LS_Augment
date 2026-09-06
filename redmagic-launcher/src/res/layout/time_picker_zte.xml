@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_gravity="center_horizontal" android:orientation="horizontal" android:id="@id/timePickerLayout" android:paddingTop="@dimen/mfvc_ic_txt_padding" android:paddingBottom="@dimen/mfvc_ic_txt_padding" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layoutDirection="ltr">
+        <com.zte.mifavor.widget.NumberPickerZTE android:id="@id/hour" android:focusable="true" android:focusableInTouchMode="true" android:scrollbars="none" android:layout_width="@dimen/mfvc_tp_hour_width" android:layout_height="wrap_content" />
+        <com.zte.mifavor.widget.NumberPickerZTE android:id="@id/divider" android:focusable="false" android:focusableInTouchMode="false" android:scrollbars="none" android:layout_width="@dimen/mfvc_tp_divider_width" android:layout_height="wrap_content" />
+        <com.zte.mifavor.widget.NumberPickerZTE android:id="@id/minute" android:focusable="true" android:focusableInTouchMode="true" android:scrollbars="none" android:layout_width="@dimen/mfvc_tp_minute_width" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <com.zte.mifavor.widget.NumberPickerZTE android:id="@id/amPm" android:focusable="true" android:focusableInTouchMode="true" android:scrollbars="none" android:layout_width="@dimen/mfvc_tp_ampm_width" android:layout_height="wrap_content" />
+</LinearLayout>

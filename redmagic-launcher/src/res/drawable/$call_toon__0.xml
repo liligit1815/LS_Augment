@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="call_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="17.0">
+        <path android:name="call_start" android:fillColor="#8f8f8f" android:pathData="M 20.991 17.697 L 20.638 19.752 C 20.635 19.811 20.58 20.429 20.139 20.695 C 19.682 20.973 19.435 21 19.124 21 L 19.096 21 C 15.101 20.982 11.065 19.227 8.022 16.184 L 7.812 15.973 C 4.77 12.931 3.016 8.895 3.001 4.899 C 2.996 4.581 3.015 4.335 3.303 3.861 C 3.557 3.443 4.118 3.369 4.283 3.357 L 6.288 3.01 C 6.356 3 6.904 2.941 7.262 3.293 C 7.569 3.601 7.65 3.939 7.667 4.035 L 8.649 7.561 C 8.96 8.516 7.179 9.985 6.625 10.412 C 6.608 10.425 6.601 10.446 6.606 10.465 C 6.958 11.689 7.933 13.163 9.282 14.513 L 9.377 14.607 C 10.782 16.023 12.297 17.037 13.532 17.392 C 13.552 17.398 13.572 17.391 13.584 17.374 C 14.012 16.819 15.488 15.043 16.458 15.356 L 20.019 16.343 C 20.076 16.354 20.403 16.433 20.715 16.745 C 21.076 17.113 20.992 17.691 20.991 17.697 Z" />
+    </group>
+</vector>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="data_anim" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group">
+        <path android:name="left" android:fillColor="#000" android:pathData="M 7.701 14.088 L 7.701 4.611 C 7.701 4.053 8.154 3.6 8.712 3.6 C 9.269 3.6 9.723 4.053 9.723 4.611 L 9.723 19.828 C 9.723 20.158 9.51 20.364 9.31 20.447 C 9.234 20.479 9.143 20.5 9.046 20.5 C 8.892 20.5 8.724 20.447 8.58 20.304 L 4.199 15.234 C 3.964 15.001 3.969 14.703 4.051 14.503 C 4.134 14.302 4.34 14.088 4.671 14.088 L 7.701 14.088 Z" android:strokeWidth="1.0" android:fillType="evenOdd" />
+    </group>
+    <group android:name="group_1">
+        <path android:name="right" android:fillColor="#000" android:pathData="M 17.025 9.912 C 16.624 9.912 16.299 10.237 16.299 10.638 L 16.299 19.389 C 16.299 19.946 15.845 20.4 15.288 20.4 C 14.73 20.4 14.276 19.946 14.276 19.389 L 14.276 4.171 C 14.276 3.842 14.49 3.636 14.689 3.552 C 14.766 3.52 14.857 3.5 14.953 3.5 C 15.108 3.5 15.275 3.553 15.42 3.696 L 19.801 8.765 C 20.036 8.998 20.031 9.296 19.948 9.496 C 19.865 9.697 19.659 9.912 19.329 9.912 L 17.025 9.912 Z" android:strokeWidth="1.0" android:fillType="evenOdd" />
+    </group>
+</vector>

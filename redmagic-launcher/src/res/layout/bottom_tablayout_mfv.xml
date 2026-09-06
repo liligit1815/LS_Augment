@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_gravity="bottom" android:orientation="vertical" android:id="@id/bottom_tablayout_zte" android:background="@drawable/bottombar_tab_bg" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxHeight="@dimen/mfvc_bottom_tab_height_max" android:minHeight="@dimen/mfvc_bottom_tab_height" android:layout_alignParentBottom="true"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.zte.mifavor.widget.TabLayoutZTE android:id="@id/tablayout_widget_zte" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_height" style="@style/Widget.ZTE.TabLayout" />
+    <View android:id="@id/indicator_area" android:background="@android:color/transparent" android:visibility="gone" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_indicator_height" />
+</LinearLayout>

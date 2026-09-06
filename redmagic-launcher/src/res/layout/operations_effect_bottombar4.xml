@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:layout_gravity="bottom" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_height" android:layout_alignParentBottom="true"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.zte.mifavor.widget.RealtimeEffectView android:id="@id/effectView" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/bottombar" android:background="@drawable/bottombar_bg_card" android:layout_width="match_parent" android:layout_height="match_parent">
+        <View android:id="@id/divider1" android:layout_width="8.0dp" android:layout_height="match_parent" />
+        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/container1" android:background="@drawable/image_operation_item_ripple_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginStart="@dimen/mfvc_medium_padding" android:layout_marginEnd="@dimen/mfvc_medium_padding">
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_top_padding" />
+            <ImageView android:id="@id/operateView1" android:layout_width="@dimen/mfvc_ic_medium_width" android:layout_height="@dimen/mfvc_ic_medium_height" android:scaleType="fitCenter" android:tint="@color/bottom_tab_text_color" android:tintMode="src_in" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_middle_padding" />
+            <TextView android:textAppearance="@style/mfvc_bottom_tab_normal_font" android:gravity="center" android:layout_gravity="center" android:id="@id/operateTextView1" android:layout_width="match_parent" android:layout_height="15.0dp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeStepGranularity="1.0px" android:autoSizeMinTextSize="@dimen/mfvc_bottombar_font_min_size" android:autoSizeMaxTextSize="@dimen/mfvc_bottombar_font_size" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_bottom_padding" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/container2" android:background="@drawable/image_operation_item_ripple_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginStart="@dimen/mfvc_medium_padding" android:layout_marginEnd="@dimen/mfvc_medium_padding">
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_top_padding" />
+            <ImageView android:id="@id/operateView2" android:layout_width="@dimen/mfvc_ic_medium_width" android:layout_height="@dimen/mfvc_ic_medium_height" android:scaleType="fitCenter" android:tint="@color/bottom_tab_text_color" android:tintMode="src_in" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_middle_padding" />
+            <TextView android:textAppearance="@style/mfvc_bottom_tab_normal_font" android:gravity="center" android:layout_gravity="center" android:id="@id/operateTextView2" android:layout_width="match_parent" android:layout_height="15.0dp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeStepGranularity="1.0px" android:autoSizeMinTextSize="@dimen/mfvc_bottombar_font_min_size" android:autoSizeMaxTextSize="@dimen/mfvc_bottombar_font_size" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_bottom_padding" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/container3" android:background="@drawable/image_operation_item_ripple_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginStart="@dimen/mfvc_medium_padding" android:layout_marginEnd="@dimen/mfvc_medium_padding">
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_top_padding" />
+            <ImageView android:id="@id/operateView3" android:layout_width="@dimen/mfvc_ic_medium_width" android:layout_height="@dimen/mfvc_ic_medium_height" android:scaleType="fitCenter" android:tint="@color/bottom_tab_text_color" android:tintMode="src_in" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_middle_padding" />
+            <TextView android:textAppearance="@style/mfvc_bottom_tab_normal_font" android:gravity="center" android:layout_gravity="center" android:id="@id/operateTextView3" android:layout_width="match_parent" android:layout_height="15.0dp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeStepGranularity="1.0px" android:autoSizeMinTextSize="@dimen/mfvc_bottombar_font_min_size" android:autoSizeMaxTextSize="@dimen/mfvc_bottombar_font_size" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_bottom_padding" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/container4" android:background="@drawable/image_operation_item_ripple_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginStart="@dimen/mfvc_medium_padding" android:layout_marginEnd="@dimen/mfvc_medium_padding">
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_top_padding" />
+            <ImageView android:id="@id/operateView4" android:layout_width="@dimen/mfvc_ic_medium_width" android:layout_height="@dimen/mfvc_ic_medium_height" android:scaleType="fitCenter" android:tint="@color/bottom_tab_text_color" android:tintMode="src_in" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_middle_padding" />
+            <TextView android:textAppearance="@style/mfvc_bottom_tab_normal_font" android:gravity="center" android:layout_gravity="center" android:id="@id/operateTextView4" android:layout_width="match_parent" android:layout_height="15.0dp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeStepGranularity="1.0px" android:autoSizeMinTextSize="@dimen/mfvc_bottombar_font_min_size" android:autoSizeMaxTextSize="@dimen/mfvc_bottombar_font_size" />
+            <View android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_tab_item_bottom_padding" />
+        </LinearLayout>
+        <View android:id="@id/divider2" android:layout_width="8.0dp" android:layout_height="match_parent" />
+    </LinearLayout>
+</FrameLayout>

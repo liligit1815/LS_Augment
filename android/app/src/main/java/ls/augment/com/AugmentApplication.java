@@ -11,8 +11,10 @@ public final class AugmentApplication extends Application
 
     @Override public void onCreate() {
         super.onCreate();
+        ScreenAutomation.removeLegacyNotification(this);
         HiddenEntrySession.lock();
         registerActivityLifecycleCallbacks(this);
+        BatteryLifeControl.schedule(this);
     }
 
     @Override public void onActivityStarted(Activity activity) {

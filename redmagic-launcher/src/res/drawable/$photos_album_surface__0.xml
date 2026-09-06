@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="photos_album_surface" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="photo_album" android:fillColor="#4c4c4c" android:pathData="M 16.822 6.5 C 17.195 6.5 17.5 6.804 17.5 7.178 L 17.5 19.82 C 17.5 20.195 17.195 20.5 16.822 20.5 L 4.178 20.5 C 3.805 20.5 3.5 20.195 3.5 19.82 L 3.5 7.178 C 3.5 6.804 3.805 6.5 4.178 6.5 L 16.822 6.5 M 16.822 5 L 4.178 5 C 2.979 5 2 5.976 2 7.178 L 2 19.82 C 2 21.021 2.979 22 4.178 22 L 16.823 22 C 18.023 22 19 21.021 19 19.82 L 19 7.178 C 19 5.976 18.023 5 16.822 5 Z M 22 15.25 L 22 4.587 C 22 3.161 20.84 2 19.414 2 L 8.75 2 C 8.336 2 8 2.336 8 2.75 C 8 3.164 8.336 3.5 8.75 3.5 L 19.414 3.5 C 20.013 3.5 20.5 3.988 20.5 4.587 L 20.5 15.25 C 20.5 15.664 20.836 16 21.25 16 C 21.664 16 22 15.664 22 15.25 Z" android:strokeWidth="1.0" />
+        <clip-path android:name="mask" android:pathData="M 0 0 L 24 0 L 24 0 L 0 0 L 0 0 Z" />
+        <path android:name="line" android:pathData="M 8.75 2.75 L 19.414 2.75 C 20.428 2.75 21.25 3.573 21.25 4.587 L 21.25 15.25" android:strokeColor="#4c4c4c" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+        <path android:name="full" android:fillColor="#079efb" android:pathData="M 16.822 5 L 4.178 5 C 2.979 5 2 5.976 2 7.178 L 2 19.82 C 2 21.021 2.979 22 4.178 22 L 16.823 22 C 18.023 22 19 21.021 19 19.82 L 19 7.178 C 19 5.976 18.023 5 16.822 5 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

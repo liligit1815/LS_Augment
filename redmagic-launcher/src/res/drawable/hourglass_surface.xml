@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$hourglass_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="hourglass_1" android:animation="@drawable/$hourglass_surface__1" />
+    <target android:name="bg_inner" android:animation="@drawable/$hourglass_surface__2" />
+    <target android:name="inner_start" android:animation="@drawable/$hourglass_surface__3" />
+    <target android:name="inner_up" android:animation="@drawable/$hourglass_surface__4" />
+    <target android:name="group_2" android:animation="@drawable/$hourglass_surface__5" />
+    <target android:name="inner_end" android:animation="@drawable/$hourglass_surface__6" />
+    <target android:name="mask" android:animation="@drawable/$hourglass_surface__7" />
+    <target android:name="path_1" android:animation="@drawable/$hourglass_surface__8" />
+    <target android:name="line" android:animation="@drawable/$hourglass_surface__9" />
+    <target android:name="bg_outside" android:animation="@drawable/$hourglass_surface__10" />
+</animated-vector>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <TextView android:gravity="center_horizontal" android:id="@id/navigation_settings" android:background="?android:selectableItemBackground" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24.0dp" android:minHeight="48.0dp" android:text="@string/allset_navigation_settings" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/subtitle" style="@style/TextAppearance.GestureTutorial.LinkText" />
+</merge>

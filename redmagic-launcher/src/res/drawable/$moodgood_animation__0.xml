@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="moodgood" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group_3">
+        <path android:name="path_8" android:fillColor="#000000" android:pathData="M 6.636 9.083 C 6.636 8.254 7.307 7.583 8.136 7.583 C 8.964 7.583 9.636 8.254 9.636 9.083 C 9.636 9.911 8.964 10.583 8.136 10.583 C 7.307 10.583 6.636 9.912 6.636 9.083 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_4">
+        <path android:name="path_11" android:fillColor="#000000" android:pathData="M 17.344 9.083 C 17.344 9.911 16.672 10.583 15.844 10.583 C 15.016 10.583 14.344 9.911 14.344 9.083 C 14.344 8.254 15.016 7.583 15.844 7.583 C 16.672 7.583 17.344 8.255 17.344 9.083 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_2">
+        <path android:name="path_6" android:fillColor="#000000" android:pathData="M 17.218 14.126 C 16.561 16.193 14.811 18.238 12.013 18.248 L 12.013 18.25 C 12.009 18.25 12.004 18.249 12 18.249 C 11.996 18.249 11.991 18.25 11.988 18.25 L 11.988 18.248 C 9.189 18.238 7.438 16.193 6.782 14.126 C 6.671 13.773 6.854 13.402 7.255 13.283 C 7.658 13.16 7.977 13.398 8.232 13.689 C 8.942 14.5 10.107 15.173 12.001 15.127 C 13.895 15.174 15.06 14.5 15.77 13.689 C 16.026 13.398 16.344 13.16 16.747 13.283 C 17.146 13.402 17.33 13.773 17.218 14.126 Z" android:strokeColor="#000000" android:strokeLineCap="round" android:strokeMiterLimit="10.0" android:strokeAlpha="0.0" />
+    </group>
+    <group android:name="group1">
+        <path android:name="path" android:pathData="M 12 2.75 C 9.548 2.75 7.193 3.725 5.459 5.459 C 3.725 7.193 2.75 9.548 2.75 12 C 2.75 14.452 3.725 16.807 5.459 18.541 C 7.193 20.275 9.548 21.25 12 21.25 C 14.452 21.25 16.807 20.275 18.541 18.541 C 20.275 16.807 21.25 14.452 21.25 12 C 21.25 9.548 20.275 7.193 18.541 5.459 C 16.807 3.725 14.452 2.75 12 2.75 Z" android:strokeColor="#000000" android:strokeWidth="1.5" android:strokeMiterLimit="10.0" />
+    </group>
+</vector>

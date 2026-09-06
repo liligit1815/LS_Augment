@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="query_builder_tooff" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="query_builder_start" android:fillColor="#8f8f8f" android:pathData="M 12 2 C 6.477 2 2 6.477 2 12 C 2 17.523 6.477 22 12 22 C 17.523 22 22 17.523 22 12 C 22 6.477 17.523 2 12 2 Z M 16.105 15.759 C 15.827 16.171 15.268 16.28 14.856 16.002 L 11.106 13.473 C 11.082 13.456 11.069 13.431 11.046 13.412 C 10.992 13.369 10.946 13.321 10.903 13.267 C 10.877 13.233 10.853 13.2 10.833 13.162 C 10.794 13.095 10.767 13.024 10.746 12.947 C 10.738 12.914 10.731 12.882 10.726 12.849 C 10.719 12.805 10.7 12.766 10.7 12.72 L 10.7 6.82 C 10.7 6.323 11.103 5.92 11.6 5.92 C 12.097 5.92 12.5 6.323 12.5 6.82 L 12.5 12.242 L 15.862 14.51 C 16.275 14.788 16.383 15.347 16.105 15.759 Z" />
+        <group android:name="mask">
+            <clip-path android:name="mask1" android:pathData="M 0 0 L 24 0 L 24 24 L 0 24 L 0 0 Z" />
+            <path android:name="query_builder" android:fillColor="#0f87f7" android:pathData="M 12 2 C 6.477 2 2 6.477 2 12 C 2 17.523 6.477 22 12 22 C 17.523 22 22 17.523 22 12 C 22 6.477 17.523 2 12 2 Z M 16.105 15.759 C 15.827 16.171 15.268 16.28 14.856 16.002 L 11.106 13.473 C 11.082 13.456 11.069 13.431 11.046 13.412 C 10.992 13.369 10.946 13.321 10.903 13.267 C 10.877 13.233 10.853 13.2 10.833 13.162 C 10.794 13.095 10.767 13.024 10.746 12.947 C 10.738 12.914 10.731 12.882 10.726 12.849 C 10.719 12.805 10.7 12.766 10.7 12.72 L 10.7 6.82 C 10.7 6.323 11.103 5.92 11.6 5.92 C 12.097 5.92 12.5 6.323 12.5 6.82 L 12.5 12.242 L 15.862 14.51 C 16.275 14.788 16.383 15.347 16.105 15.759 Z" android:strokeWidth="1.0" />
+        </group>
+    </group>
+</vector>

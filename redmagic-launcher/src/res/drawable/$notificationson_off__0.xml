@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="notificationsontooff" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="notifications_off_1">
+        <path android:name="notifications_lines" android:fillColor="#000" android:pathData="M 3.36 2.608 L 3.36 2.608 C 3.067 2.314 2.592 2.315 2.299 2.608 C 2.006 2.901 2.006 3.375 2.299 3.669 L 2.298 3.669 C 2.592 3.962 3.067 3.962 3.36 3.669 C 3.652 3.376 3.653 2.901 3.36 2.608 Z" android:strokeWidth="1.0" android:fillAlpha="0.0" />
+        <clip-path android:name="mask" android:pathData="M 0 0 L 0 24 L 24 24 L 24 0 L 0 0 Z M 3.359 1.547 C 3.066 1.84 3.066 2.315 3.359 2.608 L 3.359 2.608 C 3.652 2.901 4.127 2.901 4.42 2.608 C 4.713 2.315 4.713 1.84 4.42 1.547 L 4.42 1.547 C 4.127 1.255 3.652 1.255 3.359 1.547 Z" />
+        <path android:name="notifications_center" android:fillColor="#000" android:pathData="M 11.999 4.126 C 12.141 4.126 12.285 4.132 12.431 4.145 C 14.841 4.35 16.73 6.504 16.73 9.05 L 16.73 14.761 C 16.73 15.689 17.09 16.565 17.745 17.23 L 18.165 17.656 L 5.835 17.656 L 6.251 17.232 C 6.908 16.569 7.27 15.691 7.27 14.761 L 7.27 8.733 C 7.271 6.193 9.392 4.126 11.999 4.126 M 11.999 2.626 C 8.558 2.626 5.77 5.361 5.77 8.733 L 5.77 14.76 C 5.77 15.288 5.56 15.797 5.185 16.176 L 3.458 17.932 C 3.006 18.39 3.336 19.155 3.987 19.155 L 20.012 19.155 C 20.66 19.155 20.991 18.39 20.541 17.932 L 18.811 16.176 C 18.438 15.797 18.228 15.288 18.228 14.76 L 18.228 9.05 C 18.228 5.83 15.829 2.929 12.556 2.651 C 12.37 2.634 12.183 2.626 11.999 2.626 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="down" android:pivotX="12.0" android:pivotY="21.0">
+        <path android:name="notifications_down" android:fillColor="#000" android:pathData="M 13.518 19.905 L 10.319 19.905 C 10.098 19.905 9.919 20.096 9.919 20.333 C 9.919 21.321 10.815 22.126 11.919 22.126 C 13.023 22.126 13.919 21.321 13.919 20.333 C 13.918 20.097 13.738 19.905 13.518 19.905 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

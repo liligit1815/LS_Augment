@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.android.quickstep.views.LauncherRecentsView android:id="@id/overview_panel" android:visibility="invisible" android:clipChildren="false" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent" android:accessibilityPaneTitle="@string/accessibility_recent_apps" />
+    <LinearLayout android:id="@id/recents_stack_memory_container" android:visibility="gone" android:gravity="end|center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/recents_stack_memory_container_height" android:layout_gravity="top|end" android:layout_marginTop="@dimen/recents_stack_memory_top" android:paddingEnd="@dimen/recents_stack_memory_end_padding">
+        <TextView android:id="@id/recents_stack_memory_available" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12.0sp" android:textColor="#ccffffff" />
+        <View android:id="@id/recents_stack_memory_separator" android:layout_width="1.0dp" android:layout_height="@dimen/recents_stack_memory_separator_height" android:layout_marginStart="3.0dp" android:layout_marginEnd="3.0dp" android:background="#ccffffff" />
+        <TextView android:id="@id/recents_stack_memory_total" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12.0sp" android:textColor="#ccffffff" />
+    </LinearLayout>
+    <TextView android:id="@id/recents_stack_empty_message" android:visibility="gone" android:gravity="center" android:layout_width="match_parent" android:layout_height="match_parent" android:text="@string/recents_empty_message" android:textSize="14.0sp" android:textColor="#4dffffff" android:includeFontPadding="false" />
+    <include android:id="@id/overview_actions_view" layout="@layout/overview_actions_container" />
+</merge>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <nine-patch android:src="@drawable/btn_small_default_bg_mfvx" android:tint="@color/mfv_common_btn_pressed_bg" android:tintMode="src_in" />
+    </item>
+    <item>
+        <nine-patch android:src="@drawable/btn_small_default_border_mfvx" android:tint="@color/btn_pressed" />
+    </item>
+</layer-list>

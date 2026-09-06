@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$smart_faqs_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$smart_faqs_surface__1" />
+    <target android:name="wenhao1" android:animation="@drawable/$smart_faqs_surface__2" />
+    <target android:name="group" android:animation="@drawable/$smart_faqs_surface__3" />
+    <target android:name="wenhao" android:animation="@drawable/$smart_faqs_surface__4" />
+    <target android:name="line" android:animation="@drawable/$smart_faqs_surface__5" />
+</animated-vector>

@@ -1,6 +1,7 @@
 package ls.augment.com;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
@@ -29,7 +30,6 @@ import java.util.concurrent.Executors;
 public final class SettingsActivity extends Activity {
     private static final String OVERVIEW = "overview";
     private static final String HIDE = "hide";
-    private static final String RECENTS = "recents";
     private static final String GAME = "game";
     private static final String SYSTEM = "system";
     private static final String APPS = "apps";
@@ -38,9 +38,8 @@ public final class SettingsActivity extends Activity {
     private static final Category[] CATEGORIES = {
             new Category(OVERVIEW, "概览", android.R.drawable.ic_menu_view),
             new Category(HIDE, "消失吧APP", android.R.drawable.ic_menu_close_clear_cancel),
-            new Category(RECENTS, "最近任务", android.R.drawable.ic_menu_recent_history),
             new Category(GAME, "游戏增强", android.R.drawable.ic_menu_manage),
-            new Category(SYSTEM, "状态栏", android.R.drawable.ic_menu_info_details),
+            new Category(SYSTEM, "系统增强", android.R.drawable.ic_menu_info_details),
             new Category(APPS, "应用增强", android.R.drawable.ic_menu_agenda),
             new Category(TOOLS, "工具", android.R.drawable.ic_menu_preferences)
     };
@@ -58,6 +57,9 @@ public final class SettingsActivity extends Activity {
     private TextView lsposedState;
     private TextView compatibilityState;
     private String selected = OVERVIEW;
+    private boolean rootGatePassed;
+    private boolean rootCheckRunning;
+    private AlertDialog rootRequiredDialog;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -66,14 +68,16 @@ public final class SettingsActivity extends Activity {
         config = new AppConfig(this);
         buildScaffold();
         selected = state == null ? OVERVIEW : state.getString("category", OVERVIEW);
-        if (HIDE.equals(selected) && !HiddenEntrySession.isUnlocked()) selected = OVERVIEW;
-        renderCategory();
-        refreshEnvironment();
+        // Older saved state used a redundant category between home and the manager.
+        if (HIDE.equals(selected)) selected = OVERVIEW;
+        renderRootGateLoading();
         registerSystemBackCallback();
+        checkRootAccess();
     }
 
     @Override protected void onResume() {
         super.onResume();
+        if (!rootGatePassed) return;
         if (HIDE.equals(selected) && !HiddenEntrySession.isUnlocked()) selected = OVERVIEW;
         renderCategory();
         refreshEnvironment();
@@ -89,6 +93,10 @@ public final class SettingsActivity extends Activity {
     }
 
     private void navigateBack() {
+        if (!rootGatePassed) {
+            exitApplication();
+            return;
+        }
         if (!OVERVIEW.equals(selected)) {
             selected = OVERVIEW;
             renderCategory();
@@ -105,16 +113,77 @@ public final class SettingsActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (rootRequiredDialog != null) {
+            rootRequiredDialog.setOnCancelListener(null);
+            rootRequiredDialog.dismiss();
+            rootRequiredDialog = null;
+        }
         executor.shutdownNow();
         super.onDestroy();
+    }
+
+    private void renderRootGateLoading() {
+        renderAppBar();
+        page.removeAllViews();
+        TextView loading = ui.text("正在申请 Root 权限…", 13, ui.muted, false);
+        loading.setGravity(Gravity.CENTER);
+        loading.setPadding(ui.dp(12), ui.dp(36), ui.dp(12), ui.dp(36));
+        page.addView(loading, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void checkRootAccess() {
+        if (rootCheckRunning || rootGatePassed || isFinishing()) return;
+        rootCheckRunning = true;
+        executor.execute(() -> {
+            RootHideManager.RootStatus root = new RootHideManager(this).requestRootStatus();
+            main.post(() -> {
+                rootCheckRunning = false;
+                if (isFinishing() || isDestroyed()) return;
+                if (root.state == RootHideManager.RootState.GRANTED) {
+                    rootGatePassed = true;
+                    if (rootRequiredDialog != null) {
+                        rootRequiredDialog.setOnCancelListener(null);
+                        rootRequiredDialog.dismiss();
+                        rootRequiredDialog = null;
+                    }
+                    renderCategory();
+                    refreshEnvironment();
+                    return;
+                }
+                showRootRequiredDialog(root);
+            });
+        });
+    }
+
+    private void showRootRequiredDialog(RootHideManager.RootStatus root) {
+        if (rootRequiredDialog != null && rootRequiredDialog.isShowing()) return;
+        String detail = root == null || root.message == null || root.message.trim().isEmpty()
+                ? "Root 权限不可用" : root.message.trim();
+        rootRequiredDialog = new AlertDialog.Builder(this)
+                .setTitle("需要 Root 权限")
+                .setMessage("LS_Augment 的当前功能需要 Root 权限。请先在 KernelSU、Magisk "
+                        + "或 APatch 中为 LS_Augment 授予 Root 权限，然后点击“重新检测”。\n\n"
+                        + "检测结果：" + detail + "\n\n关闭此提示将退出应用。")
+                .setNegativeButton("退出应用", (dialog, which) -> exitApplication())
+                .setPositiveButton("重新检测", (dialog, which) -> checkRootAccess())
+                .create();
+        rootRequiredDialog.setCanceledOnTouchOutside(true);
+        rootRequiredDialog.setOnCancelListener(dialog -> exitApplication());
+        rootRequiredDialog.setOnDismissListener(dialog -> {
+            if (rootRequiredDialog == dialog) rootRequiredDialog = null;
+        });
+        rootRequiredDialog.show();
+    }
+
+    private void exitApplication() {
+        finishAndRemoveTask();
     }
 
     private void buildScaffold() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackground(ui.backgroundDrawable());
-        // RedMagic's optional dual-row status bar can be taller than the stock
-        // content inset reported to normal app windows.
+        // UiKit applies the current system-bar and cutout insets after attachment.
         root.setPadding(0, ui.topAppInset(), 0, 0);
 
         appBar = new LinearLayout(this);
@@ -170,7 +239,7 @@ public final class SettingsActivity extends Activity {
             LinearLayout brand = new LinearLayout(this);
             brand.setOrientation(LinearLayout.VERTICAL);
             brand.addView(ui.text("LS_Augment", 21, ui.text, true), ui.wrap());
-            brand.addView(ui.text("LSPosed Module", 10.5f, ui.muted, false),
+            brand.addView(ui.text("红魔11Pro增强", 10.5f, ui.muted, false),
                     ui.margins(0, 3, 0, 0));
             appBar.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         }
@@ -178,6 +247,14 @@ public final class SettingsActivity extends Activity {
     }
 
     private void selectCategory(String category) {
+        if (HIDE.equals(category)) {
+            selected = OVERVIEW;
+            renderCategory();
+            if (HiddenEntrySession.isUnlocked()) {
+                startActivity(new Intent(this, HideAppsActivity.class));
+            }
+            return;
+        }
         boolean known = false;
         for (Category item : CATEGORIES) if (item.id.equals(category)) known = true;
         selected = known && (!HIDE.equals(category) || HiddenEntrySession.isUnlocked())
@@ -186,7 +263,6 @@ public final class SettingsActivity extends Activity {
     }
 
     private String scopeForSelected() {
-        if (RECENTS.equals(selected)) return ScopeRestartDialog.LAUNCHER;
         if (SYSTEM.equals(selected)) return ScopeRestartDialog.SYSTEM_UI;
         if (GAME.equals(selected)) return ScopeRestartDialog.GAMES;
         if (APPS.equals(selected)) return ScopeRestartDialog.APPS;
@@ -203,15 +279,8 @@ public final class SettingsActivity extends Activity {
         rootState = null;
         lsposedState = null;
         compatibilityState = null;
-        if (!OVERVIEW.equals(selected)) {
-            TextView subtitle = ui.text(categoryCopy(selected)[1], 11.5f, ui.muted, false);
-            subtitle.setLineSpacing(ui.dp(1), 1.06f);
-            page.addView(subtitle, ui.margins(1, 1, 1, 13));
-        }
 
         switch (selected) {
-            case HIDE: renderHide(); break;
-            case RECENTS: renderRecents(); break;
             case GAME: renderGame(); break;
             case SYSTEM: renderSystem(); break;
             case APPS: renderApps(); break;
@@ -239,9 +308,9 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
-        copy.addView(ui.text("LS_Augment", 14, ui.text, true), ui.wrap());
         lsposedState = ui.text("正在读取 LSPosed…", 10.5f, ui.cyan, true);
         rootState = ui.text("Root 正在读取…", 10.5f, ui.muted, false);
+        rootState.setVisibility(View.GONE);
         compatibilityState = ui.text(BuildConfig.VERSION_NAME, 10.5f, ui.accent, false);
         copy.addView(lsposedState, ui.margins(0, 3, 0, 0));
         copy.addView(rootState, ui.margins(0, 2, 0, 0));
@@ -257,9 +326,9 @@ public final class SettingsActivity extends Activity {
         } else {
             addCategorySection("应用管理", category(APPS));
         }
-        addCategorySection("系统界面", category(RECENTS), category(SYSTEM));
+        addCategorySection("系统界面", category(SYSTEM));
         addCategorySection("游戏与性能", category(GAME));
-        addCategorySection("模块设置", category(TOOLS));
+        renderTools();
         refreshEnvironment();
     }
 
@@ -316,94 +385,77 @@ public final class SettingsActivity extends Activity {
     private String categoryDescription(String category) {
         switch (category) {
             case HIDE: return "应用隐藏、自动化与快捷恢复";
-            case RECENTS: return "横向重叠与整机内存标签";
-            case GAME: return "肩键、AI 触发器、一键连招速度、超分辨率与破坏神策略";
+            case GAME: return "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神策略";
             case SYSTEM: return "小窗增强、双排布局、时钟与实时数据";
-            case APPS: return "红魔双开扩展与主题无限期试用";
+            case APPS: return "应用双开、主题试用与安装兼容能力";
             case TOOLS: return "桌面入口、诊断、日志与恢复";
             default: return "模块运行状态与版本";
         }
     }
 
-    private void renderHide() {
-        beginPanel("隐藏与自动化", "按空间配置目标，应用列表默认收起。", true);
-        addModule("消失吧APP", "管理应用隐藏、显示与紧急恢复。",
-                AppConfig.HIDE_MASTER, null, ScopeRestartDialog.SETTINGS,
-                view -> startActivity(new Intent(this, HideAppsActivity.class)));
-        addModule("锁屏自动隐藏", "熄屏时对已保存目标执行一次隐藏。",
-                AppConfig.AUTOMATION_ENABLED, FeatureActivity.MODULE_AUTOMATION,
-                ScopeRestartDialog.SETTINGS, null);
-        addModule("快捷设置磁贴", "从控制中心快速切换全部显示或隐藏。",
-                AppConfig.TILE_ENABLED, FeatureActivity.MODULE_TILE,
-                ScopeRestartDialog.SETTINGS, null);
-    }
-
-    private void renderRecents() {
-        beginPanel("视觉与信息", "只调整视觉层，不接管 Quickstep 分页。", true);
-        addModule("iOS 横向重叠", "连续堆叠并保留滑动、吸附、点击和上滑关闭。",
-                AppConfig.RECENTS_ENABLED, FeatureActivity.MODULE_RECENTS_STACK,
-                ScopeRestartDialog.LAUNCHER, null);
-        addModule("后台内存标签", "底部只显示一条“可用内存 / 总内存”数据。",
-                AppConfig.RECENTS_MEMORY_ENABLED, FeatureActivity.MODULE_RECENTS_MEMORY,
-                ScopeRestartDialog.LAUNCHER, null);
-    }
-
     private void renderGame() {
-        beginPanel("功能开关", "肩键、AI 触发器、一键连招速度、超分辨率与破坏神共存策略。", true);
-        addModule("肩键全应用", "自动放行已安装、已启用的第三方 App。",
+        beginPanel("", "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神共存策略。", true);
+        addModule("肩键全应用", "对加入游戏空间的所有应用开放肩键使用。",
                 AppConfig.SHOULDER_ENABLED, FeatureActivity.MODULE_SHOULDER,
                 ScopeRestartDialog.GAMES, null);
         addModule("AI 触发器极速", "降低模板、点击队列和 YOLO 的等待间隔。",
                 AppConfig.AI_TRIGGER_ENABLED, FeatureActivity.MODULE_AI_TRIGGER,
                 ScopeRestartDialog.GAMES, null);
+        addModule("风扇固定转速", "匹配最接近的硬件档位，并可解禁驱动 5 档满速。",
+                AppConfig.FAN_FIXED_ENABLED, FeatureActivity.MODULE_FAN_CONTROL,
+                ScopeRestartDialog.GAMES, null);
         addModule("一键连招速度", "调整游戏助手录制连招的播放倍率。",
                 AppConfig.COMBO_SPEED_ENABLED, FeatureActivity.MODULE_COMBO_SPEED,
                 ScopeRestartDialog.GAMES, null);
-        addModule("性能模式超分", "允许其他性能模式使用红魔原生超分辨率。",
+        addModule("超分破坏神", "性能模式超分与破坏神共存策略。",
                 AppConfig.SUPER_MIRROR_LOW_MODE, FeatureActivity.MODULE_SUPER_RESOLUTION,
-                ScopeRestartDialog.GAMES, null);
-        addModule("超分与破坏神共存", "阻止两项能力互相自动关闭。",
-                AppConfig.SUPER_MIRROR_DIABLO_COEXIST, FeatureActivity.MODULE_DIABLO_COEXIST,
                 ScopeRestartDialog.GAMES, null);
     }
 
     private void renderSystem() {
-        beginPanel("小窗与状态栏", "Android 16 小窗策略、SystemUI 布局与实时信息。", true);
+        beginPanel("", "Android 16 小窗策略、SystemUI 布局与实时信息。", true);
         addModule("小窗增强", "解除窗口数量上限，并强制普通应用进入小窗。",
                 AppConfig.FREEFORM_ENABLED, FeatureActivity.MODULE_FREEFORM,
                 ScopeRestartDialog.DEVICE, null);
-        addModule("状态栏布局", "左右双排、跨排时钟、高度与安全边距。",
+        addModule("音量增强", "支持超过原厂 100%，按输出设备与声音类型设置。",
+                ConfigSchema.AUDIO_GAIN_ENABLED, FeatureActivity.MODULE_AUDIO_GAIN,
+                ScopeRestartDialog.DEVICE, null);
+        addUtility("电池与循环次数", "实际循环记录、容量及原厂循环降压策略。",
+                "读取硬件数据", FeatureActivity.MODULE_BATTERY);
+        addModule("状态栏", "统一设置双排布局、时钟、硬件网速和图标大小。",
                 AppConfig.SYSTEMUI_MASTER, FeatureActivity.MODULE_STATUS_LAYOUT,
-                ScopeRestartDialog.SYSTEM_UI, null);
-        addModule("时钟格式", "12/24 小时、秒、时段、星期和自定义格式。",
-                AppConfig.STATUSBAR_CLOCK_CUSTOM, FeatureActivity.MODULE_STATUS_CLOCK,
-                ScopeRestartDialog.SYSTEM_UI, null);
-        addModule("实时数据", "温度、电流、功率和通知数量。",
-                AppConfig.STATUSBAR_THERMAL, FeatureActivity.MODULE_STATUS_METRICS,
                 ScopeRestartDialog.SYSTEM_UI, null);
     }
 
     private void renderApps() {
-        beginPanel("扩展能力", "保留原厂管理流程，只扩展对应能力。", true);
+        beginPanel("", "保留原厂管理流程，只扩展对应能力。", true);
+        addUtility("步数修改", "真实记录倍速、随机时间增步、每日重复与账户绑定。",
+                config.getBoolean(ConfigSchema.HEALTH_ENABLED)?"已启用":"配置步数计划", "mi_health");
+        addUtility("APP图标名称编辑", "按空间选择应用，自定义图标、裁剪图片、修改名称。", "打开编辑器", "launcher_custom");
+        addModule("允许安装签名不一致的应用",
+                "用不同签名的 APK 覆盖同包名应用；默认关闭。",
+                AppConfig.ALLOW_SIGNATURE_MISMATCH,
+                FeatureActivity.MODULE_SIGNATURE_INSTALL,
+                ScopeRestartDialog.DEVICE, null);
         addModule("扩展应用双开", "保留红魔原生候选并补充第三方 App。",
                 AppConfig.DOUBLE_ANY_APP, FeatureActivity.MODULE_DOUBLE_APP,
                 ScopeRestartDialog.APPS, null);
+        addModule("应用商店同时下载限制解除", "设置允许同时下载的应用数量。", ConfigSchema.STORE_DOWNLOAD_ENABLED, "store_download", ScopeRestartDialog.APPS, null);
         addModule("主题无限期试用", "仅处理已确认试用资源的本地到期复位。",
                 AppConfig.BEAUTIFY_UNLIMITED_TRIAL, FeatureActivity.MODULE_BEAUTIFY,
                 ScopeRestartDialog.APPS, null);
     }
 
     private void renderTools() {
-        beginPanel("模块工具", "入口管理、运行诊断、恢复和日志。", true);
-        addUtility("桌面图标", "隐藏或恢复 LS_Augment 自身桌面入口。",
-                launcherIconStatus(), FeatureActivity.MODULE_LAUNCHER_ICON);
-        addUtility("诊断与恢复", "查看 Hook 命中、导出日志、同步镜像与紧急恢复。",
-                "只读诊断", FeatureActivity.MODULE_DIAGNOSTICS);
+        beginPanel("模块设置", "", true);
+        addUtility("桌面图标", "隐藏或恢复 LS_Augment 自身桌面入口。", "", FeatureActivity.MODULE_LAUNCHER_ICON);
+        addUtility("运行诊断", "详细诊断与日志导出。", "", FeatureActivity.MODULE_DIAGNOSTICS);
+        addUtility("配置导入导出", "备份设置或导入已有配置。", "", "config_transfer");
     }
 
     private LinearLayout beginPanel(String title, String description, boolean attach) {
         LinearLayout heading = ui.section(title, description);
-        page.addView(heading, ui.margins(3, 0, 3, 7));
+        if (!title.isEmpty()) page.addView(OVERVIEW.equals(selected)?ui.overline(title):heading, ui.margins(3, 0, 3, 7));
         LinearLayout panel = ui.card();
         panel.setPadding(0, 0, 0, 0);
         activePanel = panel;
@@ -470,7 +522,7 @@ public final class SettingsActivity extends Activity {
         ui.styleSwitch(control);
         control.setChecked(enabled);
         control.setContentDescription(name + (enabled ? "已开启" : "已关闭"));
-        row.addView(control, new LinearLayout.LayoutParams(-2, ui.dp(44)));
+
 
         ImageView enter = new ImageView(this);
         enter.setImageResource(R.drawable.ic_chevron_right);
@@ -507,7 +559,7 @@ public final class SettingsActivity extends Activity {
         TextView detail = ui.text(description, 10.5f, ui.muted, false);
         detail.setMaxLines(2);
         copy.addView(detail, ui.margins(0, 3, 0, 0));
-        copy.addView(ui.statusChip(status, ui.accent), ui.margins(0, 5, 0, 0));
+
         LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
         copyParams.setMargins(ui.dp(10), 0, ui.dp(5), 0);
         row.addView(copy, copyParams);
@@ -532,13 +584,13 @@ public final class SettingsActivity extends Activity {
     }
 
     private int moduleIcon(String module, String name) {
-        if (FeatureActivity.MODULE_RECENTS_STACK.equals(module)
-                || FeatureActivity.MODULE_RECENTS_MEMORY.equals(module)) {
-            return android.R.drawable.ic_menu_recent_history;
+        if (FeatureActivity.MODULE_SIGNATURE_INSTALL.equals(module)) {
+            return android.R.drawable.ic_lock_lock;
         }
         if (FeatureActivity.MODULE_SHOULDER.equals(module)
                 || FeatureActivity.MODULE_COMBO_SPEED.equals(module)
                 || FeatureActivity.MODULE_AI_TRIGGER.equals(module)
+                || FeatureActivity.MODULE_FAN_CONTROL.equals(module)
                 || FeatureActivity.MODULE_SUPER_RESOLUTION.equals(module)
                 || FeatureActivity.MODULE_DIABLO_COEXIST.equals(module)) {
             return android.R.drawable.ic_menu_manage;
@@ -577,7 +629,7 @@ public final class SettingsActivity extends Activity {
         executor.execute(() -> {
             AppConfig.SaveResult result = config.save(updates);
             if (AppConfig.AUTOMATION_ENABLED.equals(key) && result.success) {
-                ScreenAutomationService.sync(this);
+                ScreenAutomation.sync(this);
             }
             main.post(() -> {
                 control.setEnabled(true);
@@ -600,6 +652,7 @@ public final class SettingsActivity extends Activity {
                 || AppConfig.AI_TRIGGER_ENABLED.equals(key)
                 || AppConfig.TGK_RAPID_FIRE_ENABLED.equals(key)
                 || AppConfig.COMBO_SPEED_ENABLED.equals(key)
+                || AppConfig.FAN_FIXED_ENABLED.equals(key)
                 || AppConfig.SUPER_MIRROR_LOW_MODE.equals(key)
                 || AppConfig.SUPER_MIRROR_DIABLO_COEXIST.equals(key)) return AppConfig.GAME_MASTER;
         if (key.startsWith("ls_augment_statusbar_")) return AppConfig.SYSTEMUI_MASTER;
@@ -609,6 +662,15 @@ public final class SettingsActivity extends Activity {
     }
 
     private void openModule(String module) {
+        if ("config_transfer".equals(module)) { startActivity(new Intent(this, ConfigTransferActivity.class)); return; }
+        if ("launcher_custom".equals(module)) {
+            startActivity(new Intent(this, LauncherCustomizationActivity.class));
+            return;
+        }
+        if ("mi_health".equals(module)) {
+            startActivity(new Intent(this, HealthSettingsActivity.class));
+            return;
+        }
         Intent intent = new Intent(this, FeatureActivity.class);
         intent.putExtra(FeatureActivity.EXTRA_MODULE, module);
         startActivity(intent);
@@ -625,10 +687,9 @@ public final class SettingsActivity extends Activity {
     private String[] categoryCopy(String category) {
         switch (category) {
             case HIDE: return new String[]{"消失吧APP", "隐藏、自动化与快捷入口。"};
-            case RECENTS: return new String[]{"最近任务", "横向重叠视觉和整机内存数据。"};
-            case GAME: return new String[]{"游戏增强", "肩键、AI 触发器、一键连招速度、超分辨率与破坏神策略。"};
-            case SYSTEM: return new String[]{"状态栏", "小窗增强、Android 16 布局、时钟与实时数据。"};
-            case APPS: return new String[]{"应用增强", "红魔双开扩展与主题无限期试用。"};
+            case GAME: return new String[]{"游戏增强", "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神策略。"};
+            case SYSTEM: return new String[]{"系统增强", "小窗增强、Android 16 布局、时钟与实时数据。"};
+            case APPS: return new String[]{"应用增强", "安装兼容、红魔双开扩展与主题无限期试用。"};
             case TOOLS: return new String[]{"工具", "桌面入口、运行诊断与恢复。"};
             default: return new String[]{"概览", "先确认运行状态，再进入具体功能。"};
         }
@@ -648,31 +709,42 @@ public final class SettingsActivity extends Activity {
 
     private void refreshEnvironment() {
         executor.execute(() -> {
+            config.cleanupRetiredRuntimeSettings();
             RootHideManager manager = new RootHideManager(this);
             RootHideManager.RootStatus root = manager.rootStatus();
             RootHideManager.ConflictState conflict = root.state == RootHideManager.RootState.GRANTED
                     ? manager.conflictState()
                     : new RootHideManager.ConflictState(false, false, "未执行冲突检测");
             RootShell.Result posed = root.state == RootHideManager.RootState.GRANTED
-                    ? RootShell.run("printf '%s|%s' "
-                    + "\"$(settings get global ls_augment_probe_api)\" "
-                    + "\"$(settings get global ls_augment_probe_version)\"", null, 6, 4096)
+                    ? RootShell.run("pidof system_server; cat /proc/sys/kernel/random/boot_id; "
+                    + "settings get global ls_augment_system_server_lifecycle", null, 6, 4096)
                     : new RootShell.Result(126, "LSPosed 状态暂不可读", false);
             String rootText = root.state == RootHideManager.RootState.GRANTED
                     ? "Root · 已授权" : "Root · " + root.message;
-            String posedText = posed.isSuccess() && !posed.output.startsWith("null|")
-                    ? "LSPosed · 已激活 · API " + posed.output.split("\\|", -1)[0]
-                    : "LSPosed · 未检测到当前探针";
+            String[] runtime = posed.output.split("\\r?\\n", 3);
+            String currentPid = runtime.length > 0 ? runtime[0].trim() : "";
+            String bootId = runtime.length > 1 ? runtime[1].trim() : "";
+            String earlyWitness = runtime.length > 2 ? runtime[2].trim() : "";
+            String providerWitness = getSharedPreferences(AppConfig.DIAGNOSTICS, 0)
+                    .getString("ls_augment_system_server_lifecycle", "");
+            boolean moduleCurrent = posed.isSuccess()
+                    && (ModuleRuntimeStatus.matches(providerWitness, BuildConfig.VERSION_NAME, currentPid, bootId)
+                    || ModuleRuntimeStatus.matches(earlyWitness, BuildConfig.VERSION_NAME, currentPid, bootId));
+            String currentWitness=ModuleRuntimeStatus.matches(providerWitness, BuildConfig.VERSION_NAME, currentPid, bootId)?providerWitness:earlyWitness;
+            String apiVersion=moduleCurrent?ModuleRuntimeStatus.apiVersion(currentWitness):"";
+            String posedText = moduleCurrent ? "LSPosed"+(apiVersion.isEmpty()?"":" "+apiVersion)+" 已加载"
+                    : "LSPosed · 当前版本尚未在系统生效";
             String versionText = BuildConfig.VERSION_NAME;
             main.post(() -> {
                 if (rootState != null) {
+                    rootState.setVisibility(root.state == RootHideManager.RootState.GRANTED?View.GONE:View.VISIBLE);
                     rootState.setText(rootText);
                     rootState.setTextColor(root.state == RootHideManager.RootState.GRANTED
                             ? ui.cyan : ui.danger);
                 }
                 if (lsposedState != null) {
                     lsposedState.setText(posedText);
-                    lsposedState.setTextColor(posed.isSuccess() ? ui.cyan : ui.danger);
+                    lsposedState.setTextColor(moduleCurrent ? ui.cyan : ui.warning);
                 }
                 if (compatibilityState != null) {
                     compatibilityState.setText(versionText);

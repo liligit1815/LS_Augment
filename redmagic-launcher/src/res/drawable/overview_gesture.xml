@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$overview_gesture__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="_R_G_L_3_G_D_0_P_0" android:animation="@drawable/$overview_gesture__1" />
+    <target android:name="_R_G_L_3_G_N_4_T_0" android:animation="@drawable/$overview_gesture__4" />
+    <target android:name="_R_G_L_3_G_N_4_N_3_T_1" android:animation="@drawable/$overview_gesture__9" />
+    <target android:name="_R_G_L_3_G_N_4_N_3_T_1" android:animation="@drawable/$overview_gesture__15" />
+    <target android:name="_R_G_L_3_G_N_4_N_3_T_1" android:animation="@drawable/$overview_gesture__22" />
+    <target android:name="_R_G_L_3_G_N_4_N_3_N_2_T_0" android:animation="@drawable/$overview_gesture__29" />
+    <target android:name="_R_G_L_2_G_D_0_P_0" android:animation="@drawable/$overview_gesture__30" />
+    <target android:name="_R_G_L_2_G" android:animation="@drawable/$overview_gesture__33" />
+    <target android:name="_R_G_L_1_G_D_0_P_0" android:animation="@drawable/$overview_gesture__34" />
+    <target android:name="_R_G_L_1_G_D_1_P_0" android:animation="@drawable/$overview_gesture__39" />
+    <target android:name="_R_G_L_1_G" android:animation="@drawable/$overview_gesture__44" />
+    <target android:name="_R_G_L_1_G_N_3_T_1" android:animation="@drawable/$overview_gesture__49" />
+    <target android:name="_R_G_L_1_G_N_3_T_1" android:animation="@drawable/$overview_gesture__55" />
+    <target android:name="_R_G_L_1_G_N_3_T_1" android:animation="@drawable/$overview_gesture__62" />
+    <target android:name="_R_G_L_0_G_D_0_P_0" android:animation="@drawable/$overview_gesture__69" />
+    <target android:name="_R_G_L_0_G_D_1_P_0" android:animation="@drawable/$overview_gesture__75" />
+    <target android:name="_R_G_L_0_G_T_1" android:animation="@drawable/$overview_gesture__82" />
+    <target android:name="_R_G_L_0_G_T_1" android:animation="@drawable/$overview_gesture__88" />
+    <target android:name="_R_G_L_0_G_T_1" android:animation="@drawable/$overview_gesture__95" />
+    <target android:name="time_group" android:animation="@drawable/$overview_gesture__102" />
+</animated-vector>

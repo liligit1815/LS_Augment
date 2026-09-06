@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.widget.WidgetsTwoPaneSheetMfv android:theme="?widgetsTheme" android:layout_gravity="center|bottom" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.android.launcher3.views.SpringRelativeLayout android:id="@id/container" android:focusable="true" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no">
+        <View android:id="@id/collapse_handle" android:background="@drawable/component_sheet_collapse_bg" android:layout_width="@dimen/two_pane_sheet_handle_width_mfv" android:layout_height="@dimen/two_pane_sheet_handle_height_mfv" android:layout_centerHorizontal="true" android:layout_marginVertical="@dimen/bottom_sheet_handle_margin" />
+        <LinearLayout android:id="@id/linear_layout_container" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_below="@id/collapse_handle">
+            <FrameLayout android:layout_gravity="start" android:id="@id/recycler_view_container" android:paddingTop="@dimen/two_pane_sheet_left_container_padding_top" android:clipChildren="false" android:clipToPadding="false" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="0.41">
+                <TextView android:id="@id/fast_scroller_popup" android:layout_marginEnd="@dimen/fastscroll_popup_margin" style="@style/FastScrollerPopup" />
+                <com.android.launcher3.views.RecyclerViewFastScroller android:id="@id/fast_scroller" android:layout_width="@dimen/fastscroll_width" android:layout_height="match_parent" android:layout_marginEnd="@dimen/fastscroll_end_margin" />
+                <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:id="@id/empty_search_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <com.airbnb.lottie.LottieAnimationView android:layout_gravity="center" android:layout_width="@dimen/components_sheet_search_empty_image_size" android:layout_height="@dimen/components_sheet_search_empty_image_size" android:scaleType="centerInside" android:adjustViewBounds="true" android:forceDarkAllowed="false" app:lottie_autoPlay="true" app:lottie_imageAssetsFolder="images" app:lottie_rawRes="@raw/components_sheet_search_empty" />
+                    <TextView android:textSize="@dimen/component_cell_text_size" android:textColor="@color/widget_title_color" android:gravity="center" android:id="@id/empty_search_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/components_sheet_search_empty_text_margin" android:text="@string/components_sheet_empty_search_text" />
+                </LinearLayout>
+            </FrameLayout>
+            <FrameLayout android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="0.59" android:paddingStart="@dimen/two_pane_sheet_right_pane_padding_start" android:paddingEnd="@dimen/two_pane_sheet_right_pane_padding_end">
+                <TextView android:textSize="20.0dp" android:textColor="@color/widget_title_color" android:ellipsize="end" android:layout_gravity="center_horizontal" android:id="@id/app_title_right_pane" android:duplicateParentState="true" android:layout_width="wrap_content" android:layout_height="@dimen/two_pane_sheet_right_pane_title_height" android:layout_marginTop="@dimen/two_pane_sheet_right_pane_title_margin_top" android:maxLines="1" android:textFontWeight="400" />
+                <FrameLayout android:gravity="end" android:layout_gravity="end" android:orientation="horizontal" android:id="@id/right_pane_container" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="@dimen/two_pane_sheet_right_pane_container_margin_top">
+                    <ScrollView android:id="@id/right_pane_scroll_view" android:scrollbars="none" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:clipToOutline="true">
+                        <LinearLayout android:orientation="vertical" android:id="@id/right_pane" android:layout_width="match_parent" android:layout_height="wrap_content" android:importantForAccessibility="yes" android:clipToOutline="true">
+                            <TextView android:textSize="18.0sp" android:gravity="center" android:id="@id/no_widgets_text" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/PrimaryHeadline" />
+                            <LinearLayout android:orientation="vertical" android:id="@id/widget_recommendations_container" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent">
+                                <include layout="@layout/widget_recommendations" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </ScrollView>
+                </FrameLayout>
+            </FrameLayout>
+        </LinearLayout>
+    </com.android.launcher3.views.SpringRelativeLayout>
+</com.android.launcher3.widget.WidgetsTwoPaneSheetMfv>

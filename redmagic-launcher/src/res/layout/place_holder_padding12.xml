@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:id="@id/placeholder_padding12" android:background="@android:color/transparent" android:clickable="false" android:layout_width="match_parent" android:layout_height="12.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

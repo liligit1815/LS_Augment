@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="person_surface" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="person" android:fillColor="#4c4c4c" android:pathData="M 12 4.5 C 13.6 4.5 14.9 5.801 14.9 7.4 C 14.9 8.999 13.6 10.3 12 10.3 C 10.4 10.3 9.1 9 9.1 7.4 C 9.1 5.8 10.4 4.5 12 4.5 M 12 3 C 9.57 3 7.6 4.969 7.6 7.4 C 7.6 9.831 9.57 11.8 12 11.8 C 14.433 11.8 16.4 9.831 16.4 7.401 C 16.4 4.969 14.433 3 12 3 Z M 12 14.7 C 14.871 14.7 19.3 16.117 19.3 18 L 19.3 19.5 L 4.7 19.5 L 4.7 18 C 4.7 16.117 9.129 14.7 12 14.7 M 12 13.2 C 9.027 13.2 3.2 14.649 3.2 18 L 3.2 20.2 C 3.2 20.642 3.559 21 4 21 L 20 21 C 20.441 21 20.8 20.642 20.8 20.2 L 20.8 18 C 20.8 14.649 14.973 13.2 12 13.2 Z" android:strokeWidth="1.0" />
+        <clip-path android:name="mask" android:pathData="M 0 0 L 24 0 L 24 0 L 0 0 L 0 0 Z" />
+        <path android:name="person_full_1" android:fillColor="#079efb" android:pathData="M 12 7.395 C 12.003 7.395 12.005 7.397 12.005 7.4 C 12.005 7.403 12.003 7.405 12 7.405 C 11.997 7.405 11.995 7.403 11.995 7.4 C 11.995 7.397 11.997 7.395 12 7.395 M 12 3 C 9.57 3 7.6 4.969 7.6 7.4 C 7.6 9.831 9.57 11.8 12 11.8 C 14.433 11.8 16.4 9.831 16.4 7.401 C 16.4 4.969 14.433 3 12 3 Z M 12 17.099 C 12.002 17.099 12.005 17.1 12.005 17.101 L 12.005 17.102 L 11.995 17.102 L 11.995 17.101 C 11.995 17.1 11.998 17.099 12 17.099 M 12 13.2 C 9.027 13.2 3.2 14.649 3.2 18 L 3.2 20.2 C 3.2 20.642 3.559 21 4 21 L 20 21 C 20.441 21 20.8 20.642 20.8 20.2 L 20.8 18 C 20.8 14.649 14.973 13.2 12 13.2 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

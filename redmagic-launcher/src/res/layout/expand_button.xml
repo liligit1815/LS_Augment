@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center_vertical" android:background="?android:selectableItemBackground" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/mfvc_1line_list_height" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:gravity="start|center" android:orientation="horizontal" android:id="@android:id/icon_frame" android:paddingTop="4.0dp" android:paddingBottom="4.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="56.0dp" android:paddingEnd="0.0dp" android:layout_marginStart="0.0dp">
+        <androidx.preference.internal.PreferenceImageView android:id="@android:id/icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="40.0dp" android:maxHeight="40.0dp" android:tint="?mfvPreferenceIconTint" />
+    </LinearLayout>
+    <RelativeLayout android:paddingTop="11.75dp" android:paddingBottom="11.5dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1.0">
+        <com.zte.mifavor.widget.TextViewZTE android:textAppearance="?android:textAppearanceListItem" android:textColor="@color/preference_title_zte_light" android:ellipsize="marquee" android:id="@android:id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:numStars="4" android:singleLine="true" />
+        <com.zte.mifavor.widget.TextViewZTE android:textAppearance="?android:textAppearanceListItemSecondary" android:textColor="?android:textColorSecondary" android:ellipsize="end" android:id="@android:id/summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:numStars="2" android:maxLines="10" android:layout_below="@android:id/title" android:layout_alignStart="@android:id/title" />
+    </RelativeLayout>
+</LinearLayout>

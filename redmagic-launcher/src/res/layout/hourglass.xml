@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/hourglass_root" android:background="@android:color/transparent" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.airbnb.lottie.LottieAnimationView android:layout_gravity="center_horizontal" android:id="@id/hourglass" android:layout_width="42.0dp" android:layout_height="42.0dp" android:forceDarkAllowed="false" app:lottie_autoPlay="true" app:lottie_fileName="hourglass.json" app:lottie_loop="true" app:lottie_progress="0.0" />
+</LinearLayout>

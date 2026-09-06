@@ -1,6 +1,5 @@
 package ls.augment.com;
 
-import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -15,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -22,6 +22,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -31,6 +32,7 @@ import android.widget.Toast;
 
 import android.window.OnBackInvokedDispatcher;
 
+import java.io.File;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
@@ -47,12 +49,14 @@ import java.util.concurrent.Executors;
 /** Secondary configuration pages. */
 public final class FeatureActivity extends Activity {
     static final String EXTRA_MODULE = "module";
-    static final String MODULE_RECENTS_STACK = "recents_stack";
-    static final String MODULE_RECENTS_MEMORY = "recents_memory";
     static final String MODULE_SHOULDER = "shoulder";
     static final String MODULE_AI_TRIGGER = "ai_trigger";
     static final String MODULE_COMBO_SPEED = "combo_speed";
+    static final String MODULE_FAN_CONTROL = "fan_control";
     static final String MODULE_FREEFORM = "freeform";
+    static final String MODULE_AUDIO_GAIN = "audio_gain";
+    static final String MODULE_BATTERY = "battery";
+    private TextView batteryReadout;
     static final String MODULE_SUPER_RESOLUTION = "super_resolution";
     static final String MODULE_DIABLO_COEXIST = "diablo_coexist";
     static final String MODULE_STATUS_LAYOUT = "status_layout";
@@ -60,13 +64,16 @@ public final class FeatureActivity extends Activity {
     static final String MODULE_STATUS_METRICS = "status_metrics";
     static final String MODULE_DOUBLE_APP = "double_app";
     static final String MODULE_BEAUTIFY = "beautify";
+    static final String MODULE_SIGNATURE_INSTALL = "signature_install";
     static final String MODULE_AUTOMATION = "automation";
     static final String MODULE_TILE = "tile";
     static final String MODULE_LAUNCHER_ICON = "launcher_icon";
     static final String MODULE_DIAGNOSTICS = "diagnostics";
+    static final String MODULE_DETAILED_DIAGNOSTICS = "detailed_diagnostics";
     private static final int EXPORT_REQUEST = 2042;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService rapidCaptureExecutor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Map<String, Switch> switches = new LinkedHashMap<>();
     private final Map<String, EditText> inputs = new LinkedHashMap<>();
@@ -81,21 +88,54 @@ public final class FeatureActivity extends Activity {
     private LinearLayout page;
     private Button save;
     private TextView status;
+    private boolean runtimeDetailsExpanded;
+    private TextView rapidCompatibilityStatus;
+    private Button rapidCompatibilityAction;
+    private Button rapidCompatibilityCancel;
+    private LinearLayout rapidCompatibilityPanel;
+    private LinearLayout rapidParameters;
+    private TextView rapidFeatureTitle;
+    private TextView rapidFeatureDescription;
+    private Button rapidTestEntry;
+    private ImageButton rapidExpand;
+    private boolean rapidFeatureUnlocked;
+    private TextView fanMeasurementSummary;
+    private AlertDialog fanDialog;
+    private long fanRequestAt;
+    private String renderedFanMeasurement;
+    private boolean rapidParametersExpanded;
+    private boolean rapidTestPanelRequested;
     private LinearLayout statusIconControls;
     private final LinkedHashMap<String, Boolean> renderedStatusIconSlots =
             new LinkedHashMap<>();
     private String section;
     private boolean loading = true;
+    private final java.util.List<UiKit.Fold> folds = new java.util.ArrayList<>();
     private boolean dirty;
     private boolean saveInFlight;
+    private boolean rapidFingerprintLoading;
+    private boolean rapidAutoContinueAttempted;
+    private boolean rapidDisablePersistPending;
     private long changeGeneration;
+    private volatile String rapidFingerprint;
+    private volatile RapidFireCompatibility.Session rapidSession;
+    private RapidFirePhysicalCapture rapidPhysicalCapture;
+    private boolean rapidPagePaused;
+    private String rapidCaptureFeedback;
+    private boolean rapidCaptureInFlight;
+    private boolean rapidCaptureLeft;
+    private long rapidCaptureDeadline;
+    private int rapidCaptureGeneration;
+    private String rapidCaptureSessionId;
     private String pendingExport = "";
     private final Runnable statusAutoSave = () -> save(true);
     private final Runnable statusPoll = new Runnable() {
         @Override public void run() {
-            if (!isStatusModule() || isFinishing()) return;
-            refreshStatusIconControls();
+            if ((!isStatusModule() && !MODULE_AUDIO_GAIN.equals(section) && !MODULE_FAN_CONTROL.equals(section)
+                    && !MODULE_SHOULDER.equals(section)) || isFinishing()) return;
+            if (isStatusModule()) refreshStatusIconControls();
             renderRuntimeStatus();
+            if (MODULE_SHOULDER.equals(section)) refreshRapidCompatibilityUi();
             main.postDelayed(this, 800L);
         }
     };
@@ -112,6 +152,11 @@ public final class FeatureActivity extends Activity {
         super.onCreate(state);
         section = getIntent().getStringExtra(EXTRA_MODULE);
         if (section == null) section = MODULE_DIAGNOSTICS;
+        if (isStatusModule()) {
+            startActivity(new Intent(this, StatusBarSettingsActivity.class));
+            finish();
+            return;
+        }
         config = new AppConfig(this);
         ui = new UiKit(this);
         build();
@@ -120,13 +165,31 @@ public final class FeatureActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        stopRapidCapture();
+        rapidCaptureExecutor.shutdown();
         main.removeCallbacks(statusAutoSave);
         main.removeCallbacks(statusPoll);
-        executor.shutdownNow();
+        executor.shutdown();
         super.onDestroy();
     }
 
     @Override public void onBackPressed() { finish(); }
+
+    @Override protected void onResume() {
+        super.onResume();
+        rapidPagePaused = false;
+    }
+
+    @Override protected void onPause() {
+        if (dirty && !saveInFlight) save(true);
+        if(fanRequestAt>0&&isFinishing()){requestFanMeasurement(false);fanRequestAt=0;}
+        rapidPagePaused = true;
+        if (rapidCaptureInFlight) {
+            stopRapidCapture();
+            rapidCaptureFeedback = "离开页面已停止采集并交还肩键控制，返回后可重新采集";
+        }
+        super.onPause();
+    }
 
     private void registerSystemBackCallback() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
@@ -157,19 +220,22 @@ public final class FeatureActivity extends Activity {
 
         TextView description = ui.text(subtitle(), 11.5f, ui.muted, false);
         description.setLineSpacing(ui.dp(1), 1.06f);
-        page.addView(description, ui.margins(1, 2, 1, 12));
+
         status = ui.text("配置尚未读取", 11, ui.muted, false);
         status.setPadding(ui.dp(12), ui.dp(9), ui.dp(12), ui.dp(9));
         status.setBackground(ui.roundStroke(ui.accentContainer, 12, ui.outline, 1));
-        page.addView(status, ui.margins(0, 0, 0, 12));
+        status.setClickable(true);status.setFocusable(true);
+        status.setOnClickListener(v -> { runtimeDetailsExpanded=!runtimeDetailsExpanded;renderRuntimeStatus(); });
+
 
         switch (section) {
-            case MODULE_RECENTS_STACK: buildRecentsStack(); break;
-            case MODULE_RECENTS_MEMORY: buildRecentsMemory(); break;
             case MODULE_SHOULDER: buildShoulder(); break;
             case MODULE_AI_TRIGGER: buildAiTrigger(); break;
             case MODULE_COMBO_SPEED: buildComboSpeed(); break;
+            case MODULE_FAN_CONTROL: buildFanControl(); break;
             case MODULE_FREEFORM: buildFreeform(); break;
+            case MODULE_AUDIO_GAIN: buildAudioGain(); break;
+            case MODULE_BATTERY: buildBattery(); break;
             case MODULE_SUPER_RESOLUTION: buildSuperResolution(); break;
             case MODULE_DIABLO_COEXIST: buildDiabloCoexist(); break;
             case MODULE_STATUS_LAYOUT: buildStatusLayout(); break;
@@ -177,10 +243,13 @@ public final class FeatureActivity extends Activity {
             case MODULE_STATUS_METRICS: buildStatusMetrics(); break;
             case MODULE_DOUBLE_APP: buildDoubleApp(); break;
             case MODULE_BEAUTIFY: buildBeautify(); break;
+            case MODULE_SIGNATURE_INSTALL: buildSignatureInstall(); break;
             case MODULE_AUTOMATION: buildAutomation(); break;
             case MODULE_TILE: buildTile(); break;
+            case MODULE_DETAILED_DIAGNOSTICS: buildDetailedDiagnostics(); break;
             case MODULE_LAUNCHER_ICON: buildLauncherIcon(); setContentView(root); ui.applyGestureInset(root, 8); return;
-            default: buildDiagnostics(); setContentView(root); ui.applyGestureInset(root, 8); return;
+            case "store_download": buildStoreDownload(); break;
+            default: buildDiagnostics(); break;
         }
         save = ui.accentButton(isStatusModule() ? "立即应用（修改会自动应用）" : "保存修改");
         ui.setButtonEnabled(save, false);
@@ -189,127 +258,913 @@ public final class FeatureActivity extends Activity {
         saveBar.setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(9));
         saveBar.setBackgroundColor(ui.rail);
         saveBar.addView(save, new LinearLayout.LayoutParams(-1, ui.dp(48)));
-        root.addView(saveBar, new LinearLayout.LayoutParams(-1, -2));
+
         setContentView(root);
         ui.applyGestureInset(root, 8);
     }
 
     private LinearLayout detailCard(String title, String description) {
         LinearLayout card = ui.card();
-        card.addView(ui.section(title, description), ui.wrap());
+        if (!title.isEmpty()) card.addView(ui.section(title, description), ui.wrap());
         return card;
     }
 
-    private void buildRecentsStack() {
-        LinearLayout master = detailCard("横向重叠任务",
-                "视觉变换不接管 Quickstep 的分页与手势。关闭后恢复红魔原生样式。");
-        addSwitch(master, AppConfig.RECENTS_ENABLED, "启用横向堆叠",
-                "只改变 TaskView 视觉位置，不修改 Quickstep 分页、fling 或 snap。", true);
-        page.addView(master, ui.margins(0, 0, 0, 12));
-
-        LinearLayout advanced = new LinearLayout(this);
-        advanced.setOrientation(LinearLayout.VERTICAL);
-        addSlider(advanced, AppConfig.RECENTS_COMPRESSION,
-                "后层展开比例（推荐 0.32）", 12, 90, true);
-        addSlider(advanced, AppConfig.RECENTS_FRONT_OVERLAP,
-                "前两张重叠比例（推荐 0.30）", 20, 60, true);
-        addRecentsRecommendedReset(advanced, true);
-        page.addView(ui.collapsible("视觉参数",
-                "滑动时连续改变卡片露出；参数修改后重启系统桌面。", advanced, false),
-                ui.margins(0, 0, 0, 12));
-    }
-
-    private void buildRecentsMemory() {
-        LinearLayout memory = detailCard("后台内存标签",
-                "最近任务底部只保留一条整机数据，不显示汉字和重复标签。");
-        addSwitch(memory, AppConfig.RECENTS_MEMORY_ENABLED, "显示整机内存", "例如 6.3 GB / 14.9 GB。", false);
-        page.addView(memory, ui.margins(0, 0, 0, 12));
-        LinearLayout advanced = new LinearLayout(this);
-        advanced.setOrientation(LinearLayout.VERTICAL);
-        addSlider(advanced, AppConfig.RECENTS_MEMORY_TEXT_SP,
-                "字号 sp（推荐 13）", 10, 20, false);
-        addSlider(advanced, AppConfig.RECENTS_MEMORY_GAP_DP,
-                "与卡片间距 dp（推荐 8）", 0, 32, false);
-        addRecentsRecommendedReset(advanced, false);
-        page.addView(ui.collapsible("显示参数", "调整字号与卡片间距。", advanced, false),
-                ui.margins(0, 0, 0, 12));
-    }
-
     private void buildShoulder() {
-        LinearLayout shoulder = detailCard("全应用肩键",
-                "自动适配主空间中已安装、已启用的第三方 App；实体 L/R 动作仍由红魔 TGK 负责。");
-        addSwitch(shoulder, AppConfig.SHOULDER_ENABLED, "启用全应用肩键",
-                "无需再选择应用；系统组件、LS_Augment 与 Root/LSPosed 管理器不会被放行。", false);
-        addSwitch(shoulder, AppConfig.SHOULDER_DIAGNOSTICS, "详细诊断", "仅排查时开启；默认使用低频诊断。", false);
-        addSwitch(shoulder, AppConfig.TGK_RAPID_FIRE_ENABLED, "肩键极速连点",
-                "突破红魔原生约 10 次/秒上限；当前版本验证左、右肩键，按住后连续产生点击。", false);
+        LinearLayout shoulder = ui.card();
+        addSwitch(shoulder, AppConfig.SHOULDER_ENABLED, "全应用肩键",
+                "对加入游戏空间的所有应用开放肩键使用", false);
+        LinearLayout.LayoutParams separator = new LinearLayout.LayoutParams(-1, ui.dp(1));
+        separator.setMargins(0, ui.dp(7), 0, ui.dp(7));
+        shoulder.addView(ui.divider(), separator);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        rapidFeatureTitle = ui.text("极速连点", 14, ui.muted, false);
+        copy.addView(rapidFeatureTitle, ui.wrap());
+        rapidFeatureDescription = ui.text("请先进行兼容性测试，以确保设备支持当前功能。", 11, ui.muted, false);
+        rapidFeatureDescription.setLineSpacing(ui.dp(1), 1.04f);
+        copy.addView(rapidFeatureDescription, ui.margins(0, 3, 8, 0));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        rapidTestEntry = ui.button("兼容性测试");
+        rapidTestEntry.setTextSize(10);
+        rapidTestEntry.setMinWidth(0);
+        rapidTestEntry.setMinimumWidth(0);
+        rapidTestEntry.setMinHeight(0);
+        rapidTestEntry.setMinimumHeight(0);
+        rapidTestEntry.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), ui.dp(4));
+        rapidTestEntry.setOnClickListener(view -> {
+            rapidTestPanelRequested = true;
+            refreshRapidCompatibilityUi();
+            onRapidCompatibilityAction();
+        });
+        row.addView(rapidTestEntry, new LinearLayout.LayoutParams(-2, ui.dp(36)));
+        Switch rapidSwitch = new Switch(this);
+        ui.styleSwitch(rapidSwitch);
+        rapidSwitch.setContentDescription("极速连点");
+        rapidSwitch.setEnabled(false);
+        rapidSwitch.setVisibility(View.GONE);
+        rapidSwitch.setOnCheckedChangeListener((button, checked) -> {
+            rapidParametersExpanded = checked;
+            markDirty();
+            updateRapidFeatureUi(rapidFeatureUnlocked);
+        });
+        switches.put(AppConfig.TGK_RAPID_FIRE_ENABLED, rapidSwitch);
+        rapidExpand = new ImageButton(this);
+        rapidExpand.setImageResource(R.drawable.ic_expand_more);
+        rapidExpand.setColorFilter(ui.muted);
+        rapidExpand.setBackground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT, 12)));
+        rapidExpand.setOnClickListener(view -> {
+            if (!RapidFireLifecyclePolicy.canExpand(rapidFeatureUnlocked, rapidSwitch.isChecked())) { toast("请先开启功能"); return; }
+            rapidParametersExpanded = !rapidParametersExpanded;
+            updateRapidFeatureUi(rapidFeatureUnlocked);
+        });
+        row.addView(rapidSwitch, new LinearLayout.LayoutParams(-2, -2));
+        row.addView(rapidExpand, new LinearLayout.LayoutParams(ui.dp(28), ui.dp(44)));
+        shoulder.addView(row, ui.margins(0, 2, 0, 2));
+        rapidParameters = new LinearLayout(this);
+        rapidParameters.setOrientation(LinearLayout.VERTICAL);
+        rapidParameters.addView(ui.text("建议先从 20 次/秒开始；40～50 次/秒可能被个别游戏丢弃。",
+                11, ui.muted, false), ui.margins(0, 12, 0, 4));
+        addSlider(rapidParameters, AppConfig.TGK_RAPID_FIRE_COUNT, "点击频率（10～50 次/秒）", 10, 50, false);
+        shoulder.addView(rapidParameters, ui.wrap());
+        updateRapidFeatureUi(false);
         page.addView(shoulder, ui.margins(0, 0, 0, 12));
 
-        LinearLayout rapid = new LinearLayout(this);
-        rapid.setOrientation(LinearLayout.VERTICAL);
-        addSlider(rapid, AppConfig.TGK_RAPID_FIRE_COUNT, "点击频率（10～50 次/秒）", 10, 50, false);
-        page.addView(ui.collapsible("连点参数", "建议先从 20 次/秒开始；40～50 次/秒可能被个别游戏丢弃。",
-                rapid, false), ui.margins(0, 0, 0, 12));
+        LinearLayout compatibility = detailCard("极速连点兼容性测试",
+                "自动核验系统、调用链和原生库，再按左、右肩键分别记录实体码、中上层码与系统层码。"
+                        + " 双侧稳定验证通过后只解锁开关，不会自动开启。");
+        rapidCompatibilityStatus = ui.text("正在读取测试状态…", 11.5f, ui.muted, false);
+        rapidCompatibilityStatus.setLineSpacing(ui.dp(1), 1.05f);
+        compatibility.addView(rapidCompatibilityStatus, ui.margins(0, 9, 0, 0));
+        rapidCompatibilityAction = ui.accentButton("开始兼容性测试");
+        rapidCompatibilityAction.setOnClickListener(view -> onRapidCompatibilityAction());
+        compatibility.addView(rapidCompatibilityAction, ui.margins(0, 9, 0, 0));
+        rapidCompatibilityCancel = ui.button("取消本次测试");
+        rapidCompatibilityCancel.setOnClickListener(view -> cancelRapidCompatibilityTest());
+        compatibility.addView(rapidCompatibilityCancel, ui.margins(0, 6, 0, 0));
+        rapidCompatibilityPanel = compatibility;
+        compatibility.setVisibility(View.GONE);
+        page.addView(compatibility, ui.margins(0, 0, 0, 12));
+    }
+
+    private void updateRapidFeatureUi(boolean unlocked) {
+        if (rapidParameters == null) return;
+        rapidFeatureUnlocked = unlocked;
+        Switch control = switches.get(AppConfig.TGK_RAPID_FIRE_ENABLED);
+        boolean expandable = RapidFireLifecyclePolicy.canExpand(unlocked, control.isChecked());
+        if (!expandable) rapidParametersExpanded = false;
+        rapidFeatureTitle.setTextColor(unlocked ? ui.text : ui.muted);
+        rapidFeatureDescription.setText(unlocked
+                ? "兼容性测试通过，已开放极速连点功能，开启功能后配置点击速度即可使用。"
+                : "请先进行兼容性测试，以确保设备支持当前功能。");
+        rapidTestEntry.setVisibility(unlocked ? View.GONE : View.VISIBLE);
+        ui.setButtonEnabled(rapidTestEntry, rapidFingerprint != null && !rapidCaptureInFlight
+                && (rapidSession == null || rapidSession.state != RapidFireCompatibility.State.PREFLIGHT));
+        control.setVisibility(unlocked ? View.VISIBLE : View.GONE);
+        rapidExpand.setVisibility(unlocked ? View.VISIBLE : View.GONE);
+        rapidExpand.setEnabled(expandable);
+        rapidExpand.setAlpha(expandable ? 1f : 0.35f);
+        rapidExpand.setRotation(rapidParametersExpanded ? 180f : 0f);
+        rapidExpand.setContentDescription(!expandable ? "开启极速连点后可展开参数"
+                : rapidParametersExpanded ? "收起连点参数" : "展开连点参数");
+        rapidParameters.setVisibility(rapidParametersExpanded ? View.VISIBLE : View.GONE);
+        Slider slider = sliders.get(AppConfig.TGK_RAPID_FIRE_COUNT);
+        if (slider != null) slider.bar.setEnabled(expandable);
+    }
+
+    private void refreshRapidCompatibilityAsync() {
+        if (!MODULE_SHOULDER.equals(section) || rapidFingerprintLoading) return;
+        rapidFingerprintLoading = true;
+        executor.execute(() -> {
+            String fingerprint = RapidFireCompatibility.currentFingerprint(this);
+            RapidFireCompatibility.Session session = RapidFireCompatibility.Session.parse(
+                    config.get(AppConfig.TGK_RAPID_FIRE_TEST_SESSION));
+            main.post(() -> {
+                rapidFingerprintLoading = false;
+                rapidFingerprint = fingerprint;
+                rapidSession = session != null && session.validFor(fingerprint) ? session : null;
+                refreshRapidCompatibilityUi();
+                if (!rapidAutoContinueAttempted && rapidSession != null
+                        && rapidSession.state == RapidFireCompatibility.State.NEEDS_RESTART) {
+                    rapidAutoContinueAttempted = true;
+                    runRapidPreflight(rapidSession);
+                }
+            });
+        });
+    }
+
+    private void refreshRapidCompatibilityUi() {
+        if (rapidCompatibilityStatus == null) return;
+        if (rapidFingerprint == null) {
+            rapidCompatibilityStatus.setText("正在计算设备兼容指纹…");
+            ui.setButtonEnabled(rapidCompatibilityAction, false);
+            updateRapidFeatureUi(false);
+            refreshRapidCompatibilityAsync();
+            return;
+        }
+        RapidFireCompatibility.Session storedSession = RapidFireCompatibility.Session.parse(
+                config.get(AppConfig.TGK_RAPID_FIRE_TEST_SESSION));
+        if (storedSession != null && !storedSession.validFor(rapidFingerprint)) {
+            storedSession = null;
+        }
+        RapidFireCompatibility.Session memorySession = rapidSession;
+        RapidFireCompatibility.Session session = memorySession != null
+                && (storedSession == null || memorySession.createdAt >= storedSession.createdAt)
+                ? memorySession : storedSession;
+        rapidSession = session;
+        RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(
+                config.get(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN));
+        boolean fused = diagnostic("ls_augment_tgk_rapid_fire_fuse_state").startsWith("fused");
+        boolean unlocked = !fused && token != null && token.validFor(rapidFingerprint);
+        Switch rapid = switches.get(AppConfig.TGK_RAPID_FIRE_ENABLED);
+        if (rapid != null) {
+            rapid.setEnabled(unlocked);
+            if (!unlocked && rapid.isChecked()) {
+                boolean before = loading;
+                loading = true;
+                rapid.setChecked(false);
+                loading = before;
+                persistRapidDisabled();
+            }
+        }
+        updateRapidFeatureUi(unlocked);
+
+        RapidFireCompatibility.State state = fused ? RapidFireCompatibility.State.FUSED
+                : unlocked ? RapidFireCompatibility.State.PASSED
+                : session == null ? RapidFireCompatibility.State.UNTESTED : session.state;
+        boolean expired = !unlocked && session != null && session.isExpired(System.currentTimeMillis());
+        if (expired && rapidCaptureInFlight) stopRapidCapture();
+        if (expired) state = RapidFireCompatibility.State.FAILED;
+        if (unlocked) rapidTestPanelRequested = false;
+        rapidCompatibilityPanel.setVisibility(!unlocked && (rapidTestPanelRequested
+                || session != null || fused) ? View.VISIBLE : View.GONE);
+        boolean capturing = !expired && rapidCaptureInFlight && session != null
+                && session.id.equals(rapidCaptureSessionId)
+                && ((rapidCaptureLeft && state == RapidFireCompatibility.State.WAIT_LEFT)
+                || (!rapidCaptureLeft && state == RapidFireCompatibility.State.WAIT_RIGHT));
+        if (capturing) {
+            long remaining = Math.max(0L, rapidCaptureDeadline - System.currentTimeMillis());
+            String side = rapidCaptureLeft ? "左" : "右";
+            rapidCompatibilityStatus.setText(rapidCaptureFeedback != null ? rapidCaptureFeedback
+                    : rapidCaptureDeadline == 0L
+                    ? "正在准备肩键监听…准备完成后开始 8 秒倒计时。"
+                    : "肩键已临时唤醒。请只触摸并松开" + side
+                    + "肩键（剩余约 " + ((remaining + 999L) / 1000L)
+                    + " 秒）；采集结束后自动恢复原状态。");
+            rapidCompatibilityStatus.setTextColor(ui.muted);
+            rapidCompatibilityAction.setText("正在采集" + side + "肩键…");
+            ui.setButtonEnabled(rapidCompatibilityAction, false);
+            rapidCompatibilityCancel.setVisibility(View.VISIBLE);
+            return;
+        }
+        String text;
+        String action;
+        switch (state) {
+            case PREFLIGHT:
+                text = "正在预检 Root、ABI、目标包、system_server Hook、原生库与熔断状态；"
+                        + "游戏空间上层调用会在左右键阶段动态验证。";
+                action = "正在检测…";
+                break;
+            case NEEDS_RESTART:
+                text = "system_server 尚未加载当前模块。重启后会自动继续预检。";
+                action = "确认后重启设备";
+                break;
+            case WAIT_LEFT:
+                text = "等待左肩键：预检完成后会自动开启 8 秒采集。采集成功后，再到游戏空间"
+                        + "重新选择一次原厂连点，再按住左键约 3 秒并松开，返回检查。测试值固定为 20 次/秒，必须测到实际循环速度和松开停止。";
+                action = session != null && session.physicalLeft > 0
+                        ? "检查左键调用链" : "8 秒内采集左键";
+                break;
+            case WAIT_RIGHT:
+                text = "左键已通过。按同样步骤采集并验证右肩键；左右三层编号允许不同。";
+                action = session != null && session.physicalRight > 0
+                        ? "检查右键调用链" : "8 秒内采集右键";
+                break;
+            case VERIFYING:
+                long remaining = session == null ? 10_000L : Math.max(0L,
+                        RapidFireCompatibility.STABILITY_REQUIRED_MS
+                                - (System.currentTimeMillis() - session.verifyingSince));
+                text = "双侧调用与原生应用均已出现，正在确认 system_server 稳定运行。还需约 "
+                        + ((remaining + 999L) / 1000L) + " 秒。";
+                action = "完成稳定性验证";
+                break;
+            case PASSED:
+                text = unlocked ? "兼容性测试已通过，极速连点已解锁。"
+                        : "设备或模块版本已变化，旧兼容令牌失效，需要重新测试。";
+                action = "重新进行兼容性测试";
+                break;
+            case FUSED:
+                text = "连续三次未稳定启动，原生极速连点已熔断。清除后仍必须重新测试。";
+                action = "确认清除熔断";
+                break;
+            case FAILED:
+                text = expired ? "本次测试已超过 10 分钟，目标已归零，请重新开始。"
+                        : "兼容测试未通过；功能保持锁定，原厂肩键不受影响。";
+                action = "重新开始测试";
+                break;
+            default:
+                text = "尚未进行兼容性测试。未通过前无法开启极速连点。";
+                action = "开始兼容性测试";
+                break;
+        }
+        rapidCompatibilityStatus.setText(rapidCaptureFeedback != null
+                && (state == RapidFireCompatibility.State.WAIT_LEFT
+                || state == RapidFireCompatibility.State.WAIT_RIGHT)
+                ? rapidCaptureFeedback + "\n\n" + text : text);
+        rapidCompatibilityStatus.setTextColor(
+                state == RapidFireCompatibility.State.FAILED
+                        || state == RapidFireCompatibility.State.FUSED ? ui.danger : ui.muted);
+        rapidCompatibilityAction.setText(action);
+        ui.setButtonEnabled(rapidCompatibilityAction,
+                state != RapidFireCompatibility.State.PREFLIGHT);
+        rapidCompatibilityCancel.setVisibility(session != null && session.active(
+                System.currentTimeMillis()) ? View.VISIBLE : View.GONE);
+    }
+
+    private void onRapidCompatibilityAction() {
+        if (rapidCaptureInFlight) return;
+        RapidFireCompatibility.Session session = rapidSession;
+        long now = System.currentTimeMillis();
+        RapidFireCompatibility.State state = session == null
+                ? RapidFireCompatibility.State.UNTESTED : session.state;
+        if (diagnostic("ls_augment_tgk_rapid_fire_fuse_state").startsWith("fused")) {
+            clearRapidFuse();
+        } else if (session == null || session.isExpired(now)
+                || state == RapidFireCompatibility.State.UNTESTED
+                || state == RapidFireCompatibility.State.FAILED
+                || state == RapidFireCompatibility.State.PASSED) {
+            stopRapidCapture();
+            rapidCaptureFeedback = null;
+            RapidFireCompatibility.Session created = RapidFireCompatibility.Session.start(
+                    rapidFingerprint, now);
+            if (created == null) {
+                toast("无法建立兼容性测试会话，请重新进入此页面");
+                return;
+            }
+            rapidSession = created;
+            refreshRapidCompatibilityUi();
+            runRapidPreflight(created);
+        } else if (state == RapidFireCompatibility.State.NEEDS_RESTART) {
+            confirmRapidRestart();
+        } else if (state == RapidFireCompatibility.State.WAIT_LEFT) {
+            if (session.physicalLeft <= 0) captureRapidPhysicalWithRoot(session, true);
+            else verifyRapidSide(session, true);
+        } else if (state == RapidFireCompatibility.State.WAIT_RIGHT) {
+            if (session.physicalRight <= 0) captureRapidPhysicalWithRoot(session, false);
+            else verifyRapidSide(session, false);
+        } else if (state == RapidFireCompatibility.State.VERIFYING) {
+            finishRapidVerification(session);
+        }
+    }
+
+    private void persistRapidDisabled() {
+        if (rapidDisablePersistPending) return;
+        rapidDisablePersistPending = true;
+        executor.execute(() -> {
+            LinkedHashMap<String, String> update = new LinkedHashMap<>();
+            update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
+            config.save(update);
+            main.post(() -> rapidDisablePersistPending = false);
+        });
+    }
+
+    private void runRapidPreflight(RapidFireCompatibility.Session session) {
+        if (session == null || session.isExpired(System.currentTimeMillis())) return;
+        RapidFireCompatibility.Session preflight = session.withState(
+                RapidFireCompatibility.State.PREFLIGHT,
+                System.currentTimeMillis());
+        rapidSession = preflight;
+        refreshRapidCompatibilityUi();
+        executor.execute(() -> {
+            RapidFireCompatibility.State result = RapidFireCompatibility.State.WAIT_LEFT;
+            RootHideManager.RootStatus root = new RootHideManager(this).rootStatus();
+            if (root.state != RootHideManager.RootState.GRANTED) {
+                result = RapidFireCompatibility.State.FAILED;
+            } else if (RapidFireCompatibility.nativeProfile() == null
+                    || !packageInstalled("cn.nubia.gamelauncher")
+                    || !packageInstalled("cn.nubia.gameassist")
+                    || !rapidNativeLibraryPresent()) {
+                result = RapidFireCompatibility.State.FAILED;
+            } else {
+                RootShell.Result fuse = RootShell.run(
+                        "settings get global ls_augment_tgk_fuse_tripped",
+                        null, 5, 1024);
+                if (fuse.isSuccess() && "1".equals(fuse.output.trim())) {
+                    result = RapidFireCompatibility.State.FUSED;
+                } else if (!rapidSystemHookIsCurrent()) {
+                    result = RapidFireCompatibility.State.NEEDS_RESTART;
+                }
+            }
+            RapidFireCompatibility.Session resolved = preflight.withState(
+                    result, System.currentTimeMillis());
+            LinkedHashMap<String, String> update = new LinkedHashMap<>();
+            update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
+            update.put(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN, "");
+            update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION, resolved.serialize());
+            update.put(AppConfig.TGK_RAPID_FIRE_COUNT,
+                    String.valueOf(RapidFireCompatibility.TEST_CPS));
+            AppConfig.SaveResult saved = config.save(update);
+            main.post(() -> {
+                rapidSession = resolved;
+                if (!saved.success) toast(saved.message);
+                refreshRapidCompatibilityUi();
+                if (saved.success && resolved.state == RapidFireCompatibility.State.WAIT_LEFT
+                        && isCurrentRapidSession(resolved) && !isFinishing()) {
+                    main.postDelayed(() -> captureRapidPhysicalWithRoot(resolved, true), 250L);
+                }
+            });
+        });
+    }
+
+    private boolean packageInstalled(String packageName) {
+        try {
+            getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean rapidNativeLibraryPresent() {
+        try {
+            String directory = getApplicationInfo().nativeLibraryDir;
+            return directory != null && new File(directory, "liblsaugment_tgk.so").isFile();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void captureRapidPhysicalWithRoot(RapidFireCompatibility.Session session,
+            boolean left) {
+        if (isFinishing() || isDestroyed() || rapidPagePaused
+                || rapidCaptureInFlight || session == null || !isCurrentRapidSession(session)
+                || session.isExpired(System.currentTimeMillis())
+                || (left && session.state != RapidFireCompatibility.State.WAIT_LEFT)
+                || (!left && session.state != RapidFireCompatibility.State.WAIT_RIGHT)) return;
+        rapidCaptureInFlight = true;
+        rapidCaptureLeft = left;
+        rapidCaptureDeadline = 0L;
+        rapidCaptureSessionId = session.id;
+        int captureGeneration = ++rapidCaptureGeneration;
+        rapidCaptureFeedback = null;
+        RapidFirePhysicalCapture controller = new RapidFirePhysicalCapture();
+        rapidPhysicalCapture = controller;
+        refreshRapidCompatibilityUi();
+        rapidCaptureExecutor.execute(() -> {
+            RootShell.Result inventory = RootShell.run("cat /proc/bus/input/devices",
+                    null, 4, 64 * 1024);
+            java.util.List<RapidFireInputDetector.Device> devices = inventory.isSuccess()
+                    ? RapidFireInputDetector.discover(inventory.output)
+                    : Collections.emptyList();
+            if (devices.isEmpty()) {
+                main.post(() -> finishRapidCaptureFailure(captureGeneration, session,
+                        "未识别到可安全监听的肩键输入设备；原厂肩键保持不变"));
+                return;
+            }
+            RapidFirePhysicalCapture.Result result = controller.run(
+                    getApplicationContext(), devices, left, () -> main.post(() -> {
+                        if (captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
+                        rapidCaptureDeadline = System.currentTimeMillis()
+                                + RapidFirePhysicalCapture.CAPTURE_MS;
+                        refreshRapidCompatibilityUi();
+                    }), () -> main.post(() -> {
+                        if (captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
+                        rapidCaptureFeedback = "已收到" + (left ? "左" : "右")
+                                + "肩键的按下和松开，正在结束采集并恢复原状态…";
+                        refreshRapidCompatibilityUi();
+                    }));
+            RapidFireInputDetector.Capture capture = result.capture;
+            main.post(() -> {
+                if (captureGeneration != rapidCaptureGeneration
+                        || !isCurrentRapidSession(session) || isFinishing() || isDestroyed()) return;
+                rapidCaptureInFlight = false;
+                rapidPhysicalCapture = null;
+                rapidCaptureDeadline = 0L;
+                rapidCaptureSessionId = null;
+                if (session.isExpired(System.currentTimeMillis())) {
+                    refreshRapidCompatibilityUi();
+                    return;
+                }
+                if (capture == null) {
+                    rapidCaptureFeedback = result.message;
+                    toast(result.message);
+                    refreshRapidCompatibilityUi();
+                    return;
+                }
+                if (!left && capture.code == session.physicalLeft) {
+                    rapidCaptureFeedback = "左右肩键输入码冲突，请确认本次只触摸右肩键后重试";
+                    toast(rapidCaptureFeedback);
+                    refreshRapidCompatibilityUi();
+                    return;
+                }
+                RapidFireCompatibility.Session updated = left
+                        ? session.withLeft(capture.code, session.upperLeft, session.systemLeft)
+                        : session.withRight(capture.code, session.upperRight, session.systemRight);
+                rapidCaptureFeedback = "已采集" + (left ? "左" : "右")
+                        + "肩键的触摸/松开事件，肩键已恢复原状态";
+                persistRapidSession(updated, null, rapidCaptureFeedback);
+            });
+        });
+    }
+
+    private void finishRapidCaptureFailure(int generation,
+            RapidFireCompatibility.Session session, String message) {
+        if (generation != rapidCaptureGeneration || !isCurrentRapidSession(session)) return;
+        if (isFinishing() || isDestroyed()) return;
+        rapidCaptureInFlight = false;
+        rapidPhysicalCapture = null;
+        rapidCaptureDeadline = 0L;
+        rapidCaptureSessionId = null;
+        rapidCaptureFeedback = message;
+        toast(message);
+        refreshRapidCompatibilityUi();
+    }
+
+    private boolean isCurrentRapidSession(RapidFireCompatibility.Session session) {
+        RapidFireCompatibility.Session current = rapidSession;
+        return session != null && current != null && session.id.equals(current.id);
+    }
+
+    private void stopRapidCapture() {
+        RapidFirePhysicalCapture controller = rapidPhysicalCapture;
+        rapidPhysicalCapture = null;
+        if (controller != null) controller.cancel();
+        rapidCaptureGeneration++;
+        rapidCaptureInFlight = false;
+        rapidCaptureDeadline = 0L;
+        rapidCaptureSessionId = null;
+    }
+
+    private void verifyRapidSide(RapidFireCompatibility.Session session, boolean left) {
+        ui.setButtonEnabled(rapidCompatibilityAction, false);
+        executor.execute(() -> {
+            String side = left ? "left" : "right";
+            int system = diagnosticCode(
+                    diagnostic("ls_augment_tgk_rapid_fire_test_system_" + side), session.id);
+            RapidFireRouteEvidence routes = RapidFireRouteEvidence.parse(
+                    diagnostic(RapidFireRouteEvidence.DIAGNOSTIC_PREFIX + side));
+            String expectedPhase = left ? "WAIT_LEFT" : "WAIT_RIGHT";
+            int upper = routes != null && routes.matches(session.id, expectedPhase)
+                    ? routes.resolve(system) : -1;
+            int physical = left ? session.physicalLeft : session.physicalRight;
+            boolean nativeApplied = system > 0 && (nativeWitnessApplied(
+                    diagnostic("ls_augment_tgk_rapid_fire_test_native_" + side),
+                    session.id, side) || nativeLogContains(system, session.createdAt));
+            if (physical <= 0 || upper <= 0 || system <= 0 || !nativeApplied) {
+                main.post(() -> {
+                    if (!isCurrentRapidSession(session) || isFinishing() || isDestroyed()) return;
+                    rapidCaptureFeedback = routes != null && routes.matches(session.id, expectedPhase)
+                            && routes.isConflicted()
+                            ? "同一测试阶段出现不唯一的上下层对应关系，未放行；请取消本次测试后重新开始"
+                            : "尚未取得当前肩键的完整调用对应关系。请在游戏空间重新选择原厂连点，按住"
+                            + (left ? "左" : "右") + "肩键后再检查";
+                    toast(rapidCaptureFeedback);
+                    refreshRapidCompatibilityUi();
+                });
+                return;
+            }
+            if(!rapidCadenceWitnessReady(session,side,system)){
+                main.post(()->{if(!isCurrentRapidSession(session)||isFinishing()||isDestroyed())return;
+                    rapidCaptureFeedback="调用链已经接通，还需测量实际连点与松开停止。请再次按住"+(left?"左":"右")+"肩键约 3 秒，松开后再检查。";
+                    toast(rapidCaptureFeedback);refreshRapidCompatibilityUi();});return;
+            }
+            RapidFireCompatibility.Session updated = left
+                    ? session.withLeft(physical, upper, system).withState(
+                    RapidFireCompatibility.State.WAIT_RIGHT, System.currentTimeMillis())
+                    : session.withRight(physical, upper, system).withState(
+                    RapidFireCompatibility.State.VERIFYING, System.currentTimeMillis());
+            if (!left && (updated.physicalLeft == updated.physicalRight
+                    || updated.upperLeft == updated.upperRight
+                    || updated.systemLeft == updated.systemRight)) {
+                updated = updated.withState(RapidFireCompatibility.State.FAILED,
+                        System.currentTimeMillis());
+            }
+            RapidFireCompatibility.Session finalUpdated = updated;
+            main.post(() -> {
+                if (!isCurrentRapidSession(session) || isFinishing() || isDestroyed()) return;
+                rapidCaptureFeedback = finalUpdated.state == RapidFireCompatibility.State.FAILED
+                        ? "左右键映射冲突，测试失败" : left
+                        ? "左键三层调用已通过，请继续右键" : "双侧已通过，开始 10 秒稳定验证";
+                persistRapidSession(finalUpdated, null, rapidCaptureFeedback);
+            });
+        });
+    }
+
+    private static int diagnosticCode(String value, String sessionId) {
+        if (value == null || sessionId == null || !value.contains("id=" + sessionId + "|")) {
+            return -1;
+        }
+        int start = value.indexOf("|code=");
+        if (start < 0) return -1;
+        start += 6;
+        int end = value.indexOf('|', start);
+        try { return Integer.parseInt(end < 0 ? value.substring(start)
+                : value.substring(start, end)); }
+        catch (Throwable ignored) { return -1; }
+    }
+
+    private boolean rapidCadenceWitnessReady(RapidFireCompatibility.Session session,String side,int code){
+        String value=diagnostic("ls_augment_tgk_rapid_fire_test_cadence_"+side);
+        return value.contains("id="+session.id+"|")&&value.contains("|phase="+session.state.name()+"|")
+                &&value.contains("|ready=1|")&&value.contains("|key="+code+"|")&&value.contains("|passed=1|");
+    }
+
+    private boolean nativeLogContains(int systemCode, long afterMillis) {
+        RootShell.Result log = RootShell.run(
+                "logcat -d -v epoch -s 'LS_Augment/TgkNative:I' '*:S' 2>/dev/null | tail -n 256",
+                null, 6, 128 * 1024);
+        if (!log.isSuccess()) return false;
+        String marker = "NATIVE_HIT key=" + systemCode + " cps="
+                + RapidFireCompatibility.TEST_CPS;
+        for (String line : log.output.split("\\r?\\n")) {
+            if (!line.contains(marker)) continue;
+            int space = line.indexOf(' ');
+            try {
+                double seconds = Double.parseDouble(space < 0 ? line : line.substring(0, space));
+                if ((long) (seconds * 1000.0) + 2_000L >= afterMillis) return true;
+            } catch (Throwable ignored) { }
+        }
+        return false;
+    }
+
+    private void finishRapidVerification(RapidFireCompatibility.Session session) {
+        long now = System.currentTimeMillis();
+        long elapsed = now - session.verifyingSince;
+        if (elapsed < RapidFireCompatibility.STABILITY_REQUIRED_MS) {
+            toast("还需等待约 " + ((RapidFireCompatibility.STABILITY_REQUIRED_MS
+                    - elapsed + 999L) / 1000L) + " 秒");
+            return;
+        }
+        if (!rapidStabilityWitnessReady(session)) {
+            toast("system_server 尚未返回完整的 10 秒稳定证明，请稍后再点一次");
+            return;
+        }
+        executor.execute(() -> {
+            RootShell.Result fuse = RootShell.run(
+                    "settings get global ls_augment_tgk_fuse_tripped",
+                    null, 5, 1024);
+            boolean safe = fuse.isSuccess() && !"1".equals(fuse.output.trim())
+                    && rapidSystemHookIsCurrent()
+                    && rapidHookIsCurrent("ls_augment_tgk_rapid_fire_installed");
+            RapidFireCompatibility.Token token = safe
+                    ? RapidFireCompatibility.Token.issue(rapidFingerprint,
+                    session.physicalLeft, session.upperLeft, session.systemLeft,
+                    session.physicalRight, session.upperRight, session.systemRight, now)
+                    : null;
+            RapidFireCompatibility.Session completed = session.withState(token == null
+                    ? RapidFireCompatibility.State.FAILED
+                    : RapidFireCompatibility.State.PASSED, now);
+            main.post(() -> persistRapidSession(completed, token,
+                    token == null ? "稳定验证失败，功能保持锁定"
+                            : "兼容性测试通过；开关已解锁但未自动开启"));
+        });
+    }
+
+    private void persistRapidSession(RapidFireCompatibility.Session session,
+            RapidFireCompatibility.Token token, String message) {
+        executor.execute(() -> {
+            if (session != null && !isCurrentRapidSession(session)) return;
+            LinkedHashMap<String, String> update = new LinkedHashMap<>();
+            update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
+            update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION,
+                    session == null ? "" : session.serialize());
+            if (token != null) update.put(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN,
+                    token.serialize());
+            AppConfig.SaveResult result = config.save(update);
+            main.post(() -> {
+                if (session != null && !isCurrentRapidSession(session)) return;
+                rapidSession = session;
+                toast(result.success ? message : result.message);
+                refreshRapidCompatibilityUi();
+            });
+        });
+    }
+
+    private boolean rapidHookIsCurrent(String key) {
+        String value = diagnostic(key);
+        return value.contains("|module=" + BuildConfig.VERSION_NAME
+                + "|schema=" + ConfigSchema.VERSION);
+    }
+
+    private boolean rapidSystemHookIsCurrent() {
+        String value = diagnostic("ls_augment_tgk_rapid_fire_system_installed");
+        if (!rapidHookIsCurrent("ls_augment_tgk_rapid_fire_system_installed")) return false;
+        int marker = value.indexOf("|pid=");
+        if (marker < 0) return false;
+        int end = value.indexOf('|', marker + 5);
+        String expected = end < 0 ? value.substring(marker + 5)
+                : value.substring(marker + 5, end);
+        if (!expected.matches("[0-9]+")) return false;
+        RootShell.Result process = RootShell.run("pidof system_server", null, 4, 1024);
+        if (!process.isSuccess()) return false;
+        for (String pid : process.output.trim().split("\\s+")) {
+            if (expected.equals(pid)) return true;
+        }
+        return false;
+    }
+
+    private static boolean nativeWitnessApplied(String value, String sessionId, String side) {
+        if (value == null || sessionId == null || side == null
+                || !value.contains("id=" + sessionId + "|")) return false;
+        String field = "left".equals(side) ? "left_applied=" : "right_applied=";
+        int start = value.indexOf(field);
+        if (start < 0) return false;
+        start += field.length();
+        int end = value.indexOf('|', start);
+        try {
+            return Long.parseLong(end < 0 ? value.substring(start)
+                    : value.substring(start, end)) > 0L;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean rapidStabilityWitnessReady(RapidFireCompatibility.Session session) {
+        if (session == null) return false;
+        String witness = diagnostic("ls_augment_tgk_rapid_fire_test_stability");
+        return witness.contains("id=" + session.id + "|")
+                && witness.contains("|complete=1|")
+                && nativeWitnessApplied(witness, session.id, "left")
+                && nativeWitnessApplied(witness, session.id, "right");
+    }
+
+    private void cancelRapidCompatibilityTest() {
+        stopRapidCapture();
+        executor.execute(() -> {
+            LinkedHashMap<String, String> update = new LinkedHashMap<>();
+            update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
+            update.put(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN, "");
+            update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION, "");
+            AppConfig.SaveResult result = config.save(update);
+            main.post(() -> {
+                rapidSession = null;
+                toast(result.success ? "测试已取消，原生目标已归零" : result.message);
+                refreshRapidCompatibilityUi();
+            });
+        });
+    }
+
+    private void confirmRapidRestart() {
+        new AlertDialog.Builder(this)
+                .setTitle("重启设备")
+                .setMessage("重启会中断当前应用与游戏。重启后再次进入本页，测试会自动继续。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("立即重启", (dialog, which) -> executor.execute(() ->
+                        RootShell.run("reboot", null, 5, 1024)))
+                .show();
+    }
+
+    private void clearRapidFuse() {
+        new AlertDialog.Builder(this)
+                .setTitle("清除极速连点熔断")
+                .setMessage("仅清除故障锁，不会开启功能；清除后必须重新完成双侧测试。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("清除并重测", (dialog, which) -> executor.execute(() -> {
+                    RootShell.Result clear = RootShell.run(
+                            "settings put global ls_augment_tgk_fuse_tripped 0; "
+                                    + "settings put global ls_augment_tgk_fuse_attempts 0; "
+                                    + "settings put global ls_augment_tgk_fuse_pending 0",
+                            null, 6, 4096);
+                    AppConfig.SaveResult reset = new AppConfig.SaveResult(false,
+                            "未清除兼容配置");
+                    if (clear.isSuccess()) {
+                        LinkedHashMap<String, String> update = new LinkedHashMap<>();
+                        update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
+                        update.put(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN, "");
+                        update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION, "");
+                        reset = config.save(update);
+                        if (reset.success) {
+                            getSharedPreferences(AppConfig.DIAGNOSTICS, 0).edit()
+                                    .putString("ls_augment_tgk_rapid_fire_fuse_state",
+                                            "cleared|attempts=0")
+                                    .apply();
+                        }
+                    }
+                    AppConfig.SaveResult finalReset = reset;
+                    main.post(() -> {
+                        if (!clear.isSuccess()) toast("清除失败：" + clear.publicError());
+                        else if (!finalReset.success) toast(finalReset.message);
+                        else {
+                            rapidSession = null;
+                            onRapidCompatibilityAction();
+                        }
+                    });
+                })).show();
     }
 
     private void buildAiTrigger() {
-        LinearLayout ai = detailCard("AI 触发器极速响应",
-                "同时优化游戏插件模板扫描、点击队列和 GameAssist 的 YOLO 扫描；保留原厂识别阈值，"
-                        + "并增加同一画面的模板复核，避免模板消失后继续点击。\n"
-                        + "所有数值都有安全下限，避免把主线程或输入队列压垮。");
-        addSwitch(ai, AppConfig.AI_TRIGGER_ENABLED, "启用极速触发",
-                "关闭时完全回到红魔原生触发周期。首次启用后重启游戏作用域。", false);
-        page.addView(ai, ui.margins(0, 0, 0, 12));
-
-        LinearLayout speed = new LinearLayout(this);
-        speed.setOrientation(LinearLayout.VERTICAL);
-        addSlider(speed, AppConfig.AI_TRIGGER_TEMPLATE_SCAN_MS,
-                "模板扫描间隔 ms（80～2000）", 80, 600, false);
-        addSlider(speed, AppConfig.AI_TRIGGER_CLICK_MS,
-                "点击队列间隔 ms（10～500）", 10, 200, false);
-        addSlider(speed, AppConfig.AI_TRIGGER_COOLDOWN_MS,
-                "策略冷却 ms（50～2000）", 50, 2000, false);
-        addSlider(speed, AppConfig.AI_TRIGGER_YOLO_SCAN_MS,
-                "YOLO 扫描间隔 ms（150～1500）", 150, 1000, false);
-        page.addView(ui.collapsible("响应参数", "推荐值为 180 / 25 / 180 / 400；出现误触时逐项调高。",
-                speed, false), ui.margins(0, 0, 0, 12));
+        LinearLayout card=featureCard(AppConfig.AI_TRIGGER_ENABLED,"AI 触发器极速响应","关闭时恢复原厂触发周期。首次启用后重启游戏作用域。");
+        LinearLayout body=settingsBody(card,AppConfig.AI_TRIGGER_ENABLED);
+        addSlider(body,AppConfig.AI_TRIGGER_TEMPLATE_SCAN_MS,"模板扫描间隔 ms",80,2000,false);
+        addSlider(body,AppConfig.AI_TRIGGER_CLICK_MS,"点击队列间隔 ms",10,500,false);
+        addSlider(body,AppConfig.AI_TRIGGER_COOLDOWN_MS,"策略冷却 ms",50,2000,false);
+        addSlider(body,AppConfig.AI_TRIGGER_YOLO_SCAN_MS,"YOLO 扫描间隔 ms",150,1500,false);
     }
 
     private void buildComboSpeed() {
-        LinearLayout combo = detailCard("一键连招速度",
-                "保留原始录制，首次使用某个倍率时生成加速缓存，后续调用直接复用。修改后下一次播放立即使用新倍率。");
-        addSwitch(combo, AppConfig.COMBO_SPEED_ENABLED, "启用自定义连招速度",
-                "关闭时完全保持红魔原生速度；首次安装或更新后请重启游戏作用域。", false);
-        page.addView(combo, ui.margins(0, 0, 0, 12));
+        LinearLayout card=featureCard(AppConfig.COMBO_SPEED_ENABLED,"一键连招速度","保留原始录制，修改后下一次播放使用新倍率。");
+        addSlider(settingsBody(card,AppConfig.COMBO_SPEED_ENABLED),AppConfig.COMBO_SPEED_RATE,"播放倍率（×）",1,10,false);
+    }
 
-        LinearLayout speed = new LinearLayout(this);
-        speed.setOrientation(LinearLayout.VERTICAL);
-        addSlider(speed, AppConfig.COMBO_SPEED_RATE, "播放倍率（×）", 1, 10, false);
-        page.addView(ui.collapsible("速度参数",
-                "仅可选择整数倍率；1× 为原速，范围为 1× 至 10×。", speed, false),
-                ui.margins(0, 0, 0, 12));
+    private void buildFanControl() {
+        LinearLayout fan=featureCard(AppConfig.FAN_FIXED_ENABLED,"固定风扇转速","跟随原厂风扇开关，匹配最接近的实测档位；不会自行启动风扇。");
+        LinearLayout speed=settingsBody(fan,AppConfig.FAN_FIXED_ENABLED);addSlider(speed,AppConfig.FAN_TARGET_RPM,"目标转速 RPM",500,500,1,false);
+        featureCard(AppConfig.FAN_UNLOCK_MAX,"解除原厂极限转速限制","允许使用已验证驱动的第 5 档；跟随原厂极速模式，不自行启动风扇。");
+        LinearLayout measurement=detailCard("本机转速测量","依次检测 1～5 档，完成后恢复原厂档位。结果用于选择固定转速。");
+        fanMeasurementSummary=ui.text("尚未测量",12,ui.muted,false);measurement.addView(fanMeasurementSummary);
+        Button measure=ui.tonalButton("检测本机风扇转速");measure.setOnClickListener(v->showFanMeasurement());measurement.addView(measure,ui.margins(0,10,0,0));
+        page.addView(measurement,ui.margins(0,0,0,12));refreshFanMeasurement();
+    }
+    private void showFanMeasurement(){
+        fanDialog=new AlertDialog.Builder(this).setTitle("检测本机风扇转速").setMessage("请先打开原厂风扇。检测约 1 分钟，完成后恢复原档位；关闭风扇或取消即可停止。")
+            .setNegativeButton("取消",(d,w)->{if(fanRequestAt>0)requestFanMeasurement(false);fanRequestAt=0;})
+            .setPositiveButton("开始检测",null).create();
+        fanDialog.setOnCancelListener(d->{if(fanRequestAt>0)requestFanMeasurement(false);fanRequestAt=0;});fanDialog.show();
+        fanDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            fanDialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            executor.execute(()->{RootShell.Result result=RootShell.run("cat /sys/kernel/fan/fan_enable",null,5,1024);main.post(()->{
+                if(fanDialog==null||!fanDialog.isShowing())return;
+                if(!result.isSuccess()||!result.output.trim().equals("1")){fanDialog.setMessage("尚未检测到原厂风扇开启。请打开原厂风扇后重试。");fanDialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);return;}
+                fanRequestAt=System.currentTimeMillis();fanDialog.setMessage("正在检测，请保持风扇开启…");requestFanMeasurement(true);
+            });});
+        });
+    }
+
+    private void requestFanMeasurement(boolean start) {
+        executor.execute(() -> {
+            LinkedHashMap<String, String> updates = new LinkedHashMap<>();
+            updates.put(ConfigSchema.FAN_CALIBRATION_REQUEST, start
+                    ? System.currentTimeMillis() + ":" + java.util.UUID.randomUUID().toString().replace("-", "") : "");
+            AppConfig.SaveResult result = config.save(updates);
+            main.post(() -> {
+                toast(result.success ? (start ? "测量请求已发送，请保持原厂风扇开启" : "已请求停止测量并恢复") : result.message);
+                renderRuntimeStatus();
+            });
+        });
+    }
+
+    private void refreshFanMeasurement() {
+        if (fanMeasurementSummary == null) return;
+        String encoded = config.get(ConfigSchema.FAN_MEASUREMENT);
+        if(fanDialog!=null&&fanDialog.isShowing()&&fanRequestAt>0){
+            FanCalibrationData measured=FanCalibrationData.parse(encoded);String state=config.diagnostic("ls_augment_fan_control_active");
+            if(measured!=null&&measured.measuredAt>=fanRequestAt){fanDialog.setMessage("检测完成，已恢复原厂档位。结果已显示在页面。");fanRequestAt=0;fanDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setText("完成");}
+            else if(System.currentTimeMillis()-fanRequestAt>120000){requestFanMeasurement(false);fanDialog.setMessage("检测超时，已请求恢复原厂档位。请在运行诊断中导出日志排查。");fanRequestAt=0;}
+            else if(state.contains("measuring;")){java.util.regex.Matcher match=java.util.regex.Pattern.compile("level=(\\d+);sample=(\\d+)").matcher(state);if(match.find())fanDialog.setMessage("正在检测第 "+match.group(1)+" / 5 档，采样 "+match.group(2)+" / 5。取消将停止并恢复原档位。");}
+        }
+        FanCalibrationData data = FanCalibrationData.parse(encoded);
+        boolean current = data != null && data.currentFor(FanHardwareIdentity.current());
+        StringBuilder text = new StringBuilder("红魔 11 Pro / 11S Pro 官方标称：24,000 RPM\n已验证驱动最高档：5（同时调用原厂最高性能模式）\n");
+        if (data == null) text.append("本机实测：尚未测量");
+        else {
+            text.append(current ? "最近测量：" : "系统已变化，请重新测量。旧记录：")
+                    .append(DateFormat.getDateTimeInstance().format(new Date(data.measuredAt)))
+                    .append("\n最高档稳定转速：").append(data.rpm(5)).append(" RPM")
+                    .append("\n本轮最高反馈：").append(data.peak(5)).append(" RPM");
+            for (int i = 1; i <= 5; i++) text.append("\n").append(i).append(" 档：").append(data.rpm(i)).append(" RPM");
+        }
+        fanMeasurementSummary.setText(text);
+        Slider target = sliders.get(AppConfig.FAN_TARGET_RPM);
+        if (target != null) {
+            target.bar.setEnabled(current);
+            if (!encoded.equals(renderedFanMeasurement)) {
+                int requested = renderedFanMeasurement == null || renderedFanMeasurement.isEmpty()
+                        ? config.getInt(AppConfig.FAN_TARGET_RPM, 12000) : target.value();
+                target.min = current ? data.rpm(1) : 500;
+                target.max = current ? data.rpm(5) : 500;
+                target.bar.setMax(target.max - target.min);
+                target.setValue(requested);
+                renderedFanMeasurement = encoded;
+            }
+            if (!current) target.text.setText("请先测量本机各档转速");
+        }
     }
 
     private void buildFreeform() {
-        LinearLayout freeform = detailCard("小窗增强",
-                "解除红魔自由窗口的数量限制，并强制普通应用（包括美图秀秀）进入小窗。"
-                        + "系统关键界面仍保留保护名单；不兼容应用可能出现画面裁切或触控错位。"
-                        + "配置保存后约 1 秒读取；首次安装或更新模块代码需要重启手机。\n");
-        addSwitch(freeform, AppConfig.FREEFORM_ENABLED, "启用小窗增强",
-                "总开关关闭时保持系统和红魔原生小窗策略。", true);
-        addSwitch(freeform, AppConfig.FREEFORM_UNLIMITED, "解除小窗数量上限",
-                "允许同时创建并最小化超过三个自由窗口。", false);
-        addSwitch(freeform, AppConfig.FREEFORM_ALL_APPS, "全应用支持小窗",
-                "强制放行普通应用的自由窗口资格；系统关键页面仍不强制改写。", false);
-        page.addView(freeform, ui.margins(0, 0, 0, 12));
+        featureCard(AppConfig.FREEFORM_UNLIMITED,"解除小窗数量上限","允许同时创建并最小化超过三个自由窗口。");
+        LinearLayout card=featureCard(AppConfig.FREEFORM_ALL_APPS,"全应用支持小窗","普通应用可使用小窗；系统关键界面保持原厂保护。");
+        addAppSelection(settingsBody(card,AppConfig.FREEFORM_ALL_APPS),AppConfig.FREEFORM_EXCLUDED_APPS,"遵循原厂小窗应用");
+    }
+
+    private void buildAudioGain() {
+        LinearLayout card=featureCard(ConfigSchema.AUDIO_GAIN_ENABLED,"超过 100% 的音量","按输出设备和声音类型独立设置上限；设为 100% 时不增加增益。");
+        LinearLayout body=settingsBody(card,ConfigSchema.AUDIO_GAIN_ENABLED);
+        addSlider(body,ConfigSchema.AUDIO_GAIN_STEP,"每次按键增加的百分比",1,20,1,false);
+        String[] routes={"speaker","wired","bluetooth"},labels={"扬声器","有线 / USB 耳机","蓝牙音频"};
+        for(int i=0;i<routes.length;i++){
+            LinearLayout channel=detailCard(labels[i],"100% 为原厂上限，实际可用增益取决于当前播放通道。");
+            addSlider(channel,AudioGainPolicy.key(routes[i],3),"媒体上限（%）",100,300,5,false);
+            addSlider(channel,AudioGainPolicy.key(routes[i],2),"铃声上限（%）",100,300,5,false);
+            addSlider(channel,AudioGainPolicy.key(routes[i],4),"闹钟上限（%）",100,300,5,false);
+            body.addView(channel,ui.margins(0,12,0,0));
+        }
+    }
+
+    private void buildBattery() {
+        LinearLayout card=detailCard("实际电池数据","直接读取系统电量计、厂商接口与原厂历史记录，保留每项数据的来源。");
+        batteryReadout=ui.text("正在读取…",13,ui.text,false);card.addView(batteryReadout,ui.wrap());page.addView(card,ui.margins(0,0,0,12));
+        featureCard(ConfigSchema.BATTERY_DISABLE_AGE_REDUCTION,"持续关闭按循环降压","部分厂商会随电池循环次数增加而降低充电电压。开启后，持续关闭已识别的这项降压策略；关闭本功能则恢复原厂策略。不修改循环次数，不修复电池老化，温度、电流和电压保护仍然保留。");
+        page.addView(ui.section("关于容量","容量估计是当前充满电量与设计容量的比值，不代表锁定了固定比例的电池容量。"),ui.wrap());refreshBattery();
+    }
+
+    private void refreshBattery() {
+        executor.execute(() -> {
+            Map<String, String> values = BatteryLifeControl.read();
+            String base = "/sys/class/power_supply/battery/", oem = "/sys/class/qcom-battery/";
+            StringBuilder text = new StringBuilder();
+            if (values.containsKey("error")) text.append(values.get("error"));
+            else {
+                text.append("系统电量计完整循环：").append(values.getOrDefault(base+"cycle_count", "未提供")).append(" 次\n");
+                Long record = BatteryLifePolicy.lastRecordedCycles(values.get("/mnt/vendor/persist/zstats/cycle.dat"));
+                text.append("原厂最近历史记录：").append(record == null ? "未提供" : record+" 次").append('\n');
+                text.append("厂商独立累计字段：").append(values.getOrDefault(oem+"battery_cycle", "未提供")).append("（独立字段，统计口径未公开）\n");
+                try {
+                    long full = Long.parseLong(values.get(base+"charge_full")), design = Long.parseLong(values.get(base+"charge_full_design"));
+                    if (full > 0 && design > 0) text.append(String.format(Locale.ROOT,"当前满充估计：%.0f mAh\n设计容量：%.0f mAh\n容量估计比：%.1f%%\n", full/1000d, design/1000d, full*100d/design));
+                } catch (Exception ignored) { text.append("容量数据未提供\n"); }
+                Boolean enabled = BatteryLifePolicy.reductionEnabled(values.get("/vendor/etc/.tp/zte_battery_life.conf"));
+                text.append("按循环降压配置：").append(enabled == null ? "未识别，保持原样" : enabled ? "原厂已启用" : "已关闭");
+            }
+            main.post(() -> { if (batteryReadout != null) batteryReadout.setText(text); });
+        });
+    }
+
+    private AppConfig.SaveResult saveConfiguration(Map<String, String> updates) {
+        if (!MODULE_BATTERY.equals(section)) return config.save(updates);
+        boolean before = config.getBoolean(ConfigSchema.BATTERY_DISABLE_AGE_REDUCTION);
+        boolean requested = ConfigSchema.truthy(updates.get(ConfigSchema.BATTERY_DISABLE_AGE_REDUCTION));
+        RootShell.Result applied = BatteryLifeControl.reconcile(this, requested);
+        if (!applied.isSuccess()) return new AppConfig.SaveResult(false, applied.output);
+        AppConfig.SaveResult saved = config.save(updates);
+        if (!saved.success) BatteryLifeControl.reconcile(this, before);
+        else main.post(this::refreshBattery);
+        return saved.success ? new AppConfig.SaveResult(true, applied.output) : saved;
+    }
+
+    private void addAppSelection(LinearLayout parent, String key, String label) {
+        EditText value = new EditText(this);
+        inputs.put(key, value);
+        Button button = ui.button(label);
+        Runnable render = () -> button.setText(label + "（"
+                + AppPackageSet.parse(value.getText().toString()).size() + " 个）");
+        value.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                render.run();
+                markDirty();
+            }
+            @Override public void afterTextChanged(Editable value) { }
+        });
+        button.setOnClickListener(view -> AppSelectionDialog.show(this, ui, label,
+                value.getText().toString(), value::setText));
+        parent.addView(button, ui.margins(0, 10, 0, 0));
+        render.run();
     }
 
     private void buildSuperResolution() {
-        LinearLayout mirror = detailCard("性能模式超分",
-                "仅放行红魔原生超分 Tile 的性能模式资格，不修改温控、GPU 服务或厂商数据库。");
-        addSwitch(mirror, AppConfig.SUPER_MIRROR_LOW_MODE, "允许其他性能模式开启超分辨率",
-                "只放行超分 Tile 点击资格；用户主动关闭仍有效。", false);
-        page.addView(mirror, ui.margins(0, 0, 0, 12));
+        featureCard(AppConfig.SUPER_MIRROR_LOW_MODE,"性能模式超分","允许其他性能模式使用红魔原生超分辨率。");
+        featureCard(AppConfig.SUPER_MIRROR_DIABLO_COEXIST,"超分与破坏神共存","阻止两项能力互相自动关闭。");
     }
 
     private void buildDiabloCoexist() {
@@ -430,7 +1285,7 @@ public final class FeatureActivity extends Activity {
         block.addView(yRow, ui.wrap());
         block.addView(positionControl.y, ui.wrap());
 
-        Slider scaleSlider = new Slider("scale:" + id, id + " 图标缩放", 50, 200, true,
+        Slider scaleSlider = new Slider("scale:" + id, id + " 图标缩放", 50, 200, 1, true,
                 scaleBar(), ui.text("", 12, ui.muted, false));
         sliders.put("scale:" + id, scaleSlider);
         block.addView(scaleSlider.text, ui.margins(0, 8, 0, 0));
@@ -492,8 +1347,7 @@ public final class FeatureActivity extends Activity {
     }
 
     private void buildDoubleApp() {
-        LinearLayout doubleApp = detailCard("扩展应用双开",
-                "保留红魔原生候选，并自动加入主空间中已安装、已启用的第三方 App。");
+        LinearLayout doubleApp = ui.card();
         addSwitch(doubleApp, AppConfig.DOUBLE_ANY_APP, "扩展第三方 App 双开候选",
                 "只扩展红魔官方列表；双开的创建、删除和数据仍由红魔官方管理。", false);
         addSwitch(doubleApp, AppConfig.DOUBLE_LOW_MEMORY, "移除低内存限制", "关闭红魔双开页面的低内存受限分支。", false);
@@ -501,16 +1355,30 @@ public final class FeatureActivity extends Activity {
     }
 
     private void buildBeautify() {
-        LinearLayout beautify = detailCard("主题无限期试用",
-                "仅保留无限期试用；登录、账号与付费资源继续走原厂流程。");
+        LinearLayout beautify = ui.card();
         addSwitch(beautify, AppConfig.BEAUTIFY_UNLIMITED_TRIAL, "无限期试用",
                 "只阻止原厂 TryUse 到期复位任务；不改价格、购买结果或服务器权益。", false);
         page.addView(beautify, ui.margins(0, 0, 0, 12));
     }
 
+    private void buildSignatureInstall() {
+        LinearLayout install = ui.card();
+        addSwitch(install, AppConfig.ALLOW_SIGNATURE_MISMATCH,
+                "允许安装签名不一致的应用",
+                "仅处理同包名更新的签名冲突；不放行共享 UID，也不授予其他应用的签名级权限。",
+                false);
+        TextView warning = ui.text(
+                "风险提示：开启后会削弱 Android 的签名保护。不同签名的 APK 覆盖原应用后，"
+                        + "可以读取和使用原应用已有数据；请仅安装你确认来源与内容均可信的 APK。",
+                10.5f, ui.warning, false);
+        warning.setLineSpacing(ui.dp(1), 1.06f);
+        install.addView(warning, ui.margins(0, 11, 0, 2));
+        page.addView(install, ui.margins(0, 0, 0, 12));
+    }
+
     private void buildAutomation() {
         LinearLayout automation = detailCard("锁屏自动隐藏",
-                "使用按需前台服务监听屏幕关闭，不轮询；关闭后不驻留。");
+                "由 LSPosed 在系统中监听熄屏，使用 Root 隐藏队列执行，无常驻通知。");
         addSwitch(automation, AppConfig.AUTOMATION_ENABLED, "启用锁屏自动隐藏", "屏幕由亮转灭时执行一次，解锁不自动显示。", true);
         addSwitch(automation, "__scope_all", "处理所有配置用户", "关闭时只处理当前 Android 用户。", false);
         page.addView(automation, ui.margins(0, 0, 0, 12));
@@ -535,7 +1403,7 @@ public final class FeatureActivity extends Activity {
                 "隐藏后仍可从 LSPosed 管理器的模块设置重新进入。");
         TextView launcherState = ui.statusChip("正在读取…", ui.accent);
         Button launcherAction = ui.tonalButton("");
-        launcher.addView(launcherState, ui.margins(0, 12, 0, 0));
+
         launcher.addView(launcherAction, ui.margins(0, 8, 0, 0));
         page.addView(launcher, ui.margins(0, 0, 0, 12));
         Runnable render = () -> {
@@ -557,100 +1425,52 @@ public final class FeatureActivity extends Activity {
         render.run();
     }
 
+    private void buildDetailedDiagnostics() {
+        LinearLayout diagnostics = detailCard("详细诊断",
+                "仅排查问题时开启，排查结束后建议关闭，减少日志与额外开销。不会开启对应增强功能。");
+        addSwitch(diagnostics, AppConfig.SHOULDER_DIAGNOSTICS, "肩键详细诊断",
+                "记录肩键适配与调用信息；关闭时保留低频基础诊断。", false);
+        addSwitch(diagnostics, AppConfig.AI_TRIGGER_DIAGNOSTICS, "AI 触发器详细诊断",
+                "记录识别与点击信息；关闭时保留限频的普通日志。", false);
+        page.addView(diagnostics, ui.margins(0, 0, 0, 12));
+    }
+
     private void buildDiagnostics() {
-        status.setText("诊断摘要只读取状态，不修改功能配置。");
-
-        LinearLayout actions = ui.card();
-        actions.addView(ui.section("诊断中心", "Root、LSPosed、设备、目标组件和最近错误。"), ui.wrap());
-        Button refresh = ui.button("刷新诊断摘要");
-        Button copy = ui.button("复制诊断摘要");
-        Button export = ui.button("导出诊断与有限日志");
-        actions.addView(refresh, ui.margins(0, 8, 0, 0));
-        actions.addView(copy, ui.margins(0, 4, 0, 0));
-        actions.addView(export, ui.margins(0, 4, 0, 0));
-        page.addView(actions, ui.margins(0, 0, 0, 12));
-
-        TextView output = ui.text("正在生成…", 12, ui.muted, false);
-        output.setTextIsSelectable(true);
-        output.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12));
-        output.setBackground(ui.round(ui.card, 14));
-        page.addView(output, ui.margins(0, 0, 0, 12));
-
-        LinearLayout recovery = ui.card();
-        recovery.addView(ui.section("恢复与同步", "恢复动作不会卸载应用、清除数据或修改 APK。"), ui.wrap());
-        Button rootAccess = ui.button("重新申请 Root 授权");
-        Button mirror = ui.button("重新同步配置运行镜像");
-        Button restore = ui.button("紧急恢复全部已配置应用");
-        recovery.addView(rootAccess, ui.margins(0, 8, 0, 0));
-        recovery.addView(mirror, ui.margins(0, 4, 0, 0));
-        recovery.addView(restore, ui.margins(0, 4, 0, 0));
-        page.addView(recovery, ui.margins(0, 0, 0, 12));
-
-        final String[] latest = {""};
-        Runnable load = () -> executor.execute(() -> {
-            String value = diagnosticSummary();
-            latest[0] = value;
-            main.post(() -> output.setText(value));
-        });
-        refresh.setOnClickListener(view -> load.run());
-        rootAccess.setOnClickListener(view -> executor.execute(() -> {
-            RootHideManager.RootStatus result = new RootHideManager(this).requestRootStatus();
-            main.post(() -> {
-                toast("Root：" + result.message + "（" + result.provider + "）");
-                load.run();
-            });
-        }));
-        copy.setOnClickListener(view -> {
-            ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-            if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("LS_Augment 诊断", latest[0]));
-            toast("诊断摘要已复制");
-        });
-        export.setOnClickListener(view -> {
-            pendingExport = latest[0] + "\n\n===== APP LOG =====\n" + AuditLog.read(this);
-            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_TITLE, "LS_Augment-diagnostics-" + System.currentTimeMillis() + ".txt");
-            startActivityForResult(intent, EXPORT_REQUEST);
-        });
-        mirror.setOnClickListener(view -> executor.execute(() -> {
-            RootShell.Result configResult = config.mirrorAll();
-            RootHideManager.OperationResult hidden = new RootHideManager(this).syncMirrors();
-            main.post(() -> toast(configResult.isSuccess() && hidden.success
-                    ? "运行镜像已同步" : "同步未完成：" + configResult.publicError() + "；" + hidden.message));
-        }));
-        restore.setOnClickListener(view -> new AlertDialog.Builder(this)
-                .setTitle("紧急恢复")
-                .setMessage("将显示新版本当前配置的全部隐藏目标，应用数据不会被删除。")
-                .setNegativeButton("取消", null)
-                .setPositiveButton("恢复全部", (dialog, which) -> executor.execute(() -> {
-                    RootHideManager.OperationResult result = new RootHideManager(this).emergencyRestore();
-                    main.post(() -> toast(result.message));
-                })).show());
-        load.run();
+        buildDetailedDiagnostics();
+        LinearLayout card=detailCard("日志","开启所需详细诊断 → 重启相关作用域 → 复现问题 → 导出日志。开启前的调用无法补录。");
+        Button export=ui.tonalButton("导出日志");card.addView(export,ui.margins(0,10,0,0));
+        card.addView(ui.text("日常日志仅保留重要操作结果与异常，按大小滚动保存。导出会重新采集设备、模块、Hook 状态，并包含已开启功能的详细调用记录。",11.5f,ui.muted,false),ui.margins(0,10,0,0));
+        export.setOnClickListener(v->{
+            if(dirty||saveInFlight){save(true);toast("正在保存诊断设置，请稍后导出");return;}
+            export.setEnabled(false);export.setText("正在收集日志…");
+            executor.execute(()->{String value=DiagnosticExport.build(this);
+                try(java.io.FileOutputStream cached=new java.io.FileOutputStream(new java.io.File(getCacheDir(),"pending-diagnostic-export.txt"))){cached.write(value.getBytes(StandardCharsets.UTF_8));}
+                catch(java.io.IOException error){main.post(()->{export.setEnabled(true);export.setText("导出日志");toast("无法准备日志文件，请重试");});return;}
+                main.post(()->{
+                if(isDestroyed())return;pendingExport=value;export.setEnabled(true);export.setText("导出日志");
+                startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").putExtra(Intent.EXTRA_TITLE,"LS_Augment-logs-"+System.currentTimeMillis()+".txt"),EXPORT_REQUEST);
+            });});
+        });page.addView(card,ui.margins(0,0,0,12));
     }
 
     private void addSwitch(LinearLayout card, String key, String label, String description, boolean master) {
-        if (card.getChildCount() > 0) {
-            LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, ui.dp(1));
-            dividerParams.setMargins(0, ui.dp(7), 0, ui.dp(7));
-            card.addView(ui.divider(), dividerParams);
-        }
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.addView(ui.text(label, master ? 14.5f : 14, ui.text, master), ui.wrap());
-        TextView detail = ui.text(description, 11, ui.muted, false);
-        detail.setLineSpacing(ui.dp(1), 1.04f);
-        copy.addView(detail, ui.margins(0, 3, 8, 0));
         Switch control = new Switch(this);
-        ui.styleSwitch(control);
+        LinearLayout row = ui.featureRow(label, description, control);
         control.setOnCheckedChangeListener((button, checked) -> markDirty());
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        row.addView(control, new LinearLayout.LayoutParams(-2, -2));
-        card.addView(row, ui.margins(0, 2, 0, 2));
-        switches.put(key, control);
+        card.addView(row, ui.margins(0, 2, 0, 2)); switches.put(key, control);
+    }
+    private LinearLayout settingsBody(LinearLayout card, String key) {
+        LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
+        card.addView(body, ui.margins(0, 10, 0, 0));
+        folds.add(ui.fold(switches.get(key), body)); return body;
+    }
+    private LinearLayout featureCard(String key, String title, String description) {
+        LinearLayout card=ui.card();addSwitch(card,key,title,description,false);
+        page.addView(card,ui.margins(0,0,0,12));return card;
+    }
+    private void buildStoreDownload() {
+        LinearLayout card=featureCard(ConfigSchema.STORE_DOWNLOAD_ENABLED,"解除同时下载数量限制","设置应用商店允许同时下载的应用数量。保存后重启应用商店，使新队列配置生效。");
+        addSlider(settingsBody(card,ConfigSchema.STORE_DOWNLOAD_ENABLED),ConfigSchema.STORE_DOWNLOAD_COUNT,"允许同时下载数量",1,50,false);
     }
 
     private void addNumber(LinearLayout card, String key, String label, boolean text) {
@@ -822,13 +1642,19 @@ public final class FeatureActivity extends Activity {
     }
 
     private void addSlider(LinearLayout card, String key, String label, int min, int max, boolean percent) {
+        addSlider(card, key, label, min, max, 1, percent);
+    }
+
+    private void addSlider(LinearLayout card, String key, String label,
+            int min, int max, int step, boolean percent) {
         TextView value = ui.text("", 12, ui.muted, false);
         card.addView(value, ui.margins(0, 10, 0, 0));
         SeekBar bar = new SeekBar(this);
-        bar.setMax(max - min);
+        int safeStep = Math.max(1, step);
+        bar.setMax((max - min) / safeStep);
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
         bar.setThumbTintList(ColorStateList.valueOf(ui.accent));
-        Slider slider = new Slider(key, label, min, max, percent, bar, value);
+        Slider slider = new Slider(key, label, min, max, safeStep, percent, bar, value);
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 slider.render(); if (fromUser) markDirty();
@@ -838,47 +1664,6 @@ public final class FeatureActivity extends Activity {
         });
         card.addView(bar, ui.wrap());
         sliders.put(key, slider);
-    }
-
-    private void addRecentsRecommendedReset(LinearLayout card, boolean stackParameters) {
-        String summary = stackParameters
-                ? "演示推荐：后层展开 0.32，前两张重叠 0.30。"
-                : "演示推荐：字号 13 sp，与卡片间距 8 dp。";
-        card.addView(ui.text(summary, 11, ui.muted, false),
-                ui.margins(0, 7, 0, 0));
-        Button reset = ui.tonalButton("恢复演示推荐值");
-        reset.setOnClickListener(view -> restoreRecentsRecommendedValues(stackParameters));
-        card.addView(reset, ui.margins(0, 9, 0, 4));
-    }
-
-    private void restoreRecentsRecommendedValues(boolean stackParameters) {
-        boolean changed;
-        if (stackParameters) {
-            changed = setSliderValue(
-                    AppConfig.RECENTS_COMPRESSION,
-                    RecentsRecommendedConfig.COMPRESSION_PERCENT);
-            changed |= setSliderValue(
-                    AppConfig.RECENTS_FRONT_OVERLAP,
-                    RecentsRecommendedConfig.FRONT_OVERLAP_PERCENT);
-        } else {
-            changed = setSliderValue(
-                    AppConfig.RECENTS_MEMORY_TEXT_SP,
-                    RecentsRecommendedConfig.MEMORY_TEXT_SP);
-            changed |= setSliderValue(
-                    AppConfig.RECENTS_MEMORY_GAP_DP,
-                    RecentsRecommendedConfig.MEMORY_GAP_DP);
-        }
-        if (changed) {
-            markDirty();
-            toast("已恢复演示推荐值，点击保存后生效");
-        } else {
-            toast("当前已是演示推荐值");
-        }
-    }
-
-    private boolean setSliderValue(String key, int value) {
-        Slider slider = sliders.get(key);
-        return slider != null && slider.setValue(value);
     }
 
     private void loadValues() {
@@ -892,7 +1677,9 @@ public final class FeatureActivity extends Activity {
         for (Slider slider : sliders.values()) {
             float raw = config.getFloat(slider.key, slider.percent ? slider.min / 100f : slider.min);
             int value = slider.percent ? Math.round(raw * 100f) : Math.round(raw);
-            slider.bar.setProgress(Math.max(0, Math.min(slider.max - slider.min, value - slider.min)));
+            slider.bar.setProgress(Math.max(0, Math.min(
+                    (slider.max - slider.min) / slider.step,
+                    Math.round((value - slider.min) / (float) slider.step))));
             slider.render();
         }
         for (Choice choice : choices.values()) choice.select(config.get(choice.key));
@@ -907,12 +1694,15 @@ public final class FeatureActivity extends Activity {
         for (IconControl control : iconControls.values()) {
             control.load(positionValues.get(control.id));
         }
+        for (UiKit.Fold fold : folds) fold.sync();
         loading = false;
         dirty = false;
         changeGeneration = 0L;
         if (save != null) ui.setButtonEnabled(save, false);
         renderRuntimeStatus();
-        if (isStatusModule()) {
+        if (MODULE_SHOULDER.equals(section)) refreshRapidCompatibilityAsync();
+        if (isStatusModule() || MODULE_AUDIO_GAIN.equals(section) || MODULE_FAN_CONTROL.equals(section)
+                || MODULE_SHOULDER.equals(section)) {
             main.removeCallbacks(statusPoll);
             main.post(statusPoll);
         }
@@ -930,7 +1720,10 @@ public final class FeatureActivity extends Activity {
             } else updates.put(entry.getKey(), entry.getValue().isChecked() ? "1" : "0");
         }
         for (Map.Entry<String, EditText> entry : inputs.entrySet()) updates.put(entry.getKey(), entry.getValue().getText().toString());
-        for (Slider slider : sliders.values()) updates.put(slider.key, slider.serialized());
+        for (Slider slider : sliders.values()) {
+            if (AppConfig.FAN_TARGET_RPM.equals(slider.key) && !slider.bar.isEnabled()) continue;
+            updates.put(slider.key, slider.serialized());
+        }
         for (Choice choice : choices.values()) updates.put(choice.key, choice.selected);
         if (!iconControls.isEmpty()) {
             for (IconControl control : iconControls.values()) {
@@ -941,7 +1734,8 @@ public final class FeatureActivity extends Activity {
         }
         if (enabledIn(updates, AppConfig.SHOULDER_ENABLED, AppConfig.TGK_RAPID_FIRE_ENABLED,
                 AppConfig.AI_TRIGGER_ENABLED, AppConfig.COMBO_SPEED_ENABLED,
-                AppConfig.SUPER_MIRROR_LOW_MODE, AppConfig.SUPER_MIRROR_DIABLO_COEXIST)) {
+                AppConfig.SUPER_MIRROR_LOW_MODE, AppConfig.SUPER_MIRROR_DIABLO_COEXIST,
+                AppConfig.FAN_FIXED_ENABLED, AppConfig.FAN_UNLOCK_MAX)) {
             updates.put(AppConfig.GAME_MASTER, "1");
         }
         if (enabledIn(updates, AppConfig.STATUSBAR_DUAL_LEFT, AppConfig.STATUSBAR_DUAL_RIGHT,
@@ -949,6 +1743,7 @@ public final class FeatureActivity extends Activity {
                 AppConfig.STATUSBAR_THERMAL, AppConfig.STATUSBAR_BATTERY_POWER)) {
             updates.put(AppConfig.SYSTEMUI_MASTER, "1");
         }
+        if (MODULE_FREEFORM.equals(section)) updates.put(AppConfig.FREEFORM_ENABLED, enabledIn(updates,AppConfig.FREEFORM_ALL_APPS,AppConfig.FREEFORM_UNLIMITED)?"1":"0");
         if (enabledIn(updates, AppConfig.DOUBLE_ANY_APP, AppConfig.DOUBLE_LOW_MEMORY,
                 AppConfig.BEAUTIFY_UNLIMITED_TRIAL)) {
             updates.put(AppConfig.APP_MASTER, "1");
@@ -957,9 +1752,9 @@ public final class FeatureActivity extends Activity {
         saveInFlight = true;
         ui.setButtonEnabled(save, false);
         executor.execute(() -> {
-            AppConfig.SaveResult result = config.save(updates);
+            AppConfig.SaveResult result = saveConfiguration(updates);
             if (MODULE_AUTOMATION.equals(section) && result.success) {
-                ScreenAutomationService.sync(this);
+                ScreenAutomation.sync(this);
             }
             main.post(() -> {
                 saveInFlight = false;
@@ -968,13 +1763,12 @@ public final class FeatureActivity extends Activity {
                 }
                 if (result.success) {
                     dirty = savingGeneration != changeGeneration;
-                    requestNotificationIfNeeded();
                     renderRuntimeStatus();
                 } else {
                     dirty = true;
                 }
                 ui.setButtonEnabled(save, dirty);
-                if (dirty && isStatusModule() && result.success) {
+                if (dirty && result.success) {
                     main.removeCallbacks(statusAutoSave);
                     main.postDelayed(statusAutoSave, 280L);
                 }
@@ -984,10 +1778,19 @@ public final class FeatureActivity extends Activity {
 
     private void renderRuntimeStatus() {
         String prefix;
-        if (isRecentsModule()) {
-            prefix = statusLine("Hook 安装", diagnostic("ls_augment_recents_installed"))
-                    + statusLine("最近命中", diagnostic("ls_augment_recents_last_layout"))
-                    + statusLine("最近错误", diagnostic("ls_augment_recents_last_error"));
+        if (MODULE_AUDIO_GAIN.equals(section)) {
+            prefix = statusLine("音频增益", diagnostic("ls_augment_audio_gain_runtime"));
+        } else if (MODULE_BATTERY.equals(section)) {
+            prefix = statusLine("循环降压策略", diagnostic("ls_augment_battery_policy_runtime")
+                    .replace("restored_vendor_policy", "已恢复原厂策略")
+                    .replace("age_voltage_reduction_disabled_and_service_reloaded", "已关闭并重新加载配置"));
+        } else if (MODULE_SIGNATURE_INSTALL.equals(section)) {
+            prefix = statusLine("系统安装 Hook",
+                    diagnostic("ls_augment_signature_install_installed"))
+                    + statusLine("最近放行",
+                    diagnostic("ls_augment_signature_install_last_hit"))
+                    + statusLine("最近错误",
+                    diagnostic("ls_augment_signature_install_last_error"));
         } else if (isGameModule()) {
             if (MODULE_SHOULDER.equals(section)) {
                 prefix = statusLine("肩键安装", diagnostic("ls_augment_shoulder_installed"))
@@ -995,6 +1798,7 @@ public final class FeatureActivity extends Activity {
                         + statusLine("连点调速", diagnostic("ls_augment_tgk_rapid_fire_installed"))
                         + statusLine("连点最近命中", diagnostic("ls_augment_tgk_rapid_fire_last_hit"))
                         + statusLine("原生节拍", diagnostic("ls_augment_tgk_rapid_fire_native_state"))
+                        + statusLine("系统库哈希", diagnostic("ls_augment_tgk_rapid_fire_native_sha256"))
                         + statusLine("原生最近命中", diagnostic("ls_augment_tgk_rapid_fire_native_last_hit"))
                         + statusLine("最近错误", diagnostic("ls_augment_tgk_rapid_fire_native_last_error"));
             } else if (MODULE_AI_TRIGGER.equals(section)) {
@@ -1006,6 +1810,11 @@ public final class FeatureActivity extends Activity {
                         + statusLine("文件缓存", diagnostic("ls_augment_combo_speed_cache_last_hit"))
                         + statusLine("最近调整", diagnostic("ls_augment_combo_speed_last_hit"))
                         + statusLine("最近错误", diagnostic("ls_augment_combo_speed_last_error"));
+            } else if (MODULE_FAN_CONTROL.equals(section)) {
+                refreshFanMeasurement();
+                prefix = statusLine("风扇 Hook", diagnostic("ls_augment_fan_control_installed"))
+                        + statusLine("当前控制", diagnostic("ls_augment_fan_control_active"))
+                        + statusLine("最近错误", diagnostic("ls_augment_fan_control_last_error"));
             } else {
                 prefix = statusLine("超镜安装", diagnostic("ls_augment_super_mirror_installed"))
                         + statusLine("最近命中", diagnostic("ls_augment_super_mirror_last_hit"))
@@ -1043,11 +1852,17 @@ public final class FeatureActivity extends Activity {
             prefix = "磁贴状态：" + config.get(AppConfig.TILE_STATE);
         } else if (MODULE_LAUNCHER_ICON.equals(section)) {
             prefix = launcherIconVisible() ? "当前桌面图标可见" : "当前桌面图标已隐藏";
+        } else if (MODULE_DETAILED_DIAGNOSTICS.equals(section)) {
+            prefix = "仅控制详细日志，不改变功能开关或兼容性测试结果";
         } else {
             prefix = "诊断与恢复工具已就绪";
         }
-        status.setText((prefix == null || prefix.trim().isEmpty() ? "尚无 Hook 命中记录" : prefix.trim())
-                + "\n生效提示：" + restartHint());
+        status.setContentDescription(runtimeDetailsExpanded ? "收起运行详情" : "展开运行详情");
+        String summary = runtimeDetailsExpanded
+                ? (prefix == null || prefix.trim().isEmpty() ? "尚无运行记录" : prefix.trim())
+                        + "\n生效提示：" + restartHint() + "\n收起运行详情 ▴"
+                : "生效提示：" + restartHint() + "\n查看运行详情 ▾";
+        if(!android.text.TextUtils.equals(status.getText(),summary))status.setText(summary);
     }
 
     private static String statusLine(String label, String value) {
@@ -1111,7 +1926,17 @@ public final class FeatureActivity extends Activity {
     }
 
     private String diagnostic(String key) {
-        return getSharedPreferences(AppConfig.DIAGNOSTICS, 0).getString(key, "");
+        String value = getSharedPreferences(AppConfig.DIAGNOSTICS, 0).getString(key, "");
+        if (value != null && !value.isEmpty()) return value;
+        // system_server can publish before this credential-encrypted Provider
+        // is available. Its privileged Settings.Global fallback is diagnostic
+        // only and must never enable a feature by itself.
+        try {
+            value = Settings.Global.getString(getContentResolver(), key);
+            return value == null ? "" : value;
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     private static String errorLine(String value) {
@@ -1139,13 +1964,13 @@ public final class FeatureActivity extends Activity {
                 .append("legacy_conflict=").append(conflict.hasConflict()).append(' ').append(conflict.message).append('\n')
                 .append("targets=").append(manager.targets().size()).append('\n');
         for (String packageName : new String[]{"com.android.settings", "com.android.systemui",
-                "com.zte.mifavor.launcher", "com.zte.beautify", "com.zte.beautifyadapter",
+                "com.zte.beautify", "com.zte.beautifyadapter",
                 "com.zte.cn.doubleapp",
                 "cn.nubia.gameassist"}) {
             out.append(packageName).append('=').append(packageVersion(packageName)).append('\n');
         }
         RootShell.Result globals = RootShell.run(
-                "settings list global 2>/dev/null | grep '^ls_augment_' | head -n 160",
+                "settings list global 2>/dev/null | grep '^ls_augment_'",
                 null, 8, 128 * 1024);
         out.append("\nGLOBAL RUNTIME MIRRORS\n")
                 .append(globals.isSuccess() ? globals.output : "unavailable:" + globals.publicError())
@@ -1173,25 +1998,20 @@ public final class FeatureActivity extends Activity {
         if (uri == null) return;
         try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
             if (output == null) throw new IllegalStateException("no_output");
-            output.write(pendingExport.getBytes(StandardCharsets.UTF_8));
+            try(java.io.FileInputStream cached=new java.io.FileInputStream(new java.io.File(getCacheDir(),"pending-diagnostic-export.txt"))){
+                byte[] buffer=new byte[8192];int count;while((count=cached.read(buffer))!=-1)output.write(buffer,0,count);
+            }
             toast("诊断文件已导出");
         } catch (Throwable error) { toast("导出失败：" + error.getClass().getSimpleName()); }
     }
 
-    private void requestNotificationIfNeeded() {
-        if (!MODULE_AUTOMATION.equals(section) || Build.VERSION.SDK_INT < 33
-                || !config.getBoolean(AppConfig.AUTOMATION_ENABLED)) return;
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2043);
-        }
-    }
-
     private void markDirty() {
+        for (UiKit.Fold fold : folds) fold.sync();
         if (loading) return;
         dirty = true;
         changeGeneration++;
         if (save != null) ui.setButtonEnabled(save, true);
-        if (isStatusModule()) {
+        {
             main.removeCallbacks(statusAutoSave);
             main.postDelayed(statusAutoSave, 320L);
         }
@@ -1199,34 +2019,39 @@ public final class FeatureActivity extends Activity {
 
     private String title() {
         switch (section) {
-            case MODULE_RECENTS_STACK: return "横向重叠任务";
-            case MODULE_RECENTS_MEMORY: return "后台内存标签";
             case MODULE_SHOULDER: return "全应用肩键";
             case MODULE_AI_TRIGGER: return "AI 触发器";
             case MODULE_COMBO_SPEED: return "一键连招速度";
+            case MODULE_FAN_CONTROL: return "风扇控制";
             case MODULE_FREEFORM: return "小窗增强";
-            case MODULE_SUPER_RESOLUTION: return "性能模式超分";
+            case MODULE_AUDIO_GAIN: return "音量增强";
+            case MODULE_BATTERY: return "电池与循环次数";
+            case MODULE_SUPER_RESOLUTION: return "超分破坏神";
             case MODULE_DIABLO_COEXIST: return "超分与破坏神";
             case MODULE_STATUS_LAYOUT: return "状态栏布局";
             case MODULE_STATUS_CLOCK: return "时钟格式";
             case MODULE_STATUS_METRICS: return "实时数据";
             case MODULE_DOUBLE_APP: return "扩展应用双开";
             case MODULE_BEAUTIFY: return "主题无限期试用";
+            case MODULE_SIGNATURE_INSTALL: return "签名不一致安装";
             case MODULE_AUTOMATION: return "锁屏自动隐藏";
             case MODULE_TILE: return "快捷设置磁贴";
             case MODULE_LAUNCHER_ICON: return "桌面图标";
-            default: return "诊断与恢复";
+            case MODULE_DETAILED_DIAGNOSTICS: return "运行诊断";
+            case "store_download": return "应用商店同时下载";
+            default: return "运行诊断";
         }
     }
 
     private String subtitle() {
         switch (section) {
-            case MODULE_RECENTS_STACK: return "连续视觉堆叠；保留原生分页、手势与任务动作。";
-            case MODULE_RECENTS_MEMORY: return "控制最近任务底部的唯一整机内存数据。";
             case MODULE_SHOULDER: return "第三方 App 自动适配，红魔 TGK 继续负责实体按键。";
             case MODULE_AI_TRIGGER: return "降低模板、点击队列与 YOLO 的等待间隔。";
             case MODULE_COMBO_SPEED: return "为游戏助手的一键连招设置播放倍率，不改原始录制。";
+            case MODULE_FAN_CONTROL: return "固定目标转速，并按需解禁驱动 5 档满速。";
             case MODULE_FREEFORM: return "解除小窗创建与最小化限制，并放行普通应用进入自由窗口。";
+            case MODULE_AUDIO_GAIN: return "分别设置扬声器、耳机、蓝牙的媒体、铃声和闹钟音量上限。";
+            case MODULE_BATTERY: return "读取真实循环记录和容量，关闭已确认的软件循环降压策略。";
             case MODULE_SUPER_RESOLUTION: return "扩展红魔原生超分辨率的性能模式资格。";
             case MODULE_DIABLO_COEXIST: return "控制超分辨率与破坏神模式的互斥行为。";
             case MODULE_STATUS_LAYOUT: return "在真实状态栏中实时调整双排、尺寸、组件和单个图标位置。";
@@ -1234,62 +2059,70 @@ public final class FeatureActivity extends Activity {
             case MODULE_STATUS_METRICS: return "控制状态栏中的可独立定位实时数据。";
             case MODULE_DOUBLE_APP: return "只扩展候选列表，分身仍由红魔官方框架管理。";
             case MODULE_BEAUTIFY: return "仅处理原厂明确试用资源的本地到期流程。";
+            case MODULE_SIGNATURE_INSTALL:
+                return "只处理同包名覆盖安装的签名冲突，其他安装安全检查保持原样。";
             case MODULE_AUTOMATION: return "按需运行，无 KSU 模块依赖。";
             case MODULE_TILE: return "设置磁贴动作、名称和说明。";
             case MODULE_LAUNCHER_ICON: return "控制 LS_Augment 自身桌面入口。";
+            case MODULE_DETAILED_DIAGNOSTICS: return "集中管理各子功能的详细诊断，修改后点击保存。";
             default: return "查看兼容状态、最近命中、错误与恢复入口。";
         }
     }
 
     private String restartHint() {
         switch (section) {
-            case MODULE_RECENTS_STACK:
-            case MODULE_RECENTS_MEMORY: return "重启系统桌面后生效";
+            case MODULE_DETAILED_DIAGNOSTICS: return "保存后重启游戏作用域，使全部诊断设置生效";
             case MODULE_SHOULDER:
             case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
+            case MODULE_FAN_CONTROL:
             case MODULE_SUPER_RESOLUTION:
             case MODULE_DIABLO_COEXIST: return MODULE_COMBO_SPEED.equals(section)
                     ? "倍率保存后下一次连招生效；首次安装或更新需重启游戏作用域"
+                    : MODULE_FAN_CONTROL.equals(section)
+                    ? "保存后约 1 秒读取；首次安装或更新需重启风扇作用域"
                     : "重启游戏作用域后生效";
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS:
                 return "修改会自动保存并直接反馈；仅首次安装或更新模块代码后需重启一次 SystemUI";
             case MODULE_FREEFORM:
+            case MODULE_AUDIO_GAIN:
                 return "配置保存后约 1 秒读取；首次安装或更新模块代码需重启手机";
             case MODULE_DOUBLE_APP:
             case MODULE_BEAUTIFY: return "重启应用增强作用域后生效";
+            case MODULE_SIGNATURE_INSTALL: return "首次安装或更新模块代码后需重启手机";
             default: return "立即生效";
         }
     }
 
     private String restartScope() {
         switch (section) {
-            case MODULE_RECENTS_STACK:
-            case MODULE_RECENTS_MEMORY: return ScopeRestartDialog.LAUNCHER;
+            case MODULE_DETAILED_DIAGNOSTICS: return ScopeRestartDialog.GAMES;
+            case MODULE_DIAGNOSTICS: return ScopeRestartDialog.GAMES;
+            case "store_download": return ScopeRestartDialog.APPS;
             case MODULE_SHOULDER:
             case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
+            case MODULE_FAN_CONTROL:
             case MODULE_SUPER_RESOLUTION:
             case MODULE_DIABLO_COEXIST: return ScopeRestartDialog.GAMES;
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS: return ScopeRestartDialog.SYSTEM_UI;
             case MODULE_FREEFORM: return ScopeRestartDialog.DEVICE;
+            case MODULE_AUDIO_GAIN: return ScopeRestartDialog.DEVICE;
             case MODULE_DOUBLE_APP:
             case MODULE_BEAUTIFY: return ScopeRestartDialog.APPS;
+            case MODULE_SIGNATURE_INSTALL: return ScopeRestartDialog.DEVICE;
             default: return ScopeRestartDialog.SETTINGS;
         }
-    }
-
-    private boolean isRecentsModule() {
-        return MODULE_RECENTS_STACK.equals(section) || MODULE_RECENTS_MEMORY.equals(section);
     }
 
     private boolean isGameModule() {
         return MODULE_SHOULDER.equals(section) || MODULE_AI_TRIGGER.equals(section)
                 || MODULE_COMBO_SPEED.equals(section)
+                || MODULE_FAN_CONTROL.equals(section)
                 || MODULE_SUPER_RESOLUTION.equals(section)
                 || MODULE_DIABLO_COEXIST.equals(section);
     }
@@ -1458,17 +2291,20 @@ public final class FeatureActivity extends Activity {
 
     private static final class Slider {
         final String key, label;
-        final int min, max;
+        int min, max;
+        final int step;
         final boolean percent;
         final SeekBar bar;
         final TextView text;
-        Slider(String key, String label, int min, int max, boolean percent, SeekBar bar, TextView text) {
+        Slider(String key, String label, int min, int max, int step,
+                boolean percent, SeekBar bar, TextView text) {
             this.key = key; this.label = label; this.min = min; this.max = max;
-            this.percent = percent; this.bar = bar; this.text = text;
+            this.step = step; this.percent = percent; this.bar = bar; this.text = text;
         }
-        int value() { return min + bar.getProgress(); }
+        int value() { return min + bar.getProgress() * step; }
         boolean setValue(int value) {
-            int progress = Math.max(0, Math.min(max - min, value - min));
+            int progress = Math.max(0, Math.min((max - min) / step,
+                    Math.round((value - min) / (float) step)));
             if (bar.getProgress() == progress) return false;
             bar.setProgress(progress);
             render();

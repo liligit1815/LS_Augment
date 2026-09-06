@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:tint="@color/materialColorOnSurface" android:height="48.0dp" android:width="48.0dp" android:autoMirrored="true" android:viewportWidth="48.0" android:viewportHeight="48.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:androidprv="http://schemas.android.com/apk/prv/res/android">
+    <group android:name="scaleGroup" android:pivotX="24.0" android:pivotY="24.0" android:rotation="90.0">
+        <path android:fillColor="@android:color/white" android:pathData="M18.75,36 L16.6,33.85 26.5,23.95 16.6,14.05 18.75,11.9 30.8,23.95Z" />
+    </group>
+</vector>

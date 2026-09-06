@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="mfvc_dial_area_height">144.0px</dimen>
+    <dimen name="mfvc_dial_grid_pad_height">566.0px</dimen>
+    <dimen name="mfvc_dial_grid_pad_key_padding_left">67.0px</dimen>
+    <dimen name="mfvc_dial_grid_pad_padding_bottom">4.0px</dimen>
+    <dimen name="mfvc_dial_grid_pad_padding_horizontal">31.0px</dimen>
+    <dimen name="mfvc_dial_key_font_size">92.0px</dimen>
+    <dimen name="mfvc_dial_key_height">122.0px</dimen>
+    <dimen name="mfvc_dial_key_left_padding">57.0px</dimen>
+    <dimen name="mfvc_dial_key_sub_font_size">39.0px</dimen>
+    <dimen name="mfvc_dial_key_width">263.0px</dimen>
+    <dimen name="mfvc_dial_num_font_size">82.0px</dimen>
+    <dimen name="mfvc_dial_num_padding_horizontal">108.0px</dimen>
+    <dimen name="mfvc_dial_on_height">136.0px</dimen>
+    <dimen name="mfvc_dial_on_icon_size">92.0px</dimen>
+    <dimen name="mfvc_dial_on_width">399.0px</dimen>
+    <dimen name="mfvc_dial_opt_area_height">175.0px</dimen>
+    <dimen name="mfvc_dial_opt_area_padding_bottom">13.0px</dimen>
+    <dimen name="mfvc_dial_opt_area_padding_top">26.0px</dimen>
+</resources>

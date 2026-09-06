@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$smartpowersave_animation__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="smart_power_save_up" android:animation="@drawable/$smartpowersave_animation__1" />
+    <target android:name="smart_power_save_right" android:animation="@drawable/$smartpowersave_animation__2" />
+    <target android:name="smart_power_save_left" android:animation="@drawable/$smartpowersave_animation__3" />
+    <target android:name="smart_power_save_1" android:animation="@drawable/$smartpowersave_animation__4" />
+    <target android:name="path" android:animation="@drawable/$smartpowersave_animation__5" />
+</animated-vector>

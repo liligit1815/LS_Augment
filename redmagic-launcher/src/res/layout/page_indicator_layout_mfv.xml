@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.pageindicators.MfvPageIndicatorLayout android:layout_gravity="center|bottom" android:orientation="horizontal" android:id="@id/mfv_page_indicator" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:launcher="http://schemas.android.com/apk/res-auto">
+    <com.android.launcher3.pageindicators.MfvPageIndicatorImpl android:layout_gravity="center|bottom" android:id="@id/mfv_page_indicator_miboard" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" launcher:windowSize="1" />
+    <include android:id="@id/mfv_page_indicator_launcher" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_toEndOf="@id/mfv_page_indicator_miboard" layout="@layout/page_indicator_mfv" />
+</com.android.launcher3.pageindicators.MfvPageIndicatorLayout>

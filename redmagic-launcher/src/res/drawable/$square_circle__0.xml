@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="square_circle" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="path" android:fillColor="#000" android:pathData="M 5 17 C 5 13.667 5 10.333 5 7 C 5 6.379 5.282 5.825 5.726 5.458 C 6.072 5.172 6.516 5 7 5 C 10.333 5 13.667 5 17 5 C 17.499 5 17.955 5.182 18.305 5.484 C 18.731 5.851 19 6.394 19 7 C 19 10.333 19 13.667 19 17 C 19 17.569 18.762 18.083 18.381 18.447 C 18.022 18.79 17.536 19 17 19 L 17 19 C 13.667 19 10.333 19 7 19 C 6.498 19 6.039 18.815 5.688 18.51 C 5.266 18.143 5 17.603 5 17" android:strokeWidth="1.0" />
+</vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="day">
+        <item>Den</item>
+    </string-array>
+    <string-array name="month">
+        <item>Měsíc</item>
+    </string-array>
+    <string-array name="year">
+        <item>rokem</item>
+    </string-array>
+</resources>

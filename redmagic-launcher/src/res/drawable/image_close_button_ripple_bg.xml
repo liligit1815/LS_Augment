@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.zte.mifavor.widget.RippleDrawableZTE android:color="@color/mfv_common_acb_press" android:radius="16.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

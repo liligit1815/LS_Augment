@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/main_content_scrollable_container" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" app:layout_behavior="@string/appbar_scrolling_view_behavior"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.zte.mifavor.androidx.widget.NestedScrollView android:id="@id/nestedScrollView" android:scrollbars="none" android:layout_width="match_parent" android:layout_height="0.0dp" android:fillViewport="true" android:layout_weight="1.0" android:overScrollMode="never">
+        <LinearLayout android:theme="@style/SettingsActivityTheme" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:orientation="vertical" android:id="@id/normal_style_card" android:background="@drawable/card_bg" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/padding04">
+                <LinearLayout android:layout_gravity="center_horizontal" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/icon_layout_radio_margin_top" android:layout_marginBottom="@dimen/icon_layout_radio_margin_bottom">
+                    <TextView android:textSize="@dimen/font_size03" android:textColor="@color/setting_activity_text_color" android:id="@id/textview_normal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_recent_style_normal" android:fontFamily="@string/font_family_systemdefault_medium" android:layout_marginStart="@dimen/padding05" />
+                    <View android:layout_width="0.0dp" android:layout_height="0.0dp" android:layout_weight="1.0" />
+                    <com.zte.mifavor.widget.RadioButtonZTE android:id="@id/radio_btn_normal" android:background="@null" android:focusable="false" android:clickable="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="@dimen/padding05" />
+                </LinearLayout>
+                <ImageView android:layout_gravity="center_horizontal" android:id="@id/recent_style_image_normal" android:layout_width="@dimen/icon_recent_app_style_width" android:layout_height="@dimen/icon_recent_app_style_height" android:layout_marginTop="@dimen/padding03" android:layout_marginBottom="@dimen/padding04" android:src="@drawable/pic_recentapp_nomal" />
+            </LinearLayout>
+            <LinearLayout android:orientation="vertical" android:id="@id/grid_style_card" android:background="@drawable/card_bg" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/padding04">
+                <LinearLayout android:layout_gravity="center_horizontal" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/icon_layout_radio_margin_top" android:layout_marginBottom="@dimen/icon_layout_radio_margin_bottom">
+                    <TextView android:textSize="@dimen/font_size03" android:textColor="@color/setting_activity_text_color" android:id="@id/textview_grid" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_recent_style_grid" android:fontFamily="@string/font_family_systemdefault_medium" android:layout_marginStart="@dimen/padding05" />
+                    <View android:layout_width="0.0dp" android:layout_height="0.0dp" android:layout_weight="1.0" />
+                    <com.zte.mifavor.widget.RadioButtonZTE android:id="@id/radio_btn_grid" android:background="@null" android:focusable="false" android:clickable="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="@dimen/padding05" />
+                </LinearLayout>
+                <ImageView android:layout_gravity="center" android:id="@id/recent_style_image_grid" android:layout_width="@dimen/icon_recent_app_style_width" android:layout_height="@dimen/icon_recent_app_style_height" android:layout_marginTop="@dimen/padding03" android:layout_marginBottom="@dimen/padding04" android:src="@drawable/pic_recentapp_grid" />
+            </LinearLayout>
+            <include layout="@layout/recent_style_stack_card" />
+            <LinearLayout
+                android:id="@id/recents_stack_memory_switch_card"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:background="@drawable/card_bg"
+                android:layout_width="match_parent"
+                android:layout_height="64.0dp"
+                android:layout_marginTop="@dimen/padding04"
+                android:layout_marginBottom="@dimen/padding04"
+                android:paddingStart="@dimen/padding05"
+                android:paddingEnd="@dimen/padding05"
+                android:focusable="true">
+                <TextView
+                    android:textSize="@dimen/font_size03"
+                    android:textColor="@color/setting_activity_text_color"
+                    android:layout_width="0.0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.0"
+                    android:layout_marginStart="@dimen/padding05"
+                    android:text="@string/settings_recent_style_show_memory"
+                    android:fontFamily="@string/font_family_systemdefault_medium" />
+                <com.zte.mifavor.widget.SwitchZTE
+                    android:id="@id/recents_stack_memory_switch"
+                    android:background="@null"
+                    android:focusable="false"
+                    android:clickable="false"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="@dimen/padding05" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.zte.mifavor.androidx.widget.NestedScrollView>
+</LinearLayout>

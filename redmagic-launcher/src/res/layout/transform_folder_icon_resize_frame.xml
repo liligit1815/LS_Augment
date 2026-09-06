@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.launcher3.streamer.transformfolder.TransformFolderIconResizeFrame android:id="@id/transform_foler_icon_frame" android:padding="0.0dp" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        <ImageView android:layout_gravity="left|top" android:id="@id/foler_icon_frame_arrow_left_top" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/transform_folder_icon_widget_handle_margin" android:layout_marginTop="@dimen/transform_folder_icon_widget_handle_margin" />
+        <ImageView android:layout_gravity="right|top" android:id="@id/foler_icon_frame_arrow_right_top" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/transform_folder_icon_widget_handle_margin" android:layout_marginRight="@dimen/transform_folder_icon_widget_handle_margin" />
+        <ImageView android:layout_gravity="right|bottom" android:id="@id/foler_icon_frame_arrow_right_bottom" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="@dimen/transform_folder_icon_widget_handle_margin" android:layout_marginBottom="@dimen/transform_folder_icon_widget_handle_margin" />
+        <ImageView android:layout_gravity="left|bottom" android:id="@id/foler_icon_frame_arrow_left_bottom" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/transform_folder_icon_widget_handle_margin" android:layout_marginBottom="@dimen/transform_folder_icon_widget_handle_margin" />
+    </FrameLayout>
+</com.android.launcher3.streamer.transformfolder.TransformFolderIconResizeFrame>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="alarm_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="lines" android:pivotX="12.0" android:pivotY="13.0">
+        <path android:name="lines_1" android:fillColor="#8f8f8f" android:pathData="M 21.903 6.38 C 21.605 6.388 21.327 6.246 21.16 6 C 20.324 4.779 19.214 3.729 17.951 2.963 C 17.753 2.842 17.613 2.651 17.556 2.425 C 17.501 2.198 17.537 1.965 17.658 1.766 C 17.818 1.504 18.096 1.356 18.383 1.348 C 18.543 1.344 18.707 1.383 18.854 1.471 C 20.329 2.367 21.624 3.594 22.598 5.017 C 22.729 5.209 22.778 5.44 22.736 5.67 C 22.693 5.899 22.563 6.097 22.372 6.228 C 22.372 6.229 22.371 6.229 22.37 6.229 C 22.23 6.323 22.068 6.375 21.903 6.38 Z M 2.097 6.38 C 2.395 6.388 2.673 6.246 2.84 6 C 3.676 4.779 4.786 3.729 6.049 2.963 C 6.247 2.841 6.387 2.65 6.444 2.424 C 6.499 2.197 6.463 1.964 6.342 1.765 C 6.182 1.503 5.904 1.355 5.617 1.347 C 5.457 1.343 5.293 1.382 5.146 1.47 C 3.671 2.366 2.376 3.593 1.402 5.016 C 1.271 5.209 1.222 5.44 1.265 5.67 C 1.308 5.899 1.438 6.097 1.629 6.228 C 1.629 6.229 1.63 6.229 1.631 6.229 C 1.77 6.323 1.932 6.375 2.097 6.38 Z" android:strokeWidth="1.0" />
+    </group>
+    <path android:name="bg" android:fillColor="#8f8f8f" android:pathData="M 12 3 C 9.481 3 7.063 4.002 5.282 5.782 C 3.502 7.563 2.5 9.981 2.5 12.5 C 2.5 15.019 3.502 17.437 5.282 19.218 C 7.063 20.998 9.481 22 12 22 C 14.519 22 16.937 20.998 18.718 19.218 C 20.498 17.437 21.5 15.019 21.5 12.5 C 21.5 9.981 20.498 7.563 18.718 5.782 C 16.937 4.002 14.519 3 12 3 Z" android:strokeWidth="1.0" />
+    <group android:name="group" android:pivotX="11.6" android:pivotY="12.72">
+        <path android:name="fenzhen" android:fillColor="#ffffff" android:pathData="M 11.7 13.524 C 11.225 13.524 10.84 13.139 10.84 12.664 L 10.84 8.124 C 10.84 7.649 11.225 7.264 11.7 7.264 C 12.175 7.264 12.56 7.649 12.56 8.124 L 12.56 12.664 C 12.56 13.139 12.175 13.524 11.7 13.524 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_1" android:pivotX="11.6" android:pivotY="12.72">
+        <path android:name="shizhen" android:fillColor="#ffffff" android:pathData="M 14.666 15.644 L 14.664 15.646 C 14.328 15.982 13.784 15.982 13.448 15.646 L 11.089 13.287 C 10.753 12.951 10.753 12.407 11.089 12.071 L 11.091 12.069 C 11.427 11.733 11.971 11.733 12.307 12.069 L 14.666 14.428 C 15.002 14.763 15.002 15.308 14.666 15.644 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

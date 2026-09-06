@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_gravity="bottom" android:orientation="vertical" android:id="@id/bottombarRoot" android:background="@drawable/bottombar_bg_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxHeight="@dimen/mfvc_bottom_height01_root" android:minHeight="@dimen/mfvc_bottom_height01" android:layout_alignParentBottom="true"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:id="@id/bottombar" android:background="@drawable/bottombar_bg_card" android:paddingTop="@dimen/bottombar_padding_top" android:paddingBottom="@dimen/bottombar_padding_bottom" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_bottom_height01">
+        <View android:id="@id/divider1" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="5.0" />
+        <LinearLayout android:gravity="center" android:id="@id/container1" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="90.0">
+            <Button android:id="@id/button1" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/BottomBarTextStyle" />
+        </LinearLayout>
+        <View android:id="@id/divider2" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="5.0" />
+    </LinearLayout>
+    <View android:id="@id/indicator_area" android:background="@android:color/transparent" android:visibility="gone" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_indicator_height" />
+</LinearLayout>

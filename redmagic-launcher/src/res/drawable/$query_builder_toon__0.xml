@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="query_builder_toon" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="bg" android:fillColor="#8f8f8f" android:pathData="M 12 2 C 9.349 2 6.804 3.054 4.929 4.929 C 3.054 6.804 2 9.349 2 12 C 2 14.651 3.054 17.196 4.929 19.071 C 6.804 20.946 9.349 22 12 22 C 14.651 22 17.196 20.946 19.071 19.071 C 20.946 17.196 22 14.651 22 12 C 22 9.349 20.946 6.804 19.071 4.929 C 17.196 3.054 14.651 2 12 2 Z" android:strokeWidth="1.0" />
+    <group android:name="group" android:pivotX="11.6" android:pivotY="12.72">
+        <path android:name="fenzhen" android:fillColor="#ffffff" android:pathData="M 11.6 13.62 C 11.103 13.62 10.7 13.217 10.7 12.72 L 10.7 6.82 C 10.7 6.323 11.103 5.92 11.6 5.92 C 12.097 5.92 12.5 6.323 12.5 6.82 L 12.5 12.72 C 12.5 13.217 12.097 13.62 11.6 13.62 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="group_1" android:pivotX="11.6" android:pivotY="12.72">
+        <path android:name="shizhen" android:fillColor="#ffffff" android:pathData="M 16.105 15.759 C 15.827 16.171 15.268 16.28 14.856 16.002 L 11.106 13.473 C 10.694 13.195 10.585 12.636 10.863 12.224 C 11.141 11.812 11.7 11.703 12.112 11.981 L 15.862 14.51 C 16.275 14.788 16.383 15.347 16.105 15.759 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

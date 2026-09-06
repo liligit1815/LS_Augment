@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(lsaugment_tgk LANGUAGES CXX)
 
-find_package(shadowhook REQUIRED CONFIG)
-
 add_library(lsaugment_tgk SHARED
         tgk_rapid_native.cpp)
 
@@ -17,6 +15,5 @@ target_compile_options(lsaugment_tgk PRIVATE
         -Werror=return-type)
 
 target_link_libraries(lsaugment_tgk
-        shadowhook::shadowhook
+        dl
         log)
-

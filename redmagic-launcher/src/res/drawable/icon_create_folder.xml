@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@id/icon_edit_bg">
+        <shape android:shape="oval">
+            <solid android:color="@color/create_folder_target_color_bg" />
+            <size android:height="@dimen/icon_arrange_topbar_icon_size" android:width="@dimen/icon_arrange_topbar_icon_size" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:id="@id/icon_edit_icon" android:height="@dimen/icon_arrange_topbar_inner_icon_size" android:width="@dimen/icon_arrange_topbar_inner_icon_size" android:drawable="@drawable/folder_outline" />
+</layer-list>

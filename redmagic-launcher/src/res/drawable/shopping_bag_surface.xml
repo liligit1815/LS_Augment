@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$shopping_bag_surface__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$shopping_bag_surface__1" />
+    <target android:name="outer" android:animation="@drawable/$shopping_bag_surface__2" />
+    <target android:name="v" android:animation="@drawable/$shopping_bag_surface__3" />
+    <target android:name="vv" android:animation="@drawable/$shopping_bag_surface__4" />
+</animated-vector>

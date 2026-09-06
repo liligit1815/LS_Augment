@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-selector
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:id="@id/on" android:drawable="@drawable/radio_button_on_common" />
+    <item android:id="@id/off" android:drawable="@drawable/radio_button_off_common" />
+    <transition android:drawable="@drawable/radiobuttonoff_on_common" android:toId="@id/on" android:fromId="@id/off" />
+    <transition android:drawable="@drawable/radiobuttonon_off_commom" android:toId="@id/off" android:fromId="@id/on" />
+</animated-selector>

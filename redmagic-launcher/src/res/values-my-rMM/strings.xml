@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_mode_done">ပြီးပါပြီ</string>
+    <string name="alwaysUse">ဤအက္ပ္ကုိသံုးၿပီး ထုိလုပ္ေဆာင္ခ်က္မ်ိဳးကုိ အျမဲၿပီးေအာင္လုပ္ပါ</string>
+    <string name="cancel">ပယ်ဖျက်ပါ</string>
+    <string name="date_picker_decrement_day_button">ရက် လျှော့ရန်</string>
+    <string name="date_picker_decrement_month_button">လ လျှော့ရန်</string>
+    <string name="date_picker_decrement_year_button">ခုနှစ် လျှော့ရန်</string>
+    <string name="date_picker_dialog_title">ရက်စွဲ အတည်ပြုရန်</string>
+    <string name="date_picker_increment_day_button">ရက် တိုးရန်</string>
+    <string name="date_picker_increment_month_button">လ တိုးရန်</string>
+    <string name="date_picker_increment_year_button">ခုနှစ် တိုးရန်</string>
+    <string name="datetime_dialog_title">သတ္မွတ္ရက္စြဲ ႏွင့္ အခ်ိန္</string>
+    <string name="hour_picker_description">နာရီရွေးချက်စရာ</string>
+    <string name="item_is_selected">%1$s ကုိေရြးခ်ယ္လုိက္ပါၿပီ။</string>
+    <string name="minute_picker_description">မိနစ်လှည့်သော ရွေ့လျားတန်</string>
+    <string name="search_hint">ရွာေဖြျခင္း</string>
+    <string name="select_day">လတစ္လ၏ ရက္ကုိ ေရြးပါ</string>
+    <string name="select_hours">နာရီများ ရွေးပါ</string>
+    <string name="select_minutes">မိနစ်များ ရွေးပါ</string>
+    <string name="select_year">ႏွစ္ ေရြးခ်ယ္ရန္</string>
+    <string name="time_picker_decrement_hour_button">နာရီလျော့ရန်</string>
+    <string name="time_picker_decrement_minute_button">မိနစ်လျော့ရန်</string>
+    <string name="time_picker_decrement_set_am_button">မနက်ပိုင်းချိန် သတ်မှတ်ရန်</string>
+    <string name="time_picker_dialog_title">အခ်ိန္သတ္မွတ္ပါ</string>
+    <string name="time_picker_increment_hour_button">နာရီတိုးရန်</string>
+    <string name="time_picker_increment_minute_button">မိနစ်တိုးရန်</string>
+    <string name="time_picker_increment_set_pm_button">မွန်းလွဲပိုင်း သတ်မှတ်ရန်</string>
+    <string name="year_picker_description">ခုနှစ် အစဉ်</string>
+    <string name="zte_days_of_week_Fri">သောကြာ</string>
+    <string name="zte_days_of_week_Mon">Mon</string>
+    <string name="zte_days_of_week_Sat">Sat</string>
+    <string name="zte_days_of_week_Sun">Sun</string>
+    <string name="zte_days_of_week_Thu">Thu</string>
+    <string name="zte_days_of_week_Tue">Tue</string>
+    <string name="zte_days_of_week_Wed">Wed</string>
+</resources>

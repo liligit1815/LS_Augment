@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:orientation="vertical" android:background="@drawable/ai_tools_rounded_background_inner" android:paddingBottom="8.0dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <RelativeLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="40.0dp" android:layout_marginStart="@dimen/ai_tools_card_inner_bg_margin_left_right" android:layout_marginEnd="@dimen/ai_tools_card_inner_bg_padding_left_right">
+                <ImageView android:layout_gravity="center_vertical" android:id="@id/launcher_icon" android:layout_width="@dimen/ai_tools_title_icon_size" android:layout_height="@dimen/ai_tools_title_icon_size" android:src="@drawable/ai_tools_card_home_icon" android:layout_centerVertical="true" />
+                <TextView android:textSize="@dimen/ai_tools_title_font_size" android:textColor="@color/mfvc_primary_foreground_color_transp_54" android:layout_gravity="center_vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/hotseat_prediction_settings" android:layout_centerVertical="true" android:lineSpacingMultiplier="2.0" android:fontFamily="sans-serif-medium" android:layout_marginStart="8.0dp" android:layout_toEndOf="@id/launcher_icon" />
+                <TextView android:textSize="@dimen/ai_tools_title_font_size" android:textColor="@color/mfvc_primary_foreground_color_transp_54" android:layout_gravity="center_vertical" android:id="@id/launcher_layout" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/settings_home_screen_layout_title" android:layout_centerVertical="true" android:lineSpacingMultiplier="2.0" android:fontFamily="sans-serif-medium" android:layout_toStartOf="@id/chevronIcon" />
+                <ImageView android:id="@id/chevronIcon" android:layout_width="@dimen/ai_tools_icon_size" android:layout_height="@dimen/ai_tools_icon_size" android:src="@drawable/chevron_right" android:tint="@color/mfvc_primary_foreground_color_transp_26" android:layout_centerVertical="true" android:paddingEnd="-8.0dp" android:layout_alignParentEnd="true" android:tintMode="src_in" />
+            </RelativeLayout>
+            <RelativeLayout android:id="@id/magnification" android:layout_width="match_parent" android:layout_height="@dimen/ai_tools_line_list_height" android:layout_marginStart="@dimen/ai_tools_card_inner_bg_margin_left_right" android:layout_marginEnd="@dimen/ai_tools_card_inner_bg_margin_left_right">
+                <LinearLayout android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerVertical="true">
+                    <TextView android:textSize="@dimen/ai_tools_primary_font_size" android:textColor="@color/mfvc_primary_foreground_color_transp_90" android:id="@android:id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lock_home_screen_title" android:fontFamily="sans-serif-medium" />
+                    <TextView android:textSize="@dimen/ai_tools_secondary_font_size" android:textColor="@color/mfvc_primary_foreground_color_transp_44" android:id="@android:id/summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lock_home_screen_summary" android:fontFamily="sans-serif-medium" />
+                </LinearLayout>
+                <com.zte.mifavor.widget.remote.RemoteSwitch android:id="@id/sw_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:layout_centerVertical="true" android:layout_alignParentEnd="true" />
+            </RelativeLayout>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

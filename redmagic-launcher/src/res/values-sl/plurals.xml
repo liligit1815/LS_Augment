@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">pred %d dnem</item>
+        <item quantity="two">pred %d dnevoma</item>
+        <item quantity="few">pred %d dnevi</item>
+        <item quantity="other">pred %d dnevi</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">pred %d minuto</item>
+        <item quantity="two">pred %d minutama</item>
+        <item quantity="few">pred %d minutami</item>
+        <item quantity="other">pred %d minutami</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">pred %d letom</item>
+        <item quantity="two">pred %d letoma</item>
+        <item quantity="few">pred %d leti</item>
+        <item quantity="other">pred %d leti</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d novo obvestilo</item>
+        <item quantity="two">%d novi obvestili</item>
+        <item quantity="few">%d nova obvestila</item>
+        <item quantity="other">%d novih obvestil</item>
+    </plurals>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="pause_play" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="path" android:fillColor="#000" android:pathData="M 7.826 7.523 L 7.826 5.553 C 7.801 4.171 5.798 4.125 5.75 5.553 L 5.75 18.468 C 5.795 19.859 7.78 19.827 7.826 18.468 L 7.826 17.21 L 7.826 7.523 Z M 18.25 5.539 C 18.25 5.068 17.881 4.498 17.224 4.498 C 16.478 4.498 16.174 5.125 16.174 5.539 C 16.174 5.831 16.174 18.254 16.174 18.461 C 16.174 18.93 16.528 19.5 17.216 19.5 C 17.873 19.5 18.25 18.949 18.25 18.461 C 18.25 18.311 18.25 5.85 18.25 5.539 Z" android:strokeWidth="1.0" />
+</vector>

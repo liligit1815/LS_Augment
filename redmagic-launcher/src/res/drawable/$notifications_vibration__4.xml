@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@android:anim/accelerate_interpolator" android:duration="70" android:startOffset="240" android:valueFrom="6" android:valueTo="0" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:anim/decelerate_interpolator" android:duration="70" android:startOffset="170" android:valueFrom="0" android:valueTo="10" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:anim/decelerate_interpolator" android:duration="70" android:startOffset="310" android:valueFrom="0" android:valueTo="-6" android:valueType="floatType" android:propertyName="rotation" />
+    <objectAnimator android:interpolator="@android:anim/accelerate_interpolator" android:duration="70" android:startOffset="380" android:valueFrom="-2.5" android:valueTo="0" android:valueType="floatType" android:propertyName="rotation" />
+</set>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$audiotrackon_off__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="audiotrack_line" android:animation="@drawable/$audiotrackon_off__1" />
+    <target android:name="mask" android:animation="@drawable/$audiotrackon_off__2" />
+</animated-vector>

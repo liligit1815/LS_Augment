@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="fullscreen_fullscreenexit" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="fullscreen_upleft1" android:pathData="M 8.293 4.019 L 4.023 4.019 L 4.023 8.288" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_upleft2" android:pathData="M 4.023 4.019 L 9.18 9.175" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_upright1" android:pathData="M 19.98 8.293 L 19.98 4.023 L 15.712 4.023" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_upright2" android:pathData="M 19.98 4.023 L 14.825 9.18" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_downright1" android:pathData="M 15.707 19.98 L 19.977 19.98 L 19.977 15.712" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_downright2" android:pathData="M 19.977 19.98 L 14.82 14.825" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_downleft1" android:pathData="M 4.019 15.707 L 4.019 19.977 L 8.288 19.977" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+    <path android:name="fullscreen_downleft2" android:pathData="M 4.019 19.977 L 9.175 14.82" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+</vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="outer_notificationsoff_on" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="notifications_linestart" android:fillColor="#000" android:pathData="M 18.824 19.811 L 3.733 4.723 C 3.342 4.332 3.342 3.7 3.733 3.309 C 4.124 2.918 4.756 2.918 5.147 3.309 L 20.238 18.397 C 20.629 18.788 20.629 19.42 20.238 19.811 C 19.733 20.315 19.109 20.096 18.824 19.811 Z" android:strokeWidth="1.0" />
+    <clip-path android:name="mask" android:pathData="M 0 0 L 0 24 L 24 24 L 24 0 L 0 0 Z M 20.238 18.396 L 5.147 3.308 C 4.756 2.917 4.756 2.285 5.147 1.894 C 5.538 1.503 6.17 1.503 6.561 1.894 L 21.652 16.982 C 22.043 17.373 22.043 18.005 21.652 18.396 C 21.147 18.9 20.523 18.681 20.238 18.396 Z" />
+    <group android:name="down" android:pivotX="12.0">
+        <path android:name="path" android:fillColor="#000" android:pathData="M 19.649 18.4 L 4.351 18.4 C 3.946 18.4 3.58 18.156 3.426 17.781 C 3.271 17.407 3.358 16.976 3.645 16.691 L 5.24 15.107 C 5.702 14.618 5.702 14.114 5.702 13.746 L 5.702 8.395 C 5.702 5.16 8.064 2.7 11.445 2.415 C 11.655 2.395 12.343 2.395 12.558 2.415 C 15.936 2.7 18.297 5.16 18.297 8.395 L 18.297 13.746 C 18.297 14.111 18.297 14.61 18.77 15.118 L 20.353 16.691 C 20.641 16.976 20.728 17.407 20.573 17.781 C 20.42 18.156 20.055 18.4 19.649 18.4 Z" android:strokeWidth="1.0" />
+    </group>
+    <group android:name="notifications_down" android:pivotX="12.0">
+        <path android:name="notification_down" android:fillColor="#000" android:pathData="M 13.875 19.932 C 13.875 20.851 13.033 21.6 11.998 21.6 C 10.965 21.6 10.125 20.852 10.125 19.932 C 10.125 19.752 10.266 19.6 10.432 19.6 L 13.564 19.6 C 13.736 19.6 13.875 19.749 13.875 19.932 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetTop="@dimen/mfvc_medium_padding" android:insetBottom="@dimen/mfvc_medium_padding"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <selector>
+        <item android:state_focused="true">
+            <nine-patch android:src="@drawable/textfield_actived" />
+        </item>
+        <item>
+            <nine-patch android:src="@drawable/textfield_default" />
+        </item>
+    </selector>
+</inset>

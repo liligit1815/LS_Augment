@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:paddingLeft="24.0dp" android:paddingRight="24.0dp" android:paddingBottom="136.0dp" android:layout_width="match_parent" android:layout_height="match_parent" android:allowBackup="false"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <View android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0" />
+    <ImageView android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/pic_attention" />
+    <com.zte.mifavor.widget.TextViewZTE android:textSize="14.0sp" android:textColor="#e6ffffff" android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24.0dp" android:text="@string/anti_pinch_hand_mode" />
+    <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="108.0dp">
+        <CheckBox android:id="@id/anti_pinch_hand_mode_cx" android:layout_width="34.0dp" android:layout_height="34.0dp" android:buttonTint="@drawable/anti_pinch_hand_mode_checkbox" />
+        <com.zte.mifavor.widget.TextViewZTE android:textSize="14.0sp" android:textColor="#e6ffffff" android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="6.0dp" android:text="@string/dialog_dont_remind_again" />
+    </LinearLayout>
+    <com.zte.mifavor.widget.ButtonZTE android:textSize="15.0sp" android:textColor="#e6ffffff" android:layout_gravity="center" android:id="@id/anti_pinch_hand_mode_button" android:background="@drawable/btn_color_gray" android:layout_width="240.0dp" android:layout_height="40.0dp" android:layout_marginTop="38.0dp" android:text="@string/common_ok" style="@style/Widget.ZTE.Light.Button" />
+</LinearLayout>

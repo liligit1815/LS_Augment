@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <fraction name="folder_batch_recycler_content_height_fraction">66.0%</fraction>
+    <fraction name="folder_batch_recycler_content_height_fraction_land">59.000004%</fraction>
+    <fraction name="folder_batch_recycler_content_right_fraction">5.799997%</fraction>
+    <fraction name="folder_batch_recycler_content_right_fraction_land">5.9999943%</fraction>
+    <fraction name="gs_file_foreground_icon_margin">29.999996%</fraction>
+</resources>

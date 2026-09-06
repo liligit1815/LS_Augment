@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset android:insetLeft="@dimen/mfv_common_card_pressed_bg_padding" android:insetRight="@dimen/mfv_common_card_pressed_bg_padding" android:insetTop="0.0dp" android:insetBottom="0.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <shape android:tint="@color/mfv_common_card_bg_color_pressed" android:shape="rectangle">
+        <corners android:topLeftRadius="@dimen/mfv_common_card_pressed_bg_corner" android:topRightRadius="@dimen/mfv_common_card_pressed_bg_corner" android:bottomLeftRadius="@dimen/mfv_common_card_pressed_bg_corner" android:bottomRightRadius="@dimen/mfv_common_card_pressed_bg_corner" />
+    </shape>
+</inset>

@@ -51,6 +51,7 @@ final class UiKit {
 
     private void applyWindow() {
         Window window = activity.getWindow();
+        if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
         window.setStatusBarColor(background);
         window.setNavigationBarColor(backgroundEnd);
         if (Build.VERSION.SDK_INT >= 26) {
@@ -92,15 +93,30 @@ final class UiKit {
         return page;
     }
 
+    LinearLayout detailPage(String title, String scope) {
+        LinearLayout root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(backgroundDrawable());
+        LinearLayout head=header(title,true);head.setPadding(dp(10),dp(4),dp(12),dp(2));
+        if(scope!=null)ScopeRestartDialog.addButton(activity,this,head,scope);
+        root.addView(head,new LinearLayout.LayoutParams(-1,-2));root.addView(divider(),new LinearLayout.LayoutParams(-1,dp(1)));
+        ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(true);
+        LinearLayout body=new LinearLayout(activity);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(14),dp(10),dp(14),dp(26));
+        scroll.addView(body,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        activity.setContentView(root);applyGestureInset(root,8);return body;
+    }
+
     void applyGestureInset(View view, int extraBottomDp) {
         if (Build.VERSION.SDK_INT < 20) return;
-        final int originalBottom = view.getPaddingBottom();
+        final int originalBottom = view.getPaddingBottom(), originalTop = view.getPaddingTop();
+        final int originalLeft = view.getPaddingLeft(), originalRight = view.getPaddingRight();
         view.setOnApplyWindowInsetsListener((target, insets) -> {
-            int bottom = Build.VERSION.SDK_INT >= 30
-                    ? insets.getInsets(WindowInsets.Type.systemBars()).bottom
-                    : insets.getSystemWindowInsetBottom();
-            target.setPadding(target.getPaddingLeft(), target.getPaddingTop(),
-                    target.getPaddingRight(), originalBottom + bottom + dp(extraBottomDp));
+            int bottom,top,left,right;
+            if(Build.VERSION.SDK_INT>=30){
+                android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+                bottom=bars.bottom;top=bars.top;left=bars.left;right=bars.right;
+            }else{bottom=insets.getSystemWindowInsetBottom();top=insets.getSystemWindowInsetTop();left=insets.getSystemWindowInsetLeft();right=insets.getSystemWindowInsetRight();}
+            target.setPadding(originalLeft+left, originalTop+top,
+                    originalRight+right, originalBottom+bottom+dp(extraBottomDp));
             return insets;
         });
         view.requestApplyInsets();
@@ -281,6 +297,55 @@ final class UiKit {
         input.setBackground(roundStroke(Color.argb(236, 255, 255, 255), 12, outline, 1));
     }
 
+    /** Shared feature header. The arrow slot also aligns non-expandable switches. */
+    LinearLayout featureRow(String title, String description, Switch control) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(section(title, description), new LinearLayout.LayoutParams(0, -2, 1));
+        styleSwitch(control);
+        control.setContentDescription(title);
+        row.addView(control, new LinearLayout.LayoutParams(-2, dp(44)));
+        row.addView(new View(activity), new LinearLayout.LayoutParams(dp(28), dp(44)));
+        return row;
+    }
+
+    Fold fold(Switch control, View content) { return new Fold(control, content); }
+
+    final class Fold {
+        final Switch control;
+        final View content;
+        final ImageButton arrow;
+        boolean wasEnabled;
+        Fold(Switch control, View content) {
+            this.control = control; this.content = content;
+            LinearLayout row = (LinearLayout) control.getParent();
+            row.removeViewAt(row.getChildCount() - 1);
+            arrow = new ImageButton(activity);
+            arrow.setImageResource(R.drawable.ic_expand_more);
+            arrow.setColorFilter(muted);
+            arrow.setBackground(pressable(round(Color.TRANSPARENT, 12)));
+            row.addView(arrow, new LinearLayout.LayoutParams(dp(28), dp(44)));
+            arrow.setOnClickListener(v -> {
+                if (!control.isChecked()) {
+                    android.widget.Toast.makeText(activity, "请先开启功能", android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                show(content.getVisibility() != View.VISIBLE);
+            });
+            wasEnabled = control.isChecked(); show(wasEnabled);
+        }
+        void sync() {
+            boolean enabled = control.isChecked();
+            if (enabled != wasEnabled) show(enabled);
+            wasEnabled = enabled;
+        }
+        void show(boolean expanded) {
+            content.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            arrow.setRotation(expanded ? 180 : 0);
+            arrow.setContentDescription(expanded ? "收起配置" : "展开配置");
+        }
+    }
+
     View divider() {
         View line = new View(activity);
         line.setBackgroundColor(divider);
@@ -346,8 +411,8 @@ final class UiKit {
     }
 
     int topAppInset() {
-        // Leave a calm gap below RedMagic's optional two-row status content.
-        return dp(36);
+        // Actual window insets are applied to every page and change with bar height.
+        return 0;
     }
 
     LinearLayout.LayoutParams wrap() { return new LinearLayout.LayoutParams(-1, -2); }

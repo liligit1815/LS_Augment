@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:id="@id/folder_recommend" style="@style/RecommendLayoutLand"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.android.launcher3.cloudfolder.RecommendIconPanelContainer android:id="@id/recommend_icon_panel_container" style="@style/RecommendIconPanelContainerStyleLand" />
+</LinearLayout>

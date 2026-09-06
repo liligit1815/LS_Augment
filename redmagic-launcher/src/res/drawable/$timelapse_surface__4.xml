@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="10" android:startOffset="70" android:valueFrom="#4c4c4c" android:valueTo="#ffffff" android:valueType="colorType" android:propertyName="fillColor" />
+    <objectAnimator android:interpolator="@android:anim/linear_interpolator" android:duration="80" android:startOffset="70" android:valueFrom="M 12.874 13.624 C 12.682 13.624 12.49 13.551 12.344 13.404 L 8.094 9.154 C 7.801 8.861 7.801 8.386 8.094 8.093 C 8.387 7.8 8.862 7.8 9.155 8.093 L 13.405 12.343 C 13.698 12.636 13.698 13.111 13.405 13.404 C 13.258 13.551 13.066 13.624 12.874 13.624 Z" android:valueTo="M 13.742 14.392 C 13.576 14.392 13.409 14.329 13.282 14.202 L 9.675 10.595 C 9.421 10.342 9.421 9.93 9.675 9.676 C 9.929 9.422 10.341 9.422 10.595 9.676 L 14.202 13.283 C 14.456 13.536 14.456 13.948 14.202 14.202 C 14.075 14.328 13.908 14.392 13.742 14.392 Z" android:valueType="pathType" android:propertyName="pathData" />
+</set>

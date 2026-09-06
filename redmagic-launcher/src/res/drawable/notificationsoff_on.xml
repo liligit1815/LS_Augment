@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$notificationsoff_on__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$notificationsoff_on__1" />
+    <target android:name="notifications_linestart" android:animation="@drawable/$notificationsoff_on__2" />
+    <target android:name="down" android:animation="@drawable/$notificationsoff_on__3" />
+    <target android:name="group" android:animation="@drawable/$notificationsoff_on__4" />
+</animated-vector>

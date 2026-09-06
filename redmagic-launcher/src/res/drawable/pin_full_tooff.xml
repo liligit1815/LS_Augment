@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$pin_full_tooff__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="mask" android:animation="@drawable/$pin_full_tooff__1" />
+    <target android:name="pin_full_lines" android:animation="@drawable/$pin_full_tooff__2" />
+</animated-vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.quickstep.task.thumbnail.TaskThumbnailView android:id="@id/snapshot" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <com.android.quickstep.views.FixedSizeImageView android:id="@id/task_thumbnail" android:visibility="invisible" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="matrix" android:importantForAccessibility="no" />
+    <com.android.quickstep.task.thumbnail.LiveTileView android:id="@id/task_thumbnail_live_tile" android:visibility="invisible" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <View android:id="@id/task_thumbnail_scrim" android:background="@color/overview_foreground_scrim_color" android:layout_width="match_parent" android:layout_height="match_parent" android:alpha="0.0" />
+    <View android:id="@id/splash_background" android:background="@android:color/black" android:layout_width="match_parent" android:layout_height="match_parent" android:alpha="0.0" android:importantForAccessibility="no" />
+    <com.android.quickstep.views.FixedSizeImageView android:layout_gravity="center" android:id="@id/splash_icon" android:layout_width="@dimen/task_thumbnail_splash_icon_size" android:layout_height="@dimen/task_thumbnail_splash_icon_size" android:scaleType="fitCenter" android:alpha="0.0" android:importantForAccessibility="no" />
+</com.android.quickstep.task.thumbnail.TaskThumbnailView>

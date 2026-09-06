@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector android:drawable="@drawable/$startofill__0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <target android:name="line" android:animation="@drawable/$startofill__1" />
+    <target android:name="group" android:animation="@drawable/$startofill__2" />
+    <target android:name="path_1" android:animation="@drawable/$startofill__3" />
+    <target android:name="group_1" android:animation="@drawable/$startofill__4" />
+    <target android:name="path" android:animation="@drawable/$startofill__5" />
+</animated-vector>

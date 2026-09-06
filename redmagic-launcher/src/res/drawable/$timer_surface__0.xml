@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="timer_surface" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="pointer" android:fillColor="#4c4c4c" android:pathData="M 12.771 8.871 L 12.771 13.498 C 12.771 13.924 12.425 14.269 12 14.269 C 11.575 14.269 11.229 13.923 11.229 13.498 L 11.229 8.871 C 11.229 8.445 11.575 8.1 12 8.1 C 12.425 8.1 12.771 8.445 12.771 8.871 Z" android:strokeWidth="1.0" />
+    <path android:name="circle" android:fillColor="#4c4c4c" android:pathData="M 18.983 7.827 L 20.36 6.45 C 20.653 6.157 20.653 5.682 20.36 5.389 C 20.067 5.096 19.592 5.096 19.299 5.389 L 17.938 6.749 C 16.354 5.353 14.279 4.5 12 4.5 C 7.03 4.5 3 8.529 3 13.5 C 3 18.471 7.03 22.5 12 22.5 C 16.971 22.5 21 18.471 21 13.5 C 21 11.348 20.242 9.375 18.983 7.827 Z M 12 21 C 7.865 21 4.5 17.635 4.5 13.5 C 4.5 9.364 7.865 6 12 6 C 16.135 6 19.5 9.364 19.5 13.5 C 19.5 17.635 16.135 21 12 21 Z" android:strokeWidth="1.0" />
+    <group android:name="group" android:pivotX="12.0" android:pivotY="13.0">
+        <path android:name="up" android:fillColor="#4c4c4c" android:pathData="M 9 2.25 C 9 1.835 9.336 1.5 9.75 1.5 L 14.25 1.5 C 14.664 1.5 15 1.835 15 2.25 C 15 2.665 14.664 3 14.25 3 L 9.75 3 C 9.336 3 9 2.664 9 2.25 Z" android:strokeWidth="1.0" />
+    </group>
+    <clip-path android:name="mask" android:pathData="M 0 0 L 24 0 L 24 0 L 0 0 L 0 0 Z" />
+    <path android:name="surface" android:fillColor="#079efb" android:pathData="M 18.983 7.827 L 20.36 6.45 C 20.653 6.157 20.653 5.682 20.36 5.389 C 20.067 5.096 19.592 5.096 19.299 5.389 L 17.938 6.749 C 16.354 5.353 14.279 4.5 12 4.5 C 7.03 4.5 3 8.529 3 13.5 C 3 18.471 7.03 22.5 12 22.5 C 16.971 22.5 21 18.471 21 13.5 C 21 11.348 20.242 9.375 18.983 7.827 Z" android:strokeWidth="1.0" />
+    <group android:name="group_1" android:pivotX="12.0" android:pivotY="13.5">
+        <path android:name="pointer1" android:fillColor="#4c4c4c" android:pathData="M 12.771 8.871 L 12.771 13.498 C 12.771 13.924 12.425 14.269 12 14.269 C 11.575 14.269 11.229 13.923 11.229 13.498 L 11.229 8.871 C 11.229 8.445 11.575 8.1 12 8.1 C 12.425 8.1 12.771 8.445 12.771 8.871 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

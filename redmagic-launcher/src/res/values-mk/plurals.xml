@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">Пред %d ден</item>
+        <item quantity="other">Пред %d дена</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">Пред %d мин.</item>
+        <item quantity="other">Пред %d мин.</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">Пред %d год.</item>
+        <item quantity="other">Пред %d год.</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d ново известување</item>
+        <item quantity="other">%d нови известувања</item>
+    </plurals>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="full_display_anim" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <group android:name="group" android:pivotX="12.0" android:pivotY="12.0">
+        <path android:name="path" android:fillColor="#000" android:pathData="M 16.95 1.25 L 7.05 1.25 C 6.056 1.25 5.25 2.056 5.25 3.05 L 5.25 20.95 C 5.25 21.944 6.056 22.75 7.05 22.75 L 16.95 22.75 C 17.944 22.75 18.75 21.944 18.75 20.95 L 18.75 3.05 C 18.75 2.056 17.944 1.25 16.95 1.25 Z M 7.05 6.351 L 16.95 6.351 L 16.95 17.65 L 7.05 17.65 L 7.05 6.351 Z M 16.95 3.5 L 16.95 4.55 L 7.05 4.55 L 7.05 3.5 C 7.05 3.251 7.251 3.05 7.5 3.05 L 16.5 3.05 C 16.748 3.05 16.95 3.252 16.95 3.5 Z M 7.05 20.5 L 7.05 19.45 L 16.95 19.45 L 16.95 20.5 C 16.95 20.749 16.749 20.95 16.5 20.95 L 7.5 20.95 C 7.252 20.95 7.05 20.748 7.05 20.5 Z" android:strokeWidth="1.0" />
+    </group>
+</vector>

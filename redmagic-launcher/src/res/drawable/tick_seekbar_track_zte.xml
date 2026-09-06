@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="fill_horizontal|center" android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:topLeftRadius="@dimen/mfvc_topLeftRadius_color_seekbar" android:topRightRadius="@dimen/mfvc_topRightRadius_color_seekbar" android:bottomLeftRadius="@dimen/mfvc_bottomLeftRadius_color_seekbar" android:bottomRightRadius="@dimen/mfvc_bottomRightRadius_color_seekbar" />
+            <size android:height="@dimen/mfvc_slider_normal_height" />
+        </shape>
+    </item>
+</layer-list>

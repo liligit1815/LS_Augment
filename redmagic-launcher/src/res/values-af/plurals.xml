@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="abc_slice_duration_days">
+        <item quantity="one">%d dag gelede</item>
+        <item quantity="other">%d dae gelede</item>
+    </plurals>
+    <plurals name="abc_slice_duration_min">
+        <item quantity="one">%d m. gelede</item>
+        <item quantity="other">%d m. gelede</item>
+    </plurals>
+    <plurals name="abc_slice_duration_years">
+        <item quantity="one">%d jaar gelede</item>
+        <item quantity="other">%d jaar gelede</item>
+    </plurals>
+    <plurals name="mtrl_badge_content_description">
+        <item quantity="one">%d nuwe kennisgewing</item>
+        <item quantity="other">%d nuwe kennisgewings</item>
+    </plurals>
+</resources>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_mode_done">Готово</string>
+    <string name="alwaysUse">Секогаш извршувај таква постапка со оваа апликација</string>
+    <string name="cancel">Откажи</string>
+    <string name="date_picker_decrement_day_button">Намали ден</string>
+    <string name="date_picker_decrement_month_button">Намали месец</string>
+    <string name="date_picker_decrement_year_button">Намали година</string>
+    <string name="date_picker_dialog_title">Постави датум</string>
+    <string name="date_picker_increment_day_button">Зголеми ден</string>
+    <string name="date_picker_increment_month_button">Зголеми месец</string>
+    <string name="date_picker_increment_year_button">Зголеми година</string>
+    <string name="datetime_dialog_title">Постави датум и време</string>
+    <string name="hour_picker_description">Приказ на часови во кружно движење</string>
+    <string name="item_is_selected">%1$s е избрано.</string>
+    <string name="minute_picker_description">Приказ на минути во кружно движење</string>
+    <string name="search_hint">Барај…</string>
+    <string name="select_day">Изберете ден од месецот</string>
+    <string name="select_hours">Избери часови</string>
+    <string name="select_minutes">Избери минути</string>
+    <string name="select_year">Изберете година</string>
+    <string name="time_picker_decrement_hour_button">Намали час</string>
+    <string name="time_picker_decrement_minute_button">Намали минута</string>
+    <string name="time_picker_decrement_set_am_button">Подеси претпладне</string>
+    <string name="time_picker_dialog_title">Постави време</string>
+    <string name="time_picker_increment_hour_button">Зголеми час</string>
+    <string name="time_picker_increment_minute_button">Зголеми минута</string>
+    <string name="time_picker_increment_set_pm_button">Постави попладне</string>
+    <string name="year_picker_description">Список по години</string>
+    <string name="zte_days_of_week_Fri">Пет</string>
+    <string name="zte_days_of_week_Mon">Пон</string>
+    <string name="zte_days_of_week_Sat">Саб</string>
+    <string name="zte_days_of_week_Sun">Нед</string>
+    <string name="zte_days_of_week_Thu">Чет</string>
+    <string name="zte_days_of_week_Tue">Вто</string>
+    <string name="zte_days_of_week_Wed">Сре</string>
+</resources>

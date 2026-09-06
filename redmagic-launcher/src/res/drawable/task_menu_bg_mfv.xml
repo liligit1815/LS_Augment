@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:bottom="@dimen/task_card_menu_shadow_height">
+        <shape>
+            <corners android:topLeftRadius="@dimen/task_corner_radius_small" android:topRightRadius="@dimen/task_corner_radius_small" android:bottomLeftRadius="@dimen/task_corner_radius_small" android:bottomRightRadius="@dimen/task_corner_radius_small" />
+            <solid android:color="?popupColorPrimary" />
+        </shape>
+    </item>
+</layer-list>

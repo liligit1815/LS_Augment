@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector android:name="panoramatohorizontal" android:height="24.0dp" android:width="24.0dp" android:viewportWidth="24.0" android:viewportHeight="24.0"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <path android:name="vertical" android:pathData="M 16.622 2.5 L 7.378 2.5 C 6.523 2.5 5.825 3.189 5.825 4.037 C 5.825 4.037 6.587 8.211 6.587 12 C 6.587 15.789 5.825 19.955 5.825 19.955 C 5.825 20.807 6.516 21.498 7.321 21.5 L 16.678 21.5 C 17.483 21.498 18.174 20.807 18.174 19.955 C 18.174 19.955 17.412 15.789 17.412 12 C 17.412 8.211 18.174 4.037 18.174 4.037 C 18.175 3.189 17.478 2.5 16.622 2.5 Z" android:strokeColor="#000000" android:strokeWidth="1.0" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeMiterLimit="10.0" />
+</vector>

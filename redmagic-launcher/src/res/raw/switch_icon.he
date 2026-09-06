@@ -1,0 +1,59 @@
+{
+    "Metadata": {
+        "Version": 2,
+        "Created": "2022-01-27",
+        "Description": "Export from RichTap Creator Editor InnerTest"
+    },
+    "PatternList": [
+        {
+            "AbsoluteTime": 0,
+            "Pattern": [
+                {
+                    "Event": {
+                        "Type": "continuous",
+                        "RelativeTime": 0,
+                        "Duration": 65,
+                        "Parameters": {
+                            "Intensity": 43,
+                            "Frequency": 31,
+                            "Curve": [
+                                {
+                                    "Time": 0,
+                                    "Intensity": 0,
+                                    "Frequency": 0
+                                },
+                                {
+                                    "Time": 27,
+                                    "Intensity": 0.51,
+                                    "Frequency": 0
+                                },
+                                {
+                                    "Time": 49,
+                                    "Intensity": 0.57,
+                                    "Frequency": 0
+                                },
+                                {
+                                    "Time": 65,
+                                    "Intensity": 0,
+                                    "Frequency": 0
+                                }
+                            ]
+                        },
+                        "Index": 0
+                    }
+                },
+                {
+                    "Event": {
+                        "Type": "transient",
+                        "RelativeTime": 65,
+                        "Parameters": {
+                            "Intensity": 80,
+                            "Frequency": 45
+                        },
+                        "Index": 0
+                    }
+                }
+            ]
+        }
+    ]
+}

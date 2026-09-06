@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.android.quickstep.views.OverviewActionsView android:layout_gravity="center|bottom" android:layout_width="match_parent" android:layout_height="@dimen/overview_actions_height"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:orientation="horizontal" android:id="@id/action_buttons" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <ImageView android:id="@id/action_screenshot" android:visibility="gone" android:layout_width="@dimen/mfv_recent_button_width_height" android:layout_height="@dimen/mfv_recent_button_width_height" android:src="@drawable/mfv_capture_screen" android:layout_centerVertical="true" android:layout_marginEnd="@dimen/mfv_recent_button_margin" android:layout_toStartOf="@id/remove_all_button_layout" />
+        <LinearLayout android:gravity="center" android:id="@id/remove_all_button_layout" android:focusable="false" android:layout_width="@dimen/mfv_recent_clear_button_layout_width_height" android:layout_height="@dimen/mfv_recent_clear_button_layout_width_height" android:layout_centerInParent="true">
+            <ImageView android:id="@id/remove_all_button" android:focusable="false" android:layout_width="@dimen/mfv_recent_clear_button_width_height" android:layout_height="@dimen/mfv_recent_clear_button_width_height" android:src="@drawable/recent_app_cancel_light" android:contentDescription="@string/recents_clear_all" />
+        </LinearLayout>
+        <Button android:theme="@style/ThemeControlHighlightWorkspaceColor" android:id="@id/action_split" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/action_split" android:layout_marginStart="@dimen/overview_actions_button_spacing" style="@style/OverviewActionButton" />
+        <Button android:theme="@style/ThemeControlHighlightWorkspaceColor" android:layout_gravity="center|bottom" android:id="@id/action_save_app_pair" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/action_save_app_pair" style="@style/OverviewActionButton" />
+    </RelativeLayout>
+</com.android.quickstep.views.OverviewActionsView>

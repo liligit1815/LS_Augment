@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="alwaysUse">Gunakannya secara lalai untuk tindakan ini.</string>
+    <string name="cancel">Batal</string>
+    <string name="date_picker_decrement_day_button">Kurangkan hari</string>
+    <string name="date_picker_decrement_month_button">Kurangkan bulan</string>
+    <string name="date_picker_decrement_year_button">Kurangkan tahun</string>
+    <string name="date_picker_dialog_title">Tetapkan tarikh</string>
+    <string name="date_picker_increment_day_button">Tingkatkan hari</string>
+    <string name="date_picker_increment_month_button">Tingkatkan bulan</string>
+    <string name="date_picker_increment_year_button">Tingkatkan tahun</string>
+    <string name="datetime_dialog_title">Set Tarikh&amp; Masa</string>
+    <string name="hour_picker_description">Penggelangsar bulatan jam</string>
+    <string name="item_is_selected">%1$s dipilih</string>
+    <string name="minute_picker_description">Penggelangsar bulatan minit</string>
+    <string name="search_hint">Cari…</string>
+    <string name="select_day">Pilih bulan dan hari</string>
+    <string name="select_hours">Pilih jam</string>
+    <string name="select_minutes">Pilih minit</string>
+    <string name="select_year">Pilih tahun</string>
+    <string name="time_picker_decrement_hour_button">Kurangkan jam</string>
+    <string name="time_picker_decrement_minute_button">Kurangkan minit</string>
+    <string name="time_picker_decrement_set_am_button">Tetapkan AM</string>
+    <string name="time_picker_dialog_title">Tetapkan masa</string>
+    <string name="time_picker_increment_hour_button">Tingkatkan jam</string>
+    <string name="time_picker_increment_minute_button">Tingkatkan minit</string>
+    <string name="time_picker_increment_set_pm_button">Tetapkan PM</string>
+    <string name="year_picker_description">Senarai tahun</string>
+    <string name="zte_days_of_week_Fri">Jum</string>
+    <string name="zte_days_of_week_Mon">Isn</string>
+    <string name="zte_days_of_week_Sat">Sab</string>
+    <string name="zte_days_of_week_Sun">Aha</string>
+    <string name="zte_days_of_week_Thu">Kha</string>
+    <string name="zte_days_of_week_Tue">Sel</string>
+    <string name="zte_days_of_week_Wed">Rab</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="day">
+        <item>Dia</item>
+    </string-array>
+    <string-array name="month">
+        <item>Mês</item>
+    </string-array>
+    <string-array name="year">
+        <item>ano</item>
+    </string-array>
+</resources>

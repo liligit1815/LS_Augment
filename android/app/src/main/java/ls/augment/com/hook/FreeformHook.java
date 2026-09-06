@@ -5,7 +5,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.database.ContentObserver;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,11 +18,17 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.github.libxposed.api.XposedInterface.Chain;
 import io.github.libxposed.api.XposedInterface.HookHandle;
+import ls.augment.com.AppPackageSet;
+import ls.augment.com.ConfigSchema;
+import ls.augment.com.ConfigSnapshot;
 
 /**
  * System-server side freeform policy hooks.  The OEM has three separate
@@ -66,8 +75,11 @@ final class FreeformHook {
     }
 
     private static volatile Config config = Config.DISABLED;
+    private static volatile boolean allAppsCompatible;
     private static volatile Context context;
     private static volatile boolean observerInstalled;
+    private static volatile Handler configHandler;
+    private static long configRevision=-1;
     private static volatile long lastDiagnostic;
     private static final ThreadLocal<Integer> LIMIT_BYPASS_DEPTH = new ThreadLocal<>();
     private static volatile Method limitGateMethod;
@@ -92,6 +104,8 @@ final class FreeformHook {
     private static volatile boolean iconServiceObservedLogged;
     private static volatile Handler diagnosticHandler;
     private static volatile String pendingInstalledDiagnostic;
+    private static final Map<String, Eligibility> ELIGIBILITY_CACHE = new ConcurrentHashMap<>();
+    private static final long ELIGIBILITY_CACHE_MS = 30_000L;
 
     private FreeformHook() { }
 
@@ -366,6 +380,23 @@ final class FreeformHook {
             module.logFeatureError("FREEFORM_OEM_GATE_FAILED", error);
         }
 
+        // The eligibility call happens before a new ActivityRecord is attached
+        // to its task. Deoptimize the launch caller too: vendor AOT can inline
+        // the old system-app whitelist into this otherwise unhooked method.
+        try {
+            Class<?> starter = Class.forName("com.android.server.wm.ActivityStarter", false, classLoader);
+            for (Method method : starter.getDeclaredMethods()) {
+                if (!"startActivityInner".equals(method.getName())) continue;
+                if (module.deoptimize(method)) deoptimized++;
+            }
+            Class<?> gates = Class.forName(TDA_MIFAVOR, false, classLoader);
+            for (Method method : gates.getDeclaredMethods()) {
+                if ("isSupportWindowReply".equals(method.getName()) && module.deoptimize(method)) deoptimized++;
+            }
+        } catch (Throwable error) {
+            module.logFeatureError("FREEFORM_LAUNCH_CALLER", error);
+        }
+
         // The OEM transition also consults the raw resize/multi-window
         // capability methods.  Returning a supported WindowReply state alone
         // is not enough for apps whose ActivityInfo and Task still carry
@@ -559,10 +590,14 @@ final class FreeformHook {
             module.logFeatureError("FREEFORM_TASK_FAILED", error);
         }
 
-        writeDiagnostic("installed", "hooks=" + installed + ";deoptimized=" + deoptimized);
-        pendingInstalledDiagnostic = "hooks=" + installed + ";deoptimized=" + deoptimized;
+        allAppsCompatible = verifyAllAppsCompatibility(classLoader);
+        writeDiagnostic("installed", "hooks=" + installed + ";deoptimized=" + deoptimized
+                + ";all_apps_compatible=" + allAppsCompatible);
+        pendingInstalledDiagnostic = "hooks=" + installed + ";deoptimized=" + deoptimized
+                + ";all_apps_compatible=" + allAppsCompatible;
         module.logFeatureInfo("FREEFORM_READY installed=" + installed
-                + " deoptimized=" + deoptimized);
+                + " deoptimized=" + deoptimized
+                + " allAppsCompatible=" + allAppsCompatible);
         return installed;
     }
 
@@ -743,17 +778,21 @@ final class FreeformHook {
     private static Object interceptOemActivityState(AugmentModule module, Chain chain)
             throws Throwable {
         Object activity = chain.getArg(0);
-        if (config.allApps && isEligibleActivity(activity)) {
-            forceResizeMetadata(activity);
+        if (allAppsEnabled() && isEligibleActivity(activity)) {
+            ResizeMetadataTransaction resize = ResizeMetadataTransaction.begin(activity);
             String packageName = packageFromActivity(activity);
-            Object result = chain.proceed();
-            if (result instanceof Integer && ((Integer) result) != 0) {
-                hit("force_activity_state=" + packageName + ";from=" + result
-                        + ";forced=0");
-                return 0;
+            try {
+                Object result = chain.proceed();
+                if (result instanceof Integer && ((Integer) result) != 0) {
+                    hit("force_activity_state=" + packageName + ";from=" + result
+                            + ";forced=0");
+                    return 0;
+                }
+                hit("activity_state=" + packageName + ";result=" + String.valueOf(result));
+                return result;
+            } finally {
+                resize.restore();
             }
-            hit("activity_state=" + packageName + ";result=" + String.valueOf(result));
-            return result;
         }
         return chain.proceed();
     }
@@ -761,20 +800,23 @@ final class FreeformHook {
     private static Object interceptOemTaskState(AugmentModule module, Chain chain)
             throws Throwable {
         Object task = chain.getArg(0);
-        if (config.allApps && isEligibleTask(task)) {
-            forceResizeMetadata(task);
+        if (allAppsEnabled() && isEligibleTask(task)) {
+            ResizeMetadataTransaction resize = ResizeMetadataTransaction.begin(task);
             String packageName = packageFromTask(task);
-            Object result = chain.proceed();
-            if (result != null) {
-                Object state = field(result, "isNotSupportWindowReplyState");
-                hit("force_task_state=" + packageName + ";from=" + String.valueOf(state)
-                        + ";forced=supported");
-                // The OEM wrapper treats null as "no unsupported activity/task
-                // state" and therefore continues with the freeform transition.
+            try {
+                Object result = chain.proceed();
+                if (result != null) {
+                    Object state = field(result, "isNotSupportWindowReplyState");
+                    hit("force_task_state=" + packageName + ";from=" + String.valueOf(state)
+                            + ";forced=supported");
+                    // The OEM wrapper treats null as "no unsupported state".
+                    return null;
+                }
+                hit("task_state=" + packageName + ";result=null");
                 return null;
+            } finally {
+                resize.restore();
             }
-            hit("task_state=" + packageName + ";result=null");
-            return null;
         }
         return chain.proceed();
     }
@@ -782,17 +824,21 @@ final class FreeformHook {
     private static Object interceptOemTaskStateForTask(AugmentModule module, Chain chain)
             throws Throwable {
         Object task = chain.getArg(0);
-        if (config.allApps && isEligibleTask(task)) {
-            forceResizeMetadata(task);
+        if (allAppsEnabled() && isEligibleTask(task)) {
+            ResizeMetadataTransaction resize = ResizeMetadataTransaction.begin(task);
             String packageName = packageFromTask(task);
-            Object result = chain.proceed();
-            if (result instanceof Integer && ((Integer) result) != 0) {
-                hit("force_task_state_int=" + packageName + ";from=" + result
-                        + ";forced=0");
-                return 0;
+            try {
+                Object result = chain.proceed();
+                if (result instanceof Integer && ((Integer) result) != 0) {
+                    hit("force_task_state_int=" + packageName + ";from=" + result
+                            + ";forced=0");
+                    return 0;
+                }
+                hit("task_state_int=" + packageName + ";result=" + String.valueOf(result));
+                return result;
+            } finally {
+                resize.restore();
             }
-            hit("task_state_int=" + packageName + ";result=" + String.valueOf(result));
-            return result;
         }
         return chain.proceed();
     }
@@ -800,8 +846,7 @@ final class FreeformHook {
     private static Object interceptOemResizeable(AugmentModule module, Chain chain)
             throws Throwable {
         Object activity = chain.getArg(0);
-        if (config.allApps && isEligibleActivity(activity)) {
-            forceResizeMetadata(activity);
+        if (allAppsEnabled() && isEligibleActivity(activity)) {
             hit("oem_resizeable=" + packageFromActivity(activity) + ";forced=true");
             return true;
         }
@@ -813,7 +858,8 @@ final class FreeformHook {
         Object component = chain.getArg(1);
         String packageName = component instanceof ComponentName
                 ? ((ComponentName) component).getPackageName() : null;
-        if (config.allApps && isEligiblePackage(packageName)) {
+        if (allAppsEnabled() && component instanceof ComponentName
+                && isEligibleComponent((ComponentName) component)) {
             hit("oem_support_resize=" + packageName + ";forced=true");
             return true;
         }
@@ -823,8 +869,7 @@ final class FreeformHook {
     private static Object interceptMultiWindow(AugmentModule module, Chain chain)
             throws Throwable {
         Object owner = chain.getThisObject();
-        if (config.allApps && isEligibleTaskFragment(owner)) {
-            forceResizeMetadata(owner);
+        if (allAppsEnabled() && isEligibleTaskFragment(owner)) {
             hit("multi_window=" + packageFromOwner(owner) + ";forced=true");
             return true;
         }
@@ -833,8 +878,7 @@ final class FreeformHook {
 
     private static Object interceptTransitionInner(AugmentModule module, Chain chain)
             throws Throwable {
-        refreshConfig();
-        if (config.allApps) {
+        if (allAppsEnabled()) {
             hit("transition_inner=task" + String.valueOf(chain.getArg(0))
                     + ";startMode=" + String.valueOf(chain.getArg(1)));
         }
@@ -843,8 +887,7 @@ final class FreeformHook {
 
     private static Object interceptTransitionDelay(AugmentModule module, Chain chain)
             throws Throwable {
-        refreshConfig();
-        if (config.allApps) {
+        if (allAppsEnabled()) {
             hit("transition_delay=task" + String.valueOf(chain.getArg(0))
                     + ";startMode=" + String.valueOf(chain.getArg(1))
                     + ";visible=" + String.valueOf(chain.getArg(2))
@@ -923,10 +966,10 @@ final class FreeformHook {
 
     private static Object interceptComponent(AugmentModule module, Chain chain) throws Throwable {
         ensureContext(chain.getArg(0));
-        if (config.allApps) {
+        if (allAppsEnabled()) {
             ComponentName component = chain.getArg(1) instanceof ComponentName
                     ? (ComponentName) chain.getArg(1) : null;
-            if (isEligiblePackage(component == null ? null : component.getPackageName())) {
+            if (isEligibleComponent(component)) {
                 hit("component=" + component.getPackageName());
                 return true;
             }
@@ -936,7 +979,7 @@ final class FreeformHook {
 
     private static Object interceptTaskCheck(AugmentModule module, Chain chain) throws Throwable {
         ensureContext(chain.getArg(0));
-        if (config.allApps && isEligiblePackage(packageFromTask(chain.getArg(1)))) {
+        if (allAppsEnabled() && isEligiblePackage(packageFromTask(chain.getArg(1)))) {
             hit("task_check=" + packageFromTask(chain.getArg(1)));
             return true;
         }
@@ -948,8 +991,7 @@ final class FreeformHook {
         ensureContext(chain.getThisObject());
         ComponentName component = chain.getArg(0) instanceof ComponentName
                 ? (ComponentName) chain.getArg(0) : null;
-        if (config.allApps && isEligiblePackage(component == null
-                ? null : component.getPackageName())) {
+        if (allAppsEnabled() && isEligibleComponent(component)) {
             hit("client_component=" + component.getPackageName());
             return true;
         }
@@ -961,7 +1003,7 @@ final class FreeformHook {
         ensureContext(chain.getThisObject());
         Object value = chain.getArg(0);
         String packageName = value instanceof String ? (String) value : null;
-        if (config.allApps && isEligiblePackage(packageName)) {
+        if (allAppsEnabled() && isEligiblePackage(packageName)) {
             hit("client_package=" + packageName);
             return true;
         }
@@ -970,7 +1012,7 @@ final class FreeformHook {
 
     private static Object interceptActivity(AugmentModule module, Chain chain) throws Throwable {
         ensureContext(chain.getThisObject());
-        if (config.allApps && isEligibleActivity(chain.getThisObject())) {
+        if (allAppsEnabled() && isEligibleActivity(chain.getThisObject())) {
             hit("activity=" + packageFromActivity(chain.getThisObject()));
             return true;
         }
@@ -979,15 +1021,79 @@ final class FreeformHook {
 
     private static Object interceptTask(AugmentModule module, Chain chain) throws Throwable {
         ensureContext(chain.getThisObject());
-        if (config.allApps && isEligibleTask(chain.getThisObject())) {
+        if (allAppsEnabled() && isEligibleTask(chain.getThisObject())) {
             hit("task=" + packageFromTask(chain.getThisObject()));
             return true;
         }
         return chain.proceed();
     }
 
+    private static boolean allAppsEnabled() {
+        return config.allApps && allAppsCompatible;
+    }
+
+    /**
+     * A partial vendor surface is unsafe: one gate may accept an app while a
+     * later transition still treats it as a non-standard or unresizable task.
+     * Keep the independent window-count bypass available, but enable the
+     * all-apps path only when the identity, standard-activity and OEM resize
+     * gates needed for a complete transaction are all present.
+     */
+    private static boolean verifyAllAppsCompatibility(ClassLoader classLoader) {
+        try {
+            Class<?> activity = Class.forName(ACTIVITY_RECORD, false, classLoader);
+            Class<?> task = Class.forName(TASK, false, classLoader);
+            Method activityStandard = findNoArg(activity, "isActivityTypeStandard");
+            Method taskStandard = findNoArg(task, "isActivityTypeStandard");
+            boolean standardMethods = activityStandard != null
+                    && activityStandard.getReturnType() == boolean.class
+                    && taskStandard != null && taskStandard.getReturnType() == boolean.class;
+            boolean identityFields = hasAnyField(activity, "info", "mActivityComponent")
+                    && hasAnyField(task, "realActivity", "mRealActivity",
+                    "mLastNonFinishingActivity", "mResumedActivity");
+            boolean stateGate = oemActivityStateMethod != null
+                    && (oemTaskStateMethod != null || oemTaskStateForTaskMethod != null);
+            boolean resizeGate = oemResizeableMethod != null && oemSupportResizeMethod != null;
+            return standardMethods && identityFields && stateGate && resizeGate;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean hasAnyField(Class<?> type, String... names) {
+        if (type == null || names == null) return false;
+        for (String name : names) {
+            for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+                try {
+                    current.getDeclaredField(name);
+                    return true;
+                } catch (NoSuchFieldException ignored) {
+                    // Continue through the framework/vendor hierarchy.
+                } catch (Throwable ignored) {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean isEligibleActivity(Object owner) {
-        if (owner == null || !isStandard(owner)) return false;
+        if (owner == null) return false;
+        if (!isStandard(owner)) {
+            // A newly constructed ordinary activity has type UNDEFINED (0)
+            // until ActivityStarter attaches it. HOME/RECENTS/ASSISTANT tasks
+            // already have distinct nonzero types and remain protected.
+            try {
+                Method type = findNoArg(owner.getClass(), "getActivityType");
+                if (type == null) return false;
+                type.setAccessible(true);
+                if (!Integer.valueOf(0).equals(type.invoke(owner))) return false;
+            } catch (Throwable ignored) { return false; }
+            Object intent = field(owner, "intent");
+            if (!(intent instanceof Intent)
+                    || ((Intent) intent).hasCategory(Intent.CATEGORY_HOME)
+                    || ((Intent) intent).hasCategory("android.intent.category.SECONDARY_HOME")) return false;
+        }
         Object infoObject = field(owner, "info");
         String packageName = infoObject instanceof ActivityInfo
                 ? ((ActivityInfo) infoObject).packageName : packageFromObject(infoObject);
@@ -1012,33 +1118,16 @@ final class FreeformHook {
         return value;
     }
 
-    /**
-     * Keep ActivityInfo and Task's cached resize mode aligned with the forced
-     * policy.  RedMagic's WindowReply path checks both values at different
-     * points in the same transition; changing only the returned state can
-     * leave a task marked nonResizable and its surface black.
-     */
-    private static boolean forceResizeMetadata(Object owner) {
-        if (owner == null) return false;
-        boolean changed = false;
-        Object info = field(owner, "info");
-        if (info instanceof ActivityInfo) {
-            changed |= putIntField(info, "resizeMode", 2);
-        }
-        if (putIntField(owner, "mResizeMode", 2)) changed = true;
-        return changed;
-    }
-
     private static boolean isStandard(Object owner) {
+        if (owner == null) return false;
         try {
             Method method = findNoArg(owner.getClass(), "isActivityTypeStandard");
-            if (method != null) {
-                method.setAccessible(true);
-                Object value = method.invoke(owner);
-                return !(value instanceof Boolean) || (Boolean) value;
-            }
+            if (method == null || method.getReturnType() != boolean.class) return false;
+            method.setAccessible(true);
+            Object value = method.invoke(owner);
+            return value instanceof Boolean && (Boolean) value;
         } catch (Throwable ignored) { }
-        return true;
+        return false;
     }
 
     private static String packageFromTask(Object owner) {
@@ -1074,6 +1163,65 @@ final class FreeformHook {
     }
 
     private static boolean isEligiblePackage(String packageName) {
+        if (!isSanePackage(packageName) || config.excluded.contains(packageName)) return false;
+        String cacheKey = "package:" + packageName;
+        Eligibility cached = ELIGIBILITY_CACHE.get(cacheKey);
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.checkedAt < ELIGIBILITY_CACHE_MS) {
+            return cached.allowed;
+        }
+        boolean allowed = false;
+        Context current = context;
+        try {
+            if (current == null) return false;
+            PackageManager pm = current.getPackageManager();
+            ApplicationInfo info = pm.getApplicationInfo(packageName,
+                    PackageManager.MATCH_DISABLED_COMPONENTS
+                            | PackageManager.MATCH_DIRECT_BOOT_AWARE
+                            | PackageManager.MATCH_DIRECT_BOOT_UNAWARE);
+            if (info == null || !info.enabled
+                    || (info.flags & ApplicationInfo.FLAG_INSTALLED) == 0
+                    || (info.flags & ApplicationInfo.FLAG_SUSPENDED) != 0) {
+                allowed = false;
+            } else {
+                // Standard Activity/Task checks protect special windows. A system
+                // flag or absence of a launcher icon is not a resizing restriction.
+                allowed = true;
+            }
+        } catch (Throwable ignored) {
+            allowed = false;
+        }
+        ELIGIBILITY_CACHE.put(cacheKey, new Eligibility(allowed, now));
+        return allowed;
+    }
+
+    private static boolean isEligibleComponent(ComponentName component) {
+        if (component == null || !isEligiblePackage(component.getPackageName())) return false;
+        String key = "component:" + component.flattenToShortString();
+        Eligibility cached = ELIGIBILITY_CACHE.get(key);
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.checkedAt < ELIGIBILITY_CACHE_MS) {
+            return cached.allowed;
+        }
+        boolean allowed = false;
+        try {
+            Context current = context;
+            if (current == null) return false;
+            PackageManager pm = current.getPackageManager();
+            ActivityInfo requested = pm.getActivityInfo(component,
+                    PackageManager.MATCH_DISABLED_COMPONENTS);
+            // Internal app screens also need to survive small-window restore.
+            // Android still performs its normal component access checks.
+            allowed = requested != null && requested.enabled
+                    && component.getPackageName().equals(requested.packageName);
+        } catch (Throwable ignored) {
+            allowed = false;
+        }
+        ELIGIBILITY_CACHE.put(key, new Eligibility(allowed, now));
+        return allowed;
+    }
+
+    private static boolean isSanePackage(String packageName) {
         return packageName != null
                 && packageName.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")
                 && !PROTECTED_PACKAGES.contains(packageName);
@@ -1082,30 +1230,25 @@ final class FreeformHook {
     private static void bindContext(Context value) {
         if (value == null) return;
         context = value;
-        refreshConfig();
-        if (observerInstalled) return;
+        if (configHandler != null) return;
         synchronized (FreeformHook.class) {
-            if (observerInstalled) return;
-            try {
-                Handler handler = new Handler(Looper.getMainLooper());
-                // onSystemServerStarting is earlier than SettingsProvider on
-                // this ROM.  Retry after boot services settle even when the
-                // mirrored values themselves did not change and therefore do
-                // not emit a ContentObserver notification.
-                handler.postDelayed(FreeformHook::refreshConfig, 2_000L);
-                handler.postDelayed(FreeformHook::refreshConfig, 8_000L);
-                ContentObserver observer = new ContentObserver(handler) {
-                    @Override public void onChange(boolean selfChange) { refreshConfig(); }
-                };
-                for (String key : new String[]{FeatureSettings.FREEFORM_ENABLED,
-                        FeatureSettings.FREEFORM_UNLIMITED, FeatureSettings.FREEFORM_ALL_APPS}) {
-                    value.getContentResolver().registerContentObserver(
-                            Settings.Global.getUriFor(key), false, observer);
+            if (configHandler != null) return;
+            android.os.HandlerThread thread=new android.os.HandlerThread("LS-freeform-config",android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            thread.start();Handler handler=new Handler(thread.getLooper());configHandler=handler;
+            handler.post(new Runnable(){public void run(){
+                if(!observerInstalled){
+                    ContentObserver observer=new ContentObserver(handler){@Override public void onChange(boolean self){
+                        FeatureSettings.invalidateSnapshot();refreshConfig();
+                    }};
+                    try{
+                        context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"),true,observer);
+                        observerInstalled=true;
+                    }catch(Throwable ignored){try{context.getContentResolver().unregisterContentObserver(observer);}catch(Throwable cleanup){}}
                 }
-                observerInstalled = true;
-            } catch (Throwable ignored) {
-                // The initial snapshot is still safe; a later process restart reloads it.
-            }
+                // Early boot can precede the provider/observer service. A bounded
+                // background refresh also recovers a missed change after boot.
+                FeatureSettings.invalidateSnapshot();refreshConfig();handler.postDelayed(this,5000);
+            }});
         }
     }
 
@@ -1131,29 +1274,20 @@ final class FreeformHook {
             return;
         }
         try {
-            boolean enabled = readBoolean(value, FeatureSettings.FREEFORM_ENABLED);
+            ConfigSnapshot snapshot=FeatureSettings.snapshot(value);
+            boolean enabled = ConfigSchema.truthy(snapshot.get(ConfigSchema.FREEFORM_ENABLED));
             config = new Config(enabled,
-                    enabled && readBoolean(value, FeatureSettings.FREEFORM_UNLIMITED),
-                    enabled && readBoolean(value, FeatureSettings.FREEFORM_ALL_APPS));
+                    enabled && ConfigSchema.truthy(snapshot.get(ConfigSchema.FREEFORM_UNLIMITED)),
+                    enabled && ConfigSchema.truthy(snapshot.get(ConfigSchema.FREEFORM_ALL_APPS)),
+                    AppPackageSet.parse(snapshot.get(ConfigSchema.FREEFORM_EXCLUDED_APPS)));
+            if(configRevision!=snapshot.revision){configRevision=snapshot.revision;
+                writeDiagnostic("config_state","revision="+configRevision+";enabled="+enabled+";all_apps="+config.allApps+";exceptions="+config.excluded.size());}
         } catch (Throwable ignored) {
             config = Config.DISABLED;
         }
     }
 
     private static boolean readBoolean(Context value, String key) {
-        // system_server owns this hook and the Root-written Global value is
-        // its stable runtime source.  Reading it first also avoids depending
-        // on the app provider during early boot or while WindowManager is
-        // handling a launch.
-        try {
-            String raw = Settings.Global.getString(value.getContentResolver(), key);
-            if (raw != null && !raw.isEmpty() && !"null".equals(raw)) {
-                return "1".equals(raw) || "true".equalsIgnoreCase(raw)
-                        || "yes".equalsIgnoreCase(raw) || "on".equalsIgnoreCase(raw);
-            }
-        } catch (Throwable ignored) {
-            // Fall through to the app-side provider bridge.
-        }
         return FeatureSettings.enabled(value, key, false);
     }
 
@@ -1189,23 +1323,20 @@ final class FreeformHook {
         return null;
     }
 
-    private static boolean putIntField(Object owner, String name, int value) {
-        if (owner == null) return false;
+    private static Field findIntField(Object owner, String name) {
+        if (owner == null) return null;
         for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
             try {
                 Field target = type.getDeclaredField(name);
                 target.setAccessible(true);
-                if (target.getType() != int.class) return false;
-                if (target.getInt(owner) == value) return false;
-                target.setInt(owner, value);
-                return true;
+                return target.getType() == int.class ? target : null;
             } catch (NoSuchFieldException ignored) {
                 // Walk the server class hierarchy.
             } catch (Throwable ignored) {
-                return false;
+                return null;
             }
         }
-        return false;
+        return null;
     }
 
     private static Method findNoArg(Class<?> type, String name) {
@@ -1288,15 +1419,94 @@ final class FreeformHook {
     }
 
     private static final class Config {
-        static final Config DISABLED = new Config(false, false, false);
+        static final Config DISABLED = new Config(false, false, false, java.util.Collections.emptySet());
         final boolean enabled;
         final boolean unlimited;
         final boolean allApps;
+        final Set<String> excluded;
 
-        Config(boolean enabled, boolean unlimited, boolean allApps) {
+        Config(boolean enabled, boolean unlimited, boolean allApps, Set<String> excluded) {
             this.enabled = enabled;
             this.unlimited = unlimited;
             this.allApps = allApps;
+            this.excluded = excluded;
+        }
+    }
+
+    private static final class Eligibility {
+        final boolean allowed;
+        final long checkedAt;
+
+        Eligibility(boolean allowed, long checkedAt) {
+            this.allowed = allowed;
+            this.checkedAt = checkedAt;
+        }
+    }
+
+    /** Restores every temporary resize flag even for nested calls and exceptions. */
+    private static final class ResizeMetadataTransaction {
+        private final List<IntFieldValue> changed = new ArrayList<>();
+        private final IdentityHashMap<Object, Set<String>> visited = new IdentityHashMap<>();
+
+        static ResizeMetadataTransaction begin(Object owner) {
+            ResizeMetadataTransaction transaction = new ResizeMetadataTransaction();
+            transaction.captureRelated(owner);
+            return transaction;
+        }
+
+        private void captureRelated(Object owner) {
+            if (owner == null) return;
+            capture(owner, "mResizeMode");
+            Object info = field(owner, "info");
+            if (info instanceof ActivityInfo) capture(info, "resizeMode");
+            for (String name : new String[]{"mLastNonFinishingActivity",
+                    "mLastPausedActivity", "mResumedActivity"}) {
+                Object activity = field(owner, name);
+                if (activity == null) continue;
+                capture(activity, "mResizeMode");
+                Object activityInfo = field(activity, "info");
+                if (activityInfo instanceof ActivityInfo) capture(activityInfo, "resizeMode");
+            }
+        }
+
+        private void capture(Object owner, String name) {
+            Set<String> names = visited.get(owner);
+            if (names == null) {
+                names = new HashSet<>();
+                visited.put(owner, names);
+            }
+            if (!names.add(name)) return;
+            try {
+                Field target = findIntField(owner, name);
+                if (target == null) return;
+                int original = target.getInt(owner);
+                if (original == 2) return;
+                target.setInt(owner, 2);
+                changed.add(new IntFieldValue(owner, target, original));
+            } catch (Throwable ignored) {
+                // Missing or incompatible metadata disables only this temporary adjustment.
+            }
+        }
+
+        void restore() {
+            for (int index = changed.size() - 1; index >= 0; index--) {
+                IntFieldValue value = changed.get(index);
+                try { value.field.setInt(value.owner, value.original); }
+                catch (Throwable ignored) { }
+            }
+            changed.clear();
+        }
+    }
+
+    private static final class IntFieldValue {
+        final Object owner;
+        final Field field;
+        final int original;
+
+        IntFieldValue(Object owner, Field field, int original) {
+            this.owner = owner;
+            this.field = field;
+            this.original = original;
         }
     }
 }
