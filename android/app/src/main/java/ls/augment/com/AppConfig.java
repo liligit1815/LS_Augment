@@ -7,19 +7,13 @@ import android.net.Uri;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** APK-private authoritative configuration plus one atomic early-boot snapshot. */
+/** APK-private authoritative configuration with official framework synchronization. */
 final class AppConfig {
     /** Serializes multi-key preference snapshots across all AppConfig instances. */
     private static final Object CONFIG_LOCK = new Object();
-    /** Prevents an older Root mirror from completing after a newer revision. */
-    private static final Object MIRROR_LOCK = new Object();
     private static final String PRIVATE_INITIALIZED = "private_initialized_v2";
-    private static final String RUNTIME_SNAPSHOT_INITIALIZED =
-            "runtime_snapshot_initialized_v1";
     private static final String SNAPSHOT_REVISION = "snapshot_revision_v1";
     private static final String SNAPSHOT_UPDATED_AT = "snapshot_updated_at_v1";
-    private static final String RETIRED_RECENTS_CLEANED = "retired_recents_cleaned_v1";
-    private static final String LEGACY_GLOBAL_CLEANED = "legacy_global_cleaned_v1";
     static final String PROVIDER_AUTHORITY = "ls.augment.com.config";
     static final String PREFS = "ls_augment_config_v2";
     static final String DIAGNOSTICS = "ls_augment_diagnostics_v2";
@@ -108,32 +102,58 @@ final class AppConfig {
     private static final Map<String, String> DEFAULTS = ConfigSchema.defaults();
 
     private final Context context;
-    private final SharedPreferences prefs;
+    private static DurablePreferences sharedConfig;
+    private final DurablePreferences prefs;
 
     AppConfig(Context context) {
         this.context = context.getApplicationContext();
-        this.prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        synchronized (CONFIG_LOCK) {
+            if (sharedConfig == null) sharedConfig = new DurablePreferences(
+                    this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE));
+            this.prefs = sharedConfig;
+        }
         synchronized (CONFIG_LOCK) {
             if (!prefs.getBoolean("approved_ui_migration_v1",false)) {
                 boolean oldEnabled=getBoolean(ConfigSchema.HEALTH_ENABLED);
-                prefs.edit().putString(ConfigSchema.HEALTH_MULTIPLY_ENABLED,oldEnabled?"1":"0")
+                migrationEditor().putString(ConfigSchema.HEALTH_MULTIPLY_ENABLED,oldEnabled?"1":"0")
                     .putString(ConfigSchema.HEALTH_PLAN_ENABLED,oldEnabled&&!get(ConfigSchema.HEALTH_PLAN).isEmpty()?"1":"0")
                     .putString(ConfigSchema.STATUSBAR_CLOCK_ROWS,get(ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND).isEmpty()?"1":"2")
                     .putBoolean("approved_ui_migration_v1",true).commit();
             }
             if (!prefs.getBoolean("freeform_independent_migration_v1",false)) {
-                SharedPreferences.Editor migration=prefs.edit().putBoolean("freeform_independent_migration_v1",true);
+                DurablePreferences.Editor migration=migrationEditor().putBoolean("freeform_independent_migration_v1",true);
                 if (!getBoolean(FREEFORM_ENABLED)) migration.putString(FREEFORM_UNLIMITED,"0").putString(FREEFORM_ALL_APPS,"0");
                 migration.commit();
             }
             initializePrivateDefaults();
+            if (!prefs.getBoolean("recents_memory_unified_layout_v1",false)) {
+                DurablePreferences.Editor migration=migrationEditor()
+                        .putBoolean("recents_memory_unified_layout_v1",true);
+                // Retain the active style's region on upgrade; offsets already
+                // share one key per orientation and must never be reset here.
+                String prefix="ls_augment_rm_recents_memory_";
+                if ("1".equals(get(prefix+"style"))) {
+                    for (String orientation:new String[]{"portrait_","landscape_"})
+                        migration.putString(prefix+orientation+"height",get(prefix+"detailed_"+orientation+"height"));
+                }
+                migration.commit();
+            }
+            if (!prefs.getBoolean("recents_memory_unified_size_v1",false)) {
+                String prefix="ls_augment_rm_recents_memory_";
+                String orientation=context.getResources().getConfiguration().orientation
+                        ==android.content.res.Configuration.ORIENTATION_LANDSCAPE?"landscape_":"portrait_";
+                DurablePreferences.Editor migration=migrationEditor().putBoolean("recents_memory_unified_size_v1",true);
+                if(!prefs.contains(prefix+"simple_size"))migration.putString(prefix+"simple_size",get(prefix+orientation+"size"));
+                if(!prefs.contains(prefix+"detailed_size"))migration.putString(prefix+"detailed_size",get(prefix+"detailed_"+orientation+"size"));
+                migration.commit();
+            }
             initializeSnapshotMetadata();
         }
     }
 
     private void initializePrivateDefaults() {
         if (prefs.getBoolean(PRIVATE_INITIALIZED, false)) return;
-        SharedPreferences.Editor editor = prefs.edit();
+        DurablePreferences.Editor editor = migrationEditor();
         for (Map.Entry<String, String> entry : DEFAULTS.entrySet()) {
             // Preserve values written by an older build even if its migration
             // marker is missing or was interrupted. Only genuinely new keys
@@ -156,9 +176,18 @@ final class AppConfig {
                 .commit();
     }
 
+    private DurablePreferences.Editor migrationEditor() {
+        long now = Math.max(1L, System.currentTimeMillis());
+        return prefs.edit().putLong(SNAPSHOT_REVISION, Math.max(prefs.getLong(SNAPSHOT_REVISION, 0L) + 1L, now))
+                .putLong(SNAPSHOT_UPDATED_AT, now);
+    }
+
     String get(String key) {
         String fallback = DEFAULTS.get(key);
         String value = prefs.getString(key, fallback == null ? "" : fallback);
+        // Selection parsing owns its version/identity checks. Preserve malformed
+        // or oversized source text for review instead of turning it into empty.
+        if (HIDE_TARGETS.equals(key)) return value == null ? "" : value;
         String normalized = ConfigSchema.normalize(key, value);
         return normalized == null ? (fallback == null ? "" : fallback) : normalized;
     }
@@ -203,6 +232,16 @@ final class AppConfig {
     }
 
     SaveResult save(Map<String, String> updates) {
+        return save(updates, null, false);
+    }
+
+    /** Only the candidate membership is writable by the GameSpace provider route. */
+    SaveResult setShoulderCandidate(ShoulderQuickSwitchPolicy.CaseRef ref, boolean checked) {
+        return save(java.util.Collections.emptyMap(), ref, checked);
+    }
+
+    private SaveResult save(Map<String, String> updates,
+            ShoulderQuickSwitchPolicy.CaseRef candidate, boolean checked) {
         LinkedHashMap<String, String> clean = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : updates.entrySet()) {
             String value = ConfigSchema.normalize(entry.getKey(), entry.getValue());
@@ -212,6 +251,16 @@ final class AppConfig {
         ConfigSnapshot runtime;
         synchronized (CONFIG_LOCK) {
             LinkedHashMap<String, String> next = new LinkedHashMap<>(snapshotLocked());
+            if (candidate != null) {
+                ShoulderQuickSwitchPolicy candidates = ShoulderQuickSwitchPolicy.parse(
+                        next.get(ShoulderQuickSwitchPolicy.KEY));
+                if (candidates == null) return new SaveResult(false, "肩键候选配置格式无效");
+                try {
+                    clean.put(ShoulderQuickSwitchPolicy.KEY, candidates.with(candidate, checked).serialize());
+                } catch (IllegalArgumentException invalid) {
+                    return new SaveResult(false, invalid.getMessage());
+                }
+            }
             next.putAll(clean);
             if (ConfigSchema.truthy(next.get(TGK_RAPID_FIRE_ENABLED))) {
                 RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(
@@ -233,7 +282,7 @@ final class AppConfig {
             runtime = ConfigSnapshot.create(revision, now, next);
             if (runtime == null) return new SaveResult(false, "无法生成完整配置快照");
 
-            SharedPreferences.Editor editor = prefs.edit();
+            DurablePreferences.Editor editor = prefs.edit();
             for (Map.Entry<String, String> entry : clean.entrySet()) {
                 editor.putString(entry.getKey(), entry.getValue());
             }
@@ -241,145 +290,49 @@ final class AppConfig {
             editor.putLong(SNAPSHOT_UPDATED_AT, now);
             if (!editor.commit()) return new SaveResult(false, "无法写入应用配置");
         }
-        // The provider is the authoritative cross-process source. Notify
-        // SystemUI immediately after the private commit so visual feedback is
-        // not delayed by (or dependent on) the Root Settings.Global mirror.
+        // Publish the committed private state immediately; no Root command is part of saving.
         try {
             context.getContentResolver().notifyChange(
                     Uri.parse("content://" + PROVIDER_AUTHORITY + "/config"), null);
-        } catch (Throwable ignored) {
-            // The Settings.Global mirror below is the compatibility fallback.
-        }
+        } catch (RuntimeException ignored) { }
         AuditLog.write(context,"CONFIG_SAVE","keys="+String.join(",",clean.keySet()));
-        RootShell.Result mirror = mirror(runtime);
-        return new SaveResult(true, mirror.isSuccess() ? "配置已保存并同步" :
-                "配置已保存；Root 运行镜像暂未同步：" + mirror.publicError());
+        FrameworkConfigSync.request();
+        boolean synced = FrameworkConfigSync.isPublished(runtime);
+        return new SaveResult(true, synced ? "配置已保存并同步" :
+                "配置已保存；启动配置正在后台同步", synced);
     }
 
     synchronized RootShell.Result mirrorAll() {
-        return mirror(configSnapshot());
+        FrameworkConfigSync.request();
+        boolean synced = FrameworkConfigSync.isPublished(configSnapshot());
+        return new RootShell.Result(synced ? 0 : 1,
+                synced ? "框架配置已同步" : "启动配置等待框架后台同步", false);
     }
 
-    /**
-     * Disables settings consumed by retired launcher hooks. This one-time
-     * migration also turns off the former launcher-only CorePatch switch so
-     * an old system_server cannot keep accepting replacements after update.
-     */
     synchronized RootShell.Result cleanupRetiredRuntimeSettings() {
-        if (prefs.getBoolean(RETIRED_RECENTS_CLEANED, false)) {
-            return new RootShell.Result(0, "已清理旧最近任务配置", false);
-        }
-        RootShell.Result result = RootShell.run(
-                "settings put global ls_augment_recents_enabled 0; "
-                        + "settings put global ls_augment_recents_memory_enabled 0; "
-                        + "settings put global ls_augment_recents_native_enabled 0; "
-                        + "settings put global ls_augment_corepatch_enabled 0; "
-                        + "settings delete global ls_augment_recents_compression; "
-                        + "settings delete global ls_augment_recents_front_overlap; "
-                        + "settings delete global ls_augment_recents_memory_text_sp; "
-                        + "settings delete global ls_augment_recents_memory_gap_dp",
-                null, 8, 4096);
-        if (result.isSuccess()) {
-            prefs.edit()
-                    .remove("ls_augment_recents_enabled")
-                    .remove("ls_augment_recents_memory_enabled")
-                    .remove("ls_augment_recents_native_enabled")
-                    .remove("ls_augment_corepatch_enabled")
-                    .remove("ls_augment_recents_compression")
-                    .remove("ls_augment_recents_front_overlap")
-                    .remove("ls_augment_recents_memory_text_sp")
-                    .remove("ls_augment_recents_memory_gap_dp")
-                    .putBoolean(RETIRED_RECENTS_CLEANED, true)
-                    .commit();
-        }
-        return result;
+        return LegacySettingsMigration.runIfAuthorized(context);
     }
 
-    /**
-     * A new applicationId must never inherit old Settings.Global feature
-     * choices. The first successful Root session publishes this APK's safe
-     * defaults and clears any stale hidden-target mirror.
-     */
     synchronized RootShell.Result initializeRuntimeMirrorsIfNeeded() {
-        ConfigSnapshot expected = configSnapshot();
-        if (prefs.getBoolean(RUNTIME_SNAPSHOT_INITIALIZED, false)) {
-            // A persisted marker alone is not proof that Settings.Global still
-            // contains a usable snapshot. It can disappear after an OTA,
-            // manual recovery, or an interrupted migration while app data is
-            // retained. Validate both revision and checksum before skipping
-            // publication so early-boot hooks never remain on safe defaults.
-            RootShell.Result existing = RootShell.run(
-                    "settings get global " + ConfigSchema.GLOBAL_SNAPSHOT,
-                    null, 6, 320 * 1024);
-            ConfigSnapshot mirrored = existing.isSuccess()
-                    ? ConfigSnapshot.parse(existing.output) : null;
-            if (mirrored != null
-                    && mirrored.revision == expected.revision
-                    && mirrored.checksum.equals(expected.checksum)) {
-                return new RootShell.Result(0, "运行镜像已初始化", false);
-            }
-        }
-        RootShell.Result values = mirror(expected);
-        if (!values.isSuccess()) return values;
-        RootShell.Result reset = RootShell.run(
-                "settings delete global " + HIDDEN_MIRROR
-                        + " >/dev/null 2>&1 || true; settings put global "
-                        + TILE_STATE + " EMPTY", null, 8, 4096);
-        if (reset.isSuccess()) {
-            prefs.edit().putBoolean(RUNTIME_SNAPSHOT_INITIALIZED, true).commit();
-        }
-        return reset;
+        FrameworkConfigSync.request();
+        return new RootShell.Result(0, "配置已交由框架后台同步", false);
     }
 
     synchronized RootShell.Result cleanupLegacyGlobalSettingsAfterHandshake() {
-        if (prefs.getBoolean(LEGACY_GLOBAL_CLEANED, false)) {
-            return new RootShell.Result(0, "旧逐键运行配置已清理", false);
-        }
-        StringBuilder command = new StringBuilder("set -e;");
-        for (String key : ConfigSchema.runtimeKeys()) {
-            command.append(" settings delete global ").append(key).append(';');
-        }
-        RootShell.Result result = RootShell.run(command.toString(), null, 12, 16 * 1024);
-        if (result.isSuccess()) {
-            prefs.edit().putBoolean(LEGACY_GLOBAL_CLEANED, true).commit();
-        }
-        return result;
-    }
-
-    private RootShell.Result mirror(ConfigSnapshot runtime) {
-        synchronized (MIRROR_LOCK) {
-            if (context.getSharedPreferences(DIAGNOSTICS, Context.MODE_PRIVATE)
-                    .getBoolean("root_prompt_suppressed", false)) {
-                return new RootShell.Result(126, "请在诊断页主动点击“重新申请 Root 授权”", false);
-            }
-            if (runtime == null) return new RootShell.Result(2, "invalid_snapshot", false);
-            synchronized (CONFIG_LOCK) {
-                long latest = Math.max(1L, prefs.getLong(SNAPSHOT_REVISION, 1L));
-                if (runtime.revision < latest) {
-                    return new RootShell.Result(0, "snapshot_superseded", false);
-                }
-            }
-            StringBuilder command = new StringBuilder("set -e; settings put global ")
-                    .append(ConfigSchema.GLOBAL_SNAPSHOT).append(' ')
-                    .append(RootShell.quote(runtime.serialize())).append(';');
-            // GameHelperModule is privileged, but this ROM can leave its overlay
-            // AppOp in the default/rejected state after an OTA or reboot. One-key
-            // combo opens its editor through that overlay, so keep the vendor
-            // permission in the allowed state whenever shoulder support is synced.
-            if (ConfigSchema.truthy(runtime.get(SHOULDER_ENABLED))) {
-                command.append(" appops set cn.nubia.gamehelpmodule")
-                        .append(" SYSTEM_ALERT_WINDOW allow;");
-            }
-            return RootShell.run(command.toString());
-        }
+        return LegacySettingsMigration.runIfAuthorized(context);
     }
 
     static final class SaveResult {
         final boolean success;
+        final boolean runtimeSynced;
         final String message;
         SaveResult(boolean success, String message) {
+            this(success, message, false);
+        }
+        SaveResult(boolean success, String message, boolean runtimeSynced) {
             this.success = success;
             this.message = message;
+            this.runtimeSynced = runtimeSynced;
         }
     }
 }

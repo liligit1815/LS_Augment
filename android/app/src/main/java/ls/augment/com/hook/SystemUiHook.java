@@ -17,6 +17,7 @@ import io.github.libxposed.api.XposedInterface.HookHandle;
 final class SystemUiHook {
     private static final String CLOCK = "com.android.systemui.statusbar.policy.Clock";
     private static final String SYSTEM_BAR_UTILS = "com.android.internal.policy.SystemBarUtils";
+    static final String GRID_CLOCK_TAG = "ls_augment_keyguard_clock";
     private static final Map<TextView, ClockState> CLOCK_STATES = Collections.synchronizedMap(new WeakHashMap<>());
     private SystemUiHook() { }
     static int install(AugmentModule module, ClassLoader loader) {
@@ -64,16 +65,14 @@ final class SystemUiHook {
     }
 
     private static void updateClock(TextView clock, boolean nativeTextJustRendered) {
-        boolean phoneClock = false;
-        for (android.view.ViewParent p = clock.getParent(); p != null; p = p.getParent()) {
-            if (p.getClass().getSimpleName().equals("PhoneStatusBarView")) { phoneClock = true; break; }
-        }
-        if (!phoneClock) return;
+        if (!StatusBarGridHook.inBar(clock)) return;
         Context context = clock.getContext();
         ClockState state = CLOCK_STATES.get(clock);
         if (state != null && nativeTextJustRendered) state.nativeText = clock.getText();
         boolean enabled = FeatureSettings.enabled(context, FeatureSettings.SYSTEMUI_MASTER)
-                && FeatureSettings.enabled(context, FeatureSettings.STATUSBAR_CLOCK_CUSTOM);
+                && !FeatureSettings.enabled(context, ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)
+                && (GRID_CLOCK_TAG.equals(clock.getTag())
+                    || FeatureSettings.enabled(context, FeatureSettings.STATUSBAR_CLOCK_CUSTOM));
         if (!enabled) {
             if (state != null) {
                 CLOCK_STATES.remove(clock);
@@ -91,12 +90,22 @@ final class SystemUiHook {
 
     static void refreshGridClock(View root) {
         View view = findByNames(root, "clock", "status_bar_clock");
+        if(view==null)view=root.findViewWithTag(GRID_CLOCK_TAG);
         if (view instanceof TextView) updateClock((TextView) view, false);
+    }
+    static void releaseGridClock(TextView clock) {
+        ClockState state=CLOCK_STATES.remove(clock);if(state!=null)state.restore(false);
     }
 
     private static void renderClock(ClockState state) {
         TextView clock = state.clock;
         Context context = clock.getContext();
+        if(GRID_CLOCK_TAG.equals(clock.getTag())
+                &&!FeatureSettings.enabled(context,FeatureSettings.STATUSBAR_CLOCK_CUSTOM)){
+            state.applyStyle(false);
+            clock.setText(android.text.format.DateFormat.getTimeFormat(context).format(new Date()));
+            state.publishError("");state.setSecondTicker(true);return;
+        }
         String secondPattern = FeatureSettings.text(
                 context, FeatureSettings.STATUSBAR_CLOCK_PATTERN_SECOND, "").trim();
         if(FeatureSettings.integer(context,ls.augment.com.ConfigSchema.STATUSBAR_CLOCK_ROWS,2,1,2)==1) secondPattern="";
@@ -120,7 +129,7 @@ final class SystemUiHook {
             if (state.lastValidText != null) clock.setText(state.lastValidText);
             state.publishError(result.error);
         }
-        state.setSecondTicker(result.valid && result.refreshEverySecond);
+        state.setSecondTicker(result.valid && (result.refreshEverySecond||GRID_CLOCK_TAG.equals(clock.getTag())));
         clock.invalidate();
     }
 
@@ -244,6 +253,7 @@ final class SystemUiHook {
         final int originalMaxLines;
         final boolean originalSingleLine;
         final boolean originalIncludeFontPadding;
+        final android.text.TextUtils.TruncateAt originalEllipsize;
         final int originalWidth;
         CharSequence nativeText;
         String lastValidText;
@@ -262,6 +272,7 @@ final class SystemUiHook {
             originalMaxLines = clock.getMaxLines();
             originalSingleLine = originalMaxLines == 1;
             originalIncludeFontPadding = clock.getIncludeFontPadding();
+            originalEllipsize=clock.getEllipsize();
             originalWidth = clock.getLayoutParams() == null
                     ? ViewGroup.LayoutParams.WRAP_CONTENT : clock.getLayoutParams().width;
             nativeText = clock.getText();
@@ -283,16 +294,26 @@ final class SystemUiHook {
             clock.setLetterSpacing(FeatureSettings.decimal(context,
                     FeatureSettings.STATUSBAR_CLOCK_LETTER_SPACING,
                     0.0f, -0.20f, 1.0f));
-            clock.setLineSpacing(dp(context, FeatureSettings.decimal(context,
-                            FeatureSettings.STATUSBAR_CLOCK_LINE_SPACING_DP,
-                            0.0f, 0.0f, 32.0f)), 1.0f);
+            float lineSpacing=dp(context, FeatureSettings.decimal(context,
+                    FeatureSettings.STATUSBAR_CLOCK_LINE_SPACING_DP,0.0f,0.0f,32.0f));
+            if(twoLines&&FeatureSettings.enabled(context,ls.augment.com.ConfigSchema.SYSTEMUI_MASTER)
+                    &&!FeatureSettings.enabled(context,ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)){
+                lineSpacing+=dp(context,Math.max(0,FeatureSettings.integer(context,
+                        ls.augment.com.ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,8)));
+            }
+            // Keep line advances positive even on unusually small OEM clock fonts.
+            clock.setLineSpacing(Math.max(-clock.getPaint().getFontSpacing()*.75f,lineSpacing),1.0f);
             String align = FeatureSettings.text(context,
                     FeatureSettings.STATUSBAR_CLOCK_TEXT_ALIGN, "center");
             int horizontal = "left".equals(align) ? Gravity.START
                     : "right".equals(align) ? Gravity.END : Gravity.CENTER_HORIZONTAL;
             clock.setGravity(horizontal | Gravity.CENTER_VERTICAL);
             clock.setIncludeFontPadding(false);
-            clock.setSingleLine(!twoLines);
+            // The grid owns fitting. Native single-line marquee/ellipsis can
+            // retain a stale clipping interval after switching from two rows.
+            clock.setSingleLine(false);
+            clock.setHorizontallyScrolling(false);
+            clock.setEllipsize(null);
             if (twoLines) {
                 clock.setMinLines(2);
                 clock.setMaxLines(2);
@@ -322,8 +343,14 @@ final class SystemUiHook {
         }
 
         void schedule() {
-            long delay = 1000L - (SystemClock.uptimeMillis() % 1000L);
-            clock.postDelayed(this, Math.max(100L, delay));
+            long interval = 1000L;
+            android.os.PowerManager power = clock.getContext().getSystemService(android.os.PowerManager.class);
+            if (clock.isShown() && power != null && power.isInteractive()
+                    && FeatureSettings.enabled(clock.getContext(), "ls_augment_rm_clock_milliseconds_refresh")) {
+                interval = FeatureSettings.integer(clock.getContext(), "ls_augment_rm_clock_refresh_ms", 100, 16, 1000);
+            }
+            long delay = interval - (SystemClock.uptimeMillis() % interval);
+            clock.postDelayed(this, Math.max(16L, delay));
         }
 
         void publishError(String value) {
@@ -343,6 +370,7 @@ final class SystemUiHook {
             clock.setLineSpacing(originalLineSpacingExtra, originalLineSpacingMultiplier);
             clock.setGravity(originalGravity);
             clock.setSingleLine(originalSingleLine);
+            clock.setEllipsize(originalEllipsize);
             clock.setMinLines(originalMinLines);
             clock.setMaxLines(originalMaxLines);
             clock.setIncludeFontPadding(originalIncludeFontPadding);

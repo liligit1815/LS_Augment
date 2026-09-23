@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout style="@style/BaseWidthHeightDims.MenuTabsSelector"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.android.launcher3.menu.MenuScroller android:id="@id/menu_items" android:overScrollMode="never" style="@style/BaseWidthHeightDims.MenuTabsSelectorMenuTabsScroller" />
-</LinearLayout>

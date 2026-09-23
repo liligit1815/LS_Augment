@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.ExtendedEditText android:id="@id/pref_edit_text" android:layout_width="match_parent" android:layout_height="match_parent" android:minWidth="100.0dp" android:maxLines="1" android:selectAllOnFocus="true" android:inputType="numberSigned" android:imeOptions="actionDone"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

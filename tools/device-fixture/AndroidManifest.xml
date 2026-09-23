@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ls.augment.validation">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application android:label="LS 功能验收" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="false">
             <intent-filter>
@@ -8,5 +10,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SystemUiTestActivity" android:exported="true" android:label="LS 系统界面验收" />
+        <activity android:name=".SecureTestActivity" android:exported="true" android:label="LS 安全截图验收" />
     </application>
 </manifest>

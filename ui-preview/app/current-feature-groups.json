@@ -1,0 +1,4562 @@
+{
+  "schemaVersion": 2,
+  "scope": "HookAppCatalog.targets generic controls only; excludes dedicated editors and module-only AppearanceOptions",
+  "sourceCatalog": "ui-preview/app/current-catalog.json",
+  "ownershipRule": "Each key occurs exactly once across all recursive features[].optionKeys. optionKeys includes this node toggleKey plus its direct parameters only. parameterKeys excludes toggleKey. allOptionKeys recursively aggregates this node and descendants, for indexing only.",
+  "renderingRules": [
+    "With toggleKey and hasConfiguration:false: one name/help/switch row, no disclosure arrow.",
+    "With toggleKey and hasConfiguration:true: one feature card with name/help/switch/disclosure arrow; hide parameters and child features while the real toggle is off; preserve all parameter values when switched off.",
+    "Recursive features are dependent boolean controls. Keep them inside the outer card. Each child with parameters has its own disclosure; hide that child input while its toggle is off.",
+    "toggleKey:null marks a parameter with no real Android enable switch. activation describes its true no-op/default test; never invent a module setting or attach it to an unrelated boolean.",
+    "effectiveWhen describes native applicability in addition to the outer toggle. It is not ownership and does not request resetting or dropping any value."
+  ],
+  "targets": [
+    {
+      "id": "system",
+      "title": "系统框架",
+      "sections": [
+        {
+          "id": "system",
+          "title": "系统行为",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_secure_capture",
+              "optionKeys": [
+                "ls_augment_rm_secure_capture"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_secure_capture",
+              "title": "允许受限窗口截图和录屏",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_secure_capture",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_secure_capture"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_thermal_notifications",
+              "optionKeys": [
+                "ls_augment_rm_thermal_notifications"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_thermal_notifications",
+              "title": "关闭系统框架温控通知处理",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_thermal_notifications",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_thermal_notifications"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_strong_auth_timeout",
+              "optionKeys": [
+                "ls_augment_rm_strong_auth_timeout"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_strong_auth_timeout",
+              "title": "取消每 72 小时强制验证密码",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_strong_auth_timeout",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_strong_auth_timeout"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_lock_timeout_enabled",
+              "optionKeys": [
+                "ls_augment_rm_lock_timeout_enabled",
+                "ls_augment_rm_lock_timeout_seconds"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:60",
+              "id": "ls_augment_rm_lock_timeout_enabled",
+              "title": "自定义锁屏息屏时间",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [
+                "ls_augment_rm_lock_timeout_seconds"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_lock_timeout_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_timeout_enabled",
+                "ls_augment_rm_lock_timeout_seconds"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_notification_quiet_unlocked",
+              "optionKeys": [
+                "ls_augment_rm_notification_quiet_unlocked"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_notification_quiet_unlocked",
+              "title": "亮屏解锁时通知静音",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_notification_quiet_unlocked",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_notification_quiet_unlocked"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_overlay_notification_hide",
+              "optionKeys": [
+                "ls_augment_rm_overlay_notification_hide"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_overlay_notification_hide",
+              "title": "隐藏悬浮窗常驻通知",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_overlay_notification_hide",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_overlay_notification_hide"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_intent_hijack_disable",
+              "optionKeys": [
+                "ls_augment_rm_intent_hijack_disable"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_intent_hijack_disable",
+              "title": "取消应用打开方式劫持",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_intent_hijack_disable",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_intent_hijack_disable"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_untrusted_touch_allow",
+              "optionKeys": [
+                "ls_augment_rm_untrusted_touch_allow"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_untrusted_touch_allow",
+              "title": "允许被悬浮窗遮挡的触摸",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_untrusted_touch_allow",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_untrusted_touch_allow"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_telemetry_disable",
+              "optionKeys": [
+                "ls_augment_rm_telemetry_disable"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_telemetry_disable",
+              "title": "关闭原厂统计服务初始化",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_telemetry_disable",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_telemetry_disable"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_power_default_assistant",
+              "optionKeys": [
+                "ls_augment_rm_power_default_assistant"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_power_default_assistant",
+              "title": "长按电源打开默认助理",
+              "target": "system",
+              "section": "system",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_power_default_assistant",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_power_default_assistant"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "audio",
+          "title": "音量规则与档位",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_audio_steps_alarm_enabled",
+              "optionKeys": [
+                "ls_augment_rm_audio_steps_alarm_enabled",
+                "ls_augment_rm_audio_steps_alarm"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:131",
+              "id": "ls_augment_rm_audio_steps_alarm_enabled",
+              "title": "自定义闹钟音量档数",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [
+                "ls_augment_rm_audio_steps_alarm"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_steps_alarm_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_steps_alarm_enabled",
+                "ls_augment_rm_audio_steps_alarm"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_audio_steps_media_enabled",
+              "optionKeys": [
+                "ls_augment_rm_audio_steps_media_enabled",
+                "ls_augment_rm_audio_steps_media"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:131",
+              "id": "ls_augment_rm_audio_steps_media_enabled",
+              "title": "自定义媒体音量档数",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [
+                "ls_augment_rm_audio_steps_media"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_steps_media_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_steps_media_enabled",
+                "ls_augment_rm_audio_steps_media"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_audio_steps_notification_enabled",
+              "optionKeys": [
+                "ls_augment_rm_audio_steps_notification_enabled",
+                "ls_augment_rm_audio_steps_notification"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:131",
+              "id": "ls_augment_rm_audio_steps_notification_enabled",
+              "title": "自定义通知音量档数",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [
+                "ls_augment_rm_audio_steps_notification"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_steps_notification_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_steps_notification_enabled",
+                "ls_augment_rm_audio_steps_notification"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_audio_steps_ring_enabled",
+              "optionKeys": [
+                "ls_augment_rm_audio_steps_ring_enabled",
+                "ls_augment_rm_audio_steps_ring"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:131",
+              "id": "ls_augment_rm_audio_steps_ring_enabled",
+              "title": "自定义铃声音量档数",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [
+                "ls_augment_rm_audio_steps_ring"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_steps_ring_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_steps_ring_enabled",
+                "ls_augment_rm_audio_steps_ring"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_audio_steps_call_enabled",
+              "optionKeys": [
+                "ls_augment_rm_audio_steps_call_enabled",
+                "ls_augment_rm_audio_steps_call"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:131",
+              "id": "ls_augment_rm_audio_steps_call_enabled",
+              "title": "自定义通话音量档数",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [
+                "ls_augment_rm_audio_steps_call"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_steps_call_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_steps_call_enabled",
+                "ls_augment_rm_audio_steps_call"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_audio_no_safe_warning",
+              "optionKeys": [
+                "ls_augment_rm_audio_no_safe_warning"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_audio_no_safe_warning",
+              "title": "取消音量过高提示",
+              "target": "system",
+              "section": "audio",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_no_safe_warning",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_no_safe_warning"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "connections",
+          "title": "Wi-Fi、热点与飞行模式",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_airplane_keep_bluetooth",
+              "optionKeys": [
+                "ls_augment_rm_airplane_keep_bluetooth"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_airplane_keep_bluetooth",
+              "title": "飞行模式保留蓝牙",
+              "target": "system",
+              "section": "connections",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_airplane_keep_bluetooth",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_airplane_keep_bluetooth"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_airplane_keep_wifi",
+              "optionKeys": [
+                "ls_augment_rm_airplane_keep_wifi"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_airplane_keep_wifi",
+              "title": "飞行模式保留 Wi-Fi 和热点",
+              "target": "system",
+              "section": "connections",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_airplane_keep_wifi",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_airplane_keep_wifi"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_wifi_country_enabled",
+              "optionKeys": [
+                "ls_augment_rm_wifi_country_enabled",
+                "ls_augment_rm_wifi_country"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:203",
+              "id": "ls_augment_rm_wifi_country_enabled",
+              "title": "自定义 Wi-Fi 国家码",
+              "target": "system",
+              "section": "connections",
+              "parameterKeys": [
+                "ls_augment_rm_wifi_country"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_wifi_country_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_wifi_country_enabled",
+                "ls_augment_rm_wifi_country"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_wifi_mac_enabled",
+              "optionKeys": [
+                "ls_augment_rm_wifi_mac_enabled",
+                "ls_augment_rm_wifi_mac"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:207",
+              "effectiveWhen": {
+                "ls_augment_rm_wifi_mac": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_wifi_mac_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_wifi_mac",
+                      "notEquals": ""
+                    }
+                  ]
+                }
+              },
+              "notes": [
+                "空白地址保持原厂行为；开关关闭时保留已输入地址。"
+              ],
+              "id": "ls_augment_rm_wifi_mac_enabled",
+              "title": "固定 Wi-Fi MAC 地址",
+              "target": "system",
+              "section": "connections",
+              "parameterKeys": [
+                "ls_augment_rm_wifi_mac"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_wifi_mac_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_wifi_mac_enabled",
+                "ls_augment_rm_wifi_mac"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_hotspot_mac_enabled",
+              "optionKeys": [
+                "ls_augment_rm_hotspot_mac_enabled",
+                "ls_augment_rm_hotspot_mac"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/SystemRulesHook.java:207",
+              "effectiveWhen": {
+                "ls_augment_rm_hotspot_mac": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_hotspot_mac_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_hotspot_mac",
+                      "notEquals": ""
+                    }
+                  ]
+                }
+              },
+              "notes": [
+                "空白地址保持原厂行为；开关关闭时保留已输入地址。"
+              ],
+              "id": "ls_augment_rm_hotspot_mac_enabled",
+              "title": "固定热点 BSSID",
+              "target": "system",
+              "section": "connections",
+              "parameterKeys": [
+                "ls_augment_rm_hotspot_mac"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hotspot_mac_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hotspot_mac_enabled",
+                "ls_augment_rm_hotspot_mac"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "installer",
+          "title": "应用安装规则",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_signature_min_v1",
+              "optionKeys": [
+                "ls_augment_rm_signature_min_v1"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_signature_min_v1",
+              "title": "允许较旧的 APK 签名方案",
+              "target": "system",
+              "section": "installer",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_signature_min_v1",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_signature_min_v1"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "systemui",
+      "title": "系统界面",
+      "sections": [
+        {
+          "id": "statusbar",
+          "title": "状态栏细节",
+          "features": [
+            {
+              "id": "systemui:privacy_hide",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏隐私小绿点",
+              "toggleKey": "ls_augment_rm_privacy_hide",
+              "optionKeys": [
+                "ls_augment_rm_privacy_hide"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_privacy_hide",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_privacy_hide"
+              ]
+            },
+            {
+              "id": "systemui:signal_dual",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "双卡信号上下排列",
+              "toggleKey": "ls_augment_rm_signal_dual",
+              "optionKeys": [
+                "ls_augment_rm_signal_dual"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_signal_dual",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_signal_dual"
+              ]
+            },
+            {
+              "id": "systemui:hide_wifi_activity",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏 Wi-Fi 收发箭头",
+              "toggleKey": "ls_augment_rm_hide_wifi_activity",
+              "optionKeys": [
+                "ls_augment_rm_hide_wifi_activity"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_wifi_activity",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_wifi_activity"
+              ]
+            },
+            {
+              "id": "systemui:hide_wifi_standard",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏 Wi-Fi 标准数字",
+              "toggleKey": "ls_augment_rm_hide_wifi_standard",
+              "optionKeys": [
+                "ls_augment_rm_hide_wifi_standard"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_wifi_standard",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_wifi_standard"
+              ]
+            },
+            {
+              "id": "systemui:hide_mobile_activity",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏移动网络收发箭头",
+              "toggleKey": "ls_augment_rm_hide_mobile_activity",
+              "optionKeys": [
+                "ls_augment_rm_hide_mobile_activity"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_mobile_activity",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_mobile_activity"
+              ]
+            },
+            {
+              "id": "systemui:hide_mobile_type",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏移动网络类型",
+              "toggleKey": "ls_augment_rm_hide_mobile_type",
+              "optionKeys": [
+                "ls_augment_rm_hide_mobile_type"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_mobile_type",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_mobile_type"
+              ]
+            },
+            {
+              "id": "systemui:hide_hd_small",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏信号旁的 HD 小图标",
+              "toggleKey": "ls_augment_rm_hide_hd_small",
+              "optionKeys": [
+                "ls_augment_rm_hide_hd_small"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_hd_small",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_hd_small"
+              ]
+            },
+            {
+              "id": "systemui:hide_sim1",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏卡 1 信号",
+              "toggleKey": "ls_augment_rm_hide_sim1",
+              "optionKeys": [
+                "ls_augment_rm_hide_sim1"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_sim1",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_sim1"
+              ]
+            },
+            {
+              "id": "systemui:hide_sim2",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏卡 2 信号",
+              "toggleKey": "ls_augment_rm_hide_sim2",
+              "optionKeys": [
+                "ls_augment_rm_hide_sim2"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_hide_sim2",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_sim2"
+              ]
+            },
+            {
+              "id": "systemui:ignore_system_icon_hide",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "忽略系统图标隐藏限制",
+              "toggleKey": "ls_augment_rm_ignore_system_icon_hide",
+              "optionKeys": [
+                "ls_augment_rm_ignore_system_icon_hide"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_ignore_system_icon_hide",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_ignore_system_icon_hide"
+              ]
+            },
+            {
+              "id": "systemui:hide_wifi_scope",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏 Wi-Fi 图标的位置",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_hide_wifi_scope"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_hide_wifi_scope",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 不额外隐藏；1～6 选择位置。与 Wi-Fi 箭头、标准数字开关独立，不依赖双卡排列或忽略系统图标隐藏限制。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 98
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_hide_wifi_scope"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_wifi_scope"
+              ]
+            },
+            {
+              "id": "systemui:hide_hotspot_scope",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏热点图标的位置",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_hide_hotspot_scope"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_hide_hotspot_scope",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 不额外隐藏；1～6 选择位置。没有独立 boolean 父开关。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 99
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_hide_hotspot_scope"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_hotspot_scope"
+              ]
+            },
+            {
+              "id": "systemui:hide_mobile_scope",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏移动网络图标的位置",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_hide_mobile_scope"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_hide_mobile_scope",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 不额外隐藏；1～6 选择位置。独立于双卡排列、隐藏卡 1/卡 2 和网络类型/活动箭头。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 100
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_hide_mobile_scope"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hide_mobile_scope"
+              ]
+            },
+            {
+              "id": "systemui:hidden_icon_slots",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "其他隐藏图标",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_hidden_icon_slots"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_hidden_icon_slots",
+                "schemaDefault": "",
+                "noOpValue": "",
+                "comparison": "nonEmptyCommaSeparatedTokens",
+                "activeWhen": "notNoOp",
+                "onPredicate": "value.split(',').some(token => token.trim() != '')",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "空清单不额外隐藏。按英文逗号拆分并 trim，每个非空槽位是独立隐藏目标；UI 可用多选清单呈现。独立于 ignore_system_icon_hide。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 104
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_hidden_icon_slots"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_hidden_icon_slots"
+              ]
+            },
+            {
+              "id": "systemui:battery_style",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "电池样式",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_battery_style"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_battery_style",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 遵循原厂是 no-op；1～6 都属于已设置，包括 6 隐藏电池。不能以 battery_colors 或 battery_hide_percent 作为父开关。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 112
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_battery_style"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_battery_style"
+              ]
+            },
+            {
+              "id": "systemui:battery_hide_percent",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏电量百分号",
+              "toggleKey": "ls_augment_rm_battery_hide_percent",
+              "optionKeys": [
+                "ls_augment_rm_battery_hide_percent"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_battery_hide_percent",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_battery_hide_percent"
+              ]
+            },
+            {
+              "id": "systemui:battery_width_dp",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "电池固定宽度",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_battery_width_dp"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_battery_width_dp",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 恢复原厂宽度。电池宽度独立于样式和颜色；状态栏布局开启时由 StatusBarGridHook.java:292 预留同一宽度，关闭布局时由原生电池容器处理。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 201
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_battery_width_dp"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_battery_width_dp"
+              ]
+            },
+            {
+              "id": "systemui:battery_alpha_percent",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "电池图标不透明度（%）",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_battery_alpha_percent"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_battery_alpha_percent",
+                "schemaDefault": "100",
+                "noOpValue": "100",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 100",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "100 恢复原厂不透明度；0 是完全透明，仍是有效已设置状态。此项与电池颜色自身透明度相乘，不要求 battery_colors 开启。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 212
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_battery_alpha_percent"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_battery_alpha_percent"
+              ]
+            },
+            {
+              "id": "systemui:battery_colors",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "按电量设置电池颜色",
+              "toggleKey": "ls_augment_rm_battery_colors",
+              "optionKeys": [
+                "ls_augment_rm_battery_colors",
+                "ls_augment_rm_battery_color_0",
+                "ls_augment_rm_battery_color_1",
+                "ls_augment_rm_battery_color_2",
+                "ls_augment_rm_battery_color_3",
+                "ls_augment_rm_battery_charging_color"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_battery_colors",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "仅五个颜色参数从属于本开关。电池样式、百分号、固定宽度和不透明度均独立生效，不能收进此开关的关闭隐藏区。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 151
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_battery_color_0",
+                "ls_augment_rm_battery_color_1",
+                "ls_augment_rm_battery_color_2",
+                "ls_augment_rm_battery_color_3",
+                "ls_augment_rm_battery_charging_color"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_battery_colors",
+                "ls_augment_rm_battery_color_0",
+                "ls_augment_rm_battery_color_1",
+                "ls_augment_rm_battery_color_2",
+                "ls_augment_rm_battery_color_3",
+                "ls_augment_rm_battery_charging_color"
+              ]
+            },
+            {
+              "id": "systemui:statusbar_double_tap_sleep",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "双击状态栏锁屏",
+              "toggleKey": "ls_augment_rm_statusbar_double_tap_sleep",
+              "optionKeys": [
+                "ls_augment_rm_statusbar_double_tap_sleep"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_statusbar_double_tap_sleep",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_statusbar_double_tap_sleep"
+              ]
+            },
+            {
+              "id": "systemui:statusbar_hide",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "隐藏状态栏内容",
+              "toggleKey": "ls_augment_rm_statusbar_hide",
+              "optionKeys": [
+                "ls_augment_rm_statusbar_hide"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_statusbar_hide",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_statusbar_hide"
+              ]
+            },
+            {
+              "id": "systemui:notification_native",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "恢复原生通知图标",
+              "toggleKey": "ls_augment_rm_notification_native",
+              "optionKeys": [
+                "ls_augment_rm_notification_native"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_notification_native",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_notification_native"
+              ]
+            },
+            {
+              "id": "systemui:statusbar_restore_font",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "恢复状态栏原生字体",
+              "toggleKey": "ls_augment_rm_statusbar_restore_font",
+              "optionKeys": [
+                "ls_augment_rm_statusbar_restore_font"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_statusbar_restore_font",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_statusbar_restore_font"
+              ]
+            },
+            {
+              "id": "systemui:cutout_always",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "挖孔黑圈常显",
+              "toggleKey": "ls_augment_rm_cutout_always",
+              "optionKeys": [
+                "ls_augment_rm_cutout_always"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_cutout_always",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_cutout_always"
+              ]
+            },
+            {
+              "id": "systemui:clock_milliseconds_refresh",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "启用时钟毫秒刷新",
+              "toggleKey": "ls_augment_rm_clock_milliseconds_refresh",
+              "optionKeys": [
+                "ls_augment_rm_clock_milliseconds_refresh",
+                "ls_augment_rm_clock_refresh_ms"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_clock_milliseconds_refresh",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "此开关决定时钟刷新间隔。要看到毫秒，还需状态栏编辑器已启用自定义时钟且格式含 S；这个前提属于显示条件，不能据此让本组拥有编辑器的参数。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/SystemUiHook.java",
+                  "line": 332
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_clock_refresh_ms"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_clock_milliseconds_refresh",
+                "ls_augment_rm_clock_refresh_ms"
+              ]
+            },
+            {
+              "id": "systemui:network_custom",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "网速显示高级设置",
+              "toggleKey": "ls_augment_rm_network_custom",
+              "optionKeys": [
+                "ls_augment_rm_network_custom",
+                "ls_augment_rm_network_hide_below_kb",
+                "ls_augment_rm_network_digits",
+                "ls_augment_rm_network_unit",
+                "ls_augment_rm_network_width_dp"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_network_custom",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "网速显示 /s 是本组的从属 boolean。只有状态栏布局已启用且网速可见时才能看到效果。关闭高级设置恢复网速原格式和随内容宽度，保留用户填写的子参数。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java",
+                  "line": 502
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_network_hide_below_kb",
+                "ls_augment_rm_network_digits",
+                "ls_augment_rm_network_unit",
+                "ls_augment_rm_network_width_dp"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_network_per_second",
+                  "title": "网速显示 /s",
+                  "target": "systemui",
+                  "section": "statusbar",
+                  "toggleKey": "ls_augment_rm_network_per_second",
+                  "optionKeys": [
+                    "ls_augment_rm_network_per_second"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java",
+                      "line": 502
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_network_custom",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_network_per_second"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_network_per_second",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_network_custom",
+                "ls_augment_rm_network_hide_below_kb",
+                "ls_augment_rm_network_digits",
+                "ls_augment_rm_network_unit",
+                "ls_augment_rm_network_per_second",
+                "ls_augment_rm_network_width_dp"
+              ]
+            },
+            {
+              "id": "systemui:metrics_custom",
+              "target": "systemui",
+              "section": "statusbar",
+              "title": "温度与电量信息高级设置",
+              "toggleKey": "ls_augment_rm_metrics_custom",
+              "optionKeys": [
+                "ls_augment_rm_metrics_custom",
+                "ls_augment_rm_metric_prefix_cpu",
+                "ls_augment_rm_metric_width_cpu",
+                "ls_augment_rm_metric_prefix_gpu",
+                "ls_augment_rm_metric_width_gpu",
+                "ls_augment_rm_metric_prefix_battery_temp",
+                "ls_augment_rm_metric_width_battery_temp",
+                "ls_augment_rm_metric_prefix_current",
+                "ls_augment_rm_metric_width_current",
+                "ls_augment_rm_metric_prefix_power",
+                "ls_augment_rm_metric_width_power"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_metrics_custom",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "隐藏单位、仅充电时显示电流和功率均为本组的从属 boolean。CPU/GPU/电池温度/电流/功率五对前缀和宽度归本组，可在同卡内用小标题分区；需先在状态栏编辑器显示对应信息。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java",
+                  "line": 483
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_metric_prefix_cpu",
+                "ls_augment_rm_metric_width_cpu",
+                "ls_augment_rm_metric_prefix_gpu",
+                "ls_augment_rm_metric_width_gpu",
+                "ls_augment_rm_metric_prefix_battery_temp",
+                "ls_augment_rm_metric_width_battery_temp",
+                "ls_augment_rm_metric_prefix_current",
+                "ls_augment_rm_metric_width_current",
+                "ls_augment_rm_metric_prefix_power",
+                "ls_augment_rm_metric_width_power"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_metrics_hide_units",
+                  "title": "温度与电量信息隐藏单位",
+                  "target": "systemui",
+                  "section": "statusbar",
+                  "toggleKey": "ls_augment_rm_metrics_hide_units",
+                  "optionKeys": [
+                    "ls_augment_rm_metrics_hide_units"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java",
+                      "line": 483
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_metrics_custom",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_metrics_hide_units"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_metrics_hide_units",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_metrics_charging_only",
+                  "title": "仅充电时显示电流和功率",
+                  "target": "systemui",
+                  "section": "statusbar",
+                  "toggleKey": "ls_augment_rm_metrics_charging_only",
+                  "optionKeys": [
+                    "ls_augment_rm_metrics_charging_only"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java",
+                      "line": 483
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_metrics_custom",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_metrics_charging_only"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_metrics_charging_only",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_metrics_custom",
+                "ls_augment_rm_metrics_hide_units",
+                "ls_augment_rm_metrics_charging_only",
+                "ls_augment_rm_metric_prefix_cpu",
+                "ls_augment_rm_metric_width_cpu",
+                "ls_augment_rm_metric_prefix_gpu",
+                "ls_augment_rm_metric_width_gpu",
+                "ls_augment_rm_metric_prefix_battery_temp",
+                "ls_augment_rm_metric_width_battery_temp",
+                "ls_augment_rm_metric_prefix_current",
+                "ls_augment_rm_metric_width_current",
+                "ls_augment_rm_metric_prefix_power",
+                "ls_augment_rm_metric_width_power"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "quicksettings",
+          "title": "控制中心",
+          "features": [
+            {
+              "id": "systemui:qs_brightness_percent",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "亮度显示百分比",
+              "toggleKey": "ls_augment_rm_qs_brightness_percent",
+              "optionKeys": [
+                "ls_augment_rm_qs_brightness_percent"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_brightness_percent",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_brightness_percent"
+              ]
+            },
+            {
+              "id": "systemui:qs_volume_percent",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "音量显示百分比",
+              "toggleKey": "ls_augment_rm_qs_volume_percent",
+              "optionKeys": [
+                "ls_augment_rm_qs_volume_percent"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_volume_percent",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_volume_percent"
+              ]
+            },
+            {
+              "id": "systemui:qs_grid",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "自定义控制中心行列",
+              "toggleKey": "ls_augment_rm_qs_grid",
+              "optionKeys": [
+                "ls_augment_rm_qs_grid",
+                "ls_augment_rm_qs_columns",
+                "ls_augment_rm_qs_rows",
+                "ls_augment_rm_qs_land_columns",
+                "ls_augment_rm_qs_land_rows",
+                "ls_augment_rm_qs_edit_columns",
+                "ls_augment_rm_qs_land_edit_columns"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_grid",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "六个行列参数全部受 qs_grid 控制；也由 ControlCenterGridHook 的 active() 检查此开关。编辑页列数与当前普通磁贴列数虽分别保存，仍在同一功能卡。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 235
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_qs_columns",
+                "ls_augment_rm_qs_rows",
+                "ls_augment_rm_qs_land_columns",
+                "ls_augment_rm_qs_land_rows",
+                "ls_augment_rm_qs_edit_columns",
+                "ls_augment_rm_qs_land_edit_columns"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_grid",
+                "ls_augment_rm_qs_columns",
+                "ls_augment_rm_qs_rows",
+                "ls_augment_rm_qs_land_columns",
+                "ls_augment_rm_qs_land_rows",
+                "ls_augment_rm_qs_edit_columns",
+                "ls_augment_rm_qs_land_edit_columns"
+              ]
+            },
+            {
+              "id": "systemui:qs_carrier",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "运营商名称",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_qs_carrier"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_qs_carrier",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 遵循原厂；1 显示和 2 隐藏都属于显式覆盖。无父开关。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 243
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_qs_carrier"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_carrier"
+              ]
+            },
+            {
+              "id": "systemui:qs_search",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "搜索按钮",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_qs_search"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_qs_search",
+                "schemaDefault": "0",
+                "noOpValue": "0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 0",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "0 遵循原厂；1 显示和 2 隐藏都属于显式覆盖。与搜索目标 qs_browser 独立。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 244
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_qs_search"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_search"
+              ]
+            },
+            {
+              "id": "systemui:qs_calendar",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "点击日期打开默认日历",
+              "toggleKey": "ls_augment_rm_qs_calendar",
+              "optionKeys": [
+                "ls_augment_rm_qs_calendar"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_calendar",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_calendar"
+              ]
+            },
+            {
+              "id": "systemui:qs_browser",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "搜索按钮打开指定应用",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_qs_browser"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_qs_browser",
+                "schemaDefault": "",
+                "noOpValue": "",
+                "comparison": "trimmedString",
+                "activeWhen": "notNoOp",
+                "onPredicate": "value.trim() != ''",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "空包名使用原厂点击行为；非空且应用可启动时改变搜索按钮目标。没有安装或无法启动时回退原厂。qs_search 只控制按钮显示，不是此项启用开关；默认显示按钮时本项仍能独立生效。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 252
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_qs_browser"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_browser"
+              ]
+            },
+            {
+              "id": "systemui:qs_clock_seconds",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "下拉面板时钟显示秒",
+              "toggleKey": "ls_augment_rm_qs_clock_seconds",
+              "optionKeys": [
+                "ls_augment_rm_qs_clock_seconds"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_clock_seconds",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_clock_seconds"
+              ]
+            },
+            {
+              "id": "systemui:qs_clock_period",
+              "target": "systemui",
+              "section": "quicksettings",
+              "title": "下拉面板时钟显示中文时段",
+              "toggleKey": "ls_augment_rm_qs_clock_period",
+              "optionKeys": [
+                "ls_augment_rm_qs_clock_period"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_qs_clock_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_qs_clock_period"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "lockscreen",
+          "title": "锁屏增强",
+          "features": [
+            {
+              "id": "systemui:keyguard_statusbar_hide",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "隐藏锁屏顶部状态栏",
+              "toggleKey": "ls_augment_rm_keyguard_statusbar_hide",
+              "optionKeys": [
+                "ls_augment_rm_keyguard_statusbar_hide"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_keyguard_statusbar_hide",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_keyguard_statusbar_hide"
+              ]
+            },
+            {
+              "id": "systemui:lock_clock_seconds",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "锁屏大时钟显示秒",
+              "toggleKey": "ls_augment_rm_lock_clock_seconds",
+              "optionKeys": [
+                "ls_augment_rm_lock_clock_seconds"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_lock_clock_seconds",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_clock_seconds"
+              ]
+            },
+            {
+              "id": "systemui:lock_clock_period",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "锁屏大时钟显示中文时段",
+              "toggleKey": "ls_augment_rm_lock_clock_period",
+              "optionKeys": [
+                "ls_augment_rm_lock_clock_period"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_lock_clock_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_clock_period"
+              ]
+            },
+            {
+              "id": "systemui:lock_clock_font",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "锁屏时钟字体文件",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_lock_clock_font"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_lock_clock_font",
+                "schemaDefault": "",
+                "noOpValue": "",
+                "comparison": "trimmedString",
+                "activeWhen": "notNoOp",
+                "onPredicate": "value.trim() != ''",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "空字体引用恢复原厂字体；所选字体独立于秒数、中文时段和比例。字体尚未加载/无法加载时保持原厂字体，不应将参数挂到 lock_clock_seconds。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/LockscreenClockHook.java",
+                  "line": 145
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_lock_clock_font"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_clock_font"
+              ]
+            },
+            {
+              "id": "systemui:lock_clock_scale",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "锁屏时钟字体比例",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_lock_clock_scale"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_lock_clock_scale",
+                "schemaDefault": "1.0",
+                "noOpValue": "1.0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 1",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "数值 1 是原厂比例；0.5～2 中其他数值已设置。应按数值判断 1 与 1.0 相等，独立于秒数、中文时段与字体文件。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/LockscreenClockHook.java",
+                  "line": 146
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_lock_clock_scale"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_clock_scale"
+              ]
+            },
+            {
+              "id": "systemui:charging_animation",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "自定义充电动画",
+              "toggleKey": "ls_augment_rm_charging_animation",
+              "optionKeys": [
+                "ls_augment_rm_charging_animation",
+                "ls_augment_rm_charging_duration",
+                "ls_augment_rm_charging_delay"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_charging_animation",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "每次亮屏显示充电动画是从属 boolean，必须先打开自定义充电动画。持续时间和延迟直接受总开关控制，不应进一步藏在每次亮屏开关下面。关闭总开关保留三项配置。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                  "line": 266
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_charging_duration",
+                "ls_augment_rm_charging_delay"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_charging_every_wake",
+                  "title": "每次亮屏显示充电动画",
+                  "target": "systemui",
+                  "section": "lockscreen",
+                  "toggleKey": "ls_augment_rm_charging_every_wake",
+                  "optionKeys": [
+                    "ls_augment_rm_charging_every_wake"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicLegacyUiHook.java",
+                      "line": 266
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_charging_animation",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_charging_every_wake"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_charging_every_wake",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_charging_animation",
+                "ls_augment_rm_charging_every_wake",
+                "ls_augment_rm_charging_duration",
+                "ls_augment_rm_charging_delay"
+              ]
+            },
+            {
+              "id": "systemui:lock_charge_details",
+              "target": "systemui",
+              "section": "lockscreen",
+              "title": "锁屏显示充电详情",
+              "toggleKey": "ls_augment_rm_lock_charge_details",
+              "optionKeys": [
+                "ls_augment_rm_lock_charge_details",
+                "ls_augment_rm_lock_charge_text_size",
+                "ls_augment_rm_lock_charge_line_gap",
+                "ls_augment_rm_lock_charge_interval"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_lock_charge_details",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "四个隐藏指标 boolean 与字号、行间距、刷新间隔共七项都从属于本开关。实际详情还要求亮屏、处于锁屏且正在接电；这些运行状态不是额外的配置父开关。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                  "line": 175
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_lock_charge_text_size",
+                "ls_augment_rm_lock_charge_line_gap",
+                "ls_augment_rm_lock_charge_interval"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_lock_charge_hide_temperature",
+                  "title": "充电详情隐藏温度",
+                  "target": "systemui",
+                  "section": "lockscreen",
+                  "toggleKey": "ls_augment_rm_lock_charge_hide_temperature",
+                  "optionKeys": [
+                    "ls_augment_rm_lock_charge_hide_temperature"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                      "line": 175
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_lock_charge_details",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_lock_charge_hide_temperature"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_lock_charge_hide_temperature",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_lock_charge_hide_current",
+                  "title": "充电详情隐藏电流",
+                  "target": "systemui",
+                  "section": "lockscreen",
+                  "toggleKey": "ls_augment_rm_lock_charge_hide_current",
+                  "optionKeys": [
+                    "ls_augment_rm_lock_charge_hide_current"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                      "line": 175
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_lock_charge_details",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_lock_charge_hide_current"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_lock_charge_hide_current",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_lock_charge_hide_voltage",
+                  "title": "充电详情隐藏电压",
+                  "target": "systemui",
+                  "section": "lockscreen",
+                  "toggleKey": "ls_augment_rm_lock_charge_hide_voltage",
+                  "optionKeys": [
+                    "ls_augment_rm_lock_charge_hide_voltage"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                      "line": 175
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_lock_charge_details",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_lock_charge_hide_voltage"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_lock_charge_hide_voltage",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_lock_charge_hide_power",
+                  "title": "充电详情隐藏功率",
+                  "target": "systemui",
+                  "section": "lockscreen",
+                  "toggleKey": "ls_augment_rm_lock_charge_hide_power",
+                  "optionKeys": [
+                    "ls_augment_rm_lock_charge_hide_power"
+                  ],
+                  "source": null,
+                  "evidence": [
+                    {
+                      "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                      "line": 175
+                    }
+                  ],
+                  "parentToggleKey": "ls_augment_rm_lock_charge_details",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_lock_charge_hide_power"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_lock_charge_hide_power",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_charge_details",
+                "ls_augment_rm_lock_charge_hide_temperature",
+                "ls_augment_rm_lock_charge_hide_current",
+                "ls_augment_rm_lock_charge_hide_voltage",
+                "ls_augment_rm_lock_charge_hide_power",
+                "ls_augment_rm_lock_charge_text_size",
+                "ls_augment_rm_lock_charge_line_gap",
+                "ls_augment_rm_lock_charge_interval"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "aod",
+          "title": "息屏显示",
+          "features": [
+            {
+              "id": "systemui:aod_seconds",
+              "target": "systemui",
+              "section": "aod",
+              "title": "息屏时钟显示秒",
+              "toggleKey": "ls_augment_rm_aod_seconds",
+              "optionKeys": [
+                "ls_augment_rm_aod_seconds"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_aod_seconds",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_aod_seconds"
+              ]
+            },
+            {
+              "id": "systemui:aod_period",
+              "target": "systemui",
+              "section": "aod",
+              "title": "息屏时钟显示中文时段",
+              "toggleKey": "ls_augment_rm_aod_period",
+              "optionKeys": [
+                "ls_augment_rm_aod_period",
+                "ls_augment_rm_aod_period_scale"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_aod_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "仅息屏时段字号比例从属于中文时段开关，默认 0.6 是启用时的字号比例，不是关闭值。息屏字体和时钟字体比例独立于秒数及中文时段开关。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/AodClockHook.java",
+                  "line": 128
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_aod_period_scale"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_aod_period",
+                "ls_augment_rm_aod_period_scale"
+              ]
+            },
+            {
+              "id": "systemui:aod_clock_font",
+              "target": "systemui",
+              "section": "aod",
+              "title": "息屏时钟字体",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_aod_clock_font"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_aod_clock_font",
+                "schemaDefault": "",
+                "noOpValue": "",
+                "comparison": "trimmedString",
+                "activeWhen": "notNoOp",
+                "onPredicate": "value.trim() != ''",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "空字体引用恢复原厂字体；字体对已支持的文字/分层时钟单独生效，不要求 aod_seconds 或 aod_period。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/AodClockHook.java",
+                  "line": 114
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_aod_clock_font"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_aod_clock_font"
+              ]
+            },
+            {
+              "id": "systemui:aod_clock_scale",
+              "target": "systemui",
+              "section": "aod",
+              "title": "息屏时钟字体比例",
+              "toggleKey": null,
+              "optionKeys": [
+                "ls_augment_rm_aod_clock_scale"
+              ],
+              "activation": {
+                "kind": "valueOverride",
+                "key": "ls_augment_rm_aod_clock_scale",
+                "schemaDefault": "1.0",
+                "noOpValue": "1.0",
+                "comparison": "number",
+                "activeWhen": "notNoOp",
+                "onPredicate": "Number(value) != 1",
+                "requireUserValue": true,
+                "enableBehavior": "恢复最近一次有效且非 no-op 的用户值；如果没有，先让用户选择/填写并确认，再记为开启。不得虚构 Android boolean 键或自动写入任意非默认值。"
+              },
+              "notes": "数值 1 是原厂比例；应按数值判断 1 与 1.0 相等。与息屏秒数、中文时段和字体独立。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/AodClockHook.java",
+                  "line": 114
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_aod_clock_scale"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_aod_clock_scale"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "volume_panel",
+          "title": "音量面板与按键",
+          "features": [
+            {
+              "id": "systemui:lock_volume",
+              "target": "systemui",
+              "section": "volume_panel",
+              "title": "锁屏时允许调节音量",
+              "toggleKey": "ls_augment_rm_lock_volume",
+              "optionKeys": [
+                "ls_augment_rm_lock_volume"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_lock_volume",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_lock_volume"
+              ]
+            },
+            {
+              "id": "systemui:audio_no_long_press_vibrate",
+              "target": "systemui",
+              "section": "volume_panel",
+              "title": "取消长按音量键振动",
+              "toggleKey": "ls_augment_rm_audio_no_long_press_vibrate",
+              "optionKeys": [
+                "ls_augment_rm_audio_no_long_press_vibrate"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_audio_no_long_press_vibrate",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_audio_no_long_press_vibrate"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "interaction",
+          "title": "手势、单手模式与剪贴板",
+          "features": [
+            {
+              "id": "systemui:clipboard_overlay",
+              "target": "systemui",
+              "section": "interaction",
+              "title": "恢复原生剪贴板浮窗",
+              "toggleKey": "ls_augment_rm_clipboard_overlay",
+              "optionKeys": [
+                "ls_augment_rm_clipboard_overlay"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_clipboard_overlay",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_clipboard_overlay"
+              ]
+            },
+            {
+              "id": "systemui:onehand_adjust",
+              "target": "systemui",
+              "section": "interaction",
+              "title": "调整单手模式位置",
+              "toggleKey": "ls_augment_rm_onehand_adjust",
+              "optionKeys": [
+                "ls_augment_rm_onehand_adjust",
+                "ls_augment_rm_onehand_offset"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_onehand_adjust",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "notes": "单手模式上移距离受本开关控制。参数 0 是原位置，但不能用参数是否为 0 代替已存在的总开关状态。",
+              "evidence": [
+                {
+                  "file": "android/app/src/main/java/ls/augment/com/hook/RedMagicAdvancedUiHook.java",
+                  "line": 71
+                }
+              ],
+              "parameterKeys": [
+                "ls_augment_rm_onehand_offset"
+              ],
+              "hasConfiguration": true,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_onehand_adjust",
+                "ls_augment_rm_onehand_offset"
+              ]
+            },
+            {
+              "id": "systemui:assist_gesture",
+              "target": "systemui",
+              "section": "interaction",
+              "title": "手势使用默认数字助理",
+              "toggleKey": "ls_augment_rm_assist_gesture",
+              "optionKeys": [
+                "ls_augment_rm_assist_gesture"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_assist_gesture",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_assist_gesture"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "usb",
+          "title": "USB 连接",
+          "features": [
+            {
+              "id": "systemui:usb_auto_authorize",
+              "target": "systemui",
+              "section": "usb",
+              "title": "自动允许 USB 调试授权",
+              "toggleKey": "ls_augment_rm_usb_auto_authorize",
+              "optionKeys": [
+                "ls_augment_rm_usb_auto_authorize"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_usb_auto_authorize",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "parameterKeys": [],
+              "hasConfiguration": false,
+              "preserveParametersOnDisable": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_usb_auto_authorize"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "系统设置",
+      "sections": [
+        {
+          "id": "display_time",
+          "title": "显示与时间",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_settings_long_timeout",
+              "optionKeys": [
+                "ls_augment_rm_settings_long_timeout"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_settings_long_timeout",
+              "title": "扩展自动息屏时间选项",
+              "target": "settings",
+              "section": "display_time",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_settings_long_timeout",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_settings_long_timeout"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_settings_hide_battery_percent",
+              "optionKeys": [
+                "ls_augment_rm_settings_hide_battery_percent"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_settings_hide_battery_percent",
+              "title": "隐藏系统电量百分比设置项",
+              "target": "settings",
+              "section": "display_time",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_settings_hide_battery_percent",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_settings_hide_battery_percent"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_settings_time_period",
+              "optionKeys": [
+                "ls_augment_rm_settings_time_period"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_settings_time_period",
+              "title": "系统时间选择器显示中文时段",
+              "target": "settings",
+              "section": "display_time",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_settings_time_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_settings_time_period"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "usb",
+          "title": "USB 连接",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_usb_install_no_account",
+              "optionKeys": [
+                "ls_augment_rm_usb_install_no_account"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_usb_install_no_account",
+              "title": "USB 安装免账号验证",
+              "target": "settings",
+              "section": "usb",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_usb_install_no_account",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_usb_install_no_account"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_usb_mode_enabled",
+              "optionKeys": [
+                "ls_augment_rm_usb_mode_enabled",
+                "ls_augment_rm_usb_mode"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:68",
+              "id": "ls_augment_rm_usb_mode_enabled",
+              "title": "指定 USB 默认用途",
+              "target": "settings",
+              "section": "usb",
+              "parameterKeys": [
+                "ls_augment_rm_usb_mode"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_usb_mode_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_usb_mode_enabled",
+                "ls_augment_rm_usb_mode"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_usb_hide_dialog",
+              "optionKeys": [
+                "ls_augment_rm_usb_hide_dialog"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:83",
+              "notes": [
+                "通知入口隐藏是父开关的附加行为；父开关关闭时子开关不生效。"
+              ],
+              "id": "ls_augment_rm_usb_hide_dialog",
+              "title": "连接 USB 时不弹出用途选择",
+              "target": "settings",
+              "section": "usb",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_usb_hide_dialog",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_usb_hide_notification_dialog",
+                  "title": "同时隐藏通知中的 USB 用途选择",
+                  "target": "settings",
+                  "section": "usb",
+                  "toggleKey": "ls_augment_rm_usb_hide_notification_dialog",
+                  "optionKeys": [
+                    "ls_augment_rm_usb_hide_notification_dialog"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:83",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_usb_hide_dialog",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_usb_hide_notification_dialog"
+                  ],
+                  "hasConfiguration": false,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_usb_hide_notification_dialog",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_usb_hide_dialog",
+                "ls_augment_rm_usb_hide_notification_dialog"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "launcher",
+      "title": "系统桌面",
+      "sections": [
+        {
+          "id": "launcher",
+          "title": "桌面页面",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_launcher_page_reorder",
+              "optionKeys": [
+                "ls_augment_rm_launcher_page_reorder"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_launcher_page_reorder",
+              "title": "整页移动桌面",
+              "target": "launcher",
+              "section": "launcher",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_launcher_page_reorder",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_launcher_page_reorder"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_launcher_keep_empty",
+              "optionKeys": [
+                "ls_augment_rm_launcher_keep_empty"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_launcher_keep_empty",
+              "title": "允许空白桌面",
+              "target": "launcher",
+              "section": "launcher",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_launcher_keep_empty",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_launcher_keep_empty"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "desktop_clock",
+          "title": "桌面时钟",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_desktop_clock_enabled",
+              "optionKeys": [
+                "ls_augment_rm_desktop_clock_enabled",
+                "ls_augment_rm_desktop_clock_pattern"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:246",
+              "notes": [
+                "desktop_clock_period 由独立的 period 分支读取，不是此开关的从属项。"
+              ],
+              "id": "ls_augment_rm_desktop_clock_enabled",
+              "title": "桌面时钟增强",
+              "target": "launcher",
+              "section": "desktop_clock",
+              "parameterKeys": [
+                "ls_augment_rm_desktop_clock_pattern"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_desktop_clock_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_desktop_clock_enabled",
+                "ls_augment_rm_desktop_clock_pattern"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_desktop_clock_period",
+              "optionKeys": [
+                "ls_augment_rm_desktop_clock_period"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:259",
+              "id": "ls_augment_rm_desktop_clock_period",
+              "title": "桌面时钟显示中文时段",
+              "target": "launcher",
+              "section": "desktop_clock",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_desktop_clock_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "notes": [
+                "独立于 desktop_clock_enabled；允许只启用中文时段，不改变时钟格式。"
+              ],
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_desktop_clock_period"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "recents",
+          "title": "最近任务内存信息",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_recents_memory_custom",
+              "optionKeys": [
+                "ls_augment_rm_recents_memory_custom",
+                "ls_augment_rm_recents_memory_style",
+                "ls_augment_rm_recents_memory_content",
+                "ls_augment_rm_recents_memory_color_mode",
+                "ls_augment_rm_recents_memory_light_color",
+                "ls_augment_rm_recents_memory_dark_color",
+                "ls_augment_rm_recents_memory_portrait_size",
+                "ls_augment_rm_recents_memory_landscape_size",
+                "ls_augment_rm_recents_memory_detailed_portrait_size",
+                "ls_augment_rm_recents_memory_detailed_landscape_size",
+                "ls_augment_rm_recents_memory_portrait_top",
+                "ls_augment_rm_recents_memory_landscape_top",
+                "ls_augment_rm_recents_memory_portrait_height",
+                "ls_augment_rm_recents_memory_landscape_height",
+                "ls_augment_rm_recents_memory_detailed_portrait_height",
+                "ls_augment_rm_recents_memory_detailed_landscape_height"
+              ],
+              "source": "redmagic-launcher/helper-src/main/com/android/launcher3/ls/LsRecentsMemory.java:63",
+              "notes": [
+                "所有参数都由 custom 总开关控制，另外需要桌面原生内存显示开关。",
+                "简洁和详细样式的字号、高度独立保存；切换样式不可覆盖另一组。"
+              ],
+              "effectiveWhen": {
+                "ls_augment_rm_recents_memory_light_color": {
+                  "key": "ls_augment_rm_recents_memory_color_mode",
+                  "equals": "2"
+                },
+                "ls_augment_rm_recents_memory_dark_color": {
+                  "key": "ls_augment_rm_recents_memory_color_mode",
+                  "equals": "2"
+                },
+                "ls_augment_rm_recents_memory_portrait_size": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "0"
+                },
+                "ls_augment_rm_recents_memory_landscape_size": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "0"
+                },
+                "ls_augment_rm_recents_memory_portrait_height": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "0"
+                },
+                "ls_augment_rm_recents_memory_landscape_height": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "0"
+                },
+                "ls_augment_rm_recents_memory_detailed_portrait_size": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "1"
+                },
+                "ls_augment_rm_recents_memory_detailed_landscape_size": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "1"
+                },
+                "ls_augment_rm_recents_memory_detailed_portrait_height": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "1"
+                },
+                "ls_augment_rm_recents_memory_detailed_landscape_height": {
+                  "key": "ls_augment_rm_recents_memory_style",
+                  "equals": "1"
+                }
+              },
+              "id": "ls_augment_rm_recents_memory_custom",
+              "title": "自定义最近任务内存显示",
+              "target": "launcher",
+              "section": "recents",
+              "parameterKeys": [
+                "ls_augment_rm_recents_memory_style",
+                "ls_augment_rm_recents_memory_content",
+                "ls_augment_rm_recents_memory_color_mode",
+                "ls_augment_rm_recents_memory_light_color",
+                "ls_augment_rm_recents_memory_dark_color",
+                "ls_augment_rm_recents_memory_portrait_size",
+                "ls_augment_rm_recents_memory_landscape_size",
+                "ls_augment_rm_recents_memory_detailed_portrait_size",
+                "ls_augment_rm_recents_memory_detailed_landscape_size",
+                "ls_augment_rm_recents_memory_portrait_top",
+                "ls_augment_rm_recents_memory_landscape_top",
+                "ls_augment_rm_recents_memory_portrait_height",
+                "ls_augment_rm_recents_memory_landscape_height",
+                "ls_augment_rm_recents_memory_detailed_portrait_height",
+                "ls_augment_rm_recents_memory_detailed_landscape_height"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_recents_memory_custom",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_recents_memory_custom",
+                "ls_augment_rm_recents_memory_style",
+                "ls_augment_rm_recents_memory_content",
+                "ls_augment_rm_recents_memory_color_mode",
+                "ls_augment_rm_recents_memory_light_color",
+                "ls_augment_rm_recents_memory_dark_color",
+                "ls_augment_rm_recents_memory_portrait_size",
+                "ls_augment_rm_recents_memory_landscape_size",
+                "ls_augment_rm_recents_memory_detailed_portrait_size",
+                "ls_augment_rm_recents_memory_detailed_landscape_size",
+                "ls_augment_rm_recents_memory_portrait_top",
+                "ls_augment_rm_recents_memory_landscape_top",
+                "ls_augment_rm_recents_memory_portrait_height",
+                "ls_augment_rm_recents_memory_landscape_height",
+                "ls_augment_rm_recents_memory_detailed_portrait_height",
+                "ls_augment_rm_recents_memory_detailed_landscape_height"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "game",
+      "title": "游戏空间与游戏助手",
+      "sections": [
+        {
+          "id": "shoulder",
+          "title": "肩键方案",
+          "features": [
+            {
+              "toggleKey": "ls_augment_tgk_quick_switch",
+              "optionKeys": [
+                "ls_augment_tgk_quick_switch"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_tgk_quick_switch",
+              "title": "肩键方案快捷切换",
+              "target": "game",
+              "section": "shoulder",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_tgk_quick_switch",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_tgk_quick_switch"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "combo",
+          "title": "连招录制与循环",
+          "features": [
+            {
+              "toggleKey": "ls_augment_combo_extended_limits",
+              "optionKeys": [
+                "ls_augment_combo_extended_limits"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_combo_extended_limits",
+              "title": "扩展连招循环设置",
+              "target": "game",
+              "section": "combo",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_combo_extended_limits",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_combo_extended_limits"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "performance",
+          "title": "游戏面板与性能模式",
+          "features": [
+            {
+              "toggleKey": "ls_augment_game_hide_diablo_dialog",
+              "optionKeys": [
+                "ls_augment_game_hide_diablo_dialog"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_hide_diablo_dialog",
+              "title": "隐藏破坏神模式提示",
+              "target": "game",
+              "section": "performance",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_hide_diablo_dialog",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_hide_diablo_dialog"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_game_prevent_panel_collapse",
+              "optionKeys": [
+                "ls_augment_game_prevent_panel_collapse"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_prevent_panel_collapse",
+              "title": "切换模式时保持游戏面板",
+              "target": "game",
+              "section": "performance",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_prevent_panel_collapse",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_prevent_panel_collapse"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_game_remember_active",
+              "optionKeys": [
+                "ls_augment_game_remember_active"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_remember_active",
+              "title": "记住活跃模式",
+              "target": "game",
+              "section": "performance",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_remember_active",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_remember_active"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_game_all_ratios",
+              "optionKeys": [
+                "ls_augment_game_all_ratios"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_all_ratios",
+              "title": "开放全部游戏画面比例",
+              "target": "game",
+              "section": "performance",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_all_ratios",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_all_ratios"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "plugins",
+          "title": "游戏插件",
+          "features": [
+            {
+              "toggleKey": "ls_augment_game_plugins_unlocked",
+              "optionKeys": [
+                "ls_augment_game_plugins_unlocked"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_plugins_unlocked",
+              "title": "开放游戏插件资格",
+              "target": "game",
+              "section": "plugins",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_plugins_unlocked",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_plugins_unlocked"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "game_capture",
+          "title": "录制、高光与红魔时刻",
+          "features": [
+            {
+              "toggleKey": "ls_augment_game_free_record",
+              "optionKeys": [
+                "ls_augment_game_free_record"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_free_record",
+              "title": "随心录制模式解限",
+              "target": "game",
+              "section": "game_capture",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_free_record",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_free_record"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_game_highlights_unlocked",
+              "optionKeys": [
+                "ls_augment_game_highlights_unlocked"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_highlights_unlocked",
+              "title": "开放游戏高光",
+              "target": "game",
+              "section": "game_capture",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_highlights_unlocked",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_highlights_unlocked"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_game_redmagic_time_unlocked",
+              "optionKeys": [
+                "ls_augment_game_redmagic_time_unlocked"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_game_redmagic_time_unlocked",
+              "title": "红魔时刻模式解限",
+              "target": "game",
+              "section": "game_capture",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_game_redmagic_time_unlocked",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_game_redmagic_time_unlocked"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ai_trigger",
+      "title": "AI 触发器",
+      "sections": []
+    },
+    {
+      "id": "fan",
+      "title": "散热风扇",
+      "sections": []
+    },
+    {
+      "id": "theme",
+      "title": "主题与个性化",
+      "sections": [
+        {
+          "id": "theme",
+          "title": "主题下载",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_theme_no_login",
+              "optionKeys": [
+                "ls_augment_rm_theme_no_login"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_theme_no_login",
+              "title": "主题下载免登录",
+              "target": "theme",
+              "section": "theme",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_theme_no_login",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_theme_no_login"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "doubleapp",
+      "title": "应用双开",
+      "sections": []
+    },
+    {
+      "id": "store",
+      "title": "应用中心",
+      "sections": []
+    },
+    {
+      "id": "installer",
+      "title": "应用安装器",
+      "sections": [
+        {
+          "id": "installer",
+          "title": "应用安装规则",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_installer_skip_scan",
+              "optionKeys": [
+                "ls_augment_rm_installer_skip_scan"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_installer_skip_scan",
+              "title": "跳过安装包扫描",
+              "target": "installer",
+              "section": "installer",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_installer_skip_scan",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_installer_skip_scan"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_installer_hide_purify",
+              "optionKeys": [
+                "ls_augment_rm_installer_hide_purify"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_installer_hide_purify",
+              "title": "隐藏纯净模式选项",
+              "target": "installer",
+              "section": "installer",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_installer_hide_purify",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_installer_hide_purify"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_installer_hide_store",
+              "optionKeys": [
+                "ls_augment_rm_installer_hide_store"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_installer_hide_store",
+              "title": "隐藏应用商店推荐",
+              "target": "installer",
+              "section": "installer",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_installer_hide_store",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_installer_hide_store"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_installer_cts",
+              "optionKeys": [
+                "ls_augment_rm_installer_cts"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_installer_cts",
+              "title": "使用简洁安装界面",
+              "target": "installer",
+              "section": "installer",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_installer_cts",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_installer_cts"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "update",
+      "title": "系统更新",
+      "sections": [
+        {
+          "id": "update",
+          "title": "系统更新",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_ota_block",
+              "optionKeys": [
+                "ls_augment_rm_ota_block"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_ota_block",
+              "title": "阻止系统更新安装",
+              "target": "update",
+              "section": "update",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_ota_block",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_ota_block"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_ota_capture_url",
+              "optionKeys": [
+                "ls_augment_rm_ota_capture_url"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_ota_capture_url",
+              "title": "提取系统更新链接",
+              "target": "update",
+              "section": "update",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_ota_capture_url",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_ota_capture_url"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_ota_spoof_enabled",
+              "optionKeys": [
+                "ls_augment_rm_ota_spoof_enabled"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+              "effectiveWhen": {
+                "ls_augment_rm_ota_model": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_model_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_model",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_imei": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_imei_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_imei",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_locale": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_locale_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_locale",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_signature": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_signature_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_signature",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_fingerprint": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_fingerprint_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_fingerprint",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_display": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_display_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_display",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_internal": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_internal_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_internal",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_variant": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_variant_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_variant",
+                      "notEquals": ""
+                    }
+                  ]
+                },
+                "ls_augment_rm_ota_manufacturer": {
+                  "all": [
+                    {
+                      "key": "ls_augment_rm_ota_spoof_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_manufacturer_enabled",
+                      "equals": "1"
+                    },
+                    {
+                      "key": "ls_augment_rm_ota_manufacturer",
+                      "notEquals": ""
+                    }
+                  ]
+                }
+              },
+              "notes": [
+                "同卡两级开关：总开关 → 每个字段开关 → 字段输入。关闭任何开关均不清空字段。",
+                "空白字段保持原值；提取更新链接、阻止安装与此组互相独立。"
+              ],
+              "id": "ls_augment_rm_ota_spoof_enabled",
+              "title": "自定义更新应用读取的设备信息",
+              "target": "update",
+              "section": "update",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_ota_spoof_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [
+                {
+                  "id": "ls_augment_rm_ota_model_enabled",
+                  "title": "修改型号",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_model_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_model_enabled",
+                    "ls_augment_rm_ota_model"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_model"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_model_enabled",
+                    "ls_augment_rm_ota_model"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_model_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_imei_enabled",
+                  "title": "修改设备标识",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_imei_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_imei_enabled",
+                    "ls_augment_rm_ota_imei"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_imei"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_imei_enabled",
+                    "ls_augment_rm_ota_imei"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_imei_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_locale_enabled",
+                  "title": "修改地区",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_locale_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_locale_enabled",
+                    "ls_augment_rm_ota_locale"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_locale"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_locale_enabled",
+                    "ls_augment_rm_ota_locale"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_locale_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_signature_enabled",
+                  "title": "修改签名版本",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_signature_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_signature_enabled",
+                    "ls_augment_rm_ota_signature"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_signature"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_signature_enabled",
+                    "ls_augment_rm_ota_signature"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_signature_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_fingerprint_enabled",
+                  "title": "修改系统指纹",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_fingerprint_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_fingerprint_enabled",
+                    "ls_augment_rm_ota_fingerprint"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_fingerprint"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_fingerprint_enabled",
+                    "ls_augment_rm_ota_fingerprint"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_fingerprint_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_display_enabled",
+                  "title": "修改显示版本",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_display_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_display_enabled",
+                    "ls_augment_rm_ota_display"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_display"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_display_enabled",
+                    "ls_augment_rm_ota_display"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_display_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_internal_enabled",
+                  "title": "修改内部版本",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_internal_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_internal_enabled",
+                    "ls_augment_rm_ota_internal"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_internal"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_internal_enabled",
+                    "ls_augment_rm_ota_internal"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_internal_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_variant_enabled",
+                  "title": "修改版本变体",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_variant_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_variant_enabled",
+                    "ls_augment_rm_ota_variant"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_variant"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_variant_enabled",
+                    "ls_augment_rm_ota_variant"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_variant_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                },
+                {
+                  "id": "ls_augment_rm_ota_manufacturer_enabled",
+                  "title": "修改制造商",
+                  "target": "update",
+                  "section": "update",
+                  "toggleKey": "ls_augment_rm_ota_manufacturer_enabled",
+                  "optionKeys": [
+                    "ls_augment_rm_ota_manufacturer_enabled",
+                    "ls_augment_rm_ota_manufacturer"
+                  ],
+                  "source": "android/app/src/main/java/ls/augment/com/hook/OemAppExtrasHook.java:76",
+                  "evidence": [],
+                  "parentToggleKey": "ls_augment_rm_ota_spoof_enabled",
+                  "preserveParametersOnDisable": true,
+                  "parameterKeys": [
+                    "ls_augment_rm_ota_manufacturer"
+                  ],
+                  "features": [],
+                  "allOptionKeys": [
+                    "ls_augment_rm_ota_manufacturer_enabled",
+                    "ls_augment_rm_ota_manufacturer"
+                  ],
+                  "hasConfiguration": true,
+                  "activation": {
+                    "kind": "boolean",
+                    "key": "ls_augment_rm_ota_manufacturer_enabled",
+                    "schemaDefault": "0",
+                    "onValue": "1",
+                    "noOpValue": "0",
+                    "comparison": "boolean",
+                    "onPredicate": "value == '1' || value == 'true'"
+                  }
+                }
+              ],
+              "allOptionKeys": [
+                "ls_augment_rm_ota_spoof_enabled",
+                "ls_augment_rm_ota_model_enabled",
+                "ls_augment_rm_ota_model",
+                "ls_augment_rm_ota_imei_enabled",
+                "ls_augment_rm_ota_imei",
+                "ls_augment_rm_ota_locale_enabled",
+                "ls_augment_rm_ota_locale",
+                "ls_augment_rm_ota_signature_enabled",
+                "ls_augment_rm_ota_signature",
+                "ls_augment_rm_ota_fingerprint_enabled",
+                "ls_augment_rm_ota_fingerprint",
+                "ls_augment_rm_ota_display_enabled",
+                "ls_augment_rm_ota_display",
+                "ls_augment_rm_ota_internal_enabled",
+                "ls_augment_rm_ota_internal",
+                "ls_augment_rm_ota_variant_enabled",
+                "ls_augment_rm_ota_variant",
+                "ls_augment_rm_ota_manufacturer_enabled",
+                "ls_augment_rm_ota_manufacturer"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "health",
+      "title": "小米运动健康",
+      "sections": []
+    },
+    {
+      "id": "weather",
+      "title": "天气",
+      "sections": [
+        {
+          "id": "weather",
+          "title": "天气时间",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_weather_time_period",
+              "optionKeys": [
+                "ls_augment_rm_weather_time_period"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_weather_time_period",
+              "title": "天气显示中文时段",
+              "target": "weather",
+              "section": "weather",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_weather_time_period",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_weather_time_period"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nfc",
+      "title": "NFC 服务",
+      "sections": [
+        {
+          "id": "nfc",
+          "title": "NFC 识别",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_nfc_mute",
+              "optionKeys": [
+                "ls_augment_rm_nfc_mute"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_nfc_mute",
+              "title": "NFC 识别静音",
+              "target": "nfc",
+              "section": "nfc",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_nfc_mute",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_nfc_mute"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_nfc_screen_off",
+              "optionKeys": [
+                "ls_augment_rm_nfc_screen_off"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_nfc_screen_off",
+              "title": "允许 NFC 息屏识别",
+              "target": "nfc",
+              "section": "nfc",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_nfc_screen_off",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_nfc_screen_off"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "title": "文件管理",
+      "sections": [
+        {
+          "id": "mtp",
+          "title": "电脑文件传输",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_mtp_hide_category",
+              "optionKeys": [
+                "ls_augment_rm_mtp_hide_category"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_mtp_hide_category",
+              "title": "隐藏 MTP 分类浏览",
+              "target": "files",
+              "section": "mtp",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_mtp_hide_category",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_mtp_hide_category"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_mtp_name_enabled",
+              "optionKeys": [
+                "ls_augment_rm_mtp_name_enabled",
+                "ls_augment_rm_mtp_name"
+              ],
+              "source": "android/app/src/main/java/ls/augment/com/hook/ConnectionExtrasHook.java:130",
+              "id": "ls_augment_rm_mtp_name_enabled",
+              "title": "自定义 MTP 存储名称",
+              "target": "files",
+              "section": "mtp",
+              "parameterKeys": [
+                "ls_augment_rm_mtp_name"
+              ],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_mtp_name_enabled",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": true,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_mtp_name_enabled",
+                "ls_augment_rm_mtp_name"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "permissions",
+      "title": "权限管理",
+      "sections": [
+        {
+          "id": "default_apps",
+          "title": "默认应用",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_third_party_launcher",
+              "optionKeys": [
+                "ls_augment_rm_third_party_launcher"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_third_party_launcher",
+              "title": "允许设置第三方默认桌面",
+              "target": "permissions",
+              "section": "default_apps",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_third_party_launcher",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_third_party_launcher"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "screenshot",
+      "title": "截图与录屏",
+      "sections": [
+        {
+          "id": "capture",
+          "title": "截图与录屏画面",
+          "features": [
+            {
+              "toggleKey": "ls_augment_rm_screenshot_hide_status_bar",
+              "optionKeys": [
+                "ls_augment_rm_screenshot_hide_status_bar"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_screenshot_hide_status_bar",
+              "title": "截图隐藏状态栏",
+              "target": "screenshot",
+              "section": "capture",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_screenshot_hide_status_bar",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_screenshot_hide_status_bar"
+              ]
+            },
+            {
+              "toggleKey": "ls_augment_rm_record_hide_status_bar",
+              "optionKeys": [
+                "ls_augment_rm_record_hide_status_bar"
+              ],
+              "source": "HookAppCatalog / EnhancementCatalog: independent BOOLEAN",
+              "id": "ls_augment_rm_record_hide_status_bar",
+              "title": "录屏隐藏状态栏",
+              "target": "screenshot",
+              "section": "capture",
+              "parameterKeys": [],
+              "activation": {
+                "kind": "boolean",
+                "key": "ls_augment_rm_record_hide_status_bar",
+                "schemaDefault": "0",
+                "onValue": "1",
+                "noOpValue": "0",
+                "comparison": "boolean",
+                "onPredicate": "value == '1' || value == 'true'"
+              },
+              "preserveParametersOnDisable": true,
+              "hasConfiguration": false,
+              "features": [],
+              "allOptionKeys": [
+                "ls_augment_rm_record_hide_status_bar"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "catalogOptionCount": 199,
+    "assignedOptionCount": 199,
+    "topLevelFeatureCount": 112,
+    "recursiveFeatureCount": 130,
+    "missingKeys": [],
+    "duplicateKeys": {},
+    "unknownKeys": [],
+    "independentParameterFeatures": 14
+  }
+}

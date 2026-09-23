@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:id="@id/dynamic_icon_root" android:layout_width="126.0dp" android:layout_height="34.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <com.zte.mifavor.widget.SolidCircleView android:id="@id/dynamic_icon_bg_color" android:layout_width="126.0dp" android:layout_height="34.0dp" app:circleColor="@color/mfv_common_sel_on" app:circleRadius="17.0dp" app:shapeMode="1" />
-    <TextView android:textSize="15.0sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/dynamic_text" android:layout_width="match_parent" android:layout_height="match_parent" android:text="接收" android:layout_marginHorizontal="6.0dp" />
-</FrameLayout>

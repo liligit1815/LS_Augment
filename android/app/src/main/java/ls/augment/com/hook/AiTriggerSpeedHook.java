@@ -72,11 +72,6 @@ final class AiTriggerSpeedHook {
     private static final int TEMPLATE_SEARCH_MARGIN_Y = 80;
     /** Template matching below 80 ms is intentionally unsupported. */
     private static final long MIN_TEMPLATE_SCAN_MS = 80L;
-    /** Preserve event ordering and the schema's 10 ms click floor. */
-    private static final long MIN_TOUCH_DOWN_MS = 10L;
-    /** Small neighbourhood around the configured scene rectangle for the hot path. */
-    private static final int FAST_VALIDATE_RADIUS = 4;
-    private static final int FAST_VALIDATE_ANCHORS = 32;
     /**
      * GameLab hard-codes 0.99 for the source-template pass.  The source
      * image is captured by the browser at a slightly different scale/colour
@@ -689,16 +684,13 @@ final class AiTriggerSpeedHook {
                 // Keep the transaction ordered while shortening its internal
                 // timings to the configured极速 click delay.
                 if (what == 102 && delay == 50L) {
-                    target = Math.max(MIN_TOUCH_DOWN_MS,
-                            Math.min((long) config.clickDelayMs, delay));
+                    target = AiTriggerTimingPolicy.touchDelay(what, config.clickDelayMs);
                     reason = "touch_down";
                 } else if (what == 103 && delay == 450L) {
-                    target = Math.max(config.clickDelayMs + 25L,
-                            config.clickDelayMs * 2L);
+                    target = AiTriggerTimingPolicy.touchDelay(what, config.clickDelayMs);
                     reason = "touch_up";
                 } else if (what == 104 && delay == 500L) {
-                    target = Math.max(config.clickDelayMs + 50L,
-                            config.clickDelayMs * 3L);
+                    target = AiTriggerTimingPolicy.touchDelay(what, config.clickDelayMs);
                     reason = "touch_disable";
                 }
             } else if (POLICY_INTERVAL_HANDLER.equals(handler)
@@ -716,7 +708,7 @@ final class AiTriggerSpeedHook {
                 // PluginsController has another independent 2-second
                 // completion gate for autoClick.  Both gates must be
                 // shortened for the configured极速 cadence to take effect.
-                target = config.cooldownMs;
+                target = AiTriggerTimingPolicy.actionCooldown(delay, config.cooldownMs, config.clickDelayMs);
                 reason = "action_cooldown";
             }
         } else if (GAME_ASSIST_PACKAGE.equals(packageName)
@@ -1100,103 +1092,37 @@ final class AiTriggerSpeedHook {
         long started = SystemClock.uptimeMillis();
         try {
             if (frame == null || frame.crop == null || template == null) return false;
-            MatPixels screen = MatPixels.read(frame.crop);
-            TemplateSnapshot snapshot = templateSnapshot(template);
-            MatPixels sample = snapshot == null ? null : snapshot.pixels;
+            int step = AiTemplatePixels.samplingStep(
+                    matDimension(frame.crop, "rows"), matDimension(frame.crop, "cols"),
+                    matDimension(template, "rows"), matDimension(template, "cols"));
+            if (step <= 0) return false;
+            AiTemplatePixels screen = AiTemplatePixels.read(frame.crop, step);
+            TemplateSnapshot snapshot = templateSnapshot(template, step);
+            AiTemplatePixels sample = snapshot == null ? null : snapshot.pixels;
             List<Integer> anchors = snapshot == null ? null : snapshot.anchors;
-            if (screen == null || sample == null || anchors == null
-                    || screen.channels <= 0
-                    || sample.channels <= 0 || screen.rows < sample.rows
-                    || screen.cols < sample.cols) {
-                return false;
-            }
-            if (anchors.size() < 8) return false;
-            double[] screenBackground = screen.borderAverage();
-            int maxX = screen.cols - sample.cols;
-            int maxY = screen.rows - sample.rows;
-
-            // The scene rectangle is known.  Check only a small neighbourhood
-            // around that position first; the original vendor match has already
-            // confirmed the expanded crop, so this preserves the stale/background
-            // guard without rescanning every possible template position.
-            int expectedLeft = Math.max(0, Math.min(maxX, frame.expectedLeft));
-            int expectedTop = Math.max(0, Math.min(maxY, frame.expectedTop));
-            List<Integer> fastAnchors = anchors.subList(0,
-                    Math.min(FAST_VALIDATE_ANCHORS, anchors.size()));
-            int fastRequired = Math.max(8, (fastAnchors.size() * 7 + 9) / 10);
-            int fastBest = 0;
-            int fastBestX = expectedLeft;
-            int fastBestY = expectedTop;
-            for (int y = Math.max(0, expectedTop - FAST_VALIDATE_RADIUS);
-                    y <= Math.min(maxY, expectedTop + FAST_VALIDATE_RADIUS); y++) {
-                for (int x = Math.max(0, expectedLeft - FAST_VALIDATE_RADIUS);
-                        x <= Math.min(maxX, expectedLeft + FAST_VALIDATE_RADIUS); x++) {
-                    int score = matchingAnchors(screen, sample, fastAnchors,
-                            x, y, screenBackground);
-                    if (score > fastBest) {
-                        fastBest = score;
-                        fastBestX = x;
-                        fastBestY = y;
-                    }
-                }
-            }
-            if (fastBest >= fastRequired
-                    && templateCorrelation(screen, sample, fastAnchors,
-                            fastBestX, fastBestY) >= 0.78) {
-                traceStage("RECOGNITION_VALIDATE_FAST_PASS durationMs="
-                        + (SystemClock.uptimeMillis() - started));
-                return true;
-            }
-
-            // A small coordinate drift or an already-expanded scene can move the
-            // template outside the fast window. Keep the original exhaustive gate
-            // as a conservative fallback for those cases.
-            int best = 0;
-            int bestX = 0;
-            int bestY = 0;
-            for (int y = 0; y <= maxY; y += 2) {
-                for (int x = 0; x <= maxX; x += 2) {
-                    int score = matchingAnchors(screen, sample, anchors,
-                            x, y, screenBackground);
-                    if (score > best) {
-                        best = score;
-                        bestX = x;
-                        bestY = y;
-                    }
-                }
-            }
-            for (int y = Math.max(0, bestY - 2); y <= Math.min(maxY, bestY + 2); y++) {
-                for (int x = Math.max(0, bestX - 2); x <= Math.min(maxX, bestX + 2); x++) {
-                    int score = matchingAnchors(screen, sample, anchors,
-                            x, y, screenBackground);
-                    if (score > best) {
-                        best = score;
-                        bestX = x;
-                        bestY = y;
-                    }
-                }
-            }
-            int required = Math.max(8, (anchors.size() * 7 + 9) / 10);
-            boolean matched = best >= required
-                    && templateCorrelation(screen, sample, anchors, bestX, bestY) >= 0.78;
-            traceStage("RECOGNITION_VALIDATE_FALLBACK result=" + matched
-                    + " durationMs=" + (SystemClock.uptimeMillis() - started));
-            return matched;
+            int result = AiTemplateMatcher.match(screen, sample, anchors,
+                    Math.round((float) frame.expectedLeft / step),
+                    Math.round((float) frame.expectedTop / step));
+            traceStage((result == AiTemplateMatcher.FAST ? "RECOGNITION_VALIDATE_FAST_PASS"
+                    : "RECOGNITION_VALIDATE_FALLBACK result=" + (result != AiTemplateMatcher.NONE))
+                    + " durationMs=" + (SystemClock.uptimeMillis() - started)
+                    + " sampleStep=" + step);
+            return result != AiTemplateMatcher.NONE;
         } catch (Throwable ignored) {
             // A validator failure must never turn into an unintended click.
             return false;
         }
     }
 
-    private static TemplateSnapshot templateSnapshot(Object template) throws Throwable {
+    private static TemplateSnapshot templateSnapshot(Object template, int step) throws Throwable {
         if (template == null) return null;
         synchronized (TEMPLATE_CACHE) {
             TemplateSnapshot cached = TEMPLATE_CACHE.get(template);
-            if (cached != null) return cached;
-            MatPixels sample = MatPixels.read(template);
+            if (cached != null && cached.sampleStep == step) return cached;
+            AiTemplatePixels sample = AiTemplatePixels.read(template, step);
             if (sample == null) return null;
             TemplateSnapshot snapshot = new TemplateSnapshot(sample,
-                    sample.foregroundAnchors(96));
+                    sample.foregroundAnchors(96), step);
             TEMPLATE_CACHE.put(template, snapshot);
             return snapshot;
         }
@@ -1205,7 +1131,7 @@ final class AiTriggerSpeedHook {
     private static long frameDigest(Object frame) {
         if (frame == null) return Long.MIN_VALUE;
         try {
-            MatPixels pixels = MatPixels.read(frame);
+            AiTemplatePixels pixels = AiTemplatePixels.read(frame);
             if (pixels == null) return Long.MIN_VALUE;
             long value = 1469598103934665603L;
             value = (value ^ pixels.rows) * 1099511628211L;
@@ -1237,65 +1163,6 @@ final class AiTriggerSpeedHook {
             FRAME_CACHE.put(owner, new FrameRecognition(
                     template, digest, matched, SystemClock.uptimeMillis()));
         }
-    }
-
-    private static int matchingAnchors(MatPixels screen, MatPixels sample,
-            List<Integer> anchors, int left, int top, double[] screenBackground) {
-        int matched = 0;
-        for (Integer value : anchors) {
-            int templateOffset = value.intValue();
-            int pixel = templateOffset / sample.channels;
-            int row = pixel / sample.cols;
-            int col = pixel % sample.cols;
-            int screenOffset = ((top + row) * screen.cols + left + col) * screen.channels;
-            if (screen.distance(screenOffset, screenBackground) > 12.0
-                    && screen.distanceTo(screenOffset, sample, templateOffset, 115.0)) {
-                matched++;
-            }
-        }
-        return matched;
-    }
-
-    /**
-     * The foreground test intentionally tolerates small color changes, but a
-     * page background can still contain enough similarly coloured pixels to
-     * satisfy the anchor count.  Correlating the same anchor layout rejects
-     * that case without changing the vendor's own match threshold.
-     */
-    private static double templateCorrelation(MatPixels screen, MatPixels sample,
-            List<Integer> anchors, int left, int top) {
-        if (anchors.isEmpty()) return 0.0;
-        double screenMean = 0.0;
-        double sampleMean = 0.0;
-        double[] screenValues = new double[anchors.size()];
-        double[] sampleValues = new double[anchors.size()];
-        for (int i = 0; i < anchors.size(); i++) {
-            int templateOffset = anchors.get(i).intValue();
-            int pixel = templateOffset / sample.channels;
-            int row = pixel / sample.cols;
-            int col = pixel % sample.cols;
-            int screenOffset = ((top + row) * screen.cols + left + col) * screen.channels;
-            double screenValue = screen.luma(screenOffset);
-            double sampleValue = sample.luma(templateOffset);
-            screenValues[i] = screenValue;
-            sampleValues[i] = sampleValue;
-            screenMean += screenValue;
-            sampleMean += sampleValue;
-        }
-        screenMean /= anchors.size();
-        sampleMean /= anchors.size();
-        double covariance = 0.0;
-        double screenVariance = 0.0;
-        double sampleVariance = 0.0;
-        for (int i = 0; i < screenValues.length; i++) {
-            double screenDelta = screenValues[i] - screenMean;
-            double sampleDelta = sampleValues[i] - sampleMean;
-            covariance += screenDelta * sampleDelta;
-            screenVariance += screenDelta * screenDelta;
-            sampleVariance += sampleDelta * sampleDelta;
-        }
-        double denominator = Math.sqrt(screenVariance * sampleVariance);
-        return denominator <= 0.001 ? 0.0 : covariance / denominator;
     }
 
     private static Config config(AugmentModule module, Object owner) {
@@ -1476,109 +1343,6 @@ final class AiTriggerSpeedHook {
     }
 
     /** Small reflection-only view of an OpenCV Mat; avoids linking OpenCV into the module. */
-    private static final class MatPixels {
-        final int rows;
-        final int cols;
-        final int channels;
-        final byte[] values;
-
-        private MatPixels(int rows, int cols, int channels, byte[] values) {
-            this.rows = rows;
-            this.cols = cols;
-            this.channels = channels;
-            this.values = values;
-        }
-
-        static MatPixels read(Object mat) throws Throwable {
-            if (mat == null) return null;
-            Method rowsMethod = mat.getClass().getMethod("rows");
-            Method colsMethod = mat.getClass().getMethod("cols");
-            Method channelsMethod = mat.getClass().getMethod("channels");
-            int rows = ((Number) rowsMethod.invoke(mat)).intValue();
-            int cols = ((Number) colsMethod.invoke(mat)).intValue();
-            int channels = ((Number) channelsMethod.invoke(mat)).intValue();
-            if (rows <= 0 || cols <= 0 || channels <= 0 || rows * cols > 160000) return null;
-            byte[] values = new byte[rows * cols * channels];
-            Method get = mat.getClass().getMethod("get", int.class, int.class, byte[].class);
-            get.invoke(mat, 0, 0, values);
-            return new MatPixels(rows, cols, channels, values);
-        }
-
-        double[] borderAverage() {
-            double[] sum = new double[Math.min(channels, 3)];
-            int count = 0;
-            for (int row = 0; row < rows; row++) {
-                for (int col = 0; col < cols; col++) {
-                    if (row != 0 && row != rows - 1 && col != 0 && col != cols - 1) continue;
-                    int offset = (row * cols + col) * channels;
-                    for (int channel = 0; channel < sum.length; channel++) {
-                        sum[channel] += unsigned(values[offset + channel]);
-                    }
-                    count++;
-                }
-            }
-            if (count == 0) return sum;
-            for (int channel = 0; channel < sum.length; channel++) sum[channel] /= count;
-            return sum;
-        }
-
-        double distance(int offset, double[] background) {
-            double sum = 0.0;
-            for (int channel = 0; channel < background.length; channel++) {
-                double delta = unsigned(values[offset + channel]) - background[channel];
-                sum += delta * delta;
-            }
-            return Math.sqrt(sum);
-        }
-
-        boolean distanceTo(int offset, MatPixels other, double limit) {
-            return distanceTo(offset, other, offset, limit);
-        }
-
-        boolean distanceTo(int offset, MatPixels other, int otherOffset, double limit) {
-            double sum = 0.0;
-            int count = Math.min(Math.min(channels, other.channels), 3);
-            for (int channel = 0; channel < count; channel++) {
-                double delta = unsigned(values[offset + channel])
-                        - unsigned(other.values[otherOffset + channel]);
-                sum += delta * delta;
-            }
-            return Math.sqrt(sum) <= limit;
-        }
-
-        double luma(int offset) {
-            int count = Math.min(channels, 3);
-            if (count <= 0) return 0.0;
-            double sum = 0.0;
-            for (int channel = 0; channel < count; channel++) {
-                sum += unsigned(values[offset + channel]);
-            }
-            return sum / count;
-        }
-
-        List<Integer> foregroundAnchors(int limit) {
-            ArrayList<Integer> result = new ArrayList<>();
-            double[] background = borderAverage();
-            for (int row = 0; row < rows; row++) {
-                for (int col = 0; col < cols; col++) {
-                    int offset = (row * cols + col) * channels;
-                    if (distance(offset, background) > 24.0) result.add(offset);
-                }
-            }
-            if (result.size() <= limit) return result;
-            ArrayList<Integer> sampled = new ArrayList<>(limit);
-            int stride = Math.max(1, (result.size() + limit - 1) / limit);
-            for (int i = 0; i < result.size() && sampled.size() < limit; i += stride) {
-                sampled.add(result.get(i));
-            }
-            return sampled;
-        }
-
-        private static int unsigned(byte value) {
-            return value & 0xff;
-        }
-    }
-
     private static Method findMethod(Class<?> type, String name, Class<?> returnType,
             Class<?>... parameters) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
@@ -1702,12 +1466,14 @@ final class AiTriggerSpeedHook {
     }
 
     private static final class TemplateSnapshot {
-        final MatPixels pixels;
+        final AiTemplatePixels pixels;
         final List<Integer> anchors;
+        final int sampleStep;
 
-        TemplateSnapshot(MatPixels pixels, List<Integer> anchors) {
+        TemplateSnapshot(AiTemplatePixels pixels, List<Integer> anchors, int sampleStep) {
             this.pixels = pixels;
             this.anchors = anchors;
+            this.sampleStep = sampleStep;
         }
     }
 

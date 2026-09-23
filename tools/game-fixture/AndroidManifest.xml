@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ls.augment.regression.game" android:versionCode="3" android:versionName="3">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
+    <application android:label="LS 游戏验收" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:icon="@android:drawable/ic_menu_view" android:allowBackup="false" android:appCategory="game">
+        <activity android:name=".GameActivity" android:exported="true" android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

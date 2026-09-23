@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:layout_gravity="center_vertical" android:orientation="horizontal" android:background="@drawable/round_rect_primary" android:layout_width="match_parent" android:layout_height="48.0dp" android:layout_margin="8.0dp" android:elevation="2.0dp">
-        <TextView android:textAppearance="?android:textAppearanceMedium" android:textColor="?android:textColorSecondary" android:gravity="center_vertical" android:id="@id/btn_qsb_search" android:background="?android:selectableItemBackground" android:clickable="true" android:layout_width="0.0dp" android:layout_height="match_parent" android:text="@string/abandoned_search" android:layout_weight="1.0" android:paddingStart="16.0dp" />
-        <ImageView android:id="@id/btn_qsb_setup" android:background="?android:selectableItemBackground" android:padding="8.0dp" android:visibility="gone" android:clickable="true" android:layout_width="48.0dp" android:layout_height="match_parent" android:src="@drawable/ic_setting" android:tint="?android:textColorSecondary" android:contentDescription="@string/gadget_setup_text" />
-    </LinearLayout>
-</FrameLayout>

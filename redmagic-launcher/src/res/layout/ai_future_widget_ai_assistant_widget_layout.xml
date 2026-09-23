@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:id="@id/ai_future_widget_ai_assistant_widget_layout" android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <include layout="@layout/ai_future_widget_ai_assistant_bg_layout" />
-    <include layout="@layout/ai_future_widget_ai_output_layout" />
-</FrameLayout>

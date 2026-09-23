@@ -52,6 +52,10 @@ final class TgkRapidFireSystemHook {
     private static Runnable testCleanup;
     private static final ThreadLocal<Boolean> INTERCEPTING = new ThreadLocal<>();
     private static final Runnable NO_AFTER_CALL = () -> { };
+    private static final java.util.concurrent.atomic.AtomicBoolean refreshQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.ExecutorService stateWorker = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "LSA-RapidState"); t.setDaemon(true); return t;
+    });
 
     private TgkRapidFireSystemHook() { }
 
@@ -274,7 +278,7 @@ final class TgkRapidFireSystemHook {
         boolean enabled = FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER, false)
                 && FeatureSettings.enabled(context, FeatureSettings.TGK_RAPID_FIRE_ENABLED,
                 false) && token != null
-                && token.validFor(RapidFireCompatibility.currentFingerprint(context))
+                && token.validFor(fingerprint(context))
                 && token.acceptsSystem(keyCode)
                 && !RapidFireCrashFuse.isFused(context);
         if (!enabled) {
@@ -312,10 +316,14 @@ final class TgkRapidFireSystemHook {
         return null;
     }
 
+    private static String fingerprint(Context context) {
+        return RapidFireCompatibility.currentFingerprintAsync(context, () -> onSnapshotChanged(context));
+    }
+
     private static boolean testWindowActive(RapidFireCompatibility.Session session, long now,
             Context context) {
         return session != null && session.active(now)
-                && session.validFor(RapidFireCompatibility.currentFingerprint(context))
+                && session.validFor(fingerprint(context))
                 && (session.state != RapidFireCompatibility.State.VERIFYING
                 || now - session.verifyingSince
                 <= RapidFireCompatibility.STABILITY_REQUIRED_MS);
@@ -377,7 +385,7 @@ final class TgkRapidFireSystemHook {
     private static void initializeWithContext(Context context) {
         if (context == null) return;
         contextReadyAttempts = 0;
-        RapidFireCrashFuse.onSystemStart(context);
+        RapidFireCrashFuse.setListener(context, () -> onSnapshotChanged(context));
         ensureSnapshotListener(context);
         publishInstalled(context, false);
         scheduleInstalledRepublish(context);
@@ -389,7 +397,17 @@ final class TgkRapidFireSystemHook {
         publishInstalled(context, true);
     }
 
+    static void onNativeInstallationReady(Context context) { onSnapshotChanged(context); }
+
     private static void onSnapshotChanged(Context context) {
+        if (context == null || !refreshQueued.compareAndSet(false, true)) return;
+        stateWorker.execute(() -> { refreshQueued.set(false); applySnapshot(context); });
+    }
+
+    private static void applySnapshot(Context context) {
+        // A recovered Provider or a new configuration can arrive after all
+        // startup retries. Republish the installed Java bridge before preflight.
+        publishInstalled(context, true);
         TgkRapidFireNative.clearTargets(context);
         long now = System.currentTimeMillis();
         RapidFireCompatibility.Session session = RapidFireCompatibility.Session.parse(
@@ -400,7 +418,7 @@ final class TgkRapidFireSystemHook {
                         + (session == null ? "none" : session.state.name())
                         + "|time=" + now);
         boolean validSession = session != null && session.active(now)
-                && session.validFor(RapidFireCompatibility.currentFingerprint(context));
+                && session.validFor(fingerprint(context));
         if (validSession) scheduleSessionCleanup(context, session);
         else cancelSessionCleanup();
         if (validSession && (session.state == RapidFireCompatibility.State.WAIT_LEFT
@@ -444,7 +462,7 @@ final class TgkRapidFireSystemHook {
                 && FeatureSettings.enabled(context,
                         FeatureSettings.TGK_RAPID_FIRE_ENABLED, false)
                 && token != null
-                && token.validFor(RapidFireCompatibility.currentFingerprint(context))
+                && token.validFor(fingerprint(context))
                 && !RapidFireCrashFuse.isFused(context);
         if (!enabled) {
             resetNativeObservation();
@@ -485,7 +503,7 @@ final class TgkRapidFireSystemHook {
                 FeatureSettings.text(context,
                         FeatureSettings.TGK_RAPID_FIRE_TEST_SESSION, ""));
         if (session == null || !session.active(now)
-                || !session.validFor(RapidFireCompatibility.currentFingerprint(context))
+                || !session.validFor(fingerprint(context))
                 || (session.state != RapidFireCompatibility.State.WAIT_LEFT
                 && session.state != RapidFireCompatibility.State.WAIT_RIGHT)) {
             resetNativeObservation();
@@ -604,7 +622,7 @@ final class TgkRapidFireSystemHook {
                                 FeatureSettings.TGK_RAPID_FIRE_TEST_SESSION, ""));
                 if (current == null || current.state != RapidFireCompatibility.State.VERIFYING
                         || !session.id.equals(current.id)
-                        || !current.validFor(RapidFireCompatibility.currentFingerprint(context))
+                        || !current.validFor(fingerprint(context))
                         || System.currentTimeMillis() < completedAt) {
                     // A callback from a completed/cancelled/replaced test no longer
                     // owns the native targets. The latest snapshot owns recovery.
@@ -706,6 +724,8 @@ final class TgkRapidFireSystemHook {
         Handler handler = new Handler(looper);
         handler.postDelayed(() -> publishInstalled(context, true), 5_000L);
         handler.postDelayed(() -> publishInstalled(context, true), 20_000L);
+        handler.postDelayed(() -> publishInstalled(context, true), 60_000L);
+        handler.postDelayed(() -> publishInstalled(context, true), 120_000L);
     }
 
     private static String safe(String value) {

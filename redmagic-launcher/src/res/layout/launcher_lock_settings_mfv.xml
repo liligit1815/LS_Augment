@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:id="@id/sink_container" android:layout_width="match_parent" android:layout_height="match_parent" android:overScrollMode="never" app:layout_behavior="@string/appbar_scrolling_view_behavior"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <com.zte.mifavor.androidx.widget.NestedScrollView android:id="@id/main_content_scrollable_container" android:layout_width="match_parent" android:layout_height="match_parent" android:overScrollMode="never">
-        <FrameLayout android:id="@id/launcher_settings_container" android:layout_width="match_parent" android:layout_height="match_parent" />
-    </com.zte.mifavor.androidx.widget.NestedScrollView>
-</LinearLayout>

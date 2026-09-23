@@ -1,2 +1,2 @@
-import NativePrototype from './native-prototype';
-export default function Page(){return <NativePrototype/>}
+import CurrentPrototype from './current-prototype';
+export default function Page(){return <CurrentPrototype/>}

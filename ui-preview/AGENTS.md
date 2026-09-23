@@ -12,3 +12,10 @@
 - 保留已有 Sites/Vinext 项目结构。不要重新初始化、创建第二个 Site 或更改访问范围。
 - 修改后比较同页面、同状态、同尺度的真机与网页截图；浏览器截图要按嵌入的 ICC 色彩描述转换为 sRGB 后再比较颜色。
 - 本地原型交付时保留服务和右侧浏览器页面，后续直接在该原型上迭代。
+
+
+## 2026-09-12 当前底稿
+
+当前入口 `app/current-prototype.tsx` 对照 test20288。`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 来自现有 Android 源码；基准截图在 `../outputs/ui-refresh-20288/screens/`。`native-pages.json` 和 `layout-overrides.ts` 继续保存旧版本及历史标注，不得覆盖。新标注先修改当前页面，并追加记录。
+
+画面对照使用带 ICC 的 PNG 截图；JPEG 预览会丢失色彩描述，不可直接拿来调整颜色。浏览器对照视口为1000×883，手机374.15×827.08 CSS像素；设备截图为1216×2688。当前截图在 `../outputs/prototype-current/`，`scripts/compare-current.py` 先转换 sRGB，再同尺度裁剪。

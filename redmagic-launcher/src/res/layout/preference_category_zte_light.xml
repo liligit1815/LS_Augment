@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textStyle="bold" android:textColor="#ff666666" android:id="@android:id/title" android:paddingStart="20.0dp" android:paddingEnd="20.0dp" style="?android:listSeparatorTextViewStyle"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

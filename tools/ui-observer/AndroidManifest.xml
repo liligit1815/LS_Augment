@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ls.augment.regression.ui">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="36" />
+    <application android:label="LS ADB UI observer" android:debuggable="true" android:allowBackup="false" />
+    <instrumentation android:name="ls.augment.com.UiWindowRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiGestureRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiDragRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiTextRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+</manifest>

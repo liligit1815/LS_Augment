@@ -39,8 +39,61 @@ public final class TestRapidFireNativeLayout {
         malformed.putLong(0x548, 0);
         check(RapidFireNativeLayout.inspectElf(malformed.array()) == null, "nonexecutable function rejected");
         for (int length = 0; length < 128; length++) check(RapidFireNativeLayout.inspectElf(new byte[length]) == null, "truncated ELF");
-        if (args.length > 0) check(RapidFireNativeLayout.inspectFile(new java.io.File(args[0])) != null, "connected device ELF");
+        pairedStores();
+        for (String path : args) check(RapidFireNativeLayout.inspectFile(new java.io.File(path)) != null,
+                "real OEM ELF accepted: " + path);
         System.out.println("PASS TestRapidFireNativeLayout");
+    }
+
+    private static void pairedStores() {
+        ByteBuffer bytes = ByteBuffer.allocate(RapidFireNativeLayout.PAIRED_STORE_PATTERN.length * 4)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        for (int word : RapidFireNativeLayout.PAIRED_STORE_PATTERN) bytes.putInt(word);
+        byte[] original = bytes.array();
+        RapidFireNativeLayout.Layout layout = RapidFireNativeLayout.inspectCode(original);
+        check(layout != null && layout.firstKey == 137 && layout.secondKey == 138
+                && layout.firstCount == 96 && layout.secondCount == 100
+                && layout.firstDown == 80 && layout.firstUp == 84
+                && layout.secondDown == 88 && layout.secondUp == 92, "paired stores derive both complete layouts");
+        check(RapidFireNativeLayout.inspectElf(elf(original)) != null, "paired-store ELF");
+        byte[] bti = new byte[original.length + 4];
+        ByteBuffer.wrap(bti).order(ByteOrder.LITTLE_ENDIAN).putInt(0xd503245f).put(original);
+        check(RapidFireNativeLayout.inspectCode(bti) != null, "paired-store BTI");
+        ByteBuffer changed = ByteBuffer.wrap(original.clone()).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i : new int[]{9, 19}) changed.putInt(i * 4, changed.getInt(i * 4) + (0x80 / 4 << 10));
+        for (int i : new int[]{65, 85}) changed.putInt(i * 4, changed.getInt(i * 4) + (0x80 / 4 << 15));
+        for (int i : new int[]{4, 7}) changed.putInt(i * 4, changed.getInt(i * 4) + (20 << 10));
+        layout = RapidFireNativeLayout.inspectCode(changed.array());
+        check(layout != null && layout.firstKey == 157 && layout.firstCount == 224
+                && layout.firstDown == 208 && layout.secondUp == 220, "paired offsets and keys are derived");
+        changed.putInt(85 * 4, changed.getInt(65 * 4));
+        check(RapidFireNativeLayout.inspectCode(changed.array()) == null, "overlapping paired fields rejected");
+        changed = ByteBuffer.wrap(original.clone()).order(ByteOrder.LITTLE_ENDIAN);
+        changed.putInt(65 * 4, (changed.getInt(65 * 4) & ~0x003f8000) | (127 << 15));
+        check(RapidFireNativeLayout.inspectCode(changed.array()) == null, "negative STP displacement rejected");
+        changed = ByteBuffer.wrap(original.clone()).order(ByteOrder.LITTLE_ENDIAN);
+        changed.putInt(7 * 4, changed.getInt(4 * 4));
+        check(RapidFireNativeLayout.inspectCode(changed.array()) == null, "duplicate native keys rejected");
+        byte[] paddedOld = java.util.Arrays.copyOf(code(), original.length);
+        check(RapidFireNativeLayout.inspectCode(paddedOld) == null, "length alone cannot admit another body");
+        strictMutationSweep(code(), false);
+        strictMutationSweep(original, true);
+    }
+
+    private static void strictMutationSweep(byte[] original, boolean paired) {
+        for (int i = 0; i < original.length / 4; i++) {
+            int variable = 0;
+            if (i == 4 || i == 7 || i == 9 || i == 19) variable = 0x003ffc00;
+            if (!paired && (i == 57 || i == 58 || i == 70 || i == 71)) variable = 0x001fffe0;
+            if (paired && (i == 65 || i == 85)) variable = 0x003f8000;
+            for (int bit = 0; bit < 32; bit++) {
+                if ((variable & (1 << bit)) != 0) continue;
+                ByteBuffer mutation = ByteBuffer.wrap(original.clone()).order(ByteOrder.LITTLE_ENDIAN);
+                mutation.putInt(i * 4, mutation.getInt(i * 4) ^ (1 << bit));
+                check(RapidFireNativeLayout.inspectCode(mutation.array()) == null,
+                        "fixed instruction bit rejected: " + paired + "/" + i + "/" + bit);
+            }
+        }
     }
 
     private static byte[] code() {

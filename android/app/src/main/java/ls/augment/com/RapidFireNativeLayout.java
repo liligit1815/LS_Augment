@@ -31,18 +31,39 @@ public final class RapidFireNativeLayout {
         0xd50323bf, 0xd65f03c0, 0x2a1f03e0, 0x17ffffe2, 0x2a1f03e0, 0x17ffffed,
     };
 
+    // Same split-phase algorithm with separate tails and paired immediate stores.
+    // Exact NX769J Android 15 function; only key/count/store immediates may vary.
+    static final int[] PAIRED_STORE_PATTERN = {
+        0xd503233f, 0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0x7102283f, 0xaa0003f3,
+        0x540001a0, 0x7102243f, 0x540009c1, 0xb9406268, 0x7100191f, 0x5400024b,
+        0xf9400268, 0x529c2001, 0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82,
+        0x14000025, 0xb9406668, 0x7100191f, 0x5400022b, 0xf9400268, 0x529c2001,
+        0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82, 0x1400002f, 0x71000d1f,
+        0x5400022b, 0xf9400268, 0x52984001, 0x529e1002, 0xaa1303e0, 0x72a17d61,
+        0x72a05f42, 0x14000012, 0x71000d1f, 0x5400038b, 0xf9400268, 0x52984001,
+        0x529e1002, 0xaa1303e0, 0x72a17d61, 0x72a05f42, 0x1400001d, 0x7100051f,
+        0x5400054b, 0xf9400268, 0x528ca001, 0x52984002, 0xaa1303e0, 0x72a3b9a1,
+        0x72a17d62, 0xf9403d08, 0xd63f0100, 0x528ccce8, 0x72acccc8, 0x9b287c08,
+        0xd37ffd09, 0x9361fd08, 0x0b090108, 0x531f7909, 0x0b080128, 0x290a2668,
+        0x14000014, 0x7100051f, 0x5400030b, 0xf9400268, 0x528ca001, 0x52984002,
+        0xaa1303e0, 0x72a3b9a1, 0x72a17d62, 0xf9403d08, 0xd63f0100, 0x528ccce8,
+        0x72acccc8, 0x9b287c08, 0xd37ffd09, 0x9361fd08, 0x0b090108, 0x531f7909,
+        0x0b080128, 0x290b2668, 0xf9400bf3, 0xa8c27bfd, 0xd50323bf, 0xd65f03c0,
+        0x2a1f03e0, 0x17ffffde, 0x2a1f03e0, 0x17fffff0,
+    };
+
     public static final class Layout {
         public final int firstKey, secondKey, firstCount, secondCount;
         public final int firstDown, firstUp, secondDown, secondUp;
-        Layout(int[] code) {
+        Layout(int[] code, boolean pairedStores) {
             firstKey = (code[7] >>> 10) & 4095;
             secondKey = (code[4] >>> 10) & 4095;
             firstCount = ((code[9] >>> 10) & 4095) * 4;
             secondCount = ((code[19] >>> 10) & 4095) * 4;
-            firstDown = (code[58] >>> 5) & 65535;
-            firstUp = (code[57] >>> 5) & 65535;
-            secondDown = (code[71] >>> 5) & 65535;
-            secondUp = (code[70] >>> 5) & 65535;
+            firstDown = pairedStores ? pairOffset(code[65]) : (code[58] >>> 5) & 65535;
+            firstUp = pairedStores ? firstDown + 4 : (code[57] >>> 5) & 65535;
+            secondDown = pairedStores ? pairOffset(code[85]) : (code[71] >>> 5) & 65535;
+            secondUp = pairedStores ? secondDown + 4 : (code[70] >>> 5) & 65535;
         }
     }
 
@@ -50,16 +71,19 @@ public final class RapidFireNativeLayout {
         if (bytes == null || bytes.length < 4) return null;
         ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         int prefix = buffer.getInt(0) == 0xd503245f ? 4 : 0; // Optional BTI landing pad.
-        if (bytes.length != PATTERN.length * 4 + prefix) return null;
-        int[] code = new int[PATTERN.length];
+        boolean pairedStores = bytes.length == PAIRED_STORE_PATTERN.length * 4 + prefix;
+        int[] pattern = pairedStores ? PAIRED_STORE_PATTERN : PATTERN;
+        if (bytes.length != pattern.length * 4 + prefix) return null;
+        int[] code = new int[pattern.length];
         for (int i = 0; i < code.length; i++) {
             code[i] = buffer.getInt(prefix + i * 4);
             int mask = -1;
             if (i == 4 || i == 7 || i == 9 || i == 19) mask = ~0x003ffc00;
-            if (i == 57 || i == 58 || i == 70 || i == 71) mask = ~0x001fffe0;
-            if ((code[i] & mask) != (PATTERN[i] & mask)) return null;
+            if (!pairedStores && (i == 57 || i == 58 || i == 70 || i == 71)) mask = ~0x001fffe0;
+            if (pairedStores && (i == 65 || i == 85)) mask = ~0x003f8000;
+            if ((code[i] & mask) != (pattern[i] & mask)) return null;
         }
-        Layout layout = new Layout(code);
+        Layout layout = new Layout(code, pairedStores);
         if (layout.firstKey == 0 || layout.secondKey == 0 || layout.firstKey == layout.secondKey) return null;
         HashSet<Integer> fields = new HashSet<>();
         for (int offset : new int[]{layout.firstCount, layout.secondCount, layout.firstDown,
@@ -67,6 +91,11 @@ public final class RapidFireNativeLayout {
             if (offset < 16 || offset > 1024 || offset % 4 != 0 || !fields.add(offset)) return null;
         }
         return layout;
+    }
+
+    private static int pairOffset(int instruction) {
+        // STP Wt,Wt2,[Xn,#imm7]: signed immediate scaled by four bytes.
+        return ((instruction << 10) >> 25) * 4;
     }
 
     public static Layout inspectFile(File file) {

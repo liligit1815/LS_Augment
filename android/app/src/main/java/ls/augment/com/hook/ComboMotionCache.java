@@ -11,6 +11,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /** Single-worker cache coordinator; playback callers only consume published files. */
 final class ComboMotionCache {
@@ -41,6 +42,54 @@ final class ComboMotionCache {
         schedule(cacheDir, sourcePath, rate, alias, generation);
     }
 
+    /** Even resolving Android's cache directory may touch disk, so do that on the worker. */
+    CompletableFuture<ComboMotionFileScaler.Result> prepareAsync(
+            Supplier<File> cacheDirectory, String sourcePath, float rate) {
+        CompletableFuture<ComboMotionFileScaler.Result> result = new CompletableFuture<>();
+        try {
+            worker.execute(() -> {
+                try {
+                    prepareAsync(cacheDirectory.get(), sourcePath, rate)
+                            .whenComplete((ready, error) -> result.complete(error == null
+                                    ? ready : ComboMotionFileScaler.Result.failure("cache_worker_failed")));
+                } catch (Throwable error) {
+                    result.complete(ComboMotionFileScaler.Result.failure("cache_worker_failed"));
+                }
+            });
+        } catch (RejectedExecutionException rejected) {
+            result.complete(ComboMotionFileScaler.Result.failure("queue_full"));
+        }
+        return result;
+    }
+
+    private CompletableFuture<ComboMotionFileScaler.Result> prepareAsync(
+            File cacheDir, String sourcePath, float rate) {
+        String alias = Request.alias(sourcePath, rate);
+        if (alias.isEmpty() || cacheDir == null || !ComboSpeedPolicy.isValidRate(rate)) {
+            return CompletableFuture.completedFuture(
+                    ComboMotionFileScaler.Result.failure("invalid_request"));
+        }
+        long generation = generations.getOrDefault(alias, 0L);
+        CompletableFuture<ComboMotionFileScaler.Result> future =
+                schedule(cacheDir, sourcePath, rate, alias, generation);
+        if (future == null) return CompletableFuture.completedFuture(
+                ComboMotionFileScaler.Result.failure("queue_full"));
+        return future.thenApply(result -> generations.getOrDefault(alias, 0L) == generation
+                ? result : ComboMotionFileScaler.Result.failure("cache_invalidated"));
+    }
+
+    ComboMotionFileScaler.Result lookupPublished(String sourcePath, float rate) {
+        String alias = Request.alias(sourcePath, rate);
+        if (alias.isEmpty()) return ComboMotionFileScaler.Result.failure("invalid_request");
+        long generation = generations.getOrDefault(alias, 0L);
+        Published hot = published.get(alias);
+        if (hot != null && hot.request.generation == generation && hot.isFresh()) {
+            return hot.result.asPublishedHit();
+        }
+        if (hot != null) published.remove(alias, hot);
+        return ComboMotionFileScaler.Result.failure("cold_cache");
+    }
+
     void post(Runnable task) {
         if (task == null) return;
         try {
@@ -69,8 +118,8 @@ final class ComboMotionCache {
         }
 
         // A playback call on the main thread performs no path canonicalization,
-        // stat or content read. It only queues worker-side preparation and keeps
-        // this playback on the OEM source when no published entry is available.
+        // stat or content read. The caller may defer its OEM notification until
+        // preparation completes, or retain its original source on failure.
         if (!mayWait) {
             prepare(cacheDir, sourcePath, rate, false);
             return ComboMotionFileScaler.Result.failure("cold_cache");

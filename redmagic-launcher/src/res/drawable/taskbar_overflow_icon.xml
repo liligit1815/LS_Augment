@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<vector android:height="48.0dp" android:width="48.0dp" android:viewportWidth="960.0" android:viewportHeight="960.0"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <path android:fillColor="@color/taskbar_divider_background" android:pathData="M80,605v-250q0,-28.88 20.59,-49.44t49.5,-20.56q28.91,0 49.41,20.56Q220,326.12 220,355v250q0,28.87 -20.59,49.44Q178.82,675 149.91,675t-49.41,-20.56Q80,633.87 80,605ZM340,760q-24,0 -42,-18t-18,-42v-440q0,-24 18,-42t42,-18h280q24,0 42,18t18,42v440q0,24 -18,42t-42,18L340,760ZM740,605v-250q0,-28.88 20.59,-49.44t49.5,-20.56q28.91,0 49.41,20.56Q880,326.12 880,355v250q0,28.87 -20.59,49.44Q838.82,675 809.91,675t-49.41,-20.56Q740,633.87 740,605ZM340,700h280v-440L340,260v440ZM480,480Z" />
-</vector>

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape android:shape="rectangle"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="?pageIndicatorDotColor" />
-    <size android:height="@dimen/page_indicator_size" android:width="@dimen/page_indicator_size" />
-</shape>

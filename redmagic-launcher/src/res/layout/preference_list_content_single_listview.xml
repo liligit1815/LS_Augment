@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.zte.mifavor.widget.ListView android:listPreferredItemHeight="48.0dp" android:scrollbarAlwaysDrawVerticalTrack="true" android:scrollbarStyle="@integer/preference_fragment_scrollbarStyle" android:id="@android:id/list" android:layout_width="match_parent" android:layout_height="0.0px" android:drawSelectorOnTop="false" android:cacheColorHint="@android:color/transparent" android:layout_weight="1.0" style="?android:preferenceFragmentStyle"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

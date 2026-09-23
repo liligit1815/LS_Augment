@@ -1,5 +1,19 @@
 plugins { id 'com.android.application' }
 
+def verifyShellAssets = tasks.register('verifyShellAssets') {
+    def scripts = fileTree('src/main/assets') { include '**/*.sh' }
+    inputs.files(scripts)
+    doLast {
+        scripts.each { script ->
+            def source = script.getText('UTF-8')
+            if (source.contains('\r') || source.startsWith('\uFEFF')) {
+                throw new GradleException("Shell asset must use UTF-8 without BOM and LF line endings: ${script.name}")
+            }
+        }
+    }
+}
+tasks.named('preBuild') { dependsOn verifyShellAssets }
+
 def versionFile = rootProject.file('version.properties')
 if (!versionFile.isFile()) {
     throw new GradleException("Missing version source: ${versionFile.absolutePath}")
@@ -24,11 +38,12 @@ println "Building LS_Augment ${appVersionName} (${appVersionCode})"
 android {
     namespace 'ls.augment.com'
     compileSdk 36
+    buildToolsVersion '35.0.0'
     ndkVersion '27.2.12479018'
 
     defaultConfig {
         applicationId 'ls.augment.com'
-        minSdk 28
+        minSdk 35
         targetSdk 36
         ndk {
             // The current RedMagic target and libinputreader are arm64. The
@@ -38,6 +53,7 @@ android {
         }
         versionCode appVersionCode
         versionName appVersionName
+        testInstrumentationRunner 'ls.augment.com.DeviceRegressionRunner'
 
         externalNativeBuild {
             cmake {
@@ -97,8 +113,27 @@ android {
     }
 }
 
+// These hidden platform signatures are compile-only. The actual classes must
+// resolve from system_server's attested services loader at runtime.
+def compileObserverStubs = tasks.register('compileObserverStubs', JavaCompile) {
+    source rootProject.fileTree('observer-stubs/src') { include '**/*.java' }
+    classpath = files()
+    destinationDirectory = layout.buildDirectory.dir('observer-stubs/classes')
+    options.release = 17
+    options.encoding = 'UTF-8'
+}
+def observerStubsJar = tasks.register('observerStubsJar', Jar) {
+    archiveFileName = 'observer-signatures.jar'
+    destinationDirectory = layout.buildDirectory.dir('observer-stubs')
+    from compileObserverStubs.flatMap { it.destinationDirectory }
+}
+
 dependencies {
+    compileOnly files(observerStubsJar)
     // Modern libxposed API 102 is supplied by LSPosed/Vector at runtime.
     // Never package it into the LS_Augment APK.
     compileOnly 'io.github.libxposed:api:102.0.0'
+    // Scope APIs are available in service 101 and compatible with the API 102 framework.
+    // Service 102 adds hot reload but requires compileSdk 37; keep this Android 36 build.
+    implementation 'io.github.libxposed:service:101.0.0'
 }

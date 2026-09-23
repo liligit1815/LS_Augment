@@ -16,22 +16,10 @@ source = app / 'src/main/java/ls/augment/com/hook/AugmentModule.java'
 
 assert entry.read_text(encoding='utf-8').strip() == 'ls.augment.com.hook.AugmentModule'
 assert native_entry.read_text(encoding='utf-8').strip() == 'liblsaugment_tgk.so'
-assert set(scope.read_text(encoding='utf-8').split()) == {
-    'com.android.settings',
-    'com.android.systemui',
-    'com.zte.beautify',
-    'com.zte.beautifyadapter',
-    'com.zte.cn.doubleapp',
-    'com.zte.recommend',
-    'cn.nubia.fan', 'cn.nubia.neostore', 'com.mi.health', 'com.zte.mifavor.launcher',
-    'cn.nubia.gamelauncher',
-    'cn.nubia.gameassist',
-    'cn.nubia.gamelab',
-    'cn.nubia.gamehelperline',
-    'cn.nubia.gamehelpmodule',
-    'com.zte.game.plugintrigger',
-    'system',
-}
+registry = app / 'src/main/java/ls/augment/com/HookTargetRegistry.java'
+registered_packages = set(re.findall(r'"([a-z][A-Za-z0-9_.]+)"', registry.read_text(encoding='utf-8')))
+assert set(scope.read_text(encoding='utf-8').split()) == registered_packages, \
+    'static scope must match the unchanged Provider/package authorization registry'
 props = {}
 for line in prop.read_text(encoding='utf-8').splitlines():
     line=line.strip()
@@ -61,9 +49,16 @@ m = manifest.read_text(encoding='utf-8')
 for legacy in ('xposedmodule','xposedminversion','xposedscope','xposeddescription'):
     assert legacy not in m, f'legacy manifest metadata remains: {legacy}'
 s = source.read_text(encoding='utf-8')
-assert 'extends XposedModule' in s
+assert 'extends RootEarlyModule' in s
+root_entry = (app / 'src/main/java/ls/augment/com/RootEarlyModule.java').read_text(encoding='utf-8')
+assert 'extends XposedModule' in root_entry
+assert 'public final void onModuleLoaded(' in root_entry
+assert 'public final void onSystemServerStarting(' in root_entry
+assert 'protected void onModuleLoadedAfterEarly(' in s
+assert 'protected void onSystemServerStartingAfterRoot(' in s
 assert '.setId("ls_augment.api102.' in s
-assert 'detach(); // API 102' in s
+assert not re.search(r'^\s*detach\(\);', s, re.M), \
+    'a non-target package callback must not detach the whole shared process'
 assert 'VERSION = BuildConfig.VERSION_NAME' in s, \
     'diagnostic version must follow the APK versionName'
 assert 'param.isSystemServer()' in s, \

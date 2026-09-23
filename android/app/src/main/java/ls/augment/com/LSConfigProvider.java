@@ -20,13 +20,69 @@ public final class LSConfigProvider extends ContentProvider {
     private static final Object RAPID_ROUTE_LOCK = new Object();
     private static final Object AUTOMATION_LOCK = new Object();
     private static String lastAutomationRequest = "";
+    private static volatile android.os.IBinder captureSurfaceController;
     @Override
-    public boolean onCreate() { removeLegacyFanNotification(); return true; }
+    public boolean onCreate() {
+        removeLegacyFanNotification();
+        // Rediscover the live SystemUI endpoint if this provider process was reclaimed.
+        if(getContext()!=null)try{getContext().sendBroadcast(new Intent("ls.augment.com.CAPTURE_SURFACE_REDISCOVER").setPackage("com.android.systemui"));}catch(RuntimeException ignored) { }
+        return true;
+    }
 
     @Override
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
-        if (getContext() == null || !allowedCaller()) return result;
+        if (getContext() == null) return result;
+        if ("recovery_refresh".equals(method)) {
+            // The user-run emergency Root script can request verification, never change config.
+            if (Binder.getCallingUid() != Process.ROOT_UID) return result;
+            long identity = Binder.clearCallingIdentity();
+            try { result.putBoolean("ok", BootJobService.scheduleHiddenRefresh(getContext())); return result; }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
+        if (!allowedCaller()) return result;
+        if ("fan_tile_read".equals(method) || "fan_tile_select".equals(method)) {
+            int caller = Binder.getCallingUid();
+            String[] packages = getContext().getPackageManager().getPackagesForUid(caller);
+            if (!FanTilePolicy.allowedCaller(caller, Process.myUid(), getCallingPackage(), packages)) return result;
+            long identity = Binder.clearCallingIdentity();
+            try { return FanTileControl.call(getContext(), method, arg, extras); }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
+        if ("runtime_snapshot".equals(method)) return RuntimeStateStore.snapshot(getContext());
+        if ("crash_fuse".equals(method)) {
+            if (Binder.getCallingUid() != Process.SYSTEM_UID) return result;
+            long identity = Binder.clearCallingIdentity();
+            try { return CrashFuseStore.refresh(getContext(), extras); }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
+        if (ShoulderQuickSwitchPolicy.CALL.equals(method)) return setShoulderCandidate(arg, extras);
+        if ("capture_surface_register".equals(method)||"capture_surface_get".equals(method)) {
+            int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            boolean register="capture_surface_register".equals(method);
+            String required=register?"com.android.systemui":"com.android.ztescreenshot";
+            if(uid/100000!=Process.myUid()/100000||!required.equals(getCallingPackage())
+                    ||packages==null||!java.util.Arrays.asList(packages).contains(required))return result;
+            if(register) {
+                android.os.IBinder binder=extras==null?null:extras.getBinder("controller");
+                if(binder!=null&&binder.isBinderAlive())captureSurfaceController=binder;
+            } else if(captureSurfaceController!=null&&captureSurfaceController.isBinderAlive())result.putBinder("controller",captureSurfaceController);
+            return result;
+        }
+        if ("ota_url_set".equals(method)) {
+            int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            String url=extras==null?null:extras.getString("url");
+            if(uid/100000!=Process.myUid()/100000||!"com.zte.zdm".equals(getCallingPackage())
+                    ||packages==null||!java.util.Arrays.asList(packages).contains("com.zte.zdm")
+                    ||!OtaBufferPolicy.validUrl(url)||!new AppConfig(getContext()).getBoolean(SystemOptions.key("ota_capture_url")))return result;
+            boolean saved=getContext().getSharedPreferences("ota_capture",0).edit().putString("url",url).putLong("time",System.currentTimeMillis()).commit();
+            result.putBoolean("ok",saved);return result;
+        }
+        if ("ota_url_get".equals(method)) {
+            if(Binder.getCallingUid()!=Process.myUid())return result;
+            android.content.SharedPreferences capture=getContext().getSharedPreferences("ota_capture",0);
+            result.putString("url",capture.getString("url",""));result.putLong("time",capture.getLong("time",0));return result;
+        }
         if ("telemetry".equals(method)) return DiagnosticStore.record(getContext(),extras);
         if ("debug_export_logs".equals(method) && BuildConfig.DEBUG && (Binder.getCallingUid()==Process.myUid()||Binder.getCallingUid()==Process.ROOT_UID)) {
             long identity=Binder.clearCallingIdentity();try { java.io.File file=new java.io.File(getContext().getFilesDir(),"last-diagnostic-export.txt");java.nio.file.Files.write(file.toPath(),DiagnosticExport.build(getContext()).getBytes(java.nio.charset.StandardCharsets.UTF_8));result.putString("path",file.getPath()); } catch(Exception e){result.putString("error",e.toString());} finally {Binder.restoreCallingIdentity(identity);}return result;
@@ -132,26 +188,52 @@ public final class LSConfigProvider extends ContentProvider {
             result.putString("message", saved.message);
             return result;
         }
-        if ("diagnostic".equals(method) && arg != null && arg.startsWith("ls_augment_")) {
-            String value = extras == null ? "" : extras.getString("value", "");
-            value = value.replace('\r', ' ').replace('\n', ' ');
-            if (value.length() > 2000) value = value.substring(0, 2000);
-            getContext().getSharedPreferences(AppConfig.DIAGNOSTICS, 0)
-                    .edit().putString(arg, value).apply();
-            if ("ls_augment_config_snapshot_handshake_v1".equals(arg)) {
-                Context context = getContext().getApplicationContext();
-                Thread cleanup = new Thread(() ->
-                        new AppConfig(context).cleanupLegacyGlobalSettingsAfterHandshake(),
-                        "LSA-ConfigMigration");
-                cleanup.setDaemon(true);
-                cleanup.start();
-            }
-            result.putBoolean("ok", true);
+        if ("diagnostic".equals(method)) {
+            ProviderDiagnostics.Result recorded = ProviderDiagnostics.record(getContext(), Binder.getCallingUid(),
+                    arg, extras == null ? "" : extras.getString("value", ""));
+            result.putBoolean("ok", recorded == ProviderDiagnostics.Result.ACCEPTED);
+            if(recorded == ProviderDiagnostics.Result.THROTTLED)
+                result.putLong("retryAfterMs", DiagnosticWritePolicy.WINDOW_MS);
             return result;
         }
         if ("diagnostic_get".equals(method) && arg != null && arg.startsWith("ls_augment_")) {
             result.putString("value", getContext().getSharedPreferences(AppConfig.DIAGNOSTICS, 0)
                     .getString(arg, ""));
+        }
+        return result;
+    }
+
+    private Bundle setShoulderCandidate(String arg, Bundle extras) {
+        Bundle result = new Bundle();
+        result.putBoolean("ok", false);
+        int callerUid = Binder.getCallingUid();
+        try {
+            String[] packages = getContext().getPackageManager().getPackagesForUid(callerUid);
+            if (!ShoulderQuickSwitchPolicy.canWriteForUser(callerUid, Process.myUid(), getCallingPackage(), packages)
+                    || !HookTargetRegistry.contains(ShoulderQuickSwitchPolicy.GAME_SPACE)) return result;
+            if (arg != null || extras == null || extras.size() != 4
+                    || !(extras.get("gamePackage") instanceof String)
+                    || !(extras.get("tableId") instanceof Integer)
+                    || !(extras.get("caseId") instanceof Long)
+                    || !(extras.get("checked") instanceof Boolean)) return result;
+            // Android allocates 100000 UIDs per user. Never accept a caller-supplied userId.
+            ShoulderQuickSwitchPolicy.CaseRef ref = new ShoulderQuickSwitchPolicy.CaseRef(
+                    callerUid / 100000, extras.getString("gamePackage"),
+                    extras.getInt("tableId"), extras.getLong("caseId"));
+            long identity = Binder.clearCallingIdentity();
+            try {
+                AppConfig config = new AppConfig(getContext());
+                AppConfig.SaveResult saved = config.setShoulderCandidate(ref, extras.getBoolean("checked"));
+                result.putBoolean("ok", saved.success);
+                result.putString("message", saved.message);
+                if (saved.success) {
+                    ConfigSnapshot snapshot = config.configSnapshot();
+                    result.putString("value", snapshot.get(ShoulderQuickSwitchPolicy.KEY));
+                    result.putLong("revision", snapshot.revision);
+                }
+            } finally { Binder.restoreCallingIdentity(identity); }
+        } catch (RuntimeException invalid) {
+            result.putString("message", "肩键候选未保存：请求无效");
         }
         return result;
     }
@@ -223,9 +305,20 @@ public final class LSConfigProvider extends ContentProvider {
     @Override public android.os.ParcelFileDescriptor openFile(Uri uri,String mode) throws java.io.FileNotFoundException {
         if(getContext()==null||!"r".equals(mode)||!allowedCaller())throw new java.io.FileNotFoundException("read only");
         int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+        java.util.List<String> path=uri.getPathSegments();
+        if(path.size()==2&&"font".equals(path.get(0))) {
+            if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
+                throw new java.io.FileNotFoundException("font reader only");
+            String hash=path.get(1),reference="font:"+hash;
+            if(!ManagedFont.reference(reference))throw new java.io.FileNotFoundException("invalid font");
+            AppConfig config=new AppConfig(getContext());boolean used=false;
+            for(EnhancementOption option:EnhancementCatalog.options())
+                if(option.key.endsWith("_clock_font")&&reference.equals(config.get(option.key)))used=true;
+            if(!used)throw new java.io.FileNotFoundException("unconfigured font");
+            return android.os.ParcelFileDescriptor.open(ManagedFont.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
         if(uid!=Process.myUid()&&!(BuildConfig.DEBUG&&uid==0)
                 &&(packages==null||!java.util.Arrays.asList(packages).contains("com.zte.mifavor.launcher")))throw new java.io.FileNotFoundException("launcher only");
-        java.util.List<String> path=uri.getPathSegments();
         if(path.size()!=2||!"icon".equals(path.get(0)))throw new java.io.FileNotFoundException("unknown icon path");
         String hash=path.get(1);LauncherOverrides values=LauncherOverrides.parse(new AppConfig(getContext()).get(ConfigSchema.LAUNCHER_OVERRIDES));
         boolean used=false;if(values!=null)for(LauncherOverrides.Entry e:values.entries())if(e.icon.equals(hash))used=true;

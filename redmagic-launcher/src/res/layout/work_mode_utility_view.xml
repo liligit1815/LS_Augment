@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.allapps.WorkUtilityView android:orientation="vertical" android:id="@id/work_utility_view" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentBottom="true" android:layout_alignParentEnd="true"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <ImageButton android:layout_gravity="end" android:id="@id/work_scheduler" android:background="@drawable/work_scheduler_background" android:layout_width="@dimen/work_scheduler_size" android:layout_height="@dimen/work_scheduler_size" android:layout_marginBottom="@dimen/work_scheduler_bottom_margin" android:src="@drawable/ic_schedule" android:contentDescription="@string/work_scheduler_button_content_description" android:elevation="@dimen/work_fab_elevation" />
-    <include layout="@layout/work_mode_fab" />
-</com.android.launcher3.allapps.WorkUtilityView>

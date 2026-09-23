@@ -20,11 +20,13 @@ import java.util.regex.Pattern;
 
 /** PackageManager truth, target persistence, aggregate state and recovery. */
 final class RootHideManager {
+    static final int APP_METADATA_FLAGS = PackageManager.MATCH_DISABLED_COMPONENTS
+            | PackageManager.MATCH_UNINSTALLED_PACKAGES;
     private static final String ROOT_DIR = "/data/adb/ls_augment/v2";
     private static final String TARGETS_FILE = ROOT_DIR + "/targets.conf";
     private static final String BACKUP_FILE = ROOT_DIR + "/targets.backup.conf";
     private static final String EMERGENCY_FILE = ROOT_DIR + "/emergency_restore.sh";
-    private static final ReentrantLock ACTION_LOCK = new ReentrantLock();
+    static final ReentrantLock ACTION_LOCK = new ReentrantLock();
     private static final Pattern PACKAGE = Pattern.compile(
             "[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+");
     private static final Pattern USER = Pattern.compile("UserInfo\\{(\\d+):([^:}]*)");
@@ -47,6 +49,9 @@ final class RootHideManager {
 
     private final Context context;
     private final AppConfig config;
+    private final HideTargetStore targetStore = new HideTargetStore();
+    private volatile HideTargetStore.Snapshot targetSnapshot;
+    private volatile String targetProblem = "独立应用名单尚未读取";
 
     RootHideManager(Context context) {
         this.context = context.getApplicationContext();
@@ -61,6 +66,11 @@ final class RootHideManager {
         return probeRoot();
     }
 
+    String rootAuthorizationProblem() {
+        return context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
+                .getBoolean("root_prompt_suppressed", false) ? "Root 授权已被拒绝" : "";
+    }
+
     RootStatus requestRootStatus() {
         context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
                 .edit().putBoolean("root_prompt_suppressed", false).apply();
@@ -68,11 +78,6 @@ final class RootHideManager {
     }
 
     private RootStatus probeRoot() {
-        if (!new java.io.File("/system/bin/su").exists()) {
-            RootShell.Result path = RootShell.run("command -v su 2>/dev/null || true", null, 3, 4096);
-            if (path.output.isEmpty()) return remember(
-                    new RootStatus(RootState.UNAVAILABLE, "未找到 su", "无"));
-        }
         RootShell.Result result = RootShell.run(
                 "printf 'uid='; id -u; if [ -d /data/adb/ksu ]; then printf '|provider=KernelSU'; "
                         + "elif [ -d /data/adb/magisk ]; then printf '|provider=Magisk'; "
@@ -84,6 +89,7 @@ final class RootHideManager {
             RootStatus status = remember(new RootStatus(RootState.GRANTED, "已授权",
                     provider.isEmpty() ? "Root" : provider));
             config.initializeRuntimeMirrorsIfNeeded();
+            refreshTargets();
             return status;
         }
         if (result.exitCode == 127) return remember(new RootStatus(RootState.UNAVAILABLE, "Root 不可用", "无"));
@@ -110,87 +116,214 @@ final class RootHideManager {
         boolean oldPackage = result.output.contains("old_pkg=1");
         boolean oldModule = result.output.contains("old_module=1");
         String message = oldPackage || oldModule
-                ? "检测到旧 APK/KSU。请先在旧版本恢复全部应用、卸载旧模块与旧 APK并重启。"
+                ? "检测到旧 APK/KSU。请先保留旧配置和恢复记录；当前不能证明遗留隐藏状态归属，勿直接按旧名单批量恢复。"
                 : "未检测到旧架构冲突";
         return new ConflictState(oldPackage, oldModule, message);
     }
 
     Set<Target> targets() {
-        return parseTargets(config.get(AppConfig.HIDE_TARGETS));
+        LinkedHashSet<Target> targets = new LinkedHashSet<>();
+        HideTargetStore.Snapshot snapshot = targetSnapshot;
+        if (snapshot != null) for (HideTargetStore.Record record : snapshot.records)
+            if (record.managed) targets.add(new Target(record.userId, record.userSerial, record.packageName, record.bound));
+        return targets;
+    }
+
+    HideTargetCodec.Selection selectionStatus() {
+        return HideTargetCodec.parse(targetSnapshot != null && targetProblem.isEmpty()
+                ? serialize(targets()) : "!independent-targets-unavailable");
+    }
+
+    long targetRevision() { return targetSnapshot == null ? -1 : targetSnapshot.revision; }
+
+    /** Worker-thread only. Existing independent data always wins over the private cache. */
+    OperationResult refreshTargets() {
+        ACTION_LOCK.lock();
+        try {
+            HideTargetStore.ReadResult read = targetStore.read();
+            if (read.status == HideTargetStore.ReadStatus.ABSENT) {
+                HideTargetStore.LegacyResult legacy = targetStore.readLegacyTargets();
+                HideTargetCodec.Selection cache = HideTargetCodec.parse(config.get(AppConfig.HIDE_TARGETS));
+                if (!cache.valid || legacy.status != HideTargetStore.ReadStatus.OK
+                        && legacy.status != HideTargetStore.ReadStatus.ABSENT) {
+                    targetProblem = "旧名单无法完整校验，原文件与缓存保留，未建立空名单";
+                    return OperationResult.failure(targetProblem);
+                }
+                LinkedHashMap<String, HideTargetStore.Record> records = new LinkedHashMap<>();
+                List<HideTargetCodec.Entry> entries = new ArrayList<>(legacy.entries);
+                entries.addAll(cache.entries);
+                for (HideTargetCodec.Entry entry : entries) {
+                    HideTargetStore.Record record = new HideTargetStore.Record(entry.userId, entry.userSerial,
+                            entry.packageName, entry.confirmed, true, null, HideTargetStore.ObservedState.UNKNOWN, 0, null);
+                    records.put(record.key(), record);
+                }
+                // Validate the complete merged selection before establishing authority.
+                // A cache bound failure must not leave an unusable committed document.
+                LinkedHashSet<Target> merged = new LinkedHashSet<>();
+                for (HideTargetStore.Record record : records.values())
+                    merged.add(new Target(record.userId, record.userSerial, record.packageName, record.bound));
+                serialize(merged);
+                HideTargetStore.Snapshot migrated = new HideTargetStore.Snapshot(1, new ArrayList<>(records.values()));
+                RootShell.Result archived = HideRecoveryArchive.preserve(cache.raw);
+                if (!archived.isSuccess()) {
+                    targetProblem = "旧私有名单归档未确认，原值保留";
+                    return OperationResult.failure(targetProblem);
+                }
+                // Retire the old script; this installer never unhides an application.
+                RootShell.Result retired = HideRecoveryEmergency.install();
+                if (!retired.isSuccess()) {
+                    targetProblem = "旧应急入口保护未确认，未迁移名单";
+                    return OperationResult.failure(targetProblem);
+                }
+                HideTargetStore.WriteResult saved = targetStore.compareAndSet(0, migrated);
+                if (!saved.applied) {
+                    targetProblem = "独立名单迁移保存未确认，保留全部旧值。" + saved.error;
+                    return OperationResult.failure(targetProblem);
+                }
+                read = targetStore.read();
+                if (read.status != HideTargetStore.ReadStatus.OK || !migrated.encode().equals(read.snapshot.encode())) {
+                    targetProblem = "迁移读回尚未确认，保留旧名单，停止操作";
+                    return OperationResult.failure(targetProblem);
+                }
+                // A valid independent document is the durable migration marker. No old file is deleted.
+            }
+            if (read.status != HideTargetStore.ReadStatus.OK) {
+                targetProblem = read.error.isEmpty() ? "独立名单未获读取确认" : read.error;
+                return OperationResult.failure("独立名单读取失败，原文件保留。" + targetProblem);
+            }
+            targetSnapshot = read.snapshot;
+            targetProblem = "";
+            String serialized = serialize(targets());
+            if (!serialized.equals(config.get(AppConfig.HIDE_TARGETS))) {
+                AppConfig.SaveResult cache = config.save(Collections.singletonMap(AppConfig.HIDE_TARGETS, serialized));
+                if (!cache.success) return OperationResult.success("独立名单已读取，私有缓存稍后同步");
+            }
+            return OperationResult.success("独立名单已读取");
+        } catch (RuntimeException invalid) {
+            targetProblem = "独立名单校验未完成，原值保留";
+            return OperationResult.failure(targetProblem);
+        } finally { ACTION_LOCK.unlock(); }
     }
 
     OperationResult saveTargets(Set<Target> desired) {
+        return saveTargets(desired, Collections.emptyMap());
+    }
+
+    /** Read-only validation before presenting the import confirmation. */
+    OperationResult validateImportTargets(Set<Target> desired) {
         ACTION_LOCK.lock();
         try {
+            for (Target target : desired) if (target == null || !target.isValid()
+                    || target.isBound() || isProtected(target.packageName))
+                return OperationResult.failure("包含无效或受保护目标：" + target);
+            return OperationResult.success("待确认应用选择已校验，导入后需重新选择用户空间");
+        } finally { ACTION_LOCK.unlock(); }
+    }
+
+    OperationResult saveTargets(Set<Target> desired, Map<String, String> settings) {
+        return saveTargets(desired, settings, -1);
+    }
+
+    /** The displayed revision prevents a stale page from replacing a newer selection. */
+    OperationResult saveTargets(Set<Target> desired, Map<String, String> settings, long expectedRevision) {
+        ACTION_LOCK.lock();
+        try {
+            for (Map.Entry<String, String> entry : settings.entrySet())
+                if (ConfigSchema.normalize(entry.getKey(), entry.getValue()) == null)
+                    return OperationResult.failure("配置值无效：" + entry.getKey());
             RootStatus root = rootStatus();
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
-            if (conflictState().hasConflict()) {
-                return OperationResult.failure("旧 APK/KSU 仍存在，不能建立新版本目标配置");
-            }
-            UserDirectory directory = listUsersResult(false);
-            if (!directory.success) return OperationResult.failure(directory.message);
-            Set<Integer> knownUsers = directory.userIds();
-            LinkedHashSet<Target> userTargets = new LinkedHashSet<>();
-            int removedSystemTargets = 0;
+            if (!targetProblem.isEmpty() || targetSnapshot == null) return OperationResult.failure(targetProblem);
+            if (expectedRevision >= 0 && expectedRevision != targetSnapshot.revision)
+                return OperationResult.failure("应用名单已更新，请重新读取后再保存；本次草稿未覆盖新名单");
+            if (conflictState().hasConflict()) return OperationResult.failure("旧 APK/KSU 仍存在，不能建立新目标配置");
+            HideTargetStore.Snapshot before = targetSnapshot;
+            Set<Target> previous = targets();
+            LinkedHashSet<Target> newlyBound = new LinkedHashSet<>();
             for (Target target : desired) {
-                if (!target.isValid() || isProtected(target.packageName)) {
+                if (target == null || !target.isValid() || isProtected(target.packageName))
                     return OperationResult.failure("包含无效或受保护目标：" + target);
-                }
-                if (!knownUsers.contains(target.userId)) {
-                    return OperationResult.failure("目标用户不存在或已被移除：" + target.userId);
-                }
-                if (!isUserInstalledApp(target)) {
-                    removedSystemTargets++;
-                    continue;
-                }
-                userTargets.add(target);
-            }
-            Set<Target> old = targets();
-            for (Target target : old) {
-                if (!userTargets.contains(target) && queryState(target) == State.HIDDEN) {
-                    if (!knownUsers.contains(target.userId)) continue;
-                    OperationResult show = changeValidated(target, false, knownUsers);
-                    if (!show.success) return OperationResult.failure(
-                            "移除前恢复失败：" + target + "；" + show.message);
+                if (target.isBound() && !previous.contains(target)) {
+                    HideUserIdentity.Snapshot identity = matchUser(target);
+                    if (!identity.success) return OperationResult.failure(identity.message);
+                    newlyBound.add(target);
                 }
             }
-            String serialized = serialize(userTargets);
-            RootShell.Result rootWrite = writeRootTargets(serialized.replace(';', '\n'));
-            if (!rootWrite.isSuccess()) return OperationResult.failure(
-                    "Root 恢复副本写入失败：" + rootWrite.publicError());
-            Map<String, String> update = new LinkedHashMap<>();
+            if (!userInstalledTargets(newlyBound).containsAll(newlyBound))
+                return OperationResult.failure("无法确认新选择是当前用户应用，原选择保留");
+            // Validate cache bounds before committing the authoritative document.
+            String serialized = serialize(desired);
+            LinkedHashMap<String, HideTargetStore.Record> records = new LinkedHashMap<>();
+            for (HideTargetStore.Record old : before.records) {
+                Target target = new Target(old.userId, old.userSerial, old.packageName, old.bound);
+                HideTargetStore.Record next = new HideTargetStore.Record(old.userId, old.userSerial, old.packageName,
+                        old.bound, desired.contains(target), old.desiredHidden, old.observedState, old.observedAt, old.lastOperation);
+                records.put(next.key(), next);
+            }
+            for (Target target : desired) {
+                String key = target.userId + "|" + target.userSerial + "|" + target.packageName;
+                HideTargetStore.Record old = records.get(key);
+                records.put(key, new HideTargetStore.Record(target.userId, target.userSerial, target.packageName,
+                        target.isBound(), true, old == null ? null : old.desiredHidden,
+                        old == null ? HideTargetStore.ObservedState.UNKNOWN : old.observedState,
+                        old == null ? 0 : old.observedAt, old == null ? null : old.lastOperation));
+            }
+            for (Target target : newlyBound) if (!matchUser(target).success)
+                return OperationResult.failure("保存前用户空间变化，原选择保留");
+            HideTargetStore.WriteResult committed = targetStore.compareAndSet(before.revision,
+                    new HideTargetStore.Snapshot(before.revision + 1, new ArrayList<>(records.values())));
+            if (!committed.applied) return OperationResult.failure("独立名单提交未确认：" + committed.error);
+            targetSnapshot = committed.snapshot;
+            targetProblem = "";
+            Map<String, String> update = new LinkedHashMap<>(settings);
             update.put(AppConfig.HIDE_TARGETS, serialized);
-            AppConfig.SaveResult saved = config.save(update);
-            if (!saved.success) return OperationResult.failure(saved.message);
-            syncMirrors();
-            AuditLog.write(context, "TARGETS", "saved count=" + userTargets.size()
-                    + " removed_system=" + removedSystemTargets);
-            String message = "已保存 " + userTargets.size() + " 个用户应用目标";
-            if (removedSystemTargets > 0) {
-                message += "；已移除并恢复 " + removedSystemTargets + " 个系统应用目标";
-            }
-            return OperationResult.success(message);
-        } finally {
-            ACTION_LOCK.unlock();
-        }
+            AppConfig.SaveResult cache = config.save(update);
+            if (!cache.success) return new OperationResult(true,
+                    "独立名单已保存；其他设置或缓存未保存，请重新读取后核对。" + cache.message, false);
+            OperationResult mirrored = syncMirrors();
+            AuditLog.write(context, "TARGETS", "saved count=" + desired.size());
+            return new OperationResult(true, "已保存 " + desired.size()
+                    + " 个目标；取消选择不会显示应用，原记录继续保留"
+                    + (mirrored.success ? "" : "；状态同步未完成：" + mirrored.message), cache.runtimeSynced && mirrored.success);
+        } catch (RuntimeException invalid) {
+            return OperationResult.failure("名单提交未确认，原文件保留，请重新读取核对");
+        } finally { ACTION_LOCK.unlock(); }
     }
 
     State queryState(Target target) {
-        if (target == null || !target.isValid()) return State.ERROR;
+        return queryStates(Collections.singleton(target)).getOrDefault(target, State.ERROR);
+    }
+
+    /** No TTL cache: each caller gets a fresh, bounded PackageManager snapshot. */
+    Map<Target, State> queryStates(Set<Target> requested) {
+        Map<Target, State> states = new LinkedHashMap<>();
+        Map<String, Set<Target>> packages = new LinkedHashMap<>();
+        for (Target target : requested) {
+            states.put(target, State.ERROR);
+            if (target != null && target.isValid() && target.isBound() && matchUser(target).success) packages
+                    .computeIfAbsent(target.packageName, ignored -> new LinkedHashSet<>()).add(target);
+        }
         String remembered = context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
                 .getString("root_last_state", "");
         if (RootState.DENIED.name().equals(remembered)
-                || RootState.UNAVAILABLE.name().equals(remembered)) return State.ERROR;
-        String marker = "User " + target.userId + ":";
-        String command = "dumpsys package " + RootShell.quote(target.packageName)
-                + " 2>/dev/null | grep -F " + RootShell.quote(marker) + " | head -n 1";
-        RootShell.Result result = RootShell.run(command, null, 12, 16 * 1024);
-        if (!result.isSuccess() && result.output.isEmpty()) return State.ERROR;
-        String line = result.output;
-        if (line.contains("installed=false")) return State.MISSING;
-        if (line.contains("hidden=true")) return State.HIDDEN;
-        if (line.contains("hidden=false")) return State.VISIBLE;
-        return State.MISSING;
+                || RootState.UNAVAILABLE.name().equals(remembered)) return states;
+        List<String> names = new ArrayList<>(packages.keySet());
+        for (int offset = 0; offset < names.size(); offset += HideBatchExecutor.BATCH_SIZE) {
+            Set<String> batch = new LinkedHashSet<>(names.subList(offset,
+                    Math.min(offset + HideBatchExecutor.BATCH_SIZE, names.size())));
+            RootShell.Result result = RootShell.run(HidePackageSnapshot.command(batch), null,
+                    12L * batch.size(), 256 * 1024);
+            if (!result.isSuccess()) continue;
+            Map<String, HidePackageSnapshot.PackageState> parsed = HidePackageSnapshot.parse(result.output, batch);
+            for (String pkg : batch) {
+                HidePackageSnapshot.PackageState state = parsed.get(pkg);
+                if (state == null) continue;
+                for (Target target : packages.get(pkg))
+                    if (matchUser(target).success)
+                        states.put(target, State.valueOf(state.user(target.userId).name()));
+            }
+        }
+        return states;
     }
 
     OperationResult hide(Target target) { return change(target, true, false); }
@@ -221,13 +354,45 @@ final class RootHideManager {
 
     OperationResult showAll() { return changeAll(false, false); }
 
-    OperationResult emergencyRestore() { return changeAll(false, false); }
+    OperationResult emergencyRestore() { return OperationResult.failure("请从应用隐藏页面主动选择全部显示"); }
 
-    private OperationResult changeAll(boolean hide, boolean currentUserOnly) {
+    OperationResult toggleAll() {
         ACTION_LOCK.lock();
         try {
             RootStatus root = rootStatus();
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
+            // Decide and act under the same queue lock as manual and screen-off actions.
+            Summary current = summary();
+            if (current.aggregate == Aggregate.ERROR) return OperationResult.failure(
+                    "部分应用选择的用户空间或状态无法确认，请重新核对选择");
+            return changeAll(current.aggregate == Aggregate.ALL_VISIBLE, false, root);
+        } finally { ACTION_LOCK.unlock(); }
+    }
+
+    private OperationResult changeAll(boolean hide, boolean currentUserOnly) {
+        return changeAll(hide, currentUserOnly, null);
+    }
+
+    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot) {
+        return changeAll(hide, currentUserOnly, checkedRoot, null, null);
+    }
+
+    OperationResult changeConfirmed(boolean hide, Set<Target> confirmed, java.util.function.Consumer<String> progress) {
+        if (confirmed == null) return OperationResult.failure("应用名单未确认");
+        return changeAll(hide, false, null, new LinkedHashSet<>(confirmed), progress);
+    }
+
+    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot,
+            Set<Target> confirmed, java.util.function.Consumer<String> progress) {
+        ACTION_LOCK.lock();
+        try {
+            reportProgress(progress, "正在检查应用…");
+            RootStatus root = checkedRoot == null ? rootStatus() : checkedRoot;
+            if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
+            if (!selectionStatus().valid)
+                return OperationResult.failure("独立应用名单尚未读取成功，已保留原内容并停止操作");
+            if (confirmed != null && !confirmed.equals(targets()))
+                return OperationResult.failure("配置应用已变化，请重新确认操作");
             if (hide && conflictState().hasConflict()) {
                 return OperationResult.failure("旧架构仍存在，已阻止隐藏动作");
             }
@@ -244,33 +409,47 @@ final class RootHideManager {
             }
             int success = 0;
             List<String> failures = new ArrayList<>();
-            for (Target target : targets()) {
-                if (!knownUsers.contains(target.userId)) {
-                    // A removed Android user is not a valid command target.
-                    // Keep recovery fail-closed and simply ignore its stale entry.
+            Set<Target> configured = targets();
+            if (configured.isEmpty()) return OperationResult.failure("请先配置应用");
+            Set<Target> userApps = userInstalledTargets(configured);
+            Set<Target> actionTargets = new LinkedHashSet<>();
+            Set<Target> legacyTargets = new LinkedHashSet<>();
+            for (Target target : configured) {
+                if (target == null || !target.isValid() || isProtected(target.packageName)) {
+                    failures.add(target + ":目标无效或受保护");
                     continue;
                 }
                 if (hide && currentUserOnly && target.userId != current.userId) continue;
-                if (hide && !isUserInstalledApp(target)) {
-                    // Legacy versions allowed system targets. Never hide them
-                    // again; if one is still hidden, restore it while the old
-                    // target remains available to the emergency recovery path.
-                    if (queryState(target) == State.HIDDEN) {
-                        OperationResult restored = changeValidated(target, false, knownUsers);
-                        if (!restored.success) {
-                            failures.add(target + ":系统应用恢复失败：" + restored.message);
-                        }
-                    }
+                if (!target.isBound()) {
+                    failures.add(target + ":尚未确认用户空间，请重新选择应用");
                     continue;
                 }
-                OperationResult result = changeValidated(target, hide, knownUsers);
-                if (result.success) success++; else failures.add(target + ":" + result.message);
+                HideUserIdentity.Snapshot identity = matchUser(target);
+                if (!knownUsers.contains(target.userId) || !identity.success) {
+                    failures.add(target + ":" + (identity.success ? "目标用户已移除" : identity.message));
+                    continue;
+                }
+                if (!userApps.contains(target)) {
+                    // Legacy selection is intent, not ownership of hidden state.
+                    legacyTargets.add(target);
+                    continue;
+                }
+                actionTargets.add(target);
             }
-            syncMirrors();
+            HideBatchExecutor.Outcome<Target> changed = executeBatch(actionTargets, hide, root, progress);
+            success += changed.success.size();
+            for (Map.Entry<Target, String> failure : changed.failures.entrySet())
+                failures.add(failure.getKey() + ":" + failure.getValue());
+            reportProgress(progress, "正在更新应用状态…");
+            OperationResult mirrored = syncMirrors();
             String action = hide ? "HIDE_ALL" : "SHOW_ALL";
             AuditLog.write(context, action, "success=" + success + " failures=" + failures.size());
+            if (!legacyTargets.isEmpty()) return OperationResult.failure("已处理 " + success + " 个目标，失败 "
+                    + failures.size() + " 个；已跳过 " + legacyTargets.size()
+                    + " 个无法确认的普通应用，请在配置应用中重新核对选择");
             return failures.isEmpty()
-                    ? OperationResult.success("已处理 " + success + " 个目标")
+                    ? new OperationResult(true, "已处理 " + success + " 个目标"
+                    + (mirrored.success ? "" : "；运行状态同步失败：" + mirrored.message), mirrored.success)
                     : OperationResult.failure("成功 " + success + "，失败 " + failures.size()
                     + "：" + failures.get(0));
         } finally {
@@ -281,6 +460,7 @@ final class RootHideManager {
     private OperationResult change(Target target, boolean hide, boolean lockHeld) {
         if (!lockHeld) ACTION_LOCK.lock();
         try {
+            if (!hide) return OperationResult.review("请逐个核对当前应用并手动确认显示");
             if (!lockHeld) {
                 RootStatus root = rootStatus();
                 if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
@@ -288,7 +468,11 @@ final class RootHideManager {
             UserDirectory directory = listUsersResult(false);
             if (!directory.success) return OperationResult.failure(directory.message);
             OperationResult result = changeValidated(target, hide, directory.userIds());
-            if (!lockHeld && result.success) syncMirrors();
+            if (!lockHeld && result.success) {
+                OperationResult mirrored = syncMirrors();
+                return new OperationResult(true, result.message
+                        + (mirrored.success ? "" : "；运行状态同步失败：" + mirrored.message), mirrored.success);
+            }
             return result;
         } finally {
             if (!lockHeld) ACTION_LOCK.unlock();
@@ -297,12 +481,16 @@ final class RootHideManager {
 
     private OperationResult changeValidated(Target target, boolean hide,
             Set<Integer> knownUsers) {
+            if (!hide) return OperationResult.review("请逐个核对当前应用并手动确认显示");
             if (target == null || !target.isValid() || isProtected(target.packageName)) {
                 return OperationResult.failure("目标无效或受保护");
             }
             if (knownUsers == null || !knownUsers.contains(target.userId)) {
                 return OperationResult.failure("目标用户不存在或无法验证");
             }
+            if (!target.isBound()) return OperationResult.failure("应用选择尚未确认用户身份");
+            HideUserIdentity.Snapshot user = matchUser(target);
+            if (!user.success) return OperationResult.failure(user.message);
             if (hide && !isUserInstalledApp(target)) {
                 return OperationResult.failure("仅支持隐藏用户安装的应用");
             }
@@ -312,43 +500,60 @@ final class RootHideManager {
             if (hide && !config.getBoolean(AppConfig.HIDE_MASTER)) {
                 return OperationResult.failure("隐藏管理总开关未启用");
             }
-            State expected = hide ? State.HIDDEN : State.VISIBLE;
-            State before = queryState(target);
-            if (before == expected) return OperationResult.success("状态已经是 " + expected);
-            if (before == State.MISSING) return OperationResult.failure("目标在该用户中不存在");
-            String mode = hide ? "hide" : "unhide";
-            for (int attempt = 1; attempt <= 3; attempt++) {
-                StringBuilder command = new StringBuilder();
-                if (hide) {
-                    command.append("/system/bin/am force-stop --user ")
-                            .append(target.userId).append(' ')
-                            .append(RootShell.quote(target.packageName))
-                            .append(" </dev/null >/dev/null 2>&1 || true; ");
-                }
-                command.append("/system/bin/pm ").append(mode).append(" --user ")
-                        .append(target.userId).append(' ')
-                        .append(RootShell.quote(target.packageName))
-                        .append(" </dev/null >/dev/null 2>&1");
-                RootShell.Result commandResult = RootShell.run(command.toString(), null, 15, 4096);
-                State after = queryState(target);
-                if (after == expected) {
-                    AuditLog.write(context, mode.toUpperCase(Locale.US),
-                            target + " result=SUCCESS attempts=" + attempt);
-                    return OperationResult.success("操作成功");
-                }
-                if (commandResult.timedOut) return OperationResult.failure("PackageManager 操作超时");
-            }
-            State actual = queryState(target);
-            AuditLog.write(context, mode.toUpperCase(Locale.US),
-                    target + " result=FAIL actual=" + actual);
-            return OperationResult.failure("状态校验失败，实际为 " + actual);
+            HideBatchExecutor.Outcome<Target> outcome = executeBatch(Collections.singleton(target), hide);
+            return outcome.success.contains(target) ? OperationResult.success("操作成功")
+                    : OperationResult.failure(outcome.failures.getOrDefault(target, "状态校验失败"));
+    }
+
+    /** User-requested batches retain per-target identity checks; disk records never replay commands. */
+    private HideBatchExecutor.Outcome<Target> executeBatch(Set<Target> targets, boolean hide) {
+        return executeBatch(targets, hide, rootStatus(), null);
+    }
+
+    private HideBatchExecutor.Outcome<Target> executeBatch(Set<Target> targets, boolean hide,
+            RootStatus root, java.util.function.Consumer<String> progress) {
+        HideBatchExecutor.Outcome<Target> outcome = new HideBatchExecutor.Outcome<>();
+        if (root.state != RootState.GRANTED) {
+            for (Target target : targets) outcome.failures.put(target, root.message);
+            return outcome;
+        }
+        HideTargetController commands = HideTargetController.forCheckedBatch(context, this, root);
+        boolean stopped = false;
+        int index = 0;
+        for (Target target : targets) {
+            OperationResult result;
+            reportProgress(progress, (hide ? "正在隐藏 " : "正在显示 ") + (++index) + "/" + targets.size());
+            if (stopped) result = OperationResult.failure("上一目标未完成，已停止后续目标");
+            else if (hide) result = commands.hide(target);
+            else result = commands.showInConfirmedBatch(target);
+            if (result.success) outcome.success.add(target);
+            else { outcome.failures.put(target, result.message); stopped = true; }
+            AuditLog.write(context, hide ? "HIDE" : "SHOW", target + " success=" + result.success);
+        }
+        return outcome;
+    }
+
+    private static void reportProgress(java.util.function.Consumer<String> progress, String message) {
+        if (progress != null) try { progress.accept(message); } catch (RuntimeException ignored) { }
+    }
+
+    String currentTargetProblem(Target target) {
+        if (target == null || !target.isBound() || isProtected(target.packageName)) return "目标无效、身份未绑定或属于受保护应用";
+        HideUserIdentity.Snapshot identity = matchUser(target);
+        if (!identity.success) return identity.message;
+        return isUserInstalledApp(target) ? "" : "只能操作所选空间中当前安装的普通应用";
     }
 
     Summary summary() {
+        if (!refreshTargets().success) return new Summary(Aggregate.ERROR, 1, 0, 0, 0, 1);
+        if (!selectionStatus().valid) return new Summary(Aggregate.ERROR, 1, 0, 0, 0, 1);
+        return summary(queryStates(targets()));
+    }
+
+    private Summary summary(Map<Target, State> states) {
         int visible = 0, hidden = 0, missing = 0, error = 0;
-        Set<Target> targets = targets();
-        for (Target target : targets) {
-            switch (queryState(target)) {
+        for (State state : states.values()) {
+            switch (state) {
                 case VISIBLE: visible++; break;
                 case HIDDEN: hidden++; break;
                 case MISSING: missing++; break;
@@ -356,7 +561,7 @@ final class RootHideManager {
             }
         }
         Aggregate aggregate;
-        int total = targets.size();
+        int total = states.size();
         if (total == 0) aggregate = Aggregate.EMPTY;
         else if (missing > 0 || error > 0) aggregate = Aggregate.ERROR;
         else if (visible == total) aggregate = Aggregate.ALL_VISIBLE;
@@ -366,26 +571,50 @@ final class RootHideManager {
     }
 
     OperationResult syncMirrors() {
-        StringBuilder hidden = new StringBuilder();
-        for (Target target : targets()) {
-            if (queryState(target) != State.HIDDEN) continue;
-            if (hidden.length() > 0) hidden.append(';');
-            hidden.append(target);
-        }
-        Summary summary = summary();
-        StringBuilder command = new StringBuilder();
-        if (hidden.length() == 0) {
-            command.append("settings delete global ").append(AppConfig.HIDDEN_MIRROR)
-                    .append(" >/dev/null 2>&1 || true; ");
-        } else {
-            command.append("settings put global ").append(AppConfig.HIDDEN_MIRROR).append(' ')
-                    .append(RootShell.quote(hidden.toString())).append("; ");
-        }
-        command.append("settings put global ").append(AppConfig.TILE_STATE).append(' ')
-                .append(summary.aggregate.name());
-        RootShell.Result result = RootShell.run(command.toString(), null, 12, 4096);
-        return result.isSuccess() ? OperationResult.success("运行镜像已同步")
-                : OperationResult.failure(result.publicError());
+        ACTION_LOCK.lock();
+        try {
+            OperationResult loaded = refreshTargets();
+            if (!loaded.success) return loaded;
+            if (!selectionStatus().valid) {
+                RootShell.Result cleared = RuntimeStateStore.publishHidden(context, "", Aggregate.ERROR.name());
+                return OperationResult.failure("应用选择无法解析，已保留原内容"
+                        + (cleared.isSuccess() ? "；有效隐藏镜像已清空" : "；镜像清除失败：" + cleared.publicError()));
+            }
+            Map<Target, State> states = queryStates(targets());
+            HideTargetStore.Snapshot before = targetSnapshot;
+            List<HideTargetStore.Record> observed = new ArrayList<>();
+            boolean changed = false;
+            for (HideTargetStore.Record old : before.records) {
+                State state = states.get(new Target(old.userId, old.userSerial, old.packageName, old.bound));
+                HideTargetStore.ObservedState actual = state == null ? old.observedState
+                        : state == State.ERROR ? HideTargetStore.ObservedState.UNKNOWN
+                        : HideTargetStore.ObservedState.valueOf(state.name());
+                boolean different = actual != old.observedState;
+                changed |= different;
+                observed.add(new HideTargetStore.Record(old.userId, old.userSerial, old.packageName,
+                        old.bound, old.managed, old.desiredHidden, actual,
+                        different ? System.currentTimeMillis() : old.observedAt, old.lastOperation));
+            }
+            if (changed) {
+                HideTargetStore.WriteResult saved = targetStore.compareAndSet(before.revision,
+                        new HideTargetStore.Snapshot(before.revision + 1, observed));
+                if (!saved.applied) return OperationResult.failure("当前状态已读取，观察记录保存未确认：" + saved.error);
+                targetSnapshot = saved.snapshot;
+            }
+            Set<Target> hidden = new LinkedHashSet<>();
+            for (Map.Entry<Target, State> entry : states.entrySet()) {
+                if (entry.getValue() != State.HIDDEN) continue;
+                hidden.add(entry.getKey());
+            }
+            Summary summary = summary(states);
+            RootShell.Result result = RuntimeStateStore.publishHidden(context,
+                    HideTargetCodec.encode(hidden), summary.aggregate.name());
+            if (states.containsValue(State.ERROR)) return OperationResult.failure(
+                    "部分选择的用户身份或状态无法确认，已保留选择并排除无效隐藏镜像"
+                            + (result.isSuccess() ? "" : "；镜像同步失败：" + result.publicError()));
+            return result.isSuccess() ? OperationResult.success("运行镜像已同步")
+                    : OperationResult.failure(result.publicError());
+        } finally { ACTION_LOCK.unlock(); }
     }
 
     List<UserRecord> listUsers() {
@@ -414,7 +643,9 @@ final class RootHideManager {
             try {
                 int userId = Integer.parseInt(matcher.group(1));
                 if (userId < 0 || userId > 99999 || unique.containsKey(userId)) continue;
-                unique.put(userId, new UserRecord(userId, matcher.group(2)));
+                HideUserIdentity.Snapshot identity = HideUserIdentity.read(context, userId);
+                unique.put(userId, new UserRecord(userId,
+                        identity.success ? identity.userSerial : -1, matcher.group(2)));
             } catch (Throwable ignored) { }
         }
         if (unique.isEmpty()) {
@@ -426,28 +657,47 @@ final class RootHideManager {
     }
 
     List<AppRecord> listApps(int userId) {
-        if (userId < 0 || userId > 99999) return Collections.emptyList();
+        HideUserIdentity.Snapshot identity = HideUserIdentity.read(context, userId);
+        return identity.success ? listApps(userId, identity.userSerial) : Collections.emptyList();
+    }
+
+    List<AppRecord> listApps(int userId, long expectedSerial) {
+        if (!HideUserIdentity.match(context, userId, expectedSerial).success)
+            return Collections.emptyList();
         RootStatus root = rootStatus();
         RootShell.Result result = root.state == RootState.GRANTED
                 ? RootShell.run("/system/bin/pm list packages -3 --user " + userId + " 2>/dev/null",
                 null, 30, 2 * 1024 * 1024)
                 : new RootShell.Result(126, "root_unavailable", false);
+        if (!result.isSuccess()) return Collections.emptyList();
         LinkedHashSet<String> packages = new LinkedHashSet<>();
         for (String line : result.output.split("\\r?\\n")) {
             String value = line.startsWith("package:") ? line.substring(8).trim() : "";
             if (isValidPackage(value)) packages.add(value);
         }
-        // `pm list packages --user` can omit packages hidden for that user.
-        // Re-add only managed third-party targets; legacy system targets remain
-        // available through showAll/emergencyRestore but never return to the picker.
-        for (Target target : targets()) {
-            if (target.userId == userId && target.isValid() && isUserInstalledApp(target)) {
-                packages.add(target.packageName);
-            }
-        }
-        if (packages.isEmpty() && userId == 0) {
-            for (ApplicationInfo info : context.getPackageManager().getInstalledApplications(0)) {
-                if (!hasSystemFlag(info)) packages.add(info.packageName);
+        // Old intent supplies package names only. Hidden apps can be absent from
+        // the default list, including after an upgrade leaves their selection
+        // pending. Even an old serial mismatch is only a discovery hint: verify
+        // third-party status AND installation in the current captured user.
+        // These current-user candidates never change or confirm stored intent.
+        Set<Target> candidates = new LinkedHashSet<>();
+        for (Target target : targets()) if (target.userId == userId && target.isValid()
+                && !isProtected(target.packageName) && !packages.contains(target.packageName))
+            candidates.add(new Target(userId, expectedSerial, target.packageName));
+        if (!candidates.isEmpty()) {
+            RootShell.Result inventory = RootShell.run("/system/bin/pm list packages -3 -u --user "
+                    + userId + " 2>/dev/null", null, 12, 2 * 1024 * 1024);
+            if (inventory.isSuccess()) {
+                Set<String> thirdParty = new LinkedHashSet<>();
+                for (String line : inventory.output.split("\\r?\\n"))
+                    if (line.startsWith("package:")) thirdParty.add(line.substring(8).trim());
+                Map<Target, State> currentStates = queryStates(candidates);
+                for (Target candidate : candidates) {
+                    State state = currentStates.getOrDefault(candidate, State.ERROR);
+                    if (thirdParty.contains(candidate.packageName)
+                            && (state == State.VISIBLE || state == State.HIDDEN))
+                        packages.add(candidate.packageName);
+                }
             }
         }
         ArrayList<AppRecord> records = new ArrayList<>(packages.size());
@@ -456,43 +706,58 @@ final class RootHideManager {
             String label = packageName;
             long installedAt = 0L;
             try {
-                ApplicationInfo info = pm.getApplicationInfo(packageName, 0);
+                ApplicationInfo info = pm.getApplicationInfo(packageName, APP_METADATA_FLAGS);
                 if (hasSystemFlag(info)) continue;
                 CharSequence loaded = info.loadLabel(pm);
                 if (loaded != null && loaded.length() > 0) label = loaded.toString();
-                PackageInfo packageInfo = pm.getPackageInfo(packageName, 0);
+                PackageInfo packageInfo = pm.getPackageInfo(packageName, APP_METADATA_FLAGS);
                 installedAt = packageInfo.firstInstallTime;
             } catch (Throwable ignored) { }
-            records.add(new AppRecord(new Target(userId, packageName), label, false,
+            records.add(new AppRecord(new Target(userId, expectedSerial, packageName), label, false,
                     installedAt, isProtected(packageName)));
         }
         records.sort(Comparator.comparing((AppRecord app) -> app.label, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(app -> app.target.packageName));
-        return records;
+        return HideUserIdentity.match(context, userId, expectedSerial).success
+                ? records : Collections.emptyList();
     }
 
     private boolean isUserInstalledApp(Target target) {
-        if (target == null || !target.isValid()) return false;
-        try {
-            ApplicationInfo info = context.getPackageManager().getApplicationInfo(
-                    target.packageName,
-                    PackageManager.MATCH_DISABLED_COMPONENTS
-                            | PackageManager.MATCH_UNINSTALLED_PACKAGES);
-            return !hasSystemFlag(info);
-        } catch (Throwable ignored) {
-            // A package installed only in another Android user may not be
-            // visible through this process' PackageManager. Ask the privileged
-            // package service and fail closed if it cannot prove third-party status.
+        return userInstalledTargets(Collections.singleton(target)).contains(target);
+    }
+
+    private Set<Target> userInstalledTargets(Set<Target> requested) {
+        Set<Target> installed = new LinkedHashSet<>();
+        Map<String, Boolean> local = new LinkedHashMap<>();
+        Map<Integer, Set<Target>> unresolved = new LinkedHashMap<>();
+        for (Target target : requested) {
+            if (target == null || !target.isValid() || isProtected(target.packageName)) continue;
+            if (!local.containsKey(target.packageName)) {
+                Boolean thirdParty = null;
+                try {
+                    thirdParty = !hasSystemFlag(context.getPackageManager().getApplicationInfo(
+                            target.packageName, APP_METADATA_FLAGS));
+                } catch (Throwable ignored) { }
+                local.put(target.packageName, thirdParty);
+            }
+            Boolean thirdParty = local.get(target.packageName);
+            if (Boolean.TRUE.equals(thirdParty)) installed.add(target);
+            else if (thirdParty == null) unresolved
+                    .computeIfAbsent(target.userId, ignored -> new LinkedHashSet<>()).add(target);
         }
-        RootShell.Result result = RootShell.run(
-                "/system/bin/pm list packages -3 -u --user " + target.userId + " "
-                        + RootShell.quote(target.packageName) + " 2>/dev/null",
-                null, 8, 16 * 1024);
-        if (!result.isSuccess()) return false;
-        for (String line : result.output.split("\\r?\\n")) {
-            if (("package:" + target.packageName).equals(line.trim())) return true;
+        // Other-user packages may be invisible to this process. One privileged
+        // third-party inventory per user replaces a filtered inventory per app.
+        for (Map.Entry<Integer, Set<Target>> entry : unresolved.entrySet()) {
+            RootShell.Result result = RootShell.run("/system/bin/pm list packages -3 -u --user "
+                    + entry.getKey() + " 2>/dev/null", null, 12, 2 * 1024 * 1024);
+            if (!result.isSuccess()) continue;
+            Set<String> packages = new LinkedHashSet<>();
+            for (String line : result.output.split("\\r?\\n"))
+                if (line.startsWith("package:")) packages.add(line.substring(8).trim());
+            for (Target target : entry.getValue())
+                if (packages.contains(target.packageName)) installed.add(target);
         }
-        return false;
+        return installed;
     }
 
     private static boolean hasSystemFlag(ApplicationInfo info) {
@@ -528,52 +793,23 @@ final class RootHideManager {
     }
 
     private RootShell.Result writeRootTargets(String text) {
-        String command = "umask 077; mkdir -p " + ROOT_DIR + "; chmod 0700 " + ROOT_DIR + "; "
-                + "tmp=" + ROOT_DIR + "/.targets.$$; cat >\"$tmp\"; chmod 0600 \"$tmp\"; "
-                + "[ -f " + TARGETS_FILE + " ] && cp -f " + TARGETS_FILE + " " + BACKUP_FILE
-                + " || true; mv -f \"$tmp\" " + TARGETS_FILE + "; chmod 0600 " + TARGETS_FILE + "; "
-                + "cat >" + EMERGENCY_FILE + " <<'LSAUGMENT_RESTORE'\n"
-                + "#!/system/bin/sh\n"
-                + "TARGETS=/data/adb/ls_augment/v2/targets.conf\n"
-                + "[ -r \"$TARGETS\" ] || exit 2\n"
-                + "while IFS=: read -r uid pkg || [ -n \"$uid$pkg\" ]; do\n"
-                + "  case \"$uid\" in ''|*[!0-9]*) continue ;; esac\n"
-                + "  case \"$pkg\" in ''|*[!A-Za-z0-9._]*|.*|*..*|*.) continue ;; esac\n"
-                + "  /system/bin/pm unhide --user \"$uid\" \"$pkg\" </dev/null >/dev/null 2>&1 || true\n"
-                + "done <\"$TARGETS\"\n"
-                + "settings delete global ls_augment_hidden_targets >/dev/null 2>&1 || true\n"
-                + "settings put global ls_augment_tile_state ALL_VISIBLE >/dev/null 2>&1 || true\n"
-                + "exit 0\n"
-                + "LSAUGMENT_RESTORE\n"
-                + "chmod 0700 " + EMERGENCY_FILE;
-        return RootShell.run(command, text.isEmpty() ? "" : text + "\n", 12, 64 * 1024);
+        return HideRecoveryEmergency.writeTargets(text);
+    }
+
+    private HideUserIdentity.Snapshot matchUser(Target target) {
+        return HideUserIdentity.match(context, target.userId, target.userSerial);
     }
 
     private static Set<Target> parseTargets(String raw) {
         LinkedHashSet<Target> targets = new LinkedHashSet<>();
-        if (raw == null) return targets;
-        for (String item : raw.split("[;\\r\\n]+")) {
-            int split = item.indexOf(':');
-            if (split <= 0) continue;
-            try {
-                Target target = new Target(Integer.parseInt(item.substring(0, split)),
-                        item.substring(split + 1));
-                if (target.isValid() && !isProtected(target.packageName)) targets.add(target);
-            } catch (Throwable ignored) { }
-        }
+        HideTargetCodec.Selection selection = HideTargetCodec.parse(raw);
+        if (!selection.valid) return targets;
+        for (HideTargetCodec.Entry entry : selection.entries) targets.add(new Target(entry));
         return targets;
     }
 
     private static String serialize(Set<Target> targets) {
-        ArrayList<Target> sorted = new ArrayList<>(targets);
-        sorted.sort(Comparator.comparingInt((Target value) -> value.userId)
-                .thenComparing(value -> value.packageName));
-        StringBuilder out = new StringBuilder();
-        for (Target target : sorted) {
-            if (out.length() > 0) out.append(';');
-            out.append(target);
-        }
-        return out.toString();
+        return HideTargetCodec.encode(targets);
     }
 
     static boolean isValidPackage(String packageName) {
@@ -588,26 +824,30 @@ final class RootHideManager {
         return index < 0 ? "" : text.substring(index + marker.length()).trim();
     }
 
-    static final class Target {
-        final int userId;
-        final String packageName;
+    static final class Target extends HideTargetCodec.Entry {
         Target(int userId, String packageName) {
-            this.userId = userId;
-            this.packageName = packageName == null ? "" : packageName;
+            super(userId, -1, packageName, false);
         }
-        boolean isValid() { return userId >= 0 && userId <= 99999 && isValidPackage(packageName); }
-        @Override public String toString() { return userId + ":" + packageName; }
-        @Override public boolean equals(Object other) {
-            return other instanceof Target && userId == ((Target) other).userId
-                    && packageName.equals(((Target) other).packageName);
+        Target(int userId, long userSerial, String packageName) {
+            super(userId, userSerial, packageName, true);
         }
-        @Override public int hashCode() { return 31 * userId + packageName.hashCode(); }
+        Target(int userId, long userSerial, String packageName, boolean confirmed) {
+            super(userId, userSerial, packageName, confirmed);
+        }
+        Target(HideTargetCodec.Entry entry) {
+            super(entry.userId, entry.userSerial, entry.packageName, entry.confirmed);
+        }
     }
 
     static final class UserRecord {
         final int userId;
+        final long userSerial;
+        final long serial;
         final String name;
-        UserRecord(int userId, String name) { this.userId = userId; this.name = name; }
+        UserRecord(int userId, String name) { this(userId, -1, name); }
+        UserRecord(int userId, long userSerial, String name) {
+            this.userId = userId; this.userSerial = userSerial; this.serial = userSerial; this.name = name;
+        }
         @Override public String toString() { return name + "（user " + userId + "）"; }
     }
 
@@ -680,10 +920,21 @@ final class RootHideManager {
     static final class OperationResult {
         final boolean success;
         final String message;
+        final boolean runtimeSynced;
+        final boolean reviewRequired;
         private OperationResult(boolean success, String message) {
-            this.success = success; this.message = message;
+            this(success, message, success);
+        }
+        private OperationResult(boolean success, String message, boolean runtimeSynced) {
+            this(success, message, runtimeSynced, false);
+        }
+        private OperationResult(boolean success, String message, boolean runtimeSynced, boolean reviewRequired) {
+            this.success = success; this.message = message; this.runtimeSynced = runtimeSynced;
+            this.reviewRequired = reviewRequired;
         }
         static OperationResult success(String message) { return new OperationResult(true, message); }
+        static OperationResult observedSuccess(String message, boolean synced) { return new OperationResult(true, message, synced); }
         static OperationResult failure(String message) { return new OperationResult(false, message); }
+        static OperationResult review(String message) { return new OperationResult(false, message, false, true); }
     }
 }

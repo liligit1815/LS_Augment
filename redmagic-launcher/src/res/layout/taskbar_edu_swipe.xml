@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <TextView android:id="@id/taskbar_edu_title" android:layout_width="0.0dp" android:layout_height="wrap_content" android:text="@string/taskbar_edu_stashing" app:layout_constraintEnd_toEndOf="@id/swipe_animation" app:layout_constraintStart_toStartOf="@id/swipe_animation" app:layout_constraintTop_toTopOf="parent" style="@style/TextAppearance.TaskbarEduTooltip.Title" />
-    <com.airbnb.lottie.LottieAnimationView android:id="@id/swipe_animation" android:layout_width="@dimen/taskbar_edu_swipe_lottie_width" android:layout_height="@dimen/taskbar_edu_swipe_lottie_height" android:layout_marginTop="@dimen/taskbar_edu_tooltip_vertical_margin" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/taskbar_edu_title" app:lottie_autoPlay="true" app:lottie_loop="true" app:lottie_rawRes="@raw/taskbar_edu_stashing" />
-</androidx.constraintlayout.widget.ConstraintLayout>

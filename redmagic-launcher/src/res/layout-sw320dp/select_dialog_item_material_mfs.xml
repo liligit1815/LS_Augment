@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.zte.mifavor.widget.TextViewZTE android:textAppearance="@style/mfvc_primary_font" android:ellipsize="marquee" android:gravity="center_vertical" android:id="@android:id/text1" android:paddingTop="11.75dp" android:paddingBottom="11.5dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/mfvc_1line_list_height" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:id="@id/ambiguity_menu_view_concise_mode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/padding05" android:layout_marginRight="@dimen/padding05"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:background="@drawable/setting_ambiguity_menu_bg" android:paddingTop="16.0dp" android:paddingBottom="16.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16.0dp" android:paddingEnd="16.0dp">
-        <TextView android:textSize="13.0dp" android:textColor="@color/mfv_common_list_secondary_txt" android:ellipsize="marquee" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/footer_related_function_title" android:maxLines="1" android:textAlignment="viewStart" />
-        <TextView android:textSize="13.0dp" android:textColor="@color/setting_ambiguity_menu_text_color" android:ellipsize="marquee" android:gravity="center_vertical" android:id="@id/setings_app_notifications" android:clickable="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12.0dp" android:text="@string/setings_app_notifications" android:maxLines="1" android:onClick="onClickToAppNotification" />
-        <TextView android:textSize="13.0dp" android:textColor="@color/setting_ambiguity_menu_text_color" android:ellipsize="marquee" android:gravity="center_vertical" android:id="@id/setings_wallpaper" android:clickable="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12.0dp" android:text="@string/settings_wallpaper" android:maxLines="1" android:onClick="onClickToWallpaper" />
-    </LinearLayout>
-</LinearLayout>

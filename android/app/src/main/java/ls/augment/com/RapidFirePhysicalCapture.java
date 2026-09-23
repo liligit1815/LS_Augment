@@ -4,9 +4,7 @@ import android.content.Context;
 import android.os.Process;
 
 import java.io.File;
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,11 +42,7 @@ final class RapidFirePhysicalCapture {
         RapidFireInputDetector.Device target = new RapidFireInputDetector.Device(
                 left ? device0 : device1, left ? "nubia_tgk_aw_sar0_ch0" : "nubia_tgk_aw_sar1_ch0");
         try (InputStream input = context.getAssets().open("rapid_input_capture.sh")) {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            byte[] buffer = new byte[4096];
-            int count;
-            while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
-            String script = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+            String script = ShellScriptSource.readUtf8(input);
             lease = new File(context.getCacheDir(), "rapid-input-"
                     + UUID.randomUUID() + ".lease");
             if (!lease.createNewFile()) return new Result(null, "无法建立临时肩键测试会话");
@@ -110,12 +104,11 @@ final class RapidFirePhysicalCapture {
     private Result runReadOnly(Context context,List<RapidFireInputDetector.Device> devices,Runnable onReady) {
         if(cancelled.get())return new Result(null,"采集已取消");
         try(InputStream input=context.getAssets().open("rapid_input_readonly.sh")) {
-            ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] buffer=new byte[4096];int count;
-            while((count=input.read(buffer))!=-1)bytes.write(buffer,0,count);
+            String script=ShellScriptSource.readUtf8(input);
             lease=new File(context.getCacheDir(),"rapid-input-"+UUID.randomUUID()+".lease");
             if(!lease.createNewFile()||cancelled.get())return new Result(null,"采集已取消");
             StringBuilder command=new StringBuilder("/system/bin/sh -c ")
-                    .append(RootShell.quote(new String(bytes.toByteArray(),StandardCharsets.UTF_8)))
+                    .append(RootShell.quote(script))
                     .append(" -- ").append(Process.myPid()).append(' ').append(RootShell.quote(lease.getCanonicalPath()));
             for(RapidFireInputDetector.Device device:devices)command.append(' ').append(RootShell.quote(device.path));
             AtomicBoolean ready=new AtomicBoolean();

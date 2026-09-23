@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:orientation="vertical" android:id="@id/permission_contentPanel" android:layout_width="match_parent" android:layout_height="wrap_content">
-        <TextView android:textAppearance="@style/mfvc_primary_font02" android:id="@id/permission_message" android:paddingTop="8.0dp" android:paddingBottom="8.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/mfvc_list_txt_top_padding" android:paddingEnd="@dimen/mfvc_list_txt_top_padding" />
-    </LinearLayout>
-</ScrollView>

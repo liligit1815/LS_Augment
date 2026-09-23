@@ -135,6 +135,23 @@ public final class TestStatusBarFeatureSupport {
             require(ls.augment.com.StatusBarNetworkDisplay.resolve(String.valueOf(mode),mode!=4)==mode,"explicit mode overrides legacy toggle");
             require(ls.augment.com.StatusBarNetworkDisplay.format(mode,"12K","36K").equals(modes[mode-1]),"network mode output");
         }
+        String[] withoutMarks={"12K","36K","12K 36K","12K\n36K"};
+        String[] customMarks={"上传12K","下载36K","上传12K 下载36K","上传12K\n下载36K"};
+        for(int mode=1;mode<=4;mode++){
+            require(ls.augment.com.StatusBarNetworkDisplay.format(mode,"12K","36K","","").equals(withoutMarks[mode-1]),"empty marks in every network layout");
+            require(ls.augment.com.StatusBarNetworkDisplay.format(mode,"12K","36K","上传","下载").equals(customMarks[mode-1]),"custom marks in every network layout");
+        }
+        require(ls.augment.com.StatusBarNetworkDisplay.format(4,"12K","36K","","↓").equals("12K\n↓36K"),"upload mark can be empty independently");
+        require(ls.augment.com.StatusBarNetworkDisplay.format(3,"12K","36K","↑","").equals("↑12K 36K"),"download mark can be empty independently");
+        java.util.Map<String,String> markValues=new java.util.LinkedHashMap<>();
+        markValues.put(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_UPLOAD_MARK,"");
+        markValues.put(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_DOWNLOAD_MARK,"下载");
+        ls.augment.com.ConfigSnapshot marks=ls.augment.com.ConfigSnapshot.create(8,12348,markValues);
+        ls.augment.com.ConfigSnapshot restoredMarks=ls.augment.com.ConfigSnapshot.parse(marks.serialize());
+        require(restoredMarks!=null&&"".equals(restoredMarks.get(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_UPLOAD_MARK)),"saved empty upload mark stays empty");
+        require("下载".equals(restoredMarks.get(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_DOWNLOAD_MARK)),"saved download mark is preserved");
+        require("".equals(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_DOWNLOAD_MARK,"   ")),"blank input hides mark");
+        require(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NETWORK_UPLOAD_MARK,"x".repeat(17))==null,"oversized mark rejected");
         require(ls.augment.com.ModuleRuntimeStatus.apiVersion("version=x|api=102|pid=45").equals("102"),"actual LSPosed API parsed");
         require(ls.augment.com.ModuleRuntimeStatus.apiVersion("version=x|pid=45").isEmpty(),"missing API is not invented");
         close(StatusBarMetricsFormatter.temperatureCelsius(375), 37.5d, "battery temp");
@@ -142,6 +159,34 @@ public final class TestStatusBarFeatureSupport {
         close(StatusBarMetricsFormatter.currentMilliAmp(-2500000), -2500.0d, "current");
         close(StatusBarMetricsFormatter.voltageVolt(4000000), 4.0d, "voltage");
         close(StatusBarMetricsFormatter.powerWatt(-2500000, 4000000), 10.0d, "power");
+        String[] precisionSamples={"37","37.3","37.25","37.250"};
+        for(int decimals=0;decimals<=3;decimals++)
+            require(StatusBarMetricsFormatter.number(37.25d,decimals).equals(precisionSamples[decimals]),"fixed hardware decimal precision "+decimals);
+        require(StatusBarMetricsFormatter.number(-600.125d,2).equals("-600.13"),"discharge current keeps its sign");
+        require(StatusBarMetricsFormatter.number(-0.004d,2).equals("0.00"),"rounded zero has no discharge sign");
+        require(StatusBarMetricsFormatter.number(Double.NaN,2).equals("—"),"unavailable metric stays unavailable");
+        require(StatusBarMetricsFormatter.number(Double.POSITIVE_INFINITY,3).equals("—"),"infinite telemetry is not rendered");
+        require(StatusBarMetricsFormatter.number(37.25d,-1).equals("37"),"negative precision is bounded");
+        require(StatusBarMetricsFormatter.number(37.25d,9).equals("37.250"),"excessive precision is bounded");
+        Locale previousLocale=Locale.getDefault();
+        try{
+            Locale.setDefault(Locale.GERMANY);
+            require(StatusBarMetricsFormatter.number(37.25d,2).equals("37.25"),"hardware precision is independent of decimal locale");
+        }finally{Locale.setDefault(previousLocale);}
+        String[] decimalKeys={ls.augment.com.ConfigSchema.STATUSBAR_CPU_DECIMALS,ls.augment.com.ConfigSchema.STATUSBAR_GPU_DECIMALS,
+            ls.augment.com.ConfigSchema.STATUSBAR_BATTERY_TEMP_DECIMALS,ls.augment.com.ConfigSchema.STATUSBAR_CURRENT_DECIMALS,
+            ls.augment.com.ConfigSchema.STATUSBAR_POWER_DECIMALS};
+        String[] decimalDefaults={"0","0","1","0","1"};
+        for(int i=0;i<decimalKeys.length;i++){
+            require(ls.augment.com.ConfigSchema.defaultValue(decimalKeys[i]).equals(decimalDefaults[i]),"existing hardware precision is retained");
+            for(int decimals=0;decimals<=3;decimals++)require(String.valueOf(decimals).equals(ls.augment.com.ConfigSchema.normalize(decimalKeys[i],String.valueOf(decimals))),"supported precision persists");
+            for(String invalid:new String[]{"-1","4","1.5","NaN"})require(ls.augment.com.ConfigSchema.normalize(decimalKeys[i],invalid)==null,"invalid hardware precision rejected");
+        }
+        require(ls.augment.com.ConfigSchema.defaultValue(ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY).equals("0"),"position and size mode is opt-in");
+        require(ls.augment.com.ConfigSchema.defaultValue(ls.augment.com.ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP).equals("0"),"connectivity grouping is opt-in");
+        require(ls.augment.com.ConfigSchema.defaultValue(ls.augment.com.ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP).equals("0"),"native network retains group sizing by default");
+        require(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,"32").equals("32"),"native network font upper bound accepted");
+        require(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,"33")==null,"native network font out of range rejected");
         System.out.println("Status bar feature support checks: OK");
     }
 

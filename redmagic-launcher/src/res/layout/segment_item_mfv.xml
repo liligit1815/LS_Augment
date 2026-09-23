@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center" android:layout_gravity="center" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.zte.mifavor.widget.TextViewZTE android:enabled="false" android:textSize="@dimen/mfvc_segmented_item_text_size" android:textColor="@color/segment_item_text_color_selector" android:gravity="center" android:layout_gravity="center" android:id="@id/segment_text_item" android:background="@drawable/segment_item_bg_selector" android:layout_width="match_parent" android:layout_height="match_parent" android:numStars="6" android:fontFamily="@string/font_family_systemdefault_medium" android:paddingHorizontal="@dimen/mfvc_segmented_item_padding" />
-</LinearLayout>

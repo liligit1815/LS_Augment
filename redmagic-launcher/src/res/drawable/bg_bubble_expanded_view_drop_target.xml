@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inset android:inset="@dimen/bubble_expanded_view_drop_target_padding"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:androidprv="http://schemas.android.com/apk/prv/res/android">
-    <shape android:shape="rectangle">
-        <corners android:radius="@dimen/bubble_expanded_view_drop_target_corner_radius" />
-        <solid android:color="@color/bubblebar_drop_target_bg_color" />
-        <stroke android:width="1.0dp" android:color="@color/materialColorPrimaryContainer" />
-    </shape>
-</inset>

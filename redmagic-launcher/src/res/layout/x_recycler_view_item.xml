@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.zte.mifavor.androidx.widget.swipe.SwipeMenuLayout android:background="@android:color/transparent" android:layout_width="match_parent" android:layout_height="wrap_content" app:contentViewId="@id/swipe_content" app:menuViewId="@id/swipe_menu"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <com.zte.mifavor.androidx.widget.swipe.SwipeMenuView android:id="@id/swipe_menu" android:layout_width="match_parent" android:layout_height="match_parent" />
-    <com.zte.mifavor.androidx.widget.swipe.SwipeContentView android:id="@id/swipe_content" android:background="@android:color/transparent" android:layout_width="match_parent" android:layout_height="match_parent" app:background_isCard="true" />
-</com.zte.mifavor.androidx.widget.swipe.SwipeMenuLayout>

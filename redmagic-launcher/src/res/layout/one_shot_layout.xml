@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.oneshot.OneShotLayout android:id="@id/one_shot_bg" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <ImageView android:id="@id/one_shot_image1" android:visibility="visible" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" />
-    <ImageView android:id="@id/one_shot_image_keyguard" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" />
-    <com.android.launcher3.oneshot.TransparentBorderView android:id="@id/one_shot_border1" android:background="@android:color/transparent" android:visibility="visible" android:layout_width="match_parent" android:layout_height="match_parent" app:borderscene="1" />
-    <ImageView android:id="@id/one_shot_image2" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" />
-    <com.android.launcher3.oneshot.TransparentBorderView android:id="@id/one_shot_border2" android:background="@android:color/transparent" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" app:borderscene="2" />
-</com.android.launcher3.oneshot.OneShotLayout>

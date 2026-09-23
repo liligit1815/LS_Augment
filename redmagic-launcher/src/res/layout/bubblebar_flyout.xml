@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merge
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <ImageView android:id="@id/bubble_flyout_icon" android:layout_width="50.0dp" android:layout_height="36.0dp" android:scaleType="centerInside" android:paddingEnd="@dimen/bubblebar_flyout_avatar_message_space" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
-    <TextView android:ellipsize="end" android:id="@id/bubble_flyout_title" android:layout_width="0.0dp" android:layout_height="wrap_content" android:maxLines="1" android:fontFamily="@*android:string/config_batterySaverScheduleProvider" app:layout_constraintStart_toEndOf="@id/bubble_flyout_icon" app:layout_constraintTop_toTopOf="parent" />
-    <TextView android:ellipsize="end" android:id="@id/bubble_flyout_text" android:layout_width="0.0dp" android:layout_height="wrap_content" android:maxLines="2" android:fontFamily="@*android:string/config_batterySaverDeviceSpecificConfig" app:layout_constraintStart_toEndOf="@id/bubble_flyout_icon" app:layout_constraintTop_toBottomOf="@id/bubble_flyout_title" />
-</merge>

@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="@dimen/all_apps_empty_search_text_size" android:textColor="@color/mfv_common_sel_on" android:gravity="center" android:id="@id/search_market_text" android:background="?android:selectableItemBackground" android:paddingLeft="@dimen/dynamic_grid_edge_margin" android:paddingRight="@dimen/dynamic_grid_edge_margin" android:focusable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:textAllCaps="true"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

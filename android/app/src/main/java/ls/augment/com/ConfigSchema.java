@@ -24,6 +24,8 @@ public final class ConfigSchema {
     public static final String STORE_DOWNLOAD_COUNT = "ls_augment_store_download_count";
     public static final String HEALTH_MULTIPLY_ENABLED = "ls_augment_health_multiply_enabled";
     public static final String HEALTH_PLAN_ENABLED = "ls_augment_health_plan_enabled";
+    public static final String HEALTH_DAILY_LIMIT_ENABLED = "ls_augment_health_daily_limit_enabled";
+    public static final String HEALTH_DAILY_LIMIT_STEPS = "ls_augment_health_daily_limit_steps";
     public static final String STATUSBAR_CLOCK_ROWS = "ls_augment_statusbar_clock_rows";
     public static final String TILE_ENABLED = "ls_augment_tile_enabled";
     public static final String TILE_LABEL = "ls_augment_tile_label";
@@ -55,6 +57,8 @@ public final class ConfigSchema {
     public static final String SUPER_MIRROR_DIABLO_COEXIST =
             "ls_augment_super_mirror_diablo_coexist";
     public static final String FAN_FIXED_ENABLED = "ls_augment_fan_fixed_enabled";
+    public static final String FAN_FIXED_LEVEL = "ls_augment_fan_fixed_level";
+    public static final String FAN_TILE_REQUEST = "ls_augment_fan_tile_request";
     public static final String FAN_UNLOCK_MAX = "ls_augment_fan_unlock_max";
     public static final String FAN_TARGET_RPM = "ls_augment_fan_target_rpm";
     public static final String FAN_CALIBRATION_REQUEST = "ls_augment_fan_calibration_request";
@@ -72,9 +76,38 @@ public final class ConfigSchema {
     public static final String HEALTH_SINCE = "ls_augment_health_since";
     public static final String LAUNCHER_OVERRIDES = "ls_augment_launcher_overrides";
     public static final String STATUSBAR_GRID = "ls_augment_statusbar_grid_v2";
+    public static final String STATUSBAR_POSITION_SIZE_ONLY = "ls_augment_statusbar_position_size_only";
+    public static final String STATUSBAR_CONNECTIVITY_GROUP = "ls_augment_statusbar_connectivity_group";
+    public static final String STATUSBAR_NATIVE_BATTERY_ENABLED = "ls_augment_statusbar_native_battery_enabled";
+    public static final String STATUSBAR_CONNECTIVITY_SIZE = "ls_augment_statusbar_connectivity_size_dp";
+    public static final String STATUSBAR_CONNECTIVITY_STROKE = "ls_augment_statusbar_connectivity_ring_percent";
+    public static final String STATUSBAR_CONNECTIVITY_INACTIVE = "ls_augment_statusbar_connectivity_inactive_percent";
+    public static final String STATUSBAR_CONNECTIVITY_REVERSE = "ls_augment_statusbar_connectivity_reverse";
+    public static final String STATUSBAR_CONNECTIVITY_COLORS = "ls_augment_statusbar_connectivity_colors";
+    public static final String STATUSBAR_CONNECTIVITY_PLUG_COLOR = "ls_augment_statusbar_connectivity_plug_color";
+    public static final String[] CONNECTIVITY_CONTENT_KEYS = {"ls_augment_statusbar_connectivity_upper_content","ls_augment_statusbar_connectivity_middle_content","ls_augment_statusbar_connectivity_lower_content"};
+    public static final String[] CONNECTIVITY_SCALE_KEYS = {"ls_augment_statusbar_connectivity_upper_scale","ls_augment_statusbar_connectivity_middle_scale","ls_augment_statusbar_connectivity_lower_scale"};
+    public static final int CONNECTIVITY_SCALE_MIN = 50, CONNECTIVITY_SCALE_MAX = 300;
+    public static final int CONNECTIVITY_OFFSET_LIMIT = 100;
+    public static final String[] CONNECTIVITY_X_KEYS = {"ls_augment_statusbar_connectivity_upper_x","ls_augment_statusbar_connectivity_middle_x","ls_augment_statusbar_connectivity_lower_x"};
+    public static final String[] CONNECTIVITY_Y_KEYS = {"ls_augment_statusbar_connectivity_upper_y","ls_augment_statusbar_connectivity_middle_y","ls_augment_statusbar_connectivity_lower_y"};
+    // Index 0: ordinary charging bolt; index 1: bypass charging plug.
+    public static final String[] CONNECTIVITY_POWER_X_KEYS = {"ls_augment_statusbar_connectivity_charge_x","ls_augment_statusbar_connectivity_bypass_x"};
+    public static final String[] CONNECTIVITY_POWER_Y_KEYS = {"ls_augment_statusbar_connectivity_charge_y","ls_augment_statusbar_connectivity_bypass_y"};
+    public static final String[] CONNECTIVITY_POWER_SCALE_KEYS = {"ls_augment_statusbar_connectivity_charge_scale","ls_augment_statusbar_connectivity_bypass_scale"};
+    public static final String[] CONNECTIVITY_CONTENT_VALUES = {"battery","wifi","dual","data","other","none"};
+    public static final String[] CONNECTIVITY_CONTENT_LABELS = {"电量数字","Wi-Fi","双卡信号","仅流量卡信号","仅另一张卡信号","不显示"};
+    public static final String STATUSBAR_NATIVE_NETWORK_SIZE_SP = "ls_augment_statusbar_native_network_size_sp";
+    public static final String STATUSBAR_CPU_DECIMALS = "ls_augment_statusbar_cpu_decimals";
+    public static final String STATUSBAR_GPU_DECIMALS = "ls_augment_statusbar_gpu_decimals";
+    public static final String STATUSBAR_BATTERY_TEMP_DECIMALS = "ls_augment_statusbar_battery_temp_decimals";
+    public static final String STATUSBAR_CURRENT_DECIMALS = "ls_augment_statusbar_current_decimals";
+    public static final String STATUSBAR_POWER_DECIMALS = "ls_augment_statusbar_power_decimals";
     public static final String STATUSBAR_SYSTEM_TWO_ROWS = "ls_augment_statusbar_system_two_rows";
     public static final String STATUSBAR_NOTIFICATION_TWO_ROWS = "ls_augment_statusbar_notification_two_rows";
     public static final String STATUSBAR_NETWORK_TWO_ROWS = "ls_augment_statusbar_network_two_rows";
+    public static final String STATUSBAR_NETWORK_UPLOAD_MARK = "ls_augment_statusbar_network_upload_mark";
+    public static final String STATUSBAR_NETWORK_DOWNLOAD_MARK = "ls_augment_statusbar_network_download_mark";
     public static final String STATUSBAR_NETWORK_DISPLAY = "ls_augment_statusbar_network_display";
     public static final String STATUSBAR_DUAL_LEFT = "ls_augment_statusbar_dual_left";
     public static final String STATUSBAR_DUAL_RIGHT = "ls_augment_statusbar_dual_right";
@@ -155,6 +188,8 @@ public final class ConfigSchema {
         addInteger(STORE_DOWNLOAD_COUNT, 5, 1, 50);
         addBoolean(HEALTH_MULTIPLY_ENABLED, false);
         addBoolean(HEALTH_PLAN_ENABLED, false);
+        addBoolean(HEALTH_DAILY_LIMIT_ENABLED, false);
+        addInteger(HEALTH_DAILY_LIMIT_STEPS, 10000, 1, 1000000);
         addInteger(STATUSBAR_CLOCK_ROWS, 2, 1, 2);
         addBoolean(TILE_ENABLED, true);
         add(TILE_LABEL, "LS_Augment", true,
@@ -184,6 +219,8 @@ public final class ConfigSchema {
         addBoolean(SUPER_MIRROR_LOW_MODE, false);
         addBoolean(SUPER_MIRROR_DIABLO_COEXIST, false);
         addBoolean(FAN_FIXED_ENABLED, false);
+        addInteger(FAN_FIXED_LEVEL, 0, 0, 5);
+        add(FAN_TILE_REQUEST, "", true, value -> value.isEmpty() || value.matches("[0-9a-f]{32}") ? value : null);
         addBoolean(FAN_UNLOCK_MAX, false);
         addInteger(FAN_TARGET_RPM, 12000, 500, 100000);
         add(FAN_CALIBRATION_REQUEST, "", true, value -> value.isEmpty()
@@ -195,10 +232,12 @@ public final class ConfigSchema {
         // Their rendering and sampling behavior is intentionally unchanged.
         addBoolean(SYSTEMUI_MASTER, false);
         addBoolean(AUDIO_GAIN_ENABLED, false);
-        addBoolean(BATTERY_DISABLE_AGE_REDUCTION, false);
+        // Accept retired keys from old backups, but never reactivate either feature.
+        add(BATTERY_DISABLE_AGE_REDUCTION, "0", false, value -> "0");
+        add(SystemOptions.key("thermal_notifications"), "0", false, value -> "0");
         addBoolean(HEALTH_ENABLED, false);
         addBoolean(HEALTH_BACKGROUND, true);
-        addInteger(HEALTH_MULTIPLIER, 100, 100, 2000);
+        addInteger(HEALTH_MULTIPLIER, 100, 100, 1000);
         add(HEALTH_ACCOUNT, "", true, value -> value.isEmpty() || value.matches("[0-9a-f]{64}") ? value : null);
         add(HEALTH_PLAN, "", true, value -> value.isEmpty() || StepPlan.parse(value) != null ? value : null);
         add(HEALTH_SINCE, "0", true, value -> value.matches("[0-9]{1,12}") ? value : null);
@@ -211,9 +250,40 @@ public final class ConfigSchema {
             return parsed == null ? null : value.isEmpty() ? "" : parsed.serialize();
         });
         addBoolean(STATUSBAR_SYSTEM_TWO_ROWS, true);
+        addBoolean(STATUSBAR_POSITION_SIZE_ONLY, false);
+        addBoolean(STATUSBAR_CONNECTIVITY_GROUP, false);
+        // Preserve native customization on upgrades that have never selected three-in-one.
+        addBoolean(STATUSBAR_NATIVE_BATTERY_ENABLED, true);
+        addInteger(STATUSBAR_CONNECTIVITY_SIZE, 26, 18, 40);
+        addInteger(STATUSBAR_CONNECTIVITY_STROKE, 6, 3, 10);
+        addInteger(STATUSBAR_CONNECTIVITY_INACTIVE, 28, 10, 65);
+        // Legacy import key only; the renderer always fills counterclockwise.
+        addBoolean(STATUSBAR_CONNECTIVITY_REVERSE, true);
+        addBoolean(STATUSBAR_CONNECTIVITY_COLORS, true);
+        add(STATUSBAR_CONNECTIVITY_PLUG_COLOR, "#FF34C759", true, value -> value.matches("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?") ? value.toUpperCase(Locale.ROOT) : null);
+        String[] connectivityDefaults={"battery","wifi","dual"};
+        for(int i=0;i<3;i++){
+            add(CONNECTIVITY_CONTENT_KEYS[i],connectivityDefaults[i],true,value->java.util.Arrays.asList(CONNECTIVITY_CONTENT_VALUES).contains(value)?value:null);
+            addInteger(CONNECTIVITY_SCALE_KEYS[i],100,CONNECTIVITY_SCALE_MIN,CONNECTIVITY_SCALE_MAX);
+            addInteger(CONNECTIVITY_X_KEYS[i],0,-CONNECTIVITY_OFFSET_LIMIT,CONNECTIVITY_OFFSET_LIMIT);
+            addInteger(CONNECTIVITY_Y_KEYS[i],0,-CONNECTIVITY_OFFSET_LIMIT,CONNECTIVITY_OFFSET_LIMIT);
+        }
+        for(int i=0;i<2;i++){
+            addInteger(CONNECTIVITY_POWER_X_KEYS[i],0,-CONNECTIVITY_OFFSET_LIMIT,CONNECTIVITY_OFFSET_LIMIT);
+            addInteger(CONNECTIVITY_POWER_Y_KEYS[i],0,-CONNECTIVITY_OFFSET_LIMIT,CONNECTIVITY_OFFSET_LIMIT);
+            addInteger(CONNECTIVITY_POWER_SCALE_KEYS[i],100,CONNECTIVITY_SCALE_MIN,CONNECTIVITY_SCALE_MAX);
+        }
+        addInteger(STATUSBAR_NATIVE_NETWORK_SIZE_SP, 0, 0, 32);
+        addInteger(STATUSBAR_CPU_DECIMALS, 0, 0, 3);
+        addInteger(STATUSBAR_GPU_DECIMALS, 0, 0, 3);
+        addInteger(STATUSBAR_BATTERY_TEMP_DECIMALS, 1, 0, 3);
+        addInteger(STATUSBAR_CURRENT_DECIMALS, 0, 0, 3);
+        addInteger(STATUSBAR_POWER_DECIMALS, 1, 0, 3);
         addBoolean(STATUSBAR_NOTIFICATION_TWO_ROWS, true);
         addBoolean(STATUSBAR_NETWORK_TWO_ROWS, true);
         addInteger(STATUSBAR_NETWORK_DISPLAY, 0, 0, 4);
+        add(STATUSBAR_NETWORK_UPLOAD_MARK, "↑", true, value -> length(value, 16));
+        add(STATUSBAR_NETWORK_DOWNLOAD_MARK, "↓", true, value -> length(value, 16));
         addBoolean(STATUSBAR_DUAL_LEFT, false);
         addBoolean(STATUSBAR_DUAL_RIGHT, false);
         addBoolean(STATUSBAR_CLOCK_ACROSS, false);
@@ -251,7 +321,7 @@ public final class ConfigSchema {
         addDecimal(STATUSBAR_ICON_SCALE, 1.0f, 0.5f, 2.0f);
         addBoolean(STATUSBAR_DEBUG_OVERLAY, false);
         addBoolean(STATUSBAR_NOTIFICATION_HIDE, false);
-        addInteger(STATUSBAR_DUAL_ROW_GAP_DP, 0, 0, 64);
+        addInteger(STATUSBAR_DUAL_ROW_GAP_DP, 0, -8, 64);
 
         addBoolean(APP_MASTER, false);
         addBoolean(DOUBLE_ANY_APP, false);
@@ -262,6 +332,9 @@ public final class ConfigSchema {
         add(AUTOMATION_SCOPE, "current", true,
                 value -> "all".equals(value) ? "all" : "current");
 
+        for (EnhancementOption option : EnhancementCatalog.options()) {
+            add(option.key, option.defaultValue, true, option::normalize);
+        }
         LinkedHashMap<String, String> defaults = new LinkedHashMap<>();
         LinkedHashMap<String, String> runtimeDefaults = new LinkedHashMap<>();
         for (Map.Entry<String, Entry> entry : ENTRIES.entrySet()) {

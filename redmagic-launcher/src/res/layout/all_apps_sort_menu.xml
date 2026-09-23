@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.allappsmenu.AllAppsSortMenuView android:orientation="vertical" android:background="?popupColorPrimary" android:visibility="invisible" android:layout_width="wrap_content" android:layout_height="wrap_content" android:animateLayoutChanges="true" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.zte.mifavor.widget.CheckedTextViewZTE android:id="@id/sort_by_Alphabetical" android:text="@string/sort_by_Initial" style="@style/AllAppsSortMenu" />
-    <com.zte.mifavor.widget.CheckedTextViewZTE android:id="@id/sort_by_time" android:text="@string/sort_by_Time" style="@style/AllAppsSortMenu" />
-    <com.zte.mifavor.widget.CheckedTextViewZTE android:id="@id/sort_by_frequency" android:text="@string/sort_by_Frequency" style="@style/AllAppsSortMenu" />
-</com.android.launcher3.allappsmenu.AllAppsSortMenuView>

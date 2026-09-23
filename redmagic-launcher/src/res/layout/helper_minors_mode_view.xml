@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingStart="@dimen/mfvc_large_padding" android:paddingEnd="@dimen/mfvc_large_padding" style="@style/LauncherThemeDialogAlert"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="@dimen/mfvc_primary_font02_size" android:textColor="@color/mfvc_primary_foreground_color_transp_90" android:gravity="center_horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/help_minors_mode" android:breakStrategy="simple" />
-    <ImageView android:gravity="center_horizontal" android:layout_width="match_parent" android:layout_height="60.0dp" android:layout_marginTop="16.0dp" android:src="@drawable/minors_mode_icon" />
-    <TextView android:textSize="@dimen/helper_content_text_size" android:gravity="center_horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8.0dp" android:layout_marginBottom="16.0dp" android:text="@string/title_minors_mode" />
-    <com.zte.mifavor.widget.CheckBoxZTE android:id="@id/minors_mode_dialog_cx" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/dialog_dont_remind_again" android:paddingStart="16.0dp" />
-</LinearLayout>

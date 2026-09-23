@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/launcher_helper_dialog" android:tag="Constant_Width" android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.android.launcher3.helper.WrapContentHeightViewPager android:layout_gravity="center" android:id="@id/launcher_helper_view_pager" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/helper_content_margin_top" android:foregroundGravity="center" />
-    <com.android.launcher3.helper.DotsPageIndicatorZTE android:layout_gravity="center_horizontal" android:id="@id/help_page_indicator" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/helper_indicator_margin_top" />
-    <LinearLayout android:gravity="center" android:id="@id/help_button_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/helper_button_margin_top" android:layout_marginBottom="@dimen/helper_button_margin_bottom">
-        <com.zte.mifavor.widget.ButtonZTE android:id="@id/help_got_it_button" android:minWidth="@dimen/helper_button_min_width" android:text="@string/help_button_ok" style="@style/ColorButton" />
-    </LinearLayout>
-</LinearLayout>

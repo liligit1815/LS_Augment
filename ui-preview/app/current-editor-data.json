@@ -1,0 +1,600 @@
+{
+  "source": "ConfigSchema.java",
+  "note": "Schema defaults only. UI slider ranges sometimes narrower; use uiRange when provided. Existing device values override defaults.",
+  "defaults": {
+    "HIDE_MASTER": {
+      "key": "ls_augment_hide_master",
+      "type": "boolean",
+      "default": false
+    },
+    "STORE_DOWNLOAD_ENABLED": {
+      "key": "ls_augment_store_download_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "HEALTH_MULTIPLY_ENABLED": {
+      "key": "ls_augment_health_multiply_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "HEALTH_PLAN_ENABLED": {
+      "key": "ls_augment_health_plan_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "HEALTH_DAILY_LIMIT_ENABLED": {
+      "key": "ls_augment_health_daily_limit_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "TILE_ENABLED": {
+      "key": "ls_augment_tile_enabled",
+      "type": "boolean",
+      "default": true
+    },
+    "GAME_MASTER": {
+      "key": "ls_augment_game_master",
+      "type": "boolean",
+      "default": false
+    },
+    "SHOULDER_ENABLED": {
+      "key": "ls_augment_shoulder_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "SHOULDER_DIAGNOSTICS": {
+      "key": "ls_augment_shoulder_diagnostics",
+      "type": "boolean",
+      "default": false
+    },
+    "TGK_RAPID_FIRE_ENABLED": {
+      "key": "ls_augment_tgk_rapid_fire_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "COMBO_SPEED_ENABLED": {
+      "key": "ls_augment_combo_speed_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "AI_TRIGGER_ENABLED": {
+      "key": "ls_augment_ai_trigger_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "AI_TRIGGER_DIAGNOSTICS": {
+      "key": "ls_augment_ai_trigger_diagnostics",
+      "type": "boolean",
+      "default": false
+    },
+    "FREEFORM_ENABLED": {
+      "key": "ls_augment_freeform_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "FREEFORM_UNLIMITED": {
+      "key": "ls_augment_freeform_unlimited",
+      "type": "boolean",
+      "default": false
+    },
+    "FREEFORM_ALL_APPS": {
+      "key": "ls_augment_freeform_all_apps",
+      "type": "boolean",
+      "default": false
+    },
+    "SUPER_MIRROR_LOW_MODE": {
+      "key": "ls_augment_super_mirror_low_mode",
+      "type": "boolean",
+      "default": false
+    },
+    "SUPER_MIRROR_DIABLO_COEXIST": {
+      "key": "ls_augment_super_mirror_diablo_coexist",
+      "type": "boolean",
+      "default": false
+    },
+    "FAN_FIXED_ENABLED": {
+      "key": "ls_augment_fan_fixed_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "FAN_UNLOCK_MAX": {
+      "key": "ls_augment_fan_unlock_max",
+      "type": "boolean",
+      "default": false
+    },
+    "SYSTEMUI_MASTER": {
+      "key": "ls_augment_systemui_master",
+      "type": "boolean",
+      "default": false
+    },
+    "AUDIO_GAIN_ENABLED": {
+      "key": "ls_augment_audio_gain_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "BATTERY_DISABLE_AGE_REDUCTION": {
+      "key": "ls_augment_battery_disable_age_reduction",
+      "type": "boolean",
+      "default": false
+    },
+    "HEALTH_ENABLED": {
+      "key": "ls_augment_health_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "HEALTH_BACKGROUND": {
+      "key": "ls_augment_health_background",
+      "type": "boolean",
+      "default": true
+    },
+    "STATUSBAR_SYSTEM_TWO_ROWS": {
+      "key": "ls_augment_statusbar_system_two_rows",
+      "type": "boolean",
+      "default": true
+    },
+    "STATUSBAR_NOTIFICATION_TWO_ROWS": {
+      "key": "ls_augment_statusbar_notification_two_rows",
+      "type": "boolean",
+      "default": true
+    },
+    "STATUSBAR_NETWORK_TWO_ROWS": {
+      "key": "ls_augment_statusbar_network_two_rows",
+      "type": "boolean",
+      "default": true
+    },
+    "STATUSBAR_DUAL_LEFT": {
+      "key": "ls_augment_statusbar_dual_left",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_DUAL_RIGHT": {
+      "key": "ls_augment_statusbar_dual_right",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_ACROSS": {
+      "key": "ls_augment_statusbar_clock_across",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_FREE_POSITION": {
+      "key": "ls_augment_statusbar_free_position",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_CUSTOM": {
+      "key": "ls_augment_statusbar_clock_custom",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_24H": {
+      "key": "ls_augment_statusbar_clock_24h",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_SECONDS": {
+      "key": "ls_augment_statusbar_clock_seconds",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_PERIOD": {
+      "key": "ls_augment_statusbar_clock_period",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_CLOCK_WEEK": {
+      "key": "ls_augment_statusbar_clock_week",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_THERMAL": {
+      "key": "ls_augment_statusbar_thermal",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_BATTERY_POWER": {
+      "key": "ls_augment_statusbar_battery_power",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_DEBUG_OVERLAY": {
+      "key": "ls_augment_statusbar_debug_overlay",
+      "type": "boolean",
+      "default": false
+    },
+    "STATUSBAR_NOTIFICATION_HIDE": {
+      "key": "ls_augment_statusbar_notification_hide",
+      "type": "boolean",
+      "default": false
+    },
+    "APP_MASTER": {
+      "key": "ls_augment_app_master",
+      "type": "boolean",
+      "default": false
+    },
+    "DOUBLE_ANY_APP": {
+      "key": "ls_augment_doubleapp_any_app",
+      "type": "boolean",
+      "default": false
+    },
+    "DOUBLE_LOW_MEMORY": {
+      "key": "ls_augment_doubleapp_low_memory",
+      "type": "boolean",
+      "default": false
+    },
+    "BEAUTIFY_UNLIMITED_TRIAL": {
+      "key": "ls_augment_beautify_unlimited_trial",
+      "type": "boolean",
+      "default": false
+    },
+    "ALLOW_SIGNATURE_MISMATCH": {
+      "key": "ls_augment_allow_signature_mismatch",
+      "type": "boolean",
+      "default": false
+    },
+    "AUTOMATION_ENABLED": {
+      "key": "ls_augment_automation_enabled",
+      "type": "boolean",
+      "default": false
+    },
+    "STORE_DOWNLOAD_COUNT": {
+      "key": "ls_augment_store_download_count",
+      "type": "integer",
+      "default": 5,
+      "schemaRange": [
+        1,
+        50
+      ]
+    },
+    "HEALTH_DAILY_LIMIT_STEPS": {
+      "key": "ls_augment_health_daily_limit_steps",
+      "type": "integer",
+      "default": 10000,
+      "schemaRange": [
+        1,
+        1000000
+      ]
+    },
+    "STATUSBAR_CLOCK_ROWS": {
+      "key": "ls_augment_statusbar_clock_rows",
+      "type": "integer",
+      "default": 2,
+      "schemaRange": [
+        1,
+        2
+      ]
+    },
+    "TGK_RAPID_FIRE_COUNT": {
+      "key": "ls_augment_tgk_rapid_fire_count",
+      "type": "integer",
+      "default": 20,
+      "schemaRange": [
+        10,
+        50
+      ]
+    },
+    "AI_TRIGGER_TEMPLATE_SCAN_MS": {
+      "key": "ls_augment_ai_template_scan_ms",
+      "type": "integer",
+      "default": 180,
+      "schemaRange": [
+        80,
+        2000
+      ]
+    },
+    "AI_TRIGGER_CLICK_MS": {
+      "key": "ls_augment_ai_click_ms",
+      "type": "integer",
+      "default": 25,
+      "schemaRange": [
+        10,
+        500
+      ]
+    },
+    "AI_TRIGGER_COOLDOWN_MS": {
+      "key": "ls_augment_ai_cooldown_ms",
+      "type": "integer",
+      "default": 180,
+      "schemaRange": [
+        50,
+        30000
+      ],
+      "uiRange": [
+        50,
+        2000
+      ]
+    },
+    "AI_TRIGGER_YOLO_SCAN_MS": {
+      "key": "ls_augment_ai_yolo_scan_ms",
+      "type": "integer",
+      "default": 400,
+      "schemaRange": [
+        150,
+        1500
+      ]
+    },
+    "FAN_TARGET_RPM": {
+      "key": "ls_augment_fan_target_rpm",
+      "type": "integer",
+      "default": 12000,
+      "schemaRange": [
+        500,
+        100000
+      ],
+      "uiRange": "Current-device measured RPM level 1 to level 5; disabled before valid measurement"
+    },
+    "HEALTH_MULTIPLIER": {
+      "key": "ls_augment_health_multiplier",
+      "type": "integer",
+      "default": 100,
+      "schemaRange": [
+        100,
+        1000
+      ]
+    },
+    "AUDIO_GAIN_STEP": {
+      "key": "ls_augment_audio_gain_step",
+      "type": "integer",
+      "default": 5,
+      "schemaRange": [
+        1,
+        20
+      ]
+    },
+    "STATUSBAR_NETWORK_DISPLAY": {
+      "key": "ls_augment_statusbar_network_display",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        4
+      ]
+    },
+    "STATUSBAR_HEIGHT_DP": {
+      "key": "ls_augment_statusbar_height_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        96
+      ],
+      "uiRange": [
+        0,
+        80
+      ]
+    },
+    "STATUSBAR_LEFT_MARGIN_DP": {
+      "key": "ls_augment_statusbar_left_margin_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        64
+      ],
+      "uiRange": [
+        0,
+        40
+      ]
+    },
+    "STATUSBAR_RIGHT_MARGIN_DP": {
+      "key": "ls_augment_statusbar_right_margin_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        64
+      ],
+      "uiRange": [
+        0,
+        40
+      ]
+    },
+    "STATUSBAR_TOP_MARGIN_DP": {
+      "key": "ls_augment_statusbar_top_margin_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        64
+      ],
+      "uiRange": [
+        0,
+        12
+      ]
+    },
+    "STATUSBAR_BOTTOM_MARGIN_DP": {
+      "key": "ls_augment_statusbar_bottom_margin_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        64
+      ],
+      "uiRange": [
+        0,
+        12
+      ]
+    },
+    "STATUSBAR_CLOCK_WEIGHT": {
+      "key": "ls_augment_statusbar_clock_weight",
+      "type": "integer",
+      "default": 400,
+      "schemaRange": [
+        100,
+        900
+      ]
+    },
+    "STATUSBAR_CLOCK_WIDTH_DP": {
+      "key": "ls_augment_statusbar_clock_width_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        240
+      ]
+    },
+    "STATUSBAR_NOTIFICATION_MAX": {
+      "key": "ls_augment_statusbar_notification_max",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        20
+      ]
+    },
+    "STATUSBAR_DUAL_ROW_GAP_DP": {
+      "key": "ls_augment_statusbar_dual_row_gap_dp",
+      "type": "integer",
+      "default": 0,
+      "schemaRange": [
+        0,
+        64
+      ],
+      "uiRange": [
+        0,
+        8
+      ]
+    },
+    "STATUSBAR_CLOCK_SIZE_SP": {
+      "key": "ls_augment_statusbar_clock_size_sp",
+      "type": "decimal",
+      "default": 0.0,
+      "schemaRange": [
+        0.0,
+        40.0
+      ]
+    },
+    "STATUSBAR_CLOCK_LETTER_SPACING": {
+      "key": "ls_augment_statusbar_clock_letter_spacing",
+      "type": "decimal",
+      "default": 0.0,
+      "schemaRange": [
+        -0.2,
+        1.0
+      ]
+    },
+    "STATUSBAR_CLOCK_LINE_SPACING_DP": {
+      "key": "ls_augment_statusbar_clock_line_spacing_dp",
+      "type": "decimal",
+      "default": 0.0,
+      "schemaRange": [
+        0.0,
+        32.0
+      ]
+    },
+    "STATUSBAR_ICON_SCALE": {
+      "key": "ls_augment_statusbar_icon_scale",
+      "type": "decimal",
+      "default": 1.0,
+      "schemaRange": [
+        0.5,
+        2.0
+      ]
+    },
+    "HIDE_TARGETS": {
+      "key": "ls_augment_hide_targets_v2",
+      "type": "text",
+      "default": ""
+    },
+    "TILE_ICON": {
+      "key": "ls_augment_tile_icon",
+      "type": "text",
+      "default": ""
+    },
+    "TILE_LABEL": {
+      "key": "ls_augment_tile_label",
+      "type": "text",
+      "default": "LS_Augment"
+    },
+    "TILE_DESCRIPTION": {
+      "key": "ls_augment_tile_description",
+      "type": "text",
+      "default": "应用隐藏"
+    },
+    "TGK_RAPID_FIRE_COMPAT_TOKEN": {
+      "key": "ls_augment_tgk_rapid_fire_compat_token",
+      "type": "text",
+      "default": ""
+    },
+    "TGK_RAPID_FIRE_TEST_SESSION": {
+      "key": "ls_augment_tgk_rapid_fire_test_session",
+      "type": "text",
+      "default": ""
+    },
+    "COMBO_SPEED_RATE": {
+      "key": "ls_augment_combo_speed_rate",
+      "type": "text",
+      "default": "2"
+    },
+    "FREEFORM_EXCLUDED_APPS": {
+      "key": "ls_augment_freeform_excluded_apps",
+      "type": "text",
+      "default": ""
+    },
+    "FAN_CALIBRATION_REQUEST": {
+      "key": "ls_augment_fan_calibration_request",
+      "type": "text",
+      "default": ""
+    },
+    "FAN_MEASUREMENT": {
+      "key": "ls_augment_fan_measurement",
+      "type": "text",
+      "default": ""
+    },
+    "HEALTH_ACCOUNT": {
+      "key": "ls_augment_health_account",
+      "type": "text",
+      "default": ""
+    },
+    "HEALTH_PLAN": {
+      "key": "ls_augment_health_plan",
+      "type": "text",
+      "default": ""
+    },
+    "HEALTH_SINCE": {
+      "key": "ls_augment_health_since",
+      "type": "text",
+      "default": "0"
+    },
+    "LAUNCHER_OVERRIDES": {
+      "key": "ls_augment_launcher_overrides",
+      "type": "text",
+      "default": ""
+    },
+    "STATUSBAR_GRID": {
+      "key": "ls_augment_statusbar_grid_v2",
+      "type": "text",
+      "default": ""
+    },
+    "STATUSBAR_LAYOUT_SPEC": {
+      "key": "ls_augment_statusbar_layout_spec",
+      "type": "text",
+      "default": ""
+    },
+    "STATUSBAR_CLOCK_PATTERN": {
+      "key": "ls_augment_statusbar_clock_pattern",
+      "type": "text",
+      "default": ""
+    },
+    "STATUSBAR_CLOCK_PATTERN_SECOND": {
+      "key": "ls_augment_statusbar_clock_pattern_second",
+      "type": "text",
+      "default": ""
+    },
+    "STATUSBAR_CLOCK_FONT_FAMILY": {
+      "key": "ls_augment_statusbar_clock_font_family",
+      "type": "text",
+      "default": "sans-serif"
+    },
+    "STATUSBAR_CLOCK_TEXT_ALIGN": {
+      "key": "ls_augment_statusbar_clock_text_align",
+      "type": "text",
+      "default": "center"
+    },
+    "AUTOMATION_SCOPE": {
+      "key": "ls_augment_automation_scope",
+      "type": "text",
+      "default": "current"
+    }
+  }
+}

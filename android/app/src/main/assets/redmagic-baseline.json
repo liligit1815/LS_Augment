@@ -1,0 +1,293 @@
+{
+  "build": {
+    "ro.product.model": "NX809J",
+    "ro.build.display.id": "RedMagicOS11.5.7MR1",
+    "ro.build.version.sdk": "36",
+    "ro.build.fingerprint": "REDMAGIC/NX809J/NX809J:16/BQ2A.250705.001-BP2A.250605.031.A3/20260423.111548:user/release-keys"
+  },
+  "packages": {
+    "com.android.systemui": {
+      "present": true,
+      "versionCode": [
+        "160000"
+      ],
+      "versionName": [
+        "16.0.000.101.2604151744"
+      ],
+      "files": [
+        {
+          "file": "com.android.systemui.apk",
+          "sha256": "4cdfae2a60f69f4614b0d764508bb35706afd0d5352483d48f04363bf08a3710"
+        }
+      ]
+    },
+    "cn.nubia.gamelauncher": {
+      "present": true,
+      "versionCode": [
+        "261"
+      ],
+      "versionName": [
+        "16.5.000.000.2604151714"
+      ],
+      "files": [
+        {
+          "file": "cn.nubia.gamelauncher.apk",
+          "sha256": "676a5d8c226e86f0b62b1a3549338c21a435cc00b846eb4d82a1785376952757"
+        }
+      ]
+    },
+    "cn.nubia.gameassist": {
+      "present": true,
+      "versionCode": [
+        "17260414"
+      ],
+      "versionName": [
+        "17.0.000.2604152046"
+      ],
+      "files": [
+        {
+          "file": "cn.nubia.gameassist.apk",
+          "sha256": "78fd6ec30c55ff9bcd51af495ae524c94fefcd1c05e7876ab787dbcd6ea0486a"
+        }
+      ]
+    },
+    "cn.zte.gamefloat": {
+      "present": true,
+      "versionCode": [
+        "250001"
+      ],
+      "versionName": [
+        "2.5.0001.2604151542"
+      ],
+      "files": [
+        {
+          "file": "cn.zte.gamefloat.apk",
+          "sha256": "e774cd06737ad3c33ebdac189ed80e702d195682fe10f21f387d7a8a6446c0b6"
+        }
+      ]
+    },
+    "cn.nubia.gamehighlights": {
+      "present": true,
+      "versionCode": [
+        "216000000"
+      ],
+      "versionName": [
+        "160.00.000.2604140906"
+      ],
+      "files": [
+        {
+          "file": "cn.nubia.gamehighlights.apk",
+          "sha256": "61ab96857e7e86f57fbd7a9cbb46e0c5c345f29d0490ecc9ba92089db4e00e73"
+        }
+      ]
+    },
+    "cn.nubia.gamehelpmodule": {
+      "present": true,
+      "versionCode": [
+        "3"
+      ],
+      "versionName": [
+        "155.00.00.2604151638"
+      ],
+      "files": [
+        {
+          "file": "cn.nubia.gamehelpmodule.apk",
+          "sha256": "9f0e9bda0abbd1563d50ab4974b6608b44f8b87133a10186dbc5380f422630f3"
+        }
+      ]
+    },
+    "com.zte.game.plugintrigger": {
+      "present": true,
+      "versionCode": [
+        "16000"
+      ],
+      "versionName": [
+        "160.00.00.2604140905"
+      ],
+      "files": [
+        {
+          "file": "com.zte.game.plugintrigger.apk",
+          "sha256": "bb2a2d2f931b9539179d105b1cb14f47aab95b8eff6b94acb18369a5a1ea3324"
+        }
+      ]
+    },
+    "com.android.settings": {
+      "present": true,
+      "versionCode": [
+        "160000"
+      ],
+      "versionName": [
+        "16.0.000.2604151632"
+      ],
+      "files": [
+        {
+          "file": "com.android.settings.apk",
+          "sha256": "66c738fc5715a736fa7daec516a691104d0bbcbddf28d64f02ee5fa2820f3762"
+        }
+      ]
+    },
+    "com.android.packageinstaller": {
+      "present": true,
+      "versionCode": [
+        "160000"
+      ],
+      "versionName": [
+        "16.0.000.000.2604150851"
+      ],
+      "files": [
+        {
+          "file": "com.android.packageinstaller.apk",
+          "sha256": "c578055f746c613a98f37f846d4e9b8ac2714d4a4c3349772feb9f1911b86810"
+        }
+      ]
+    },
+    "com.zte.zdm": {
+      "present": true,
+      "versionCode": [
+        "160000"
+      ],
+      "versionName": [
+        "WNJ.REDMAGIC.FOTA.16.0.000.000.2604151545"
+      ],
+      "files": [
+        {
+          "file": "com.zte.zdm.apk",
+          "sha256": "7f2fd09e710ca52af82ea2d195605b633c27d2dcde58ab14cc464c4eba51174b"
+        }
+      ]
+    },
+    "com.zte.beautify": {
+      "present": true,
+      "versionCode": [
+        "161000"
+      ],
+      "versionName": [
+        "16.1.000.000.2604151530"
+      ],
+      "files": [
+        {
+          "file": "com.zte.beautify.apk",
+          "sha256": "8be52b9cf0690c760e3f6d6b696212fe8a06b86c1d6eb17746ca230d17d60ed1"
+        }
+      ]
+    },
+    "com.zte.mifavor.weather": {
+      "present": true,
+      "versionCode": [
+        "604"
+      ],
+      "versionName": [
+        "16.0.000.000.2604151545"
+      ],
+      "files": [
+        {
+          "file": "com.zte.mifavor.weather.apk",
+          "sha256": "740627f329b113a226f9fd99e508c1a129d601a52edb8f952fe6fed52eafa5ac"
+        }
+      ]
+    },
+    "com.android.permissioncontroller": {
+      "present": true,
+      "versionCode": [
+        "1600000000"
+      ],
+      "versionName": [
+        "16.0.000.000.2604131527"
+      ],
+      "files": [
+        {
+          "file": "com.android.permissioncontroller.apk",
+          "sha256": "c44df5031f8270817432c8489c29b554c093675e43aade7b338d05549a04c452"
+        }
+      ]
+    },
+    "com.google.android.permissioncontroller": {
+      "present": false
+    },
+    "com.android.nfc": {
+      "present": true,
+      "versionCode": [
+        "36"
+      ],
+      "versionName": [
+        "16"
+      ],
+      "files": [
+        {
+          "file": "com.android.nfc.apk",
+          "sha256": "ee018c760bc4a786f04eed63f9b2dc54a2e8a0e26d05b9d8d79e021959f2dbe9"
+        }
+      ]
+    },
+    "com.google.android.nfc": {
+      "present": false
+    },
+    "cn.nubia.filebrowser": {
+      "present": true,
+      "versionCode": [
+        "130000"
+      ],
+      "versionName": [
+        "13.0.000.000"
+      ],
+      "files": [
+        {
+          "file": "cn.nubia.filebrowser.apk",
+          "sha256": "270c267e06cba9bdc79362778054eba813615b5dc1e13a572b20bd8fe94cec6f"
+        }
+      ]
+    },
+    "com.android.ztescreenshot": {
+      "present": true,
+      "versionCode": [
+        "160000"
+      ],
+      "versionName": [
+        "16.0.000.000.2604151512"
+      ],
+      "files": [
+        {
+          "file": "com.android.ztescreenshot.apk",
+          "sha256": "5554eb6edaeb110c3c40d8cf7e0df4b8bc99fabc9de1e4b2904da2ab36ca42ff"
+        }
+      ]
+    },
+    "com.zte.mifavor.launcher": {
+      "present": true,
+      "versionCode": [
+        "260000"
+      ],
+      "versionName": [
+        "26.9.260.908.2609081608"
+      ],
+      "files": [
+        {
+          "file": "com.zte.mifavor.launcher.apk",
+          "sha256": "b43a61ff4e5fb49951d03616abdeaa4207b9049f4187b5c747511b6a6eddd661"
+        }
+      ]
+    }
+  },
+  "framework": {
+    "/system/framework/services.jar": {
+      "captured": true,
+      "file": "services.jar",
+      "sha256": "63c595f1ae0dedfaa94817190ef8a82a04a6a031cf60e3446e8dfecffabca4c0"
+    },
+    "/system/framework/framework.jar": {
+      "captured": true,
+      "file": "framework.jar",
+      "sha256": "985180a74e2bb9f0e8a9492b5190be7111012a22e329c8246ebcf8d43bf9e90f"
+    },
+    "/apex/com.android.wifi/javalib/service-wifi.jar": {
+      "captured": true,
+      "file": "service-wifi.jar",
+      "sha256": "6ec12c80da071557c2772e4f630597e4608c444e6a4448ac97ac4d992a5e25ea"
+    },
+    "/apex/com.android.bt/javalib/service-bluetooth.jar": {
+      "captured": true,
+      "file": "service-bluetooth.jar",
+      "sha256": "7abd25af2f6249d187c553ea21b1b3edc96ac0d2be59bd1fb4e5c7cfceedcca4"
+    }
+  }
+}

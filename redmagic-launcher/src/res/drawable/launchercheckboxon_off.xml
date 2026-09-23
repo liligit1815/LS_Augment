@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<animated-vector android:drawable="@drawable/$launchercheckboxon_off__0"
-  xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android">
-    <target android:name="check_in_1" android:animation="@drawable/$launchercheckboxon_off__1" />
-    <target android:name="path" android:animation="@drawable/$launchercheckboxon_off__2" />
-    <target android:name="path_1" android:animation="@drawable/$launchercheckboxon_off__3" />
-    <target android:name="check_in" android:animation="@drawable/$launchercheckboxon_off__4" />
-</animated-vector>

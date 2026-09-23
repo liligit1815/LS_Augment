@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape android:shape="rectangle"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/mfv_common_divl" />
-    <size android:height="24.0dp" android:width="@dimen/mfvc_divider_line_height01" />
-</shape>

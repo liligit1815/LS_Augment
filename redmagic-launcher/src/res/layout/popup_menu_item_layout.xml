@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.zte.mifavor.actionbar.menu.ListMenuItemView android:layout_width="match_parent" android:layout_height="wrap_content" android:minWidth="168.0dp" android:minHeight="48.0dp" android:paddingEnd="16.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <RelativeLayout android:layout_gravity="center_vertical" android:duplicateParentState="true" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" android:layout_marginStart="16.0dp">
-        <com.zte.mifavor.widget.TextViewZTE android:textAppearance="?android:textAppearanceLargePopupMenu" android:ellipsize="end" android:id="@id/title" android:paddingTop="13.25dp" android:paddingBottom="13.25dp" android:fadingEdge="horizontal" android:duplicateParentState="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:numStars="4" android:maxLines="2" android:layout_alignParentTop="true" android:textAlignment="viewStart" android:layout_alignParentStart="true" style="@style/mfvc_primary_font" />
-        <TextView android:textAppearance="?android:textAppearanceSmallPopupMenu" android:id="@id/shortcut" android:duplicateParentState="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:layout_below="@id/title" android:textAlignment="viewStart" android:layout_alignParentStart="true" />
-    </RelativeLayout>
-    <ImageView android:layout_gravity="center" android:id="@id/submenuarrow" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:scaleType="center" android:layout_marginStart="8.0dp" />
-</com.zte.mifavor.actionbar.menu.ListMenuItemView>

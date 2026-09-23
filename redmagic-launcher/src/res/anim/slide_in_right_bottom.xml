@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<set android:shareInterpolator="false" android:fillAfter="true" android:zAdjustment="top"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <alpha android:interpolator="@interpolator/easy_ease" android:duration="161" android:startOffset="50" android:fromAlpha="1.0" android:toAlpha="0.0" />
-    <scale android:interpolator="@anim/easy_ease_close_x" android:duration="501" android:pivotX="86.0%" android:pivotY="94.00001%" android:startOffset="0" android:fromXScale="1.0" android:toXScale="0.1335" android:fromYScale="1.0" android:toYScale="0.19" />
-</set>

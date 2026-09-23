@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:startColor="@color/upper_right_corner_family_video_container_bg_0" android:endColor="@color/upper_right_corner_family_video_container_bg_100" android:angle="0.0" android:type="linear" android:centerColor="@color/upper_right_corner_family_video_container_bg_50" />
-    <corners android:radius="@dimen/upper_right_corner_family_video_bg_radius" />
-</shape>

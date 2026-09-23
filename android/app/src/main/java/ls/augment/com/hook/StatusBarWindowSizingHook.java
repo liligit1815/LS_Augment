@@ -41,9 +41,10 @@ final class StatusBarWindowSizingHook {
                     return height<=0?original:Math.max(original,Math.round(height*c.getResources().getDisplayMetrics().density));
                 }));installed++;
             }
-            Class<?> controller=Class.forName("com.android.systemui.statusbar.window.StatusBarWindowControllerImpl",false,loader);
+            Class<?> controller=SystemUiCompatibility.windowController(loader);
+            module.logFeatureInfo("STATUSBAR_WINDOW_ADAPTER " + controller.getName());
             for(Method m:controller.getDeclaredMethods()){
-                if(m.getName().equals("refreshStatusBarHeight")||m.getName().equals("getBarLayoutParamsForRotation")||m.getName().equals("applyHeight")){
+                if(SystemUiCompatibility.windowSizing(m)){
                     // Compiled callers can inline the framework dimension helper.
                     module.deoptimize(m);
                     boolean applyHeight=m.getName().equals("applyHeight")&&m.getParameterCount()==1;
@@ -71,7 +72,7 @@ final class StatusBarWindowSizingHook {
                         }finally{WINDOW_DIMENSION.set(previous);}
                     }));installed++;
                 }
-                if(!(m.getName().equals("attach")||m.getName().equals("stop"))||m.getParameterCount()!=0)continue;
+                if(!(m.getName().equals("attach")||m.getName().equals("stop"))||m.getParameterCount()!=0||m.getReturnType()!=void.class)continue;
                 boolean attach=m.getName().equals("attach");
                 module.registerFeatureHook(module.prepareFeatureHook(m,"statusbar.window."+m.getName(),false).intercept(chain->{
                     Object result=chain.proceed(),owner=chain.getThisObject();
@@ -88,16 +89,15 @@ final class StatusBarWindowSizingHook {
     }
     private static final class Watch {
         final WeakReference<Object> owner;final Context context;final Handler main=new Handler(Looper.getMainLooper());
-        final ContentObserver observer;final Runnable update;boolean closed;
+        final Runnable snapshotListener=this::refresh;final Runnable update;boolean closed;
         Watch(Object owner,Context context){this.owner=new WeakReference<>(owner);this.context=context;
             update=()->{if(closed)return;Object window=this.owner.get();if(window==null){close();return;}
-                try{FeatureSettings.invalidateSnapshot();TargetReflection.call(window,"refreshStatusBarHeight");
+                try{TargetReflection.call(window,"refreshStatusBarHeight");
                     FeatureSettings.diagnostic(context,"ls_augment_statusbar_window_height",""+TargetReflection.call(window,"getStatusBarHeight"));
                 }catch(Exception e){FeatureSettings.diagnostic(context,"ls_augment_statusbar_window_error",e.getClass().getSimpleName());}};
-            observer=new ContentObserver(main){@Override public void onChange(boolean self){refresh();}};
-            context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"),true,observer);
+            FeatureSettings.addSnapshotListener(context,snapshotListener);
         }
         void refresh(){main.removeCallbacks(update);main.post(update);}
-        void close(){closed=true;main.removeCallbacks(update);try{context.getContentResolver().unregisterContentObserver(observer);}catch(Exception ignored){}}
+        void close(){closed=true;main.removeCallbacks(update);FeatureSettings.removeSnapshotListener(snapshotListener);}
     }
 }

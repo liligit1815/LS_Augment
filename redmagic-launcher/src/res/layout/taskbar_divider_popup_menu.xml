@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.taskbar.TaskbarDividerPopupView android:orientation="vertical" android:background="@drawable/popup_background" android:focusable="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="@dimen/taskbar_pinning_popup_menu_width"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:theme="@style/PopupItem" android:gravity="center_vertical" android:layout_gravity="center_vertical" android:orientation="horizontal" android:id="@id/taskbar_switch_option" android:background="@drawable/rounded_popup_ripple" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="52.0dp" android:paddingStart="10.0dp" android:paddingEnd="10.0dp" android:elevation="2.0dp">
-        <View android:id="@id/taskbar_pinning_visibility_icon" android:background="@drawable/ic_visibility" android:layout_width="20.0dp" android:layout_height="20.0dp" android:layout_margin="6.0dp" android:backgroundTint="?android:textColorPrimary" />
-        <Switch android:textSize="14.0sp" android:textColor="?android:textColorPrimary" android:gravity="start|center" android:id="@id/taskbar_pinning_switch" android:background="@null" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/always_show_taskbar" android:lines="1" android:layout_weight="1.0" android:switchPadding="12.0dp" android:textAlignment="viewStart" android:paddingStart="12.0dp" style="@style/Switch.SettingsLib" />
-    </LinearLayout>
-</com.android.launcher3.taskbar.TaskbarDividerPopupView>

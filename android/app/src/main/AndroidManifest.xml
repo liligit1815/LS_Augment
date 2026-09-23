@@ -32,8 +32,17 @@
 
         <!-- Modern module metadata lives under META-INF/xposed/. -->
 
+        <activity android:name=".OnboardingActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ModuleScopeActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ModuleHelpActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".CompatibilityDetailsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ContributorsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".SupportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+
         <activity android:name=".HideMenuActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ConfigTransferActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".EnhancementSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".LauncherCompatibilityActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
@@ -102,10 +111,14 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".BootJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <provider
             android:name=".LSConfigProvider"

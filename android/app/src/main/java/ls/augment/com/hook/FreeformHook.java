@@ -1235,6 +1235,7 @@ final class FreeformHook {
             if (configHandler != null) return;
             android.os.HandlerThread thread=new android.os.HandlerThread("LS-freeform-config",android.os.Process.THREAD_PRIORITY_BACKGROUND);
             thread.start();Handler handler=new Handler(thread.getLooper());configHandler=handler;
+            FeatureSettings.addSnapshotListener(value,()->handler.post(FreeformHook::refreshConfig));
             handler.post(new Runnable(){public void run(){
                 if(!observerInstalled){
                     ContentObserver observer=new ContentObserver(handler){@Override public void onChange(boolean self){

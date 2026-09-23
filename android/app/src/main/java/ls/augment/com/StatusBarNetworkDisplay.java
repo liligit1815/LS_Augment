@@ -10,8 +10,11 @@ public final class StatusBarNetworkDisplay {
         return legacyTwoRows?4:3;
     }
     public static String format(int mode, String upload, String download) {
-        if(mode==1)return "↑"+upload;
-        if(mode==2)return "↓"+download;
-        return "↑"+upload+(mode==4?"\n":" ")+"↓"+download;
+        return format(mode, upload, download, "↑", "↓");
+    }
+    public static String format(int mode, String upload, String download, String uploadMark, String downloadMark) {
+        if(mode==1)return uploadMark+upload;
+        if(mode==2)return downloadMark+download;
+        return uploadMark+upload+(mode==4?"\n":" ")+downloadMark+download;
     }
 }

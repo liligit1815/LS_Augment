@@ -1,9 +1,15 @@
 package ls.augment.com.hook;
 
 import android.content.Context;
+import android.os.SystemClock;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import io.github.libxposed.api.XposedInterface.HookHandle;
 
@@ -15,6 +21,17 @@ final class BeautifyAdapterHook {
             "com.zte.beautifyadapter.tryuse.TryResourceJobService";
     private static final String RESET_JOB =
             "com.zte.beautifyadapter.tryuse.ResetResourceJobService";
+    private static final AtomicBoolean BOOT_RESET_PENDING = new AtomicBoolean();
+    private static final ThreadLocal<Boolean> REPLAY_BOOT_RESET =
+            ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<Boolean> APPLYING_RESOURCE =
+            ThreadLocal.withInitial(() -> false);
+    private static final AtomicLong RESOURCE_APPLICATIONS = new AtomicLong();
+    private static final ScheduledExecutorService STARTUP = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "LS-theme-startup");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private BeautifyAdapterHook() { }
 
@@ -60,10 +77,7 @@ final class BeautifyAdapterHook {
             // The adapter clears trial_key before/alongside the reset. Keep
             // the bit intact while unlimited trial is enabled.
             installed += installTrialFlagReset(module, service);
-            installed += installTrialStatus(module, service, "G",
-                    "adapter_theme_trial_status");
-            installed += installTrialStatus(module, service, "D",
-                    "adapter_wallpaper_trial_status");
+            installed += installResourceApplication(module, service);
 
             if (installed > 0) {
                 module.logFeatureInfo("BEAUTIFY_ADAPTER_CURRENT_SERVICE_INSTALLED "
@@ -101,7 +115,7 @@ final class BeautifyAdapterHook {
                             "beautify.unlimited_trial." + id, true)
                     .intercept(chain -> {
                         Context context = FeatureSettings.from(null);
-                        if (unlimitedEnabled(context)) {
+                        if (!APPLYING_RESOURCE.get() && unlimitedEnabled(context)) {
                             hit(context, id + "_blocked");
                             return defaultReturn(targetMethod.getReturnType());
                         }
@@ -127,6 +141,19 @@ final class BeautifyAdapterHook {
                         Object value = chain.getArg(0);
                         int resetType = value instanceof Number
                                 ? ((Number) value).intValue() : -1;
+                        // A deliberate native resource replacement must leave the prior
+                        // trial normally. Only expiry and startup resets are suppressed.
+                        if (APPLYING_RESOURCE.get()) return chain.proceed();
+                        // b0(0x111) resets all existing trials during adapter startup.
+                        // Its first call can precede the async configuration read; treating
+                        // the placeholder defaults as an explicit off setting destroys the
+                        // theme before the font reset reaches the now-loaded configuration.
+                        if (resetType == 0x111 && !REPLAY_BOOT_RESET.get()
+                                && (BOOT_RESET_PENDING.get()
+                                || !FeatureSettings.hasVerifiedSnapshot(context))) {
+                            deferBootReset(module, method, resetType, context);
+                            return null;
+                        }
                         if (unlimitedEnabled(context) && isTrialResetType(resetType)) {
                             hit(context, "adapter_trial_flag_reset_blocked:type=" + resetType);
                             return null;
@@ -141,26 +168,71 @@ final class BeautifyAdapterHook {
         }
     }
 
-    private static int installTrialStatus(AugmentModule module, Class<?> type,
-            String name, String id) {
-        Method method = findMethod(type, name, boolean.class);
+    private static void deferBootReset(AugmentModule module, Method method, int resetType,
+            Context context) {
+        if (!BOOT_RESET_PENDING.compareAndSet(false, true)) return;
+        long started = SystemClock.elapsedRealtime();
+        long applicationGeneration = RESOURCE_APPLICATIONS.get();
+        FeatureSettings.diagnostic(context, "ls_augment_beautify_boot_guard", "waiting_for_saved_config");
+        STARTUP.execute(new Runnable() {
+            @Override public void run() {
+                Context application = FeatureSettings.from(null);
+                if (RESOURCE_APPLICATIONS.get() != applicationGeneration) {
+                    FeatureSettings.diagnostic(application, "ls_augment_beautify_boot_guard",
+                            "native_reset_superseded_by_resource_application");
+                    BOOT_RESET_PENDING.set(false);
+                    return;
+                }
+                boolean ready = FeatureSettings.hasVerifiedSnapshot(application);
+                long elapsed = SystemClock.elapsedRealtime() - started;
+                // Never block a Binder caller or the app main thread. If every source is
+                // unavailable, eventually preserve the native default behavior.
+                if (!ready && elapsed < 10000) {
+                    STARTUP.schedule(this, 100, TimeUnit.MILLISECONDS);
+                    return;
+                }
+                try {
+                    REPLAY_BOOT_RESET.set(true);
+                    FeatureSettings.diagnostic(application, "ls_augment_beautify_boot_guard",
+                            (ready ? "saved_config_ready" : "native_fallback_timeout")
+                                    + ";wait_ms=" + elapsed + ";enabled=" + unlimitedEnabled(application));
+                    // Invoke a new call through the installed hook; never retain a hook chain.
+                    // The verified setting now decides whether the original reset proceeds.
+                    method.invoke(null, resetType);
+                } catch (Throwable error) {
+                    module.logFeatureError("BEAUTIFY_ADAPTER_BOOT_RESET_REPLAY", error);
+                } finally {
+                    REPLAY_BOOT_RESET.remove();
+                    BOOT_RESET_PENDING.set(false);
+                }
+            }
+        });
+    }
+
+    private static int installResourceApplication(AugmentModule module, Class<?> type) {
+        // x(int, path, id) is the verified applyResourceInternal entry. It contains
+        // the native stopTrial calls for the resource being deliberately replaced.
+        Method method = findMethod(type, "x", int.class, int.class, String.class, String.class);
         if (method == null) return 0;
         try {
             method.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(method,
-                            "beautify.unlimited_trial." + id, true)
+                            "beautify.unlimited_trial.native_resource_application", true)
                     .intercept(chain -> {
-                        Context context = FeatureSettings.from(null);
-                        if (unlimitedEnabled(context)) {
-                            hit(context, id + "_forced");
-                            return true;
+                        boolean previous = APPLYING_RESOURCE.get();
+                        if (!previous) RESOURCE_APPLICATIONS.incrementAndGet();
+                        APPLYING_RESOURCE.set(true);
+                        try {
+                            return chain.proceed();
+                        } finally {
+                            if (previous) APPLYING_RESOURCE.set(true);
+                            else APPLYING_RESOURCE.remove();
                         }
-                        return chain.proceed();
                     });
             module.registerFeatureHook(handle);
             return 1;
         } catch (Throwable error) {
-            module.logFeatureError("BEAUTIFY_ADAPTER_" + id, error);
+            module.logFeatureError("BEAUTIFY_ADAPTER_RESOURCE_APPLICATION", error);
             return 0;
         }
     }

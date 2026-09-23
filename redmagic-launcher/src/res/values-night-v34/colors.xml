@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="widget_cell_subtitle_color_dark">@android:color/system_on_surface_variant_dark</color>
-    <color name="widget_cell_title_color_dark">@android:color/system_on_surface_dark</color>
-    <color name="widget_picker_header_app_subtitle_color_dark">@android:color/system_on_surface_variant_dark</color>
-    <color name="widget_picker_header_app_title_color_dark">@android:color/system_on_surface_dark</color>
-    <color name="widget_picker_menu_options_color_dark">@android:color/system_on_surface_variant_dark</color>
-    <color name="widget_picker_secondary_surface_color_dark">@android:color/system_surface_bright_dark</color>
-</resources>

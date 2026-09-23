@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.widget.picker.WidgetsListHeader android:orientation="horizontal" android:id="@id/widgets_list_header" android:background="@drawable/bg_widgets_header_two_pane" android:focusable="true" android:descendantFocusability="afterDescendants" android:layout_width="match_parent" android:layout_height="wrap_content" android:importantForAccessibility="yes" launcher:appIconSize="48.0dp" launcher:collapsable="false"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:launcher="http://schemas.android.com/apk/res-auto">
-    <ImageView android:id="@id/app_icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:importantForAccessibility="no" android:layout_marginHorizontal="16.0dp" />
-    <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:duplicateParentState="true" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
-        <TextView android:ellipsize="end" android:layout_gravity="start|center" android:id="@id/app_title" android:duplicateParentState="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" style="@style/WidgetListHeader.Title" />
-        <TextView android:ellipsize="end" android:id="@id/app_subtitle" android:duplicateParentState="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" style="@style/WidgetListHeader.SubTitle" />
-    </LinearLayout>
-</com.android.launcher3.widget.picker.WidgetsListHeader>

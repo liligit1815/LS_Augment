@@ -23,9 +23,9 @@ final class TilePresentation {
     static String stateDescription(String state) {
         if ("ALL_VISIBLE".equals(state)) return "全部显示";
         if ("ALL_HIDDEN".equals(state)) return "全部隐藏";
-        if ("MIXED".equals(state)) return "状态混合，点击恢复显示";
+        if ("MIXED".equals(state)) return "部分隐藏，点击全部显示";
         if ("EMPTY".equals(state)) return "未配置应用";
-        if ("ERROR".equals(state)) return "状态异常，点击恢复显示";
+        if ("ERROR".equals(state)) return "状态异常，请检查配置应用";
         return "状态未知";
     }
 

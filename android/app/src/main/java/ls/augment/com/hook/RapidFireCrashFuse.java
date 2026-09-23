@@ -1,84 +1,99 @@
 package ls.augment.com.hook;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.provider.Settings;
+import android.net.Uri;
+import android.os.Bundle;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Persistent crash marker protecting system_server from repeated native installs. */
+/** Persistent crash protection. Hook threads only read published memory state. */
 final class RapidFireCrashFuse {
     static final String PENDING = "ls_augment_tgk_fuse_pending";
     static final String ATTEMPTS = "ls_augment_tgk_fuse_attempts";
     static final String FUSED = "ls_augment_tgk_fuse_tripped";
-    private static boolean startupChecked;
-
+    private enum State { UNKNOWN, READY, ARMED, FUSED }
+    private static volatile State state = State.UNKNOWN;
+    private static volatile Context context;
+    private static volatile Runnable listener;
+    private static volatile boolean markerRequested;
+    private static final AtomicBoolean started = new AtomicBoolean(), queued = new AtomicBoolean();
+    private static final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "LSA-RapidFuse"); t.setDaemon(true); return t;
+    });
+    private static final String SESSION = java.util.UUID.randomUUID().toString();
+    // Owned exclusively by worker. The provider atomically persists before acknowledging ARMED.
+    private static boolean armed, clearPending, clearAttempts, disarm;
+    private static int bootAttempts = -1;
     private RapidFireCrashFuse() { }
 
-    static synchronized void onSystemStart(Context context) {
-        if (startupChecked || context == null) return;
-        startupChecked = true;
+    static void setListener(Context value, Runnable callback) {
+        listener = callback;
+        onSystemStart(value);
+    }
+    static void onSystemStart(Context value) {
+        if (value == null) return;
+        context = value;
+        if (started.compareAndSet(false, true))
+            worker.scheduleWithFixedDelay(RapidFireCrashFuse::refresh, 0, 5, TimeUnit.SECONDS);
+    }
+    static boolean beforeInstall(Context value) {
+        onSystemStart(value);
+        if (state == State.ARMED) return true;
+        if (state != State.FUSED) { markerRequested = true; requestRefresh(); }
+        return false;
+    }
+    static boolean isFused(Context value) {
+        onSystemStart(value);
+        State current = state;
+        return current != State.READY && current != State.ARMED;
+    }
+    static void installationFailed(Context value) {
+        onSystemStart(value);
+        worker.execute(() -> { markerRequested = false; armed = false; clearPending = true; disarm = true; refresh(); });
+    }
+    static void armStableClear(Context value) {
+        onSystemStart(value);
+        worker.schedule(() -> {
+            if (!TgkRapidFireNative.isLoaded()) return;
+            clearPending = true; clearAttempts = true; refresh();
+        }, 60, TimeUnit.SECONDS);
+    }
+    private static void requestRefresh() {
+        if (queued.compareAndSet(false, true)) worker.execute(() -> {
+            queued.set(false); refresh();
+        });
+    }
+    private static void refresh() {
+        Context current = context;
+        if (current == null) return;
         try {
-            int attempts = Settings.Global.getInt(context.getContentResolver(), ATTEMPTS, 0);
-            int pending = Settings.Global.getInt(context.getContentResolver(), PENDING, 0);
-            if (pending == 1) attempts++;
-            Settings.Global.putInt(context.getContentResolver(), PENDING, 0);
-            Settings.Global.putInt(context.getContentResolver(), ATTEMPTS, attempts);
-            if (attempts >= 3) Settings.Global.putInt(context.getContentResolver(), FUSED, 1);
-            publish(context, attempts >= 3 ? "fused" : "ready", attempts);
-        } catch (Throwable ignored) {
-            // A missing SettingsProvider is treated as unavailable by beforeInstall().
+            Bundle request = new Bundle();
+            request.putString("session", SESSION);
+            request.putBoolean("arm", markerRequested);
+            request.putBoolean("clearPending", clearPending);
+            request.putBoolean("clearAttempts", clearAttempts);
+            request.putBoolean("disarm", disarm);
+            Bundle result = current.getContentResolver().call(
+                    Uri.parse("content://ls.augment.com.config"), "crash_fuse", null, request);
+            if (result == null || !result.getBoolean("ok", false))
+                throw new IllegalStateException("fuse_persistence_unavailable");
+            State next = State.valueOf(result.getString("state", "UNKNOWN"));
+            bootAttempts = result.getInt("attempts", -1);
+            armed = next == State.ARMED;
+            clearPending = false; clearAttempts = false; disarm = false;
+            publish(next);
+        } catch (Throwable unavailable) {
+            publish(State.UNKNOWN);
         }
     }
-
-    static synchronized boolean beforeInstall(Context context) {
-        if (context == null) return false;
-        onSystemStart(context);
-        try {
-            if (Settings.Global.getInt(context.getContentResolver(), FUSED, 0) == 1) {
-                publish(context, "fused", Settings.Global.getInt(
-                        context.getContentResolver(), ATTEMPTS, 3));
-                return false;
-            }
-            if (!Settings.Global.putInt(context.getContentResolver(), PENDING, 1)) return false;
-            Settings.Global.putLong(context.getContentResolver(),
-                    "ls_augment_tgk_fuse_started_at", System.currentTimeMillis());
-            publish(context, "pending", Settings.Global.getInt(
-                    context.getContentResolver(), ATTEMPTS, 0));
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    static void installationFailed(Context context) {
-        if (context == null) return;
-        try { Settings.Global.putInt(context.getContentResolver(), PENDING, 0); }
-        catch (Throwable ignored) { }
-    }
-
-    static void armStableClear(Context context) {
-        if (context == null) return;
-        try {
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (!TgkRapidFireNative.isLoaded()) return;
-                try {
-                    Settings.Global.putInt(context.getContentResolver(), PENDING, 0);
-                    Settings.Global.putInt(context.getContentResolver(), ATTEMPTS, 0);
-                    publish(context, "stable", 0);
-                } catch (Throwable ignored) { }
-            }, 60_000L);
-        } catch (Throwable ignored) { }
-    }
-
-    static boolean isFused(Context context) {
-        if (context == null) return true;
-        onSystemStart(context);
-        try { return Settings.Global.getInt(context.getContentResolver(), FUSED, 0) == 1; }
-        catch (Throwable ignored) { return true; }
-    }
-
-    private static void publish(Context context, String state, int attempts) {
+    private static void publish(State next) {
+        State previous = state; state = next;
+        if (previous == next) return;
         FeatureSettings.diagnostic(context, "ls_augment_tgk_rapid_fire_fuse_state",
-                state + "|attempts=" + attempts);
+                (next == State.ARMED ? "pending" : next.name().toLowerCase(java.util.Locale.ROOT)) + "|attempts=" + bootAttempts);
+        Runnable callback = listener;
+        if (callback != null) try { callback.run(); } catch (Throwable ignored) { }
     }
 }

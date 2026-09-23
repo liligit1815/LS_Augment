@@ -25,12 +25,15 @@ final class HealthBackgroundHook {
             ApplicationInfo app=user.getPackageManager().getApplicationInfo("com.mi.health",0);
             if((app.flags&ApplicationInfo.FLAG_STOPPED)!=0){report("健康应用已被停止，打开一次后恢复后台计划");return;}
             Intent intent=new Intent().setComponent(new ComponentName("com.mi.health","com.xiaomi.fitness.device.manager.internal.DeviceManagerService"));
-            bound=user.bindService(intent,connection,Context.BIND_AUTO_CREATE|Context.BIND_WAIVE_PRIORITY);
+            // A waived-priority connection leaves the only health process cached
+            // and eligible for Android's freezer. Keep it at background-service
+            // importance so its real timetable can run without foreground UI.
+            bound=user.bindService(intent,connection,Context.BIND_AUTO_CREATE|Context.BIND_NOT_FOREGROUND);
             if(bound)boundContext=user;
-            if(!bound)report("等待健康应用数据服务");
+            if(!bound)report("后台服务未能启动，请在系统电池优化中允许小米运动健康自启动");
         }catch(Throwable e){report("后台接入失败："+e.getClass().getSimpleName());}
     };
     final Runnable tick=new Runnable(){public void run(){refresh.run();worker.postDelayed(this,60000);}};
-    void release(){if(bound){try{boundContext.unbindService(connection);}catch(Throwable ignored){}bound=false;boundContext=null;report("后台执行已关闭");}}
+    void release(){if(bound){try{boundContext.unbindService(connection);}catch(Throwable ignored){}bound=false;boundContext=null;}report("后台执行已关闭");}
     void report(String text){FeatureSettings.diagnostic(context,"ls_augment_health_background_runtime",text);}
 }

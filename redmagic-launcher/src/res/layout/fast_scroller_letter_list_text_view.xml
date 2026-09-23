@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.allapps.LetterListTextView android:textSize="@dimen/fastscroll_list_letter_text_size" android:gravity="center" android:clickable="false" android:layout_width="@dimen/fastscroll_list_letter_size" android:layout_height="@dimen/fastscroll_list_letter_size" android:importantForAccessibility="no"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

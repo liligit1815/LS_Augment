@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:fitsSystemWindows="true"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:gravity="start|center" android:id="@android:id/title" android:background="?dialogTitleBackground" android:paddingLeft="16.0dp" android:paddingRight="16.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/alert_dialog_title_height_zte_light" style="?android:windowTitleStyle" />
-    <FrameLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="0.0dp" android:foreground="?android:windowContentOverlay" android:layout_weight="1.0">
-        <FrameLayout android:id="@android:id/content" android:layout_width="match_parent" android:layout_height="match_parent" />
-    </FrameLayout>
-</LinearLayout>

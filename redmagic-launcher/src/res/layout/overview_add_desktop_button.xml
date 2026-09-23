@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.quickstep.views.AddDesktopButton android:id="@id/add_desktop_button" android:background="@drawable/bg_overview_add_desktop_button" android:padding="10.0dp" android:layout_width="@dimen/add_desktop_button_size" android:layout_height="@dimen/add_desktop_button_size" android:src="@drawable/ic_desktop_add" launcher:focusBorderColor="@color/materialColorOutline"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:launcher="http://schemas.android.com/apk/res-auto" />

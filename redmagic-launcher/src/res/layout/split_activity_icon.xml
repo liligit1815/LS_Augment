@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.BubbleTextView android:id="@id/icon" android:paddingLeft="@dimen/dynamic_grid_cell_padding_x" android:paddingRight="@dimen/dynamic_grid_cell_padding_x" android:layout_width="match_parent" android:layout_height="wrap_content" android:stateListAnimator="@animator/all_apps_fastscroll_icon_anim" launcher:centerVertically="true" launcher:iconDisplay="split_activity" style="@style/BaseIcon"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:launcher="http://schemas.android.com/apk/res-auto" />

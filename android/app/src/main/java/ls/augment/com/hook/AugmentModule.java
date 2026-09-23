@@ -19,6 +19,8 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import ls.augment.com.BuildConfig;
+import ls.augment.com.HideTargetCodec;
+import ls.augment.com.RootEarlyModule;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -29,11 +31,11 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import io.github.libxposed.api.XposedInterface.ExceptionMode;
 import io.github.libxposed.api.XposedInterface.HookBuilder;
 import io.github.libxposed.api.XposedInterface.HookHandle;
-import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
@@ -49,7 +51,10 @@ import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam;
  * relax OEM package-eligibility gates and leave TGK/InputManager execution,
  * mapping, persistence, and lifecycle ownership to the ROM.
  */
-public final class AugmentModule extends XposedModule {
+public final class AugmentModule extends RootEarlyModule {
+    public AugmentModule() {
+        super(Mode.INSTALL_PROTECTIVE);
+    }
     private static final String TAG = "LS_Augment";
     /** Keep diagnostics tied to the APK actually installed on the device. */
     private static final String VERSION = BuildConfig.VERSION_NAME;
@@ -158,14 +163,21 @@ public final class AugmentModule extends XposedModule {
     private final List<HookHandle> hookHandles = new ArrayList<>();
     private final List<HookHandle> shoulderHookHandles = new ArrayList<>();
     private final List<HookHandle> comboSpeedHookHandles = new ArrayList<>();
-    private final List<HookHandle> featureHookHandles = new ArrayList<>();
+    private final List<HookHandle> featureHookHandles = Collections.synchronizedList(new ArrayList<>());
     private final ComboMotionCache comboMotionCache = new ComboMotionCache();
+    private final ComboPlaybackPending comboPlaybackPending = new ComboPlaybackPending();
+    private final ThreadLocal<ComboMotionFileScaler.Result> comboPlaybackReplay =
+            new ThreadLocal<>();
+    private final ThreadLocal<ComboPlaybackPending.Token> comboPlaybackReplayToken =
+            new ThreadLocal<>();
+    private Method comboPlaybackStopMethod;
     private volatile String processName = "";
     private volatile String readyPackageName = "";
     private volatile boolean moduleLoaded;
     private volatile boolean systemServerProcess;
     private volatile boolean packageReady;
     private volatile boolean adapterClassFound;
+    private volatile SettingsEntryHooks settingsEntryHooks;
     private volatile boolean rebuildHookInstalled;
     private volatile boolean removeHookInstalled;
     private volatile boolean startupWitnessInstalled;
@@ -201,11 +213,11 @@ public final class AugmentModule extends XposedModule {
     private volatile int systemServerLifecyclePublishAttempts;
     private volatile String systemServerLifecycleSource = "";
     private volatile String systemServerLifecycleError = "";
-    private volatile String cachedMirrorRaw;
-    private volatile Set<String> cachedTargets = Collections.emptySet();
+    private volatile boolean filterCalled;
 
     @Override
-    public void onModuleLoaded(ModuleLoadedParam param) {
+    protected void onModuleLoadedAfterEarly(ModuleLoadedParam param, RootEarlyModule.Result rootResult) {
+        FeatureSettings.attachFramework(this);
         processName = param.getProcessName();
         HookTelemetry.loaded(processName,getFrameworkName()+"/"+getFrameworkVersion());
         systemServerProcess = param.isSystemServer();
@@ -240,7 +252,7 @@ public final class AugmentModule extends XposedModule {
     }
 
     @Override
-    public void onSystemServerStarting(SystemServerStartingParam param) {
+    protected void onSystemServerStartingAfterRoot(SystemServerStartingParam param) {
         // API 102 exposes system_server through this lifecycle callback, not
         // through PackageReady. Its ClassLoader owns services.jar and can see
         // ActivityTaskManagerService/ActivityTaskSupervisor vendor methods.
@@ -255,50 +267,53 @@ public final class AugmentModule extends XposedModule {
 
     @Override
     public void onPackageReady(PackageReadyParam param) {
-        readyPackageName = param.getPackageName();
-        HookTelemetry.ready(readyPackageName);
+        String callbackPackageName = param.getPackageName();
         if (systemServerProcess) {
             // system_server can publish PackageReady events for framework
             // packages hosted in the same process (for example
             // com.android.providers.settings). Detaching on one of those
             // events also disables the hooks installed above.
+            readyPackageName = SYSTEM_SERVER_PACKAGE;
+            HookTelemetry.ready(SYSTEM_SERVER_PACKAGE);
             systemPackageReadySeen = true;
             installSystemServerHooks(param.getClassLoader(),
-                    "package_ready:" + safePackageName(readyPackageName));
+                    "package_ready:" + safePackageName(callbackPackageName));
             return;
         }
+        if (!ls.augment.com.HookTargetRegistry.contains(callbackPackageName)) {
+            // A resource/shared package can become ready before the scoped
+            // application, including in OEM processes whose name is an alias.
+            // detach() removes this process's entire module instance and its
+            // existing hooks; an unrelated callback cannot justify that.
+            // Do not guess a target package from the process name or loader.
+            logInfo("PACKAGE_READY_IGNORED non-target package=" + safePackageName(callbackPackageName)
+                    + " process=" + processName);
+            return;
+        }
+        if (isSystemServerPackage(callbackPackageName)) {
+            // Only the system-server lifecycle can authorize server hooks.
+            logInfo("SYSTEM_SERVER_PACKAGE_READY ignored package=" + callbackPackageName
+                    + " process=" + processName);
+            return;
+        }
+        readyPackageName = callbackPackageName;
+        HookTelemetry.ready(readyPackageName);
+        logInfo("PACKAGE_READY_TARGET package=" + readyPackageName
+                + " process=" + processName + " first=" + param.isFirstPackage());
         // Keep one small, privileged witness outside feature-specific code so
         // a scope/configuration problem can be distinguished from a failed
         // method lookup.  This is written through the same provider bridge as
         // the normal diagnostics and is harmless when no context is available.
         writePackageReadyWitness(readyPackageName);
-        if (!SETTINGS_PACKAGE.equals(readyPackageName)
-                && !SYSTEMUI_PACKAGE.equals(readyPackageName)
-                && !BEAUTIFY_PACKAGE.equals(readyPackageName)
-                && !BEAUTIFY_ADAPTER_PACKAGE.equals(readyPackageName)
-                && !DOUBLE_APP_PACKAGE.equals(readyPackageName)
-                && !WINDOW_REPLY_UI_PACKAGE.equals(readyPackageName)
-                && !GAME_SPACE_PACKAGE.equals(readyPackageName)
-                && !GAME_ASSIST_PACKAGE.equals(readyPackageName)
-                && !GAME_LAB_PACKAGE.equals(readyPackageName)
-                && !AI_TRIGGER_PACKAGE.equals(readyPackageName)
-                && !FAN_PACKAGE.equals(readyPackageName)
-                && !"cn.nubia.neostore".equals(readyPackageName)
-                && !"com.mi.health".equals(readyPackageName)
-                && !"com.zte.mifavor.launcher".equals(readyPackageName)
-                && !isSystemServerPackage(readyPackageName)
-                && !GAME_HELPER_PACKAGE.equals(readyPackageName)
-                && !GAME_HELPER_LINE_PACKAGE.equals(readyPackageName)) {
-            logInfo("DETACH non-target package=" + readyPackageName
-                    + " process=" + processName);
-            detach(); // API 102
-            return;
-        }
 
+        OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName);
+        ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName);
+        GameExtrasHook.install(this, param.getClassLoader(), readyPackageName);
         if ("cn.nubia.neostore".equals(readyPackageName)) { StoreDownloadHook.install(this,param.getClassLoader()); return; }
         if (GAME_SPACE_PACKAGE.equals(readyPackageName)) {
             installGameSpaceShoulderHooks(param.getClassLoader());
             installTgkRapidFireHooks(param.getClassLoader());
+            ShoulderQuickSwitchHook.install(this, param.getClassLoader());
             return;
         }
         if (AI_TRIGGER_PACKAGE.equals(readyPackageName)) {
@@ -307,14 +322,6 @@ public final class AugmentModule extends XposedModule {
         }
         if (GAME_LAB_PACKAGE.equals(readyPackageName)) {
             installAiTriggerHooks(param.getClassLoader(), GAME_LAB_PACKAGE);
-            return;
-        }
-        if (isSystemServerPackage(readyPackageName)) {
-            // Keep the module attached if a framework package-ready event is
-            // also delivered, but never install server hooks with this app
-            // package ClassLoader. onSystemServerStarting owns that work.
-            logInfo("SYSTEM_SERVER_PACKAGE_READY ignored package=" + readyPackageName
-                    + " process=" + processName);
             return;
         }
         if (GAME_HELPER_PACKAGE.equals(readyPackageName)) {
@@ -347,6 +354,8 @@ public final class AugmentModule extends XposedModule {
         }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
             LauncherCustomizationHook.install(this, param.getClassLoader());
+            LauncherPagesHook.install(this, param.getClassLoader());
+            LauncherRecentsMemoryHook.install(this, param.getClassLoader());
             return;
         }
         if (SYSTEMUI_PACKAGE.equals(readyPackageName)) {
@@ -365,6 +374,7 @@ public final class AugmentModule extends XposedModule {
             installBeautifyAdapterFeatureHooks(param.getClassLoader());
             return;
         }
+        if (!SETTINGS_PACKAGE.equals(readyPackageName)) return;
         packageReady = true;
         logInfo("PACKAGE_READY package=" + readyPackageName);
 
@@ -407,7 +417,10 @@ public final class AugmentModule extends XposedModule {
     private synchronized void installSystemUiFeatureHooks(ClassLoader classLoader) {
         if (systemUiHooksInstalled) return;
         systemUiHooksInstalled = SystemUiHook.install(this, classLoader) > 0;
+        OwnTileIconHook.install(this, classLoader);
+        FanTileHook.install(this, classLoader);
         AudioGainUiHook.install(this, classLoader);
+        RedMagicSystemUiHook.install(this, classLoader);
     }
 
     private synchronized void installDoubleAppFeatureHooks(ClassLoader classLoader) {
@@ -480,6 +493,8 @@ public final class AugmentModule extends XposedModule {
      */
     private void installSystemServerHooks(ClassLoader classLoader, String source) {
         if (!systemServerProcess) return;
+        // Constructor-only options use the framework's boot copy. Never wait inside AudioService.
+        FeatureSettings.awaitBootSnapshot();
         // PackageReady may later be delivered for framework packages hosted in
         // system_server with an app ClassLoader. Once every server hook is in
         // place, never let one of those unrelated loaders turn a successful
@@ -497,6 +512,7 @@ public final class AugmentModule extends XposedModule {
             installTgkRapidFireSystemHooks(classLoader);
             installSignatureMismatchInstallHooks(classLoader);
             AudioGainHook.install(this, classLoader);
+            SystemRulesHook.install(this, classLoader);
             updateSystemServerLifecycle(source, true, "");
         } catch (Throwable error) {
             String detail = error.getClass().getSimpleName() + ":" + safeMessage(error);
@@ -526,6 +542,8 @@ public final class AugmentModule extends XposedModule {
         if (!systemServerProcess) return;
         Context context = FeatureSettings.from(null);
         if (context != null) {
+            // Start background loading before boot-time feature consumers are constructed.
+            FeatureSettings.snapshot(context);
             systemServerLifecyclePublishAttempts = 0;
             systemServerLifecycleRetryScheduled = false;
             ScreenOffAutomationHook.attach(context);
@@ -581,7 +599,7 @@ public final class AugmentModule extends XposedModule {
     /** Install the explicit GameSpace eligibility gates from the device report. */
     private synchronized void installGameSpaceShoulderHooks(ClassLoader classLoader) {
         if (shoulderHooksInstalled) return;
-        int installed = 0;
+        int installed = ShoulderModeCompatibilityHook.install(this, classLoader, AugmentModule::isShoulderTarget);
         try {
             Class<?> helper = Class.forName(TGK_HELPER_CLASS, false, classLoader);
             Method disable = findMethod(
@@ -655,6 +673,9 @@ public final class AugmentModule extends XposedModule {
                         .setExceptionMode(ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             Object result = chain.proceed();
+                            Context context = FeatureSettings.from(chain.getThisObject());
+                            if (!FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER)
+                                    || !FeatureSettings.enabled(context, FeatureSettings.SHOULDER_ENABLED)) return result;
                             boolean fieldChanged = forceSupportedGameKeyLink(
                                     chain.getThisObject());
                             if (result instanceof Boolean && isBooleanFalse(result)) {
@@ -1103,13 +1124,31 @@ public final class AugmentModule extends XposedModule {
                 return 0;
             }
             notifyChange.setAccessible(true);
+            // Defer only on the verified manager lifecycle. Other ROM variants
+            // retain the original nonblocking fallback if cancellation is unknown.
+            boolean canDefer = installComboPlaybackCancellationHooks(manager) == 3;
+            if (canDefer) {
+                comboPlaybackStopMethod = findMethod(
+                        manager, "interuptRecoverImmediately", void.class);
+                comboPlaybackStopMethod.setAccessible(true);
+            }
             HookHandle handle = observedHook(notifyChange)
                     .setId("ls_augment.api102.combo_speed.gamehelper.motion_file")
                     .setPriority(PRIORITY_HIGHEST)
                     .setExceptionMode(ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
+                        long requestedAt = System.nanoTime();
                         String action = stringArg(chain, 0);
                         Object managerOwner = chain.getThisObject();
+                        ComboMotionFileScaler.Result replay = comboPlaybackReplay.get();
+                        ComboPlaybackPending.Token replayToken = comboPlaybackReplayToken.get();
+                        if (replay != null) {
+                            comboPlaybackReplay.remove();
+                            comboPlaybackReplayToken.remove();
+                        }
+                        if (replay == null || !"startPlay".equals(action)) {
+                            cancelComboPlayback(managerOwner, "notify_" + safePart(action));
+                        }
                         Context observedContext = currentApplicationContext();
                         if (observedContext != null) {
                             comboSpeedMotionManager = managerOwner;
@@ -1122,9 +1161,10 @@ public final class AugmentModule extends XposedModule {
                                 Context context = comboSpeedContext;
                                 if (comboSpeedConfigured(context)) {
                                     Object path = readField(managerOwner, "mCurrentRecoverPath");
-                                    comboMotionCache.prepare(context.getCacheDir(),
-                                            path instanceof String ? (String) path : null,
-                                            comboSpeedRate(context), true);
+                                    String preparePath = path instanceof String ? (String) path : null;
+                                    float prepareRate = comboSpeedRate(context);
+                                    comboMotionCache.post(() -> comboMotionCache.prepare(
+                                            context.getCacheDir(), preparePath, prepareRate, true));
                                 }
                             } catch (Throwable ignored) {
                                 // Pre-generation is opportunistic; OEM behavior already completed.
@@ -1136,16 +1176,42 @@ public final class AugmentModule extends XposedModule {
                         String replacementPath = null;
                         try {
                             Context context = comboSpeedContext;
-                            if (comboSpeedConfigured(context)) {
+                            boolean configured = comboSpeedConfigured(context);
+                            float targetRate = comboSpeedRate(context);
+                            if (replay != null && (replayToken == null
+                                    || !configured
+                                    || Float.compare(replayToken.rate, targetRate) != 0
+                                    || managerOwner != replayToken.owner
+                                    || !replayToken.sourcePath.equals(readField(
+                                            managerOwner, "mCurrentRecoverPath"))
+                                    || !replayToken.packageName.equals(String.valueOf(readField(
+                                            managerOwner, "mCurrentPackageName")))
+                                    || !Boolean.TRUE.equals(readField(
+                                            managerOwner, "mStartRecoverRecord")))) {
+                                if (replayToken != null) {
+                                    clearComboPlaybackPreparation(replayToken);
+                                    recordComboDeferred(replayToken, "cancel_before_publish");
+                                }
+                                return null;
+                            }
+                            if (configured) {
                                 Object pathValue = readField(
                                         managerOwner, "mCurrentRecoverPath");
                                 sourcePath = pathValue instanceof String
                                         ? (String) pathValue : null;
-                                float targetRate = comboSpeedRate(context);
                                 ComboMotionFileScaler.Result scaled =
-                                        comboMotionCache.lookupOrSchedule(
+                                        replay != null ? replay : isMainThread()
+                                                ? comboMotionCache.lookupPublished(sourcePath, targetRate)
+                                                : comboMotionCache.lookupOrSchedule(
                                                 context.getCacheDir(), sourcePath, targetRate,
-                                                !isMainThread());
+                                                true);
+                                if (replay == null && isMainThread()
+                                        && "cold_cache".equals(scaled.error)) {
+                                    if (canDefer && deferComboPlayback(notifyChange, managerOwner,
+                                            context, sourcePath, targetRate, requestedAt)) return null;
+                                    comboMotionCache.prepareAsync(
+                                            context::getCacheDir, sourcePath, targetRate);
+                                }
                                 if (!scaled.success) {
                                     String diagnostic = "file_cache_unavailable|rate=" + targetRate
                                             + "|reason=" + safePart(scaled.error);
@@ -1593,7 +1659,7 @@ public final class AugmentModule extends XposedModule {
                         .setExceptionMode(ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             Object result = chain.proceed();
-                            if (isBooleanFalse(result)) {
+                            if (isBooleanFalse(result) && isShoulderTarget(currentFullscreenPackage(classLoader))) {
                                 writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
                                         "GA-01|OneKeyLinkTile|true|"
                                                 + System.currentTimeMillis());
@@ -1611,9 +1677,7 @@ public final class AugmentModule extends XposedModule {
 
             Class<?> pluginConfig = Class.forName(
                     GAME_ASSIST_PLUGIN_CONFIG_CLASS, false, classLoader);
-            // The current OTA exposes d(Context, String) -> String[].
-            Method blackList = findMethod(
-                    pluginConfig, "d", String[].class, Context.class, String.class);
+            Method blackList = ShoulderHookTargets.pluginBlacklist(pluginConfig, Context.class);
             if (blackList == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-05 "
                         + GAME_ASSIST_PLUGIN_CONFIG_CLASS + ".d");
@@ -1644,7 +1708,7 @@ public final class AugmentModule extends XposedModule {
                             writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
                                     "GA-05|" + plugin + "|removed=" + removed + "|"
                                             + System.currentTimeMillis());
-                            logInfo("SHOULDER_HIT GA-05 PluginConfig.d plugin=" + plugin
+                            logInfo("SHOULDER_HIT GA-05 " + blackList.getName() + " plugin=" + plugin
                                     + " removed=" + removed);
                             return filtered.toArray(new String[0]);
                         });
@@ -1695,8 +1759,7 @@ public final class AugmentModule extends XposedModule {
             // plugin.  Keep the user/system setting semantics for unrelated
             // plugins, but make keylink/range-line available for the selected
             // user app once the module's shoulder feature is enabled.
-            Method pluginEnabled = findMethod(
-                    pluginConfig, "k", boolean.class, Context.class, String.class);
+            Method pluginEnabled = ShoulderHookTargets.pluginEnabled(pluginConfig, Context.class);
             if (pluginEnabled == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-04 "
                         + GAME_ASSIST_PLUGIN_CONFIG_CLASS + ".k");
@@ -1713,7 +1776,7 @@ public final class AugmentModule extends XposedModule {
                                 writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
                                         "GA-04|" + plugin + "|true|"
                                                 + System.currentTimeMillis());
-                                logInfo("SHOULDER_HIT GA-04 PluginConfig.k plugin="
+                                logInfo("SHOULDER_HIT GA-04 " + pluginEnabled.getName() + " plugin="
                                         + plugin + " result=true");
                                 return true;
                             }
@@ -1725,9 +1788,7 @@ public final class AugmentModule extends XposedModule {
                         + pluginEnabled.toGenericString());
             }
 
-            Method displayEligibility = findMethod(
-                    pluginConfig, "l", boolean.class,
-                    Context.class, String.class, String.class);
+            Method displayEligibility = ShoulderHookTargets.pluginEligibility(pluginConfig, Context.class);
             if (displayEligibility == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-06 "
                         + GAME_ASSIST_PLUGIN_CONFIG_CLASS + ".l");
@@ -1745,7 +1806,7 @@ public final class AugmentModule extends XposedModule {
                                 writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
                                         "GA-06|" + plugin + "|" + packageName + "|true|"
                                                 + System.currentTimeMillis());
-                                logInfo("SHOULDER_HIT GA-06 PluginConfig.l plugin="
+                                logInfo("SHOULDER_HIT GA-06 " + displayEligibility.getName() + " plugin="
                                         + plugin + " pkg=" + packageName + " result=true");
                                 return true;
                             }
@@ -1757,8 +1818,7 @@ public final class AugmentModule extends XposedModule {
                         + displayEligibility.toGenericString());
             }
 
-            Method pluginList = findMethod(
-                    pluginConfig, "g", List.class, Context.class);
+            Method pluginList = ShoulderHookTargets.pluginList(pluginConfig, Context.class);
             if (pluginList == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-07 "
                         + GAME_ASSIST_PLUGIN_CONFIG_CLASS + ".g");
@@ -1772,7 +1832,9 @@ public final class AugmentModule extends XposedModule {
                             Object result = chain.proceed();
                             if (!(result instanceof List)) return result;
 
-                            String packageName = currentFullscreenPackage(classLoader);
+                            // Android 15 queries a specific package, which may not be the foreground app.
+                            String packageName = pluginList.getParameterCount() == 2
+                                    ? stringArg(chain, 1) : currentFullscreenPackage(classLoader);
                             if (!isShoulderTarget(packageName)) return result;
 
                             List<?> original = (List<?>) result;
@@ -1788,7 +1850,7 @@ public final class AugmentModule extends XposedModule {
                             writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
                                     "GA-07|keylink-added|" + packageName + "|"
                                             + System.currentTimeMillis());
-                            logInfo("SHOULDER_HIT GA-07 PluginConfig.g pkg="
+                            logInfo("SHOULDER_HIT GA-07 " + pluginList.getName() + " pkg="
                                     + packageName + " keylink-added");
                             return filtered;
                         });
@@ -1869,8 +1931,9 @@ public final class AugmentModule extends XposedModule {
         try {
             Class<?> controller = Class.forName(
                     GAME_ASSIST_SUBVIEW_CONTROLLER_CLASS, false, classLoader);
-            Method bind = findSingleViewGroupMethod(controller, "V");
-            if (bind == null) {
+            Method bind = ShoulderHookTargets.toolbarBind(controller, ViewGroup.class);
+            Field buttonField = ShoulderHookTargets.toolbarButton(controller, bind, View.class);
+            if (bind == null || buttonField == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-15 "
                         + GAME_ASSIST_SUBVIEW_CONTROLLER_CLASS + ".V");
             } else {
@@ -1883,11 +1946,11 @@ public final class AugmentModule extends XposedModule {
                             Object result = chain.proceed();
                             String packageName = currentFullscreenPackage(classLoader);
                             if (isShoulderTarget(packageName)) {
-                                Object button = readField(chain.getThisObject(), "t");
+                                Object button = buttonField.get(chain.getThisObject());
                                 if (button instanceof View) {
                                     ((View) button).setVisibility(View.VISIBLE);
                                     writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
-                                            "GA-15|SubViewController.V|"
+                                            "GA-15|" + bind.getName() + "|"
                                                     + safePart(packageName)
                                                     + "|visible=true|" + System.currentTimeMillis());
                                 }
@@ -1952,7 +2015,8 @@ public final class AugmentModule extends XposedModule {
         int installed = 0;
         try {
             Class<?> tileHost = Class.forName(TILE_HOST_CLASS, false, classLoader);
-            Method refresh = findMethod(tileHost, "w", Collection.class, boolean.class);
+            Method refresh = ShoulderHookTargets.aliases(tileHost, false, Collection.class,
+                    new String[]{"w", "refreshPluginTiles"}, boolean.class);
             if (refresh != null) {
                 refresh.setAccessible(true);
                 HookHandle handle = observedHook(refresh)
@@ -1978,7 +2042,8 @@ public final class AugmentModule extends XposedModule {
                 logInfo("SHOULDER_METHOD_MISSING GA-08 " + TILE_HOST_CLASS + ".w");
             }
 
-            Method create = findMethod(tileHost, "l", null, String.class);
+            Method create = ShoulderHookTargets.aliases(tileHost, false, null,
+                    new String[]{"l", "createTile"}, String.class);
             if (create != null) {
                 create.setAccessible(true);
                 HookHandle handle = observedHook(create)
@@ -2009,7 +2074,8 @@ public final class AugmentModule extends XposedModule {
 
         try {
             Class<?> tileFactory = Class.forName(TILE_FACTORY_CLASS, false, classLoader);
-            Method create = findMethod(tileFactory, "a", null, String.class,
+            Method create = ShoulderHookTargets.aliases(tileFactory, true, null,
+                    new String[]{"a", "getTileHost"}, String.class,
                     Class.forName(TILE_HOST_CLASS, false, classLoader));
             if (create != null) {
                 create.setAccessible(true);
@@ -2042,7 +2108,8 @@ public final class AugmentModule extends XposedModule {
         try {
             Class<?> qstile = Class.forName(QSTILE_CLASS, false, classLoader);
             Class<?> state = Class.forName(QSTILE_STATE_CLASS, false, classLoader);
-            Method updateState = findMethod(qstile, "d0", null, state, Object.class);
+            Method updateState = ShoulderHookTargets.aliases(qstile, false, void.class,
+                    new String[]{"d0", "handleUpdateState"}, state, Object.class);
             if (updateState != null) {
                 updateState.setAccessible(true);
                 HookHandle handle = observedHook(updateState)
@@ -2337,6 +2404,147 @@ public final class AugmentModule extends XposedModule {
         return isShoulderTarget(packageName, false);
     }
 
+    private int installComboPlaybackCancellationHooks(Class<?> manager) {
+        Method[] methods = {
+                findMethod(manager, "resetAllFlag", void.class),
+                findMethod(manager, "interuptRecoverImmediately", void.class),
+                findMethod(manager, "interuptRecoverImmediately", void.class, String.class)
+        };
+        int installed = 0;
+        for (Method method : methods) {
+            if (method == null) continue;
+            try {
+                method.setAccessible(true);
+                boolean packageStop = method.getParameterCount() == 1;
+                HookHandle handle = observedHook(method)
+                        .setId("ls_augment.api102.combo_speed.gamehelper.cancel."
+                                + method.getName() + "." + method.getParameterCount())
+                        .setPriority(PRIORITY_HIGHEST)
+                        .setExceptionMode(ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            Object owner = chain.getThisObject();
+                            // The String overload sends its own stop URI instead of
+                            // calling notifyChange, and may target a different game.
+                            String stoppedPackage = packageStop ? stringArg(chain, 0) : null;
+                            if (!packageStop || (stoppedPackage != null && stoppedPackage.equals(
+                                    readField(owner, "mCurrentPackageName")))) {
+                                cancelComboPlayback(owner, method.getName());
+                            }
+                            return chain.proceed();
+                        });
+                comboSpeedHookHandles.add(handle);
+                installed++;
+            } catch (Throwable error) {
+                logError("COMBO_PLAYBACK_CANCEL_HOOK_FAILED", error);
+            }
+        }
+        return installed;
+    }
+
+    private boolean deferComboPlayback(Method notifyChange, Object owner, Context context,
+            String sourcePath, float rate, long requestedAt) {
+        ComboPlaybackPending.Token token = comboPlaybackPending.begin(owner, sourcePath,
+                String.valueOf(readField(owner, "mCurrentPackageName")), rate, requestedAt,
+                TimeUnit.MILLISECONDS.toNanos(ComboMotionCache.MAX_COLD_WAIT_MS));
+        Handler main = new Handler(Looper.getMainLooper());
+        Runnable timeout = () -> finishComboPlayback(notifyChange, context, token,
+                ComboMotionFileScaler.Result.failure("cold_cache_timeout"));
+        try {
+            long remaining = token.remainingNanos(System.nanoTime());
+            if (remaining == 0L || !main.postDelayed(timeout,
+                    (remaining + 999_999L) / 1_000_000L)) {
+                comboPlaybackPending.cancel(owner);
+                return false;
+            }
+            comboMotionCache.prepareAsync(context::getCacheDir, sourcePath, rate)
+                    .whenComplete((ready, error) -> main.post(() -> {
+                        main.removeCallbacks(timeout);
+                        ComboMotionFileScaler.Result result = token.remainingNanos(
+                                System.nanoTime()) == 0L
+                                ? ComboMotionFileScaler.Result.failure("cold_cache_timeout")
+                                : error != null || ready == null
+                                        ? ComboMotionFileScaler.Result.failure("cache_worker_failed")
+                                        : ready;
+                        finishComboPlayback(notifyChange, context, token, result);
+                    }));
+            recordComboDeferred(token, "waiting");
+            return true;
+        } catch (Throwable error) {
+            main.removeCallbacks(timeout);
+            comboPlaybackPending.cancel(owner);
+            return false;
+        }
+    }
+
+    private void finishComboPlayback(Method notifyChange, Context context,
+            ComboPlaybackPending.Token token, ComboMotionFileScaler.Result result) {
+        Object owner = token.owner;
+        Object path = readField(owner, "mCurrentRecoverPath");
+        boolean enabled = comboSpeedConfigured(context)
+                && Boolean.TRUE.equals(readField(owner, "mStartRecoverRecord"));
+        comboPlaybackPending.claim(token, owner,
+                path instanceof String ? (String) path : null,
+                String.valueOf(readField(owner, "mCurrentPackageName")),
+                enabled, comboSpeedRate(context), cancelled -> {
+                    clearComboPlaybackPreparation(cancelled);
+                    recordComboDeferred(cancelled, "cancel_state");
+                }, () -> publishComboPlayback(notifyChange, token, result));
+    }
+
+    private void publishComboPlayback(Method notifyChange, ComboPlaybackPending.Token token,
+            ComboMotionFileScaler.Result result) {
+        ComboMotionFileScaler.Result publishResult = token.remainingNanos(System.nanoTime()) == 0L
+                ? ComboMotionFileScaler.Result.failure("cold_cache_timeout") : result;
+        recordComboDeferred(token, publishResult.success ? "ready" : publishResult.error);
+        // Re-enter a fresh hook invocation on main. No interceptor chain escapes
+        // its original call, and a failed/expired result cannot schedule a loop.
+        comboPlaybackReplay.set(publishResult);
+        comboPlaybackReplayToken.set(token);
+        try {
+            notifyChange.invoke(token.owner, "startPlay");
+        } catch (Throwable error) {
+            comboMotionCache.post(() -> writeComboSpeedProbe(COMBO_SPEED_LAST_ERROR_KEY,
+                    "deferred_publish_failed|" + error.getClass().getSimpleName()));
+        } finally {
+            comboPlaybackReplay.remove();
+            comboPlaybackReplayToken.remove();
+        }
+    }
+
+    private void cancelComboPlayback(Object owner, String reason) {
+        ComboPlaybackPending.Token token = comboPlaybackPending.cancel(owner);
+        if (token != null) recordComboDeferred(token, "cancel_" + reason);
+    }
+
+    private void clearComboPlaybackPreparation(ComboPlaybackPending.Token token) {
+        Object owner = token.owner;
+        // The native start flags precede notifyChange. A configuration cancel
+        // must end that preparation, but never touch a newer/different game.
+        if (comboPlaybackStopMethod == null
+                || !token.sourcePath.equals(readField(owner, "mCurrentRecoverPath"))
+                || !token.packageName.equals(String.valueOf(
+                        readField(owner, "mCurrentPackageName")))
+                || !Boolean.TRUE.equals(readField(owner, "mStartRecoverRecord"))) return;
+        try {
+            comboPlaybackStopMethod.invoke(owner);
+        } catch (Throwable error) {
+            comboMotionCache.post(() -> writeComboSpeedProbe(COMBO_SPEED_LAST_ERROR_KEY,
+                    "deferred_cancel_failed|" + error.getClass().getSimpleName()));
+        }
+    }
+
+    private void recordComboDeferred(ComboPlaybackPending.Token token, String event) {
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - token.deadlineNanos)
+                + ComboMotionCache.MAX_COLD_WAIT_MS;
+        String diagnostic = "deferred|event=" + safePart(event)
+                + "|request=" + token.deadlineNanos + "|elapsedMs=" + elapsedMs
+                + "|pkg=" + safePart(token.packageName) + "|rate=" + token.rate;
+        comboMotionCache.post(() -> {
+            logInfo("COMBO_PLAYBACK_" + diagnostic);
+            writeComboSpeedProbe(COMBO_SPEED_LAST_HIT_KEY, diagnostic);
+        });
+    }
+
     private synchronized void ensureComboSpeedCacheListener(Context context) {
         if (comboSpeedSnapshotListenerInstalled || context == null) return;
         comboSpeedSnapshotListenerInstalled = true;
@@ -2344,11 +2552,19 @@ public final class AugmentModule extends XposedModule {
             try {
                 Context current = comboSpeedContext;
                 Object manager = comboSpeedMotionManager;
-                if (current == null || manager == null || !comboSpeedConfigured(current)) return;
+                boolean enabled = comboSpeedConfigured(current);
+                float rate = comboSpeedRate(current);
+                ComboPlaybackPending.Token cancelled =
+                        comboPlaybackPending.cancelIfConfigChanged(enabled, rate,
+                                this::clearComboPlaybackPreparation);
+                if (cancelled != null) recordComboDeferred(cancelled, "cancel_configuration");
+                if (current == null || manager == null || !enabled) return;
                 Object path = readField(manager, "mCurrentRecoverPath");
-                comboMotionCache.prepare(current.getCacheDir(),
-                        path instanceof String ? (String) path : null,
-                        comboSpeedRate(current), true);
+                String preparePath = path instanceof String ? (String) path : null;
+                // An immediately dispatched unchanged snapshot must not invalidate
+                // the first pending request. Worker fingerprinting still checks edits.
+                comboMotionCache.post(() -> comboMotionCache.prepare(
+                        current.getCacheDir(), preparePath, rate, false));
             } catch (Throwable ignored) {
                 // The next OEM notification or playback will retry preparation.
             }
@@ -2527,6 +2743,8 @@ public final class AugmentModule extends XposedModule {
             return;
         }
 
+        settingsEntryHooks = SettingsEntryHooks.install(this, classLoader);
+
         // MyOS real-device acceptance proved removeHideApk(...) is the active
         // list path. Freeze it as the primary hook. onRebuildComplete remains a
         // compatibility fallback only when the vendor hook is absent.
@@ -2536,6 +2754,8 @@ public final class AugmentModule extends XposedModule {
         }
         if (!removeHookInstalled && !rebuildHookInstalled) {
             setupError = "no_supported_settings_hook_point";
+        } else if (settingsEntryHooks == null) {
+            setupError = "settings_entry_sources_unavailable";
         } else {
             setupError = "";
         }
@@ -2588,7 +2808,7 @@ public final class AugmentModule extends XposedModule {
                         Object arg = chain.getArg(0);
                         if (context != null && arg instanceof List) {
                             Object filtered = filterCopy(
-                                    context, (List<?>) arg, "onRebuildComplete");
+                                    context, chain.getThisObject(), (List<?>) arg, "onRebuildComplete");
                             return chain.proceed(new Object[]{filtered});
                         }
                         return chain.proceed();
@@ -2620,7 +2840,7 @@ public final class AugmentModule extends XposedModule {
                         Context context = resolveSettingsContext(chain.getThisObject());
                         if (context != null) persistProbeSnapshot(context);
                         if (context != null && result instanceof List) {
-                            return filterCopy(context, (List<?>) result, "removeHideApk");
+                            return filterCopy(context, chain.getThisObject(), (List<?>) result, "removeHideApk");
                         }
                         return result;
                     });
@@ -2690,8 +2910,7 @@ public final class AugmentModule extends XposedModule {
         writeProbe(context, PROBE_HOOK_INSTALLED_KEY,
                 (rebuildHookInstalled || removeHookInstalled) ? "1" : "0");
         // Do not reset filter_called once it has become true.
-        String called = Settings.Global.getString(context.getContentResolver(), PROBE_FILTER_CALLED_KEY);
-        if (!"1".equals(called)) writeProbe(context, PROBE_FILTER_CALLED_KEY, "0");
+        if (!filterCalled) writeProbe(context, PROBE_FILTER_CALLED_KEY, "0");
         writeProbe(context, PROBE_ERROR_KEY, setupError == null ? "" : setupError);
     }
 
@@ -2736,30 +2955,37 @@ public final class AugmentModule extends XposedModule {
     }
 
     /** Return a filtered ArrayList copy; never mutate a Settings-owned list. */
-    private Object filterCopy(Context context, List<?> input, String source) {
+    private Object filterCopy(Context context, Object adapter, List<?> input, String source) {
+        filterCalled = true;
         writeProbe(context, PROBE_FILTER_CALLED_KEY, "1");
         final long now = System.currentTimeMillis();
         try {
-            Set<String> targets = readActiveTargets(context);
-            if (input == null || input.isEmpty() || targets.isEmpty()) {
+            Set<HideTargetCodec.Entry> targets = readActiveTargets(context);
+            SettingsEntryHooks bindings = settingsEntryHooks;
+            Object entriesLock = bindings == null ? null : bindings.lockFor(adapter);
+            if (entriesLock != null) {
+                synchronized (entriesLock) { bindings.observeAdapter(adapter); }
+            }
+            if (input == null || input.isEmpty() || targets.isEmpty() || entriesLock == null) {
                 writeDiagnostics(context, source, now,
                         input == null ? 0 : input.size(), 0,
                         input == null ? 0 : input.size(), targets.size(), null);
-                return input instanceof ArrayList ? input : new ArrayList<>(input);
+                return input == null || input instanceof ArrayList ? input : new ArrayList<>(input);
             }
 
             ArrayList<Object> output = new ArrayList<>(input.size());
             int removed = 0;
-            for (Object entry : input) {
-                EntryIdentity identity = resolveEntryIdentity(entry);
-                if (identity != null
-                        && SettingsTargetMatcher.matches(
-                        targets, identity.userId, identity.packageName)) {
-                    removed++;
-                    logInfo("REMOVE " + identity.userId + ":" + identity.packageName
-                            + " source=" + source);
-                } else {
-                    output.add(entry);
+            // OEM replaces AppEntry.info under this same monitor. The certificate
+            // must describe the exact info object read for this filtering decision.
+            synchronized (entriesLock) {
+                for (Object entry : input) {
+                    EntryIdentity identity = resolveEntryIdentity(entry);
+                    if (identity != null && bindings.matches(adapter, identity.info,
+                            identity.userId, identity.packageName, targets)) {
+                        removed++;
+                    } else {
+                        output.add(entry);
+                    }
                 }
             }
 
@@ -2775,20 +3001,11 @@ public final class AugmentModule extends XposedModule {
         }
     }
 
-    private Set<String> readActiveTargets(Context context) {
+    private Set<HideTargetCodec.Entry> readActiveTargets(Context context) {
         if (!FeatureSettings.enabled(context, FeatureSettings.HIDE_MASTER, false)) {
             return Collections.emptySet();
         }
-        String raw = Settings.Global.getString(context.getContentResolver(), MIRROR_KEY);
-        if (raw == null) raw = "";
-        String cached = cachedMirrorRaw;
-        if (cached != null && cached.equals(raw)) return cachedTargets;
-        Set<String> parsed = SettingsTargetMatcher.parse(raw);
-        // Preserve an immutable snapshot across hook invocations.
-        parsed = Collections.unmodifiableSet(new HashSet<>(parsed));
-        cachedTargets = parsed;
-        cachedMirrorRaw = raw;
-        return parsed;
+        return FeatureSettings.hiddenAuthorizations(context);
     }
 
     private static EntryIdentity resolveEntryIdentity(Object entry) {
@@ -2809,8 +3026,8 @@ public final class AugmentModule extends XposedModule {
         int userId = explicitUser != null
                 ? explicitUser
                 : userIdFromUid(info.uid);
-        if (userId < 0 || userId > 99999) return null;
-        return new EntryIdentity(userId, info.packageName);
+        if (userId < 0 || userId > 99999 || userId != userIdFromUid(info.uid)) return null;
+        return new EntryIdentity(userId, info.packageName, info);
     }
 
     /**
@@ -2859,11 +3076,11 @@ public final class AugmentModule extends XposedModule {
             int targetCount,
             Throwable error) {
         try {
-            Settings.Global.putString(context.getContentResolver(), ACTIVE_KEY, "1");
-            Settings.Global.putString(context.getContentResolver(), VERSION_KEY, VERSION);
-            Settings.Global.putString(context.getContentResolver(), STRATEGY_KEY, source);
-            Settings.Global.putString(
-                    context.getContentResolver(),
+            FeatureSettings.diagnostic(context, ACTIVE_KEY, "1");
+            FeatureSettings.diagnostic(context, VERSION_KEY, VERSION);
+            FeatureSettings.diagnostic(context, STRATEGY_KEY, source);
+            FeatureSettings.diagnostic(
+                    context,
                     LAST_FILTER_KEY,
                     "version=" + VERSION
                             + ";api=" + getApiVersion()
@@ -2873,8 +3090,8 @@ public final class AugmentModule extends XposedModule {
                             + ";removed=" + removed
                             + ";after=" + after
                             + ";targets=" + targetCount);
-            Settings.Global.putString(
-                    context.getContentResolver(),
+            FeatureSettings.diagnostic(
+                    context,
                     LAST_ERROR_KEY,
                     error == null ? "" : error.getClass().getName() + ":" + safeMessage(error));
         } catch (Throwable ignored) {
@@ -2884,7 +3101,7 @@ public final class AugmentModule extends XposedModule {
 
     private static void writeProbe(Context context, String key, String value) {
         try {
-            Settings.Global.putString(context.getContentResolver(), key, value);
+            FeatureSettings.diagnostic(context, key, value);
         } catch (Throwable ignored) {
             // Probe failure must never crash Settings.
         }
@@ -2925,10 +3142,12 @@ public final class AugmentModule extends XposedModule {
     private static final class EntryIdentity {
         final int userId;
         final String packageName;
+        final ApplicationInfo info;
 
-        EntryIdentity(int userId, String packageName) {
+        EntryIdentity(int userId, String packageName, ApplicationInfo info) {
             this.userId = userId;
             this.packageName = packageName;
+            this.info = info;
         }
     }
 }

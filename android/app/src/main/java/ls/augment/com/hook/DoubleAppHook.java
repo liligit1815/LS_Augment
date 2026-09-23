@@ -50,7 +50,9 @@ final class DoubleAppHook {
     /**
      * GameAssist always opens the OEM resolver for packages admitted by the
      * expanded third-party candidate list. The resolver assumes a real user-999 install
-     * and can display two choices even when no clone exists. Bypass it only
+     * and can display two choices even when no clone exists. Finish its initialization
+     * before bypassing the chooser: ActivityThread still requires super.onCreate
+     * even when the Activity immediately finishes. Bypass it only
      * for the exact GameAssist call and only after PackageManager confirms the
      * target is not installed in user 999.
      */
@@ -60,44 +62,50 @@ final class DoubleAppHook {
             Method onCreate = type.getDeclaredMethod("onCreate", Bundle.class);
             onCreate.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(
-                            onCreate, "doubleapp.resolver.real_clone_guard", true)
+                            onCreate, "doubleapp.resolver.real_clone_guard", false)
                     .intercept(chain -> {
-                        Object owner = chain.getThisObject();
-                        Context context = FeatureSettings.from(owner);
-                        if (!(owner instanceof Activity)
-                                || !FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                                || !FeatureSettings.enabled(context,
-                                FeatureSettings.DOUBLE_ANY_APP)) {
-                            return chain.proceed();
-                        }
-                        Activity activity = (Activity) owner;
-                        Intent wrapper = activity.getIntent();
-                        if (wrapper == null || !"cn.nubia.gameassist".equals(
-                                wrapper.getStringExtra("doubleapp_calling_package"))) {
-                            return chain.proceed();
-                        }
-                        Intent real = android.os.Build.VERSION.SDK_INT>=33 ? wrapper.getParcelableExtra("doubleLay_intent", Intent.class) : wrapper.getParcelableExtra("doubleLay_intent");
-                        if (real == null) return chain.proceed();
-                        String packageName = real.getPackage();
-                        if (real.getComponent() != null) {
-                            packageName = real.getComponent().getPackageName();
-                        }
-                        if (packageName == null || packageName.isEmpty()
-                                || !isEligibleThirdParty(context, packageName)
-                                || installedForUser(activity.getPackageManager(), packageName, 999)) {
-                            return chain.proceed();
-                        }
+                        // Keep the original call outside recovery handling. A navigation or
+                        // diagnostic failure must never initialize the Activity a second time.
+                        Object original = chain.proceed();
                         try {
+                            Object owner = chain.getThisObject();
+                            Context context = FeatureSettings.from(owner);
+                            if (!(owner instanceof Activity)
+                                    || !FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
+                                    || !FeatureSettings.enabled(context,
+                                    FeatureSettings.DOUBLE_ANY_APP)) {
+                                return original;
+                            }
+                            Activity activity = (Activity) owner;
+                            if (activity.isFinishing() || activity.isDestroyed()) return original;
+                            Intent wrapper = activity.getIntent();
+                            if (wrapper == null || !"cn.nubia.gameassist".equals(
+                                    wrapper.getStringExtra("doubleapp_calling_package"))) {
+                                return original;
+                            }
+                            Intent real = android.os.Build.VERSION.SDK_INT >= 33
+                                    ? wrapper.getParcelableExtra("doubleLay_intent", Intent.class)
+                                    : wrapper.getParcelableExtra("doubleLay_intent");
+                            if (real == null) return original;
+                            String packageName = real.getPackage();
+                            if (real.getComponent() != null) {
+                                packageName = real.getComponent().getPackageName();
+                            }
+                            if (packageName == null || packageName.isEmpty()
+                                    || !isEligibleThirdParty(context, packageName)
+                                    || installedForUser(activity.getPackageManager(), packageName, 999)) {
+                                return original;
+                            }
                             activity.startActivity(real);
                             activity.finish();
                             FeatureSettings.diagnostic(context, FeatureSettings.DOUBLE_ACTIVE, "1");
                             FeatureSettings.diagnostic(context, FeatureSettings.DOUBLE_LAST_HIT,
                                     "resolver_bypassed_no_clone=" + packageName
                                             + ";ts=" + System.currentTimeMillis());
-                            return null;
                         } catch (Throwable ignored) {
-                            return chain.proceed();
+                            // The OEM lifecycle has already completed; retain its result.
                         }
+                        return original;
                     });
             module.registerFeatureHook(handle);
             module.logFeatureInfo("DOUBLEAPP_RESOLVER_GUARD_INSTALLED");

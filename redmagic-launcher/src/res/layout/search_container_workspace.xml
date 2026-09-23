@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.qsb.QsbContainerView android:orientation="vertical" android:id="@id/search_container_workspace" android:padding="0.0dp" android:layout_width="match_parent" android:layout_height="0.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <fragment android:name="com.android.launcher3.qsb.QsbContainerView$QsbFragment" android:tag="qsb_view" android:layout_width="match_parent" android:layout_height="match_parent" />
-</com.android.launcher3.qsb.QsbContainerView>

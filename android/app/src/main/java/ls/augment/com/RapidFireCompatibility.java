@@ -25,6 +25,20 @@ public final class RapidFireCompatibility {
     private static volatile String cachedNativeHash;
     private static volatile String cachedFingerprint;
     private static volatile long cachedFingerprintAt;
+    private static volatile Context asyncContext;
+    private static volatile Runnable asyncListener;
+    private static final class AsyncIdentity {
+        final String value; final long at;
+        AsyncIdentity(String value) { this.value = value; this.at = android.os.SystemClock.elapsedRealtime(); }
+    }
+    private static volatile AsyncIdentity asyncIdentity = new AsyncIdentity("");
+    private static final java.util.concurrent.atomic.AtomicBoolean asyncStarted = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean asyncInvalidated = new java.util.concurrent.atomic.AtomicBoolean(true);
+    private static final java.util.concurrent.atomic.AtomicBoolean expiryNotified = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final ThreadLocal<Boolean> strictIdentity = new ThreadLocal<>();
+    private static final java.util.concurrent.ScheduledExecutorService identityWorker = java.util.concurrent.Executors.newScheduledThreadPool(2, r -> {
+        Thread t = new Thread(r, "LSA-RapidIdentity"); t.setDaemon(true); return t;
+    });
 
     private RapidFireCompatibility() { }
 
@@ -37,7 +51,9 @@ public final class RapidFireCompatibility {
         long now = System.currentTimeMillis();
         String value = cachedFingerprint;
         if (value != null && now - cachedFingerprintAt < 5_000L) return value;
-        synchronized (RapidFireCompatibility.class) {
+        // PackageManager can acquire the system install lock. Never hold a module
+        // monitor across those calls; duplicate app-side reads are harmless.
+        {
             value = cachedFingerprint;
             if (value != null && now - cachedFingerprintAt < 5_000L) return value;
             StringBuilder source = new StringBuilder();
@@ -60,6 +76,48 @@ public final class RapidFireCompatibility {
             cachedFingerprintAt = now;
             return cachedFingerprint;
         }
+    }
+
+    /** Non-blocking system hook API. An absent/expired identity never authorizes a token. */
+    public static String currentFingerprintAsync(Context context, Runnable onChanged) {
+        if (context == null) return "";
+        asyncContext = context; asyncListener = onChanged;
+        if (asyncStarted.compareAndSet(false, true)) {
+            identityWorker.scheduleWithFixedDelay(RapidFireCompatibility::refreshAsyncIdentity, 0, 5,
+                    java.util.concurrent.TimeUnit.SECONDS);
+            // A blocked PM transaction must not keep a previously authorized native target alive.
+            identityWorker.scheduleWithFixedDelay(() -> {
+                AsyncIdentity current = asyncIdentity;
+                if (!current.value.isEmpty() && android.os.SystemClock.elapsedRealtime() - current.at > 6000L
+                        && expiryNotified.compareAndSet(false, true)) { asyncInvalidated.set(true); notifyIdentityChanged(); }
+            }, 1, 1, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        AsyncIdentity current = asyncIdentity;
+        if (current.value.isEmpty() || android.os.SystemClock.elapsedRealtime() - current.at > 6000L) {
+            asyncInvalidated.set(true); return "";
+        }
+        return current.value;
+    }
+
+    private static void refreshAsyncIdentity() {
+        String next;
+        try {
+            // Force revalidation of package versions even when an app-side caller
+            // recently used the synchronous UI helper.
+            cachedFingerprintAt = 0;
+            strictIdentity.set(Boolean.TRUE);
+            next = currentFingerprint(asyncContext);
+        } catch (Throwable unavailable) { next = ""; }
+        finally { strictIdentity.remove(); }
+        String previous = asyncIdentity.value;
+        asyncIdentity = new AsyncIdentity(next);
+        expiryNotified.set(false);
+        boolean restored = asyncInvalidated.getAndSet(false);
+        if (!next.equals(previous) || restored) notifyIdentityChanged();
+    }
+    private static void notifyIdentityChanged() {
+        Runnable callback = asyncListener;
+        if (callback != null) try { callback.run(); } catch (Throwable ignored) { }
     }
 
     public static String inputReaderSha256() {
@@ -92,7 +150,10 @@ public final class RapidFireCompatibility {
         try {
             PackageInfo info = context.getPackageManager().getPackageInfo(packageName, 0);
             return info.versionName + ":" + info.getLongVersionCode();
+        } catch (android.content.pm.PackageManager.NameNotFoundException absent) {
+            return "missing";
         } catch (Throwable error) {
+            if (Boolean.TRUE.equals(strictIdentity.get())) throw new IllegalStateException("package_identity_unavailable", error);
             return "missing";
         }
     }

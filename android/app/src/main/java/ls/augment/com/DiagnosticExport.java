@@ -26,10 +26,8 @@ final class DiagnosticExport {
             catch(Exception e){out.append("packageVersion ").append(pkg).append("=NOT_INSTALLED_OR_NOT_VISIBLE\n");}
         }
         out.append("\n===== CONFIGURATION AT EXPORT =====\n");
-        for(Map.Entry<String,String> e:config.snapshot().entrySet()){
-            if(e.getKey().equals(ConfigSchema.HEALTH_ACCOUNT)||e.getKey().equals(ConfigSchema.HEALTH_PLAN)||e.getKey().contains("compat_token"))out.append(e.getKey()).append("=REDACTED / present:").append(!e.getValue().isEmpty()).append('\n');
-            else out.append(e.getKey()).append('=').append(e.getValue()).append('\n');
-        }
+        out.append(MigrationCompatibility.describe(context)).append('\n');
+        for(Map.Entry<String,String> e:config.snapshot().entrySet())appendDiagnosticValue(out,e.getKey(),e.getValue());
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
         Map<Integer,String> live=new HashMap<>();if(processes.isSuccess())for(String line:processes.output.split("\\r?\\n")){String[] p=line.trim().split("\\s+",2);try{live.put(Integer.parseInt(p[0]),p[1]);}catch(Exception ignored){}}
         out.append("\n===== PER-PROCESS HOOK EVIDENCE =====\n");Set<String> observed=new HashSet<>();
@@ -47,8 +45,11 @@ final class DiagnosticExport {
         for(String pkg:HookTargetRegistry.packages())if(!observed.contains(pkg))out.append(pkg).append(": current module/registration/hit/result = UNKNOWN (no current snapshot)\n");
         out.append("\n===== FEATURE LATEST VALUES (same keys replace previous values; may be stale) =====\n");
         Map<String,?> diagnostic=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getAll();
-        for(String key:new TreeSet<>(diagnostic.keySet()))if(!key.contains("account")&&!key.contains("health_plan"))out.append(key).append('=').append(diagnostic.get(key)).append('\n');
-        source(out,"GLOBAL_LATEST_VALUES (fallback; timestamps determine freshness)",RootShell.run("settings list global | grep '^ls_augment_' | grep -v 'config_snapshot\\|health_account\\|health_plan'",null,8,512*1024),512*1024);
+        for(String key:new TreeSet<>(diagnostic.keySet()))appendDiagnosticValue(out,key,String.valueOf(diagnostic.get(key)));
+        out.append("\n===== PRIVATE VERIFIED RUNTIME =====\n");
+        for(Map.Entry<String,?> entry:RuntimeStateStore.values(context).entrySet())
+            out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
+        out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
         if(ai)file(out,context,"AI_DETAIL","detail-AI.log",512*1024,"AI");
@@ -73,11 +74,38 @@ final class DiagnosticExport {
         out.insert(0,"upstreamCapturedBytes="+source.output.getBytes(StandardCharsets.UTF_8).length+"; feature filtering follows collection; upstream buffer may already be bounded\n");
         return new RootShell.Result(source.exitCode,out.toString(),source.timedOut);
     }
-    private static void source(StringBuilder out,String name,RootShell.Result result,int limit){
+    // Apply one policy to preferences and feature values. In
+    // particular, a serialized snapshot contains protected values in Base64.
+    static String diagnosticValue(String key,String value){
+        if(key.contains("config_snapshot"))return null;
+        boolean flag="0".equals(value)||"1".equals(value)||"true".equals(value)||"false".equals(value);
+        boolean publicFlag=flag&&(key.equals("ls_augment_health_plan_enabled")||key.equals("ls_augment_rm_usb_install_no_account"));
+        boolean protectedValue=key.equals("ls_augment_health_account")||key.equals("ls_augment_health_plan")
+                ||key.equals("ls_augment_tgk_rapid_fire_test_session")
+                ||key.contains("token")||((key.contains("account")||key.contains("health_plan"))&&!publicFlag)
+                ||(key.startsWith("ls_augment_rm_ota_")&&!flag);
+        return protectedValue?"REDACTED / present:"+!value.isEmpty():value;
+    }
+    static void appendDiagnosticValue(StringBuilder out,String key,String value){
+        String safe=diagnosticValue(key,value);if(safe!=null)out.append(key).append('=').append(safe).append('\n');
+    }
+    static String diagnosticValues(String raw){
+        StringBuilder out=new StringBuilder();
+        for(String line:raw.split("\\r*\\n")){
+            int equals=line.indexOf('=');if(equals<=0)continue;
+            String key=line.substring(0,equals);
+            if(!key.matches("ls_augment_[A-Za-z0-9_]+"))continue;
+            appendDiagnosticValue(out,key,line.substring(equals+1));
+        }
+        return out.toString();
+    }
+    private static void source(StringBuilder out,String name,RootShell.Result result,int limit){source(out,name,result,limit,false);}
+    private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values){
+        String output=values?diagnosticValues(result.output):result.output;
         out.append("\n===== SOURCE ").append(name).append(" =====\ncollectedAt=").append(System.currentTimeMillis()).append(" status=").append(result.isSuccess()?"READ":"UNAVAILABLE_OR_NO_MATCHES")
             .append(" exit=").append(result.exitCode).append(" timeout=").append(result.timedOut).append(" bytesLimit=").append(limit)
             .append(" limitReachedOrPossiblyTruncated=").append(result.output.getBytes(StandardCharsets.UTF_8).length>=limit-512)
-            .append(" lines=").append(result.output.isEmpty()?0:result.output.split("\\r?\\n").length).append('\n').append(result.output).append('\n');
+            .append(" lines=").append(output.isEmpty()?0:output.split("\\r?\\n").length).append('\n').append(output).append('\n');
     }
     private static void file(StringBuilder out,Context context,String label,String name,int limit,String stat){try{
         File file=new File(context.getFilesDir(),name);out.append("\n===== SOURCE ").append(label).append(" ").append(name).append(" =====\n");

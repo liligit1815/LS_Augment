@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inset android:insetBottom="0.0dp" android:inset="0.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <shape android:shape="rectangle">
-        <corners android:topLeftRadius="36.0dp" android:topRightRadius="36.0dp" android:bottomLeftRadius="36.0dp" android:bottomRightRadius="36.0dp" />
-        <solid android:color="@color/mfvc_common_ic_bg_color" />
-    </shape>
-</inset>

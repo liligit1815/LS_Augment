@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
 import io.github.libxposed.api.XposedInterface.HookHandle;
 
 /**
- * Narrow GameAssist 17 compatibility hooks for Super Resolution and Biablo.
+ * Narrow GameAssist compatibility hooks for Super Resolution and Biablo.
  *
  * <p>This deliberately changes only the qualification and OEM automatic-revert
  * paths reached from the two GameAssist tiles.  It never writes performance
@@ -31,10 +31,14 @@ final class SuperMirrorDiabloHook {
     static int install(AugmentModule module, ClassLoader loader) {
         int installed = 0;
         StringBuilder resolved = new StringBuilder();
-        installed += installLowPowerGate(module, resolved);
-        installed += installPerformanceGate(module, loader, resolved);
+        Method superClick = click(loader, SUPER_TILE);
+        Method biabloClick = click(loader, BIABLO_TILE);
+        if (superClick != null) {
+            installed += installLowPowerGate(module, resolved, superClick);
+            installed += installPerformanceGate(module, loader, resolved, superClick);
+        }
         installed += installSuperResolutionRetention(module, loader, resolved);
-        installed += installBiabloCoexistence(module, loader, resolved);
+        installed += installBiabloCoexistence(module, loader, resolved, biabloClick);
 
         Context context = FeatureSettings.from(null);
         FeatureSettings.diagnostic(context, FeatureSettings.SUPER_MIRROR_INSTALLED,
@@ -48,7 +52,7 @@ final class SuperMirrorDiabloHook {
         return installed;
     }
 
-    private static int installLowPowerGate(AugmentModule module, StringBuilder resolved) {
+    private static int installLowPowerGate(AugmentModule module, StringBuilder resolved, Method click) {
         try {
             Method method = Settings.Global.class.getDeclaredMethod(
                     "getInt", ContentResolver.class, String.class, int.class);
@@ -62,7 +66,7 @@ final class SuperMirrorDiabloHook {
                             return original;
                         }
                         Object key = chain.getArg(1);
-                        if (!"low_power".equals(key) || !inTileClick(SUPER_TILE)) {
+                        if (!"low_power".equals(key) || !inTileClick(click)) {
                             return original;
                         }
                         hit(context, "SR-01|low_power=0");
@@ -78,7 +82,7 @@ final class SuperMirrorDiabloHook {
     }
 
     private static int installPerformanceGate(
-            AugmentModule module, ClassLoader loader, StringBuilder resolved) {
+            AugmentModule module, ClassLoader loader, StringBuilder resolved, Method click) {
         try {
             Class<?> type = Class.forName(PERFORMANCE, false, loader);
             Method method = type.getDeclaredMethod("getPerformanceMode", String.class);
@@ -87,7 +91,7 @@ final class SuperMirrorDiabloHook {
                             method, "super_mirror.performance_mode", false)
                     .intercept(chain -> {
                         Object original = chain.proceed();
-                        if (!(original instanceof Number) || !inTileClick(SUPER_TILE)) {
+                        if (!(original instanceof Number) || !inTileClick(click)) {
                             return original;
                         }
                         Context context = FeatureSettings.from(chain.getThisObject());
@@ -114,7 +118,10 @@ final class SuperMirrorDiabloHook {
             AugmentModule module, ClassLoader loader, StringBuilder resolved) {
         try {
             Class<?> type = Class.forName(SUPER_VIEW, false, loader);
-            Method method = type.getDeclaredMethod("L", String.class, boolean.class);
+            Method method = HookCompatibility.method(type, void.class, false,
+                    new String[]{"updateEnableSwitchPkg", "L"}, String.class, boolean.class);
+            Method automatic = HookCompatibility.method(type, void.class, false,
+                    new String[]{"checkGameMode", "i"}, String.class, int.class);
             method.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(
                             method, "super_mirror.super_retention", true)
@@ -123,7 +130,7 @@ final class SuperMirrorDiabloHook {
                         boolean enable = Boolean.TRUE.equals(chain.getArg(1));
                         if (!enable
                                 && enabled(context, FeatureSettings.SUPER_MIRROR_LOW_MODE)
-                                && calledFrom(SUPER_VIEW, "i")) {
+                                && HookCompatibility.calledFrom(Thread.currentThread().getStackTrace(), automatic)) {
                             hit(context, "SR-03|blocked_auto_remove");
                             return null;
                         }
@@ -139,18 +146,21 @@ final class SuperMirrorDiabloHook {
     }
 
     private static int installBiabloCoexistence(
-            AugmentModule module, ClassLoader loader, StringBuilder resolved) {
+            AugmentModule module, ClassLoader loader, StringBuilder resolved, Method click) {
         int installed = 0;
         try {
             Class<?> type = Class.forName(PERFORMANCE, false, loader);
+            // These are a separate newer OEM mutual-exclusion path. Do not map a0
+            // to the older canSetPerformanceMode(), which checks battery saver.
             Method gate = type.getDeclaredMethod("a0");
+            if (gate.getReturnType() != boolean.class || click == null) return 0;
             gate.setAccessible(true);
             HookHandle gateHandle = module.prepareFeatureHook(
                             gate, "super_mirror.biablo_gate", true)
                     .intercept(chain -> {
                         Context context = FeatureSettings.from(chain.getThisObject());
                         if (enabled(context, FeatureSettings.SUPER_MIRROR_DIABLO_COEXIST)
-                                && (inTileClick(BIABLO_TILE)
+                                && (inTileClick(click)
                                 || calledFrom(PERFORMANCE, "J0"))) {
                             hit(context, "DB-01|super_resolution_gate=false");
                             return false;
@@ -187,8 +197,15 @@ final class SuperMirrorDiabloHook {
         return installed;
     }
 
-    private static boolean inTileClick(String className) {
-        return calledFrom(className, "T");
+    private static Method click(ClassLoader loader, String className) {
+        try {
+            return HookCompatibility.method(Class.forName(className, false, loader),
+                    boolean.class, false, new String[]{"handleClick", "T"});
+        } catch (ReflectiveOperationException unavailable) { return null; }
+    }
+
+    private static boolean inTileClick(Method method) {
+        return HookCompatibility.calledFrom(Thread.currentThread().getStackTrace(), method);
     }
 
     private static boolean enabled(Context context, String key) {

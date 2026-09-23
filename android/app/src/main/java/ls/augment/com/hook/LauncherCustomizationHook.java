@@ -9,6 +9,7 @@ import android.view.View;
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
+import ls.augment.com.BuildConfig;
 import ls.augment.com.ConfigSchema;
 import ls.augment.com.LauncherOverrides;
 
@@ -24,10 +25,12 @@ final class LauncherCustomizationHook {
             Class<?> bubble=Class.forName("com.android.launcher3.BubbleTextView",false,loader);
             Method icon=info.getDeclaredMethod("G",Context.class,int.class),label=bubble.getDeclaredMethod("B",item);
             module.registerFeatureHook(module.prepareFeatureHook(icon,"launcher.icon",true).intercept(chain->{
-                Controller c=ensure(module,loader,(Context)chain.getArg(0));if(c!=null)c.apply(chain.getThisObject());return chain.proceed();
+                Controller c=ensure(module,loader,(Context)chain.getArg(0));if(c!=null)c.apply(chain.getThisObject());
+                Object result=chain.proceed();if(c!=null)c.traceImage(chain.getThisObject(),result,"icon");return result;
             }));
             module.registerFeatureHook(module.prepareFeatureHook(label,"launcher.label",true).intercept(chain->{
-                Controller c=ensure(module,loader,((View)chain.getThisObject()).getContext());if(c!=null)c.apply(chain.getArg(0));return chain.proceed();
+                Controller c=ensure(module,loader,((View)chain.getThisObject()).getContext());if(c!=null)c.apply(chain.getArg(0));
+                Object result=chain.proceed();if(c!=null)c.traceView(chain.getArg(0),chain.getThisObject());return result;
             }));
             for(Class<?> type:new Class<?>[]{item,Class.forName("com.android.launcher3.model.data.I",false,loader)})
                 for(Method m:type.getDeclaredMethods())if(m.getName().equals("onAddToDatabase")||m.getName().equals("writeToValues")){
@@ -50,7 +53,9 @@ final class LauncherCustomizationHook {
     private static final class Controller {
         final AugmentModule module;final ClassLoader loader;final Context context;final Handler main=new Handler(Looper.getMainLooper());
         final ExecutorService worker=Executors.newSingleThreadExecutor();final Map<Object,Original> originals=Collections.synchronizedMap(new WeakHashMap<>());
-        volatile LauncherOverrides overrides=LauncherOverrides.empty();volatile Map<String,Bitmap> images=Collections.emptyMap();String last;
+        volatile LauncherOverrides overrides=LauncherOverrides.empty();volatile Map<String,Bitmap> images=Collections.emptyMap();volatile String last;
+        String publishedText;int imageFailures;final Runnable retryImages=this::load;
+        final Set<String> imageWitnesses=new HashSet<>();final ArrayDeque<String> imageTrace=new ArrayDeque<>();int loadAttempts;
         final Field title,description,user,itemType,iconField;final Constructor<?> bitmapInfo;
         Controller(AugmentModule module,ClassLoader loader,Context context){
             this.module=module;this.loader=loader;this.context=context;
@@ -63,19 +68,60 @@ final class LauncherCustomizationHook {
         }
         void load(){worker.execute(()->{String text=FeatureSettings.text(context,ConfigSchema.LAUNCHER_OVERRIDES,"");if(text.equals(last))return;
             LauncherOverrides parsed=LauncherOverrides.parse(text);if(parsed==null)return;
+            int attempt=++loadAttempts;long started=SystemClock.elapsedRealtime();
             Map<String,Bitmap> decoded=new HashMap<>();String error="";
             for(LauncherOverrides.Entry e:parsed.entries())if(!e.icon.isEmpty()&&!decoded.containsKey(e.icon))try{
                 Bitmap b=images.get(e.icon);if(b==null)try(java.io.InputStream in=context.getContentResolver().openInputStream(Uri.parse("content://ls.augment.com.config/icon/"+e.icon))){b=BitmapFactory.decodeStream(in);}
                 if(b==null||b.getWidth()>1024||b.getHeight()>1024)throw new IllegalStateException("图标图片无效");decoded.put(e.icon,b);
-            }catch(Exception failure){error="；有图片读取失败，请重新选择";}
-            final String detail=error;main.post(()->{synchronized(originals){for(Object value:new ArrayList<>(originals.keySet()))restore(value);originals.clear();}
-                overrides=parsed;images=Collections.unmodifiableMap(decoded);last=text;
+            }catch(Exception failure){error="；图片暂未读到，正在后台重试";
+                if(BuildConfig.DEBUG)FeatureSettings.diagnostic(context,"ls_augment_launcher_image_error",
+                        "attempt="+attempt+"|uptime="+SystemClock.elapsedRealtime()+"|"+failure.getClass().getSimpleName()+":"+failure.getMessage());}
+            final String detail=error;main.post(()->{
+                // A slow provider must not publish an older edit over the latest choice.
+                if(!text.equals(FeatureSettings.text(context,ConfigSchema.LAUNCHER_OVERRIDES,""))){load();return;}
+                boolean changed=!text.equals(publishedText)||!images.equals(decoded);
+                if(!text.equals(publishedText))imageFailures=0;
+                main.removeCallbacks(retryImages);
+                // Failed image reads are not a completed configuration load. Early boot
+                // can expose the mirrored names before the image provider is available.
+                last=detail.isEmpty()?text:null;
+                if(!detail.isEmpty()){
+                    long delay=Math.min(30000L,2000L<<Math.min(imageFailures++,4));
+                    main.postDelayed(retryImages,delay);
+                }else imageFailures=0;
+                if(BuildConfig.DEBUG)FeatureSettings.diagnostic(context,"ls_augment_launcher_image_load",
+                        "attempt="+attempt+"|started="+started+"|published="+SystemClock.elapsedRealtime()
+                                +"|entries="+parsed.entries().size()+"|images="+decoded.size()+"|failed="+!detail.isEmpty()+"|changed="+changed);
+                // A still-unavailable image must not restart the launcher model on
+                // every retry. Refresh only for an edit or newly recovered pixels.
+                if(!changed)return;
+                synchronized(originals){for(Object value:new ArrayList<>(originals.keySet()))restore(value);originals.clear();}
+                overrides=parsed;images=Collections.unmodifiableMap(decoded);publishedText=text;
                 try{Object state=TargetReflection.call(Class.forName("com.android.launcher3.P2",false,loader),"h",context);
                     Object model=TargetReflection.call(state,"j");TargetReflection.call(model,"a0");
                     FeatureSettings.diagnostic(context,"ls_augment_launcher_runtime","桌面、文件夹和抽屉已刷新；自定义 "+parsed.entries().size()+" 项"+detail);
                 }catch(Exception failure){FeatureSettings.diagnostic(context,"ls_augment_launcher_runtime","配置已载入，自动刷新未完成，请重新打开桌面");module.logFeatureError("LAUNCHER_REFRESH",failure);}
             });
         });}
+        void traceView(Object value,Object view){if(!BuildConfig.DEBUG)return;
+            try{traceImage(value,TargetReflection.call(view,"getIcon"),"label");}catch(Throwable ignored){}
+        }
+        void traceImage(Object value,Object drawable,String phase){if(!BuildConfig.DEBUG||value==null)return;
+            try{
+                String pkg=(String)TargetReflection.call(value,"getTargetPackage");
+                int userId=(Integer)TargetReflection.call(user.get(value),"getIdentifier");
+                LauncherOverrides.Entry entry=overrides.get(userId,pkg);if(entry==null||entry.icon.isEmpty())return;
+                Bitmap custom=images.get(entry.icon);Object model=iconField.get(value);
+                Field bitmap=bitmapInfo.getDeclaringClass().getField("a");
+                Object drawn=drawable==null?null:drawable.getClass().getField("h").get(drawable);
+                String state=phase+"|user="+userId+"|package="+pkg+"|loaded="+(custom!=null)
+                        +"|modelCustom="+(custom!=null&&model!=null&&bitmap.get(model)==custom)
+                        +"|drawableCustom="+(custom!=null&&drawn!=null&&bitmap.get(drawn)==custom);
+                synchronized(imageWitnesses){if(imageWitnesses.size()>=256||!imageWitnesses.add(entry.icon+"|"+state))return;
+                    if(imageTrace.size()==8)imageTrace.removeFirst();imageTrace.addLast("uptime="+SystemClock.elapsedRealtime()+"|"+state);
+                    FeatureSettings.diagnostic(context,"ls_augment_launcher_image_trace",String.join("\n",imageTrace));}
+            }catch(Throwable ignored){}
+        }
         void apply(Object value){
             if(value==null||WRITING.get()>0||!iconField.getDeclaringClass().isInstance(value))return;
             try{
@@ -90,7 +136,8 @@ final class LauncherCustomizationHook {
                     Bitmap custom=images.get(e.icon);if(custom!=null){
                         if(o.appliedIcon==null||!o.hash.equals(e.icon)){
                             Object copy=bitmapInfo.newInstance(custom,0);
-                            // Preserve work/clone badge flags and explicit badge, while using the selected full-color image.
+                            // Keep native profile flags and the user's full-color crop.
+                            // A clone watermark baked into the old bitmap is intentionally not copied.
                             for(String field:new String[]{"d","f"}){Field f=bitmapInfo.getDeclaringClass().getDeclaredField(field);f.setAccessible(true);f.set(copy,f.get(o.icon));}
                             o.appliedIcon=copy;o.hash=e.icon;
                         }

@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <com.zte.mifavor.widget.SwitchZTE android:layout_gravity="end|center" android:id="@id/actionbar_switch" android:focusable="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="60.0dp" android:minHeight="48.0dp" android:paddingStart="@dimen/mfvc_btn_padding" android:paddingEnd="@dimen/mfvc_btn_padding" app:onActionBar="true" />
-</LinearLayout>

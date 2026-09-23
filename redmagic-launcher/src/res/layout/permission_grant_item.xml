@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textAppearance="@style/mfvc_primary_font02" android:paddingTop="5.0dp" android:paddingBottom="5.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/mfvc_list_txt_top_padding" android:paddingEnd="@dimen/mfvc_list_txt_top_padding"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

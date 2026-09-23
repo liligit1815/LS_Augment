@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.widget.custom.bubble.AIBubbleWidgetLayout android:id="@id/ai_bubble_widget_layout" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.android.launcher3.widget.custom.bubble.AIWidgetClockContainer android:layout_gravity="center_horizontal" android:id="@id/ai_bubble_widget_clock_view" android:layout_width="@dimen/ai_custom_widget_clock_container_size" android:layout_height="@dimen/ai_custom_widget_clock_container_size" android:layout_marginTop="@dimen/ai_custom_widget_clock_container_top_margin" />
-    <com.android.launcher3.widget.custom.bubble.AIBubbleWidgetBubbleContainer android:id="@id/ai_bubble_widget_bubble_container" android:layout_width="match_parent" android:layout_height="match_parent" />
-</com.android.launcher3.widget.custom.bubble.AIBubbleWidgetLayout>

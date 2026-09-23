@@ -2,34 +2,50 @@ package ls.augment.com.hook;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+
+import ls.augment.com.HideTargetCodec;
 
 /**
  * Pure target parser/matcher shared by the Settings hook.
  *
- * The only application-instance identity accepted by LS_Augment is
- * userId:packageName. Package-name-only matching is intentionally impossible.
+ * Worker-side validation retains the serial in immutable authorizations.
+ * Numeric lookup keys are retained only for compatibility diagnostics.
  */
 final class SettingsTargetMatcher {
     private SettingsTargetMatcher() {}
 
-    static Set<String> parse(String raw) {
-        if (raw == null || raw.trim().isEmpty()) return Collections.emptySet();
+    static Set<String> verifiedTargets(String raw, SerialReader reader) {
         HashSet<String> result = new HashSet<>();
-        for (String item : raw.split(";")) {
-            String value = item == null ? "" : item.trim();
-            int sep = value.indexOf(':');
-            if (sep <= 0 || sep >= value.length() - 1 || value.indexOf(':', sep + 1) >= 0) continue;
-            String user = value.substring(0, sep);
-            String pkg = value.substring(sep + 1);
-            if (!isDigits(user) || !isPackageName(pkg)) continue;
-            result.add(user + ":" + pkg);
+        for (HideTargetCodec.Entry entry : verifiedBindings(raw, reader))
+            result.add(target(entry.userId, entry.packageName));
+        return result.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(result);
+    }
+
+    static Set<HideTargetCodec.Entry> verifiedBindings(String raw, SerialReader reader) {
+        HideTargetCodec.Selection selection = HideTargetCodec.parse(raw);
+        if (!selection.valid || reader == null) return Collections.emptySet();
+        HashSet<HideTargetCodec.Entry> result = new HashSet<>();
+        Map<Integer, Long> serials = new HashMap<>();
+        for (HideTargetCodec.Entry entry : selection.entries) {
+            if (!entry.isValid() || !entry.isBound() || !entry.confirmed) continue;
+            if (!serials.containsKey(entry.userId)) {
+                long serial;
+                try { serial = reader.read(entry.userId); }
+                catch (Exception unavailable) { serial = -1; }
+                serials.put(entry.userId, serial);
+            }
+            long serial = serials.get(entry.userId);
+            if (serial >= 0 && serial == entry.userSerial)
+                result.add(entry);
         }
-        return result.isEmpty() ? Collections.<String>emptySet() : Collections.unmodifiableSet(result);
+        return result.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(result);
     }
 
     static String target(int userId, String packageName) {
-        if (userId < 0 || !isPackageName(packageName)) return null;
+        if (userId < 0 || userId > 99999 || !isPackageName(packageName)) return null;
         return userId + ":" + packageName;
     }
 
@@ -39,14 +55,7 @@ final class SettingsTargetMatcher {
         return target != null && targets.contains(target);
     }
 
-    private static boolean isDigits(String value) {
-        if (value == null || value.isEmpty()) return false;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c < '0' || c > '9') return false;
-        }
-        return true;
-    }
+    interface SerialReader { long read(int userId) throws Exception; }
 
     private static boolean isPackageName(String value) {
         if (value == null || value.isEmpty()) return false;

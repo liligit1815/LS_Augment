@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:theme="@style/PopupItem" android:layout_gravity="center" android:background="?android:selectableItemBackground" android:layout_width="@dimen/task_menu_item_width" android:layout_height="@dimen/task_menu_item_height"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:androidprv="http://schemas.android.com/apk/prv/res/android">
-    <ImageView android:layout_gravity="start|center" android:id="@id/icon" android:layout_width="@dimen/task_menu_icon_size" android:layout_height="@dimen/task_menu_icon_size" android:layout_marginStart="@dimen/task_menu_icon_margin_start" android:backgroundTint="@color/task_menu_popup_icon_color" />
-    <TextView android:textSize="@dimen/task_view_menu_option_text_size" android:textColor="@color/mfvc_primary_font_color" android:gravity="start|center" android:id="@id/text" android:focusable="false" android:textAlignment="viewStart" android:paddingStart="@dimen/task_menu_text_padding_start" style="@style/BaseIcon" />
-</LinearLayout>

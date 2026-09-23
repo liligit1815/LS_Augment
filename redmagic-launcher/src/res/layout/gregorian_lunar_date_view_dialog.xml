@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:gravity="center" android:layout_gravity="center_horizontal" android:orientation="vertical" android:id="@id/pickers" android:focusable="true" android:focusableInTouchMode="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/mfvc_ic_txt_padding">
-        <com.zte.mifavor.widget.GregorianLunarDateView android:layout_gravity="center_horizontal" android:id="@id/datePicker" android:layout_width="match_parent" android:layout_height="wrap_content" android:spinnersShown="true" android:calendarViewShown="false" />
-    </LinearLayout>
-</ScrollView>

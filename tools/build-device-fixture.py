@@ -18,7 +18,7 @@ def run(args):
     subprocess.run([str(arg) for arg in args], check=True)
 
 run(['javac', '-encoding', 'UTF-8', '-source', '8', '-target', '8', '-cp', android,
-     '-d', classes, source / 'MainActivity.java'])
+     '-d', classes, *sorted(source.glob('*.java'))])
 run([build / 'd8.bat', '--lib', android, '--min-api', '28', '--output', out,
      *classes.rglob('*.class')])
 unsigned = out / 'fixture-unsigned.apk'
@@ -30,4 +30,5 @@ aligned = out / 'fixture-aligned.apk'
 run([build / 'zipalign.exe', '-f', '4', unsigned, aligned])
 run([build / 'apksigner.bat', 'sign', '--ks', Path.home() / '.android/debug.keystore',
      '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', out / 'fixture.apk', aligned])
+run([build / 'apksigner.bat', 'verify', '--verbose', out / 'fixture.apk'])
 print(out / 'fixture.apk')

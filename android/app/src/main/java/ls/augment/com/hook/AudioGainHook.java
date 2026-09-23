@@ -128,9 +128,9 @@ final class AudioGainHook {
         Controller(Object service, Context context) {
             this.service = service; this.context = context;
             HandlerThread t = new HandlerThread("LS-audio-gain", android.os.Process.THREAD_PRIORITY_BACKGROUND); t.start(); handler = new Handler(t.getLooper());
-            context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"), true, new ContentObserver(handler) {
+            handler.post(() -> { try { context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"), true, new ContentObserver(handler) {
                 @Override public void onChange(boolean selfChange) { FeatureSettings.invalidateSnapshot(); if (!enabled()) extras.clear(); apply(); for(int s:new int[]{3,2,4}) notifyPanel(s,0); }
-            });
+            }); } catch (RuntimeException unavailable) { /* The periodic worker still refreshes. */ } });
             handler.postDelayed(tick, 1000);
         }
         final Runnable tick = new Runnable() { public void run() { apply(); handler.postDelayed(this, 1000); } };

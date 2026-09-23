@@ -17,12 +17,16 @@ if [[ -z "$VERSION" ]]; then
   echo "Missing versionName in $VERSION_FILE" >&2
   exit 2
 fi
-GRADLE_BIN="${GRADLE_BIN:-gradle}"
+GRADLE_BIN="${GRADLE_BIN:-$ROOT/android/gradlew}"
 APK="$ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
 NAME="LS_Augment-v${VERSION}.apk"
 
 mkdir -p "$OUT"
-"$GRADLE_BIN" -p "$ROOT/android" :app:assembleDebug
+if [[ "$GRADLE_BIN" == "$ROOT/android/gradlew" ]]; then
+  bash "$GRADLE_BIN" -p "$ROOT/android" :app:assembleDebug
+else
+  "$GRADLE_BIN" -p "$ROOT/android" :app:assembleDebug
+fi
 python "$ROOT/tools/check-modern-xposed.py" "$APK"
 python "$ROOT/tools/check-binary-manifest.py" "$APK"
 python "$ROOT/tools/check_apk_alignment.py" "$APK"

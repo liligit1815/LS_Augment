@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merge android:id="@id/mfv_keyguard_clock_container" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.android.launcher3.widget.custom.bubble.DigitalClock android:layout_width="match_parent" android:layout_height="wrap_content" />
-</merge>

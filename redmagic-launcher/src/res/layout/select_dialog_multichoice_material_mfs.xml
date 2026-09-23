@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<CheckedTextView android:textAppearance="@style/mfvc_primary_font" android:textSize="@dimen/mfvc_primary_font00_size" android:ellipsize="marquee" android:gravity="center_vertical" android:id="@android:id/text1" android:paddingTop="11.75dp" android:paddingBottom="11.5dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:checkMark="@drawable/btn_check_material_anim" android:minHeight="@dimen/mfvc_1line_list_height" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding" android:checkMarkTint="@color/_checkbox_button_tint"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

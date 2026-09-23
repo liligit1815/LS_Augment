@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<animated-vector android:drawable="@drawable/$checkboxoff_on_common__0"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
-    <target android:name="end" android:animation="@drawable/$checkboxoff_on_common__1" />
-    <target android:name="start" android:animation="@drawable/$checkboxoff_on_common__2" />
-    <target android:name="circle" android:animation="@drawable/$checkboxoff_on_common__3" />
-    <target android:name="outer" android:animation="@drawable/$checkboxoff_on_common__4" />
-</animated-vector>

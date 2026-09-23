@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout android:id="@id/group_divider" android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <View android:background="@drawable/card_bg_top" android:clickable="false" android:layout_width="match_parent" android:layout_height="@dimen/mfvc_card_bg_top_height" />
-</RelativeLayout>

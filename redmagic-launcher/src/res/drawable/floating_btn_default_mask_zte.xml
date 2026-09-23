@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape android:gravity="center" android:height="@dimen/mfvc_fbtn_width" android:width="@dimen/mfvc_fbtn_width"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/mfvx_common_color_btn_normal_mask" />
-    <corners android:topLeftRadius="@dimen/mfvc_fab_topLeftRadius" android:topRightRadius="@dimen/mfvc_fab_topRightRadius" android:bottomLeftRadius="@dimen/mfvc_fab_bottomLeftRadius" android:bottomRightRadius="@dimen/mfvc_fab_bottomRightRadius" />
-</shape>

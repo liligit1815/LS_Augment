@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<objectAnimator android:interpolator="@interpolator/easy_ease_interpolator" android:duration="40" android:valueFrom="#42000000" android:valueTo="@color/mfv_common_cb_on" android:valueType="colorType" android:propertyName="fillColor"
-  xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" />

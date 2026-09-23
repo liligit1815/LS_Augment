@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inset android:insetTop="@dimen/widget_list_entry_spacing"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <layer-list android:paddingTop="@dimen/widget_list_header_view_vertical_padding" android:paddingBottom="@dimen/widget_list_header_view_vertical_padding">
-        <item android:drawable="@drawable/bg_widgets_header_states_two_pane" />
-    </layer-list>
-</inset>

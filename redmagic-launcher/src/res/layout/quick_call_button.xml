@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="@dimen/clip_board_text_size" android:ellipsize="end" android:gravity="center_horizontal" android:maxLines="1" android:drawablePadding="@dimen/overview_panel_home_menu_icon_padding_text" style="@style/BaseIcon"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

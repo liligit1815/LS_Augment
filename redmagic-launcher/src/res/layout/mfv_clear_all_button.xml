@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.quickstep.views.MFVClearAllButton android:orientation="vertical" android:visibility="invisible" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <ImageView android:layout_gravity="center" android:id="@id/mfv_clear_iv" android:layout_width="@dimen/mfv_recent_clear_button_width_height" android:layout_height="@dimen/mfv_recent_clear_button_width_height" android:src="@drawable/mfv_delete" android:contentDescription="@string/recents_clear_all" />
-</com.android.quickstep.views.MFVClearAllButton>

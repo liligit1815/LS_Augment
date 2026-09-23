@@ -11,6 +11,9 @@ public final class AugmentApplication extends Application
 
     @Override public void onCreate() {
         super.onCreate();
+        FrameworkConfigSync.initialize(this);
+        ModuleScopeService.initialize();
+        ConfigVisibilityGrant.refresh(this);
         ScreenAutomation.removeLegacyNotification(this);
         HiddenEntrySession.lock();
         registerActivityLifecycleCallbacks(this);
@@ -23,7 +26,7 @@ public final class AugmentApplication extends Application
 
     @Override public void onActivityStopped(Activity activity) {
         startedActivities = Math.max(0, startedActivities - 1);
-        if (startedActivities == 0) HiddenEntrySession.lock();
+        if (startedActivities == 0 && !activity.isChangingConfigurations()) HiddenEntrySession.lock();
     }
 
     @Override public void onActivityCreated(Activity activity, Bundle state) { }

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:startColor="@color/recorder_background_gradient_top_color_start" android:endColor="@color/recorder_background_gradient_bottom_color_start" android:angle="270.0" />
-    <corners android:radius="12.5dp" />
-</shape>

@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="@dimen/all_apps_empty_search_text_size" android:textColor="@color/all_apps_empty_search_text_color" android:gravity="center_horizontal" android:id="@id/empty_text" android:paddingLeft="@dimen/mfvc_large_padding" android:paddingRight="@dimen/mfvc_large_padding" android:focusable="false" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/all_apps_empty_search_message_top" android:layout_marginBottom="@dimen/all_apps_empty_search_message_bottom"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

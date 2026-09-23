@@ -58,6 +58,8 @@ public final class TileSetupActivity extends Activity {
         }
     }
 
+    // Gesture navigation is registered separately with the platform dispatcher.
+    @android.annotation.SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
         finish();

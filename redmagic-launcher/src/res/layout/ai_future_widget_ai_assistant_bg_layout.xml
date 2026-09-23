@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.widget.custom.future.AIFutureWidgetAIAssistantBgLayout android:id="@id/ai_future_widget_ai_assistant_bg_layout" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <ImageView android:id="@id/ai_future_widget_bg_digital_human_img" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-    <com.android.launcher3.widget.custom.future.AIFutureWidgetDigitalHumanLayout android:id="@id/ai_future_widget_bg_digital_human_layout" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="match_parent" />
-</com.android.launcher3.widget.custom.future.AIFutureWidgetAIAssistantBgLayout>

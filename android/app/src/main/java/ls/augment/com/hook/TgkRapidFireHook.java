@@ -28,6 +28,8 @@ final class TgkRapidFireHook {
     private static volatile String installedDescriptor;
     private static volatile String installError;
     private static volatile int contextReadyAttempts;
+    private static volatile boolean installedRepublishScheduled;
+    private static volatile boolean snapshotListenerInstalled;
     private static final RapidFireRouteEvidence.Calls ROUTE_CALLS = new RapidFireRouteEvidence.Calls();
 
     private TgkRapidFireHook() { }
@@ -72,6 +74,7 @@ final class TgkRapidFireHook {
                     + "|route=binder_proxy|route_deopt=" + transportDeoptimized
                     + "|module=" + BuildConfig.VERSION_NAME
                     + "|schema=" + ConfigSchema.VERSION;
+            installError = null;
             publishInstalledWhenContextReady();
             module.logFeatureInfo("TGK_RAPID_FIRE_INSTALLED " + method.toGenericString());
             return 2;
@@ -189,6 +192,7 @@ final class TgkRapidFireHook {
                 || "cn.nubia.gameassist".equals(context.getPackageName()))) {
             contextReadyAttempts = 0;
             publishInstalled(context);
+            scheduleInstalledRepublish(context);
             return;
         }
         int attempt = ++contextReadyAttempts;
@@ -199,6 +203,21 @@ final class TgkRapidFireHook {
             new Handler(looper).postDelayed(
                     TgkRapidFireHook::publishInstalledWhenContextReady, 1_000L);
         } catch (Throwable ignored) { }
+    }
+
+    private static synchronized void scheduleInstalledRepublish(Context context) {
+        if (!snapshotListenerInstalled) {
+            snapshotListenerInstalled = FeatureSettings.addSnapshotListener(
+                    context, () -> publishInstalled(context));
+        }
+        if (installedRepublishScheduled) return;
+        Looper looper = Looper.getMainLooper();
+        if (looper == null) return;
+        installedRepublishScheduled = true;
+        Handler handler = new Handler(looper);
+        for (long delay : new long[]{5_000L, 20_000L, 60_000L, 120_000L}) {
+            handler.postDelayed(() -> publishInstalled(context), delay);
+        }
     }
 
     private static void writeDiagnostic(String suffix, String value) {

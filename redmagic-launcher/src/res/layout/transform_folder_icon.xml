@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.launcher3.streamer.transformfolder.TransformFolderIcon android:orientation="vertical" android:focusable="true" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:launcher="http://schemas.android.com/apk/res-auto" xmlns:android="http://schemas.android.com/apk/res/android">
-    <com.android.launcher3.views.DoubleShadowBubbleTextView android:layout_gravity="center|bottom" android:id="@id/folder_icon_name" android:focusable="false" android:layout_width="match_parent" android:layout_height="wrap_content" launcher:iconOrFolder="folder" style="@style/BaseIcon.Workspace" />
-    <com.android.launcher3.CellLayout android:theme="@style/HomeScreenElementTheme" android:id="@id/transform_folder_icon_celllayout" android:clipChildren="false" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" launcher:containerType="transform_folder_icon_celllayout" />
-</com.android.launcher3.streamer.transformfolder.TransformFolderIcon>

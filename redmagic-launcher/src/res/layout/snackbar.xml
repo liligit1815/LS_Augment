@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<merge android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="@dimen/custom_snackbar_message_text_size" android:textColor="@android:color/white" android:gravity="center_vertical" android:id="@id/label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="8.0dp" />
-    <TextView android:textSize="@dimen/custom_snackbar_action_text_size" android:textColor="@color/zte_blue_color" android:gravity="center_vertical" android:id="@id/action" android:longClickable="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="8.0dp" />
-</merge>

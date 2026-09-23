@@ -2,8 +2,10 @@ package ls.augment.com;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.widget.ArrayAdapter;
@@ -13,6 +15,7 @@ import android.widget.ListView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
@@ -21,7 +24,7 @@ import java.util.function.Consumer;
 /** Searchable multi-select with package enumeration off the UI thread. */
 final class AppSelectionDialog {
     private AppSelectionDialog() { }
-    static void show(Activity activity, UiKit ui, String title,
+    static AlertDialog show(Activity activity, UiKit ui, String title,
             String initial, Consumer<String> onSave) {
         Set<String> selected = new TreeSet<>(AppPackageSet.parse(initial));
         Set<String> initialSelection = new TreeSet<>(selected);
@@ -62,7 +65,7 @@ final class AppSelectionDialog {
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
             @Override public void afterTextChanged(Editable value) { }
         });
-        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(title).setView(body)
+        AlertDialog dialog = AppDialogs.builder(activity).setTitle(title).setView(body)
                 .setNegativeButton("取消", null).setNeutralButton("清空选择", null)
                 .setPositiveButton("确定", (ignored, which) -> onSave.accept(String.join(";", selected)))
                 .create();
@@ -73,10 +76,28 @@ final class AppSelectionDialog {
             ArrayList<Item> discovered = new ArrayList<>();
             try {
                 PackageManager pm = activity.getPackageManager();
-                for (ApplicationInfo info : pm.getInstalledApplications(0)) {
+                LinkedHashMap<String, ApplicationInfo> applications = new LinkedHashMap<>();
+                // Match getLaunchIntentForPackage's INFO/LAUNCHER scope without
+                // relying on OEM-restricted enumeration of all installed apps.
+                for (String category : new String[]{Intent.CATEGORY_INFO, Intent.CATEGORY_LAUNCHER}) {
+                    Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(category);
+                    for (ResolveInfo resolved : pm.queryIntentActivities(intent, 0)) {
+                        if (resolved == null || resolved.activityInfo == null
+                                || resolved.activityInfo.applicationInfo == null) continue;
+                        ApplicationInfo info = resolved.activityInfo.applicationInfo;
+                        applications.putIfAbsent(info.packageName, info);
+                    }
+                }
+                // Keep configured applications available even without a current
+                // launcher entry; missing packages do not invalidate the list.
+                for (String packageName : initialSelection) {
+                    if (applications.containsKey(packageName)) continue;
+                    try {
+                        applications.put(packageName, pm.getApplicationInfo(packageName, 0));
+                    } catch (PackageManager.NameNotFoundException ignored) { }
+                }
+                for (ApplicationInfo info : applications.values()) {
                     if (!info.enabled || (info.flags & ApplicationInfo.FLAG_INSTALLED) == 0) continue;
-                    if (pm.getLaunchIntentForPackage(info.packageName) == null
-                            && !initialSelection.contains(info.packageName)) continue;
                     discovered.add(new Item(info.packageName, String.valueOf(pm.getApplicationLabel(info))));
                 }
                 discovered.sort(Comparator.comparing((Item item) -> item.label,
@@ -91,6 +112,7 @@ final class AppSelectionDialog {
                         "无法读取应用列表，请重试", Toast.LENGTH_SHORT).show());
             }
         }, "LSA-AppSelection").start();
+        return dialog;
     }
     private static final class Item {
         final String pkg, label;

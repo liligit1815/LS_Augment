@@ -20,16 +20,32 @@ import java.util.Set;
 final class TgkRapidFireNative {
     private static final String LIBRARY_NAME = "lsaugment_tgk";
     private static final String NATIVE_LIBRARY_NAME = "liblsaugment_tgk.so";
-    private static boolean attempted;
-    private static boolean loaded;
-    private static String state = "not_loaded";
+    private static volatile boolean attempted;
+    private static volatile boolean loaded;
+    private static volatile String state = "not_loaded";
+    private static final java.util.concurrent.atomic.AtomicBoolean installing = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.ExecutorService installer = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "LSA-RapidNativeInstall"); t.setDaemon(true); return t;
+    });
     private static int configuredLeft = -1;
     private static int configuredRight = -1;
 
     private TgkRapidFireNative() { }
 
-    static synchronized boolean ensureInstalled(AugmentModule module, Context context) {
+    static boolean ensureInstalled(AugmentModule module, Context context) {
         if (attempted) return loaded;
+        if (!RapidFireCrashFuse.beforeInstall(context)) {
+            state = "waiting_for_persisted_crash_marker";
+            writeState(context, state);
+            return false;
+        }
+        if (installing.compareAndSet(false, true)) installer.execute(() -> installInBackground(module, context));
+        return loaded;
+    }
+
+    private static void installInBackground(AugmentModule module, Context context) {
+        // Recheck the published permission after queueing; UNKNOWN is always closed.
+        if (!RapidFireCrashFuse.beforeInstall(context)) { installing.set(false); return; }
         attempted = true;
 
         String sha256 = getInputReaderSha256();
@@ -38,15 +54,11 @@ final class TgkRapidFireNative {
         if (profile == null) {
             state = "incompatible|stage=structure|sha256=" + safe(sha256);
             writeState(context, state);
-            return false;
+            RapidFireCrashFuse.installationFailed(context);
+            return;
         }
 
         try {
-            if (!RapidFireCrashFuse.beforeInstall(context)) {
-                state = "fused_or_marker_unavailable";
-                writeState(context, state);
-                return false;
-            }
             ApplicationInfo info = module.getModuleApplicationInfo();
             String nativeDir = info == null ? null : info.nativeLibraryDir;
             loadLibrary(info, nativeDir, NATIVE_LIBRARY_NAME, LIBRARY_NAME);
@@ -66,7 +78,7 @@ final class TgkRapidFireNative {
             RapidFireCrashFuse.installationFailed(context);
         }
         writeState(context, state);
-        return loaded;
+        if (loaded) TgkRapidFireSystemHook.onNativeInstallationReady(context);
     }
 
     static boolean isLoaded() { return loaded; }

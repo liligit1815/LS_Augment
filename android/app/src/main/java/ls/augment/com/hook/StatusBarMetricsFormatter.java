@@ -3,8 +3,17 @@ package ls.augment.com.hook;
 import java.util.Locale;
 
 /** Unit normalization and compact status-bar text formatting. */
-final class StatusBarMetricsFormatter {
+public final class StatusBarMetricsFormatter {
     private StatusBarMetricsFormatter() { }
+
+    /** Fixed decimal precision shared by telemetry and the editor preview. */
+    public static String number(double value, int decimals) {
+        if (!Double.isFinite(value)) return "—";
+        int safeDecimals = Math.max(0, Math.min(3, decimals));
+        // Avoid showing a negative zero when a small discharging current rounds to zero.
+        if (Math.abs(value) < 0.5d / Math.pow(10, safeDecimals)) value = 0d;
+        return String.format(Locale.ROOT, "%." + safeDecimals + "f", value);
+    }
 
     static String rate(long bytesPerSecond) {
         long safe = Math.max(0L, bytesPerSecond);

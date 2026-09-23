@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:startColor="@color/custom_widget_tv_bjlt_bg_0" android:endColor="@color/custom_widget_tv_bjlt_bg_100" android:angle="-45.0" android:type="linear" android:centerColor="@color/custom_widget_tv_bjlt_bg_50" />
-    <corners android:radius="@dimen/custom_widget_bg_radius" />
-</shape>

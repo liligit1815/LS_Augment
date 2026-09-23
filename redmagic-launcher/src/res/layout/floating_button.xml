@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:id="@id/floating_button" android:background="@drawable/color_fab_shadow" android:clickable="true" android:layout_width="@dimen/mfvc_floating_button_size" android:layout_height="@dimen/mfvc_floating_button_size" android:backgroundTint="@color/mfv_common_fab_bg_shadow" android:forceDarkAllowed="false"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <FrameLayout android:layout_gravity="center|top" android:id="@id/floating_button_outer_image" android:background="@drawable/floating_btn_default_bg_zte" android:layout_width="@dimen/mfvc_fbtn_width" android:layout_height="@dimen/mfvc_fbtn_width">
-        <View android:layout_gravity="center" android:id="@id/floating_button_inner_image" android:layout_width="@dimen/mfvc_ic_medium_width02" android:layout_height="@dimen/mfvc_ic_medium_height02" android:backgroundTint="@color/mfv_common_fab_icon" />
-        <View android:id="@id/floating_button_mask" android:background="@drawable/floating_btn_default_mask_zte" android:layout_width="match_parent" android:layout_height="match_parent" />
-    </FrameLayout>
-</FrameLayout>

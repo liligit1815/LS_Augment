@@ -1,6 +1,8 @@
 # 可重新生成的构建产物和依赖
 .gradle/
 .cxx/
+.kotlin/
+.externalNativeBuild/
 build/
 out/
 node_modules/
@@ -12,27 +14,31 @@ __pycache__/
 *.py[cod]
 *.tsbuildinfo
 *.class
-/redmagic-launcher/helper-src/build*/
 
-# 安装包和源码压缩包；桌面回编译的三份输入需要保留
+# 独立桌面仓库自行管理版本，不纳入模块仓库
+/LS_RedMagicLauncher/
+
+# 安装包和源码压缩包
 *.apk
 *.apk.idsig
 *.aab
 *.apks
 *.xapk
+*.apk.sha256
+*.aab.sha256
 *-source.zip
 *-source.zip.sha256
-!/redmagic-launcher/original.apk
-!/redmagic-launcher/tooling/framework-res-NX809J.apk
-!/redmagic-launcher/framework/cache/1.apk
 
 # 历史诊断、截图录像工作目录和本地备份
 *.log
 *.mp4
+!/android/app/src/main/res/raw/redmagic_first_start.mp4
 *.webm
 *.mov
 /Logs/
 /audit-report/
+/audit-output/
+/outputs/
 /backup/
 work/
 reference/legacy-ksu/module/apk/
@@ -44,6 +50,11 @@ local.properties
 *.iml
 .idea/
 .signing/
+/LS_Augment_签名备份/
+.env
+.env.*
+!.env.example
+!.env.sample
 *.jks
 *.keystore
 *.p12
@@ -51,6 +62,10 @@ local.properties
 *.key
 *-private.pem
 .DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
 
 # 本地文档（不上传 GitHub）
 PROJECT_REQUIREMENTS.md

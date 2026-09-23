@@ -25,6 +25,15 @@ public final class HookTargetRegistry {
                     "cn.nubia.gamehelperline",
                     "cn.nubia.gamehelpmodule",
                     "com.zte.game.plugintrigger",
+                    "com.android.packageinstaller",
+                    "com.zte.zdm",
+                    "com.zte.mifavor.weather",
+                    "cn.zte.gamefloat",
+                    "cn.nubia.gamehighlights",
+                    "com.android.permissioncontroller",
+                    "com.android.nfc",
+                    "cn.nubia.filebrowser",
+                    "com.android.ztescreenshot",
                     "system")));
 
     private HookTargetRegistry() { }

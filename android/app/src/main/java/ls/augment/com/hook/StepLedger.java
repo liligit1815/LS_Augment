@@ -17,7 +17,7 @@ import ls.augment.com.StepPlan;
 final class StepLedger extends SQLiteOpenHelper {
     private static final ReentrantLock WRITER=new ReentrantLock(true);
     private final File lockFile;
-    StepLedger(Context c){super(c,"ls_augment_steps_v1.db",null,1);lockFile=new File(c.getFilesDir(),"ls_augment_steps.lock");setWriteAheadLoggingEnabled(true);}
+    StepLedger(Context c){super(c,"ls_augment_steps_v1.db",null,2);lockFile=new File(c.getFilesDir(),"ls_augment_steps.lock");setWriteAheadLoggingEnabled(true);}
     /** Covers the ledger and the native DAO commit together, across health processes. */
     Guard guard()throws IOException{return new Guard();}
     final class Guard implements AutoCloseable {
@@ -34,11 +34,44 @@ final class StepLedger extends SQLiteOpenHelper {
         d.execSQL("CREATE TABLE records(account TEXT NOT NULL,sid TEXT NOT NULL,time INTEGER NOT NULL,raw TEXT NOT NULL,output TEXT NOT NULL,token TEXT NOT NULL,generated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,sid,time))");
         d.execSQL("CREATE TABLE plans(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,spec TEXT NOT NULL,PRIMARY KEY(account,id,day))");
         d.execSQL("CREATE TABLE events(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,time INTEGER NOT NULL,steps INTEGER NOT NULL,admitted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,id,day,time))");
+        createAwards(d);
     }
-    @Override public void onUpgrade(SQLiteDatabase d,int old,int next){throw new IllegalStateException("unknown step ledger schema");}
+    @Override public void onUpgrade(SQLiteDatabase d,int old,int next){
+        if(old==1&&next==2){createAwards(d);return;}
+        throw new IllegalStateException("unknown step ledger schema");
+    }
+    private static void createAwards(SQLiteDatabase d){
+        d.execSQL("CREATE TABLE plan_awards(account TEXT NOT NULL,time INTEGER NOT NULL,requested INTEGER NOT NULL,allowed INTEGER NOT NULL CHECK(allowed>=0 AND allowed<=requested),PRIMARY KEY(account,time))");
+    }
     static final class Record {
         final String raw,output,token;final boolean generated;
         Record(String raw,String output,String token,boolean generated){this.raw=raw;this.output=output;this.token=token;this.generated=generated;}
+    }
+    static final class SavedRecord {
+        final String sid;final long time;final Record record;
+        SavedRecord(String sid,long time,Record record){this.sid=sid;this.time=time;this.record=record;}
+    }
+    List<SavedRecord> records(String account,long startInclusive,long endExclusive){
+        List<SavedRecord> values=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT sid,time,raw,output,token,generated FROM records WHERE account=? AND time>=? AND time<? ORDER BY time,sid",new String[]{account,""+startInclusive,""+endExclusive})){
+            while(c.moveToNext())values.add(new SavedRecord(c.getString(0),c.getLong(1),new Record(c.getString(2),c.getString(3),c.getString(4),c.getInt(5)!=0)));
+        }
+        return values;
+    }
+    static final class Award {
+        final int requested,allowed;
+        Award(int requested,int allowed){this.requested=requested;this.allowed=allowed;}
+    }
+    Award award(String account,long time){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT requested,allowed FROM plan_awards WHERE account=? AND time=?",new String[]{account,""+time})){
+            return c.moveToFirst()?new Award(c.getInt(0),c.getInt(1)):null;
+        }
+    }
+    void award(String account,long time,int requested,int allowed){
+        if(allowed<0||allowed>requested)throw new IllegalArgumentException("invalid plan award");
+        ContentValues v=new ContentValues();v.put("account",account);v.put("time",time);v.put("requested",requested);v.put("allowed",allowed);
+        if(getWritableDatabase().insertWithOnConflict("plan_awards",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)
+            throw new IllegalStateException("无法保存计划步数上限判断");
     }
     Record get(String account,String sid,long time){
         try(Cursor c=getReadableDatabase().rawQuery("SELECT raw,output,token,generated FROM records WHERE account=? AND sid=? AND time=?",new String[]{account,sid,""+time})){

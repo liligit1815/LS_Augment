@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="@dimen/all_apps_recommend_title_text_size" android:textColor="@color/all_apps_title_color_light" android:gravity="start" android:id="@id/recommend_title" android:focusable="false" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/all_apps_title_margin_top" android:layout_marginBottom="@dimen/all_apps_recommend_title_margin_bottom" android:text="@string/all_apps_title" android:layout_marginStart="@dimen/all_apps_recommend_title_margin_start"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

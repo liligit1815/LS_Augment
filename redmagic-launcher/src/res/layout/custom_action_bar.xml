@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:id="@id/custom_action_bar" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:gravity="center" android:layout_gravity="center_vertical" android:id="@id/arrow_container" android:layout_width="50.0dp" android:layout_height="56.0dp">
-        <ImageView android:layout_gravity="center" android:id="@id/action_bar_arrow" android:background="@drawable/image_button_ripple_bg" android:layout_width="24.0dp" android:layout_height="24.0dp" android:src="@drawable/arrow_back_dark_style" android:forceDarkAllowed="false" />
-    </LinearLayout>
-    <TextView android:textSize="21.0sp" android:textColor="@android:color/white" android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/action_bar_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/settings_title_desktop_clock" android:singleLine="true" android:fontFamily="@string/font_family_systemdefault_medium" android:forceDarkAllowed="false" />
-</LinearLayout>

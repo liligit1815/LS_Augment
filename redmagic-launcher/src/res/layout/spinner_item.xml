@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<CheckedTextView android:ellipsize="marquee" android:gravity="center_vertical" android:id="@android:id/text1" android:layout_width="match_parent" android:layout_height="match_parent" android:singleLine="true" android:drawableRight="@drawable/spinner_background_zte_noline" android:drawablePadding="8.0dp" android:fontFamily="@string/font_family_systemdefault_medium" style="?android:spinnerItemStyle"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

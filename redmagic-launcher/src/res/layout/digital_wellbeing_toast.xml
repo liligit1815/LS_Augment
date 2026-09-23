@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<com.android.quickstep.views.DigitalWellBeingToast android:textSize="14.0sp" android:textColor="@color/materialColorOnSecondaryFixed" android:gravity="center" android:background="@drawable/bg_wellbeing_toast" android:visibility="gone" android:layout_width="match_parent" android:layout_height="@dimen/digital_wellbeing_toast_height" android:importantForAccessibility="noHideDescendants" android:forceHasOverlappingRendering="false" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="10.0sp" android:autoSizeMaxTextSize="20.0sp" style="@style/TextTitle"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:androidprv="http://schemas.android.com/apk/prv/res/android" />

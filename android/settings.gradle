@@ -1,4 +1,7 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+if (gradle.gradleVersion != '8.13') {
+    throw new GradleException('This project uses Gradle 8.13. Run android/gradlew or android/gradlew.bat.')
+}
 rootProject.name = 'LS_Augment'
 include ':app'

@@ -1,768 +1,241 @@
 package ls.augment.com;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
-import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.Switch;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.*;
+import java.util.*;
+import java.util.concurrent.*;
 
-import android.window.OnBackInvokedDispatcher;
-
-import java.util.LinkedHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-/** Ice Blue settings flow: grouped overview -> category -> feature detail. */
+/** App-oriented home, module settings and about, with persistent bottom navigation. */
 public final class SettingsActivity extends Activity {
-    private static final String OVERVIEW = "overview";
-    private static final String HIDE = "hide";
-    private static final String GAME = "game";
-    private static final String SYSTEM = "system";
-    private static final String APPS = "apps";
-    private static final String TOOLS = "tools";
-
-    private static final Category[] CATEGORIES = {
-            new Category(OVERVIEW, "概览", android.R.drawable.ic_menu_view),
-            new Category(HIDE, "消失吧APP", android.R.drawable.ic_menu_close_clear_cancel),
-            new Category(GAME, "游戏增强", android.R.drawable.ic_menu_manage),
-            new Category(SYSTEM, "系统增强", android.R.drawable.ic_menu_info_details),
-            new Category(APPS, "应用增强", android.R.drawable.ic_menu_agenda),
-            new Category(TOOLS, "工具", android.R.drawable.ic_menu_preferences)
-    };
-
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final Handler main = new Handler(Looper.getMainLooper());
+    private static final String HOME="home", SETTINGS="settings", ABOUT="about";
+    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private final Map<String,Integer> positions=new HashMap<>();
+    private final Map<String,Drawable> icons=new HashMap<>();
+    private final Set<String> missing=new HashSet<>();
+    private final java.util.concurrent.atomic.AtomicInteger inventoryRequest=new java.util.concurrent.atomic.AtomicInteger();
+    private int inventoryGeneration;
     private UiKit ui;
-    private AppConfig config;
-    private LinearLayout page;
-    private ScrollView pageScroll;
-    private LinearLayout appBar;
-    private LinearLayout activePanel;
-    private int activePanelItems;
-    private TextView rootState;
-    private TextView lsposedState;
-    private TextView compatibilityState;
-    private String selected = OVERVIEW;
-    private boolean rootGatePassed;
-    private boolean rootCheckRunning;
-    private AlertDialog rootRequiredDialog;
+    private LinearLayout page,navigation,appList;
+    private AboutScrollView scroll;
+    private FrameLayout root;
+    private AboutHeaderMotion aboutMotion;
+    private int renderGeneration;
+    private TextView runtimeState,rootState;
+    private EditText search;
+    private String selected=HOME,query="",appearanceSignature;
+    private String runtimeText="正在检查模块状态…",rootText="正在读取运行环境";
+    private boolean runtimeActive,environmentLoading,requestedRoot,resumedOnce;
 
-    @Override
-    protected void onCreate(Bundle state) {
+    @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        ui = new UiKit(this);
-        config = new AppConfig(this);
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+                | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        if(state!=null){selected=state.getString("tab",HOME);query=state.getString("query","");for(String tab:new String[]{HOME,SETTINGS,ABOUT})positions.put(tab,state.getInt("scroll_"+tab));}
+        if(!Arrays.asList(HOME,SETTINGS,ABOUT).contains(selected))selected=HOME;
         buildScaffold();
-        selected = state == null ? OVERVIEW : state.getString("category", OVERVIEW);
-        // Older saved state used a redundant category between home and the manager.
-        if (HIDE.equals(selected)) selected = OVERVIEW;
-        renderRootGateLoading();
-        registerSystemBackCallback();
-        checkRootAccess();
+        if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::navigateBack);
+        if(OnboardingActivity.needsConsent(this))OnboardingActivity.open(this);
     }
-
-    @Override protected void onResume() {
-        super.onResume();
-        if (!rootGatePassed) return;
-        if (HIDE.equals(selected) && !HiddenEntrySession.isUnlocked()) selected = OVERVIEW;
-        renderCategory();
-        refreshEnvironment();
+    @Override protected void onResume(){
+        super.onResume();if(OnboardingActivity.needsConsent(this))return;
+        if(resumedOnce){rememberScroll();if(!appearanceKey().equals(appearanceSignature))buildScaffold();else renderPage();}
+        resumedOnce=true;
+        loadInventory();refreshEnvironment();
     }
-
-    @Override protected void onSaveInstanceState(Bundle out) {
-        out.putString("category", selected);
-        super.onSaveInstanceState(out);
+    @Override protected void onSaveInstanceState(Bundle state){rememberScroll();state.putString("tab",selected);state.putString("query",query);for(String tab:new String[]{HOME,SETTINGS,ABOUT})state.putInt("scroll_"+tab,positions.getOrDefault(tab,0));super.onSaveInstanceState(state);}
+    // Gesture navigation is registered separately with the platform dispatcher.
+    @android.annotation.SuppressLint("GestureBackNavigation")
+    @Override public void onBackPressed(){navigateBack();}
+    private void navigateBack(){if(!HOME.equals(selected))selectTab(HOME);else if(!query.isEmpty()&&search!=null)search.setText("");else finish();}
+    @Override protected void onPause(){if(scroll!=null)scroll.cancelRebound();super.onPause();}
+    @Override protected void onDestroy(){if(aboutMotion!=null)aboutMotion.dispose();main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
+    private String appearanceKey(){AppConfig c=new AppConfig(this);return c.get(AppearanceOptions.THEME)+":"+c.get(AppearanceOptions.BLUR)+":"+c.get(AppearanceOptions.LIGHT_MASK)+":"+c.get(AppearanceOptions.DARK_MASK);}
+    private void buildScaffold(){
+        if(aboutMotion!=null){aboutMotion.dispose();aboutMotion=null;}
+        ui=new UiKit(this);appearanceSignature=appearanceKey();
+        root=new FrameLayout(this);
+        scroll=new AboutScrollView(this);scroll.setTag("about-motion-scroll");scroll.setFillViewport(true);scroll.setVerticalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.setFocusableInTouchMode(true);scroll.setDescendantFocusability(android.view.ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+        page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setPadding(ui.dp(14),ui.dp(10),ui.dp(14),ui.dp(96));
+        scroll.addView(page,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+        navigation=new LiquidGlassLayout(ui,32);navigation.setTag("liquid-glass-navigation");navigation.setGravity(Gravity.CENTER);navigation.setPadding(ui.dp(6),ui.dp(5),ui.dp(6),ui.dp(5));
+        if(Build.VERSION.SDK_INT>=28){navigation.setOutlineSpotShadowColor(0x203986bb);navigation.setOutlineAmbientShadowColor(0x203986bb);}
+        FrameLayout.LayoutParams nav=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);nav.setMargins(ui.dp(24),0,ui.dp(24),ui.dp(10));root.addView(navigation,nav);
+        ui.setContentView(root);ui.applyGestureInset(root,0,true);renderPage();scroll.requestFocus();
     }
-
-    @Override public void onBackPressed() {
-        navigateBack();
-    }
-
-    private void navigateBack() {
-        if (!rootGatePassed) {
-            exitApplication();
-            return;
-        }
-        if (!OVERVIEW.equals(selected)) {
-            selected = OVERVIEW;
-            renderCategory();
-            return;
-        }
-        finish();
-    }
-
-    private void registerSystemBackCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
-        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                this::navigateBack);
-    }
-
-    @Override protected void onDestroy() {
-        if (rootRequiredDialog != null) {
-            rootRequiredDialog.setOnCancelListener(null);
-            rootRequiredDialog.dismiss();
-            rootRequiredDialog = null;
-        }
-        executor.shutdownNow();
-        super.onDestroy();
-    }
-
-    private void renderRootGateLoading() {
-        renderAppBar();
-        page.removeAllViews();
-        TextView loading = ui.text("正在申请 Root 权限…", 13, ui.muted, false);
-        loading.setGravity(Gravity.CENTER);
-        loading.setPadding(ui.dp(12), ui.dp(36), ui.dp(12), ui.dp(36));
-        page.addView(loading, new LinearLayout.LayoutParams(-1, -2));
-    }
-
-    private void checkRootAccess() {
-        if (rootCheckRunning || rootGatePassed || isFinishing()) return;
-        rootCheckRunning = true;
-        executor.execute(() -> {
-            RootHideManager.RootStatus root = new RootHideManager(this).requestRootStatus();
-            main.post(() -> {
-                rootCheckRunning = false;
-                if (isFinishing() || isDestroyed()) return;
-                if (root.state == RootHideManager.RootState.GRANTED) {
-                    rootGatePassed = true;
-                    if (rootRequiredDialog != null) {
-                        rootRequiredDialog.setOnCancelListener(null);
-                        rootRequiredDialog.dismiss();
-                        rootRequiredDialog = null;
-                    }
-                    renderCategory();
-                    refreshEnvironment();
-                    return;
-                }
-                showRootRequiredDialog(root);
-            });
-        });
-    }
-
-    private void showRootRequiredDialog(RootHideManager.RootStatus root) {
-        if (rootRequiredDialog != null && rootRequiredDialog.isShowing()) return;
-        String detail = root == null || root.message == null || root.message.trim().isEmpty()
-                ? "Root 权限不可用" : root.message.trim();
-        rootRequiredDialog = new AlertDialog.Builder(this)
-                .setTitle("需要 Root 权限")
-                .setMessage("LS_Augment 的当前功能需要 Root 权限。请先在 KernelSU、Magisk "
-                        + "或 APatch 中为 LS_Augment 授予 Root 权限，然后点击“重新检测”。\n\n"
-                        + "检测结果：" + detail + "\n\n关闭此提示将退出应用。")
-                .setNegativeButton("退出应用", (dialog, which) -> exitApplication())
-                .setPositiveButton("重新检测", (dialog, which) -> checkRootAccess())
-                .create();
-        rootRequiredDialog.setCanceledOnTouchOutside(true);
-        rootRequiredDialog.setOnCancelListener(dialog -> exitApplication());
-        rootRequiredDialog.setOnDismissListener(dialog -> {
-            if (rootRequiredDialog == dialog) rootRequiredDialog = null;
-        });
-        rootRequiredDialog.show();
-    }
-
-    private void exitApplication() {
-        finishAndRemoveTask();
-    }
-
-    private void buildScaffold() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(ui.backgroundDrawable());
-        // UiKit applies the current system-bar and cutout insets after attachment.
-        root.setPadding(0, ui.topAppInset(), 0, 0);
-
-        appBar = new LinearLayout(this);
-        appBar.setGravity(Gravity.CENTER_VERTICAL);
-        appBar.setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(3));
-        appBar.setMinimumHeight(ui.dp(60));
-        root.addView(appBar, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
-
-        pageScroll = new ScrollView(this);
-        pageScroll.setFillViewport(true);
-        pageScroll.setClipToPadding(false);
-        pageScroll.setVerticalScrollBarEnabled(false);
-        pageScroll.setFocusableInTouchMode(true);
-        pageScroll.requestFocus();
-        page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(36));
-        pageScroll.addView(page, new ScrollView.LayoutParams(-1, -2));
-        root.addView(pageScroll, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        setContentView(root);
-        ui.applyGestureInset(root, 8);
-    }
-
-    private void renderAppBar() {
-        appBar.removeAllViews();
-        if (!OVERVIEW.equals(selected)) {
-            ImageButton back = new ImageButton(this);
-            back.setImageResource(R.drawable.ic_arrow_back);
-            back.setScaleType(ImageView.ScaleType.CENTER);
-            back.setColorFilter(ui.text);
-            back.setPadding(ui.dp(11), ui.dp(11), ui.dp(11), ui.dp(11));
-            back.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 50)));
-            back.setContentDescription("返回概览");
-            back.setOnClickListener(view -> selectCategory(OVERVIEW));
-            appBar.addView(back, new LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)));
-            TextView title = ui.text(categoryCopy(selected)[0], 19, ui.text, true);
-            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, -2, 1);
-            titleParams.setMargins(ui.dp(5), 0, ui.dp(7), 0);
-            appBar.addView(title, titleParams);
+    private void rememberScroll(){if(scroll!=null)positions.put(selected,scroll.getScrollY());}
+    private void selectTab(String tab){if(tab.equals(selected))return;rememberScroll();getSystemService(InputMethodManager.class).hideSoftInputFromWindow(scroll.getWindowToken(),0);selected=tab;renderPage();scroll.requestFocus();}
+    private void renderPage(){
+        if(aboutMotion!=null){aboutMotion.dispose();aboutMotion=null;}
+        int generation=++renderGeneration;
+        page.removeAllViews();appList=null;search=null;runtimeState=null;rootState=null;
+        int position=positions.getOrDefault(selected,0);
+        if(ABOUT.equals(selected)) {
+            aboutMotion=new AboutHeaderMotion(ui,root,scroll,page,(LiquidGlassLayout)navigation,v->onSystemVersionTapped(),position);
         } else {
-            ImageView logo = new ImageView(this);
-            logo.setImageResource(R.drawable.ic_ls_augment_boat);
-            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            logo.setPadding(ui.dp(6), ui.dp(6), ui.dp(6), ui.dp(6));
-            logo.setBackground(ui.round(ui.accentContainer, 11));
-            logo.setContentDescription("LS_Augment 小舟标志");
-            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
-                    ui.dp(42), ui.dp(42));
-            logoParams.setMargins(0, 0, ui.dp(10), 0);
-            appBar.addView(logo, logoParams);
-            LinearLayout brand = new LinearLayout(this);
-            brand.setOrientation(LinearLayout.VERTICAL);
-            brand.addView(ui.text("LS_Augment", 21, ui.text, true), ui.wrap());
-            brand.addView(ui.text("红魔11Pro增强", 10.5f, ui.muted, false),
-                    ui.margins(0, 3, 0, 0));
-            appBar.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView brand=ui.text("LS_Augment",12,ui.accent,true);page.addView(brand,ui.margins(2,2,0,8));
+        if(HOME.equals(selected))page.addView(ui.text("让红魔更顺手",12,ui.muted,false),ui.margins(1,0,0,18));
+        if(HOME.equals(selected))renderHome();else renderSettings();
         }
-        ScopeRestartDialog.addButton(this, ui, appBar, scopeForSelected());
+        renderNavigation();scroll.post(()->{if(!isDestroyed()&&generation==renderGeneration){scroll.scrollTo(0,position);if(aboutMotion!=null)aboutMotion.apply(scroll.getScrollY());((LiquidGlassLayout)navigation).refreshBackdrop();}});
     }
-
-    private void selectCategory(String category) {
-        if (HIDE.equals(category)) {
-            selected = OVERVIEW;
-            renderCategory();
-            if (HiddenEntrySession.isUnlocked()) {
-                startActivity(new Intent(this, HideAppsActivity.class));
-            }
-            return;
+    private void renderNavigation(){
+        navigation.removeAllViews();String[] tabs={HOME,SETTINGS,ABOUT},labels={"主页","设置","关于"};
+        for(int i=0;i<tabs.length;i++){
+            String tab=tabs[i];boolean active=tab.equals(selected);LinearLayout item=new LinearLayout(this);item.setOrientation(LinearLayout.VERTICAL);item.setGravity(Gravity.CENTER);item.setMinimumHeight(ui.dp(50));item.setPadding(ui.dp(6),ui.dp(4),ui.dp(6),ui.dp(4));
+            item.setBackground(ui.pressable(ui.round(Color.TRANSPARENT,24)));
+            ImageView icon=new ImageView(this);icon.setImageDrawable(new GlassIcon(tab,active?ui.accent:ui.muted));item.addView(icon,new LinearLayout.LayoutParams(ui.dp(22),ui.dp(22)));
+            TextView label=ui.text(labels[i],11,active?ui.accent:ui.muted,active);label.setGravity(Gravity.CENTER);item.addView(label,ui.margins(0,3,0,0));
+            item.setContentDescription(labels[i]);item.setSelected(active);item.setClickable(true);item.setFocusable(true);item.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);item.setOnClickListener(v->selectTab(tab));navigation.addView(item,new LinearLayout.LayoutParams(0,-2,1));
+            if(active)((LiquidGlassLayout)navigation).select(i,true);
         }
-        boolean known = false;
-        for (Category item : CATEGORIES) if (item.id.equals(category)) known = true;
-        selected = known && (!HIDE.equals(category) || HiddenEntrySession.isUnlocked())
-                ? category : OVERVIEW;
-        renderCategory();
     }
-
-    private String scopeForSelected() {
-        if (SYSTEM.equals(selected)) return ScopeRestartDialog.SYSTEM_UI;
-        if (GAME.equals(selected)) return ScopeRestartDialog.GAMES;
-        if (APPS.equals(selected)) return ScopeRestartDialog.APPS;
-        if (HIDE.equals(selected)) return ScopeRestartDialog.SETTINGS;
+    private void renderHome(){
+        LinearLayout box=new LiquidGlassLayout(ui,22,true);box.setGravity(Gravity.CENTER_VERTICAL);box.setPadding(ui.dp(14),ui.dp(2),ui.dp(8),ui.dp(2));
+        ImageView magnifier=new ImageView(this);magnifier.setImageDrawable(new GlassIcon("search",ui.muted));box.addView(magnifier,new LinearLayout.LayoutParams(ui.dp(20),ui.dp(20)));
+        search=new EditText(this);search.setSingleLine(true);search.setTextSize(12.5f);search.setTextColor(ui.text);search.setHintTextColor(ui.muted);search.setHint("搜索应用或功能");search.setContentDescription("搜索应用或功能");search.setBackgroundColor(Color.TRANSPARENT);search.setPadding(ui.dp(12),ui.dp(12),ui.dp(6),ui.dp(12));search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);search.setText(query);box.addView(search,new LinearLayout.LayoutParams(0,ui.dp(46),1));
+        TextView clear=ui.text("清除",12,ui.accent,true);clear.setGravity(Gravity.CENTER);clear.setContentDescription("清除搜索");clear.setVisibility(query.isEmpty()?View.GONE:View.VISIBLE);clear.setOnClickListener(v->search.setText(""));box.addView(clear,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));
+        search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){query=s.toString();clear.setVisibility(query.isEmpty()?View.GONE:View.VISIBLE);renderAppList();}public void afterTextChanged(Editable e){}});
+        search.setOnFocusChangeListener((v,focused)->{if(focused)scroll.post(()->scroll.smoothScrollTo(0,Math.max(0,box.getTop()-ui.dp(8))));});
+        search.setOnEditorActionListener((v,action,event)->{getSystemService(InputMethodManager.class).hideSoftInputFromWindow(search.getWindowToken(),0);search.clearFocus();return true;});page.addView(box,ui.margins(0,0,0,18));
+        appList=new LinearLayout(this);appList.setOrientation(LinearLayout.VERTICAL);page.addView(appList);renderAppList();
+    }
+    private void renderAppList(){
+        if(appList==null)return;appList.removeAllViews();String q=query.trim().toLowerCase(Locale.ROOT);int count=0;
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        for(HookAppCatalog.Target target:HookAppCatalog.targets()){String match=matchingCopy(target,q);if(match==null)continue;count++;panel.addView(appRow(target,match,q),ui.margins(0,0,0,9));}
+        LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);heading.addView(ui.text(q.isEmpty()?"应用配置":"搜索结果",13,ui.muted,true),new LinearLayout.LayoutParams(0,-2,1));heading.addView(ui.text(count+" 个应用",11,ui.muted,false));appList.addView(heading,ui.margins(3,0,3,16));
+        if(count>0)appList.addView(panel);else{TextView empty=ui.text("没有找到相关应用或功能\n试试“时钟”“音量”或“桌面”",14,ui.muted,false);empty.setGravity(Gravity.CENTER);empty.setPadding(ui.dp(16),ui.dp(34),ui.dp(16),ui.dp(34));appList.addView(empty);}
+        if(HiddenEntrySession.isUnlocked()&&q.isEmpty())appList.addView(applicationRow("消失吧APP","应用隐藏、锁屏自动隐藏与快捷磁贴",getPackageName(),getApplicationInfo().loadIcon(getPackageManager()),"hide",v->ModuleNavigation.open(this,"hide")),ui.margins(0,0,0,9));
+    }
+    private String matchingCopy(HookAppCatalog.Target target,String q){
+        if(q.isEmpty()||(target.title+target.summary+String.join(" ",target.packages)).toLowerCase(Locale.ROOT).contains(q))return target.summary;
+        for(HookAppCatalog.Section section:HookAppCatalog.sections(target.id))for(EnhancementOption o:section.options)if((o.title+o.summary).toLowerCase(Locale.ROOT).contains(q))return "包含："+o.title;
+        for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if((entry.title+entry.summary).toLowerCase(Locale.ROOT).contains(q))return "包含："+entry.title;
         return null;
     }
-
-    private void renderCategory() {
-        if (page == null) return;
-        renderAppBar();
-        page.removeAllViews();
-        activePanel = null;
-        activePanelItems = 0;
-        rootState = null;
-        lsposedState = null;
-        compatibilityState = null;
-
-        switch (selected) {
-            case GAME: renderGame(); break;
-            case SYSTEM: renderSystem(); break;
-            case APPS: renderApps(); break;
-            case TOOLS: renderTools(); break;
-            default: renderOverview();
-        }
-        pageScroll.post(() -> pageScroll.scrollTo(0, 0));
+    private LinearLayout appRow(HookAppCatalog.Target target,String detail,String q){
+        Drawable actual=icons.get(target.id);
+        return applicationRow(target.title,detail,(missing.contains(target.id)?"当前设备未安装 · ":"")+target.packageName,actual,target.id,v->ModuleNavigation.openTarget(this,target.id,q));
     }
-
-    private void renderOverview() {
-        page.addView(ui.overline("模块状态"), ui.margins(3, 1, 3, 7));
-        LinearLayout statusPanel = ui.card();
-        statusPanel.setOrientation(LinearLayout.HORIZONTAL);
-        statusPanel.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.ic_ls_augment_boat);
-        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        icon.setPadding(ui.dp(6), ui.dp(6), ui.dp(6), ui.dp(6));
-        icon.setBackground(ui.round(ui.accentContainer, 11));
-        icon.setClickable(true);
-        icon.setFocusable(true);
-        icon.setContentDescription("连续点击版本图标进入消失吧APP");
-        icon.setOnClickListener(view -> onVersionTapped());
-        statusPanel.addView(icon, new LinearLayout.LayoutParams(ui.dp(42), ui.dp(42)));
-
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        lsposedState = ui.text("正在读取 LSPosed…", 10.5f, ui.cyan, true);
-        rootState = ui.text("Root 正在读取…", 10.5f, ui.muted, false);
-        rootState.setVisibility(View.GONE);
-        compatibilityState = ui.text(BuildConfig.VERSION_NAME, 10.5f, ui.accent, false);
-        copy.addView(lsposedState, ui.margins(0, 3, 0, 0));
-        copy.addView(rootState, ui.margins(0, 2, 0, 0));
-        copy.addView(compatibilityState, ui.margins(0, 2, 0, 0));
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
-        copyParams.setMargins(ui.dp(10), 0, 0, 0);
-        statusPanel.addView(copy, copyParams);
-        compatibilityState.setContentDescription("当前完整版本号 " + BuildConfig.VERSION_NAME);
-        page.addView(statusPanel, ui.margins(0, 0, 0, 13));
-
-        if (HiddenEntrySession.isUnlocked()) {
-            addCategorySection("应用管理", category(HIDE), category(APPS));
-        } else {
-            addCategorySection("应用管理", category(APPS));
-        }
-        addCategorySection("系统界面", category(SYSTEM));
-        addCategorySection("游戏与性能", category(GAME));
-        renderTools();
-        refreshEnvironment();
+    private LinearLayout applicationRow(String title,String detail,String packageName,Drawable actual,String id,View.OnClickListener action){
+        LinearLayout row=ui.card();row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setMinimumHeight(ui.dp(76));row.setPadding(ui.dp(15),ui.dp(11),ui.dp(12),ui.dp(11));
+        ImageView icon=new ImageView(this);
+        icon.setTag("hook-app-icon:"+id);icon.setImageDrawable(actual!=null?actual:getPackageManager().getDefaultActivityIcon());
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);icon.setPadding(0,0,0,0);icon.setBackground(null);icon.setImageTintList(null);
+        row.addView(icon,new LinearLayout.LayoutParams(ui.dp(43),ui.dp(43)));
+        LinearLayout copy=new LinearLayout(this);copy.setOrientation(LinearLayout.VERTICAL);copy.addView(ui.text(title,15,ui.text,true));TextView summary=ui.text(detail,11.5f,ui.muted,false);summary.setMaxLines(2);copy.addView(summary,ui.margins(0,4,0,0));
+        TextView pkg=ui.text(packageName,9.5f,ui.muted,false);pkg.setMaxLines(1);pkg.setEllipsize(android.text.TextUtils.TruncateAt.END);copy.addView(pkg,ui.margins(0,3,0,0));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(ui.dp(12),0,ui.dp(8),0);row.addView(copy,p);ImageView arrow=new ImageView(this);arrow.setImageDrawable(new GlassIcon("arrow",ui.muted));row.addView(arrow,new LinearLayout.LayoutParams(ui.dp(15),ui.dp(15)));
+        row.setForeground(ui.pressable(ui.round(Color.TRANSPARENT,22)));row.setClickable(true);row.setFocusable(true);row.setOnClickListener(action);return row;
     }
-
-    private Category category(String id) {
-        for (Category item : CATEGORIES) if (item.id.equals(id)) return item;
-        return CATEGORIES[0];
+    private void renderSettings(){
+        group("模块设置");launcherIconSetting();
+        group("配置与维护");
+        LinearLayout maintenance=ui.card();maintenance.setPadding(ui.dp(12),0,ui.dp(12),0);
+        maintenanceRow(maintenance,"导出配置","导出功能设置及自定义资源。","export");
+        maintenanceRow(maintenance,"导入配置","选择配置文件，校验并确认后导入。","import");
+        maintenanceRow(maintenance,"恢复默认设置","确认后恢复全部模块设置。","reset");
+        maintenanceRow(maintenance,"日志及运行诊断","检查框架、系统与桌面兼容性，查看日志与诊断。",null);
+        page.addView(maintenance,ui.margins(0,0,0,16));
     }
-
-    private void addCategorySection(String title, Category... categories) {
-        page.addView(ui.overline(title), ui.margins(3, 2, 3, 7));
-        LinearLayout panel = ui.card();
-        panel.setPadding(0, 0, 0, 0);
-        for (int i = 0; i < categories.length; i++) {
-            if (i > 0) addInsetDivider(panel);
-            addCategoryRow(panel, categories[i]);
-        }
-        page.addView(panel, ui.margins(0, 0, 0, 13));
+    private void maintenanceRow(LinearLayout card,String title,String help,String action){
+        if(card.getChildCount()>0)card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setMinimumHeight(ui.dp(56));
+        row.addView(ui.featureTitle(title,help),new LinearLayout.LayoutParams(0,-2,1));
+        ImageView arrow=new ImageView(this);arrow.setImageDrawable(new GlassIcon("arrow",ui.muted));row.addView(arrow,new LinearLayout.LayoutParams(ui.dp(18),ui.dp(22)));
+        row.setBackground(ui.pressable(ui.round(Color.TRANSPARENT,12)));row.setClickable(true);row.setFocusable(true);
+        row.setOnClickListener(v->{if(action==null)ModuleNavigation.open(this,"compatibility_help");else startActivity(new Intent(this,ConfigTransferActivity.class).putExtra("action",action));});
+        card.addView(row,ui.wrap());
     }
-
-    private void addCategoryRow(LinearLayout panel, Category category) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.dp(12), ui.dp(10), ui.dp(10), ui.dp(10));
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(category.icon);
-        icon.setColorFilter(ui.accent);
-        icon.setPadding(ui.dp(7), ui.dp(7), ui.dp(7), ui.dp(7));
-        icon.setBackground(ui.round(ui.accentContainer, 10));
-        row.addView(icon, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
-
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.addView(ui.text(category.label, 14, ui.text, true), ui.wrap());
-        TextView detail = ui.text(categoryDescription(category.id), 10.5f, ui.muted, false);
-        detail.setMaxLines(2);
-        copy.addView(detail, ui.margins(0, 3, 0, 0));
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
-        copyParams.setMargins(ui.dp(10), 0, ui.dp(6), 0);
-        row.addView(copy, copyParams);
-
-        ImageView arrow = new ImageView(this);
-        arrow.setImageResource(R.drawable.ic_chevron_right);
-        arrow.setColorFilter(ui.muted);
-        arrow.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), ui.dp(10));
-        row.addView(arrow, new LinearLayout.LayoutParams(ui.dp(24), ui.dp(44)));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setContentDescription("进入" + category.label);
-        row.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 10)));
-        row.setOnClickListener(view -> selectCategory(category.id));
-        panel.addView(row, ui.wrap());
-    }
-
-    private String categoryDescription(String category) {
-        switch (category) {
-            case HIDE: return "应用隐藏、自动化与快捷恢复";
-            case GAME: return "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神策略";
-            case SYSTEM: return "小窗增强、双排布局、时钟与实时数据";
-            case APPS: return "应用双开、主题试用与安装兼容能力";
-            case TOOLS: return "桌面入口、诊断、日志与恢复";
-            default: return "模块运行状态与版本";
-        }
-    }
-
-    private void renderGame() {
-        beginPanel("", "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神共存策略。", true);
-        addModule("肩键全应用", "对加入游戏空间的所有应用开放肩键使用。",
-                AppConfig.SHOULDER_ENABLED, FeatureActivity.MODULE_SHOULDER,
-                ScopeRestartDialog.GAMES, null);
-        addModule("AI 触发器极速", "降低模板、点击队列和 YOLO 的等待间隔。",
-                AppConfig.AI_TRIGGER_ENABLED, FeatureActivity.MODULE_AI_TRIGGER,
-                ScopeRestartDialog.GAMES, null);
-        addModule("风扇固定转速", "匹配最接近的硬件档位，并可解禁驱动 5 档满速。",
-                AppConfig.FAN_FIXED_ENABLED, FeatureActivity.MODULE_FAN_CONTROL,
-                ScopeRestartDialog.GAMES, null);
-        addModule("一键连招速度", "调整游戏助手录制连招的播放倍率。",
-                AppConfig.COMBO_SPEED_ENABLED, FeatureActivity.MODULE_COMBO_SPEED,
-                ScopeRestartDialog.GAMES, null);
-        addModule("超分破坏神", "性能模式超分与破坏神共存策略。",
-                AppConfig.SUPER_MIRROR_LOW_MODE, FeatureActivity.MODULE_SUPER_RESOLUTION,
-                ScopeRestartDialog.GAMES, null);
-    }
-
-    private void renderSystem() {
-        beginPanel("", "Android 16 小窗策略、SystemUI 布局与实时信息。", true);
-        addModule("小窗增强", "解除窗口数量上限，并强制普通应用进入小窗。",
-                AppConfig.FREEFORM_ENABLED, FeatureActivity.MODULE_FREEFORM,
-                ScopeRestartDialog.DEVICE, null);
-        addModule("音量增强", "支持超过原厂 100%，按输出设备与声音类型设置。",
-                ConfigSchema.AUDIO_GAIN_ENABLED, FeatureActivity.MODULE_AUDIO_GAIN,
-                ScopeRestartDialog.DEVICE, null);
-        addUtility("电池与循环次数", "实际循环记录、容量及原厂循环降压策略。",
-                "读取硬件数据", FeatureActivity.MODULE_BATTERY);
-        addModule("状态栏", "统一设置双排布局、时钟、硬件网速和图标大小。",
-                AppConfig.SYSTEMUI_MASTER, FeatureActivity.MODULE_STATUS_LAYOUT,
-                ScopeRestartDialog.SYSTEM_UI, null);
-    }
-
-    private void renderApps() {
-        beginPanel("", "保留原厂管理流程，只扩展对应能力。", true);
-        addUtility("步数修改", "真实记录倍速、随机时间增步、每日重复与账户绑定。",
-                config.getBoolean(ConfigSchema.HEALTH_ENABLED)?"已启用":"配置步数计划", "mi_health");
-        addUtility("APP图标名称编辑", "按空间选择应用，自定义图标、裁剪图片、修改名称。", "打开编辑器", "launcher_custom");
-        addModule("允许安装签名不一致的应用",
-                "用不同签名的 APK 覆盖同包名应用；默认关闭。",
-                AppConfig.ALLOW_SIGNATURE_MISMATCH,
-                FeatureActivity.MODULE_SIGNATURE_INSTALL,
-                ScopeRestartDialog.DEVICE, null);
-        addModule("扩展应用双开", "保留红魔原生候选并补充第三方 App。",
-                AppConfig.DOUBLE_ANY_APP, FeatureActivity.MODULE_DOUBLE_APP,
-                ScopeRestartDialog.APPS, null);
-        addModule("应用商店同时下载限制解除", "设置允许同时下载的应用数量。", ConfigSchema.STORE_DOWNLOAD_ENABLED, "store_download", ScopeRestartDialog.APPS, null);
-        addModule("主题无限期试用", "仅处理已确认试用资源的本地到期复位。",
-                AppConfig.BEAUTIFY_UNLIMITED_TRIAL, FeatureActivity.MODULE_BEAUTIFY,
-                ScopeRestartDialog.APPS, null);
-    }
-
-    private void renderTools() {
-        beginPanel("模块设置", "", true);
-        addUtility("桌面图标", "隐藏或恢复 LS_Augment 自身桌面入口。", "", FeatureActivity.MODULE_LAUNCHER_ICON);
-        addUtility("运行诊断", "详细诊断与日志导出。", "", FeatureActivity.MODULE_DIAGNOSTICS);
-        addUtility("配置导入导出", "备份设置或导入已有配置。", "", "config_transfer");
-    }
-
-    private LinearLayout beginPanel(String title, String description, boolean attach) {
-        LinearLayout heading = ui.section(title, description);
-        if (!title.isEmpty()) page.addView(OVERVIEW.equals(selected)?ui.overline(title):heading, ui.margins(3, 0, 3, 7));
-        LinearLayout panel = ui.card();
-        panel.setPadding(0, 0, 0, 0);
-        activePanel = panel;
-        activePanelItems = 0;
-        if (attach) page.addView(panel, ui.margins(0, 0, 0, 13));
-        return panel;
-    }
-
-    private TextView addStatusRow(LinearLayout panel, int iconResource, String name,
-            String value, int valueColor) {
-        if (activePanelItems++ > 0) addInsetDivider(panel);
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.dp(13), ui.dp(10), ui.dp(13), ui.dp(10));
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(iconResource);
-        icon.setColorFilter(valueColor);
-        icon.setPadding(ui.dp(7), ui.dp(7), ui.dp(7), ui.dp(7));
-        icon.setBackground(ui.round(ui.accentContainer, 10));
-        row.addView(icon, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        TextView label = ui.text(name, 13.5f, ui.text, true);
-        copy.addView(label, ui.wrap());
-        TextView state = ui.text(value, 10.5f, valueColor, true);
-        state.setMaxLines(2);
-        copy.addView(state, ui.margins(0, 3, 0, 0));
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
-        copyParams.setMargins(ui.dp(10), 0, 0, 0);
-        row.addView(copy, copyParams);
-        panel.addView(row, ui.wrap());
-        return state;
-    }
-
-    private void addModule(String name, String description, String key, String module,
-            String scope, View.OnClickListener customOpen) {
-        boolean enabled = config.getBoolean(key);
-        if (activePanelItems++ > 0) addInsetDivider(activePanel);
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.dp(12), ui.dp(9), ui.dp(9), ui.dp(9));
-
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(moduleIcon(module, name));
-        icon.setColorFilter(ui.accent);
-        icon.setPadding(ui.dp(7), ui.dp(7), ui.dp(7), ui.dp(7));
-        icon.setBackground(ui.round(ui.accentContainer, 10));
-        row.addView(icon, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
-
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        TextView title = ui.text(name, 14, ui.text, true);
-        title.setMaxLines(2);
-        copy.addView(title, ui.wrap());
-        TextView detail = ui.text(description, 10.5f, ui.muted, false);
-        detail.setMaxLines(2);
-        detail.setLineSpacing(ui.dp(1), 1.04f);
-        copy.addView(detail, ui.margins(0, 3, 0, 0));
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
-        copyParams.setMargins(ui.dp(10), 0, ui.dp(4), 0);
-        row.addView(copy, copyParams);
-
-        Switch control = new Switch(this);
-        ui.styleSwitch(control);
-        control.setChecked(enabled);
-        control.setContentDescription(name + (enabled ? "已开启" : "已关闭"));
-
-
-        ImageView enter = new ImageView(this);
-        enter.setImageResource(R.drawable.ic_chevron_right);
-        enter.setColorFilter(ui.muted);
-        enter.setPadding(ui.dp(4), ui.dp(11), ui.dp(4), ui.dp(11));
-        enter.setContentDescription("打开" + name + "详情");
-        row.addView(enter, new LinearLayout.LayoutParams(ui.dp(22), ui.dp(44)));
-
-        View.OnClickListener open = customOpen != null ? customOpen : view -> openModule(module);
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 10)));
-        row.setOnClickListener(open);
-        enter.setOnClickListener(open);
-        control.setOnCheckedChangeListener((button, checked) -> saveQuickSwitch(
-                key, checked, control, name, scope));
-        activePanel.addView(row, ui.wrap());
-    }
-
-    private void addUtility(String name, String description, String status, String module) {
-        if (activePanelItems++ > 0) addInsetDivider(activePanel);
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.dp(12), ui.dp(10), ui.dp(10), ui.dp(10));
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(moduleIcon(module, name));
-        icon.setColorFilter(ui.accent);
-        icon.setPadding(ui.dp(7), ui.dp(7), ui.dp(7), ui.dp(7));
-        icon.setBackground(ui.round(ui.accentContainer, 10));
-        row.addView(icon, new LinearLayout.LayoutParams(ui.dp(36), ui.dp(36)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.addView(ui.text(name, 14, ui.text, true), ui.wrap());
-        TextView detail = ui.text(description, 10.5f, ui.muted, false);
-        detail.setMaxLines(2);
-        copy.addView(detail, ui.margins(0, 3, 0, 0));
-
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
-        copyParams.setMargins(ui.dp(10), 0, ui.dp(5), 0);
-        row.addView(copy, copyParams);
-        ImageView enter = new ImageView(this);
-        enter.setImageResource(R.drawable.ic_chevron_right);
-        enter.setColorFilter(ui.muted);
-        enter.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), ui.dp(10));
-        row.addView(enter, new LinearLayout.LayoutParams(ui.dp(24), ui.dp(44)));
-        View.OnClickListener open = view -> openModule(module);
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 10)));
-        row.setOnClickListener(open);
-        enter.setOnClickListener(open);
-        activePanel.addView(row, ui.wrap());
-    }
-
-    private void addInsetDivider(LinearLayout parent) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, ui.dp(1));
-        params.setMargins(ui.dp(16), 0, ui.dp(16), 0);
-        parent.addView(ui.divider(), params);
-    }
-
-    private int moduleIcon(String module, String name) {
-        if (FeatureActivity.MODULE_SIGNATURE_INSTALL.equals(module)) {
-            return android.R.drawable.ic_lock_lock;
-        }
-        if (FeatureActivity.MODULE_SHOULDER.equals(module)
-                || FeatureActivity.MODULE_COMBO_SPEED.equals(module)
-                || FeatureActivity.MODULE_AI_TRIGGER.equals(module)
-                || FeatureActivity.MODULE_FAN_CONTROL.equals(module)
-                || FeatureActivity.MODULE_SUPER_RESOLUTION.equals(module)
-                || FeatureActivity.MODULE_DIABLO_COEXIST.equals(module)) {
-            return android.R.drawable.ic_menu_manage;
-        }
-        if (FeatureActivity.MODULE_FREEFORM.equals(module)) {
-            return android.R.drawable.ic_menu_view;
-        }
-        if (FeatureActivity.MODULE_STATUS_LAYOUT.equals(module)
-                || FeatureActivity.MODULE_STATUS_CLOCK.equals(module)
-                || FeatureActivity.MODULE_STATUS_METRICS.equals(module)) {
-            return android.R.drawable.ic_menu_info_details;
-        }
-        if (FeatureActivity.MODULE_DOUBLE_APP.equals(module)) {
-            return android.R.drawable.ic_menu_add;
-        }
-        if (FeatureActivity.MODULE_BEAUTIFY.equals(module)) {
-            return android.R.drawable.ic_menu_gallery;
-        }
-        if (FeatureActivity.MODULE_AUTOMATION.equals(module)) {
-            return android.R.drawable.ic_lock_idle_lock;
-        }
-        if (FeatureActivity.MODULE_TILE.equals(module)) {
-            return android.R.drawable.ic_menu_share;
-        }
-        if (name.contains("消失吧")) return android.R.drawable.ic_menu_close_clear_cancel;
-        return android.R.drawable.ic_menu_preferences;
-    }
-
-    private void saveQuickSwitch(String key, boolean checked, Switch control,
-            String label, String scope) {
-        control.setEnabled(false);
-        LinkedHashMap<String, String> updates = new LinkedHashMap<>();
-        updates.put(key, checked ? "1" : "0");
-        String master = masterFor(key);
-        if (checked && master != null) updates.put(master, "1");
-        executor.execute(() -> {
-            AppConfig.SaveResult result = config.save(updates);
-            if (AppConfig.AUTOMATION_ENABLED.equals(key) && result.success) {
-                ScreenAutomation.sync(this);
+    private void launcherIconSetting(){
+        LinearLayout card=settingCard("桌面图标","显示或隐藏 LS_Augment 的桌面入口。隐藏后仍可从 LSPosed 管理器的模块设置进入。","apps");
+        Switch toggle=new Switch(this);ui.styleSwitch(toggle);
+        toggle.setTag("settings-launcher-icon-switch");toggle.setContentDescription("桌面图标");
+        ComponentName alias=new ComponentName(this,getPackageName()+".LauncherAlias");
+        PackageManager packages=getPackageManager();
+        toggle.setChecked(packages.getComponentEnabledSetting(alias)!=PackageManager.COMPONENT_ENABLED_STATE_DISABLED);
+        card.addView(toggle,new LinearLayout.LayoutParams(-2,ui.dp(44)));
+        card.addView(ui.switchSlot(),new LinearLayout.LayoutParams(ui.dp(28),ui.dp(44)));
+        boolean[] binding={false};
+        toggle.setOnCheckedChangeListener((button,visible)->{
+            if(binding[0])return;
+            try {
+                packages.setComponentEnabledSetting(alias,visible?PackageManager.COMPONENT_ENABLED_STATE_ENABLED:
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,PackageManager.DONT_KILL_APP);
+            } catch(RuntimeException error) {
+                binding[0]=true;
+                try { toggle.setChecked(packages.getComponentEnabledSetting(alias)!=PackageManager.COMPONENT_ENABLED_STATE_DISABLED); }
+                finally { binding[0]=false; }
+                Toast.makeText(this,"桌面图标未能更新，请重试",Toast.LENGTH_SHORT).show();
             }
-            main.post(() -> {
-                control.setEnabled(true);
-                if (!result.success) {
-                    control.setOnCheckedChangeListener(null);
-                    control.setChecked(!checked);
-                    control.setOnCheckedChangeListener((button, value) -> saveQuickSwitch(
-                            key, value, control, label, scope));
+        });
+        card.setForeground(ui.pressable(ui.round(Color.TRANSPARENT,22)));card.setClickable(true);
+        card.setOnClickListener(v->toggle.toggle());
+        page.addView(card,ui.margins(0,0,0,9));
+    }
+    private void group(String title){page.addView(ui.text(title,12,ui.muted,true),ui.margins(3,8,0,16));}
+    private void setting(String title,String summary,String glyph,String route){
+        LinearLayout card=settingCard(title,summary,glyph);
+        ImageView arrow=new ImageView(this);arrow.setImageDrawable(new GlassIcon("arrow",ui.muted));card.addView(arrow,new LinearLayout.LayoutParams(ui.dp(15),ui.dp(15)));card.setForeground(ui.pressable(ui.round(Color.TRANSPARENT,22)));card.setClickable(true);card.setFocusable(true);
+        card.setOnClickListener(v->ModuleNavigation.open(this,route));page.addView(card,ui.margins(0,0,0,9));
+    }
+    private LinearLayout settingCard(String title,String summary,String glyph){
+        LinearLayout card=ui.card();card.setOrientation(LinearLayout.HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setMinimumHeight(ui.dp(76));
+        ImageView icon=new ImageView(this);icon.setImageDrawable(new GlassIcon(glyph,ui.accent));icon.setPadding(ui.dp(8),ui.dp(8),ui.dp(8),ui.dp(8));icon.setBackground(ui.round(ui.accentContainer,12));card.addView(icon,new LinearLayout.LayoutParams(ui.dp(38),ui.dp(38)));
+        LinearLayout copy=new LinearLayout(this);copy.setOrientation(LinearLayout.VERTICAL);copy.addView(ui.featureTitle(title,summary));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(ui.dp(12),0,ui.dp(6),0);card.addView(copy,p);
+        return card;
+    }
+    private void onSystemVersionTapped(){if(!ABOUT.equals(selected))return;HiddenEntrySession.TapResult result=HiddenEntrySession.recordSystemVersionTap(SystemClock.uptimeMillis());if(result==HiddenEntrySession.TapResult.NONE)return;Toast.makeText(this,"完整功能已开放",Toast.LENGTH_SHORT).show();}
+    int iconGeneration(){return inventoryGeneration;}
+    private void loadInventory(){
+        int request=inventoryRequest.incrementAndGet();
+        worker.execute(()->{
+            if(request!=inventoryRequest.get())return;
+            Map<String,Drawable> found=new HashMap<>();Set<String> absent=new HashSet<>();
+            for(HookAppCatalog.Target target:HookAppCatalog.targets()){
+                boolean installed=false;
+                for(String scope:target.packages)try{
+                    // The RedMagic PackageManager applies the current icon theme itself.
+                    // "system" is a hook scope, while its display icon belongs to Android.
+                    String pkg="system".equals(scope)?"android":scope;
+                    found.put(target.id,getPackageManager().getApplicationIcon(pkg));installed=true;break;
+                }catch(android.content.pm.PackageManager.NameNotFoundException ignored){}
+                catch(RuntimeException unavailable){
+                    found.put(target.id,getPackageManager().getDefaultActivityIcon());installed=true;break;
                 }
-                Toast.makeText(this, result.success
-                        ? label + (checked ? "已开启；需要时使用右上角重启" : "已关闭")
-                        : result.message, Toast.LENGTH_LONG).show();
-                renderCategory();
+                if(!installed)absent.add(target.id);
+            }
+            main.post(()->{
+                if(isDestroyed()||request!=inventoryRequest.get())return;
+                icons.clear();icons.putAll(found);missing.clear();missing.addAll(absent);inventoryGeneration=request;
+                renderAppList();((LiquidGlassLayout)navigation).refreshBackdrop();
             });
         });
     }
-
-    private String masterFor(String key) {
-        if (AppConfig.SHOULDER_ENABLED.equals(key)
-                || AppConfig.AI_TRIGGER_ENABLED.equals(key)
-                || AppConfig.TGK_RAPID_FIRE_ENABLED.equals(key)
-                || AppConfig.COMBO_SPEED_ENABLED.equals(key)
-                || AppConfig.FAN_FIXED_ENABLED.equals(key)
-                || AppConfig.SUPER_MIRROR_LOW_MODE.equals(key)
-                || AppConfig.SUPER_MIRROR_DIABLO_COEXIST.equals(key)) return AppConfig.GAME_MASTER;
-        if (key.startsWith("ls_augment_statusbar_")) return AppConfig.SYSTEMUI_MASTER;
-        if (AppConfig.DOUBLE_ANY_APP.equals(key) || AppConfig.DOUBLE_LOW_MEMORY.equals(key)
-                || AppConfig.BEAUTIFY_UNLIMITED_TRIAL.equals(key)) return AppConfig.APP_MASTER;
-        return null;
-    }
-
-    private void openModule(String module) {
-        if ("config_transfer".equals(module)) { startActivity(new Intent(this, ConfigTransferActivity.class)); return; }
-        if ("launcher_custom".equals(module)) {
-            startActivity(new Intent(this, LauncherCustomizationActivity.class));
-            return;
-        }
-        if ("mi_health".equals(module)) {
-            startActivity(new Intent(this, HealthSettingsActivity.class));
-            return;
-        }
-        Intent intent = new Intent(this, FeatureActivity.class);
-        intent.putExtra(FeatureActivity.EXTRA_MODULE, module);
-        startActivity(intent);
-    }
-
-    private String launcherIconStatus() {
-        android.content.ComponentName alias = new android.content.ComponentName(
-                this, getPackageName() + ".LauncherAlias");
-        return getPackageManager().getComponentEnabledSetting(alias)
-                == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                ? "桌面隐藏" : "桌面显示";
-    }
-
-    private String[] categoryCopy(String category) {
-        switch (category) {
-            case HIDE: return new String[]{"消失吧APP", "隐藏、自动化与快捷入口。"};
-            case GAME: return new String[]{"游戏增强", "肩键、AI 触发器、风扇、一键连招速度、超分辨率与破坏神策略。"};
-            case SYSTEM: return new String[]{"系统增强", "小窗增强、Android 16 布局、时钟与实时数据。"};
-            case APPS: return new String[]{"应用增强", "安装兼容、红魔双开扩展与主题无限期试用。"};
-            case TOOLS: return new String[]{"工具", "桌面入口、运行诊断与恢复。"};
-            default: return new String[]{"概览", "先确认运行状态，再进入具体功能。"};
-        }
-    }
-
-    private void onVersionTapped() {
-        HiddenEntrySession.TapResult result = HiddenEntrySession.recordVersionTap(
-                SystemClock.uptimeMillis());
-        if (result == HiddenEntrySession.TapResult.NONE) return;
-        if (result == HiddenEntrySession.TapResult.OPENED) {
-            renderCategory();
-            Toast.makeText(this, "完整功能开放", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "完整功能已开放", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void refreshEnvironment() {
-        executor.execute(() -> {
-            config.cleanupRetiredRuntimeSettings();
-            RootHideManager manager = new RootHideManager(this);
-            RootHideManager.RootStatus root = manager.rootStatus();
-            RootHideManager.ConflictState conflict = root.state == RootHideManager.RootState.GRANTED
-                    ? manager.conflictState()
-                    : new RootHideManager.ConflictState(false, false, "未执行冲突检测");
-            RootShell.Result posed = root.state == RootHideManager.RootState.GRANTED
-                    ? RootShell.run("pidof system_server; cat /proc/sys/kernel/random/boot_id; "
-                    + "settings get global ls_augment_system_server_lifecycle", null, 6, 4096)
-                    : new RootShell.Result(126, "LSPosed 状态暂不可读", false);
-            String rootText = root.state == RootHideManager.RootState.GRANTED
-                    ? "Root · 已授权" : "Root · " + root.message;
-            String[] runtime = posed.output.split("\\r?\\n", 3);
-            String currentPid = runtime.length > 0 ? runtime[0].trim() : "";
-            String bootId = runtime.length > 1 ? runtime[1].trim() : "";
-            String earlyWitness = runtime.length > 2 ? runtime[2].trim() : "";
-            String providerWitness = getSharedPreferences(AppConfig.DIAGNOSTICS, 0)
-                    .getString("ls_augment_system_server_lifecycle", "");
-            boolean moduleCurrent = posed.isSuccess()
-                    && (ModuleRuntimeStatus.matches(providerWitness, BuildConfig.VERSION_NAME, currentPid, bootId)
-                    || ModuleRuntimeStatus.matches(earlyWitness, BuildConfig.VERSION_NAME, currentPid, bootId));
-            String currentWitness=ModuleRuntimeStatus.matches(providerWitness, BuildConfig.VERSION_NAME, currentPid, bootId)?providerWitness:earlyWitness;
-            String apiVersion=moduleCurrent?ModuleRuntimeStatus.apiVersion(currentWitness):"";
-            String posedText = moduleCurrent ? "LSPosed"+(apiVersion.isEmpty()?"":" "+apiVersion)+" 已加载"
-                    : "LSPosed · 当前版本尚未在系统生效";
-            String versionText = BuildConfig.VERSION_NAME;
-            main.post(() -> {
-                if (rootState != null) {
-                    rootState.setVisibility(root.state == RootHideManager.RootState.GRANTED?View.GONE:View.VISIBLE);
-                    rootState.setText(rootText);
-                    rootState.setTextColor(root.state == RootHideManager.RootState.GRANTED
-                            ? ui.cyan : ui.danger);
-                }
-                if (lsposedState != null) {
-                    lsposedState.setText(posedText);
-                    lsposedState.setTextColor(moduleCurrent ? ui.cyan : ui.warning);
-                }
-                if (compatibilityState != null) {
-                    compatibilityState.setText(versionText);
-                    compatibilityState.setTextColor(conflict.hasConflict() ? ui.warning : ui.accent);
-                }
-            });
-        });
-    }
-
-    private static final class Category {
-        final String id;
-        final String label;
-        final int icon;
-
-        Category(String id, String label, int icon) {
-            this.id = id;
-            this.label = label;
-            this.icon = icon;
-        }
+    private void refreshEnvironment(){
+        if(environmentLoading)return;environmentLoading=true;boolean request=!requestedRoot;requestedRoot=true;
+        worker.execute(()->{RootHideManager manager=new RootHideManager(this);RootHideManager.RootStatus root=request?manager.requestRootStatus():manager.rootStatus();
+            RootShell.Result posed=root.state==RootHideManager.RootState.GRANTED?RootShell.run("pidof system_server; cat /proc/sys/kernel/random/boot_id",null,6,4096):new RootShell.Result(126,"",false);
+            String[] values=posed.output.split("\\r?\\n",2);String pid=values.length>0?values[0].trim():"",boot=values.length>1?values[1].trim():"";
+            String witness=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString("ls_augment_system_server_lifecycle","");boolean active=posed.isSuccess()&&ModuleRuntimeStatus.matches(witness,BuildConfig.VERSION_NAME,pid,boot);
+            String status=active?"●  模块已激活":"○  当前版本等待框架加载";String detail=root.state==RootHideManager.RootState.GRANTED?"Root 已授权 · "+BuildConfig.VERSION_NAME:"配置需要 Root 权限 · 点此重新检测";
+            main.post(()->{if(isDestroyed())return;environmentLoading=false;runtimeActive=active;runtimeText=status;rootText=detail;if(runtimeState!=null){runtimeState.setText(status);runtimeState.setTextColor(active?ui.cyan:ui.accent);}if(rootState!=null)rootState.setText(detail);});});
     }
 }

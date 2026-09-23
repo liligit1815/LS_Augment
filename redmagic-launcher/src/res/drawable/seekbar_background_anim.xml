@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<animated-selector
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true" android:id="@id/pressed" android:drawable="@drawable/seekbar_background_pressed" />
-    <item android:id="@id/unpressed" android:drawable="@drawable/seekbar_background_unpressed" />
-</animated-selector>

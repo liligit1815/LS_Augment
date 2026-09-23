@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:paddingStart="@dimen/mfvc_xlarge_padding" android:paddingEnd="@dimen/mfvc_xlarge_padding"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cpbz="http://schemas.android.com/apk/res-auto">
-    <TextView android:id="@id/progress_percent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_below="@android:id/progress" android:layout_alignParentEnd="true" style="@style/mfvc_secondary_font" />
-    <TextView android:id="@id/progress_number" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_below="@android:id/progress" android:layout_alignParentStart="true" style="@style/mfvc_secondary_font" />
-    <com.zte.mifavor.widget.ColorProgressBarZTE android:id="@android:id/progress" android:paddingTop="10.5dp" android:paddingBottom="8.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_centerHorizontal="true" cpbz:cpbz_touch_to_seek="false" style="@style/Widget.ZTE.Light.ColorProgressBarZTE" />
-</RelativeLayout>

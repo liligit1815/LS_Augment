@@ -15,8 +15,8 @@ final class HiddenEntrySession {
         return unlocked;
     }
 
-    static synchronized TapResult recordVersionTap(long now) {
-        if (now - lastTapAt > TAP_WINDOW_MS) tapCount = 0;
+    static synchronized TapResult recordSystemVersionTap(long now) {
+        if (now < lastTapAt || now - lastTapAt > TAP_WINDOW_MS) tapCount = 0;
         lastTapAt = now;
         tapCount++;
         if (tapCount < 7) return TapResult.NONE;
@@ -24,12 +24,6 @@ final class HiddenEntrySession {
         if (unlocked) return TapResult.ALREADY_OPEN;
         unlocked = true;
         return TapResult.OPENED;
-    }
-
-    static synchronized void unlock() {
-        unlocked = true;
-        tapCount = 0;
-        lastTapAt = 0L;
     }
 
     static synchronized void lock() {
