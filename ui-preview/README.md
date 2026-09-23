@@ -38,6 +38,6 @@
 
 精简后的项目已不含 `../outputs/ui-refresh-20288/screens/`、`../outputs/prototype-current/` 和 `../out/ui-faithful/`。网页现存图标、字体及 JSON 数据可独立使用，但 `prepare-current-assets.py`、`compare-current.py`、`import-native.py` 需要先恢复或重新采集对应输入；不要在缺少输入时执行导入，以免覆盖基准数据。`refine-current*.py` 是历史阶段修改脚本，不是日常启动或更新入口。
 
-历史验收记录见 `design-qa.md`，该文件被 Git 忽略，只在本地保留。逻辑检查：`node scripts/test-current-prototype.mjs`；旧配置兼容检查：`node scripts/test-prototype-settings.mjs`；类型检查：`npx tsc --noEmit`；构建：`npm run build`。上述命令是验证入口，不表示本轮全部执行并通过。
+历史验收记录见 `design-qa.md`，该文件被 Git 忽略，只在本地保留。逻辑检查：`node scripts/test-current-prototype.mjs`；旧配置兼容检查：`node scripts/test-prototype-settings.mjs`；类型检查：`npx tsc --noEmit`；构建：`npm run build`。2026-09-23 已在独立克隆、全新 npm 缓存安装依赖后执行并通过这些检查。
 
-本轮分组覆盖及关闭恢复检查：`node scripts/test-feature-groups.mjs`。
+本轮分组覆盖及关闭恢复检查：`node scripts/test-feature-groups.mjs`，已通过。换电脑步骤见[跨设备开发说明](../docs/跨设备开发说明.md)。

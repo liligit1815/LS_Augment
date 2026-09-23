@@ -2,7 +2,7 @@
 
 LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20354`，内部版本号 `20354`。** 以 [android/version.properties](android/version.properties) 为准。本文描述当前源码，不代表该版本已发布到 GitHub，也不代表所有设备均已验证。
+**当前源码版本：`2.0.0-alpha1-test20354`，内部版本号 `20354`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。源码同步不等于发布正式安装包，也不代表所有设备均已验证。
 
 ## 文档导航
 
@@ -12,6 +12,7 @@ LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配
 | [项目结构与文件说明](docs/项目结构与文件说明.md) | 当前目录、运行关系、逐文件用途及精简后的资料缺口 |
 | [配置项参考](docs/配置项参考-test20354.md) | 从当前通用配置源码提取的字段、默认值、范围和选项 |
 | [网页原型说明](ui-preview/README.md) | test20288 界面讨论原型的运行方式与版本边界 |
+| [跨设备开发说明](docs/跨设备开发说明.md) | 换电脑拉取、环境准备、验证结果、签名与当前开发进度 |
 
 ## 当前版本要点
 
@@ -59,6 +60,7 @@ LS_Augment/
 ├── docs/             当前功能说明、结构索引与配置参考
 ├── tools/            检查、回归、真机测试、构建辅助和签名工具
 ├── ui-preview/       独立网页界面原型，基准 test20288
+├── .gitattributes    统一跨平台换行，防止 Shell 资源构建失败
 ├── .gitignore        产物、过程目录和私有材料忽略规则
 ├── build-module.sh   构建并检查模块 APK
 ├── build-source.sh   打包可分发源码
@@ -97,9 +99,9 @@ Windows 也可直接构建：
 
 签名由 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量注入；未注入时使用本机默认调试签名，**不能保证覆盖已有版本**。公开 `.pem` 证书不能代替私钥。
 
-Shell 文件需保持 UTF-8 无 BOM、LF 换行。当前根目录没有 `.gitattributes`，Windows 检出／编辑时需检查换行；构建会检查打包用的 Shell 资源。
+Shell 文件需保持 UTF-8 无 BOM、LF 换行。`.gitattributes` 固定源码为 LF、Windows 批处理为 CRLF；构建会检查打包用的 Shell 资源。Windows 执行 Bash 命令时使用 Git Bash。
 
-本轮只整理源码说明，没有执行手机操作或完整 Android 构建。上一轮检查发现的风扇旧文案断言、状态栏测试模拟缺项仍需单独修正；源码存在、检查通过和真机验收是不同层面的结论。
+2026-09-23 在独立克隆、全新 Gradle／npm 缓存下验证：Android 完整编译、APK 元数据与对齐检查、125 组项目检查、Java 回归、源码打包、网页三项逻辑检查、类型检查和构建均通过。旧风扇文案断言与状态栏测试模拟已同步当前实现。没有连接手机，也未在另一台实体电脑实测；环境与复现步骤见[跨设备开发说明](docs/跨设备开发说明.md)。
 
 ## 网页原型
 
