@@ -55,9 +55,12 @@ public final class ConnectivityIconPainter {
                     +Math.asin((dotRadius(lowerScale)+ringStroke/2+1.1f)/35.5f));
             signalGap=Math.max(signalGap,innerGap);
         }
-        float total=280-2*signalGap,progress=total*state.batteryFraction();
+        String upper=contents!=null&&contents.length>0?contents[0]:DEFAULTS[0];
+        boolean closedTop="none".equals(upper);
+        float startAngle=closedTop?270:230;
+        float total=(closedTop?360:280)-2*signalGap,progress=total*state.batteryFraction();
         paint.setColor(dim);
-        batteryArc(canvas,0,total,signalGap);
+        batteryArc(canvas,0,total,signalGap,startAngle);
         int ring=colored?(state.charging?0xff29b879:state.battery<=20?0xffe34a50:foreground):foreground;
         if(batteryColors!=null&&batteryColors.length>=4&&state.battery>=0){
             int band=SystemUiPolicy.batteryBand(state.battery);
@@ -65,7 +68,7 @@ public final class ConnectivityIconPainter {
         }
         int alpha=batteryColors!=null&&batteryColors.length>=4?Color.alpha(ring):Color.alpha(foreground);
         ring=(ring&0xffffff)|(alpha<<24);paint.setColor(ring);
-        batteryArc(canvas,0,progress,signalGap);
+        batteryArc(canvas,0,progress,signalGap,startAngle);
         for(int region=0;region<3;region++){
             String content=contents!=null&&region<contents.length?contents[region]:DEFAULTS[region];
             float scale=contentScale(scales,region);
@@ -98,14 +101,14 @@ public final class ConnectivityIconPainter {
         int value=scales!=null&&region<scales.length?scales[region]:100;
         return Math.max(ConfigSchema.CONNECTIVITY_SCALE_MIN,Math.min(ConfigSchema.CONNECTIVITY_SCALE_MAX,value))/100f;
     }
-    private void batteryArc(Canvas canvas,float from,float to,float halfGap){
+    private void batteryArc(Canvas canvas,float from,float to,float halfGap,float startAngle){
         if(to<=from)return;
-        float first=140-halfGap;
-        if(halfGap<=0){canvas.drawArc(arc,230-from,from-to,false,paint);return;}
+        float first=startAngle-90-halfGap;
+        if(halfGap<=0){canvas.drawArc(arc,startAngle-from,from-to,false,paint);return;}
         float stop=Math.min(to,first);
-        if(stop>from)canvas.drawArc(arc,230-from,from-stop,false,paint);
+        if(stop>from)canvas.drawArc(arc,startAngle-from,from-stop,false,paint);
         float start=Math.max(from,first);
-        if(to>start)canvas.drawArc(arc,230-start-2*halfGap,start-to,false,paint);
+        if(to>start)canvas.drawArc(arc,startAngle-start-2*halfGap,start-to,false,paint);
     }
     private static float dotRadius(float scale){return 2.15f*scale;}
     private static float dotSpacing(float scale){return 6.96f*scale;}

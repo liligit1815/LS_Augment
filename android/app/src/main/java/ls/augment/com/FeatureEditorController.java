@@ -1215,7 +1215,7 @@ final class FeatureEditorController extends NativeEditorController {
         page.addView(master, ui.margins(0, 0, 0, 12));
         LinearLayout spacing = new LinearLayout(this);
         spacing.setOrientation(LinearLayout.VERTICAL);
-        addNumber(spacing, AppConfig.STATUSBAR_HEIGHT_DP, "状态栏高度 dp（0 跟随系统）", false);
+        addNumber(spacing, AppConfig.STATUSBAR_HEIGHT_DP, "状态栏高度 dp（0 原厂，负数减小）", false);
         addNumber(spacing, AppConfig.STATUSBAR_LEFT_MARGIN_DP, "左边距 dp", false);
         addNumber(spacing, AppConfig.STATUSBAR_RIGHT_MARGIN_DP, "右边距 dp", false);
         addNumber(spacing, AppConfig.STATUSBAR_TOP_MARGIN_DP, "上边距 dp", false);

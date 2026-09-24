@@ -24,6 +24,14 @@ final class ProviderDiagnostics {
             if (normalized.equals(stored.get(key))) return Result.ACCEPTED;
             if (!DiagnosticWritePolicy.fits(stored, key, normalized)) return Result.FULL;
             prefs.edit().putString(key, normalized).apply();
+            // Latest-value metrics stay out of the event log. Only error transitions
+            // need a durable timestamp; successful recovery must not erase history.
+            if (key.endsWith("_error") && !(key.equals("ls_augment_systemui_last_error")
+                    && normalized.startsWith("grid_layout:"))) {
+                if (!normalized.isEmpty()) AuditLog.write(context, "DIAGNOSTIC_ERROR", key + "=" + normalized);
+                else if (stored.get(key) instanceof String && !((String) stored.get(key)).isEmpty())
+                    AuditLog.write(context, "DIAGNOSTIC_RECOVERED", key);
+            }
             return Result.ACCEPTED;
         }
     }

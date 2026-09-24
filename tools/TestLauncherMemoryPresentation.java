@@ -1,5 +1,6 @@
 import java.util.Locale;
 import ls.augment.com.LauncherMemoryPresentation;
+import ls.augment.com.LauncherMemoryLayout;
 
 public final class TestLauncherMemoryPresentation {
     private static int checks;
@@ -10,6 +11,20 @@ public final class TestLauncherMemoryPresentation {
     }
 
     public static void main(String[] args) {
+        for(int degrees:new int[]{0,90,180,270,-90,450}){
+            LauncherMemoryLayout region=new LauncherMemoryLayout(degrees,11,23,1050,1850);
+            double angle=Math.toRadians(region.rotation);
+            for(int[] size:new int[][]{{300,60},{region.width,region.height}}){
+                int x=region.width-size[0],y=region.height-size[1];
+                for(int cx:new int[]{0,size[0]})for(int cy:new int[]{0,size[1]}){
+                    double actualX=region.x(x,y)+cx*Math.cos(angle)-cy*Math.sin(angle);
+                    double actualY=region.y(x,y)+cx*Math.sin(angle)+cy*Math.cos(angle);
+                    if(actualX<10.99||actualX>1050.01||actualY<22.99||actualY>1850.01)
+                        throw new AssertionError("rotated label outside safe host: "+degrees);
+                    checks++;
+                }
+            }
+        }
         long gib = 1024L * 1024L * 1024L;
         String[][] expected = {
                 {"可用 3.00 GB  已用 5.00 GB  总量 8.00 GB", "可用 3.00 GB  已用 5.00 GB", "可用 3.00 GB", "已用 5.00 GB", "总量 8.00 GB"},

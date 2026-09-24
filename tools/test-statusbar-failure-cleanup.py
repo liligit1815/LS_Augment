@@ -69,6 +69,7 @@ public final class TestStatusBarFailureCleanup {
   static final String SYSTEMUI_LAST_ERROR="error",SYSTEMUI_ACTIVE="active",SYSTEMUI_LAYOUT_STATE="layout";
   static final Map<String,String> diagnostics=new LinkedHashMap<>();
   static void diagnostic(Context context,String key,String value){diagnostics.put(key,value);}
+  // DIAGNOSTIC_ERROR
   static boolean enabled(Context context,String key){return false;}
   static int integer(Context context,String key,int fallback,int min,int max){return fallback;}
  }
@@ -88,7 +89,7 @@ public final class TestStatusBarFailureCleanup {
   final Map<String,TextView> metrics=new LinkedHashMap<>();
   final TextView[] clockLines=new TextView[2];
   FrameLayout overlay;TextView keyguardClock;ConnectivityIconView connectivityIcon;
-  Handler worker;HandlerThread thread;long metricsGeneration;boolean active=true;
+  Handler worker;HandlerThread thread;long metricsGeneration;boolean active=true,layoutFailed;
   int px(float value){return Math.round(value);}
   // METHODS
   Runnable pendingSample(Map<String,String> values,long generation){return () -> // SAMPLE_BODY
@@ -173,6 +174,8 @@ public final class TestStatusBarFailureCleanup {
   check("0".equals(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_ACTIVE)),"diagnostics no longer claim the grid is active");
   check(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_LAST_ERROR).contains("grid_layout:java.lang.NullPointerException: unbound icon"),"original failure reason retained");
   check(!FeatureSettings.diagnostics.containsKey("ls_augment_statusbar_"+(keyguard?"phone":"keyguard")+"_layout_state"),"one surface cannot overwrite the other surface's evidence");
+  check(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_LAST_ERROR).contains(";build=4242;pid=123;time="),"failure version, PID and timestamp retained");
+  check(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_LAST_ERROR).contains(";stack="),"failure stack retained");
   long generationAfterFailure=state.metricsGeneration;
   state.failLayout(new IllegalStateException("repeat"));
   check(state.metricsGeneration>generationAfterFailure,"repeat cleanup still invalidates pending generations");
@@ -203,6 +206,7 @@ def main():
     sample = extract(source, 'main.post(()->{if(!active||metricsGeneration!=generation)return;')
     sample = sample[sample.index('{'):]
     harness = (HARNESS
+               .replace('// DIAGNOSTIC_ERROR', extract((SOURCE.parent / 'FeatureSettings.java').read_text(encoding='utf-8'), 'static void diagnosticError('))
                .replace('// GEOMETRY', extract(source, 'private static final class Geometry {'))
                .replace('// BASE_ID', extract(source, 'private static String baseId(String id)'))
                .replace('// METHODS', methods)
@@ -211,6 +215,8 @@ def main():
         temporary = Path(directory)
         files = []
         sources = {
+            'android/os/Process.java': 'package android.os;public class Process {public static int myPid(){return 123;}}',
+            'android/util/Log.java': 'package android.util;public class Log {public static String getStackTraceString(Throwable e){java.io.StringWriter w=new java.io.StringWriter();e.printStackTrace(new java.io.PrintWriter(w));return w.toString();}}',
             'ls/augment/com/hook/TestStatusBarFailureCleanup.java': harness,
             'ls/augment/com/BuildConfig.java': 'package ls.augment.com;public final class BuildConfig {public static final int VERSION_CODE=4242;}\n',
         }

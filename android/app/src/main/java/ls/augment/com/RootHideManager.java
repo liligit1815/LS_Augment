@@ -443,7 +443,9 @@ final class RootHideManager {
             reportProgress(progress, "正在更新应用状态…");
             OperationResult mirrored = syncMirrors();
             String action = hide ? "HIDE_ALL" : "SHOW_ALL";
-            AuditLog.write(context, action, "success=" + success + " failures=" + failures.size());
+            AuditLog.write(context, action, "success=" + success + " failures=" + failures.size()
+                    + " skipped=" + legacyTargets.size() + " mirrors=" + mirrored.success
+                    + (mirrored.success ? "" : ":" + mirrored.message));
             if (!legacyTargets.isEmpty()) return OperationResult.failure("已处理 " + success + " 个目标，失败 "
                     + failures.size() + " 个；已跳过 " + legacyTargets.size()
                     + " 个无法确认的普通应用，请在配置应用中重新核对选择");
@@ -528,7 +530,10 @@ final class RootHideManager {
             else result = commands.showInConfirmedBatch(target);
             if (result.success) outcome.success.add(target);
             else { outcome.failures.put(target, result.message); stopped = true; }
-            AuditLog.write(context, hide ? "HIDE" : "SHOW", target + " success=" + result.success);
+            // A successful batch already has one summary. Preserve individual failures.
+            if (!result.success || targets.size() == 1)
+                AuditLog.write(context, hide ? "HIDE" : "SHOW", target + " success=" + result.success
+                        + (result.success ? "" : " reason=" + result.message));
         }
         return outcome;
     }

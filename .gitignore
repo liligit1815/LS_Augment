@@ -14,6 +14,21 @@ __pycache__/
 *.py[cod]
 *.tsbuildinfo
 *.class
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.dex
+*.aar
+*.jar
+!/android/gradle/wrapper/gradle-wrapper.jar
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
 
 # 独立桌面仓库自行管理版本，不纳入模块仓库
 /LS_RedMagicLauncher/
@@ -28,6 +43,10 @@ __pycache__/
 *.aab.sha256
 *-source.zip
 *-source.zip.sha256
+*.zip
+*.7z
+*.tar
+*.gz
 
 # 历史诊断、截图录像工作目录和本地备份
 *.log
@@ -76,3 +95,4 @@ RECENTS_TEST_ANALYSIS_20260814.md
 RECENTS_UPGRADE_TEST_REPORT_20260815.md
 SHOULDER_KEYS_PLAN.md
 design-qa.md
+/docs/修复记录-*.md

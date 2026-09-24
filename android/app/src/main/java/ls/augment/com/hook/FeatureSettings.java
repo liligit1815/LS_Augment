@@ -269,16 +269,23 @@ final class FeatureSettings {
     }
 
     static void diagnostic(Context context, String key, String value) {
-        HookTelemetry.event(key + "=" + value);
         if (key == null) return;
         Context application = remember(context);
         if (application == null) return;
         String text = value == null ? "" : value;
         String previous = DIAGNOSTIC_VALUES.put(key, text);
         if (text.equals(previous)) return;
+        HookTelemetry.event(key + "=" + text);
         if (DIAGNOSTICS.size() >= 512 && !DIAGNOSTICS.containsKey(key)) return;
         DIAGNOSTICS.put(key, new PendingDiagnostic(application, text));
         scheduleWrites();
+    }
+
+    static void diagnosticError(Context context, String key, String source, Throwable error) {
+        String stack = android.util.Log.getStackTraceString(error);
+        if (stack.length() > 1500) stack = stack.substring(0, 1500) + " [TRUNCATED]";
+        diagnostic(context, key, source + ":" + error + ";build=" + ls.augment.com.BuildConfig.VERSION_CODE
+                + ";pid=" + android.os.Process.myPid() + ";time=" + System.currentTimeMillis() + ";stack=" + stack);
     }
 
     static float decimal(Context context, String key, float fallback, float min, float max) {

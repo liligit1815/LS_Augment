@@ -82,6 +82,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestStatusBarTransform.java" \
   "$ROOT/tools/TestLauncherCompatibility.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherMemoryPresentation.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/LauncherMemoryLayout.java" \
   "$ROOT/tools/TestLauncherMemoryPresentation.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/hook/LauncherPageOrder.java" \
   "$ROOT/tools/TestLauncherPageOrder.java" \
@@ -135,6 +136,8 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestAudioGainPolicy.java" \
   "$ROOT/tools/TestBatteryLifePolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/BoundedLog.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/LogRepeatPolicy.java" \
+  "$ROOT/tools/TestStatusBarHeight.java" \
   "$ROOT/tools/TestBoundedLog.java" \
   "$ROOT/tools/TestStepPlan.java" \
   "$ROOT/tools/TestLauncherOverrides.java" \
@@ -182,6 +185,7 @@ java -cp "$TMP" ls.augment.com.TestHealthDailyLimitConfig
 java -cp "$TMP" TestLauncherOverrides
 java -cp "$TMP" TestThermalTelemetry
 
+java -cp "$TMP" ls.augment.com.TestStatusBarHeight
 java -cp "$TMP" ls.augment.com.TestBoundedLog
 java -cp "$TMP" ls.augment.com.TestStatusBarTransform
 java -cp "$TMP" ls.augment.com.TestLauncherCompatibility

@@ -156,13 +156,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         memoryColorsRow=memoryPair(content,prefix+"light_color",prefix+"dark_color");
         syncMemoryColorsVisibility();
         for(String[] pair:new String[][]{{"simple_size","detailed_size"},
-                {"portrait_top","portrait_left"},{"landscape_top","landscape_left"}})
+                {"portrait_top","portrait_left"},{"landscape_top","landscape_left"},
+                {"portrait_height","landscape_height"}})
             memoryPair(content,prefix+pair[0],prefix+pair[1]);
-        // Keep the existing height controls available without interrupting the four requested rows.
-        LinearLayout heights=new LinearLayout(this);heights.setOrientation(LinearLayout.VERTICAL);heights.setVisibility(View.GONE);
-        Button more=ui.tonalButton("展开显示区域高度");content.addView(more,ui.wrap());
-        more.setOnClickListener(v->{boolean open=heights.getVisibility()!=View.VISIBLE;heights.setVisibility(open?View.VISIBLE:View.GONE);more.setText(open?"收起显示区域高度":"展开显示区域高度");});
-        memoryPair(heights,prefix+"portrait_height",prefix+"landscape_height");content.addView(heights,ui.wrap());
     }
     private LinearLayout memoryPair(LinearLayout parent,String left,String right){
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setBaselineAligned(false);

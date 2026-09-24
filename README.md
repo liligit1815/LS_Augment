@@ -2,7 +2,7 @@
 
 LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20354`，内部版本号 `20354`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。源码同步不等于发布正式安装包，也不代表所有设备均已验证。
+**当前源码版本：`2.0.0-alpha1-test20357`，内部版本号 `20357`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。源码同步不等于发布正式安装包，也不代表所有设备均已验证。
 
 ## 文档导航
 
@@ -15,6 +15,12 @@ LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配
 | [跨设备开发说明](docs/跨设备开发说明.md) | 换电脑拉取、环境准备、验证结果、签名与当前开发进度 |
 
 ## 当前版本要点
+
+- **test20357 三合一电量圆环**：内部上方内容设为“不显示”时闭合顶部缺口，状态栏与编辑预览同步生效。
+
+- **test20356 内存设置布局**：竖屏、横屏内存区域高度直接并排显示在横屏位置设置下方，取消额外的展开按钮。
+
+- **test20355 显示与诊断修复**：最近任务内存跟随横屏方向；状态栏高度统一为 -32～96 dp（负数相对原厂减小）；合并重复日志并保留异常与恢复事件。极小高度下内容完整性仍取决于字号与布局配置，偶发时钟缺字尚未确认解决。
 
 - **电池显示可全部关闭**：三合一图形图标与原生电池图标增强可以同时关闭，恢复默认外观并保留参数；开启其中一项会关闭另一项。
 - **三合一图标可精调**：内部三个区域分别选择电量、Wi-Fi 或信号等内容，支持独立位置及 50%–300% 缩放；普通充电闪电与旁路充电插头分别设置。
@@ -88,8 +94,8 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 脚本整理 APK | `out/LS_Augment-v2.0.0-alpha1-test20354.apk` |
-| 源码包 | `out/LS_Augment-v2.0.0-alpha1-test20354-source.zip` |
+| 脚本整理 APK | `out/LS_Augment-v2.0.0-alpha1-test20357.apk` |
+| 源码包 | `out/LS_Augment-v2.0.0-alpha1-test20357-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
 
 目录按需生成。`build-module.sh` 检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。

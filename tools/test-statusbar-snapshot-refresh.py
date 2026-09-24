@@ -69,7 +69,10 @@ public class TestStatusBarSnapshotRefresh {
   static final class State {
     final Object context = new Object(); final Root root = new Root();
     boolean attached = true, active;
-    String lastConfig = "", lastRaw = "";
+    String lastConfig = "", lastRaw = "", lastLayoutConfig="";
+    static class Icon {Object source=new Object();void invalidate(){}} Icon connectivityIcon;
+    boolean isKeyguard(Root r){return false;}
+    boolean colorOnlySetting(String key){return key.endsWith("_colors");}
     StatusBarGridSpec spec;
     int applications, appliedHeight, metricsStarted, metricsStopped;
     void restore() { applications++; }
@@ -125,6 +128,10 @@ public class TestStatusBarSnapshotRefresh {
     check(state.applications == widthBefore + 1, "battery-only width change did not request a fresh grid layout");
     state.refresh();
     check(state.applications == widthBefore + 1, "unchanged battery width should remain deduplicated");
+    FeatureSettings.current=config(true,"negative_height",-4);state.refresh();
+    check(state.appliedHeight==-4,"negative height survives snapshot refresh");
+    FeatureSettings.current=config(false,"negative_height",-4);state.refresh();
+    check(state.appliedHeight==0,"master off restores native after negative height");
     int before = state.applications; state.attached = false;
     FeatureSettings.current = config(true, "layout_E", 60); state.refresh();
     check(state.applications == before, "detached root received layout mutations");
@@ -139,10 +146,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix='lsa-statusbar-snapshot-') as directory:
         root = Path(directory)
         snapshot = root / 'ConfigSnapshot.java'
+        build = root / 'BuildConfig.java'
+        build.write_text('package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=4242;}', encoding='utf-8')
         test = root / 'TestStatusBarSnapshotRefresh.java'
         snapshot.write_text(SNAPSHOT, encoding='utf-8')
         test.write_text(HARNESS.replace('// PRODUCTION_REFRESH', method), encoding='utf-8')
-        subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, str(snapshot), str(test)], check=True)
+        subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, str(snapshot), str(build), str(test)], check=True)
         subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestStatusBarSnapshotRefresh'], check=True, timeout=15)
 
 

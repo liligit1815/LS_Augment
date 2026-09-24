@@ -93,7 +93,32 @@ final class ConnectivityIconDeviceCases {
         }
         save(context,"connectivity-painter-cases.png",sheet);
         return new JSONObject().put("success",true).put("powerCases",8).put("symbolChecks",symbolChecks)
-                .put("scaleChecks",scaleChecks).put("layoutChecks",layoutCases(context,painter)).put("renderCases",12).put("image",new File(context.getFilesDir(),"connectivity-painter-cases.png").getAbsolutePath());
+                .put("scaleChecks",scaleChecks).put("layoutChecks",layoutCases(context,painter)).put("ringChecks",ringCases(context,painter)).put("renderCases",12).put("image",new File(context.getFilesDir(),"connectivity-painter-cases.png").getAbsolutePath());
+    }
+    private static int ringCases(Context context,ConnectivityIconPainter painter)throws Exception{
+        int checks=0;int[] sizes={100,100,100};
+        for(int level:new int[]{0,50,100})for(String lower:new String[]{"none","dual"}){
+            Bitmap closed=render(painter,state(level,ConnectivityIconState.PowerState.NONE),new String[]{"none","none",lower},sizes);
+            Bitmap open=render(painter,state(level,ConnectivityIconState.PowerState.NONE),new String[]{"battery","none",lower},sizes);
+            for(int angle:new int[]{240,255,270,285,300}){
+                double radians=Math.toRadians(angle);
+                int x=Math.round(300+129*(float)Math.cos(radians)),y=Math.round(300+129*(float)Math.sin(radians));
+                check(Color.alpha(closed.getPixel(x,y))>0,"Hidden upper content closes the entire top gap at battery "+level);
+                check(Color.alpha(open.getPixel(x,y))==0,"Visible upper content retains its gap");checks+=2;
+            }
+            if(level==100){
+                check((closed.getPixel(300,429)==RING)=="none".equals(lower),"Closing the top preserves the lower signal cutout");checks++;
+            }
+            if(level==50&&"none".equals(lower)){
+                check(closed.getPixel(171,300)==RING&&closed.getPixel(429,300)!=RING,"Half battery fills half of the closed ring");checks++;
+            }
+            closed.recycle();open.recycle();
+        }
+        Bitmap sheet=Bitmap.createBitmap(800,400,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(sheet);canvas.drawColor(0xffeff5fb);
+        for(int i=0;i<2;i++)painter.draw(canvas,i*400+60,60,280,state(73,ConnectivityIconState.PowerState.NONE),INK,6,28,false,
+                new String[]{i==0?"wifi":"none","battery","dual"},sizes,PALETTE,null,MARK);
+        save(context,"connectivity-top-gap-cases.png",sheet);
+        return checks;
     }
     private static void shifted(Rect before,Rect after,int dx,int dy,String message){
         Rect expected=new Rect(before);expected.offset(dx,dy);

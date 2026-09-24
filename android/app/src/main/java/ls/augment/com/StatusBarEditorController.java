@@ -195,7 +195,7 @@ final class StatusBarEditorController extends NativeEditorController {
             toggle(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY, "仅调整位置和大小");
             content.addView(ui.text("先选择预设或自动整理；需要精调时再展开下方高级设置。",12,ui.muted,false));
             LinearLayout root=content;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
-            number(ConfigSchema.STATUSBAR_HEIGHT_DP, "状态栏高度（0 跟随系统）", 0, 80);
+            number(ConfigSchema.STATUSBAR_HEIGHT_DP, "状态栏高度（0 原厂，负数减小）", ConfigSchema.STATUSBAR_HEIGHT_MIN_DP, ConfigSchema.STATUSBAR_HEIGHT_MAX_DP);
             number(ConfigSchema.STATUSBAR_LEFT_MARGIN_DP, "左侧留白", 0, 40);
             number(ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP, "右侧留白", 0, 40);
             number(ConfigSchema.STATUSBAR_TOP_MARGIN_DP, "顶部留白", 0, 12);
@@ -909,7 +909,7 @@ final class StatusBarEditorController extends NativeEditorController {
             int heightId=getResources().getIdentifier("status_bar_height","dimen","android");
             int nativeHeight=heightId==0?ui.dp(24):getResources().getDimensionPixelSize(heightId);
             int selectedHeight=number(ConfigSchema.STATUSBAR_HEIGHT_DP);
-            float barHeight=selectedHeight>0?Math.max(nativeHeight,ui.dp(selectedHeight)):nativeHeight;
+            float barHeight=ConfigSchema.statusBarHeightPx(nativeHeight,selectedHeight,getResources().getDisplayMetrics().density);
             float barWidth=getResources().getDisplayMetrics().widthPixels,cutLeft=0,cutRight=0;
             android.view.WindowInsets insets=getRootWindowInsets();
             if(insets!=null&&insets.getDisplayCutout()!=null)for(android.graphics.Rect r:insets.getDisplayCutout().getBoundingRects()){

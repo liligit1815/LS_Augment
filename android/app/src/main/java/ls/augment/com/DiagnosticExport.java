@@ -40,7 +40,9 @@ final class DiagnosticExport {
             boolean current=BuildConfig.VERSION_NAME.equals(snapshot.optString("moduleVersion"))&&(name.equals(live.get(pid))||systemServer)
                 &&snapshot.optLong("moduleLoadedElapsed")<=android.os.SystemClock.elapsedRealtime()&&start-snapshot.optLong("receivedAt")<60000;
             snapshot.put("currentEvidence",current).put("evidenceStatus",current?"CURRENT_PROCESS_SNAPSHOT":"STALE_OR_STOPPED_OR_UNVERIFIED");
-            if(current)observed.add(snapshot.optString("package"));out.append(snapshot.toString(2)).append('\n');
+            if(current)observed.add(snapshot.optString("package"));
+            compactHooks(snapshot,current);
+            out.append(snapshot.toString(2)).append('\n');
         }catch(Exception e){out.append("snapshot_parse_error=").append(e.getClass().getSimpleName()).append('\n');}
         for(String pkg:HookTargetRegistry.packages())if(!observed.contains(pkg))out.append(pkg).append(": current module/registration/hit/result = UNKNOWN (no current snapshot)\n");
         out.append("\n===== FEATURE LATEST VALUES (same keys replace previous values; may be stale) =====\n");
@@ -67,6 +69,22 @@ final class DiagnosticExport {
             }if(files==0)out.append("LSPOSED: NO_FILES; framework log is not collected\n");}
         }
         out.append("\ncollectionFinished=").append(System.currentTimeMillis()).append("\n");return out.toString();
+    }
+    /** Old successful registration lists add noise; retain their identity and all failures. */
+    static void compactHooks(JSONObject snapshot,boolean current)throws JSONException {
+        JSONArray hooks=snapshot.optJSONArray("hooks");if(hooks==null)return;
+        JSONArray kept=new JSONArray();int omitted=0;
+        for(int i=0;i<hooks.length();i++){
+            JSONObject hook=hooks.getJSONObject(i);
+            boolean failed=!"REGISTERED".equals(hook.optString("registration"))
+                    ||hook.optLong("callbackThrows")>0||!hook.optString("lastError").isEmpty();
+            if(!current&&!failed){omitted++;continue;}
+            hook.remove("businessResult");
+            if(hook.optString("lastError").isEmpty())hook.remove("lastError");
+            if(hook.optString("lastErrorStack").isEmpty())hook.remove("lastErrorStack");
+            kept.put(hook);
+        }
+        snapshot.put("hooks",kept).put("omittedHistoricalSuccessfulHooks",omitted);
     }
     private static RootShell.Result filter(RootShell.Result source,boolean ai,boolean shoulder){StringBuilder out=new StringBuilder();
         for(String line:source.output.split("\\r?\\n")){String u=line.toUpperCase(Locale.ROOT);if(!ai&&(u.contains("AI_STAGE")||u.contains("AI_TRIGGER")||u.contains("FEATURE_AI")))continue;

@@ -113,6 +113,16 @@ public final class ConfigSchema {
     public static final String STATUSBAR_DUAL_RIGHT = "ls_augment_statusbar_dual_right";
     public static final String STATUSBAR_CLOCK_ACROSS = "ls_augment_statusbar_clock_across";
     public static final String STATUSBAR_HEIGHT_DP = "ls_augment_statusbar_height_dp";
+    public static final int STATUSBAR_HEIGHT_MIN_DP = -32;
+    public static final int STATUSBAR_HEIGHT_MAX_DP = 96;
+
+    /** Negative values offset the OEM height; positive values retain the legacy minimum. */
+    public static int statusBarHeightPx(int nativePx, int configuredDp, float density) {
+        int value = Math.max(STATUSBAR_HEIGHT_MIN_DP, Math.min(STATUSBAR_HEIGHT_MAX_DP, configuredDp));
+        if (value == 0) return nativePx;
+        if (value < 0) return Math.max(Math.max(1, Math.round(density)), nativePx + Math.round(value * density));
+        return Math.max(nativePx, Math.round(value * density));
+    }
     public static final String STATUSBAR_LEFT_MARGIN_DP = "ls_augment_statusbar_left_margin_dp";
     public static final String STATUSBAR_RIGHT_MARGIN_DP = "ls_augment_statusbar_right_margin_dp";
     public static final String STATUSBAR_TOP_MARGIN_DP = "ls_augment_statusbar_top_margin_dp";
@@ -287,7 +297,7 @@ public final class ConfigSchema {
         addBoolean(STATUSBAR_DUAL_LEFT, false);
         addBoolean(STATUSBAR_DUAL_RIGHT, false);
         addBoolean(STATUSBAR_CLOCK_ACROSS, false);
-        addInteger(STATUSBAR_HEIGHT_DP, 0, 0, 96);
+        addInteger(STATUSBAR_HEIGHT_DP, 0, STATUSBAR_HEIGHT_MIN_DP, STATUSBAR_HEIGHT_MAX_DP);
         addInteger(STATUSBAR_LEFT_MARGIN_DP, 0, 0, 64);
         addInteger(STATUSBAR_RIGHT_MARGIN_DP, 0, 0, 64);
         addInteger(STATUSBAR_TOP_MARGIN_DP, 0, 0, 64);

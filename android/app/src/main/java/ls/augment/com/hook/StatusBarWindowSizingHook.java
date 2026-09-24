@@ -32,13 +32,18 @@ final class StatusBarWindowSizingHook {
                 if(!(m.getName().equals("getStatusBarHeight")||m.getName().equals("getStatusBarHeightForRotation"))
                         ||m.getReturnType()!=int.class||m.getParameterCount()<1||m.getParameterTypes()[0]!=Context.class)continue;
                 module.registerFeatureHook(module.prepareFeatureHook(m,"statusbar.window."+m.getName()+m.getParameterCount(),true).intercept(chain->{
-                    int original=(Integer)chain.proceed();Context c=(Context)chain.getArg(0);
+                    // Framework helpers may call one another. An offset must be
+                    // applied once to the outer result, never once per nested helper.
+                    boolean nativeCall=NATIVE_DIMENSION.get();int original;
+                    NATIVE_DIMENSION.set(true);
+                    try{original=(Integer)chain.proceed();}finally{NATIVE_DIMENSION.set(nativeCall);}
+                    Context c=(Context)chain.getArg(0);
                     // OEM icon padding and keyguard also call this helper. Only the
-                    // status-bar window may see our enlarged application inset.
-                    if(NATIVE_DIMENSION.get()||!WINDOW_DIMENSION.get())return original;
+                    // status-bar window may see our adjusted application inset.
+                    if(nativeCall||!WINDOW_DIMENSION.get())return original;
                     if(!FeatureSettings.enabled(c,ConfigSchema.SYSTEMUI_MASTER))return original;
-                    int height=FeatureSettings.integer(c,ConfigSchema.STATUSBAR_HEIGHT_DP,0,0,80);
-                    return height<=0?original:Math.max(original,Math.round(height*c.getResources().getDisplayMetrics().density));
+                    int height=FeatureSettings.integer(c,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP);
+                    return ConfigSchema.statusBarHeightPx(original,height,c.getResources().getDisplayMetrics().density);
                 }));installed++;
             }
             Class<?> controller=SystemUiCompatibility.windowController(loader);
@@ -56,7 +61,7 @@ final class StatusBarWindowSizingHook {
                         try{
                             Context context=(Context)TargetReflection.field(owner,"mContext");
                             boolean enabled=FeatureSettings.enabled(context,ConfigSchema.SYSTEMUI_MASTER)
-                                    &&FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,0,80)>0;
+                                    &&FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP)!=0;
                             if(enabled||OWNED_HEIGHTS.containsKey(owner)){
                                 // This ROM refreshes only paramsForRotation, while WM consumes the
                                 // base providedInsets for the already attached display as well.

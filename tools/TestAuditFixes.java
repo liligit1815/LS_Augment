@@ -90,6 +90,14 @@ public final class TestAuditFixes {
     private static void provider() {
         FakeContext context=new FakeContext();
         android.os.SystemClock.now=100_000;
+        ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_last_error","grid_layout:failure;stack=location");
+        check(AuditLog.events.size()==1&&AuditLog.events.get(0).contains("stack=location"),"failure transition must retain useful evidence");
+        ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_last_error","grid_layout:failure;stack=location");
+        ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_metrics_state","normal changing metrics");
+        check(AuditLog.events.size()==1,"duplicate errors and normal metrics must not enter event log");
+        ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_last_error","");
+        check(AuditLog.events.size()==2&&AuditLog.events.get(1).startsWith("DIAGNOSTIC_RECOVERED:"),"recovery transition must be recorded");
+        context.prefs.values.clear();
         check(ProviderDiagnostics.record(context,100,"ls_augment_reserved","x")==ProviderDiagnostics.Result.INVALID,"schema key accepted");
         check(ProviderDiagnostics.record(context,100,"ls_augment_tgk_fuse_test","x")==ProviderDiagnostics.Result.INVALID,"fuse key accepted");
         check(ProviderDiagnostics.record(context,100,null,"x")==ProviderDiagnostics.Result.INVALID,"null key accepted");

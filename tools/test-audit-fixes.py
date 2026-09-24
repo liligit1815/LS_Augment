@@ -10,6 +10,9 @@ save = editor[editor.index('    private void save()'):editor.index('    @Overrid
 assert 'static final ExecutorService worker' in editor
 assert 'worker.shutdown()' not in editor
 sources = {
+    'ls/augment/com/AuditLog.java': '''package ls.augment.com;
+final class AuditLog {static final java.util.List<String> events=new java.util.ArrayList<>();
+static void write(android.content.Context c,String category,String message){events.add(category+":"+message);}}''',
     'android/os/SystemClock.java': 'package android.os; public class SystemClock { public static long now;public static long elapsedRealtime(){return now;} }',
     'android/os/Bundle.java': '''package android.os;import java.util.*;
 public class Bundle {public Map<String,Object> data=new HashMap<>();

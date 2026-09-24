@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import ls.augment.com.LauncherMemoryPresentation;
+import ls.augment.com.LauncherMemoryLayout;
 import ls.augment.com.LauncherOptions;
 
 /** Adds only a Recents decoration; the native pager and task geometry stay native. */
@@ -56,7 +57,8 @@ final class LauncherRecentsMemoryHook {
                     recents.getDeclaredMethod("setOverviewStateEnabled", boolean.class),
                     recents.getDeclaredMethod("setContentAlpha", float.class),
                     recents.getDeclaredMethod("setVisibility", int.class),
-                    recents.getDeclaredMethod("onWindowVisibilityChanged", int.class)
+                    recents.getDeclaredMethod("onWindowVisibilityChanged", int.class),
+                    recents.getDeclaredMethod("setLayoutRotation", int.class, int.class)
             };
             for (Method method : methods) {
                 boolean detach = method.getName().equals("onDetachedFromWindow");
@@ -106,6 +108,10 @@ final class LauncherRecentsMemoryHook {
         String lastDiagnostic = "";
         String lastDiagnosticReason = "";
         long lastDiagnosticAt;
+        int rotation;
+        boolean landscape;
+        Method orientationGetter, degreesGetter;
+        Class<?> orientationType;
 
         Controller(AugmentModule module, View view, Field overview, Field alpha) {
             this.module = module;
@@ -114,6 +120,8 @@ final class LauncherRecentsMemoryHook {
             this.context = application == null ? view.getContext() : application;
             this.overview = overview;
             this.contentAlpha = alpha;
+            try { orientationGetter = view.getClass().getMethod("getPagedOrientationHandler"); }
+            catch (NoSuchMethodException unavailable) { module.logFeatureError("LAUNCHER_RECENTS_ORIENTATION", unavailable); }
             FeatureSettings.addSnapshotListener(context, snapshotChanged);
         }
 
@@ -173,7 +181,11 @@ final class LauncherRecentsMemoryHook {
             requestMemory();
             if (totalBytes <= 0) { hide(); report("waiting_memory"); return; }
 
-            boolean landscape = view.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+            rotation = recentsRotation(view);
+            LauncherMemoryLayout region = contentRegion(host, rotation);
+            rotation = region.rotation;
+            boolean sideways = rotation == 90 || rotation == 270;
+            landscape = (view.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) != sideways;
             boolean detailed = FeatureSettings.integer(context, PREFIX + "style", 0, 0, 1) == 1;
             String orientation = landscape ? "landscape_" : "portrait_";
             float size = FeatureSettings.decimal(context, PREFIX + (detailed ? "detailed_size" : "simple_size"),
@@ -189,11 +201,11 @@ final class LauncherRecentsMemoryHook {
             if (!text.contentEquals(label.getText())) label.setText(text);
             label.setTextColor(color(view));
             label.setPadding(0, 0, 0, 0);
-            int width = Math.max(1, host.getWidth() - host.getPaddingLeft() - host.getPaddingRight());
+            int width = region.width;
             // The selected height is the actual height. If a detailed value
             // wraps, reduce its text size to fit instead of silently overriding
             // the user's minimum with the natural text height.
-            int availableHeight = visibleContentHeight(host);
+            int availableHeight = region.height;
             int targetHeight = Math.min(dp(view, height), availableHeight);
             label.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
@@ -213,13 +225,20 @@ final class LauncherRecentsMemoryHook {
             int topPixels = Math.min(dp(view, top), Math.max(0, availableHeight - targetHeight));
             int neededWidth = Math.max(1, Math.min(width, label.getMeasuredWidth()));
             int leftPixels = Math.min(dp(view, left), Math.max(0, width - neededWidth));
+            // The handler angle is relative to the host. Do not rotate a second
+            // time when Android has already rotated the whole launcher window.
+            int hostLeft = region.x(leftPixels, topPixels) - host.getPaddingLeft();
+            int hostTop = region.y(leftPixels, topPixels) - host.getPaddingTop();
+            label.setPivotX(0);
+            label.setPivotY(0);
+            label.setRotation(rotation);
             if (params.width != neededWidth || params.height != neededHeight
-                    || params.topMargin != topPixels || params.leftMargin != leftPixels
+                    || params.topMargin != hostTop || params.leftMargin != hostLeft
                     || params.gravity != (Gravity.TOP | Gravity.LEFT)) {
                 params.width = neededWidth;
-                params.leftMargin = leftPixels;
+                params.leftMargin = hostLeft;
                 params.height = neededHeight;
-                params.topMargin = topPixels;
+                params.topMargin = hostTop;
                 params.gravity = Gravity.TOP | Gravity.LEFT;
                 label.setLayoutParams(params);
             }
@@ -231,21 +250,41 @@ final class LauncherRecentsMemoryHook {
             main.postDelayed(update, 2000);
         }
 
-        int visibleContentHeight(FrameLayout host) {
+        int recentsRotation(View view) throws ReflectiveOperationException {
+            if (orientationGetter == null) return 0;
+            Object handler = orientationGetter.invoke(view);
+            if (handler == null) return rotation;
+            if (handler.getClass() != orientationType) {
+                degreesGetter = handler.getClass().getMethod("getDegreesRotated");
+                orientationType = handler.getClass();
+            }
+            return Math.round(((Number) degreesGetter.invoke(handler)).floatValue());
+        }
+
+        LauncherMemoryLayout contentRegion(FrameLayout host, int rotation) {
+            int left = host.getPaddingLeft(), top = host.getPaddingTop();
+            int right = host.getWidth() - host.getPaddingRight();
             int bottom = host.getHeight() - host.getPaddingBottom();
             android.view.WindowInsets insets = host.getRootWindowInsets();
             View root = host.getRootView();
             if (insets != null && root.getHeight() > 0) {
-                int insetBottom = insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars()
-                        | android.view.WindowInsets.Type.displayCutout()).bottom;
+                android.graphics.Insets safe = insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout());
                 int[] hostLocation = new int[2], rootLocation = new int[2];
                 host.getLocationInWindow(hostLocation);
                 root.getLocationInWindow(rootLocation);
                 // Both bounds are in window coordinates, so a host already inset
                 // above the navigation bar is not inset a second time.
-                bottom = Math.min(bottom, rootLocation[1] + root.getHeight() - insetBottom - hostLocation[1]);
+                // Keep the existing unrotated top/left settings anchored to the
+                // host; a rotated overlay also needs the other safe edges.
+                if (rotation != 0) {
+                    left = Math.max(left, rootLocation[0] + safe.left - hostLocation[0]);
+                    top = Math.max(top, rootLocation[1] + safe.top - hostLocation[1]);
+                }
+                right = Math.min(right, rootLocation[0] + root.getWidth() - safe.right - hostLocation[0]);
+                bottom = Math.min(bottom, rootLocation[1] + root.getHeight() - safe.bottom - hostLocation[1]);
             }
-            return Math.max(1, bottom - host.getPaddingTop());
+            return new LauncherMemoryLayout(rotation, left, top, right, bottom);
         }
 
         // These local values distinguish a missing hook from a gated/unsampled label.
@@ -273,8 +312,8 @@ final class LauncherRecentsMemoryHook {
                 FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) label.getLayoutParams();
                 value.append(";height=").append(params.height).append(";top=").append(params.topMargin).append(";left=").append(params.leftMargin).append(";width=").append(params.width);
                 if (view != null) {
-                    String orientation = view.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
-                            ? "landscape_" : "portrait_";
+                    String orientation = landscape ? "landscape_" : "portrait_";
+                    value.append(";rotation=").append(rotation).append(";orientation=").append(orientation);
                     value.append(";requested_top_dp=").append(FeatureSettings.integer(context, PREFIX + orientation + "top",
                             5, 0, LauncherOptions.RECENTS_MEMORY_MAX_TOP_DP));
                 }

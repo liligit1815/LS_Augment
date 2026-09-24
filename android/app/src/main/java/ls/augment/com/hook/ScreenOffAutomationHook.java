@@ -113,7 +113,7 @@ final class ScreenOffAutomationHook {
                     report("ls_augment_automation_last_error", result == null
                             ? "root_bridge_unavailable" : result.getString("message", "执行失败"));
                     retryFailed();
-                }else{handler.removeCallbacks(retry);runAttempts=0;}
+                }else{handler.removeCallbacks(retry);runAttempts=0;report("ls_augment_automation_last_error", "");}
             } catch (Throwable error) {
                 report("ls_augment_automation_last_error", "event_failed:" + error);
                 if(claimed)retryFailed();

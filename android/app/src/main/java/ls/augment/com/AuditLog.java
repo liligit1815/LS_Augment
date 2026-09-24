@@ -13,6 +13,7 @@ import java.util.Locale;
 final class AuditLog {
     private static final int MAX_BYTES = 192 * 1024;
     private static final int KEEP_BYTES = 96 * 1024;
+    private static final LogRepeatPolicy REPEATS = new LogRepeatPolicy();
 
     private AuditLog() { }
 
@@ -21,7 +22,9 @@ final class AuditLog {
         try {
             File file = new File(context.getFilesDir(), "ls_augment.log");
             String clean = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');
-            if (clean.length() > 800) clean = clean.substring(0, 800);
+            if (clean.length() > 2400) clean = clean.substring(0, 2400) + " [TRUNCATED]";
+            clean = REPEATS.record(category, clean, android.os.SystemClock.elapsedRealtime());
+            if (clean == null) return;
             String line = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date())
                     + " [" + category + "] " + clean;
             if(BoundedLog.append(file,line,MAX_BYTES,KEEP_BYTES)){

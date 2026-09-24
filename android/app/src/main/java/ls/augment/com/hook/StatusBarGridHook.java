@@ -59,7 +59,7 @@ final class StatusBarGridHook {
             if(updateHeight!=null){
                 module.registerFeatureHook(module.prepareFeatureHook(updateHeight,"systemui.grid.native_height",false).intercept(chain->{
                     Object result=chain.proceed();State state=STATES.get(chain.getThisObject());
-                    if(state!=null)state.applyHeight(state.active?FeatureSettings.integer(state.context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,0,80):0);
+                    if(state!=null)state.applyHeight(state.active?FeatureSettings.integer(state.context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP):0);
                     return result;
                 }));count++;
             }
@@ -146,7 +146,7 @@ final class StatusBarGridHook {
         final Runnable snapshotListener=this::refresh;
         final ViewTreeObserver.OnPreDrawListener draw=()->{layout();return true;};
         HandlerThread thread; volatile Handler worker; volatile long metricsGeneration;
-        FrameLayout overlay; TextView keyguardClock; boolean attached,active,applying;
+        FrameLayout overlay; TextView keyguardClock; boolean attached,active,applying,layoutFailed;
         ConnectivityIconView connectivityIcon;
         StatusBarGridSpec spec=StatusBarGridSpec.defaults(); int nativeHeight=Integer.MIN_VALUE;
         long previousRx=-1,previousTx=-1,previousTime,lastWitness,layoutFrames,positionWrites;
@@ -209,7 +209,7 @@ final class StatusBarGridHook {
                 int resource=context.getResources().getIdentifier("status_bar_header_height_keyguard","dimen",context.getPackageName());
                 original=resource!=0?context.getResources().getDimensionPixelSize(resource):nativeHeight>0?nativeHeight:original;
             }
-            int target=dp>0?Math.max(original,px(dp)):original>0?original:nativeHeight;
+            int target=ConfigSchema.statusBarHeightPx(original>0?original:nativeHeight,dp,context.getResources().getDisplayMetrics().density);
             if(target!=Integer.MIN_VALUE&&p.height!=target){p.height=target;root.setLayoutParams(p);}}
         int px(float dp){return Math.round(dp*context.getResources().getDisplayMetrics().density);}
         boolean positionOnly(){return FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY);}
@@ -220,7 +220,7 @@ final class StatusBarGridHook {
                 || !FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_NOTIFICATION_HIDE));}
         void layout(){if(!active||applying||root.getWidth()==0||root.getHeight()==0)return;applying=true;
             try {
-                applyHeight(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,0,80));
+                applyHeight(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP));
                 layoutFrames++;
                 for(Map.Entry<View,Geometry> e:geometry.entrySet())if(isDescendant(e.getKey(),root))e.getValue().observe(e.getKey());
                 Map<String,View> views=new LinkedHashMap<>();contentBounds.clear();groups.clear();iconHeights.clear();
@@ -283,6 +283,12 @@ final class StatusBarGridHook {
                 for(Map.Entry<String,StatusBarGridLayout.Box> e:boxes.entrySet())place(e.getKey(),views.get(e.getKey()),e.getValue());
                 long now=SystemClock.elapsedRealtime();
                 if(now-lastWitness>5000){lastWitness=now;
+                    layoutFailed=false;
+                    String errorKey="ls_augment_statusbar_"+(isKeyguard(root)?"keyguard":"phone")+"_last_error";
+                    FeatureSettings.diagnostic(context,errorKey,"");
+                    String previousError=FeatureSettings.diagnosticValue(context,FeatureSettings.SYSTEMUI_LAST_ERROR);
+                    if(previousError.startsWith("grid_layout:")&&STATES.values().stream().noneMatch(s->s.layoutFailed))
+                        FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAST_ERROR,"");
                     FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"1");
                     String surface=isKeyguard(root)?"keyguard":"phone";
                     String evidence="grid_v2;build="+ls.augment.com.BuildConfig.VERSION_CODE+";surface="+surface+";patch=20260908r1;frames="+layoutFrames+";position_writes="+positionWrites+";clock="+(clock!=null)+";notifications="+(notifications!=null)+";system_icons="+(systems!=null)+";carrier_replaced="+replaceKeyguardCarrier()+";items="+boxes.size()+";size="+root.getWidth()+"x"+root.getHeight();
@@ -331,11 +337,12 @@ final class StatusBarGridHook {
             // Remove replacement content before restoring native alpha/transforms. Restoring
             // the overlay's children in place would pile every label at its original (0,0).
             // Stopping the worker also invalidates samples already queued on the main thread.
-            active=false;stopMetrics();restore();
+            active=false;layoutFailed=true;stopMetrics();restore();
             String surface=isKeyguard(root)?"keyguard":"phone";
             String evidence="grid_v2;build="+ls.augment.com.BuildConfig.VERSION_CODE+";surface="+surface
                     +";fallback_native=1;size="+root.getWidth()+"x"+root.getHeight();
-            FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_layout:"+error);
+            FeatureSettings.diagnosticError(context,"ls_augment_statusbar_"+surface+"_last_error","grid_layout",error);
+            FeatureSettings.diagnosticError(context,FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_layout",error);
             FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"0");
             FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAYOUT_STATE,evidence);
             FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_layout_state",evidence);

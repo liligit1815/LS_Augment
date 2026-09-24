@@ -19,7 +19,7 @@ final class FeatureDescriptions {
             case ConfigSchema.STATUSBAR_BATTERY_TEMP_DECIMALS:
             case ConfigSchema.STATUSBAR_CURRENT_DECIMALS:
             case ConfigSchema.STATUSBAR_POWER_DECIMALS: return "设置小数点后显示的位数，0 为整数，可选 0–3 位。仅调整显示精度，不提高传感器测量精度。";
-            case ConfigSchema.STATUSBAR_HEIGHT_DP: return "设置状态栏布局高度，单位 dp；0 跟随系统高度。高度过小可能限制双排内容的显示空间。";
+            case ConfigSchema.STATUSBAR_HEIGHT_DP: return "范围 -32～96 dp；0 跟随原厂，负数从当前方向的原厂高度扣减，正数指定高度且不低于原厂。实际高度最低 1 dp；过小会压缩双排内容。";
             case ConfigSchema.STATUSBAR_LEFT_MARGIN_DP: return "设置状态栏内容与左侧边缘之间的留白，单位 dp；不会取消屏幕开孔避让。";
             case ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP: return "设置状态栏内容与右侧边缘之间的留白，单位 dp；不会取消屏幕开孔避让。";
             case ConfigSchema.STATUSBAR_TOP_MARGIN_DP: return "设置状态栏内容上方的额外留白，单位 dp。";
