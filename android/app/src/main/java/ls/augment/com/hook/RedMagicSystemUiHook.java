@@ -436,7 +436,8 @@ final class RedMagicSystemUiHook {
         }
         private int tint(){
             if(position.getImageTintList()!=null)return position.getImageTintList().getColorForState(position.getDrawableState(),0xffffffff);
-            ColorFilter filter=position.getDrawable().getColorFilter();
+            ColorFilter filter=position.getColorFilter();
+            if(filter==null)filter=position.getDrawable().getColorFilter();
             if(filter instanceof android.graphics.PorterDuffColorFilter)try{return (Integer)filter.getClass().getMethod("getColor").invoke(filter);}catch(ReflectiveOperationException ignored){}
             if(filter instanceof android.graphics.BlendModeColorFilter)return ((android.graphics.BlendModeColorFilter)filter).getColor();
             View root=owner;while(root.getParent() instanceof View&&!StatusBarGridHook.isBarRoot(root))root=(View)root.getParent();

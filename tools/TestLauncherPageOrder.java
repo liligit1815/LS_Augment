@@ -43,6 +43,16 @@ public final class TestLauncherPageOrder {
                 "cancelled, stale, temporary, and same-page drags leave the order intact");
         require(LauncherPageOrder.selectedIndex(ids(0,9), 4, 5) == 1,
                 "deleting the selected empty page falls back to an existing neighbor");
+        require(LauncherPageOrder.nextAvailableId(100, ids(10,100,101), ids(10,100,101,102)) == 103,
+                "database lower bound skips live and saved-only empty page IDs");
+        require(LauncherPageOrder.nextAvailableId(100, ids(10,102), ids(10,102)) == 100,
+                "an available lower bound is retained without requiring contiguous IDs");
+        require(LauncherPageOrder.nextAvailableId(Integer.MAX_VALUE, ids(10), ids(10)) == Integer.MAX_VALUE,
+                "last nonnegative ID remains usable when free");
+        require(LauncherPageOrder.nextAvailableId(Integer.MAX_VALUE, ids(Integer.MAX_VALUE), ids()) == -1,
+                "ID exhaustion cannot overflow into a temporary negative screen ID");
+        require(LauncherPageOrder.nextAvailableId(-1, ids(10), ids(10)) == -1,
+                "invalid database lower bounds fail without creating a screen");
         System.out.println("Launcher page order checks passed");
     }
 }

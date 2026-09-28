@@ -53,7 +53,7 @@ final class FeatureDescriptions {
                     + "\n\n" + FeatureHelp.audioGainStages()
                     + "\n\n这里的百分比表示软件增益，不代表实测响度同比增加。";
             case ConfigSchema.STORE_DOWNLOAD_COUNT: return "设置应用中心可同时下载的应用数量。保存后按需重启应用中心，使新下载队列配置生效。";
-            case ConfigSchema.TILE_LABEL: return "设置快捷设置磁贴的名称，最多 30 个字符；留空使用 LS_Augment。";
+            case ConfigSchema.TILE_LABEL: return "设置快捷设置磁贴的名称，最多 30 个字符；留空使用 红魔Duo。";
             case ConfigSchema.TILE_DESCRIPTION: return "设置快捷设置磁贴的说明文字，最多 60 个字符；留空使用“应用隐藏”。";
             default:
                 if (key.startsWith("ls_augment_audio_limit_")) return "设置此输出设备和声音类型的软件增益上限。音量增强开启时，100% 不追加增强档位，超过 100% 会增加总档数。"

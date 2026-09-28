@@ -88,7 +88,7 @@ public final class SettingsActivity extends Activity {
         if(ABOUT.equals(selected)) {
             aboutMotion=new AboutHeaderMotion(ui,root,scroll,page,(LiquidGlassLayout)navigation,v->onSystemVersionTapped(),position);
         } else {
-        TextView brand=ui.text("LS_Augment",12,ui.accent,true);page.addView(brand,ui.margins(2,2,0,8));
+        TextView brand=ui.text("红魔Duo",12,ui.accent,true);page.addView(brand,ui.margins(2,2,0,8));
         if(HOME.equals(selected))page.addView(ui.text("让红魔更顺手",12,ui.muted,false),ui.margins(1,0,0,18));
         if(HOME.equals(selected))renderHome();else renderSettings();
         }
@@ -165,7 +165,7 @@ public final class SettingsActivity extends Activity {
         card.addView(row,ui.wrap());
     }
     private void launcherIconSetting(){
-        LinearLayout card=settingCard("桌面图标","显示或隐藏 LS_Augment 的桌面入口。隐藏后仍可从 LSPosed 管理器的模块设置进入。","apps");
+        LinearLayout card=settingCard("桌面图标","显示或隐藏 红魔Duo 的桌面入口。隐藏后仍可从 LSPosed 管理器的模块设置进入。","apps");
         Switch toggle=new Switch(this);ui.styleSwitch(toggle);
         toggle.setTag("settings-launcher-icon-switch");toggle.setContentDescription("桌面图标");
         ComponentName alias=new ComponentName(this,getPackageName()+".LauncherAlias");

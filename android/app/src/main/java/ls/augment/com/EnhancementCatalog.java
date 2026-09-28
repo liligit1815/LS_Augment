@@ -8,6 +8,9 @@ public final class EnhancementCatalog {
         all.addAll(SystemOptions.options());all.addAll(SystemUiOptions.options());
         all.addAll(GameOptions.options());all.addAll(LauncherOptions.options());
         all.addAll(AppearanceOptions.options());
+        all.addAll(CollabOptions.options());
+        all.addAll(EntryVisibilityOptions.options());
+        all.addAll(GlassOptions.options());
         return Collections.unmodifiableList(all);
     }
     public static String title(String group) {

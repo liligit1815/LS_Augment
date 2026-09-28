@@ -23,6 +23,8 @@ final class SystemUiHook {
     static int install(AugmentModule module, ClassLoader loader) {
         StringBuilder compatibility = new StringBuilder();
         int installed = StatusBarGridHook.install(module, loader);
+        installed += StatusBarRecentsHook.install(module, loader);
+        installed += NotificationStackHook.install(module, loader);
         installed += installClock(module, loader, compatibility);
         installed += StatusBarWindowSizingHook.install(module, loader);
         module.logFeatureInfo("SYSTEMUI_GRID_READY hooks=" + installed + " compat=" + compatibility);

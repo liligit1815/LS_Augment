@@ -231,7 +231,7 @@ public final class ModuleScopeActivity extends Activity {
             if (launch != null) { startActivity(launch); return; }
         } catch (RuntimeException ignored) { }
         AppDialogs.builder(this).setTitle("打开 LSPosed")
-                .setMessage("未找到可直接打开的管理器入口。请通过桌面上的 LSPosed 快捷方式或框架通知打开管理器，进入「模块 → LS_Augment」查看作用域。")
+                .setMessage("未找到可直接打开的管理器入口。请通过桌面上的 LSPosed 快捷方式或框架通知打开管理器，进入「模块 → 红魔Duo」查看作用域。")
                 .setPositiveButton("知道了", null).show();
     }
 }

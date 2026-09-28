@@ -26,6 +26,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private View queryAnchor;private Bundle editorStates;
     private ArrayAdapter<String> memoryContentAdapter;
     private View memoryColorsRow;
+    private BackGestureIconEditor backGestureIcons;
     private static final String UI_MEMORY="native_value_overrides";
     public static void open(Activity owner,String group){owner.startActivity(new Intent(owner,EnhancementSettingsActivity.class).putExtra("group",group));}
     @Override public void onCreate(Bundle state){
@@ -111,6 +112,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             }
         }
         if("settings".equals(targetId)||target==null&&"connections".equals(group))DeviceSettingsActions.add(this,ui,category("developer","开发者设置"),worker);
+        if(HookAppCatalog.COLLAB.equals(targetId))
+            CollabAudioImporter.addAction(this,ui,category("collab_audio","联名音频"),worker);
         if("update".equals(targetId)||target==null&&"update".equals(group)){
             LinearLayout card=category("update-link","更新链接");Button url=ui.tonalButton("查看已提取的更新链接");card.addView(url,ui.wrap());
             url.setOnClickListener(v->worker.execute(()->{Bundle data=getContentResolver().call(android.net.Uri.parse("content://ls.augment.com.config"),"ota_url_get",null,null);String value=data==null?"":data.getString("url","");runOnUiThread(()->{if(isDestroyed())return;if(value.isEmpty()){toast("尚未提取到链接；更新应用准备安装时才会产生。");return;}AppDialogs.builder(this).setTitle("系统更新链接").setMessage(value).setNegativeButton("关闭",null).setPositiveButton("复制",(d,w)->{getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("系统更新链接",value));toast("链接已复制");}).show();});}));
@@ -132,7 +135,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             active=gateMemory.getBoolean("open:"+key,active);
         toggle.setChecked(active);card.addView(ui.featureRow(f.title,FeatureHelp.forOption(option),toggle),ui.wrap());
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
-        if("ls_augment_rm_recents_memory_custom".equals(f.id))memoryControls(content);
+        if("systemui:back_icon_enabled".equals(f.id)){
+            backGestureIcons=new BackGestureIconEditor(this,ui,worker,this::value,(k,v)->change(k,v,null));
+            content.addView(backGestureIcons.view(),ui.wrap());
+        }
+        else if("ls_augment_rm_recents_memory_custom".equals(f.id))memoryControls(content);
         else for(String parameter:f.parameterKeys)content.addView(input(options.get(parameter)),ui.wrap());
         for(NativeFeatureGroups.Feature child:f.children)content.addView(feature(child),ui.wrap());
         UiKit.Fold fold=null;if(f.hasConfiguration()){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
@@ -173,6 +180,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private String value(String key){return draft.getOrDefault(key,config.get(key));}
     private View input(EnhancementOption option){
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);row.setPadding(0,ui.dp(3),0,ui.dp(8));row.addView(ui.featureTitle(option.title,FeatureHelp.forOption(option)),ui.wrap());
+        if(CollabOptions.THEME_VARIANT.equals(option.key))return themeChoice(row,option);
         if(option.kind==EnhancementOption.Kind.CHOICE){
             Spinner choice=ui.choiceSpinner("选择选项","ls_augment_rm_recents_memory_content".equals(option.key)?this::memoryExampleText:null);choice.setContentDescription(option.title);if("ls_augment_rm_recents_memory_content".equals(option.key)){
                 memoryContentAdapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,option.choices){
@@ -198,6 +206,18 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         return row;
     }
+    private View themeChoice(LinearLayout row,EnhancementOption option){
+        int[] variants=CollabPolicy.themeVariants(android.os.Build.DEVICE,android.os.Build.MODEL);
+        if(variants.length==0){row.addView(ui.text("当前机型暂无匹配的联名主题",14,ui.muted,false),ui.wrap());return row;}
+        String[] labels=new String[variants.length];int selected=CollabPolicy.resolveThemeVariant(Integer.parseInt(value(option.key)),android.os.Build.DEVICE,android.os.Build.MODEL),position=0;
+        for(int i=0;i<variants.length;i++){labels[i]=option.choices[variants[i]];if(variants[i]==selected)position=i;}
+        Spinner choice=ui.choiceSpinner("选择本机联名主题",null);choice.setContentDescription(option.title);
+        choice.setTag(variants);choice.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));choice.setSelection(position);
+        row.addView(choice,ui.wrap());controls.put(option.key,choice);
+        if(!String.valueOf(selected).equals(value(option.key)))change(option.key,String.valueOf(selected),choice);
+        choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int index,long id){if(index>=0&&index<variants.length)change(option.key,String.valueOf(variants[index]),choice);}});
+        return row;
+    }
     private String memoryExampleText(int position){
         int style="1".equals(value("ls_augment_rm_recents_memory_style"))?1:0;
         long gib=1024L*1024L*1024L;
@@ -216,7 +236,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private static Set<String> tokens(String value){Set<String> result=new LinkedHashSet<>();for(String token:value.split(","))if(!token.trim().isEmpty())result.add(token.trim());return result;}
     private void refreshInput(String key,String next){
         View view=controls.get(key);if(view instanceof EditText){EditText field=(EditText)view;if(!next.contentEquals(field.getText()))field.setText(next);}
-        else if(view instanceof Spinner)((Spinner)view).setSelection(Integer.parseInt(next));
+        else if(view instanceof Spinner){
+            Spinner spinner=(Spinner)view;int selected=Integer.parseInt(next);
+            if(spinner.getTag() instanceof int[]){int[] variants=(int[])spinner.getTag();int position=0;for(int i=0;i<variants.length;i++)if(variants[i]==selected)position=i;spinner.setSelection(position);}
+            else spinner.setSelection(selected);
+        }
         else if(view instanceof Button)((Button)view).setText(next.isEmpty()?"选择字体文件":"更换字体");
         else if(view instanceof LinearLayout){LinearLayout checks=(LinearLayout)view;Set<String> selected=tokens(next);for(int i=0;i<checks.getChildCount();i++){CheckBox box=(CheckBox)checks.getChildAt(i);box.setChecked(selected.contains(box.getTag()));}}
     }
@@ -242,6 +266,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     @Override public void launchEditorResult(NativeEditorController editor,Intent intent,int request){pendingEditor=editor.route;startActivityForResult(intent,request);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(backGestureIcons!=null&&backGestureIcons.onResult(request,result,data))return;
         if(pendingEditor!=null){NativeEditorController editor=editors.get(pendingEditor);pendingEditor=null;if(editor!=null)editor.onActivityResult(request,result,data);return;}
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});

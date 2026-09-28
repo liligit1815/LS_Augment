@@ -124,7 +124,7 @@ public final class ModuleScopeService {
         }
         XposedService current = service();
         if (current == null) return new Snapshot(descriptor, Collections.emptySet(), "",
-                "未连接框架服务。请在 LSPosed 中启用 LS_Augment，然后重新打开模块。", false);
+                "未连接框架服务。请在 LSPosed 中启用 红魔Duo，然后重新打开模块。", false);
         try {
             Set<String> actual = new LinkedHashSet<>();
             for (String scope : current.getScope()) if (scope != null) actual.add(canonical(scope));

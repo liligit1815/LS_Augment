@@ -33,7 +33,7 @@ final class HideRecoveryEmergency {
                 INPUT=$(mktemp "$ROOT/.emergency-input.XXXXXXXX") || fail input_create
                 cat >"$INPUT" <<'LSA_RECOVERY_NOTICE'
                 #!/system/bin/sh
-                printf '%s\n' 'LS Augment recovery requires review.'
+                printf '%s\n' '红魔Duo recovery requires review.'
                 printf '%s\n' 'Open the app recovery page and verify each package, Android user and user serial.'
                 printf '%s\n' 'This script is read-only. Showing an app requires a new explicit confirmation in the app.'
                 printf '%s\n' 'Old selections and pending operations are never replayed to show an app.'

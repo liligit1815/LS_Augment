@@ -58,6 +58,7 @@ public final class TestStatusBarFailureCleanup {
  static class StatusBarWifiView extends View {}
  static class ModernStatusBarMobileView extends View {}
  static class StatusBarBluetoothView extends View {}
+ static class StatusBarClipping {void restore(){}}
  static class Context {}
  static class Handler {
   final List<Runnable> pending=new ArrayList<>();int clearCalls;
@@ -85,6 +86,7 @@ public final class TestStatusBarFailureCleanup {
   final Context context=new Context();final ViewGroup root=new ViewGroup();
   final Map<View,Geometry> geometry=new IdentityHashMap<>();
   final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();
+  final StatusBarClipping explicitClips=new StatusBarClipping();
   final Map<String,List<View>> groups=new HashMap<>();
   final Map<String,TextView> metrics=new LinkedHashMap<>();
   final TextView[] clockLines=new TextView[2];

@@ -29,10 +29,23 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/EnhancementCatalog.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SystemOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SystemUiOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/BackGestureIconPolicy.java" \
+  "$ROOT/tools/TestBackGestureIconPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SystemUiPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/GameOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/AppearanceOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/CollabOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/CollabPolicy.java" \
+  "$ROOT/tools/TestCollabPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/EntryVisibilityOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/EntryVisibilityPolicy.java" \
+  "$ROOT/tools/TestEntryVisibilityPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/GlassOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/LiquidGlassPolicy.java" \
+  "$ROOT/tools/TestLiquidGlassPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/LiquidGlassDockPolicy.java" \
+  "$ROOT/tools/TestLiquidGlassDockPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ShoulderQuickSwitchPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ConnectionExtrasPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/OtaBufferPolicy.java" \
@@ -145,6 +158,10 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestThermalTelemetry.java"
 
 java -cp "$TMP" ls.augment.com.TestHideTargetCodec
+java -cp "$TMP" ls.augment.com.TestCollabPolicy
+java -cp "$TMP" TestEntryVisibilityPolicy
+java -cp "$TMP" TestLiquidGlassPolicy
+java -cp "$TMP" ls.augment.com.TestLiquidGlassDockPolicy
 java -cp "$TMP" ls.augment.com.hook.TestSettingsTargetMatcher
 java -cp "$TMP" ls.augment.com.hook.TestSettingsEntryBindings
 java -cp "$TMP" ls.augment.com.hook.TestSignatureMismatchInstallPolicy
@@ -203,6 +220,7 @@ java -cp "$TMP" ls.augment.com.hook.TestAutomaticHookCompatibility
 java -cp "$TMP" ls.augment.com.TestConnectionExtrasPolicy
 java -cp "$TMP" ls.augment.com.TestSystemRulesPolicy
 java -cp "$TMP" ls.augment.com.hook.TestControlCenterPercent
+java -cp "$TMP" ls.augment.com.TestBackGestureIconPolicy
 java -cp "$TMP" ls.augment.com.hook.TestNotificationWeatherText
 
 # Durable finite Root transaction client. Explicit I/O/engine models; never launches su.
@@ -230,3 +248,24 @@ javac -encoding UTF-8 --release 17 -d "$TMP" \
 java -cp "$TMP" ls.augment.com.hook.TestFanCompatibilityProfile
 java -cp "$TMP" ls.augment.com.hook.TestFanPowerLease
 java -cp "$TMP" ls.augment.com.hook.TestShoulderHookTargets
+
+# Device-feedback regressions execute production callbacks with Android/OEM doubles.
+python "$ROOT/tools/test-shoulder-runtime.py"
+python "$ROOT/tools/test-game-plugin-switch.py"
+python "$ROOT/tools/test-statusbar-content-bounds.py"
+python "$ROOT/tools/test-statusbar-explicit-clips.py"
+python "$ROOT/tools/test-statusbar-recents.py"
+python "$ROOT/tools/test-back-gesture-runtime.py"
+python "$ROOT/tools/test-cleanup-bomb-runtime.py"
+python "$ROOT/tools/test-volume-percent-runtime.py"
+python "$ROOT/tools/test-power-menu-runtime.py"
+python "$ROOT/tools/test-power-mode-control.py"
+python "$ROOT/tools/test-entry-visibility-runtime.py"
+python "$ROOT/tools/test-collab-runtime.py"
+python "$ROOT/tools/test-modern-fingerprint-runtime.py"
+python "$ROOT/tools/test-compact-signal-painter.py"
+python "$ROOT/tools/test-liquid-glass-dock-runtime.py"
+python "$ROOT/tools/test-liquid-glass-drawable-runtime.py"
+python "$ROOT/tools/test-liquid-glass-control-center-runtime.py"
+python "$ROOT/tools/test-liquid-glass-runtime.py"
+python "$ROOT/tools/test-statusbar-failure-cleanup.py"

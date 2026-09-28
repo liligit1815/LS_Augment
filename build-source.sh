@@ -32,6 +32,7 @@ mkdir -p "$OUT"
 rm -f "$OUT/$NAME" "$OUT/$NAME.sha256"
 "$PYTHON_BIN" - "$ROOT/.." "$(basename "$ROOT")" "$OUT/$NAME" <<'PY'
 import os
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -40,6 +41,14 @@ workspace = Path(sys.argv[1])
 project_name = sys.argv[2]
 output = Path(sys.argv[3])
 project = workspace / project_name
+# Git is the source manifest. Local materials and iteration records must never
+# enter an archive just because they are present in the working directory.
+tracked = set(subprocess.check_output(
+    ['git', '-C', str(project), 'ls-files', '--cached', '-z']
+).decode('utf-8').rstrip('\0').split('\0'))
+ignored = set(subprocess.check_output(
+    ['git', '-C', str(project), 'ls-files', '--cached', '--ignored', '--exclude-standard', '-z']
+).decode('utf-8').rstrip('\0').split('\0'))
 excluded_dirs = {
     '.git', '.signing', '.idea', '.gradle', '.cxx', '.kotlin',
     '.externalNativeBuild', 'build', 'out', 'work',
@@ -68,6 +77,8 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(files):
             path = folder / name
             relative = path.relative_to(project).as_posix()
+            if relative not in tracked or relative in ignored:
+                continue
             public_certificate = relative == 'tools/signing/dev41-test-cert.pem'
             required_video = relative == 'android/app/src/main/res/raw/redmagic_first_start.mp4'
             if path.is_symlink() or not path.is_file():

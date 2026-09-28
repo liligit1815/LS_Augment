@@ -5,14 +5,18 @@ import java.util.List;
 
 /** Module settings shared by the original and modified REDMAGIC launcher. */
 public final class LauncherOptions {
+    public static final String CLEANUP_STYLE = "ls_augment_rm_launcher_cleanup_style";
+    public static final String CLEANUP_BOMB = "ls_augment_rm_launcher_cleanup_bomb";
     public static final String PAGE_REORDER = "ls_augment_rm_launcher_page_reorder";
     public static final String KEEP_EMPTY = "ls_augment_rm_launcher_keep_empty";
     public static final int RECENTS_MEMORY_MAX_TOP_DP = 2000;
     private LauncherOptions() {}
     public static List<EnhancementOption> options() {
         return Arrays.asList(
+            EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","最近任务清理按钮改为爆破核心，可选择影视爆炸或数字晶片解构；清理对象和锁定规则沿用原厂逻辑。"),
+            EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎"),
             EnhancementOption.toggle(PAGE_REORDER, "launcher", "整页移动桌面",
-                "在桌面编辑预览中长按页面拖动排序；页面中的图标、文件夹和组件一起移动。支持原厂桌面和 260005 版桌面。"),
+                "在桌面编辑模式点击“页面”，选中页面后前移、后移，或长按卡片拖动排序；图标、文件夹和组件一起移动。支持原厂桌面和 260005 版桌面。"),
             EnhancementOption.toggle(KEEP_EMPTY, "launcher", "允许空白桌面",
                 "在桌面编辑模式的“页面”中新增或删除空白页；空白页及页面顺序在重启后保留。支持原厂桌面和 260005 版桌面。"),
             EnhancementOption.toggle("ls_augment_rm_recents_memory_custom", "launcher", "自定义最近任务内存显示", "统一控制原厂桌面和 260005 版桌面的内存显示及文字样式。开启显示、关闭隐藏，无需开启桌面自身的内存显示开关；不改变任务卡片布局。"),

@@ -12,17 +12,19 @@ public final class CompactSignalPainter {
     public void draw(Canvas canvas,float x,float y,float width,float height,int first,int second,
             int firstBars,int secondBars,int rows,int color,int inactive){
         if(rows<1||width<=0||height<=0)return;
-        rows=Math.min(2,rows);float gapY=height*.14f;
+        rows=Math.min(2,rows);float gapY=height*(4f/85f);
         float row=(height-(rows-1)*gapY)/rows;
-        int dim=(color&0xffffff)|(((color>>>24)*inactive/100)<<24);
+        int dim=(color&0xffffff)|(((color>>>24)*Math.max(0,Math.min(100,inactive))/100)<<24);
         for(int r=0;r<rows;r++){
             int columns=(r==0?firstBars:secondBars)==5?5:4;
-            float gapX=width*.24f/(columns-1),cell=width*.76f/columns;
+            // Supplied 114x120 PNG: ink x=4..110, y=16..100; 16px bars, 6.75px gaps.
+            float cell=width/(columns+(columns-1)*6.75f/16f),gapX=cell*6.75f/16f;
             int lit=Math.max(0,Math.min(columns,r==0?first:second));
             for(int c=0;c<columns;c++){
-                float bar=row*(.55f+.45f*c/(columns-1)),left=x+c*(cell+gapX),bottom=y+r*(row+gapY)+row;
+                float minimum=row*(20f/41f),bar=minimum+(row-minimum)*c/(columns-1);
+                float left=x+c*(cell+gapX),bottom=y+r*(row+gapY)+row;
                 paint.setColor(c<lit?color:dim);
-                canvas.drawRoundRect(left,bottom-bar,left+cell,bottom,cell*.1f,cell*.1f,paint);
+                canvas.drawRoundRect(left,bottom-bar,left+cell,bottom,0,0,paint);
             }
         }
     }

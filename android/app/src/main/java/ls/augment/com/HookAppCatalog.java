@@ -22,6 +22,7 @@ public final class HookAppCatalog {
     public static final String AI_TRIGGER = "ai_trigger";
     public static final String FAN = "fan";
     public static final String THEME = "theme";
+    public static final String COLLAB = "collab";
     public static final String DOUBLE_APP = "doubleapp";
     public static final String STORE = "store";
     public static final String INSTALLER = "installer";
@@ -89,6 +90,9 @@ public final class HookAppCatalog {
                     "cn.nubia.fan"),
             target(THEME, "主题与个性化", "主题试用、壁纸及息屏资源下载", "apps",
                     "com.zte.beautify", "com.zte.beautifyadapter"),
+            target(COLLAB, "联名定制", "联名主题、指纹、充电动画与音频导入", "device",
+                    "com.zte.beautify", "com.zte.fingerprints",
+                    "com.fingerprint.sensorservice", "com.android.systemui"),
             target(DOUBLE_APP, "应用双开", "扩展双开候选与低内存限制", "apps",
                     "com.zte.cn.doubleapp"),
             target(STORE, "应用中心", "同时下载数量与下载队列", "apps", "cn.nubia.neostore"),
@@ -133,7 +137,7 @@ public final class HookAppCatalog {
         add(DOUBLE_APP, "double_app", "扩展应用双开", "双开候选应用与低内存限制");
         add(STORE, "store_download", "同时下载数量", "设置应用中心允许同时下载的数量");
         add(HEALTH, "mi_health", "步数与每日计划", "步数倍速、账户绑定、计划与每日上限");
-        add(MODULE, "launcher_icon", "模块桌面图标", "隐藏或恢复 LS_Augment 的桌面入口");
+        add(MODULE, "launcher_icon", "模块桌面图标", "隐藏或恢复 红魔Duo 的桌面入口");
         add(MODULE, "config_transfer", "备份、还原与重置", "导出配置、导入备份或恢复默认设置");
         add(MODULE, "diagnostics", "运行诊断", "适配状态、详细诊断与日志导出");
         // Existing deep links retain an owner without creating duplicate editor rows.
@@ -208,6 +212,11 @@ public final class HookAppCatalog {
         Target target = find(targetForKey(key));
         if (target == null || MODULE.equals(target.id)) return Collections.emptyList();
         String suffix = suffix(key);
+        if (COLLAB.equals(target.id)) {
+            if (suffix.startsWith("theme_collab_")) return Collections.singletonList("com.zte.beautify");
+            if (suffix.startsWith("fp_style_")) return immutable(Arrays.asList("com.zte.fingerprints", "com.fingerprint.sensorservice"));
+            if (suffix.startsWith("charging_collab_")) return Collections.singletonList("com.android.systemui");
+        }
         if ("secure_capture".equals(suffix)) return immutable(Arrays.asList(
                 "system", "com.android.systemui", "com.android.ztescreenshot"));
         if ("audio_no_safe_warning".equals(suffix)) return immutable(Arrays.asList(
@@ -229,11 +238,13 @@ public final class HookAppCatalog {
 
     private static String owner(EnhancementOption option) {
         String suffix = suffix(option.key);
+        if (suffix.startsWith("theme_collab_") || suffix.startsWith("fp_style_")
+                || suffix.startsWith("charging_collab_")) return COLLAB;
         if ("appearance".equals(option.group)) return MODULE;
         if ("game".equals(option.group)) return GAME;
         if (suffix.startsWith("settings_") || suffix.equals("usb_install_no_account")
                 || suffix.startsWith("usb_mode") || suffix.startsWith("usb_hide_")) return SETTINGS;
-        if (suffix.equals("usb_auto_authorize")) return SYSTEM_UI;
+        if (suffix.equals("usb_auto_authorize") || suffix.startsWith("back_icon_")) return SYSTEM_UI;
         if (suffix.startsWith("nfc_")) return NFC;
         if (suffix.startsWith("mtp_")) return FILES;
         if (suffix.equals("third_party_launcher")) return PERMISSIONS;
@@ -258,6 +269,8 @@ public final class HookAppCatalog {
 
     private static String sectionFor(EnhancementOption option, String targetId) {
         String suffix = suffix(option.key);
+        if (COLLAB.equals(targetId)) return "fingerprint".equals(option.group) ? "collab_fingerprint"
+                : "theme".equals(option.group) ? "collab_theme" : "collab_charging";
         if (SETTINGS.equals(targetId)) return suffix.startsWith("usb_") ? "usb" : "display_time";
         if (SCREENSHOT.equals(targetId)) return "capture";
         if (NFC.equals(targetId)) return "nfc";
@@ -287,6 +300,7 @@ public final class HookAppCatalog {
 
     private static String[] sectionOrder(String targetId) {
         switch (targetId) {
+            case COLLAB: return new String[]{"collab_theme", "collab_fingerprint", "collab_charging"};
             case SYSTEM: return new String[]{"system", "audio", "connections", "installer"};
             case SYSTEM_UI: return new String[]{"statusbar", "quicksettings", "lockscreen", "aod", "volume_panel", "interaction", "usb"};
             case SETTINGS: return new String[]{"display_time", "usb"};
@@ -298,6 +312,9 @@ public final class HookAppCatalog {
 
     private static String sectionTitle(String id) {
         switch (id) {
+            case "collab_theme": return "联名预置主题";
+            case "collab_fingerprint": return "联名指纹样式";
+            case "collab_charging": return "联名充电动画";
             case "system": return "系统行为";
             case "audio": return "音量规则与档位";
             case "connections": return "Wi-Fi、热点与飞行模式";

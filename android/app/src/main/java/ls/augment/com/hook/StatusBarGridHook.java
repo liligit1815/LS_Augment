@@ -51,6 +51,18 @@ final class StatusBarGridHook {
             if (isBarRoot(current)) return true;
         return false;
     }
+    /** Only a live phone grid may bypass OEM collapsing of the content it owns. */
+    static boolean ownsRecentsContent(View view, boolean customClock) {
+        for(View current=view;current!=null;
+                current=current.getParent() instanceof View?(View)current.getParent():null){
+            if(!isBarRoot(current))continue;
+            State state=STATES.get(current);
+            return state!=null&&state.active&&!isKeyguard(current)&&!state.positionOnly()
+                    &&FeatureSettings.enabled(state.context,FeatureSettings.SYSTEMUI_MASTER)
+                    &&(!customClock||FeatureSettings.enabled(state.context,FeatureSettings.STATUSBAR_CLOCK_CUSTOM));
+        }
+        return false;
+    }
     static int install(AugmentModule module, ClassLoader loader) {
         int count=0;
         for (String rootClass : new String[]{ROOT, KEYGUARD}) try {
@@ -138,6 +150,7 @@ final class StatusBarGridHook {
         final ViewGroup root; final Context context; final Handler main=new Handler(Looper.getMainLooper());
         final Map<View,Geometry> geometry=new IdentityHashMap<>();
         final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();
+        final StatusBarClipping explicitClips=new StatusBarClipping();
         final Map<String,TextView> metrics=new LinkedHashMap<>();
         final TextView[] clockLines=new TextView[2];
         final Map<String,String> metricValues=new LinkedHashMap<>();
@@ -329,7 +342,17 @@ final class StatusBarGridHook {
                     StringBuilder icons=new StringBuilder();for(Map.Entry<String,List<View>> group:groups.entrySet()){
                         if(!group.getKey().startsWith("system_icons"))continue;
                         icons.append(group.getKey()).append('=');for(View child:group.getValue())icons.append(name(child).isEmpty()?SystemUiHook.slotOf(child):name(child)).append(',');icons.append(';');}
-                    FeatureSettings.diagnostic(context,"ls_augment_statusbar_system_items",icons.toString());}
+                    FeatureSettings.diagnostic(context,"ls_augment_statusbar_system_items",icons.toString());
+                    StringBuilder visibility=new StringBuilder();
+                    appendVisibility(visibility,"clock",clock);
+                    appendVisibility(visibility,"wifi",findView(root,"wifi_combo"));
+                    View vendor=findView(root,"red_magic_function_icon_container");
+                    appendVisibility(visibility,"cooling",vendor);
+                    if(vendor instanceof ViewGroup)for(int i=0;i<Math.min(6,((ViewGroup)vendor).getChildCount());i++)
+                        appendVisibility(visibility,"cooling#"+i,((ViewGroup)vendor).getChildAt(i));
+                    FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_visibility_state",
+                            "build="+ls.augment.com.BuildConfig.VERSION_CODE+";time="+System.currentTimeMillis()
+                                    +";clipFix="+explicitClips.summary()+";"+visibility);}
             }catch(Throwable e){failLayout(e);}
             finally{applying=false;}
         }
@@ -352,6 +375,21 @@ final class StatusBarGridHook {
             // ownership before capturing, otherwise the previous grid becomes the baseline.
             for(State other:STATES.values())if(other!=this){Geometry old=other.geometry.remove(view);if(old!=null)old.restore(view);}
             g=new Geometry(view);geometry.put(view,g);}return g;}
+        void appendVisibility(StringBuilder out,String label,View view){
+            out.append(label).append('=');
+            if(view==null){out.append("missing;");return;}
+            Rect visible=new Rect();boolean shown=view.getGlobalVisibleRect(visible);
+            out.append(shown).append('/').append(visible);
+            for(View current=view;current!=null;){
+                out.append('|').append(name(current)).append(':').append(current.getWidth()).append('x').append(current.getHeight())
+                        .append(",v=").append(current.getVisibility()).append(",a=").append(current.getAlpha())
+                        .append(",ta=").append(current.getTransitionAlpha()).append(",layer=").append(current.getLayerType())
+                        .append(",clip=").append(current.getClipBounds()).append(",outline=").append(current.getClipToOutline());
+                if(current==root)break;
+                current=current.getParent() instanceof View?(View)current.getParent():null;
+            }
+            out.append(';');
+        }
         boolean replaceKeyguardCarrier(){return isKeyguard(root)&&!positionOnly()&&keyguardClock!=null;}
         void updateKeyguardCarrier(View carrier){
             if(carrier==null)return;
@@ -549,6 +587,10 @@ final class StatusBarGridHook {
         float desiredIconHeight(View view,float size){Rect bounds=contentBounds.get(view);
             float row=RedMagicSystemUiHook.stackedSignalRowHeight(view);
             if(row>0)return size*bounds.height()/row;
+            // Traffic arrows, Wi-Fi standard badges and the native overflow dot
+            // change the union bounds. Size the stable signal glyph, not that union.
+            float wifi=StatusBarContentBounds.wifiSignalHeight(view);
+            if(wifi>0)return size*bounds.height()/wifi;
             int sp=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,0,0,32);
             TextView text=isNativeNetwork(view)?firstText(view):null;
             if(sp>0&&text!=null&&text.getTextSize()>0)return bounds.height()*android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,sp,context.getResources().getDisplayMetrics())/text.getTextSize();
@@ -656,7 +698,8 @@ final class StatusBarGridHook {
                 if(Math.abs(tx-v.getTranslationX())>.001f){v.setTranslationX(tx);positionWrites++;}
                 if(Math.abs(ty-v.getTranslationY())>.001f){v.setTranslationY(ty);positionWrites++;}
             }
-            g.mark(v);ViewParent parent=v.getParent();while(parent instanceof ViewGroup){ViewGroup p=(ViewGroup)parent;
+            g.mark(v);explicitClips.release(v);ViewParent parent=v.getParent();while(parent instanceof ViewGroup){ViewGroup p=(ViewGroup)parent;
+                explicitClips.release(p);
                 if(!clips.containsKey(p))clips.put(p,new boolean[]{p.getClipChildren(),p.getClipToPadding()});p.setClipChildren(false);p.setClipToPadding(false);if(p==root)break;parent=p.getParent();}
         }
         void startMetrics(){stopMetrics();if(positionOnly())return;boolean needsClock=isKeyguard(root)&&findView(root,"clock","status_bar_clock")==null;
@@ -754,6 +797,7 @@ final class StatusBarGridHook {
             if(keyguardClock!=null){SystemUiHook.releaseGridClock(keyguardClock);keyguardClock=null;}
             if(overlay!=null){root.removeView(overlay);overlay=null;}metrics.clear();Arrays.fill(clockLines,null);}
         void restore(){for(Map.Entry<View,Geometry> e:geometry.entrySet())e.getValue().restore(e.getKey());geometry.clear();groups.clear();
+            explicitClips.restore();
             if(connectivityIcon!=null){connectivityIcon.close();root.removeView(connectivityIcon);connectivityIcon=null;}
             for(Map.Entry<ViewGroup,boolean[]> e:clips.entrySet()){e.getKey().setClipChildren(e.getValue()[0]);e.getKey().setClipToPadding(e.getValue()[1]);}clips.clear();}
         void detach(){attached=false;active=false;main.removeCallbacksAndMessages(null);stopMetrics();restore();

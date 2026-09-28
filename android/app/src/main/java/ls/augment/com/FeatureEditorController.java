@@ -283,7 +283,7 @@ final class FeatureEditorController extends NativeEditorController {
     private void buildShoulder() {
         LinearLayout shoulder = ui.card();
         addSwitch(shoulder, AppConfig.SHOULDER_ENABLED, "全应用肩键",
-                "对加入游戏空间的所有应用开放肩键使用", false);
+                "对加入游戏空间的所有应用开放肩键与连招资格，连招仍可自行开关", false);
         LinearLayout.LayoutParams separator = new LinearLayout.LayoutParams(-1, ui.dp(1));
         separator.setMargins(0, ui.dp(7), 0, ui.dp(7));
         shoulder.addView(ui.divider(), separator);
@@ -1464,7 +1464,7 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void buildDiagnostics() {
         buildDetailedDiagnostics();
-        LinearLayout card=detailCard("日志","开启所需详细诊断 → 重启相关作用域 → 复现问题 → 导出日志。开启前的调用无法补录。");
+        LinearLayout card=detailCard("日志","复现问题后尽快导出。最近任务黑屏会自动收集桌面退出记录、崩溃与图形日志，无需打开肩键或 AI 详细诊断。其他功能按需开启详细诊断并重启相关作用域；开启前的调用无法补录。");
         Button export=ui.tonalButton("导出日志");card.addView(export,ui.margins(0,10,0,0));
         card.addView(ui.text("日常日志仅保留重要操作结果与异常，按大小滚动保存。导出会重新采集设备、模块、Hook 状态，并包含已开启功能的详细调用记录。",11.5f,ui.muted,false),ui.margins(0,10,0,0));
         export.setOnClickListener(v->{
@@ -1475,7 +1475,7 @@ final class FeatureEditorController extends NativeEditorController {
                 catch(java.io.IOException error){main.post(()->{export.setEnabled(true);export.setText("导出日志");toast("无法准备日志文件，请重试");});return;}
                 main.post(()->{
                 if(isDestroyed())return;pendingExport=value;export.setEnabled(true);export.setText("导出日志");
-                startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").putExtra(Intent.EXTRA_TITLE,"LS_Augment-logs-"+System.currentTimeMillis()+".txt"),EXPORT_REQUEST);
+                startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").putExtra(Intent.EXTRA_TITLE,"红魔Duo-logs-"+System.currentTimeMillis()+".txt"),EXPORT_REQUEST);
             });});
         });page.addView(card,ui.margins(0,0,0,12));
     }
@@ -2041,7 +2041,7 @@ final class FeatureEditorController extends NativeEditorController {
 
     private String subtitle() {
         switch (section) {
-            case MODULE_SHOULDER: return "第三方 App 自动适配，红魔 TGK 继续负责实体按键。";
+            case MODULE_SHOULDER: return "系统应用和第三方应用均可使用，由红魔 TGK 负责实体按键。";
             case MODULE_AI_TRIGGER: return "降低模板、点击队列与 YOLO 的等待间隔。";
             case MODULE_COMBO_SPEED: return "为游戏助手的一键连招设置播放倍率，不改原始录制。";
             case MODULE_FAN_CONTROL: return "固定目标转速，并按需解禁驱动 5 档满速。";
@@ -2058,7 +2058,7 @@ final class FeatureEditorController extends NativeEditorController {
                 return "只处理同包名覆盖安装的签名冲突，其他安装安全检查保持原样。";
             case MODULE_AUTOMATION: return "按需运行，无 KSU 模块依赖。";
             case MODULE_TILE: return "设置磁贴动作、名称和说明。";
-            case MODULE_LAUNCHER_ICON: return "控制 LS_Augment 自身桌面入口。";
+            case MODULE_LAUNCHER_ICON: return "控制红魔Duo自身桌面入口。";
             case MODULE_DETAILED_DIAGNOSTICS: return "集中管理各子功能的详细诊断，修改会自动保存。";
             default: return "查看兼容状态、最近命中、错误与恢复入口。";
         }

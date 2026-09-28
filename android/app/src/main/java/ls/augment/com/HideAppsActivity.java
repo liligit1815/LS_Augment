@@ -301,7 +301,7 @@ public final class HideAppsActivity extends Activity {
         tileLabel = textInput("磁贴名称", config.get(AppConfig.TILE_LABEL), 30);
         tileDescription = textInput("磁贴说明", config.get(AppConfig.TILE_DESCRIPTION), 60);
         tileImage = new TileImageEditor(this,ui,config,executor); tile.addView(tileImage.view(),ui.margins(0,10,0,10));
-        tile.addView(ui.section("磁贴名称", "最多 30 个字符；留空使用 LS_Augment。"));
+        tile.addView(ui.section("磁贴名称", "最多 30 个字符；留空使用 红魔Duo。"));
         tile.addView(tileLabel, ui.margins(0, 8, 0, 0));
         tile.addView(ui.section("磁贴说明", "最多 60 个字符；留空使用“应用隐藏”。"),ui.margins(0,10,0,0));
         tile.addView(tileDescription, ui.margins(0, 5, 0, 0));

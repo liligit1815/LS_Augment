@@ -40,6 +40,7 @@ public class TestKeyguardContent {
   }
   static class KeyguardStatusBarView extends ViewGroup {}
   static class PhoneStatusBarView extends ViewGroup {}
+  static class StatusBarClipping {void restore(){}}
   static class TextView extends View {}
   static class ConnectivityIconView extends View {void close(){}}
   static class StatusBarGridLayout {static class Node {}}
@@ -53,6 +54,7 @@ public class TestKeyguardContent {
     final ViewGroup root;
     final Map<View,Geometry> geometry=new IdentityHashMap<>();
     final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();
+    final StatusBarClipping explicitClips=new StatusBarClipping();
     final Map<String,Object> groups=new HashMap<>();
     final List<String> companions=new ArrayList<>();
     boolean onlyPosition; TextView keyguardClock; ConnectivityIconView connectivityIcon;

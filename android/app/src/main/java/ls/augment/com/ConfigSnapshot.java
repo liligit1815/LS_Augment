@@ -88,7 +88,10 @@ public final class ConfigSnapshot {
                 String value = new String(Base64.getUrlDecoder().decode(
                         line.substring(separator + 1)), StandardCharsets.UTF_8);
                 String normalized = ConfigSchema.normalize(key, value);
-                if (normalized == null || !normalized.equals(value)) return null;
+                // Older signed snapshots retain their original bytes/checksum. Accept only the
+                // former default label; AppConfig applies the new display name when reading it.
+                boolean legacyLabel = ConfigSchema.TILE_LABEL.equals(key) && "LS_Augment".equals(value);
+                if (normalized == null || (!normalized.equals(value) && !legacyLabel)) return null;
                 values.put(key, value);
             }
             if (!values.keySet().equals(ConfigSchema.runtimeKeys())) return null;

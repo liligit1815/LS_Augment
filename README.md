@@ -1,8 +1,8 @@
-# LS_Augment · 红魔系统增强模块
+# 红魔Duo · 红魔系统增强模块
 
-LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
+红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20357`，内部版本号 `20357`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。源码同步不等于发布正式安装包，也不代表所有设备均已验证。
+**当前源码版本：`2.0.0-alpha1-test20378`，内部版本号 `20378`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。最新测试版安装包和更新内容见 [GitHub Release](https://github.com/liligit1815/LS_Augment/releases/tag/v2.0.0-alpha1-test20378)。本版本为预发布测试版，不代表所有设备均已验证。
 
 ## 文档导航
 
@@ -16,17 +16,14 @@ LS_Augment 是面向红魔手机的 Android 增强模块。通过独立应用配
 
 ## 当前版本要点
 
-- **test20357 三合一电量圆环**：内部上方内容设为“不显示”时闭合顶部缺口，状态栏与编辑预览同步生效。
+- **红魔Duo 与联名定制**：统一应用名称；新增联名主题、指纹、充电动画和本机音频导入。独立“臻金 · GOLDEN SAGA”位于原厂“焰旋流光”之前，保留原厂样式及已保存选择。
+- **侧滑返回**：左右两侧独立设置图标与背景，支持 GIF、动态 WebP、10%–1000% 缩放、镜像和位置调整；内置初音未来预设，自定义图片随配置备份。
+- **桌面与最近任务**：重构页面管理，支持页面排序、拖动及空白页；新增爆炸声光、晶片解构清理动画，保留原厂任务保护，并修复清理黑屏与图标占位问题。
+- **电源菜单**：增加四种高级重启入口，统一原厂入场动画及确认页显隐，并为各模式提供识别图标。
+- **系统界面**：修正最近任务下时钟与散热图标显示、双排信号比例及音量百分比重复显示；新增通知堆叠、控制中心与 Dock 液态玻璃候选效果。
+- **兼容与维护**：修正全应用肩键／连招资格并保留应用开关；新增健康使用手机入口及未成年人模式图标隐藏；扩展崩溃、清理与绘制诊断。
 
-- **test20356 内存设置布局**：竖屏、横屏内存区域高度直接并排显示在横屏位置设置下方，取消额外的展开按钮。
-
-- **test20355 显示与诊断修复**：最近任务内存跟随横屏方向；状态栏高度统一为 -32～96 dp（负数相对原厂减小）；合并重复日志并保留异常与恢复事件。极小高度下内容完整性仍取决于字号与布局配置，偶发时钟缺字尚未确认解决。
-
-- **电池显示可全部关闭**：三合一图形图标与原生电池图标增强可以同时关闭，恢复默认外观并保留参数；开启其中一项会关闭另一项。
-- **三合一图标可精调**：内部三个区域分别选择电量、Wi-Fi 或信号等内容，支持独立位置及 50%–300% 缩放；普通充电闪电与旁路充电插头分别设置。
-- **状态栏集中编辑**：布局、时钟、通知、硬件网速、图标、电池六个分类；支持点选预览、自动整理、避让、预设预览与恢复。
-- **风扇按设备能力适配**：NX809J 支持一至五档及控制中心固定档位；NX769J 保留原厂全速接口，定速与逐档测量仍待验证。
-- **音量分两段**：基础音量档数与超过原厂上限后的增强档数相加；100% 表示不追加增益。
+完整更新与验证边界见 [test20378 发布说明](docs/releases/v2.0.0-alpha1-test20378.md)。
 
 ## 功能概览
 
@@ -94,13 +91,14 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 脚本整理 APK | `out/LS_Augment-v2.0.0-alpha1-test20357.apk` |
-| 源码包 | `out/LS_Augment-v2.0.0-alpha1-test20357-source.zip` |
+| 本次 Release APK | `out/红魔Duo-v2.0.0-alpha1-test20378-release.apk` |
+| 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
+| 源码包（运行 `build-source.sh` 时生成） | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
 
-目录按需生成。`build-module.sh` 检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
+目录按需生成。发布安装包仅作为 GitHub Release 附件分发，不提交源码仓库；更新与验证状态见[发布说明](docs/releases/v2.0.0-alpha1-test20378.md)。`build-module.sh` 仍为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
 
-签名由 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量注入；未注入时使用本机默认调试签名，**不能保证覆盖已有版本**。公开 `.pem` 证书不能代替私钥。
+签名由 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量注入，Debug 与 Release 均可使用同一证书。注入后以 `:app:assembleRelease` 构建非调试包；未注入时 Debug 使用本机默认调试签名，Release 输出未签名包，**不能据此覆盖已有版本**。公开 `.pem` 证书不能代替私钥。此次 Release 已有发布证书基准为 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`。
 
 Shell 文件需保持 UTF-8 无 BOM、LF 换行。`.gitattributes` 固定源码为 LF、Windows 批处理为 CRLF；构建会检查打包用的 Shell 资源。Windows 执行 Bash 命令时使用 Git Bash。
 
@@ -118,6 +116,6 @@ npm run dev -- --host 127.0.0.1 --port 3000
 ## 维护边界
 
 - 保留源码、Wrapper、依赖锁、应用视频、公开证书及所用图片和字体，它们不是编译缓存。
-- `out/`、`outputs/`、`audit-output/`、构建缓存、网页依赖与私有签名不纳入 Git，源码包也排除过程目录和私有材料。
+- `out/`、`outputs/`、`audit-output/`、构建缓存、网页依赖、素材原件、逐次测试记录与私有签名不纳入 Git，源码包也排除过程目录和私有材料。
 - 电池老化策略入口已移除，保留类用于升级清理和回归，不是当前可开启功能。
 - 日志排查：开启详细诊断 → 重启相关作用域 → 复现 → 导出。模块不申请网络权限，健康同步由健康应用负责。

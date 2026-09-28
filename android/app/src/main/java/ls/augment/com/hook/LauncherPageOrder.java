@@ -66,5 +66,15 @@ final class LauncherPageOrder {
         return index >= 0 ? index : Math.max(0, Math.min(fallback, ids.size() - 1));
     }
 
+    /** OEM F() returns database MAX(screen)+1, not a sequence; empty pages have no DB rows. */
+    static int nextAvailableId(int minimum, List<Integer> live, List<Integer> saved) {
+        if (minimum < 0) return -1;
+        java.util.HashSet<Integer> occupied = new java.util.HashSet<>(live);
+        occupied.addAll(saved);
+        long candidate = minimum;
+        while (candidate <= Integer.MAX_VALUE && occupied.contains((int) candidate)) candidate++;
+        return candidate <= Integer.MAX_VALUE ? (int) candidate : -1;
+    }
+
     private LauncherPageOrder() {}
 }

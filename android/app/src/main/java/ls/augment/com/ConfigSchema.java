@@ -202,8 +202,8 @@ public final class ConfigSchema {
         addInteger(HEALTH_DAILY_LIMIT_STEPS, 10000, 1, 1000000);
         addInteger(STATUSBAR_CLOCK_ROWS, 2, 1, 2);
         addBoolean(TILE_ENABLED, true);
-        add(TILE_LABEL, "LS_Augment", true,
-                value -> truncate(value, 30, "LS_Augment"));
+        add(TILE_LABEL, "红魔Duo", true,
+                value -> "LS_Augment".equals(value.trim()) ? "红魔Duo" : truncate(value, 30, "红魔Duo"));
         add(TILE_DESCRIPTION, "应用隐藏", true,
                 value -> truncate(value, 60, "应用隐藏"));
 

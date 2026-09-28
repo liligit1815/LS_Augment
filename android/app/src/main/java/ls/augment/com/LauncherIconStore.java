@@ -16,6 +16,10 @@ final class LauncherIconStore {
     static String save(Context c,Bitmap bitmap)throws Exception{
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();if(!bitmap.compress(Bitmap.CompressFormat.PNG,100,bytes))throw new IOException("icon encoding");
         byte[] data=bytes.toByteArray();if(data.length>2097152)throw new IOException("icon too large");
+        return saveBytes(c,data);
+    }
+    static String saveBytes(Context c,byte[] data)throws Exception{
+        if(data.length>GestureArtwork.MAX_BYTES)throw new IOException("image too large");
         StringBuilder hash=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(data))hash.append(String.format(Locale.ROOT,"%02x",b&255));
         if(!directory(c).isDirectory()&&!directory(c).mkdirs())throw new IOException("icon directory");
         AtomicFile target=new AtomicFile(file(c,hash.toString()));FileOutputStream out=target.startWrite();

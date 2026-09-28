@@ -131,8 +131,8 @@ checks = {
                        'AppConfig.FAN_FIXED_ENABLED,"固定风扇转速"'),
     'fan max level UI': (src / 'FeatureEditorController.java',
                          'AppConfig.FAN_UNLOCK_MAX,"风扇最高转速"'),
-    'shoulder automatic third-party target': (src / 'hook/AugmentModule.java',
-                                               'ApplicationInfo.FLAG_SYSTEM'),
+    'shoulder all installed app target': (src / 'hook/AugmentModule.java',
+                                               'ApplicationInfo.FLAG_INSTALLED'),
     'auxiliary line OEM state ownership': (src / 'hook/AugmentModule.java',
                                             'persisted per-game on/off state'),
     'one-key-link capability gate': (src / 'hook/AugmentModule.java',
@@ -254,6 +254,7 @@ def check_scope():
     assert scope == {
         'com.android.settings', 'com.android.systemui', 'com.zte.beautify',
         'com.zte.beautifyadapter',
+        'com.zte.fingerprints', 'com.fingerprint.sensorservice',
         'com.zte.cn.doubleapp',
         'com.zte.recommend', 'com.zte.game.plugintrigger',
         'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',

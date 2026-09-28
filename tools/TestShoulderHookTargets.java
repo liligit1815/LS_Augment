@@ -43,6 +43,10 @@ public final class TestShoulderHookTargets {
         boolean onTgkCaseViewBottonClick() { return false; } // Wrong return.
         void initView(ViewGroup view) { }
     }
+    // Current GameSpace: only package/region eligibility, no config getter.
+    static class GameSpace {
+        static boolean isPluginEnable(Context c, String p, String a, boolean local) { return false; }
+    }
     private static int checks;
     static void check(boolean ok, String message) {
         checks++;
@@ -66,6 +70,10 @@ public final class TestShoulderHookTargets {
         profile(Obfuscated.class, "t", 3, 1, 1);
         profile(Readable15.class, "mKeys", 4, 2, 0);
         profile(Readable16.class, "mKeys", 3, 1, 1);
+        check(ShoulderHookTargets.pluginEnabled(GameSpace.class, Context.class) == null,
+                "GameSpace legitimately has no two-argument availability getter");
+        check(ShoulderHookTargets.pluginEligibility(GameSpace.class, Context.class).getParameterCount() == 4,
+                "GameSpace eligibility resolves without a config getter");
         check(ShoulderHookTargets.pluginBlacklist(WrongShape.class, Context.class) == null, "reject instance blacklist");
         check(ShoulderHookTargets.pluginEnabled(WrongShape.class, Context.class) == null, "reject broad Object parameter");
         check(ShoulderHookTargets.pluginList(WrongShape.class, Context.class) == null, "reject unknown list contract");

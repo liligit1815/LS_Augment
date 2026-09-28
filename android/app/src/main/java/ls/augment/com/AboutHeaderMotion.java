@@ -45,9 +45,9 @@ final class AboutHeaderMotion {
         brand.setOrientation(LinearLayout.VERTICAL); brand.setGravity(Gravity.CENTER_HORIZONTAL);
         logo=new ImageView(ui.activity); logo.setImageResource(R.drawable.ic_ls_augment_boat);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        logo.setContentDescription("LS_Augment");
+        logo.setContentDescription("红魔Duo");
         logo.setFocusable(false); brand.addView(logo,new LinearLayout.LayoutParams(ui.dp(90),ui.dp(90)));
-        TextView name=ui.text("LS_Augment",28,ui.text,true); name.setGravity(Gravity.CENTER);
+        TextView name=ui.text("红魔Duo",28,ui.text,true); name.setGravity(Gravity.CENTER);
         brand.addView(name,ui.margins(0,20,0,0)); hero.addView(brand,ui.wrap());
         version=ui.text(BuildConfig.VERSION_NAME+" | "+BuildConfig.BUILD_TYPE,12,ui.muted,false);
         version.setTag("about-motion-version"); version.setGravity(Gravity.CENTER);

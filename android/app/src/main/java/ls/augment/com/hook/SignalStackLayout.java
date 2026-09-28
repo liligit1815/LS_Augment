@@ -6,8 +6,8 @@ final class SignalStackLayout {
     static Geometry compact(float left,float top,float width,float height,float slotWidth,float slotHeight,float requestedGap){
         if(!Float.isFinite(left)||!Float.isFinite(top)||!Float.isFinite(width)||!Float.isFinite(height)
                 ||!Float.isFinite(slotWidth)||!Float.isFinite(slotHeight)||width<=0||height<=0||slotWidth<=0||slotHeight<=0)return null;
-        float h=Math.min(height,slotHeight),w=Math.min(Math.min(width,slotWidth),h*1.3f);
-        h=w/1.3f;float gap=h*.14f;
+        float h=Math.min(height,slotHeight),w=Math.min(Math.min(width,slotWidth),h*(107f/85f));
+        h=w/(107f/85f);float gap=h*(4f/85f);
         float x=Math.max(0,Math.min(slotWidth-w,left+(width-w)/2));
         float y=Math.max(0,Math.min(slotHeight-h,top+(height-h)/2));
         return new Geometry(x,y,w,(h-gap)/2,gap);

@@ -80,7 +80,6 @@ public final class AugmentModule extends RootEarlyModule {
     private static final String GAME_HELPER_PACKAGE = "cn.nubia.gamehelpmodule";
     private static final String GAME_HELPER_LINE_PACKAGE = "cn.nubia.gamehelperline";
     private static final String TGK_HELPER_CLASS = "cn.nubia.tgk.TgkHelper";
-    private static final String TGK_MAP_VIEW_CLASS = "cn.nubia.tgk.TgkMapView";
     private static final String GAME_SPACE_PLUGIN_CONFIG_CLASS =
             "cn.nubia.gamelauncher.gamecontrolpanel.config.PluginConfig";
     private static final String GAME_ASSIST_PLUGIN_CONFIG_CLASS =
@@ -243,6 +242,11 @@ public final class AugmentModule extends RootEarlyModule {
 
     @Override
     public void onPackageLoaded(PackageLoadedParam param) {
+        // Persistent fingerprint components can be entered before the ready callback.
+        // Register only the two explicit fingerprint scopes against their package loader.
+        if(!systemServerProcess&&("com.zte.fingerprints".equals(param.getPackageName())
+                ||"com.fingerprint.sensorservice".equals(param.getPackageName())))
+            CollabUnlockHook.install(this,param.getDefaultClassLoader(),param.getPackageName());
         if (!systemServerProcess || android.os.Build.VERSION.SDK_INT < 29) return;
         systemPackageLoadedSeen = true;
         readyPackageName = SYSTEM_SERVER_PACKAGE;
@@ -309,6 +313,9 @@ public final class AugmentModule extends RootEarlyModule {
         OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName);
         ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName);
         GameExtrasHook.install(this, param.getClassLoader(), readyPackageName);
+        CollabUnlockHook.install(this, param.getClassLoader(), readyPackageName);
+        CollabRenderHook.install(this, param.getClassLoader(), readyPackageName);
+        EntryVisibilityHook.install(this, param.getClassLoader(), readyPackageName);
         if ("cn.nubia.neostore".equals(readyPackageName)) { StoreDownloadHook.install(this,param.getClassLoader()); return; }
         if (GAME_SPACE_PACKAGE.equals(readyPackageName)) {
             installGameSpaceShoulderHooks(param.getClassLoader());
@@ -356,6 +363,8 @@ public final class AugmentModule extends RootEarlyModule {
             LauncherCustomizationHook.install(this, param.getClassLoader());
             LauncherPagesHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
+            LauncherCleanupBombHook.install(this, param.getClassLoader());
+            LiquidGlassDockHook.install(this, param.getClassLoader());
             return;
         }
         if (SYSTEMUI_PACKAGE.equals(readyPackageName)) {
@@ -416,11 +425,25 @@ public final class AugmentModule extends RootEarlyModule {
 
     private synchronized void installSystemUiFeatureHooks(ClassLoader classLoader) {
         if (systemUiHooksInstalled) return;
-        systemUiHooksInstalled = SystemUiHook.install(this, classLoader) > 0;
-        OwnTileIconHook.install(this, classLoader);
-        FanTileHook.install(this, classLoader);
-        AudioGainUiHook.install(this, classLoader);
-        RedMagicSystemUiHook.install(this, classLoader);
+        // One optional adapter must never prevent the other SystemUI features loading.
+        installSystemUiStage("power", () -> PowerMenuModesHook.install(this, classLoader));
+        installSystemUiStage("core", () -> SystemUiHook.install(this, classLoader));
+        installSystemUiStage("tile_icon", () -> OwnTileIconHook.install(this, classLoader));
+        installSystemUiStage("fan_tile", () -> FanTileHook.install(this, classLoader));
+        installSystemUiStage("audio", () -> AudioGainUiHook.install(this, classLoader));
+        installSystemUiStage("redmagic", () -> RedMagicSystemUiHook.install(this, classLoader));
+        installSystemUiStage("back_gesture", () -> BackGestureIconHook.install(this, classLoader));
+        installSystemUiStage("glass", () -> LiquidGlassControlCenterHook.install(this, classLoader));
+        systemUiHooksInstalled = true;
+    }
+
+    private void installSystemUiStage(String name, Runnable install) {
+        try { install.run(); }
+        catch (RuntimeException | LinkageError error) {
+            logFeatureError("SYSTEMUI_INSTALL_" + name, error);
+            FeatureSettings.diagnosticError(FeatureSettings.from(null),
+                    "ls_augment_systemui_install_" + name, "registration", error);
+        }
     }
 
     private synchronized void installDoubleAppFeatureHooks(ClassLoader classLoader) {
@@ -662,46 +685,40 @@ public final class AugmentModule extends RootEarlyModule {
         }
 
         try {
-            Class<?> mapView = Class.forName(TGK_MAP_VIEW_CLASS, false, classLoader);
-            Method state = findMethod(
-                    mapView, "getGameKeyLinkMotionState", null, new Class<?>[0]);
-            if (state != null) {
-                state.setAccessible(true);
-                HookHandle handle = observedHook(state)
-                        .setId("ls_augment.api102.shoulder.gamespace.link_state")
-                        .setPriority(PRIORITY_LOWEST)
-                        .setExceptionMode(ExceptionMode.PROTECTIVE)
-                        .intercept(chain -> {
-                            Object result = chain.proceed();
-                            Context context = FeatureSettings.from(chain.getThisObject());
-                            if (!FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER)
-                                    || !FeatureSettings.enabled(context, FeatureSettings.SHOULDER_ENABLED)) return result;
-                            boolean fieldChanged = forceSupportedGameKeyLink(
-                                    chain.getThisObject());
-                            if (result instanceof Boolean && isBooleanFalse(result)) {
+            Class<?> mapView = Class.forName("cn.nubia.tgk.TgkMapView", false, classLoader);
+            Method state = ShoulderHookTargets.named(mapView, false, void.class,
+                    "getGameKeyLinkMotionState");
+            Field mapPackage = mapView.getDeclaredField("mGameAppPackageName");
+            Field mapSupported = mapView.getDeclaredField("mSupportedGameKeyLink");
+            if (state == null || mapPackage.getType() != String.class
+                    || mapSupported.getType() != boolean.class) throw new NoSuchMethodException("map capability contract");
+            state.setAccessible(true);
+            mapPackage.setAccessible(true);
+            mapSupported.setAccessible(true);
+            HookHandle handle = observedHook(state)
+                    .setId("ls_augment.api102.shoulder.gamespace.link_capability")
+                    .setPriority(PRIORITY_LOWEST)
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        // This field describes support, not the saved ON/OFF state.
+                        // Use the panel's own app, never a potentially different foreground app.
+                        try {
+                            Object owner = chain.getThisObject();
+                            String packageName = (String) mapPackage.get(owner);
+                            if (isShoulderTarget(packageName)) {
+                                mapSupported.setBoolean(owner, true);
                                 writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
-                                        "GS-03|false-to-true|"
-                                                + System.currentTimeMillis());
-                                logInfo("SHOULDER_HIT GS-03 getGameKeyLinkMotionState"
-                                        + " result=true fieldChanged=" + fieldChanged);
-                                return true;
+                                        "GS-03|capability|" + packageName + "|" + System.currentTimeMillis());
                             }
-                            if (fieldChanged) {
-                                writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
-                                        "GS-03|field-changed|"
-                                                + System.currentTimeMillis());
-                                logInfo("SHOULDER_HIT GS-03 getGameKeyLinkMotionState"
-                                        + " fieldChanged=true");
-                            }
-                            return result;
-                        });
-                shoulderHookHandles.add(handle);
-                installed++;
-                logInfo("SHOULDER_HOOK_INSTALLED GS-03 " + state.toGenericString());
-            } else {
-                logInfo("SHOULDER_METHOD_MISSING GS-03 " + TGK_MAP_VIEW_CLASS
-                        + ".getGameKeyLinkMotionState");
-            }
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            logError("SHOULDER_GAMESPACE_CAPABILITY_FAILED", error);
+                        }
+                        return result;
+                    });
+            shoulderHookHandles.add(handle);
+            installed++;
+            logInfo("SHOULDER_HOOK_INSTALLED GS-03 " + state.toGenericString());
         } catch (Throwable t) {
             logError("SHOULDER_GAMESPACE_MAP_FAILED", t);
         }
@@ -709,6 +726,25 @@ public final class AugmentModule extends RootEarlyModule {
         try {
             Class<?> pluginConfig = Class.forName(
                     GAME_SPACE_PLUGIN_CONFIG_CLASS, false, classLoader);
+            // GameSpace's package/region eligibility has no separate availability getter.
+            Method eligibility = ShoulderHookTargets.pluginEligibility(pluginConfig, Context.class);
+            if (eligibility != null) {
+                eligibility.setAccessible(true);
+                HookHandle handle = observedHook(eligibility)
+                        .setId("ls_augment.api102.shoulder.gamespace.plugin_eligibility")
+                        .setPriority(PRIORITY_HIGHEST)
+                        .setExceptionMode(ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            if (isShoulderBlacklistPlugin(stringArg(chain, 1))
+                                    && isShoulderTarget(stringArg(chain, 2))) return true;
+                            return chain.proceed();
+                        });
+                shoulderHookHandles.add(handle);
+                installed++;
+                logInfo("SHOULDER_HOOK_INSTALLED GS-05 " + eligibility.toGenericString());
+            } else {
+                logInfo("SHOULDER_METHOD_MISSING GS-05 " + GAME_SPACE_PLUGIN_CONFIG_CLASS);
+            }
             Method blackList = findMethod(
                     pluginConfig, "getBlackList", String[].class, Context.class, String.class);
             if (blackList != null) {
@@ -935,7 +971,7 @@ public final class AugmentModule extends RootEarlyModule {
             logError("SHOULDER_GAMEHELPER_PROVIDER_FAILED GH-05", t);
         }
 
-        // The macro master value is another independent execution gate. Keep
+        // macroEnable is OEM capability configuration, distinct from runtime isMacroEnable(). Keep
         // the OEM value for unrelated apps, but do not let it disable the
         // selected foreground app while LS_Augment shoulder support is on.
         try {
@@ -1636,45 +1672,13 @@ public final class AugmentModule extends RootEarlyModule {
                 + " process=" + processName);
     }
 
-    /**
-     * Resolve the OneKeyLink eligibility method by class shape instead of the
-     * current OTA's obfuscated method name (g0). The current class exposes
-     * exactly one public no-argument boolean method; protected tile state
-     * methods are deliberately ignored.
-     */
+    /** Unlock package eligibility without taking ownership of native toggle state. */
     private synchronized void installGameAssistShoulderHooks(ClassLoader classLoader) {
         if (shoulderHooksInstalled) return;
         int installed = installGameAssistToolbarHooks(classLoader);
         try {
-            Class<?> tile = Class.forName(ONE_KEY_LINK_TILE_CLASS, false, classLoader);
-            Method eligibility = findPublicNoArgBooleanMethod(tile);
-            if (eligibility == null) {
-                logInfo("SHOULDER_METHOD_MISSING GA-01 " + ONE_KEY_LINK_TILE_CLASS
-                        + " public-noarg-boolean");
-            } else {
-                eligibility.setAccessible(true);
-                HookHandle handle = observedHook(eligibility)
-                        .setId("ls_augment.api102.shoulder.gameassist.one_key_link")
-                        .setPriority(PRIORITY_HIGHEST)
-                        .setExceptionMode(ExceptionMode.PROTECTIVE)
-                        .intercept(chain -> {
-                            Object result = chain.proceed();
-                            if (isBooleanFalse(result) && isShoulderTarget(currentFullscreenPackage(classLoader))) {
-                                writeShoulderProbe(SHOULDER_LAST_HIT_KEY,
-                                        "GA-01|OneKeyLinkTile|true|"
-                                                + System.currentTimeMillis());
-                                logInfo("SHOULDER_HIT GA-01 OneKeyLinkTile eligibility"
-                                        + " result=true method=" + eligibility.getName());
-                                return true;
-                            }
-                            return result;
-                        });
-                shoulderHookHandles.add(handle);
-                installed++;
-                logInfo("SHOULDER_HOOK_INSTALLED GA-01 "
-                        + eligibility.toGenericString());
-            }
-
+            // Do not guess tile semantics from a public boolean method's shape.
+            // On some ROMs that method reports the checked state.
             Class<?> pluginConfig = Class.forName(
                     GAME_ASSIST_PLUGIN_CONFIG_CLASS, false, classLoader);
             Method blackList = ShoulderHookTargets.pluginBlacklist(pluginConfig, Context.class);
@@ -1755,10 +1759,8 @@ public final class AugmentModule extends RootEarlyModule {
                         + globalGetString.toGenericString());
             }
 
-            // PluginConfig.k is the independent enable switch for each
-            // plugin.  Keep the user/system setting semantics for unrelated
-            // plugins, but make keylink/range-line available for the selected
-            // user app once the module's shoulder feature is enabled.
+            // PluginConfig.k reads vendor plugin availability configuration.
+            // The per-app checked state in OneKeyLinkTile remains untouched.
             Method pluginEnabled = ShoulderHookTargets.pluginEnabled(pluginConfig, Context.class);
             if (pluginEnabled == null) {
                 logInfo("SHOULDER_METHOD_MISSING GA-04 "
@@ -1887,7 +1889,7 @@ public final class AugmentModule extends RootEarlyModule {
                     feature, classLoader, "isSupportTouchGameKey", "GA-12");
             installed += hookGameAssistFeature(
                     feature, classLoader, "isSupportTouchCameraKey", "GA-13");
-            // OneKeyLink has its own capability gate; the tile visibility hook
+            // OneKeyLink has its own capability gate; package eligibility
             // only checks package membership and cannot enable the action alone.
             installed += hookGameAssistFeature(
                     feature, classLoader, "isSupportOneKeyLink", "GA-16");
@@ -2337,18 +2339,6 @@ public final class AugmentModule extends RootEarlyModule {
         return value == null ? "null" : value.replace('|', '_');
     }
 
-    private static Method findPublicNoArgBooleanMethod(Class<?> type) {
-        Method candidate = null;
-        for (Method method : type.getDeclaredMethods()) {
-            if (!Modifier.isPublic(method.getModifiers())
-                    || method.getParameterTypes().length != 0
-                    || actualReturnType(method) != boolean.class) continue;
-            if (candidate != null) return null;
-            candidate = method;
-        }
-        return candidate;
-    }
-
     private static Method findMethod(
             Class<?> type, String name, Class<?> returnType, Class<?>... expectedParameters) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
@@ -2599,26 +2589,33 @@ public final class AugmentModule extends RootEarlyModule {
      */
     private static boolean isShoulderTarget(
             String packageName, boolean allowGameHelperVisibilityFallback) {
+        return isGameUnlockTarget(packageName, FeatureSettings.SHOULDER_ENABLED,
+                allowGameHelperVisibilityFallback);
+    }
+
+    static boolean isGamePluginTarget(String packageName) {
+        return isGameUnlockTarget(packageName, ls.augment.com.GameOptions.PLUGINS, false);
+    }
+
+    private static boolean isGameUnlockTarget(String packageName, String feature,
+            boolean allowGameHelperVisibilityFallback) {
         if (packageName == null || !packageName.matches(
                 "[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+")) return false;
-        if (isProtectedShoulderPackage(packageName)) return false;
         Context context = currentApplicationContext();
         if (!FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER)
-                || !FeatureSettings.enabled(context, FeatureSettings.SHOULDER_ENABLED)) {
+                || !FeatureSettings.enabled(context, feature)) {
             return false;
         }
         try {
             ApplicationInfo info = context.getPackageManager().getApplicationInfo(packageName, 0);
-            int systemFlags = ApplicationInfo.FLAG_SYSTEM
-                    | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP;
+            // All installed apps, including system apps; never use OEM allowlists.
             return info.enabled
-                    && (info.flags & ApplicationInfo.FLAG_INSTALLED) != 0
-                    && (info.flags & systemFlags) == 0;
+                    && (info.flags & ApplicationInfo.FLAG_INSTALLED) != 0;
         } catch (Throwable ignored) {
             // GameHelper is a trusted, statically scoped OEM process. Its own
             // package-visibility filter cannot see many real games, so a
             // blacklist/current-game call from that process is authoritative
-            // once the feature and protected-package gates above pass.
+            // once the feature and package-name gates above pass.
             return allowGameHelperVisibilityFallback
                     && isGameHelperVisibilityFallbackProcess(context);
         }
@@ -2633,17 +2630,6 @@ public final class AugmentModule extends RootEarlyModule {
         } catch (Throwable ignored) {
             return false;
         }
-    }
-
-    private static boolean isProtectedShoulderPackage(String packageName) {
-        return "ls.augment.com".equals(packageName)
-                || "io.github.lsf.augment".equals(packageName)
-                || "me.weishu.kernelsu".equals(packageName)
-                || "me.weishu.kernelsu.debug".equals(packageName)
-                || "com.rifsxd.ksunext".equals(packageName)
-                || "org.lsposed.manager".equals(packageName)
-                || "com.topjohnwu.magisk".equals(packageName)
-                || "me.bmax.apatch".equals(packageName);
     }
 
     private static boolean isShoulderBlacklistPlugin(String plugin) {
@@ -2674,7 +2660,7 @@ public final class AugmentModule extends RootEarlyModule {
         return removed ? filtered.toString() : value;
     }
 
-    private static String currentFullscreenPackage(ClassLoader classLoader) {
+    static String currentFullscreenPackage(ClassLoader classLoader) {
         try {
             Class<?> systemMgr = Class.forName(
                     "com.zte.gameassist.common.SystemMgr", false, classLoader);
@@ -2704,29 +2690,6 @@ public final class AugmentModule extends RootEarlyModule {
         } catch (Throwable ignored) {
             // Diagnostics must never affect the OEM one-key playback path.
         }
-    }
-
-    private static boolean forceSupportedGameKeyLink(Object owner) {
-        if (owner == null) return false;
-        String[] names = {"mSupportedGameKeyLink", "supportedGameKeyLink",
-                "mGameKeyLinkSupported", "gameKeyLinkSupported"};
-        for (String name : names) {
-            for (Class<?> current = owner.getClass(); current != null;
-                    current = current.getSuperclass()) {
-                try {
-                    Field field = current.getDeclaredField(name);
-                    field.setAccessible(true);
-                    if (field.getType() != boolean.class && field.getType() != Boolean.class) continue;
-                    field.set(owner, true);
-                    return true;
-                } catch (NoSuchFieldException ignored) {
-                    // Continue into the superclass.
-                } catch (Throwable ignored) {
-                    return false;
-                }
-            }
-        }
-        return false;
     }
 
     private synchronized void installSettingsHooks(ClassLoader classLoader) {

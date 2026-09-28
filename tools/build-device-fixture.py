@@ -7,6 +7,7 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 sdk = Path(os.environ.get('ANDROID_SDK_ROOT', Path.home() / 'AppData/Local/Android/Sdk'))
 build = sdk / 'build-tools/36.0.0'
+if not build.is_dir(): build = sdk / 'build-tools/35.0.0'
 android = sdk / 'platforms/android-36/android.jar'
 source = root / 'tools/device-fixture'
 out = root / 'out/root-lsposed-rework/fixture'

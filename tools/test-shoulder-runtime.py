@@ -1,8 +1,4 @@
-"""Execute production shoulder interceptors with OEM results and package witnesses.
-
-No device or Gradle is used. The callback bodies are extracted unchanged, so a
-regression in package ownership or feature-off passthrough fails this harness.
-"""
+"""Execute production capability callbacks and all-app scope, separately from native ON/OFF."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -11,9 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'android/app/src/main/java/ls/augment/com/hook/AugmentModule.java'
 
 
-def callback(source, target):
-    start = source.index('.setId("ls_augment.api102.shoulder.' + target + '")')
-    start = source.index('.intercept(chain -> {', start) + len('.intercept(chain -> {')
+def body(source, start):
+    start = source.index('{', start) + 1
     end, depth = start, 1
     while depth:
         depth += (source[end] == '{') - (source[end] == '}')
@@ -21,111 +16,132 @@ def callback(source, target):
     return source[start:end - 1]
 
 
+def callback(source, target):
+    start = source.index('.setId("ls_augment.api102.shoulder.' + target + '")')
+    return body(source, source.index('.intercept(chain ->', start))
+
+
 HARNESS = r'''
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.util.*;
 public class TestShoulderRuntime {
-    static boolean master, shoulder;
-    static String foreground;
-    static int assertions, changed;
-    static ClassLoader classLoader = TestShoulderRuntime.class.getClassLoader();
-    static final String SHOULDER_LAST_HIT_KEY = "hit";
-    static final class Context { }
-    static final class FeatureSettings {
-        static final String GAME_MASTER = "master", SHOULDER_ENABLED = "shoulder";
-        static Context from(Object owner) { return new Context(); }
-        static boolean enabled(Context context, String key) { return key.equals(GAME_MASTER) ? master : shoulder; }
+ static boolean master, shoulder, plugins, helperProcess;
+ static String foreground;
+ static int assertions;
+ static ClassLoader classLoader=TestShoulderRuntime.class.getClassLoader();
+ static final String SHOULDER_LAST_HIT_KEY="hit",GAME_HELPER_PACKAGE="helper",GAME_HELPER_LINE_PACKAGE="helperline";
+ static class ApplicationInfo {
+  static final int FLAG_INSTALLED=0x800000,FLAG_SYSTEM=1,FLAG_UPDATED_SYSTEM_APP=128;
+  int flags=FLAG_INSTALLED;boolean enabled=true;
+ }
+ static final Map<String,ApplicationInfo> apps=new HashMap<>();
+ static class Context {
+  Context getPackageManager(){return this;}
+  ApplicationInfo getApplicationInfo(String p,int f){if(!apps.containsKey(p))throw new IllegalArgumentException();return apps.get(p);}
+  String getPackageName(){return helperProcess?GAME_HELPER_PACKAGE:"assist";}
+ }
+ static Context currentApplicationContext(){return new Context();}
+ static class FeatureSettings {
+  static final String GAME_MASTER="master",SHOULDER_ENABLED="shoulder";
+  static boolean enabled(Context c,String k){return k.equals(GAME_MASTER)?master:k.equals(SHOULDER_ENABLED)?shoulder:plugins;}
+ }
+ static class MapPanel {String mGameAppPackageName;boolean mSupportedGameKeyLink,checked;MapPanel(String p){mGameAppPackageName=p;}}
+ static class Chain {
+  Object result,owner;Object[] args;int calls;
+  Chain(Object r,Object...a){result=r;args=a;}
+  Object proceed(){calls++;if(owner instanceof MapPanel)((MapPanel)owner).mSupportedGameKeyLink=Boolean.TRUE.equals(result);return result;}
+  Object getArg(int i){return args[i];}Object getThisObject(){return owner;}
+ }
+ static String invokeStringMethod(Object o,String n){return (String)o;}
+ static String stringArg(Chain c,int i){return c.args[i] instanceof String?(String)c.args[i]:"";}
+ static String currentFullscreenPackage(ClassLoader l){return foreground;}
+ static boolean isBooleanFalse(Object v){return Boolean.FALSE.equals(v);}
+ static void writeShoulderProbe(String k,String v){}static void logInfo(String v){}static void logError(String v,Throwable e){}
+ static void check(boolean b,String m){assertions++;if(!b)throw new AssertionError(m);}
+ static List<?> list(Context c,String p){return null;}static void marker(){}
+ // METHODS
+ // CALLBACKS
+ public static void main(String[] args)throws Throwable{
+  String[] installed={"target.app","ordinary.app","com.android.settings","updated.system","ls.augment.com"};
+  for(String p:installed)apps.put(p,new ApplicationInfo());
+  apps.get("com.android.settings").flags|=ApplicationInfo.FLAG_SYSTEM;
+  apps.get("updated.system").flags|=ApplicationInfo.FLAG_UPDATED_SYSTEM_APP;
+  apps.put("disabled.app",new ApplicationInfo());apps.get("disabled.app").enabled=false;
+  apps.put("removed.app",new ApplicationInfo());apps.get("removed.app").flags=0;
+  Method marker=TestShoulderRuntime.class.getDeclaredMethod("marker");
+  Method list=TestShoulderRuntime.class.getDeclaredMethod("list",Context.class,String.class);
+  Field pkg=MapPanel.class.getDeclaredField("mGameAppPackageName"),support=MapPanel.class.getDeclaredField("mSupportedGameKeyLink");
+  for(int gates=0;gates<8;gates++){
+   master=(gates&1)!=0;shoulder=(gates&2)!=0;plugins=(gates&4)!=0;boolean on=master&&shoulder;
+   for(String app:installed){
+    check(isShoulderTarget(app)==on,"all installed apps without OEM allowlist");
+    check(isGamePluginTarget(app)==(master&&plugins),"independent plugin switch");foreground=app;
+    for(boolean region:new boolean[]{false,true}){
+     Chain c=new Chain(false,null,"keylink",app,region);
+     check(display(c,marker).equals(on)&&c.calls==(on?0:1),"assist eligibility and switch-off passthrough");
+     c=new Chain(false,null,"keylink",app,region);
+     check(space(c).equals(on)&&c.calls==(on?0:1),"space supports both region contracts without getter");
     }
-    static final class Chain {
-        Object result;
-        Object[] args;
-        int calls;
-        Chain(Object result, Object... args) { this.result = result; this.args = args; }
-        Object proceed() { calls++; return result; }
-        Object getArg(int index) { return args[index]; }
-        Object getThisObject() { return this; }
+    Chain c=new Chain(false,null,"keylink");
+    check(availability(c,marker).equals(on)&&c.calls==(on?0:1),"vendor availability unlock");
+    c=new Chain(false);c.owner=app;
+    check(macro(c).equals(on)&&c.calls==(on?0:1),"macro capability scope");
+    for(boolean checked:new boolean[]{false,true}){
+     MapPanel panel=new MapPanel(app);panel.checked=checked;c=new Chain(false);c.owner=panel;foreground="uninstalled.app";
+     map(c,pkg,support);
+     check(panel.mSupportedGameKeyLink==on&&panel.checked==checked&&c.calls==1,"panel app capability preserves checked state");
     }
-    static String stringArg(Chain chain, int index) { return chain.args[index] instanceof String ? (String)chain.args[index] : ""; }
-    static String currentFullscreenPackage(ClassLoader loader) { return foreground; }
-    static boolean isShoulderTarget(String name) { return master && shoulder && "target.app".equals(name); }
-    static boolean isShoulderBlacklistPlugin(String name) { return "keylink".equals(name) || "touchgamekey".equals(name); }
-    static boolean isBooleanFalse(Object value) { return Boolean.FALSE.equals(value); }
-    static void writeShoulderProbe(String key, String value) { }
-    static void logInfo(String value) { }
-    static boolean forceSupportedGameKeyLink(Object owner) { changed++; return true; }
-    static void check(boolean ok, String message) { assertions++; if (!ok) throw new AssertionError(message); }
-    static List<?> oldList(Context c) { return null; }
-    static List<?> newList(Context c, String pkg) { return null; }
-    static void marker() { }
-    // CALLBACKS
-    public static void main(String[] args) throws Throwable {
-        Method marker = TestShoulderRuntime.class.getDeclaredMethod("marker");
-        Method oldList = TestShoulderRuntime.class.getDeclaredMethod("oldList", Context.class);
-        Method newList = TestShoulderRuntime.class.getDeclaredMethod("newList", Context.class, String.class);
-        List<String> oem = Collections.singletonList("record");
-        for (int gates = 0; gates < 4; gates++) {
-            master = (gates & 1) != 0; shoulder = (gates & 2) != 0;
-            boolean on = master && shoulder;
-            foreground = "target.app";
-            Chain one = new Chain(false);
-            check(oneKey(one, marker).equals(on), "one-key follows both switches");
-            check(one.calls == 1, "one-key always preserves OEM side effects");
-            Chain space = new Chain(false);
-            changed = 0;
-            check(gameSpace(space).equals(on), "game-space follows both switches");
-            check(space.calls == 1 && changed == (on ? 1 : 0), "no field writes while disabled");
-            Chain enabled = new Chain(false, null, "keylink");
-            check(pluginEnable(enabled, marker).equals(on), "plugin enable follows switches");
-            check(enabled.calls == (on ? 0 : 1), "disabled enable delegates to OEM");
-            for (boolean region : new boolean[]{false, true}) {
-                Chain eligible = new Chain(false, null, "keylink", "target.app", region);
-                check(display(eligible, marker).equals(on), "display preserves package positions with region argument");
-                check(eligible.calls == (on ? 0 : 1), "disabled eligibility delegates to OEM");
-            }
-            Chain query = new Chain(oem, null, "target.app");
-            Object list = pluginList(query, newList);
-            check(on ? list.equals(Arrays.asList("record", "keylink")) : list == oem, "explicit package list and disabled identity");
-            check(query.calls == 1 && oem.equals(Collections.singletonList("record")), "OEM list untouched");
-            Chain old = new Chain(oem, (Object)null);
-            check(on ? ((List<?>)pluginList(old, oldList)).contains("keylink") : pluginList(old, oldList) == oem,
-                    "legacy foreground list contract");
-        }
-        master = shoulder = true;
-        foreground = "target.app";
-        check(pluginList(new Chain(oem, null, "other.app"), newList) == oem, "explicit query cannot borrow foreground eligibility");
-        check(Boolean.FALSE.equals(display(new Chain(false, null, "keylink", "other.app", false), marker)), "other package unchanged");
-        check(Boolean.FALSE.equals(pluginEnable(new Chain(false, null, "record"), marker)), "other plugin unchanged");
-        foreground = "other.app";
-        check(pluginList(new Chain(oem, null, "target.app"), newList).equals(Arrays.asList("record", "keylink")), "explicit target independent of foreground");
-        check(Boolean.FALSE.equals(oneKey(new Chain(false), marker)), "unrelated foreground one-key preserved");
-        check(pluginList(new Chain(oem, (Object)null), oldList) == oem, "legacy unrelated foreground preserved");
-        List<String> present = Arrays.asList("keylink", "record");
-        check(pluginList(new Chain(present, null, "target.app"), newList) == present, "existing keylink no copy or duplicate");
-        check(pluginList(new Chain(null, null, "target.app"), newList) == null, "non-list OEM result preserved");
-        System.out.println("PASS shoulder production callbacks: " + assertions + " assertions");
-    }
+    List<String> oem=Collections.singletonList("record");c=new Chain(oem,null,app);Object r=pluginList(c,list);
+    check(on?r.equals(Arrays.asList("record","keylink")):r==oem,"all-app plugin list");
+    check(c.calls==1&&oem.size()==1,"no repeated OEM call or input mutation");
+   }
+   for(String app:new String[]{null,"","bad/name","uninstalled.app","disabled.app","removed.app"}){
+    check(!isShoulderTarget(app)&&!isGamePluginTarget(app),"invalid/unavailable app excluded");
+    Chain c=new Chain(false,null,"keylink",app,false);
+    check(Boolean.FALSE.equals(space(c))&&c.calls==1,"unavailable app stays native");
+   }
+  }
+  master=shoulder=plugins=true;foreground="target.app";
+  for(String p:new String[]{"record","","unknown"}){
+   Chain c=new Chain(false,null,p,"target.app",false);
+   check(Boolean.FALSE.equals(space(c))&&c.calls==1,"shoulder scope leaves other plugins alone");
+  }
+  helperProcess=true;check(isShoulderTarget("hidden.app",true),"trusted helper visibility fallback");
+  check(!isGamePluginTarget("hidden.app"),"plugin has no helper fallback");
+  shoulder=false;check(!isShoulderTarget("hidden.app",true),"fallback respects OFF");
+  System.out.println("PASS shoulder callbacks and all-app scope: "+assertions+" assertions");
+ }
 }
 '''
 
 
 def main():
     source = SOURCE.read_text(encoding='utf-8')
+    assert 'ls_augment.api102.shoulder.gameassist.one_key_link' not in source
+    assert 'findPublicNoArgBooleanMethod' not in source
     targets = [
-        ('gameassist.one_key_link', 'oneKey', 'Method eligibility'),
-        ('gameassist.plugin_enable', 'pluginEnable', 'Method pluginEnabled'),
         ('gameassist.display_eligibility', 'display', 'Method displayEligibility'),
         ('gameassist.plugin_list', 'pluginList', 'Method pluginList'),
-        ('gamespace.link_state', 'gameSpace', ''),
+        ('gameassist.plugin_enable', 'availability', 'Method pluginEnabled'),
+        ('gamehelper.macro_enable', 'macro', ''),
+        ('gamespace.plugin_eligibility', 'space', ''),
+        ('gamespace.link_capability', 'map', 'Field mapPackage,Field mapSupported'),
     ]
+    callbacks = ['static Object '+name+'(Chain chain'+(', '+param if param else '')+') throws Throwable {'+callback(source,target)+'}' for target,name,param in targets]
+    signatures = ['private static boolean isShoulderTarget(String', 'private static boolean isShoulderTarget(\n',
+                  'static boolean isGamePluginTarget(', 'private static boolean isGameUnlockTarget(',
+                  'private static boolean isGameHelperVisibilityFallbackProcess(', 'private static boolean isShoulderBlacklistPlugin(']
     methods = []
-    for target, name, parameter in targets:
-        signature = 'Chain chain' + (', ' + parameter if parameter else '')
-        methods.append('static Object ' + name + '(' + signature + ') throws Throwable {' + callback(source, target) + '}')
+    for signature in signatures:
+        start = source.index(signature)
+        methods.append(source[start:source.index('{',start)+1]+body(source,start)+'}')
     with tempfile.TemporaryDirectory(prefix='ls-shoulder-runtime-') as temp:
-        java = Path(temp) / 'TestShoulderRuntime.java'
-        java.write_text(HARNESS.replace('// CALLBACKS', '\n'.join(methods)), encoding='utf-8')
-        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', temp, str(java)], check=True)
-        subprocess.run(['java', '-cp', temp, 'TestShoulderRuntime'], check=True)
+        java = Path(temp)/'TestShoulderRuntime.java'
+        java.write_text(HARNESS.replace('// METHODS','\n'.join(methods)).replace('// CALLBACKS','\n'.join(callbacks)),encoding='utf-8')
+        opts=Path(temp)/'GameOptions.java'
+        opts.write_text('package ls.augment.com; public class GameOptions {public static final String PLUGINS="plugins";}',encoding='utf-8')
+        subprocess.run(['javac','-encoding','UTF-8','-d',temp,str(java),str(opts)],check=True)
+        subprocess.run(['java','-cp',temp,'TestShoulderRuntime'],check=True)
 
 
 if __name__ == '__main__':

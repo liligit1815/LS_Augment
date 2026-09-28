@@ -18,12 +18,17 @@ final class OemHooks {
 
     static int methods(AugmentModule module, ClassLoader loader, String className, String name,
             Class<?> returnType, int argc, String key, Hooker hooker) {
+        return methods(module,loader,className,name,returnType,argc,key,hooker,null);
+    }
+    static int methods(AugmentModule module, ClassLoader loader, String className, String name,
+            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes) {
         int count=0;
         try {
             Class<?> type=Class.forName(className,false,loader);
             for(Method m:type.getDeclaredMethods()) {
                 if(!m.getName().equals(name)||(returnType!=null&&m.getReturnType()!=returnType)
-                        ||(argc>=0&&m.getParameterCount()!=argc)||Modifier.isAbstract(m.getModifiers())) continue;
+                        ||(argc>=0&&m.getParameterCount()!=argc)||Modifier.isAbstract(m.getModifiers())
+                        ||(parameterTypes!=null&&!Arrays.equals(parameterTypes,m.getParameterTypes()))) continue;
                 synchronized(INSTALLED) {
                     Set<String> keys=INSTALLED.computeIfAbsent(m,ignored->new HashSet<>());
                     if(keys.contains(key)){count++;continue;}

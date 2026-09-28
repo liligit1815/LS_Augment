@@ -41,6 +41,11 @@ public final class DeviceRegressionRunner extends Instrumentation {
             report.put("operation", operation).put("moduleVersion", BuildConfig.VERSION_CODE)
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "power-dialog":
+                    boolean powerDialogShown=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+                            .performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG);
+                    if(!powerDialogShown)throw new IllegalStateException("Power dialog action unavailable");
+                    break;
                 case "dialog-ui":
                     report.put("dialogs", DialogUiDeviceCases.run(this));
                     result.putString("dialogs", report.getJSONObject("dialogs").toString());
@@ -237,7 +242,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                         android.media.AudioManager control = context.getSystemService(android.media.AudioManager.class);
                         int selectedStream = audioRequest.optInt("stream", 3);
                         if (audioRequest.has("adjust")) control.adjustStreamVolume(selectedStream, audioRequest.getInt("adjust"), 0);
-                        else control.setStreamVolume(selectedStream, audioRequest.getInt("value"), 0);
+                        else if (audioRequest.has("value")) control.setStreamVolume(selectedStream, audioRequest.getInt("value"), 0);
+                        if (audioRequest.has("ringer")) control.setRingerMode(audioRequest.getInt("ringer"));
                         android.os.SystemClock.sleep(1200);
                     } finally { getUiAutomation().dropShellPermissionIdentity(); }
                     report.put("requested", audioRequest);

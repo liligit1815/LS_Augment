@@ -20,7 +20,7 @@ public final class TileSetupActivity extends Activity {
         super.onCreate(savedInstanceState);
         registerSystemBackCallback();
         if (Build.VERSION.SDK_INT < 33) {
-            Toast.makeText(this, "当前系统请在快捷设置编辑页手动添加 LS_Augment", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "当前系统请在快捷设置编辑页手动添加 红魔Duo", Toast.LENGTH_LONG).show();
             finish();
             return;
         }
@@ -41,11 +41,11 @@ public final class TileSetupActivity extends Activity {
                     result -> {
                         String text;
                         if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED) {
-                            text = "LS_Augment 磁贴已添加";
+                            text = "红魔Duo 磁贴已添加";
                         } else if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED) {
-                            text = "LS_Augment 磁贴已存在";
+                            text = "红魔Duo 磁贴已存在";
                         } else if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED) {
-                            text = "未添加 LS_Augment 磁贴";
+                            text = "未添加 红魔Duo 磁贴";
                         } else {
                             text = "添加磁贴失败，代码 " + result;
                         }

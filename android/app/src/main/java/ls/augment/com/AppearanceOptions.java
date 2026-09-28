@@ -13,7 +13,7 @@ public final class AppearanceOptions {
     private AppearanceOptions() {}
     public static List<EnhancementOption> options() {
         return Arrays.asList(
-            EnhancementOption.choice(THEME, "appearance", "界面明暗模式", "默认保持 LS_Augment 冰蓝浅色外观。", 0, "冰蓝浅色", "冰蓝深色", "跟随系统"),
+            EnhancementOption.choice(THEME, "appearance", "界面明暗模式", "默认保持 红魔Duo 冰蓝浅色外观。", 0, "冰蓝浅色", "冰蓝深色", "跟随系统"),
             EnhancementOption.toggle(BLUR, "appearance", "背景模糊效果", "只模糊背景，文字和按钮保持清晰。需要 Android 12 及硬件加速；不支持时显示普通背景与遮罩。"),
             EnhancementOption.integer(LIGHT_MASK, "appearance", "浅色背景遮罩强度", "0～100%；开启背景模糊后生效。数值越大，背景越淡。", 75, 0, 100),
             EnhancementOption.integer(DARK_MASK, "appearance", "深色背景遮罩强度", "0～100%；开启背景模糊后生效。数值越大，背景越暗。", 65, 0, 100),

@@ -13,6 +13,35 @@ import android.widget.TextView;
 final class StatusBarContentBounds {
     private StatusBarContentBounds() { }
 
+    static float wifiSignalHeight(View view) {
+        // Resolve within this icon only: another Wi-Fi view can coexist in a header.
+        if (!(view instanceof ViewGroup)) return 0;
+        View signal = wifiSignal(view);
+        if (!(signal instanceof ImageView)) return 0;
+        RectF bounds = new RectF(of(signal));
+        if (bounds.isEmpty()) return 0;
+        for (View child = signal; child != view;) {
+            child.getMatrix().mapRect(bounds);
+            if (!(child.getParent() instanceof View)) return 0;
+            child = (View) child.getParent();
+        }
+        return bounds.bottom - bounds.top;
+    }
+
+    private static View wifiSignal(View view) {
+        try {
+            if ("wifi_signal".equals(view.getResources().getResourceEntryName(view.getId()))) return view;
+        } catch (android.content.res.Resources.NotFoundException ignored) { }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = wifiSignal(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     static Rect of(View view) {
         RectF bounds = new RectF();
         Rect stacked = RedMagicSystemUiHook.stackedSignalBounds(view);

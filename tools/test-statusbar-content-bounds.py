@@ -11,6 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com/hook'
 SOURCES = {
+    'android/content/res/Resources.java': '''package android.content.res; public class Resources {public static class NotFoundException extends RuntimeException {} public String getResourceEntryName(int id){if(id==1)return "wifi_signal";throw new NotFoundException();}}''',
     'android/graphics/Rect.java': '''package android.graphics;
 public class Rect {
  public int left,top,right,bottom;
@@ -45,7 +46,7 @@ public class Matrix {
 public class Drawable {private final android.graphics.Rect bounds=new android.graphics.Rect();public android.graphics.Rect getBounds(){return bounds;}public void setBounds(int l,int t,int r,int b){bounds.set(l,t,r,b);}}''',
     'android/view/View.java': '''package android.view;
 public class View {
- public static final int VISIBLE=0,INVISIBLE=4,GONE=8;
+ public static final int VISIBLE=0,INVISIBLE=4,GONE=8; public View parent;public int id;public View getParent(){return parent;}public int getId(){return id;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}
  private int visibility=VISIBLE,left,top,width,height,paddingLeft,paddingTop,scrollX,scrollY;
  private float alpha=1,transitionAlpha=1;private final android.graphics.Matrix matrix=new android.graphics.Matrix();
  public void layout(int l,int t,int r,int b){left=l;top=t;width=r-l;height=b-t;}
@@ -58,7 +59,7 @@ public class View {
  public void scrollTo(int x,int y){scrollX=x;scrollY=y;}public int getScrollX(){return scrollX;}public int getScrollY(){return scrollY;}
 }''',
     'android/view/ViewGroup.java': '''package android.view;
-public class ViewGroup extends View {private final java.util.List<View> children=new java.util.ArrayList<>();public void addView(View child){children.add(child);}public int getChildCount(){return children.size();}public View getChildAt(int i){return children.get(i);}}''',
+public class ViewGroup extends View {private final java.util.List<View> children=new java.util.ArrayList<>();public void addView(View child){children.add(child);child.parent=this;}public int getChildCount(){return children.size();}public View getChildAt(int i){return children.get(i);}}''',
     'android/widget/ImageView.java': '''package android.widget;
 public class ImageView extends android.view.View {private android.graphics.drawable.Drawable drawable;private final android.graphics.Matrix imageMatrix=new android.graphics.Matrix();public void setImageDrawable(android.graphics.drawable.Drawable d){drawable=d;}public android.graphics.drawable.Drawable getDrawable(){return drawable;}public android.graphics.Matrix getImageMatrix(){return imageMatrix;}}''',
     'android/text/Layout.java': '''package android.text;
@@ -116,6 +117,18 @@ public final class TestStatusBarContentBounds {
 
   // OEM WiFi wrappers can remain visible while only the internal content is GONE.
   wifiStrength.setVisibility(View.GONE);bounds(system,32,6,44,18,"empty visible WiFi wrapper must not shrink the remaining mobile icon");
+  wifiStrength.setVisibility(View.VISIBLE);wifiStrength.id=1;
+  float reference=StatusBarContentBounds.wifiSignalHeight(wifi);
+  if(reference!=12)throw new AssertionError("Wi-Fi reference signal");checks++;
+  ImageView activity=image(18,18,6,6,6,6);wifi.addView(activity);
+  Rect full=StatusBarContentBounds.of(wifi);
+  float signalSize=StatusBarContentBounds.wifiSignalHeight(wifi);
+  if(full.height()!=18||signalSize!=12)throw new AssertionError("activity arrows must not resize signal");checks++;
+  activity.setVisibility(View.GONE);
+  if(StatusBarContentBounds.wifiSignalHeight(wifi)!=signalSize)throw new AssertionError("idle signal scale stable");checks++;
+  wifiStrength.setVisibility(View.INVISIBLE);
+  if(StatusBarContentBounds.wifiSignalHeight(wifi)!=12)throw new AssertionError("overflow dot keeps full-signal reference");checks++;
+  if(StatusBarContentBounds.wifiSignalHeight(mobile)!=0)throw new AssertionError("mobile unchanged");checks++;
   System.out.println("StatusBarContentBounds: "+checks+" actual-source geometry assertions passed");
  }
 }''',

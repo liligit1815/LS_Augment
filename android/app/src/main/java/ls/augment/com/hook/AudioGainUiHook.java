@@ -11,6 +11,7 @@ import java.util.WeakHashMap;
 import java.lang.reflect.*;
 import ls.augment.com.AudioGainPolicy;
 import ls.augment.com.ConfigSchema;
+import ls.augment.com.SystemUiOptions;
 
 /** Keeps the existing volume panel's range in sync with the real extension. */
 final class AudioGainUiHook {
@@ -74,12 +75,17 @@ final class AudioGainUiHook {
         int current=Boolean.TRUE.equals(field(state,"muted"))?0:Math.max(0,Math.min(total,(Integer)level));
         String steps=customSteps(context,stream)?current+" / "+total:"";
         String percent=gainPercent(context,stream,current,total);
-        String text=steps.isEmpty()?percent:steps;
-        if(text.isEmpty())removeBadge(root);else showBadge(root,(View)field(row,"icon"),text);
-        if(!percent.isEmpty()){
-            Object number=field(row,"number");if(number instanceof TextView)((TextView)number).setText(percent);
-        }
-        if(title!=null)title.setText(label+(steps.isEmpty()?"":" · "+steps+" 档")+(percent.isEmpty()?"":" · "+percent));
+        if(percent.isEmpty()&&FeatureSettings.enabled(context,SystemUiOptions.QS_VOLUME_PERCENT))
+            percent=Math.round(current*100f/total)+"%";
+        String text=percent.isEmpty()?steps:percent;
+        Object number=field(row,"number");
+        // OEM rows already own a percentage/level label. Never draw a duplicate over the speaker.
+        if(number instanceof TextView&&((TextView)number).getVisibility()==View.VISIBLE){
+            removeBadge(root);
+            if(!text.isEmpty())((TextView)number).setText(text);
+        }else if(text.isEmpty())removeBadge(root);
+        else showBadge(root,(View)field(row,"slider"),text);
+        if(title!=null)title.setText(label+(steps.isEmpty()?"":" · "+steps+" 档"));
     }
     private static String gainPercent(Context context,int stream,int current,int total){
         if(AudioGainPolicy.stream(stream).isEmpty()||!FeatureSettings.enabled(context,ConfigSchema.AUDIO_GAIN_ENABLED))return "";
@@ -111,9 +117,16 @@ final class AudioGainUiHook {
         void resize(){View r=root.get();if(r!=null)setBounds(0,0,Math.max(1,r.getWidth()),Math.max(1,r.getHeight()));}
         @Override public void onLayoutChange(View view,int left,int top,int right,int bottom,int oldLeft,int oldTop,int oldRight,int oldBottom){resize();invalidateSelf();}
         @Override public void draw(Canvas canvas){View r=root.get(),i=icon.get();if(r==null||i==null||text.isEmpty())return;
-            float d=r.getResources().getDisplayMetrics().density;int[] a=new int[2],b=new int[2];r.getLocationOnScreen(a);i.getLocationOnScreen(b);
-            paint.setTextSize(10*d);paint.setColor(0xff138af0);
-            canvas.drawText(text,b[0]-a[0]+i.getWidth()/2f,Math.max(12*d,b[1]-a[1]-3*d),paint);
+            float d=r.getResources().getDisplayMetrics().density;
+            Rect bounds=new Rect();int[] location=new int[2];r.getLocationOnScreen(location);
+            if(!i.getGlobalVisibleRect(bounds))return;
+            bounds.offset(-location[0],-location[1]);
+            if(!bounds.intersect(0,0,r.getWidth(),r.getHeight()))return;
+            paint.setTextSize(Math.min(11*r.getResources().getDisplayMetrics().scaledDensity,bounds.width()/3.6f));
+            if(paint.getTextSize()<6*d)return;
+            paint.setColor(0xff20242a);paint.setShadowLayer(d,0,0,0xe6ffffff);
+            float baseline=Math.max(bounds.top-paint.ascent(),bounds.bottom-8*d-paint.descent());
+            canvas.drawText(text,bounds.exactCenterX(),baseline,paint);
         }
         @Override public void setAlpha(int alpha){paint.setAlpha(alpha);}
         @Override public void setColorFilter(ColorFilter filter){paint.setColorFilter(filter);}

@@ -7,7 +7,7 @@ import android.service.quicksettings.Tile;
 final class TilePresentation {
     static final String KEY_LABEL = "ls_augment_tile_label";
     static final String KEY_DESCRIPTION = "ls_augment_tile_description";
-    static final String DEFAULT_LABEL = "LS_Augment";
+    static final String DEFAULT_LABEL = "红魔Duo";
     static final String DEFAULT_DESCRIPTION = "应用隐藏";
 
     private TilePresentation() {}

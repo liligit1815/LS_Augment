@@ -13,6 +13,8 @@ public final class HookTargetRegistry {
                     "com.android.systemui",
                     "com.zte.beautify",
                     "com.zte.beautifyadapter",
+                    "com.zte.fingerprints",
+                    "com.fingerprint.sensorservice",
                     "com.zte.cn.doubleapp",
                     "com.zte.recommend",
                     "cn.nubia.gamelauncher",

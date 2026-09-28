@@ -15,23 +15,31 @@ public final class IconCropActivity extends Activity {
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);ui=new UiKit(this);LinearLayout page=ui.scrollPage();page.addView(ui.header("裁剪图片",true));
         page.addView(ui.text("拖动图片调整位置，双指缩放。方框内的内容会保存为图标。",12,ui.muted,false));
-        crop=new Crop();page.addView(crop,new LinearLayout.LayoutParams(-1,ui.dp(300)));
+        crop=new Crop();crop.fit=getIntent().getBooleanExtra("gesture_icon",false);
+        if(saved!=null)crop.fit=saved.getBoolean("fit",crop.fit);
+        if(getIntent().getBooleanExtra("gesture_icon",false)){
+            Switch fit=new Switch(this);fit.setText("完整显示（透明留边）");fit.setChecked(crop.fit);page.addView(fit,ui.wrap());
+            fit.setOnCheckedChangeListener((v,on)->{crop.fit=on;crop.zoom=1;crop.x=crop.y=0;crop.invalidate();});
+        }
+        page.addView(crop,new LinearLayout.LayoutParams(-1,ui.dp(300)));
         done=ui.accentButton("使用这张图片");done.setEnabled(false);page.addView(done,ui.margins(0,12,0,0));
         done.setOnClickListener(v->{done.setEnabled(false);Bitmap result=crop.render(512);worker.execute(()->{try{String hash=LauncherIconStore.save(this,result);runOnUiThread(()->{setResult(RESULT_OK,new Intent().putExtra("icon",hash));finish();});}
             catch(Exception e){runOnUiThread(()->{done.setEnabled(true);Toast.makeText(this,"图标保存失败",Toast.LENGTH_LONG).show();});}finally{result.recycle();}});});
         Uri uri=getIntent().getData();worker.execute(()->{try{Bitmap b=ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(),uri),(decoder,info,source)->{
+                if(getIntent().getBooleanExtra("gesture_icon",false)&&(info.isAnimated()||!java.util.Arrays.asList("image/png","image/webp","image/jpeg").contains(info.getMimeType())))
+                    throw new IllegalArgumentException("请选择静态 PNG、WebP 或 JPEG 图片");
                 int w=info.getSize().getWidth(),h=info.getSize().getHeight();float f=Math.min(1f,2048f/Math.max(w,h));decoder.setTargetSize(Math.max(1,(int)(w*f)),Math.max(1,(int)(h*f)));decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);});
             runOnUiThread(()->{if(isDestroyed()){b.recycle();return;}crop.bitmap=b;if(saved!=null){crop.zoom=saved.getFloat("zoom",1);crop.x=saved.getFloat("x");crop.y=saved.getFloat("y");}crop.invalidate();done.setEnabled(true);});
         }catch(Exception e){runOnUiThread(()->{Toast.makeText(this,"无法读取所选图片",Toast.LENGTH_LONG).show();finish();});}});
     }
-    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putFloat("zoom",crop.zoom);state.putFloat("x",crop.x);state.putFloat("y",crop.y);}
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("fit",crop.fit);state.putFloat("zoom",crop.zoom);state.putFloat("x",crop.x);state.putFloat("y",crop.y);}
     @Override protected void onDestroy(){worker.shutdown();super.onDestroy();}
     private final class Crop extends View {
-        Bitmap bitmap;float zoom=1,x,y,lastX,lastY;final Paint paint=new Paint(3);final ScaleGestureDetector scale;
+        Bitmap bitmap;boolean fit;float zoom=1,x,y,lastX,lastY;final Paint paint=new Paint(3);final ScaleGestureDetector scale;
         Crop(){super(IconCropActivity.this);scale=new ScaleGestureDetector(getContext(),new ScaleGestureDetector.SimpleOnScaleGestureListener(){public boolean onScale(ScaleGestureDetector d){zoom=Math.max(1,Math.min(8,zoom*d.getScaleFactor()));clamp();invalidate();return true;}});setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         float edge(){return Math.min(getWidth(),getHeight())*.92f;}
-        float ratio(){return bitmap==null?1:edge()/Math.min(bitmap.getWidth(),bitmap.getHeight())*zoom;}
-        void clamp(){if(bitmap==null)return;float f=ratio(),e=edge();x=Math.max(-(bitmap.getWidth()*f-e)/2,Math.min((bitmap.getWidth()*f-e)/2,x));y=Math.max(-(bitmap.getHeight()*f-e)/2,Math.min((bitmap.getHeight()*f-e)/2,y));}
+        float ratio(){return bitmap==null?1:edge()/(fit?Math.max(bitmap.getWidth(),bitmap.getHeight()):Math.min(bitmap.getWidth(),bitmap.getHeight()))*zoom;}
+        void clamp(){if(bitmap==null)return;float f=ratio(),e=edge(),dx=Math.max(0,(bitmap.getWidth()*f-e)/2),dy=Math.max(0,(bitmap.getHeight()*f-e)/2);x=Math.max(-dx,Math.min(dx,x));y=Math.max(-dy,Math.min(dy,y));}
         void image(Canvas c,float centerX,float centerY,float factor){if(bitmap==null)return;c.translate(centerX+x*factor,centerY+y*factor);c.scale(ratio()*factor,ratio()*factor);c.drawBitmap(bitmap,-bitmap.getWidth()/2f,-bitmap.getHeight()/2f,paint);}
         @Override protected void onDraw(Canvas c){super.onDraw(c);c.drawColor(0xffdcefff);if(bitmap==null)return;clamp();float e=edge(),left=(getWidth()-e)/2,top=(getHeight()-e)/2;
             c.save();c.clipRect(left,top,left+e,top+e);image(c,getWidth()/2f,getHeight()/2f,1);c.restore();paint.setStyle(Paint.Style.STROKE);paint.setColor(ui.accent);paint.setStrokeWidth(ui.dp(2));c.drawRect(left,top,left+e,top+e,paint);paint.setStyle(Paint.Style.FILL);}

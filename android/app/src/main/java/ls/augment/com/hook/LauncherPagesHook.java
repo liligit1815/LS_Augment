@@ -1,33 +1,29 @@
 package ls.augment.com.hook;
 
 import android.animation.LayoutTransition;
-import android.app.AlertDialog;
-import android.content.ClipData;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.SparseArray;
 import android.util.TypedValue;
-import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.WeakHashMap;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 import ls.augment.com.LauncherOptions;
 
@@ -50,6 +46,8 @@ final class LauncherPagesHook {
                         c.attach(workspace);
                         c.ready = false;
                         c.binding = true;
+                        c.bindingGeneration++;
+                        if (c.editor != null) c.editor.dismiss();
                         try {
                             List<Integer> saved = c.saved();
                             if (saved.isEmpty()) return chain.proceed();
@@ -102,12 +100,13 @@ final class LauncherPagesHook {
     }
 
     /** Exact native signatures; an unrelated launcher is never modified by guesswork. */
-    private static final class Targets {
+    static final class Targets {
         final Class<?> launcher, state, future;
         final Method bind, finished, strip, convertEmpty, removeExtra, workspace, menuInit, screenOrder, insert, pageAtId;
         final Method listClear, listAdd, listArray, listClone, currentPage, setCurrentPage, shortCuts, panelCount;
         final Method stateGet, modelGet, databaseGet, nextId, screenUtil, refreshDefault, updateIndicator, nativePrefs;
         final Field screens, launcherField, menuItems, firstScreen, bindingModel, vendorFirstScreen;
+        final Executor modelExecutor;
 
         Targets(ClassLoader loader) throws Exception {
             Class<?> ws = Class.forName("com.android.launcher3.Workspace", false, loader);
@@ -154,6 +153,7 @@ final class LauncherPagesHook {
             screenUtil = method(launcher, "w2");
             refreshDefault = method(util, "b", ws);
             nativePrefs = method(Class.forName("com.android.launcher3.J3", false, loader), "m", Context.class);
+            modelExecutor = (Executor) field(Class.forName("com.android.launcher3.util.m0", false, loader), "h").get(null);
             if (screenOrder.getReturnType() != list || insert.getReturnType() != cell
                     || nextId.getReturnType() != int.class || strip.getReturnType() != void.class
                     || !SparseArray.class.isAssignableFrom(screens.getType())) {
@@ -178,7 +178,7 @@ final class LauncherPagesHook {
         }
     }
 
-    private static final class Controller {
+    static final class Controller {
         final AugmentModule module;
         final Targets t;
         final Handler main = new Handler(Looper.getMainLooper());
@@ -187,12 +187,23 @@ final class LauncherPagesHook {
         Context context;
         SharedPreferences prefs;
         boolean ready, binding, mutating, subscribed;
+        boolean pending;
+        int requestToken, bindingGeneration;
+        Runnable pendingCheck;
+        LauncherPagesEditor editor;
+        final WeakHashMap<View, LinearLayout.LayoutParams> menuLayouts = new WeakHashMap<>();
         final Runnable cleanup = this::cleanupPlaceholders;
 
         Controller(AugmentModule module, Targets targets) { this.module = module; t = targets; }
         void attach(ViewGroup view) {
             if (view == null) return;
-            if (workspace.get() != view) { workspace = new WeakReference<>(view); ready = false; }
+            if (workspace.get() != view) {
+                cancelPending();
+                if (editor != null) { editor.dismiss(); editor = null; }
+                workspace = new WeakReference<>(view);
+                ready = false;
+                bindingGeneration++;
+            }
             if (context == null) {
                 context = view.getContext().getApplicationContext();
                 prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -239,7 +250,12 @@ final class LauncherPagesHook {
                 if (ws == null || !ready || binding || mutating || !FeatureSettings.hasVerifiedSnapshot(context)) return;
                 boolean before = prefs.getBoolean("keep_empty", false);
                 boolean after = enabled(LauncherOptions.KEEP_EMPTY);
-                if (before && !after) t.strip.invoke(ws);
+                if (before && !after) {
+                    if (editor != null) editor.dismiss();
+                    t.strip.invoke(ws);
+                } else if (!after && !enabled(LauncherOptions.PAGE_REORDER) && editor != null) {
+                    editor.dismiss();
+                }
                 save();
             } catch (Throwable error) { failed(error); }
         }
@@ -268,8 +284,8 @@ final class LauncherPagesHook {
                     entry.setTag(ENTRY_TAG);
                     entry.setText("页面");
                     entry.setGravity(Gravity.CENTER);
-                    entry.setMinHeight(dp(48));
-                    entry.setPadding(dp(4), dp(8), dp(4), dp(8));
+                    entry.setMinHeight(dp(76));
+                    entry.setPadding(dp(4), dp(4), dp(4), dp(4));
                     entry.setTextSize(12);
                     entry.setContentDescription("管理桌面页面");
                     entry.setOnClickListener(view -> showEditor(container.getContext()));
@@ -285,6 +301,7 @@ final class LauncherPagesHook {
                     entry.setTextColor(reference.getTextColors());
                     entry.setTextSize(TypedValue.COMPLEX_UNIT_PX, reference.getTextSize());
                 }
+                LauncherPagesEntry.style(entry, reference);
                 LinearLayout.LayoutParams layout = (LinearLayout.LayoutParams) entry.getLayoutParams();
                 boolean vertical = row.getOrientation() == LinearLayout.VERTICAL;
                 LinearLayout.LayoutParams referenceLayout = reference != null && reference.getLayoutParams() instanceof LinearLayout.LayoutParams
@@ -294,6 +311,28 @@ final class LauncherPagesHook {
                 layout.weight = vertical ? 0 : referenceLayout == null ? 1 : referenceLayout.weight;
                 entry.setLayoutParams(layout);
                 entry.setVisibility(enabled ? View.VISIBLE : View.GONE);
+                // Native items each reserve 76dp before weights are applied. Share the
+                // available width equally when the fifth item is present, including RTL.
+                for (int i = 0; i < row.getChildCount(); i++) {
+                    View child = row.getChildAt(i);
+                    if (child == entry || !(child.getLayoutParams() instanceof LinearLayout.LayoutParams)) continue;
+                    LinearLayout.LayoutParams original = (LinearLayout.LayoutParams) child.getLayoutParams();
+                    if (enabled && !vertical) {
+                        if (!menuLayouts.containsKey(child)) menuLayouts.put(child, new LinearLayout.LayoutParams(original));
+                        LinearLayout.LayoutParams shared = new LinearLayout.LayoutParams(original);
+                        shared.width = 0;
+                        shared.weight = 1;
+                        child.setLayoutParams(shared);
+                    } else {
+                        LinearLayout.LayoutParams restore = menuLayouts.remove(child);
+                        if (restore != null) child.setLayoutParams(restore);
+                    }
+                }
+                if (enabled && !vertical) {
+                    layout.width = 0;
+                    layout.weight = 1;
+                    entry.setLayoutParams(layout);
+                }
             } catch (Throwable error) { failed(error); }
         }
         int dp(int value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
@@ -318,9 +357,22 @@ final class LauncherPagesHook {
             if (ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating
                     || (Boolean) TargetReflection.call(ws, "getIsDragOccuring")
                     || (Boolean) TargetReflection.call(ws, "isPageInTransition")) {
-                throw new IllegalStateException("桌面正在更新，请稍后再试");
+                throw new PageUnavailable("桌面正在更新，请稍后再试");
             }
-            if ((Integer) t.panelCount.invoke(ws) != 1) throw new IllegalStateException("请在单屏桌面模式下管理页面");
+            if ((Integer) t.panelCount.invoke(ws) != 1) throw new PageUnavailable("请在单屏桌面模式下管理页面");
+        }
+        View pageView(int id) throws Exception { return (View) t.pageAtId.invoke(workspace.get(), id); }
+        int currentPageId() throws Exception {
+            List<Integer> ids = order();
+            int index = (Integer) t.currentPage.invoke(workspace.get());
+            return index >= 0 && index < ids.size() ? ids.get(index) : -1;
+        }
+        boolean canMovePage(int fromId, int toId) throws Exception {
+            List<Integer> ids = order();
+            int from = ids.indexOf(fromId), to = ids.indexOf(toId);
+            if (from < 0 || to < 0 || from == to) return false;
+            for (int i = Math.min(from, to); i <= Math.max(from, to); i++) if (fixed(ids.get(i))) return false;
+            return true;
         }
         void move(int fromId, int toId) throws Exception {
             checkEditable();
@@ -349,20 +401,13 @@ final class LauncherPagesHook {
             } finally { ws.setLayoutTransition(before.transition); mutating = false; }
             save();
         }
-        void add() throws Exception {
+        void add(int id) throws Exception {
             checkEditable();
             if (!enabled(LauncherOptions.KEEP_EMPTY)) return;
             List<Integer> order = order();
-            if (order.size() >= LauncherPageOrder.MAX_PAGES) throw new IllegalStateException("桌面页面已达到上限");
-            Object state = t.stateGet.invoke(null, context);
-            Object model = t.modelGet.invoke(state);
-            Object db = t.databaseGet.invoke(model);
-            int id;
-            int attempts = 0;
-            do {
-                id = (Integer) t.nextId.invoke(db);
-                if (++attempts > LauncherPageOrder.MAX_PAGES * 2 || id < 0) throw new IllegalStateException("无法分配新的页面");
-            } while (order.contains(id) || saved().contains(id));
+            if (order.stream().filter(value -> value >= 0).count() >= LauncherPageOrder.MAX_PAGES)
+                throw new PageUnavailable("桌面页面已达到上限");
+            if (id < 0 || order.contains(id) || saved().contains(id)) throw new PageUnavailable("页面已更新，请重新新增");
             int index = order.size();
             while (index > 0 && order.get(index - 1) < 0) index--;
             ViewGroup ws = workspace.get();
@@ -418,12 +463,105 @@ final class LauncherPagesHook {
             ws.invalidate();
         }
         void showEditor(Context activityContext) {
-            try {
-                checkEditable();
+            if (pending || (editor != null && editor.isShowing())) return;
+            if (!enabled(LauncherOptions.PAGE_REORDER) && !enabled(LauncherOptions.KEEP_EMPTY)) return;
+            perform(() -> {
                 if (!enabled(LauncherOptions.PAGE_REORDER) && !enabled(LauncherOptions.KEEP_EMPTY)) return;
-                new Editor(this, activityContext).show();
-            } catch (Throwable error) { failed(error); notifyUser("桌面正在更新或使用双屏布局，请稍后在单屏桌面重试"); }
+                ViewGroup sourceMenu = menu.get();
+                if (sourceMenu != null && !sourceMenu.isShown()) throw new PageUnavailable("请先长按桌面进入编辑模式");
+                editor = new LauncherPagesEditor(this, activityContext);
+                editor.show();
+            }, () -> {}, this::notifyUser);
         }
+
+        /** One pending intent; wait for native animations, never retry an applied mutation. */
+        void perform(Action action, Runnable onSuccess, Consumer<String> onFailure) {
+            if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
+            pending = true;
+            int token = ++requestToken;
+            awaitEditable(token, workspace.get(), bindingGeneration, 0, () -> {
+                action.run();
+                finish(token, onSuccess);
+            }, onFailure);
+        }
+        void addPage(Runnable onSuccess, Consumer<String> onFailure) {
+            if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
+            if (!enabled(LauncherOptions.KEEP_EMPTY)) { onFailure.accept("请先开启允许空白桌面"); return; }
+            pending = true;
+            int token = ++requestToken;
+            ViewGroup expected = workspace.get();
+            int generation = bindingGeneration;
+            awaitEditable(token, expected, generation, 0, () -> {
+                // The OEM query runs on its model queue. Empty pages exist only in the
+                // live/persisted order, so F() can legitimately return the same bound.
+                t.modelExecutor.execute(() -> {
+                    try {
+                        Object state = t.stateGet.invoke(null, context);
+                        Object model = t.modelGet.invoke(state);
+                        int minimum = (Integer) t.nextId.invoke(t.databaseGet.invoke(model));
+                        main.post(() -> awaitEditable(token, expected, generation, 0, () -> {
+                            if (!enabled(LauncherOptions.KEEP_EMPTY)) throw new PageUnavailable("允许空白桌面已关闭");
+                            int id = LauncherPageOrder.nextAvailableId(minimum, order(), saved());
+                            if (id < 0) throw new PageUnavailable("无法分配新的页面编号");
+                            add(id);
+                            finish(token, onSuccess);
+                        }, onFailure));
+                    } catch (Throwable error) { main.post(() -> reject(token, error, onFailure)); }
+                });
+                // A stalled loader must not leave every editor control disabled forever.
+                pendingCheck = () -> reject(token, new PageUnavailable("桌面加载较慢，请稍后重试"), onFailure);
+                main.postDelayed(pendingCheck, 5000);
+            }, onFailure);
+        }
+        void awaitEditable(int token, ViewGroup expected, int generation, int attempts,
+                           Action action, Consumer<String> onFailure) {
+            if (!pending || token != requestToken) return;
+            if (pendingCheck != null) main.removeCallbacks(pendingCheck);
+            pendingCheck = null;
+            try {
+                if (expected == null || workspace.get() != expected || !expected.isAttachedToWindow()
+                        || generation != bindingGeneration) throw new PageUnavailable("桌面已刷新，请重新打开页面管理");
+                if ((Integer) t.panelCount.invoke(expected) != 1) throw new PageUnavailable("请在单屏桌面模式下管理页面");
+                boolean busy = !ready || binding || mutating
+                        || (Boolean) TargetReflection.call(expected, "getIsDragOccuring")
+                        || (Boolean) TargetReflection.call(expected, "isPageInTransition");
+                if (busy) {
+                    if (attempts >= 24) throw new PageUnavailable("桌面仍在更新，请稍后重试");
+                    pendingCheck = () -> awaitEditable(token, expected, generation, attempts + 1, action, onFailure);
+                    main.postDelayed(pendingCheck, 80);
+                    return;
+                }
+                pendingCheck = null;
+                action.run();
+            } catch (Throwable error) { reject(token, error, onFailure); }
+        }
+        void finish(int token, Runnable onSuccess) {
+            if (!pending || token != requestToken) return;
+            pending = false;
+            if (pendingCheck != null) main.removeCallbacks(pendingCheck);
+            pendingCheck = null;
+            onSuccess.run();
+        }
+        void reject(int token, Throwable error, Consumer<String> onFailure) {
+            if (!pending || token != requestToken) return;
+            pending = false;
+            if (pendingCheck != null) main.removeCallbacks(pendingCheck);
+            pendingCheck = null;
+            while (error instanceof InvocationTargetException && error.getCause() != null) error = error.getCause();
+            if (!(error instanceof PageUnavailable)) failed(error);
+            onFailure.accept(error instanceof PageUnavailable ? error.getMessage()
+                    : ready ? "操作未完成，请重新打开页面管理后重试" : "页面尚未就绪，请重启桌面后再操作");
+        }
+        void cancelPending() {
+            requestToken++;
+            pending = false;
+            if (pendingCheck != null) main.removeCallbacks(pendingCheck);
+            pendingCheck = null;
+        }
+    }
+
+    private static final class PageUnavailable extends IllegalStateException {
+        PageUnavailable(String message) { super(message); }
     }
 
     /** Roll back native page objects as well as IDs if a launcher callback rejects a mutation. */
@@ -501,152 +639,7 @@ final class LauncherPagesHook {
         }
     }
 
-    private static final class Editor {
-        final Controller c;
-        final Context context;
-        final LinearLayout rows;
-        final ScrollView scroll;
-        final AlertDialog dialog;
-        int edgeScroll;
-        final Runnable scrollWhileDragging = new Runnable() {
-            @Override public void run() {
-                if (edgeScroll == 0 || !dialog.isShowing()) return;
-                scroll.scrollBy(0, edgeScroll * c.dp(14));
-                c.main.postDelayed(this, 32);
-            }
-        };
-        Editor(Controller c, Context context) {
-            this.c = c; this.context = context;
-            rows = new LinearLayout(context);
-            rows.setOrientation(LinearLayout.VERTICAL);
-            rows.setPadding(c.dp(12), c.dp(8), c.dp(12), c.dp(8));
-            scroll = new ScrollView(context);
-            scroll.addView(rows);
-            dialog = new AlertDialog.Builder(context).setTitle("桌面页面").setView(scroll)
-                    .setPositiveButton("完成", null).create();
-            dialog.setOnDismissListener(ignored -> stopScroll());
-            scroll.setOnDragListener((view, event) -> {
-                if (!isOurDrag(event)) return false;
-                if (event.getAction() == DragEvent.ACTION_DRAG_LOCATION) updateScroll(event.getY());
-                if (event.getAction() == DragEvent.ACTION_DRAG_ENDED || event.getAction() == DragEvent.ACTION_DROP) stopScroll();
-                return true;
-            });
-        }
-        void show() throws Exception { render(); dialog.show(); }
-        void action(Action action) {
-            try { action.run(); render(); }
-            catch (Throwable error) { c.failed(error); c.notifyUser("页面操作未完成，请稍后重试"); }
-        }
-        void render() throws Exception {
-            rows.removeAllViews();
-            boolean reorder = c.enabled(LauncherOptions.PAGE_REORDER), keep = c.enabled(LauncherOptions.KEEP_EMPTY);
-            TextView hint = new TextView(context);
-            hint.setText(reorder ? "长按页面预览，拖到目标页面即可排序；图标、文件夹和组件一起移动。" : "可新增空白页，或删除不含图标和组件的页面。");
-            hint.setPadding(0, 0, 0, c.dp(12));
-            rows.addView(hint);
-            List<Integer> order = c.order();
-            int number = 0;
-            for (int id : order) {
-                if (id < 0) continue;
-                boolean fixed = c.fixed(id), empty = c.empty(id);
-                LinearLayout row = new LinearLayout(context);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(0, c.dp(6), 0, c.dp(6));
-                View source = (View) c.t.pageAtId.invoke(c.workspace.get(), id);
-                Preview preview = new Preview(context, source);
-                row.addView(preview, new LinearLayout.LayoutParams(c.dp(82), c.dp(132)));
-                LinearLayout controls = new LinearLayout(context);
-                controls.setOrientation(LinearLayout.VERTICAL);
-                controls.setPadding(c.dp(12), 0, 0, 0);
-                row.addView(controls, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                TextView title = new TextView(context);
-                title.setText("第 " + (++number) + " 页" + (empty ? " · 空白页" : "") + (fixed ? " · 系统固定页" : ""));
-                controls.addView(title);
-                preview.setContentDescription(title.getText());
-                preview.setOnLongClickListener(view -> {
-                    if (!c.enabled(LauncherOptions.PAGE_REORDER) || fixed) return false;
-                    return view.startDragAndDrop(ClipData.newPlainText("桌面页面", ""), new View.DragShadowBuilder(view), new DraggedPage(this, id), 0);
-                });
-                row.setOnDragListener((view, event) -> {
-                    if (!isOurDrag(event) || !c.enabled(LauncherOptions.PAGE_REORDER) || fixed) return false;
-                    if (event.getAction() == DragEvent.ACTION_DRAG_LOCATION) updateScroll(view.getTop() + event.getY() - scroll.getScrollY());
-                    if (event.getAction() == DragEvent.ACTION_DRAG_ENTERED) view.setAlpha(0.5f);
-                    if (event.getAction() == DragEvent.ACTION_DRAG_EXITED || event.getAction() == DragEvent.ACTION_DRAG_ENDED) view.setAlpha(1);
-                    if (event.getAction() == DragEvent.ACTION_DRAG_ENDED) stopScroll();
-                    if (event.getAction() == DragEvent.ACTION_DROP) {
-                        stopScroll();
-                        view.setAlpha(1);
-                        int from = ((DraggedPage) event.getLocalState()).id;
-                        action(() -> c.move(from, id));
-                    }
-                    return true;
-                });
-                if (reorder && !fixed) {
-                    LinearLayout move = new LinearLayout(context);
-                    int index = order.indexOf(id);
-                    button(move, "前移", index > 0 && !c.fixed(order.get(index - 1)), () -> c.move(id, order.get(index - 1)));
-                    button(move, "后移", index + 1 < order.size() && !c.fixed(order.get(index + 1)), () -> c.move(id, order.get(index + 1)));
-                    controls.addView(move);
-                }
-                if (keep && empty && !fixed && order.stream().filter(value -> value >= 0).count() > 1) {
-                    button(controls, "删除空白页", true, () -> c.delete(id));
-                }
-                rows.addView(row);
-            }
-            if (keep) button(rows, "新增空白页", order.size() < LauncherPageOrder.MAX_PAGES, c::add);
-        }
-        boolean isOurDrag(DragEvent event) {
-            return event.getLocalState() instanceof DraggedPage && ((DraggedPage) event.getLocalState()).owner == this;
-        }
-        void updateScroll(float y) {
-            int direction = y < c.dp(56) ? -1 : y > scroll.getHeight() - c.dp(56) ? 1 : 0;
-            if (direction == edgeScroll) return;
-            stopScroll();
-            edgeScroll = direction;
-            if (direction != 0) c.main.post(scrollWhileDragging);
-        }
-        void stopScroll() { edgeScroll = 0; c.main.removeCallbacks(scrollWhileDragging); }
-        void button(LinearLayout parent, String label, boolean enabled, Action action) {
-            Button button = new Button(context);
-            button.setText(label);
-            button.setEnabled(enabled);
-            button.setOnClickListener(view -> action(action));
-            parent.addView(button, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-    }
-    private static final class DraggedPage {
-        final Editor owner;
-        final int id;
-        DraggedPage(Editor owner, int id) { this.owner = owner; this.id = id; }
-    }
-    private interface Action { void run() throws Exception; }
+    interface Action { void run() throws Exception; }
 
-    /** Paint the existing page into a small preview without copying or reparenting its icons. */
-    private static final class Preview extends View {
-        final WeakReference<View> page;
-        final Paint background = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Preview(Context context, View page) {
-            super(context);
-            this.page = new WeakReference<>(page);
-            TypedValue color = new TypedValue();
-            context.getTheme().resolveAttribute(android.R.attr.colorControlHighlight, color, true);
-            background.setColor(color.data == 0 ? 0x22888888 : color.data);
-        }
-        @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            canvas.drawRoundRect(new RectF(0, 0, getWidth(), getHeight()), 12, 12, background);
-            View source = page.get();
-            if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) return;
-            int save = canvas.save();
-            try {
-                float scale = Math.min((getWidth() - 8f) / source.getWidth(), (getHeight() - 8f) / source.getHeight());
-                canvas.translate((getWidth() - source.getWidth() * scale) / 2, (getHeight() - source.getHeight() * scale) / 2);
-                canvas.scale(scale, scale);
-                source.draw(canvas);
-            } catch (RuntimeException ignored) {
-                // Some widget hosts can only render into their own window.
-            } finally { canvas.restoreToCount(save); }
-        }
-    }
     private LauncherPagesHook() {}
 }

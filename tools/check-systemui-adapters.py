@@ -57,6 +57,12 @@ def methods_in_dex(data):
 
 
 EXPECTED = [
+    ('com.zte.feature.fullscreen_gesture.SeaWaveView', 'drawIcon', 1, 'V'),
+    ('com.zte.feature.fullscreen_gesture.SeaWaveView', 'drawWave', 1, 'V'),
+    ('com.zte.feature.fullscreen_gesture.SeaWaveView', 'updateIconRect', 0, 'V'),
+    ('com.zte.feature.fullscreen_gesture.SeaWaveView', 'init', 1, 'V'),
+    ('com.zte.feature.fullscreen_gesture.SeaWaveView', 'onActionDown', 3, 'V'),
+    ('com.zte.feature.fullscreen_gesture.GestureIcon', 'getIcon', 1, 'Landroid/graphics/Bitmap;'),
     ('com.android.systemui.qs.external.CustomTile', 'handleUpdateState', 2, 'V'),
     ('com.android.systemui.statusbar.phone.ui.StatusBarIconControllerImpl', 'onTuningChanged', 2, 'V'),
     ('com.android.systemui.statusbar.phone.ui.StatusBarIconController', 'getIconHideList', 2, 'Landroid/util/ArraySet;'),

@@ -5,9 +5,10 @@ import subprocess
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-sdk = Path.home() / 'AppData/Local/Android/Sdk'
+sdk = Path(os.environ.get('ANDROID_SDK_ROOT', Path.home() / 'AppData/Local/Android/Sdk'))
 java = Path(os.environ.get('JAVA_HOME', 'C:/Program Files/Java/jdk-17')) / 'bin'
 build = sdk / 'build-tools/36.0.0'
+if not build.is_dir(): build = sdk / 'build-tools/35.0.0'
 android = sdk / 'platforms/android-36/android.jar'
 source = root / 'tools/ui-observer'
 out = root / 'out/full-device-regression-20260908/ui-observer'

@@ -13,7 +13,7 @@ final class DiagnosticExport {
     static String build(Context context){
         long start=System.currentTimeMillis();StringBuilder out=new StringBuilder();AppConfig config=new AppConfig(context);
         boolean ai=config.getBoolean(ConfigSchema.AI_TRIGGER_DIAGNOSTICS),shoulder=config.getBoolean(ConfigSchema.SHOULDER_DIAGNOSTICS);
-        out.append("LS_Augment device diagnostic export v1\nmodule=").append(BuildConfig.VERSION_NAME)
+        out.append("红魔Duo device diagnostic export v1\nmodule=").append(BuildConfig.VERSION_NAME)
             .append("\ncollectionStarted=").append(start).append("\ndevice=").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
             .append("\nandroid=").append(Build.VERSION.RELEASE).append(" SDK=").append(Build.VERSION.SDK_INT).append("\nROM=").append(Build.FINGERPRINT)
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
@@ -53,6 +53,17 @@ final class DiagnosticExport {
             out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
         out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
+        // Cleanup failures need process death and graphics evidence even when AI /
+        // shoulder detail switches are off. Read buffers without clearing them.
+        source(out,"LAUNCHER_EXIT_INFO; historical entries must be matched to reproduction time",
+                RootShell.run("dumpsys activity exit-info com.zte.mifavor.launcher",null,6,128*1024),128*1024);
+        source(out,"SYSTEMUI_EXIT_INFO; historical entries must be matched to reproduction time",
+                RootShell.run("dumpsys activity exit-info com.android.systemui",null,6,128*1024),128*1024);
+        String cleanupSince=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(start-10*60*1000));
+        source(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT; requested last 10 minutes; buffer may have rotated",
+                RootShell.run("logcat -b main -b system -b crash -d -v epoch -T "+RootShell.quote(cleanupSince)
+                        +" LS_Augment:I AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",
+                        null,12,768*1024),768*1024);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
         if(ai)file(out,context,"AI_DETAIL","detail-AI.log",512*1024,"AI");
         if(shoulder||ai){

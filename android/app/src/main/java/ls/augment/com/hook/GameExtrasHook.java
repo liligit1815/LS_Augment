@@ -59,7 +59,20 @@ final class GameExtrasHook {
     }
 
     private void space(){
-        plugin("cn.nubia.gamelauncher.gamecontrolpanel.config.PluginConfig",new String[]{"isPluginEnable"});
+        String watermark="cn.nubia.gamecenter.settings.watermark.";
+        hook(GameOptions.WATERMARK_UNLIMITED,watermark+"WaterMarkWatcher","onTextChanged",void.class,
+                chain->null,CharSequence.class,int.class,int.class,int.class);
+        hook(GameOptions.WATERMARK_UNLIMITED,watermark+"WatermarkFragment","initMessageEdit",void.class,chain->{
+            EditText edit=(EditText)chain.getArg(0);
+            java.util.ArrayList<InputFilter> filters=new java.util.ArrayList<>();
+            for(InputFilter filter:edit.getFilters())if(!(filter instanceof InputFilter.LengthFilter))filters.add(filter);
+            edit.setFilters(filters.toArray(new InputFilter[0]));
+            Object result=chain.proceed();
+            if(edit.getParent() instanceof android.view.ViewGroup)updateWatermarkHint((android.view.ViewGroup)edit.getParent());
+            return result;
+        },EditText.class);
+        // GameSpace exposes package/region eligibility only; no two-argument config getter.
+        plugin("cn.nubia.gamelauncher.gamecontrolpanel.config.PluginConfig",false);
         hook(GameOptions.REDMAGIC_TIME,ALLOCATION,"disableRedMagicTime",void.class,chain->null);
         hook(GameOptions.REDMAGIC_TIME,ALLOCATION,"enableRedMagicTime",void.class,chain->null);
         hook(GameOptions.REDMAGIC_TIME,ALLOCATION,"updateUI",void.class,
@@ -85,21 +98,45 @@ final class GameExtrasHook {
         });
     }
 
-    private void plugin(String className,String[] names){
-        for(String name:names){
-            hook(GameOptions.PLUGINS,className,name,boolean.class,chain->true,Context.class,String.class);
-            hook(GameOptions.PLUGINS,className,name,boolean.class,chain->true,Context.class,String.class,String.class);
-            hook(GameOptions.PLUGINS,className,name,boolean.class,chain->true,Context.class,String.class,String.class,boolean.class);
+    private static void updateWatermarkHint(android.view.ViewGroup group){
+        for(int i=0;i<group.getChildCount();i++){
+            View view=group.getChildAt(i);
+            if(view instanceof android.view.ViewGroup)updateWatermarkHint((android.view.ViewGroup)view);
+            else if(view instanceof android.widget.TextView&&!(view instanceof EditText)){
+                android.widget.TextView text=(android.widget.TextView)view;
+                String value=String.valueOf(text.getText());
+                if(value.contains("5")&&value.contains("10"))text.setText("已解除水印字数限制");
+            }
         }
     }
 
+    private void plugin(String className,boolean assist){
+        try{
+            Class<?> owner=Class.forName(className,false,loader);
+            Method eligibility=ShoulderHookTargets.pluginEligibility(owner,Context.class);
+            if(eligibility!=null)register(GameOptions.PLUGINS,eligibility,this::pluginEligibility);
+            else missing(GameOptions.PLUGINS,className+".eligibility",new NoSuchMethodException());
+            if(assist){
+                // This is OEM plugin availability configuration, not the tile's checked state.
+                Method availability=ShoulderHookTargets.pluginEnabled(owner,Context.class);
+                if(availability!=null)register(GameOptions.PLUGINS,availability,this::pluginAvailability);
+                else missing(GameOptions.PLUGINS,className+".availability",new NoSuchMethodException());
+            }
+        }catch(Throwable error){missing(GameOptions.PLUGINS,className,error);}
+    }
+
+    private Object pluginEligibility(Chain chain) throws Throwable {
+        return AugmentModule.isGamePluginTarget((String)chain.getArg(2)) ? true : chain.proceed();
+    }
+
+    private Object pluginAvailability(Chain chain) throws Throwable {
+        return AugmentModule.isGamePluginTarget(AugmentModule.currentFullscreenPackage(loader))
+                ? true : chain.proceed();
+    }
+
     private void assist(){
-        // k/l are the exact GameAssist 17 routes already verified by LS_Augment.
-        plugin("cn.nubia.gameassist.plugin.config.PluginConfig",new String[]{"isPluginEnable"});
-        hook(GameOptions.PLUGINS,"cn.nubia.gameassist.plugin.config.PluginConfig","k",boolean.class,
-                chain->true,Context.class,String.class);
-        hook(GameOptions.PLUGINS,"cn.nubia.gameassist.plugin.config.PluginConfig","l",boolean.class,
-                chain->true,Context.class,String.class,String.class);
+        // Resolve k/l or readable aliases independently of GameSpace's four-argument route.
+        plugin("cn.nubia.gameassist.plugin.config.PluginConfig",true);
         String active="cn.nubia.gameassist.dessert.policy.ActiveModeController";
         // GameAssist 17: preserve freeform and wake-only preferences; p() still resets
         // the global indicator. Game exit still releases the wake lock, and explicit

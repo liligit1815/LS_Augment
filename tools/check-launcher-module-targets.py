@@ -238,6 +238,8 @@ def contracts():
         (launcher + 'P2;', 'methods', 'j()' + launcher + 'D3;', False),
         (launcher + 'D3;', 'methods', 'm0()Lz1/k2;', False),
         ('Lz1/k2;', 'methods', 'F()I', False),
+        (launcher + 'util/m0;', 'fields', 'h:' + launcher + 'util/p1;', True),
+        (launcher + 'util/p1;', 'methods', 'execute(Ljava/lang/Runnable;)V', False),
         ('Lx1/Z;', 'methods', 'b(' + launcher + 'Workspace;)V', False),
         (launcher + 'J3;', 'methods', 'm(Landroid/content/Context;)Landroid/content/SharedPreferences;', True),
         (launcher + 'widget/custom/future/AIFutureWidgetUtils;', 'methods', 'l(Landroid/content/Context;)I', True),
@@ -274,6 +276,7 @@ def check(path, modified):
     for owner, expected in (
         ('Lcom/android/launcher3/Workspace;', 'Lcom/android/launcher3/V4;'),
         ('Lcom/android/launcher3/util/A0;', 'Landroid/util/SparseArray;'),
+        ('Lcom/android/launcher3/util/p1;', 'Ljava/util/concurrent/AbstractExecutorService;'),
         ('Lcom/android/launcher3/K5;', 'Landroid/view/ViewGroup;'),
         ('Lcom/android/launcher3/dragndrop/DragLayer;', 'Landroid/widget/FrameLayout;'),
         ('Lcom/android/launcher3/views/BaseDragLayer$LayoutParams;', 'Landroid/widget/FrameLayout$LayoutParams;'),

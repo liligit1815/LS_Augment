@@ -53,7 +53,14 @@ public final class TestNativeFeatureGroups {
     private static void check(NativeFeatureGroups.Feature f,Set<String> seen){
         if(f.toggleKey!=null){require(OPTIONS.get(f.toggleKey).kind==EnhancementOption.Kind.BOOLEAN,"parent must be a real boolean");require(seen.add(f.toggleKey),"duplicate switch "+f.toggleKey);}
         else{independent++;require(f.parameterKeys.length==1,"independent parameters cannot be accidentally grouped");EnhancementOption o=OPTIONS.get(f.parameterKeys[0]);require(o.normalize(f.noOpValue)!=null,"no-op must be a valid native value");require(!ValueOverrideState.active(f.comparison,o.defaultValue,f.noOpValue),"native default must not enable override");}
-        for(String key:f.parameterKeys){require(OPTIONS.containsKey(key),"unknown key "+key);require(OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent booleans must be nested features");require(seen.add(key),"duplicate parameter "+key);}
+        for(String key:f.parameterKeys){
+            require(OPTIONS.containsKey(key),"unknown key "+key);
+            // The existing side-gesture editor owns its two mirror switches directly.
+            boolean gestureMirror="systemui:back_icon_enabled".equals(f.id)
+                    &&(key.equals(BackGestureIconPolicy.key(0,"mirror"))||key.equals(BackGestureIconPolicy.key(1,"mirror")));
+            require(gestureMirror||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
+            require(seen.add(key),"duplicate parameter "+key);
+        }
         for(NativeFeatureGroups.Feature child:f.children)check(child,seen);
     }
 }

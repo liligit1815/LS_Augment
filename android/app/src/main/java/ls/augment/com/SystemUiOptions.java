@@ -7,6 +7,8 @@ import java.util.List;
 /** Options shared by the UI, validated configuration and SystemUI hooks. */
 public final class SystemUiOptions {
     public static final String PREFIX = "ls_augment_rm_";
+    public static final String NOTIFICATION_STACK = PREFIX + "notification_stack";
+    public static final String POWER_MODES = PREFIX + "power_reboot_modes";
     public static final String PRIVACY_HIDE = PREFIX + "privacy_hide";
     public static final String SIGNAL_DUAL = PREFIX + "signal_dual";
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
@@ -15,6 +17,22 @@ public final class SystemUiOptions {
     private SystemUiOptions() { }
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
+        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","同组通知折叠为一张卡片和下方层叠边缘，展开后保留原厂组标题、收起按钮和通知操作。"));
+        out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
+        out.add(EnhancementOption.toggle(BackGestureIconPolicy.ENABLED,"system","自定义侧滑返回图标","系统界面作用域。两侧独立选择图标和遮罩，支持 GIF、动态 WebP 及初音未来预设；大小最高 10 倍。保留原厂返回判定和悬停动作，更新后需重启系统界面。"));
+        for(int side=0;side<2;side++) {
+            String p=BackGestureIconPolicy.PREFIX+BackGestureIconPolicy.SIDES[side]+"_";
+            String title=side==0?"左边缘 → 向右滑":"右边缘 ← 向左滑";
+            out.add(EnhancementOption.choice(p+"mode","system",title+"图标","每侧独立选择。",0,"原厂","自定义图片"));
+            out.add(EnhancementOption.custom(p+"asset","system",title+"图片","保留原色与透明背景。","",v->v.isEmpty()||BackGestureIconPolicy.validAsset(v)?v:null));
+            out.add(EnhancementOption.custom(p+"background_asset","system",title+"背景素材","随手势展开的侧边背景；留空使用原厂波浪。","",v->v.isEmpty()||BackGestureIconPolicy.validAsset(v)?v:null));
+            out.add(EnhancementOption.integer(p+"scale_percent","system",title+"大小（%）","相对原厂图标，最大 10 倍；受屏幕边界限制。",100,10,1000));
+            out.add(EnhancementOption.integer(p+"background_scale_percent","system",title+"遮罩大小（%）","以屏幕边缘为锚点独立缩放，最大 10 倍。",100,10,1000));
+            out.add(EnhancementOption.integer(p+"opacity_percent","system",title+"不透明度（%）","叠加原厂淡入淡出。",100,10,100));
+            out.add(EnhancementOption.toggle(p+"mirror","system",title+"水平镜像","只翻转图片，不改变滑动方向。"));
+            out.add(EnhancementOption.integer(p+"inset_dp","system",title+"内移（dp）","正数向屏幕内侧移动。",0,-256,512));
+            out.add(EnhancementOption.integer(p+"offset_y_dp","system",title+"下移（dp）","正数向下，负数向上。",0,-512,512));
+        }
         out.add(EnhancementOption.toggle(PRIVACY_HIDE, "statusbar", "隐藏隐私小绿点", "隐藏状态栏隐私绿点和使用提醒胶囊，权限设置和访问记录保持原样。"));
         out.add(EnhancementOption.toggle(SIGNAL_DUAL, "statusbar", "双卡信号上下排列", "用两排紧凑短柱显示真实信号，流量卡在上、另一张卡在下；单卡恢复原厂显示。"));
         out.add(EnhancementOption.toggle(AUDIO_NO_SAFE_WARNING, "audio", "取消音量过高提示", "取消安全音量和累计声音剂量提示；与现有音量增益、档数设置共同生效。"));
@@ -58,7 +76,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX + "charging_duration", "lockscreen", "充电动画持续秒数", "启用自定义充电动画后生效。", 6, 1, 120));
         out.add(EnhancementOption.integer(PREFIX + "charging_delay", "lockscreen", "充电动画延迟秒数", "启用自定义充电动画后生效。", 0, 0, 60));
         out.add(EnhancementOption.toggle(QS_BRIGHTNESS_PERCENT, "quicksettings", "亮度显示百分比", "控制中心亮度条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
-        out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心音量条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
+        out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心及展开音量面板显示百分比；增益开启时可超过 100%，同一行只显示一份数字。"));
         bool(out, "qs_grid", "quicksettings", "自定义控制中心行列");
         out.add(EnhancementOption.integer(PREFIX + "qs_columns", "quicksettings", "竖屏列数", "控制中心普通磁贴列数。", 4, 2, 8));
         out.add(EnhancementOption.integer(PREFIX + "qs_rows", "quicksettings", "竖屏行数", "普通磁贴的初始可见行数；更多磁贴可滚动查看。", 3, 1, 8));

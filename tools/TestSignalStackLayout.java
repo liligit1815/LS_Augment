@@ -27,7 +27,7 @@ public final class TestSignalStackLayout {
         check(SignalStackLayout.fit(0, 0, 20, 20, 30, 0, 1) == null, "unmeasured slot stays native");
         check(SignalStackLayout.fit(0, 0, Float.NaN, 20, 30, 30, 1) == null, "invalid geometry stays native");
         SignalStackLayout.Geometry compact=SignalStackLayout.compact(5,3,65,42,65,42,3);
-        close(compact.width/compact.height(),1.3f,"compact combined glyph keeps one icon's aspect ratio");
+        close(compact.width/compact.height(),107f/85f,"compact combined glyph preserves the supplied 107 by 85 reference proportions");
         check(compact.left>=0&&compact.top>=0&&compact.left+compact.width<=65&&compact.top+compact.height()<=42,"compact rows stay inside native icon");
         check(compact.gap>0&&compact.rowHeight>0,"separated compact signal rows");
         check(SignalStackLayout.compact(0,0,Float.NaN,20,30,30,1)==null,"compact invalid geometry stays native");

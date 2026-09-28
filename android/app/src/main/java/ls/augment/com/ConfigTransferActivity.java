@@ -21,7 +21,7 @@ public final class ConfigTransferActivity extends Activity {
         ConfigSchema.TGK_RAPID_FIRE_COMPAT_TOKEN,ConfigSchema.TGK_RAPID_FIRE_TEST_SESSION,ConfigSchema.FAN_CALIBRATION_REQUEST,ConfigSchema.FAN_MEASUREMENT));
     @Override public void onCreate(Bundle state){super.onCreate(state);config=new AppConfig(this);UiKit ui=new UiKit(this);LinearLayout page=ui.detailPage("配置备份与重置",null);
         LinearLayout card=ui.card();page.addView(card,ui.margins(0,10,0,0));card.addView(ui.section("配置备份","导出功能设置、应用选择、自定义图片、字体与肩键候选。不包含账户绑定、执行日志和设备测试凭据。导入后按需重启作用域。"));
-        Button export=ui.tonalButton("导出配置");card.addView(export,ui.margins(0,12,0,0));export.setOnClickListener(v->{export.setEnabled(false);worker.execute(()->{try{pending=exportDocument().toString(2).getBytes(StandardCharsets.UTF_8);Files.write(new File(getCacheDir(),"pending-config-export.json").toPath(),pending);runWhileOpen(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"LS_Augment-config-"+System.currentTimeMillis()+".json"),71));}catch(Exception e){notice("导出失败："+e.getMessage());}finally{runWhileOpen(()->export.setEnabled(true));}});});
+        Button export=ui.tonalButton("导出配置");card.addView(export,ui.margins(0,12,0,0));export.setOnClickListener(v->{export.setEnabled(false);worker.execute(()->{try{pending=exportDocument().toString(2).getBytes(StandardCharsets.UTF_8);Files.write(new File(getCacheDir(),"pending-config-export.json").toPath(),pending);runWhileOpen(()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE,"红魔Duo-config-"+System.currentTimeMillis()+".json"),71));}catch(Exception e){notice("导出失败："+e.getMessage());}finally{runWhileOpen(()->export.setEnabled(true));}});});
         Button load=ui.tonalButton("导入配置");card.addView(load,ui.margins(0,8,0,0));load.setOnClickListener(v->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),72));
         exportButton=export;importButton=load;
         LinearLayout resetCard=ui.card();page.addView(resetCard,ui.margins(0,14,0,0));
@@ -63,7 +63,7 @@ public final class ConfigTransferActivity extends Activity {
         }
         for(String hash:iconHashes(values)){File file=LauncherIconStore.file(this,hash);images.put(hash,Base64.getEncoder().encodeToString(Files.readAllBytes(file.toPath())));}
         for(String hash:fontHashes(values))fonts.put(hash,Base64.getEncoder().encodeToString(Files.readAllBytes(ManagedFont.file(this,hash).toPath())));
-        JSONObject document=new JSONObject().put("format","LS_Augment.settings").put("version",1).put("moduleVersion",BuildConfig.VERSION_NAME).put("exportedAt",System.currentTimeMillis()).put("settings",values).put("images",images).put("fonts",fonts);
+        JSONObject document=new JSONObject().put("format","LS_Augment.settings").put("version",1).put("moduleName","红魔Duo").put("moduleVersion",BuildConfig.VERSION_NAME).put("exportedAt",System.currentTimeMillis()).put("settings",values).put("images",images).put("fonts",fonts);
         if(document.toString(2).getBytes(StandardCharsets.UTF_8).length>MAX_DOCUMENT_BYTES)throw new IOException("配置及资源超过 32 MiB，请减少自定义图片或字体后再备份");
         return document;
     }
@@ -76,6 +76,9 @@ public final class ConfigTransferActivity extends Activity {
     }
     private static Set<String> iconHashes(JSONObject values)throws Exception{
         Set<String> hashes=new HashSet<>();String tile=values.optString(ConfigSchema.TILE_ICON);if(!tile.isEmpty())hashes.add(tile);
+        for(int side=0;side<2;side++)for(String slot:new String[]{"asset","background_asset"}){
+            String hash=values.optString(BackGestureIconPolicy.key(side,slot));if(!hash.isEmpty())hashes.add(hash);
+        }
         LauncherOverrides overrides=LauncherOverrides.parse(values.optString(ConfigSchema.LAUNCHER_OVERRIDES,""));if(overrides==null)throw new IOException("图标配置格式错误");
         for(LauncherOverrides.Entry e:overrides.entries())if(!e.icon.isEmpty())hashes.add(e.icon);return hashes;
     }
@@ -102,8 +105,10 @@ public final class ConfigTransferActivity extends Activity {
         LinkedHashMap<String,byte[]> media=new LinkedHashMap<>();for(String hash:iconHashes(normalizedValues)){
             if(!hash.matches("[0-9a-f]{64}"))throw new IOException("图片标识无效");
             if(!images.has(hash)){if(!LauncherIconStore.file(this,hash).isFile())throw new IOException("缺少自定义图片");continue;}
-            byte[] image=Base64.getDecoder().decode(images.getString(hash));if(image.length>2097152)throw new IOException("图片过大");
+            byte[] image=Base64.getDecoder().decode(images.getString(hash));boolean gesture=false;for(int side=0;side<2;side++)for(String slot:new String[]{"asset","background_asset"})gesture|=hash.equals(normalizedValues.optString(BackGestureIconPolicy.key(side,slot)));
+            if(image.length>(gesture?GestureArtwork.MAX_BYTES:2097152))throw new IOException("图片过大");
             StringBuilder digest=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(image))digest.append(String.format(Locale.ROOT,"%02x",b&255));if(!digest.toString().equals(hash))throw new IOException("图片校验失败");
+            if(gesture){GestureArtwork.decode(image,false,false).stop();media.put(hash,image);continue;}
             android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(image,0,image.length,options);
             if(options.outWidth<1||options.outHeight<1||options.outWidth>1024||options.outHeight>1024)throw new IOException("图片尺寸无效");media.put(hash,image);
         }

@@ -184,7 +184,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             launchSettings();
             Activity welcome = awaitActivity(OnboardingActivity.class, null);
             testInitialAnimation((OnboardingActivity) welcome);
-            requireText(welcome, "欢迎使用\nLS_Augment");
+            requireText(welcome, "欢迎使用\n红魔Duo");
             screenshot("01-welcome");
             clickText(welcome, "阅读并开始");
             requireText(welcome, "开始之前");

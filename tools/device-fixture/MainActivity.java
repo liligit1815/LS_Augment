@@ -43,7 +43,10 @@ public final class MainActivity extends Activity {
             manager.createNotificationChannel(new android.app.NotificationChannel("status-test","LS 状态栏验收",android.app.NotificationManager.IMPORTANCE_LOW));
             for(int i=0;i<Math.min(20,notificationCount);i++)manager.notify(7000+i,new android.app.Notification.Builder(this,"status-test")
                     .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("LS 状态栏验收 "+(i+1))
-                    .setContentText("退出测试应用后自动清除").setGroup("LS-validation-"+i).build());
+                    .setContentText("退出测试应用后自动清除").setGroup(getIntent().getBooleanExtra("grouped",false)?"LS-validation-group":"LS-validation-"+i).build());
+            if(getIntent().getBooleanExtra("grouped",false))manager.notify(7999,new android.app.Notification.Builder(this,"status-test")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("通知堆叠验收")
+                    .setGroup("LS-validation-group").setGroupSummary(true).build());
             view.setText("状态栏图标验收\n临时通知 "+notificationCount+" 条\n结束后自动清除");
         }
         if (getIntent().getBooleanExtra("audio", false)) {

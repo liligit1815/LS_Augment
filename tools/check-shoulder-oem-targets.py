@@ -28,7 +28,13 @@ ASSIST = {
                {'d', 'k', 'l', 'g', 'getBlackList', 'isPluginEnable', 'getPluginList'}, set()),
     'Toolbar': ('Lcn/nubia/gameassist/operation/SubViewController;', {'V', 'initView'}, {'t', 'mKeys'}),
 }
-SPACE = {'Service': ('Lcn/nubia/tgk/TgkService;', {'onTgkCaseViewBottonClick'}, set())}
+SPACE = {
+    'Service': ('Lcn/nubia/tgk/TgkService;', {'onTgkCaseViewBottonClick'}, set()),
+    'Plugin': ('Lcn/nubia/gamelauncher/gamecontrolpanel/config/PluginConfig;',
+               {'getBlackList', 'isPluginEnable', 'getPluginList'}, set()),
+    'MapView': ('Lcn/nubia/tgk/TgkMapView;', {'getGameKeyLinkMotionState'},
+                {'mGameAppPackageName', 'mSupportedGameKeyLink'}),
+}
 
 
 def load_apk(path):
@@ -77,7 +83,7 @@ public class TestRealShoulderTargets {
         if (member == null) throw new AssertionError("Missing OEM target " + label);
         System.out.println(label + " -> " + member);
     }
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         // CHECKS
         System.out.println("PASS real OEM shoulder interfaces");
     }
@@ -115,6 +121,10 @@ def main():
                 checks.append('found("' + label + '.button", ShoulderHookTargets.toolbarButton(Toolbar' + str(index) + '.class, bind' + str(index) + ', View.class));')
             else:
                 checks.append('found("' + label + '.click", ShoulderHookTargets.quickSwitchClick(Service' + str(index) + '.class));')
+                checks.append('found("' + label + '.eligibility", ShoulderHookTargets.pluginEligibility(Plugin' + str(index) + '.class, Context.class));')
+                checks.append('found("' + label + '.map", ShoulderHookTargets.named(MapView' + str(index) + '.class, false, void.class, "getGameKeyLinkMotionState"));')
+                for field, java_type in [('mGameAppPackageName', 'String'), ('mSupportedGameKeyLink', 'boolean')]:
+                    checks.append('if(MapView' + str(index) + '.class.getDeclaredField("' + field + '").getType()!=' + java_type + '.class)throw new AssertionError("map field contract");')
             records.append(record)
     with tempfile.TemporaryDirectory(prefix='ls-oem-shoulder-') as temp:
         java = Path(temp) / 'TestRealShoulderTargets.java'

@@ -41,6 +41,17 @@ public final class LSConfigProvider extends ContentProvider {
             finally { Binder.restoreCallingIdentity(identity); }
         }
         if (!allowedCaller()) return result;
+        if (PowerModePolicy.CALL.equals(method)) {
+            int caller = Binder.getCallingUid();
+            if (!PowerModePolicy.allowedCaller(caller, Process.myUid(), getCallingPackage(),
+                    getContext().getPackageManager().getPackagesForUid(caller))
+                    || PowerModePolicy.command(arg) == null || extras != null) return result;
+            long identity = Binder.clearCallingIdentity();
+            try {
+                if (!new AppConfig(getContext()).getBoolean(SystemUiOptions.POWER_MODES)) return result;
+                return PowerModeControl.reboot(arg);
+            } finally { Binder.restoreCallingIdentity(identity); }
+        }
         if ("fan_tile_read".equals(method) || "fan_tile_select".equals(method)) {
             int caller = Binder.getCallingUid();
             String[] packages = getContext().getPackageManager().getPackagesForUid(caller);
@@ -306,6 +317,19 @@ public final class LSConfigProvider extends ContentProvider {
         if(getContext()==null||!"r".equals(mode)||!allowedCaller())throw new java.io.FileNotFoundException("read only");
         int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
         java.util.List<String> path=uri.getPathSegments();
+        if(path.size()==2&&"gesture-icon".equals(path.get(0))) {
+            if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
+                throw new java.io.FileNotFoundException("systemui reader only");
+            String hash=path.get(1);
+            if(!BackGestureIconPolicy.validAsset(hash))throw new java.io.FileNotFoundException("invalid gesture icon");
+            AppConfig config=new AppConfig(getContext());
+            if(!hash.equals(config.get(BackGestureIconPolicy.key(0,"asset")))
+                    &&!hash.equals(config.get(BackGestureIconPolicy.key(1,"asset")))
+                    &&!hash.equals(config.get(BackGestureIconPolicy.key(0,"background_asset")))
+                    &&!hash.equals(config.get(BackGestureIconPolicy.key(1,"background_asset"))))
+                throw new java.io.FileNotFoundException("unconfigured gesture icon");
+            return android.os.ParcelFileDescriptor.open(LauncherIconStore.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
         if(path.size()==2&&"font".equals(path.get(0))) {
             if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
                 throw new java.io.FileNotFoundException("font reader only");

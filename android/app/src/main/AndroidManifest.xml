@@ -46,7 +46,7 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
-            android:label="LS_Augment"
+            android:label="@string/app_name"
             android:theme="@style/Theme.LSAugment.Settings">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -60,7 +60,7 @@
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="LS_Augment"
+            android:label="@string/app_name"
             android:targetActivity=".SettingsActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

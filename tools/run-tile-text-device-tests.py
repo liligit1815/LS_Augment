@@ -46,7 +46,7 @@ for index, key, typed, expected in [
     record({'case': 'Unicode-' + key, 'typed': typed, 'visible': visible,
             'saved': actual, 'expected': expected, 'pass': actual == visible == expected})
 
-for index, key, expected in [(0, 'tile_label', 'LS_Augment'), (1, 'tile_description', '应用隐藏')]:
+for index, key, expected in [(0, 'tile_label', '红魔Duo'), (1, 'tile_description', '应用隐藏')]:
     edit_field(stage + '-empty-' + key, index, '')
     actual = saved(key)
     record({'case': 'Empty-' + key, 'saved': actual, 'expected': expected, 'pass': actual == expected})

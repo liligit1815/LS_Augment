@@ -168,7 +168,7 @@ public final class OnboardingActivity extends Activity {
         mark.addView(boat, boatParams);
         hero.addView(mark, new LinearLayout.LayoutParams(ui.dp(204), ui.dp(204)));
 
-        TextView name = ui.text("欢迎使用\nLS_Augment", 22, ui.text, true);
+        TextView name = ui.text("欢迎使用\n红魔Duo", 22, ui.text, true);
         name.setGravity(Gravity.CENTER);
         name.setLineSpacing(ui.dp(6), 1f);
         hero.addView(name, ui.margins(0, 5, 0, 14));

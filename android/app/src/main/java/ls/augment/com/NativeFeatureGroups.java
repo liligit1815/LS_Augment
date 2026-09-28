@@ -51,6 +51,45 @@ final class NativeFeatureGroups {
         return result;
     }
     static final Section[] SECTIONS={
+        new Section("collab","collab_theme","联名预置主题", new Feature[]{
+            new Feature("collab:theme","解锁联名预置主题",CollabOptions.THEME,
+                    new String[]{CollabOptions.THEME_VARIANT},"boolean","0",new Feature[]{})
+        }),
+        new Section("collab","collab_fingerprint","联名指纹样式", new Feature[]{
+            new Feature("collab:chisa","千咲",CollabOptions.FP_CHISA,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("collab:chun","椿",CollabOptions.FP_CHUN,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("collab:fighting","念箍",CollabOptions.FP_FIGHTING,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("collab:gold","臻金传说",CollabOptions.FP_GOLD,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("collab:lty","洛天依",CollabOptions.FP_LTY,new String[]{},"boolean","0",new Feature[]{})
+        }),
+        new Section("collab","collab_charging","联名充电动画", new Feature[]{
+            new Feature("collab:charging","联名充电动画",CollabOptions.CHARGING,
+                    new String[]{CollabOptions.CHARGING_STYLE},"boolean","0",new Feature[]{})
+        }),
+        new Section("systemui","glass","液态玻璃", new Feature[]{
+            new Feature("systemui:liquid_glass","液态玻璃控制中心",GlassOptions.CONTROL_CENTER,
+                    new String[]{},"boolean","0",new Feature[]{
+                new Feature("glass:cc_transparency","减少透明度",GlassOptions.CC_REDUCE_TRANSPARENCY,new String[]{},"boolean","0",new Feature[]{}),
+                new Feature("glass:cc_motion","减少动态效果",GlassOptions.CC_REDUCE_MOTION,new String[]{},"boolean","0",new Feature[]{})
+            })
+        }),
+        new Section("launcher","dock_glass","桌面 Dock", new Feature[]{
+            new Feature("launcher:liquid_glass","液态玻璃 Dock",GlassOptions.DOCK,
+                    new String[]{},"boolean","0",new Feature[]{
+                new Feature("glass:dock_transparency","减少透明度",GlassOptions.DOCK_REDUCE_TRANSPARENCY,new String[]{},"boolean","0",new Feature[]{}),
+                new Feature("glass:dock_motion","减少动态效果",GlassOptions.DOCK_REDUCE_MOTION,new String[]{},"boolean","0",new Feature[]{})
+            })
+        }),
+        new Section("systemui","power","电源菜单",new Feature[]{
+            new Feature("systemui:power_reboot_modes","电源菜单高级重启",SystemUiOptions.POWER_MODES,new String[]{},"boolean","0",new Feature[]{})
+        }),
+        new Section("launcher","cleanup","一键清理",new Feature[]{
+            new Feature("launcher:cleanup_bomb","自定义清理图标与动画",LauncherOptions.CLEANUP_BOMB,new String[]{LauncherOptions.CLEANUP_STYLE},"boolean","0",new Feature[]{})
+        }),
+        new Section("systemui","gestures","侧滑返回", new Feature[]{
+            new Feature("systemui:back_icon_enabled","自定义侧滑返回图标",BackGestureIconPolicy.ENABLED,
+                    BackGestureIconPolicy.parameterKeys(),"boolean","0",new Feature[]{})
+        }),
         new Section("system","system","系统行为", new Feature[]{
             new Feature("ls_augment_rm_secure_capture","允许受限窗口截图和录屏","ls_augment_rm_secure_capture",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_strong_auth_timeout","取消每 72 小时强制验证密码","ls_augment_rm_strong_auth_timeout",new String[]{},"boolean","0", new Feature[]{}),
@@ -117,6 +156,7 @@ final class NativeFeatureGroups {
             })
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
+            new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("systemui:notification_weather","通知中心显示当日天气","ls_augment_rm_notification_weather",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_brightness_percent","亮度显示百分比","ls_augment_rm_qs_brightness_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_volume_percent","音量显示百分比","ls_augment_rm_qs_volume_percent",new String[]{},"boolean","0", new Feature[]{}),
@@ -163,6 +203,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:usb_auto_authorize","自动允许 USB 调试授权","ls_augment_rm_usb_auto_authorize",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("settings","display_time","显示与时间", new Feature[]{
+            new Feature("settings:hide_healthy_use","隐藏健康使用手机入口",EntryVisibilityOptions.HIDE_HEALTHY_USE_ENTRY,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_rm_settings_long_timeout","扩展自动息屏时间选项","ls_augment_rm_settings_long_timeout",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_settings_hide_battery_percent","隐藏系统电量百分比设置项","ls_augment_rm_settings_hide_battery_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_settings_time_period","系统时间选择器显示中文时段","ls_augment_rm_settings_time_period",new String[]{},"boolean","0", new Feature[]{})
@@ -175,6 +216,7 @@ final class NativeFeatureGroups {
             })
         }),
         new Section("launcher","launcher","桌面页面", new Feature[]{
+            new Feature("launcher:hide_minors","隐藏未成年模式图标",EntryVisibilityOptions.HIDE_MINORS_ICON,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_rm_launcher_page_reorder","整页移动桌面","ls_augment_rm_launcher_page_reorder",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_launcher_keep_empty","允许空白桌面","ls_augment_rm_launcher_keep_empty",new String[]{},"boolean","0", new Feature[]{})
         }),
@@ -201,6 +243,7 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_game_plugins_unlocked","开放游戏插件资格","ls_augment_game_plugins_unlocked",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("game","game_capture","录制、高光与红魔时刻", new Feature[]{
+            new Feature("game:watermark","红魔水印字数解限",GameOptions.WATERMARK_UNLIMITED,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_game_free_record","随心录制模式解限","ls_augment_game_free_record",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_game_highlights_unlocked","开放游戏高光","ls_augment_game_highlights_unlocked",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_game_redmagic_time_unlocked","红魔时刻模式解限","ls_augment_game_redmagic_time_unlocked",new String[]{},"boolean","0", new Feature[]{})

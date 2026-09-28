@@ -33,7 +33,7 @@ if (appVersionCode <= 0 || !appVersionName.matches('^\\S+-test' + appVersionCode
     throw new GradleException(
             "versionName must end with test${appVersionCode}: ${appVersionName}")
 }
-println "Building LS_Augment ${appVersionName} (${appVersionCode})"
+println "Building 红魔Duo ${appVersionName} (${appVersionCode})"
 
 android {
     namespace 'ls.augment.com'
@@ -85,7 +85,13 @@ android {
                 signingConfig signingConfigs.lsAugmentDev
             }
         }
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            debuggable false
+            if (signingConfigs.findByName('lsAugmentDev') != null) {
+                signingConfig signingConfigs.lsAugmentDev
+            }
+        }
     }
 
     compileOptions {

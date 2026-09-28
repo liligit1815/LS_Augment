@@ -19,14 +19,18 @@ public final class UiTextRunner extends Instrumentation {
         try {
             UiAutomation automation=getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
             AccessibilityNodeInfo root=automation.getRootInActiveWindow();
-            if(root==null || !"ls.augment.com".contentEquals(root.getPackageName())
-                    || root.findAccessibilityNodeInfosByText("快捷磁贴").isEmpty()) {
+            boolean watermark="watermark".equals(arguments.getString("target"));
+            if(!watermark && (root==null || !"ls.augment.com".contentEquals(root.getPackageName())
+                    || root.findAccessibilityNodeInfosByText("快捷磁贴").isEmpty())) {
                 throw new IllegalStateException("The module tile settings must be foreground");
             }
+            if(watermark && (root==null || !"cn.nubia.gamelauncher".contentEquals(root.getPackageName())
+                    || root.findAccessibilityNodeInfosByViewId("cn.nubia.gamelauncher:id/gcs_watermark_dialog_edit").size()!=1))
+                throw new IllegalStateException("The native watermark editor must be foreground");
             ArrayList<AccessibilityNodeInfo> fields=new ArrayList<>();collect(root,fields);
             int index=Integer.parseInt(arguments.getString("fieldIndex"));
             String value=new String(Base64.decode(arguments.getString("textBase64"),Base64.DEFAULT),StandardCharsets.UTF_8);
-            if(fields.size()!=2 || index<0 || index>1 || value.codePointCount(0,value.length())>200) {
+            if(fields.size()!=(watermark?1:2) || index<0 || index>=(watermark?1:2) || value.codePointCount(0,value.length())>200) {
                 throw new IllegalArgumentException("Unexpected tile field or test text");
             }
             Bundle action=new Bundle();

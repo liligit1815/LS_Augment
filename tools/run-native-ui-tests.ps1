@@ -3,7 +3,7 @@ $taskRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $taskJava=Join-Path $taskRoot 'android/app/src/main/java/ls/augment/com'
 $taskClasses=Join-Path $taskRoot 'outputs/prototype-current/native-ui-test-classes'
 New-Item -ItemType Directory -Force -Path $taskClasses | Out-Null
-$taskSources=@('EnhancementOption','EnhancementCatalog','SystemOptions','SystemUiOptions','GameOptions','LauncherOptions','AppearanceOptions','ConnectionExtrasPolicy','ShoulderQuickSwitchPolicy','HookAppCatalog','NativeFeatureGroups','ValueOverrideState','HiddenEntrySession','LauncherOverrides','LauncherEditQueue') | ForEach-Object {Join-Path $taskJava ($_+'.java')}
+$taskSources=@('EnhancementOption','EnhancementCatalog','SystemOptions','SystemUiOptions','BackGestureIconPolicy','GameOptions','LauncherOptions','AppearanceOptions','CollabOptions','EntryVisibilityOptions','GlassOptions','ConnectionExtrasPolicy','ShoulderQuickSwitchPolicy','HookAppCatalog','NativeFeatureGroups','ValueOverrideState','HiddenEntrySession','LauncherOverrides','LauncherEditQueue') | ForEach-Object {Join-Path $taskJava ($_+'.java')}
 $taskSources+=Join-Path $PSScriptRoot 'TestNativeFeatureGroups.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestHiddenEntrySession.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestLauncherEditQueue.java'

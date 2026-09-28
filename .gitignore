@@ -96,3 +96,12 @@ RECENTS_UPGRADE_TEST_REPORT_20260815.md
 SHOULDER_KEYS_PLAN.md
 design-qa.md
 /docs/修复记录-*.md
+
+# 仅发布维护文档；逐次测试、设计讨论、素材原件留在本地
+/素材/
+/docs/*
+!/docs/最新版功能说明.md
+!/docs/项目结构与文件说明.md
+!/docs/配置项参考-test20354.md
+!/docs/跨设备开发说明.md
+!/docs/releases/

@@ -5,6 +5,7 @@ import java.util.List;
 
 /** Game additions; existing LS shoulder execution, super-resolution and combo speed stay authoritative. */
 public final class GameOptions {
+    public static final String WATERMARK_UNLIMITED = "ls_augment_game_watermark_unlimited";
     public static final String QUICK_SWITCH = "ls_augment_tgk_quick_switch";
     public static final String PLUGINS = "ls_augment_game_plugins_unlocked";
     public static final String COMBO_LIMITS = "ls_augment_combo_extended_limits";
@@ -17,6 +18,7 @@ public final class GameOptions {
     public static final String REDMAGIC_TIME = "ls_augment_game_redmagic_time_unlocked";
     public static List<EnhancementOption> options() {
         return Arrays.asList(
+            EnhancementOption.toggle(WATERMARK_UNLIMITED,"game","红魔水印字数解限","解除游戏空间自定义水印的 5 个汉字或 10 个英文字母限制；截图和录制继续使用原厂水印。重新打开水印编辑框后生效。"),
             EnhancementOption.toggle(QUICK_SWITCH,"game","肩键方案快捷切换","在原厂肩键方案页勾选参与方案：一个直接应用，两个点击互切，更多以下拉选择。"),
             EnhancementOption.internal(ShoulderQuickSwitchPolicy.KEY,ShoulderQuickSwitchPolicy.EMPTY,ShoulderQuickSwitchPolicy::normalize),
             EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","开放原厂提供的插件入口，原厂继续负责功能运行。"),

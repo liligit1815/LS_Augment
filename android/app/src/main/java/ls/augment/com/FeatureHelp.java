@@ -105,7 +105,7 @@ public final class FeatureHelp {
             case "status_layout": return "进入状态栏编辑器，统一调整双排布局、时钟格式、实时硬件信息、网速、图标大小和位置，并查看当前布局的实时预览。";
             case "launcher_custom": return "按用户空间选择应用，修改其桌面显示名称与图标。图标支持选图和裁剪，名称留空可恢复原名；修改只影响所选空间的对应应用。";
             case "launcher_compatibility": return "只读检查机型、系统与桌面底包是否匹配配套修改版桌面的已知基准。检测不会安装或替换桌面，匹配结果也不等于全部桌面功能已经验收。";
-            case "shoulder": return "为加入游戏空间的普通应用开放肩键，并设置极速连点频率。极速连点需先完成本机及左右实体肩键兼容性检查；通过检查只解锁开关，不自动启用。";
+            case "shoulder": return "为加入游戏空间的所有应用开放肩键与连招资格，包含系统应用和第三方应用；一键连招仍由你自行开启或关闭。极速连点需先完成本机及左右实体肩键兼容性检查；通过检查只解锁开关，不自动启用。";
             case "combo_speed": return "调整游戏助手录制连招的播放倍率与预览速度，不改录制事件内容。循环次数和循环间隔在本页“连招录制与循环”中分别控制。";
             case "super_resolution": return "调整原厂超分辨率的性能模式资格，以及超分与破坏神模式之间的互斥策略。手机和游戏仍需具备对应的原厂能力。";
             case "ai_trigger": return "调整 AI 触发器的模板扫描、点击队列、策略冷却与 YOLO 扫描间隔，缩短等待时间；识别规则和阈值继续由原厂流程处理。";
@@ -114,7 +114,7 @@ public final class FeatureHelp {
             case "double_app": return "扩展红魔原厂双开候选应用，并按需放宽已适配的低内存资格限制。双开空间的创建、数据和管理仍由原厂系统负责。";
             case "store_download": return "设置原厂应用中心允许同时下载的应用数量，范围 1～50。保存后重启应用中心，再使用新的下载队列限制。";
             case "mi_health": return "绑定当前小米运动健康账户，分别设置真实步数倍速、随机增步计划和当日上限。真实步数和计划分开处理；关闭功能只停止后续额外增步，不回退已保存记录。";
-            case "launcher_icon": return "隐藏或恢复 LS_Augment 自身的桌面入口。隐藏后仍可从 LSPosed 的模块页面打开设置，不会隐藏其他应用。";
+            case "launcher_icon": return "隐藏或恢复 红魔Duo 自身的桌面入口。隐藏后仍可从 LSPosed 的模块页面打开设置，不会隐藏其他应用。";
             case "config_transfer": return "导出、导入模块配置、应用选择、图片和字体，或恢复默认设置。账户绑定、运行日志、本机兼容性凭据及桌面页序不包含在备份中；重置前会恢复模块隐藏的应用。";
             case "diagnostics": return "查看当前环境与模块加载状态，控制详细诊断，并重新采集、导出运行记录。详细诊断不会自动启用对应增强，开启前的调用无法补录。";
             default: return entry.summary;
