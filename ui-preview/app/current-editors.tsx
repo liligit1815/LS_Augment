@@ -14,8 +14,9 @@ import {
 } from './current-ui';
 import data from './current-editor-data.json';
 import catalog from './current-catalog.json';
+import { NativeSelect } from './current-native-controls';
 import { CurrentHealth } from './current-health';
-import { CurrentStatusPreview } from './current-status-preview';
+import { LatestStatusEditor } from './current-status-editor';
 const definitions = data.defaults as Record<
   string,
   { key: string; default: unknown }
@@ -33,6 +34,7 @@ export const editorDefaults = Object.fromEntries(
 );
 export const editorTitles: Record<string, string> = {
   shoulder: '全应用肩键',
+  rapid_compatibility: '兼容性测试',
   ai_trigger: 'AI 触发器',
   fan_control: '风扇控制',
   combo_speed: '一键连招速度',
@@ -52,8 +54,6 @@ export const editorTitles: Record<string, string> = {
   hide_apps: '应用隐藏',
   automation: '自动隐藏',
   tile: '快捷磁贴',
-  diagnostics: '运行诊断',
-  detailed_diagnostics: '运行诊断',
 };
 function Feature({
   name,
@@ -75,6 +75,15 @@ function Feature({
       {children}
     </Toggle>
   );
+}
+function EditorSection({
+  embedded = false,
+  children,
+}: {
+  embedded?: boolean;
+  children: ReactNode;
+}) {
+  return embedded ? <div className="c-feature">{children}</div> : <Card>{children}</Card>;
 }
 function R({
   name,
@@ -198,9 +207,10 @@ export function CurrentEditor({
     .flatMap((t) => t.entries)
     .find((e) => e.route === route)?.help;
   if (route === 'mi_health') return <CurrentHealth />;
-  if (route === 'status_layout') return <StatusEditor embedded={embedded} />;
-  if (route === 'launcher_custom') return <LauncherEditor />;
-  if (route === 'shoulder') return <Shoulder />;
+  if (route === 'status_layout') return <LatestStatusEditor />;
+  if (route === 'launcher_custom') return <LauncherEditor embedded={embedded} />;
+  if (route === 'shoulder') return <Shoulder embedded={embedded} />;
+  if (route === 'rapid_compatibility') return <RapidCompatibility />;
   if (route === 'fan_control') return <FanEditor />;
   if (['hide', 'hide_apps', 'automation', 'tile'].includes(route))
     return <HideEditor route={route} />;
@@ -233,7 +243,7 @@ export function CurrentEditor({
     );
   if (route === 'combo_speed')
     return (
-      <Card>
+      <EditorSection embedded={embedded}>
         {feature(
           'COMBO_SPEED_ENABLED',
           '一键连招速度',
@@ -246,19 +256,21 @@ export function CurrentEditor({
             suffix=" 倍"
           />,
         )}
-      </Card>
+      </EditorSection>
     );
   if (route === 'freeform')
     return (
-      <>
-        <Card>
+      <Card className="c-feature-group d-setting-group" label="小窗增强">
+        <div className="c-feature">{feature('FREEFORM_GAME_LOGIN','游戏登录跳转以小窗打开','游戏跳转登录授权页面时使用小窗。',<Button onClick={()=>m.dialog('补充游戏名单',<AppPicker multiple chosen={(m.values[k('FREEFORM_GAME_APPS')]||'').split(',')} finish={apps=>m.set(k('FREEFORM_GAME_APPS'),apps.join(','))}/>)}>补充游戏名单</Button>)}</div>
+        <div className="c-feature">{feature('FREEFORM_EXTERNAL_APPS','打开第三方应用以小窗打开','从前台应用跳转其他第三方应用时使用小窗。')}</div>
+        <div className="c-feature">
           {feature(
             'FREEFORM_UNLIMITED',
             '解除小窗数量上限',
             '允许同时创建并最小化超过三个自由窗口。',
           )}
-        </Card>
-        <Card>
+        </div>
+        <div className="c-feature">
           {feature(
             'FREEFORM_ALL_APPS',
             '全应用支持小窗',
@@ -288,12 +300,12 @@ export function CurrentEditor({
               个）
             </Button>,
           )}
-        </Card>
-      </>
+        </div>
+      </Card>
     );
   if (route === 'audio_gain')
     return (
-      <Card>
+      <EditorSection embedded={embedded}>
         {feature(
           'AUDIO_GAIN_ENABLED',
           '超过 100% 的音量',
@@ -327,7 +339,7 @@ export function CurrentEditor({
             ))}
           </>,
         )}
-      </Card>
+      </EditorSection>
     );
   if (route === 'battery')
     return (
@@ -366,20 +378,20 @@ export function CurrentEditor({
   if (route === 'super_resolution' || route === 'diablo_coexist')
     return (
       <>
-        <Card>
+        <EditorSection embedded={embedded}>
           {feature(
             'SUPER_MIRROR_LOW_MODE',
             '性能模式超分',
             '允许其他性能模式开启超分辨率。',
           )}
-        </Card>
-        <Card>
+        </EditorSection>
+        <EditorSection embedded={embedded}>
           {feature(
             'SUPER_MIRROR_DIABLO_COEXIST',
             '超分与破坏神共存',
             '允许同时启用超分和破坏神模式。',
           )}
-        </Card>
+        </EditorSection>
       </>
     );
   if (route === 'double_app')
@@ -400,14 +412,14 @@ export function CurrentEditor({
     );
   if (route === 'signature_install')
     return (
-      <Card>
+      <EditorSection embedded={embedded}>
         {feature(
           'ALLOW_SIGNATURE_MISMATCH',
           '允许安装签名不一致的应用',
           help +
             '\n开启后，覆盖安装的 APK 可能读取原应用的数据。请仅安装来源可信的 APK。',
         )}
-      </Card>
+      </EditorSection>
     );
   if (route === 'store_download')
     return (
@@ -425,68 +437,15 @@ export function CurrentEditor({
         )}
       </Card>
     );
-  return (
-    <>
-      <Card>
-        <FeatureTitle
-          title="详细诊断"
-          help="按需记录对应功能的详细调用信息。"
-        />
-        {feature(
-          'SHOULDER_DIAGNOSTICS',
-          '肩键详细诊断',
-          '记录肩键调用和连点运行信息。',
-        )}
-        {feature(
-          'AI_TRIGGER_DIAGNOSTICS',
-          'AI 触发器详细诊断',
-          '记录模板、YOLO、扫描与点击执行信息。',
-        )}
-      </Card>
-      <Card>
-        <FeatureTitle
-          title="日志"
-          help="收集设备与模块信息、Hook 接入状态、运行结果和错误。"
-        />
-        <Button
-          onClick={() => {
-            const b = new Blob(
-              [
-                'LS_Augment 网页原型 · 诊断示例\n版本 test20288\n' +
-                  JSON.stringify(m.values, null, 2),
-              ],
-              { type: 'text/plain' },
-            );
-            const u = URL.createObjectURL(b),
-              a = document.createElement('a');
-            a.href = u;
-            a.download = 'LS_Augment-prototype-logs.txt';
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(u), 1000);
-            m.tell('已导出网页诊断示例');
-          }}
-        >
-          导出日志
-        </Button>
-        <p className="c-note">
-          导出设备与模块信息、Hook
-          接入状态、最近运行结果和错误。开启详细诊断后，一并包含对应功能的调用过程，帮助排查是否成功接入、是否触发及实际执行情况。
-        </p>
-        <p className="c-note">
-          排查时先开启对应详细诊断，按页面右上角重启作用域，复现问题后再导出。
-        </p>
-      </Card>
-    </>
-  );
+  return <p className="c-note">此页面不可用。</p>;
 }
-function Shoulder() {
-  const m = useModel(),
-    [stage, setStage] = useState(0),
-    [testVisible, showTest] = useState(false);
+
+function Shoulder({ embedded = false }: { embedded?: boolean }) {
+  const m = useModel();
   const passed = m.values['prototype:rapid-compatible'] === '1';
   return (
     <>
-      <Card>
+      <EditorSection embedded={embedded}>
         <Feature
           name="SHOULDER_ENABLED"
           title="全应用肩键"
@@ -497,7 +456,12 @@ function Shoulder() {
           name={k('TGK_RAPID_FIRE_ENABLED')}
           title="极速连点"
           help="通过当前设备的兼容性测试后，开启此功能以配置实体肩键连点频率。"
-          disabled={!passed}
+          beforeEnable={() => {
+            if (passed) return true;
+            m.tell('请先进入兼容性测试');
+            m.go('rapid_compatibility');
+            return false;
+          }}
         >
           <R
             name="TGK_RAPID_FIRE_COUNT"
@@ -507,59 +471,53 @@ function Shoulder() {
             suffix=" 次/秒"
           />
         </Toggle>
-        {!passed && (
+      </EditorSection>
+    </>
+  );
+}
+function RapidCompatibility() {
+  const m = useModel(),
+    [stage, setStage] = useState(
+      m.values['prototype:rapid-compatible'] === '1' ? 5 : 0,
+    );
+  return (
+    <Card>
+      <p className="c-note">
+        {
+          [
+            '请先开始兼容性测试，再按提示验证左、右实体肩键。网页使用演示输入。',
+            '预检完成，等待开始左肩键测试。',
+            '等待左肩键输入。',
+            '左肩键已识别，等待右肩键输入。',
+            '左右肩键已识别，准备稳定性验证。',
+            '稳定性验证通过。通过测试只解锁开关，不会自动开启极速连点。',
+          ][stage]
+        }
+      </p>
+      <div className="c-buttons">
+        {stage < 5 && (
           <Button
             onClick={() => {
-              showTest(true);
-              setStage(0);
+              if (stage === 4) m.set('prototype:rapid-compatible', '1');
+              setStage((n) => n + 1);
             }}
           >
-            兼容性测试
-          </Button>
-        )}
-      </Card>
-      {testVisible && !passed && (
-        <Card>
-          <FeatureTitle
-            title="极速连点兼容性测试"
-            help="自动核验系统、调用链和原生库，再按左、右肩键分别记录实体码、中上层码与系统码。网页使用演示输入。"
-          />
-          <p className="c-note">
             {
               [
-                '预检完成，等待开始左肩键测试。',
-                '等待左肩键输入。',
-                '左肩键已识别，等待右肩键输入。',
-                '左右肩键已识别，准备稳定性验证。',
-                '稳定性验证通过。通过测试只解锁开关，不会自动开启极速连点。',
+                '开始兼容性测试',
+                '开始测试左肩键',
+                '模拟按下左肩键',
+                '模拟按下右肩键',
+                '开始稳定性验证',
               ][stage]
             }
-          </p>
-          <div className="c-buttons">
-            {stage < 4 && (
-              <Button
-                onClick={() => {
-                  if (stage === 3) m.set('prototype:rapid-compatible', '1');
-                  setStage((n) => n + 1);
-                }}
-              >
-                {
-                  [
-                    '开始测试左肩键',
-                    '模拟按下左肩键',
-                    '模拟按下右肩键',
-                    '开始稳定性验证',
-                  ][stage]
-                }
-              </Button>
-            )}
-            <Button onClick={() => showTest(false)}>
-              {stage === 4 ? '完成' : '取消测试'}
-            </Button>
-          </div>
-        </Card>
-      )}
-    </>
+          </Button>
+        )}
+        <Button onClick={() => m.go('group/game/shoulder')}>
+          {stage === 5 ? '完成' : stage === 0 ? '返回' : '取消测试'}
+        </Button>
+      </div>
+    </Card>
   );
 }
 function FanMeasurement() {
@@ -597,56 +555,50 @@ function FanMeasurement() {
 }
 function FanEditor() {
   const m = useModel(),
-    measured = m.values['prototype:fan-measured'] === '1';
+    measured = m.values['prototype:fan-measured'] === '1',
+    fixedLevel = m.values[k('FAN_FIXED_LEVEL')];
+  useEffect(() => {
+    const level = Number(fixedLevel ?? '1');
+    if (!Number.isInteger(level) || level < 1 || level > 5) {
+      m.set(k('FAN_FIXED_LEVEL'), '1');
+    }
+  }, [fixedLevel, m]);
   return (
     <>
-      <Card>
+      <Card className="c-fan-controls" path="fan:controls" label="风扇控制设置">
         <Feature
           name="FAN_FIXED_ENABLED"
           title="固定风扇转速"
-          help="跟随原厂风扇开关，匹配最接近的实测档位；不会自行启动风扇。"
+          help={"开启后直接选择一至五档，风扇开启时按所选硬件档位固定，不依赖转速测量，也不受原厂智能／极速模式选择影响。\n\n在模块设置内，风扇关闭时也可保存档位，但不会自行启动。开启“散热风扇磁贴增强”并打开原厂风扇后，也可长按控制中心风扇磁贴设置固定档位。"}
         >
-          {measured ? (
-            <R
-              name="FAN_TARGET_RPM"
-              title="目标转速 RPM"
-              min={4680}
-              max={20680}
-              suffix=" RPM"
-            />
-          ) : (
-            <div className="c-range">
-              <FeatureTitle
-                title="目标转速 RPM"
-                help="需先测量本机转速，再匹配最接近的实测档位。"
-              />
-              <small>请先测量本机各档转速</small>
-              <input
-                aria-label="目标转速 RPM"
-                type="range"
-                min={500}
-                max={500}
-                value={500}
-                disabled
-              />
-            </div>
-          )}
+          <NativeSelect
+            name={k('FAN_FIXED_LEVEL')}
+            title="固定档位"
+            choices={[
+              ['1', '一档'],
+              ['2', '二档'],
+              ['3', '三档'],
+              ['4', '四档'],
+              ['5', '五档'],
+            ]}
+            initial="1"
+            presentation="buttons"
+          />
         </Feature>
-      </Card>
-      <Card>
+        <hr />
         <Feature
-          name="FAN_UNLOCK_MAX"
-          title="解除原厂极限转速限制"
-          help="允许使用已验证驱动的第 5 档；跟随原厂极速模式，不自行启动风扇。"
+          name="FAN_TILE_ENHANCEMENT_ENABLED"
+          title="散热风扇磁贴增强"
+          help={"开启增强并打开原厂风扇后，长按控制中心的散热风扇磁贴，原厂详情面板中会出现“固定转速”，可选择一至五档并查看实际档位与转速。风扇关闭时保留原厂提示，先打开风扇后再调节。\n\n此开关只控制磁贴增强，开启时不会自动启动风扇或启用固定转速。关闭增强后恢复原厂长按面板，已保存的固定转速设置由其自身开关控制。当前仅支持已验证定速档位的 NX809J。"}
         />
       </Card>
       <Card>
         <FeatureTitle
           title="本机转速测量"
-          help="依次检测 1～5 档，完成后恢复原厂档位。结果用于选择固定转速。"
+          help={"先打开原厂风扇，再开始检测。约一分钟内依次测量一至五档，保存各档稳定转速和最高反馈，仅用于查看本机各档实测表现，不参与固定档位控制。完成后恢复原档位。\n\n取消、关闭风扇或切换原厂模式会停止检测；系统或固件变化后可重新测量。NX769J 的定速档位尚未验证，暂不执行逐档测量。"}
         />
         <p className="c-fan-summary">
-          {'红魔 11 Pro / 11S Pro 官方标称：24,000 RPM\n已验证驱动最高档：5（同时调用原厂最高性能模式）\n' +
+          {'已验证定速档位：1～5\n' +
             (measured
               ? '最近测量：' +
                 m.values['prototype:fan-measured-at'] +
@@ -665,395 +617,7 @@ function FanEditor() {
     </>
   );
 }
-function LayoutGate({
-  embedded,
-  children,
-}: {
-  embedded: boolean;
-  children: ReactNode;
-}) {
-  return embedded ? (
-    <>{children}</>
-  ) : (
-    <Feature
-      name="SYSTEMUI_MASTER"
-      title="启用状态栏增强"
-      help="启用本页配置的状态栏布局。"
-    >
-      {children}
-    </Feature>
-  );
-}
-function StatusEditor({ embedded = false }: { embedded?: boolean }) {
-  const m = useModel(),
-    [tab, setTab] = useState('布局');
-  const ids = [
-      'clock',
-      'notifications',
-      'system_icons',
-      'battery',
-      'cpu',
-      'gpu',
-      'battery_temp',
-      'current',
-      'power',
-      'network',
-    ],
-    labels = [
-      '时钟',
-      '通知图标',
-      '系统图标',
-      '电池图标',
-      'CPU 温度',
-      'GPU 温度',
-      '电池温度',
-      '电流',
-      '功率',
-      '网速',
-    ];
-  const zones = [
-    '左上',
-    '左下',
-    '左侧跨两排',
-    '中上',
-    '中下',
-    '中间跨两排',
-    '右上',
-    '右下',
-    '右侧跨两排',
-  ];
-  const defZones = [2, 2, 8, 8, 1, 1, 4, 7, 7, 5];
-  const val = (key: string, d: string) =>
-    key === k('STATUSBAR_NETWORK_DISPLAY') &&
-    ![1, 2, 3, 4].includes(Number(m.values[key]))
-      ? m.values[k('STATUSBAR_NETWORK_TWO_ROWS')] === '0'
-        ? '3'
-        : '4'
-      : (m.values[key] ?? d);
-  const dual = (id: string) =>
-    id === 'clock'
-      ? val(k('STATUSBAR_CLOCK_ROWS'), '2') === '2'
-      : id === 'network'
-        ? val(k('STATUSBAR_NETWORK_DISPLAY'), '4') === '4'
-        : id === 'notifications'
-          ? val(k('STATUSBAR_NOTIFICATION_TWO_ROWS'), '1') === '1'
-          : id === 'system_icons' &&
-            val(k('STATUSBAR_SYSTEM_TWO_ROWS'), '1') === '1';
-  const reset = () => {
-    Object.keys(m.values)
-      .filter((key) => key.includes('statusbar'))
-      .forEach((key) => m.set(key, editorDefaults[key] || ''));
-    m.set(k('SYSTEMUI_MASTER'), '0');
-    ids.forEach((id, i) => {
-      m.set('status:' + id + ':on', i < 4 ? '1' : '0');
-      m.set('status:' + id + ':zone', String(defZones[i]));
-      m.set('status:' + id + ':size', String(i < 4 ? 13 : 9));
-      m.set('status:' + id + ':order', String(i));
-    });
-    m.tell('状态栏已恢复默认');
-  };
-  const component = (id: string) => {
-    const i = ids.indexOf(id),
-      name = labels[i],
-      paired = dual(id),
-      zone = Number(val('status:' + id + ':zone', String(defZones[i])));
-    return (
-      <Card key={id}>
-        <Toggle
-          name={'status:' + id + ':on'}
-          initial={i < 4 ? '1' : '0'}
-          title={name}
-          help={'设置' + name + '在状态栏中的显示区域、大小及区内顺序。'}
-        >
-          {id === 'clock' && (
-            <label className="c-choice">
-              <span>显示排数</span>
-              <select
-                aria-label="显示排数"
-                value={val(k('STATUSBAR_CLOCK_ROWS'), '2')}
-                onChange={(e) => {
-                  m.set(k('STATUSBAR_CLOCK_ROWS'), e.target.value);
-                  if (e.target.value === '2')
-                    m.set(
-                      'status:clock:zone',
-                      String(Math.floor(zone / 3) * 3 + 2),
-                    );
-                }}
-              >
-                <option value="1">单排</option>
-                <option value="2">双排</option>
-              </select>
-            </label>
-          )}
-          {id === 'network' && (
-            <label className="c-choice">
-              <span>显示方式</span>
-              <select
-                aria-label="网速显示方式"
-                value={val(k('STATUSBAR_NETWORK_DISPLAY'), '4')}
-                onChange={(e) =>
-                  m.set(k('STATUSBAR_NETWORK_DISPLAY'), e.target.value)
-                }
-              >
-                {[
-                  '单排仅上传网速',
-                  '单排仅下载网速',
-                  '单排上行/下行',
-                  '双排上行/下行',
-                ].map((n, i) => (
-                  <option key={n} value={i + 1}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {['notifications', 'system_icons'].includes(id) && (
-            <Toggle
-              name={k(
-                id === 'notifications'
-                  ? 'STATUSBAR_NOTIFICATION_TWO_ROWS'
-                  : 'STATUSBAR_SYSTEM_TWO_ROWS',
-              )}
-              initial="1"
-              title={name + '分两排'}
-            />
-          )}
-          <label className="c-choice">
-            <span>显示区域</span>
-            <select
-              aria-label={name + '显示区域'}
-              value={paired ? Math.floor(zone / 3) * 3 + 2 : zone}
-              onChange={(e) => m.set('status:' + id + ':zone', e.target.value)}
-            >
-              {(paired ? [2, 5, 8] : [0, 1, 2, 3, 4, 5, 6, 7, 8]).map(
-                (v, i) => (
-                  <option key={v} value={v}>
-                    {paired
-                      ? [
-                          '左侧（上下两排）',
-                          '中间（上下两排）',
-                          '右侧（上下两排）',
-                        ][i]
-                      : zones[v]}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-          <Range
-            name={'status:' + id + ':size'}
-            title={name + '大小'}
-            min={6}
-            max={32}
-            initial={i < 4 ? 13 : 9}
-          />
-          <Range
-            name={'status:' + id + ':order'}
-            title="区内顺序"
-            min={0}
-            max={20}
-            initial={i}
-          />
-        </Toggle>
-      </Card>
-    );
-  };
-  return (
-    <>
-      <div className="c-status-fixed">
-        <CurrentStatusPreview values={m.values} />
-        <div className="c-tabs" role="tablist" aria-label="状态栏配置分类">
-          {['布局', '时钟', '硬件 / 网速', '图标'].map((t) => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => {
-                setTab(t);
-                const scroll = document.querySelector('.c-status-scroll');
-                if (scroll) scroll.scrollTop = 0;
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="c-status-fields" role="tabpanel" aria-label={tab}>
-        {tab === '布局' ? (
-          <Card>
-            <LayoutGate embedded={embedded}>
-              {[
-                ['STATUSBAR_HEIGHT_DP', '状态栏高度（0 跟随系统）', 80],
-                ['STATUSBAR_LEFT_MARGIN_DP', '左侧留白', 40],
-                ['STATUSBAR_RIGHT_MARGIN_DP', '右侧留白', 40],
-                ['STATUSBAR_TOP_MARGIN_DP', '顶部留白', 12],
-                ['STATUSBAR_BOTTOM_MARGIN_DP', '底部留白', 12],
-                ['STATUSBAR_DUAL_ROW_GAP_DP', '两排间距', 8],
-              ].map(([name, title, max]) => (
-                <R
-                  key={name}
-                  name={String(name)}
-                  title={String(title)}
-                  min={0}
-                  max={Number(max)}
-                />
-              ))}
-            </LayoutGate>
-          </Card>
-        ) : tab === '时钟' ? (
-          <>
-            {component('clock')}
-            <Card>
-              <Feature
-                name="STATUSBAR_CLOCK_CUSTOM"
-                title="自定义时钟文字"
-                help="开启后使用自定义格式，可设置时间、星期、农历及时段。"
-              >
-                <div className="c-buttons">
-                  {['单行', '双行'].map((s, i) => (
-                    <Button
-                      key={s}
-                      onClick={() => {
-                        m.set(k('STATUSBAR_CLOCK_ROWS'), String(i + 1));
-                        m.set(k('STATUSBAR_CLOCK_PATTERN'), 'HH:mm');
-                        m.set(
-                          k('STATUSBAR_CLOCK_PATTERN_SECOND'),
-                          i ? 'MM/dd E' : '',
-                        );
-                      }}
-                    >
-                      {s}
-                    </Button>
-                  ))}
-                </div>
-                <Field
-                  name={k('STATUSBAR_CLOCK_PATTERN')}
-                  title="第一行格式，例如 HH:mm"
-                />
-                <Field
-                  name={k('STATUSBAR_CLOCK_PATTERN_SECOND')}
-                  title="第二行格式，留空为单行"
-                />
-                <FeatureTitle
-                  title="时间格式说明"
-                  help="HH：24小时；hh：12小时。固定文字使用单引号。N 农历月，NN 月干支，NNN 完整农历日期，NNNN 日期与节气，e 农历日，Y 干支年，A 生肖，t 节气，I 时辰地支，II 时干支，aa 中文时段。"
-                />
-                {[
-                  ['STATUSBAR_CLOCK_24H', '默认使用 24 小时制'],
-                  ['STATUSBAR_CLOCK_SECONDS', '默认显示秒'],
-                  ['STATUSBAR_CLOCK_PERIOD', '默认显示时段'],
-                  ['STATUSBAR_CLOCK_WEEK', '默认显示星期'],
-                ].map(([n, t]) => (
-                  <Feature key={n} name={n} title={t} />
-                ))}
-                <details>
-                  <summary>
-                    <FeatureTitle
-                      title="字体与排版"
-                      help="调整字体、字号、间距和对齐；关闭自定义时钟后恢复原厂字体。"
-                    />
-                  </summary>
-                  <Field
-                    name={k('STATUSBAR_CLOCK_FONT_FAMILY')}
-                    title="字体名称（sans-serif / serif / monospace）"
-                    initial="sans-serif"
-                    maxLength={40}
-                  />
-                  {[
-                    [
-                      'STATUSBAR_CLOCK_SIZE_SP',
-                      '单独字号 sp（0 使用上方大小）',
-                      0,
-                      40,
-                    ],
-                    ['STATUSBAR_CLOCK_WEIGHT', '字重（100–900）', 100, 900],
-                    [
-                      'STATUSBAR_CLOCK_LETTER_SPACING',
-                      '字间距（-0.20 至 1.00）',
-                      -0.2,
-                      1,
-                    ],
-                    [
-                      'STATUSBAR_CLOCK_LINE_SPACING_DP',
-                      '两行额外间距 dp（0–32）',
-                      0,
-                      32,
-                    ],
-                    [
-                      'STATUSBAR_CLOCK_WIDTH_DP',
-                      '固定宽度 dp（0 自动）',
-                      0,
-                      240,
-                    ],
-                  ].map(([n, t, min, max]) => (
-                    <Field
-                      key={n}
-                      name={k(String(n))}
-                      title={String(t)}
-                      type="number"
-                      min={+min}
-                      max={+max}
-                      initial={editorDefaults[k(String(n))]}
-                      decimal={[
-                        'STATUSBAR_CLOCK_SIZE_SP',
-                        'STATUSBAR_CLOCK_LETTER_SPACING',
-                        'STATUSBAR_CLOCK_LINE_SPACING_DP',
-                      ].includes(String(n))}
-                    />
-                  ))}
-                  <label className="c-choice">
-                    <span>文字对齐</span>
-                    <select
-                      aria-label="文字对齐"
-                      value={
-                        m.values[k('STATUSBAR_CLOCK_TEXT_ALIGN')] || 'center'
-                      }
-                      onChange={(e) =>
-                        m.set(k('STATUSBAR_CLOCK_TEXT_ALIGN'), e.target.value)
-                      }
-                    >
-                      <option value="left">靠左</option>
-                      <option value="center">居中</option>
-                      <option value="right">靠右</option>
-                    </select>
-                  </label>
-                  <p className="c-note">
-                    单独字号大于 0
-                    时优先使用；拖动上方大小后重新跟随，空间不足时仍会缩小。
-                  </p>
-                </details>
-              </Feature>
-            </Card>
-          </>
-        ) : tab === '硬件 / 网速' ? (
-          <>
-            <p className="c-note">
-              CPU、GPU、电池可分别开关并分别设置区域、大小与顺序。
-            </p>
-            {ids.slice(4).map(component)}
-          </>
-        ) : (
-          <>
-            <p className="c-note">
-              双排图标统一使用状态栏的上下两排，可选择左侧、中间或右侧；间距跟随布局页设置。
-            </p>
-            {ids.slice(1, 4).map(component)}
-            <R
-              name="STATUSBAR_NOTIFICATION_MAX"
-              title="通知数量（0 跟随系统）"
-              min={0}
-              max={20}
-            />
-          </>
-        )}
-        <Button onClick={reset}>恢复默认</Button>
-      </div>
-    </>
-  );
-}
-function LauncherEditor() {
+function LauncherEditor({ embedded = false }: { embedded?: boolean }) {
   const m = useModel(),
     [space, setSpace] = useState('0'),
     [app, setApp] = useState(''),
@@ -1061,10 +625,16 @@ function LauncherEditor() {
     [picture, setPicture] = useState(''),
     file = useRef<HTMLInputElement>(null);
   const id = 'launcher:' + space + ':' + app;
+  const hasOverrides = Object.entries(m.values).some(([key, value]) =>
+    key.startsWith('launcher:') && (key.endsWith(':name') || key.endsWith(':picture')) && !!value);
   return (
-    <>
-      <p className="c-note">先选择空间和应用，再修改名称或图标。</p>
-      <Card>
+    <EditorSection embedded={embedded}>
+      <Toggle
+        name="prototype:launcher-enabled"
+        title="自定义应用图标与名称"
+        initial={hasOverrides ? '1' : '0'}
+        help="按用户空间选择应用。关闭时恢复原厂名称和图标，再次开启恢复之前保存的修改。"
+      >
         <FeatureTitle
           title="用户空间"
           help="每个用户空间分别保存应用名称和图标。"
@@ -1100,7 +670,6 @@ function LauncherEditor() {
         >
           选择应用
         </Button>
-      </Card>
       <Card>
         <FeatureTitle title="应用图标" help="选择图片并裁剪后自动保存。" />
         <button
@@ -1170,7 +739,8 @@ function LauncherEditor() {
           恢复原图标
         </Button>
       </Card>
-    </>
+      </Toggle>
+    </EditorSection>
   );
 }
 function CropImage({

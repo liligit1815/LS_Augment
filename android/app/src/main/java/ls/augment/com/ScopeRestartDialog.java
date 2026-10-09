@@ -11,22 +11,28 @@ import java.util.concurrent.Executors;
 
 /** User-initiated, fixed-template target process restarts. */
 final class ScopeRestartDialog {
+    /** Editors drain their pending configuration writes before a user-requested restart. */
+    interface Preparation { void prepareScopeRestart(Runnable restart); }
     static final String SETTINGS = "settings";
     static final String SYSTEM_UI = "systemui";
+    static final String LAUNCHER = "launcher";
     static final String DEVICE = "device";
     static final String APPS = "apps";
     static final String GAMES = "games";
+    static final String FAN = "fan";
 
     private static final String[] LABELS = {
             "隐藏列表（系统设置）",
             "状态栏（SystemUI）",
+            "系统桌面（布局、图标与页面）",
             "系统核心与连接（重启手机）",
             "应用增强（安装兼容、双开与主题商店）",
             "游戏增强（游戏空间与风扇）",
+            "散热风扇（风扇服务与控制中心）",
             "全部作用域（重启手机）"
     };
     private static final String[] IDS = {
-            SETTINGS, SYSTEM_UI, DEVICE, APPS, GAMES, "all"
+            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, "all"
     };
 
     private ScopeRestartDialog() { }
@@ -36,14 +42,14 @@ final class ScopeRestartDialog {
         button.setImageResource(R.drawable.ic_restart_scope);
         button.setScaleType(ImageView.ScaleType.CENTER);
         button.setColorFilter(ui.accent);
-        button.setBackground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,22)));
+        button.setBackground(ui.pressable(ui.controlGlass(button,22,IceGlassControlDrawable.NEUTRAL)));
         button.setContentDescription("重启作用域");button.setTooltipText("重启作用域");
         button.setOnClickListener(view -> show(activity, suggested));
         header.addView(button, new LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)));
         return button;
     }
 
-    static void show(Activity activity, String suggested) {
+    static android.app.Dialog show(Activity activity, String suggested) {
         int checked = indexOf(suggested);
         final int[] selected = {checked};
         UiKit ui = new UiKit(activity);
@@ -61,8 +67,12 @@ final class ScopeRestartDialog {
             choice.setOnCheckedChangeListener((button, enabled) -> { if (enabled) selected[0] = index; });
             if (i == checked) choice.setChecked(true);
         }
-        ui.glassDialog("重启作用域", choices, "立即重启",
-                () -> restart(activity, IDS[selected[0]]), "取消");
+        return ui.glassDialog("重启作用域", choices, "立即重启",
+                () -> {
+                    Runnable action = () -> restart(activity, IDS[selected[0]]);
+                    if (activity instanceof Preparation) ((Preparation) activity).prepareScopeRestart(action);
+                    else action.run();
+                }, "取消");
     }
 
     private static int indexOf(String value) {
@@ -74,7 +84,14 @@ final class ScopeRestartDialog {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             try {
-                RootShell.Result synced=new AppConfig(activity).mirrorAll();
+                AppConfig config=new AppConfig(activity);
+                RootShell.Result synced=config.mirrorAll();
+                // Saving is asynchronous. Allow the committed snapshot to reach the framework
+                // before replacing the process that will read it during startup.
+                for (int attempt=0; !synced.isSuccess() && attempt<24; attempt++) {
+                    android.os.SystemClock.sleep(125);
+                    synced=config.mirrorAll();
+                }
                 if(!synced.isSuccess()){
                     activity.runOnUiThread(()->Toast.makeText(activity,
                             "启动配置仍在等待 LSPosed 框架同步，请稍后再重启作用域。",
@@ -95,6 +112,8 @@ final class ScopeRestartDialog {
                 return "am force-stop com.android.settings";
             case SYSTEM_UI:
                 return "killall com.android.systemui";
+            case LAUNCHER:
+                return "killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
             case DEVICE:
                 return "reboot";
             case APPS:
@@ -111,6 +130,8 @@ final class ScopeRestartDialog {
                         + "am force-stop com.zte.game.plugintrigger; "
                         + "am force-stop cn.zte.gamefloat; am force-stop cn.nubia.gamehighlights; "
                         + "killall cn.nubia.fan >/dev/null 2>&1 || true";
+            case FAN:
+                return "killall cn.nubia.fan >/dev/null 2>&1 || true; killall com.android.systemui";
             default:
                 return "reboot";
         }

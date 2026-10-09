@@ -28,8 +28,16 @@ public final class DeviceRegressionRunner extends Instrumentation {
             String operation = arguments.getString("operation", "snapshot");
             // Enumeration diagnostics must not initialize or migrate configuration.
             AppConfig config = "package-enumeration".equals(operation) || "ui-navigation".equals(operation)
-                    || "ui-preview".equals(operation)
-                    || "dialog-ui".equals(operation)
+                    || "ui-preview".equals(operation) || "prototype-navigation".equals(operation)
+                    || "dialog-ui".equals(operation) || "ui-standards".equals(operation)
+                    || "rapid-certification".equals(operation)
+                    || "legal-scroll".equals(operation)
+                    || "surface-flicker".equals(operation)
+                    || "total-reset-read-only".equals(operation)
+                    || "config-transfer-actions".equals(operation)
+                    || "total-reset-inspect".equals(operation)
+                    || "total-reset-root-paths".equals(operation)
+                    || "owned-file-cleaner-fixture".equals(operation)
                     || "root-transaction-fixture".equals(operation)
                     || "owned-restore-fixture".equals(operation)
                     || "recovery-navigation-fixture".equals(operation)
@@ -37,10 +45,177 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "manual-target-fixture".equals(operation)
                     || "rapid-physical-capture-probe".equals(operation)
                     || "connectivity-icon-cases".equals(operation)
+                    || "carrier-text-layout".equals(operation)
+                    || "statusbar-customization-ui".equals(operation)
+                    || "island-settings-ui".equals(operation)
+                    || "launcher-grid-ui".equals(operation)
+                    || "fan-settings-ui".equals(operation)
+                    || "game-settings-ui".equals(operation)
+                    || "game-performance-monitor-ui".equals(operation)
+                    || "integrated-settings-ui".equals(operation)
+                    || "launcher-grid-drag".equals(operation)
                     ? null : new AppConfig(context);
             report.put("operation", operation).put("moduleVersion", BuildConfig.VERSION_CODE)
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "carrier-text-layout":
+                    report.put("carrierTextLayout",CarrierTextLayoutDeviceCases.run(this));
+                    break;
+                case "c17-summary-assets":
+                    report.put("notificationSummaryAssets",C17NotificationSummaryAssetsCases.run(this,arguments));
+                    break;
+                case "c17-enhancement-ui":
+                    report.put("c17EnhancementUi",C17EnhancementUiCases.run(this,arguments));
+                    break;
+                case "c17-enhancement-ui-restore":
+                    report.put("c17EnhancementUi",C17EnhancementUiCases.restore(this));
+                    break;
+                case "c17-runtime-fixture":
+                    report.put("c17RuntimeFixture",C17RuntimeFixtureCases.run(this,arguments));
+                    if(!report.getJSONObject("c17RuntimeFixture").optString("error").isEmpty()
+                            || !report.getJSONObject("c17RuntimeFixture").optBoolean("cleanupComplete"))
+                        throw new AssertionError("Runtime fixture did not complete; inspect its report");
+                    break;
+                case "statusbar-arrangement":
+                    report.put("statusbarArrangement",StatusBarArrangementDeviceCases.run(this));
+                    if(!report.getJSONObject("statusbarArrangement").getBoolean("success"))throw new AssertionError("Status bar arrangement failed; inspect statusbar-arrangement-results.json");
+                    break;
+                case "statusbar-arrangement-restore":
+                    report.put("statusbarArrangement",StatusBarArrangementDeviceCases.restore(this));
+                    break;
+                case "back-gesture-customization":
+                    report.put("backGestureCustomization",BackGestureCustomizationDeviceCases.run(this,arguments));
+                    break;
+                case "statusbar-user-assets":
+                    report.put("statusbarUserAssets",StatusBarUserAssetsDeviceCases.run(this,arguments));
+                    break;
+                case "statusbar-control-roundtrip":
+                    report.put("statusbarControls",StatusBarControlRoundTripCases.run(this));
+                    if(!report.getJSONObject("statusbarControls").getBoolean("success"))throw new AssertionError("Status bar control roundtrip failed; inspect statusbar-controls-results.json");
+                    break;
+                case "statusbar-control-restore":
+                    report.put("statusbarControls",StatusBarControlRoundTripCases.restore(this));
+                    break;
+                case "back-gesture-hover":
+                    report.put("backGestureHover",BackGestureHoverDeviceCases.run(this,arguments));
+                    result.putString("backGestureHover",report.getJSONObject("backGestureHover").toString());
+                    break;
+                case "rapid-certification":
+                    report.put("rapidCertification",RapidFireCertificationDeviceCases.run(context));
+                    result.putString("rapidCertification",report.getJSONObject("rapidCertification").toString());
+                    break;
+                case "ui-standards":
+                    report.put("uiStandards",UiStandardsDeviceCases.run(this,
+                            Boolean.parseBoolean(arguments.getString("strict","false")),
+                            Boolean.parseBoolean(arguments.getString("landscape","false"))));
+                    result.putString("uiStandards",report.getJSONObject("uiStandards").toString());
+                    break;
+                case "integrated-settings-ui":
+                    report.put("integratedSettingsUi",IntegratedSettingsUiCases.run(this,
+                            Boolean.parseBoolean(arguments.getString("layoutOnly","false")),
+                            Boolean.parseBoolean(arguments.getString("landscape","false"))));
+                    result.putString("integratedSettingsUi",report.getJSONObject("integratedSettingsUi").toString());
+                    break;
+                case "realtime-activities-ui":
+                    report.put("realtimeActivitiesUi", RealtimeActivitiesUiCases.run(this));
+                    result.putString("realtimeActivitiesUi", report.getJSONObject("realtimeActivitiesUi").toString());
+                    break;
+                case "game-performance-monitor-ui":
+                    report.put("gamePerformanceMonitorUi",GamePerformanceMonitorUiCases.run(this,
+                            Boolean.parseBoolean(arguments.getString("layoutOnly","false")),
+                            Boolean.parseBoolean(arguments.getString("landscape","false"))));
+                    result.putString("gamePerformanceMonitorUi",report.getJSONObject("gamePerformanceMonitorUi").toString());
+                    break;
+                case "game-settings-ui":
+                    report.put("gameSettingsUi",GameSettingsUiCases.run(this,
+                            Boolean.parseBoolean(arguments.getString("layoutOnly","false")),
+                            Boolean.parseBoolean(arguments.getString("landscape","false"))));
+                    result.putString("gameSettingsUi",report.getJSONObject("gameSettingsUi").toString());
+                    break;
+                case "fan-settings-ui":
+                    report.put("fanSettingsUi", FanSettingsUiCases.run(this,
+                            Boolean.parseBoolean(arguments.getString("layoutOnly", "false"))));
+                    result.putString("fanSettingsUi", report.getJSONObject("fanSettingsUi").toString());
+                    break;
+                case "health-settings-ui":
+                    report.put("healthSettingsUi",HealthSettingsUiCases.run(this));
+                    result.putString("healthSettingsUi",report.getJSONObject("healthSettingsUi").toString());
+                    break;
+                case "total-reset-fixture-seed":
+                    report.put("totalResetFixture",TotalResetFixtureDeviceCases.seed(context));
+                    result.putString("totalResetFixture",report.getJSONObject("totalResetFixture").toString());
+                    break;
+                case "owned-file-cleaner-fixture": {
+                    TestOwnedFileCleaner.Report fixture=TestOwnedFileCleaner.run(context.getCacheDir(),true);
+                    report.put("ownedFileCleaner",new JSONObject().put("passed",fixture.passed).put("unsupported",fixture.unsupported)
+                            .put("cases",new JSONArray(fixture.results)));
+                    LauncherResetXml.State grid=LauncherResetXml.read("<map><boolean value='true' name='owned'/><int value='6' name='original_rows'/><int name='original_columns' value='4'/></map>".getBytes(StandardCharsets.UTF_8),true);
+                    if(!grid.pendingGridRestore)throw new AssertionError("Android XML parser missed grid recovery metadata");
+                    int rejected=0;for(String invalid:new String[]{"<map><boolean name='owned' value='true'></map>","<map><int name='unknown' value='4'/></map>","<!DOCTYPE map [<!ENTITY x SYSTEM 'file:///irrelevant'>]><map/>"})
+                        try{LauncherResetXml.read(invalid.getBytes(StandardCharsets.UTF_8),true);throw new AssertionError("Invalid grid XML accepted");}catch(java.io.IOException expected){rejected++;}
+                    report.getJSONObject("ownedFileCleaner").put("androidXmlRecoveryParsing",true).put("invalidXmlRejected",rejected);
+                    result.putString("ownedFileCleaner",report.getJSONObject("ownedFileCleaner").toString());
+                    break;
+                }
+                case "total-reset-read-only":
+                    report.put("totalResetUi",TotalResetReadOnlyDeviceCases.run(this));
+                    result.putString("totalResetUi",report.getJSONObject("totalResetUi").toString());
+                    break;
+                case "config-transfer-actions":
+                    report.put("configTransferActions",ConfigTransferActionsDeviceCases.run(this));
+                    result.putString("configTransferActions",report.getJSONObject("configTransferActions").toString());
+                    break;
+                case "total-reset-inspect":
+                    report.put("totalResetInspect",TotalResetInspectDeviceCases.run(context,arguments));
+                    result.putString("totalResetInspect",report.getJSONObject("totalResetInspect").toString());
+                    break;
+                case "total-reset-root-paths":
+                    report.put("totalResetRootPaths",TotalResetRootPathsDeviceCases.run(context));
+                    result.putString("totalResetRootPaths",report.getJSONObject("totalResetRootPaths").toString());
+                    break;
+                case "launcher-grid-drag":
+                    report.put("launcherGridDrag", LauncherGridDragDeviceCases.run(this,arguments));
+                    result.putString("launcherGridDrag", report.getJSONObject("launcherGridDrag").toString());
+                    break;
+                case "launcher-grid-ui":
+                    report.put("launcherGridUi", LauncherGridUiCases.run(this));
+                    result.putString("launcherGridUi", report.getJSONObject("launcherGridUi").toString());
+                    break;
+                case "launcher-grid-runtime":
+                    report.put("launcherGrid", LauncherGridDeviceCases.runtime(context,arguments));
+                    result.putString("launcherGrid", report.getJSONObject("launcherGrid").toString());
+                    break;
+                case "brightness-controls":
+                    report.put("brightness",BrightnessDeviceCases.run(context));
+                    result.putString("brightness",report.getJSONObject("brightness").toString());
+                    break;
+                case "statusbar-assets-ui":
+                    report.put("statusbarUi",StatusBarAssetsUiCases.run(this));
+                    result.putString("statusbarUi",report.getJSONObject("statusbarUi").toString());
+                    break;
+                case "statusbar-customization-ui":
+                    report.put("statusbarCustomizationUi",StatusBarCustomizationUiCases.run(this));
+                    result.putString("statusbarCustomizationUi",report.getJSONObject("statusbarCustomizationUi").toString());
+                    break;
+                case "island-settings-ui":
+                    report.put("islandSettingsUi",IslandSettingsUiCases.run(this));
+                    result.putString("islandSettingsUi",report.getJSONObject("islandSettingsUi").toString());
+                    break;
+                case "statusbar-assets-runtime":
+                    report.put("statusbarRuntime",StatusBarAssetsUiCases.runtime(context,arguments.getString("stage","observe")));
+                    result.putString("statusbarRuntime",report.getJSONObject("statusbarRuntime").toString());
+                    break;
+                case "statusbar-assets-lifecycle":
+                    report.put("statusbarLifecycle",StatusBarAssetsUiCases.lifecycle(this));
+                    result.putString("statusbarLifecycle",report.getJSONObject("statusbarLifecycle").toString());
+                    break;
+                case "statusbar-assets-screen-off":
+                    report.put("statusbarScreenOff",StatusBarAssetsUiCases.screenOff(this));
+                    break;
+                case "statusbar-asset-cases":
+                    report.put("statusbarAssets",StatusBarAssetsDeviceCases.run(context));
+                    result.putString("statusbarAssets",report.getJSONObject("statusbarAssets").toString());
+                    break;
                 case "power-dialog":
                     boolean powerDialogShown=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
                             .performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG);
@@ -49,6 +224,14 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 case "dialog-ui":
                     report.put("dialogs", DialogUiDeviceCases.run(this));
                     result.putString("dialogs", report.getJSONObject("dialogs").toString());
+                    break;
+                case "legal-scroll":
+                    report.put("legalScroll", LegalScrollDeviceCases.run(this));
+                    result.putString("legalScroll", report.getJSONObject("legalScroll").toString());
+                    break;
+                case "surface-flicker":
+                    report.put("surfaceFlicker",SurfaceFlickerDeviceCases.run(this));
+                    result.putString("surfaceFlicker",report.getJSONObject("surfaceFlicker").toString());
                     break;
                 case "hide-performance":
                     report.put("performance", HidePerformanceDeviceCases.run(context, arguments));
@@ -146,6 +329,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("rootTransactionFixture", RootTransactionDeviceCases.run(context, arguments));
                     result.putString("rootTransactionFixture", report.getJSONObject("rootTransactionFixture").toString());
                     break;
+                case "prototype-navigation":
+                    report.put("nativePrototype",ModuleHierarchyUiCases.run(this));
+                    result.putString("nativePrototype",report.getJSONObject("nativePrototype").toString());
+                    break;
                 case "ui-navigation":
                     report.put("ui", UiNavigationRegression.run(this));
                     break;
@@ -189,6 +376,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                         String normalized = ConfigSchema.normalize(entry.getKey(), entry.getValue());
                         if (!normalized.equals(config.get(entry.getKey()))) throw new AssertionError("Not persisted: " + entry.getKey());
                     }
+                    break;
+                case "island-fixture":
+                    report.put("islandFixture",IslandFixtureDeviceCases.run(this,arguments));
+                    result.putString("islandFixture",report.getJSONObject("islandFixture").toString());
                     break;
                 case "assert-defaults":
                     JSONArray mismatches = new JSONArray();
@@ -365,6 +556,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 passed = report.getJSONObject("manualTargetFixture").getBoolean("success");
             if ("rapid-physical-capture-probe".equals(operation))
                 passed = report.getJSONObject("rapidPhysicalCapture").getBoolean("success");
+            if ("total-reset-inspect".equals(operation))
+                passed = report.getJSONObject("totalResetInspect").getBoolean("success");
+            if ("total-reset-root-paths".equals(operation))
+                passed = report.getJSONObject("totalResetRootPaths").getBoolean("success");
             report.put("status", passed ? "pass" : "fail");
             File directory = new File(context.getFilesDir(), "device-regression-results");
             directory.mkdirs();

@@ -8,7 +8,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -32,8 +31,6 @@ import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
 
 import java.io.File;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,10 +47,13 @@ final class FeatureEditorController extends NativeEditorController {
     FeatureEditorController(Activity owner,String route,boolean embedded){super(owner,route,embedded);}
     static final String EXTRA_MODULE = "module";
     static final String MODULE_SHOULDER = "shoulder";
+    static final String MODULE_RAPID_COMPATIBILITY = "rapid_compatibility";
     static final String MODULE_AI_TRIGGER = "ai_trigger";
     static final String MODULE_COMBO_SPEED = "combo_speed";
     static final String MODULE_FAN_CONTROL = "fan_control";
     static final String MODULE_FREEFORM = "freeform";
+    static final String MODULE_FREEFORM_RULES = "freeform_rules";
+    static final String MODULE_FREEFORM_LIMITS = "freeform_limits";
     static final String MODULE_AUDIO_GAIN = "audio_gain";
     static final String MODULE_SUPER_RESOLUTION = "super_resolution";
     static final String MODULE_DIABLO_COEXIST = "diablo_coexist";
@@ -66,9 +66,9 @@ final class FeatureEditorController extends NativeEditorController {
     static final String MODULE_AUTOMATION = "automation";
     static final String MODULE_TILE = "tile";
     static final String MODULE_LAUNCHER_ICON = "launcher_icon";
-    static final String MODULE_DIAGNOSTICS = "diagnostics";
-    static final String MODULE_DETAILED_DIAGNOSTICS = "detailed_diagnostics";
-    private static final int EXPORT_REQUEST = 2042;
+
+
+
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ExecutorService rapidCaptureExecutor = Executors.newSingleThreadExecutor();
@@ -77,6 +77,7 @@ final class FeatureEditorController extends NativeEditorController {
     private final Map<String, EditText> inputs = new LinkedHashMap<>();
     private final Map<String, Slider> sliders = new LinkedHashMap<>();
     private final Map<String, Choice> choices = new LinkedHashMap<>();
+    private final Map<String, Long> fanEditedKeys = new LinkedHashMap<>();
     private final Map<String, PositionControl> positionControls = new LinkedHashMap<>();
     private final Map<String, IconControl> iconControls = new LinkedHashMap<>();
     private final LinkedHashMap<String, StatusBarLayoutSpec.Position> positionValues =
@@ -90,20 +91,15 @@ final class FeatureEditorController extends NativeEditorController {
     private TextView rapidCompatibilityStatus;
     private Button rapidCompatibilityAction;
     private Button rapidCompatibilityCancel;
-    private LinearLayout rapidCompatibilityPanel;
     private LinearLayout rapidParameters;
-    private LinearLayout rapidFeatureTitle;
-    private TextView rapidFeatureDescription;
-    private Button rapidTestEntry;
     private ImageButton rapidExpand;
     private boolean rapidFeatureUnlocked;
     private TextView fanMeasurementSummary;
     private AlertDialog fanDialog;
     private long fanRequestAt;
     private String fanRequestToken = "";
-    private String renderedFanMeasurement;
     private boolean rapidParametersExpanded;
-    private boolean rapidTestPanelRequested;
+    private boolean rapidCompatibilityOpening;
     private LinearLayout statusIconControls;
     private final LinkedHashMap<String, Boolean> renderedStatusIconSlots =
             new LinkedHashMap<>();
@@ -125,17 +121,19 @@ final class FeatureEditorController extends NativeEditorController {
     private boolean rapidCaptureInFlight;
     private boolean rapidCaptureLeft;
     private long rapidCaptureDeadline;
-    private int rapidCaptureGeneration;
+    private volatile int rapidCaptureGeneration;
+    private long editorResetGeneration;
     private String rapidCaptureSessionId;
-    private String pendingExport = "";
+    private volatile String rapidCancelledSessionId;
+
     private final Runnable statusAutoSave = () -> save(true);
     private final Runnable statusPoll = new Runnable() {
         @Override public void run() {
             if ((!isStatusModule() && !MODULE_AUDIO_GAIN.equals(section) && !MODULE_FAN_CONTROL.equals(section)
-                    && !MODULE_SHOULDER.equals(section)) || isFinishing()) return;
+                    && !isRapidModule()) || isFinishing() || isDestroyed() || rapidPagePaused) return;
             if (isStatusModule()) refreshStatusIconControls();
             renderRuntimeStatus();
-            if (MODULE_SHOULDER.equals(section)) refreshRapidCompatibilityUi();
+            if (isRapidModule()) refreshRapidCompatibilityUi();
             main.postDelayed(this, 800L);
         }
     };
@@ -151,20 +149,21 @@ final class FeatureEditorController extends NativeEditorController {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         section = getIntent().getStringExtra(EXTRA_MODULE);
-        if (section == null) section = MODULE_DIAGNOSTICS;
-        if ((MODULE_AUTOMATION.equals(section)||MODULE_TILE.equals(section))
-                && !HiddenEntrySession.isUnlocked()) { finish(); return; }
+        if (section == null) section = "";
+        if (hiddenAccessDenied()) { finish(); return; }
         if (isStatusModule()) {
             startActivity(new Intent(this, StatusBarSettingsActivity.class));
             finish();
             return;
         }
+        editorResetGeneration=ResetWriteFence.generation();
         config = new AppConfig(this);
         ui = editorUi();
         build();
         loadValues();
         restoreDraft(state);
         for (UiKit.Fold fold : folds) { fold.sync(); fold.show(false); }
+        ui.restoreState(state);
         rapidParametersExpanded=false;
         if (MODULE_SHOULDER.equals(section)) updateRapidFeatureUi(rapidFeatureUnlocked);
         registerSystemBackCallback();
@@ -184,7 +183,27 @@ final class FeatureEditorController extends NativeEditorController {
 
     @Override protected void onResume() {
         super.onResume();
+        if (hiddenAccessDenied()) {
+            main.removeCallbacks(statusAutoSave);
+            main.removeCallbacks(statusPoll);
+            finish();
+            return;
+        }
+        // onCreate may have finished before initializing a restricted/redirected editor.
+        if (config == null || ui == null || isFinishing()) return;
         rapidPagePaused = false;
+        rapidCompatibilityOpening = false;
+        if(isRapidModule()){
+            rapidSession=RapidFireCompatibility.Session.parse(config.get(AppConfig.TGK_RAPID_FIRE_TEST_SESSION));
+            if(MODULE_SHOULDER.equals(section)&&!dirty&&pendingSaves==0){
+                boolean before=loading;loading=true;
+                switches.get(AppConfig.TGK_RAPID_FIRE_ENABLED).setChecked(config.getBoolean(AppConfig.TGK_RAPID_FIRE_ENABLED));
+                Slider frequency=sliders.get(AppConfig.TGK_RAPID_FIRE_COUNT);
+                if(frequency!=null)frequency.setValue(Math.round(config.getFloat(AppConfig.TGK_RAPID_FIRE_COUNT,20)));
+                loading=before;
+            }
+            refreshRapidCompatibilityAsync();
+        }
         main.removeCallbacks(statusPoll);
         main.post(statusPoll);
     }
@@ -210,22 +229,16 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void build() {
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root = embedded?new LinearLayout(this):ui.detailChrome(title(),restartScope());
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(ui.backgroundDrawable());
-        root.setPadding(0, ui.topAppInset(), 0, 0);
-        LinearLayout header = ui.header(title(), true);
-        header.setPadding(ui.dp(10), ui.dp(4), ui.dp(12), ui.dp(2));
-        if (!isStatusModule()) ScopeRestartDialog.addButton(owner, ui, header, restartScope());
-        if (!embedded) root.addView(header, new LinearLayout.LayoutParams(-1, -2));
-        if (!embedded) root.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(26));
+        page.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(32));
+        scroll.setTag("detail-scroll");scroll.setVerticalScrollBarEnabled(false);
         if (embedded) { page.setPadding(0,0,0,0); root.setPadding(0,0,0,0);root.setBackground(null);root.addView(page,ui.wrap()); }
         else { scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
         root.addView(ui.adaptiveDetailBody(scroll, page), new LinearLayout.LayoutParams(-1, 0, 1)); }
@@ -242,10 +255,11 @@ final class FeatureEditorController extends NativeEditorController {
 
         switch (section) {
             case MODULE_SHOULDER: buildShoulder(); break;
+            case MODULE_RAPID_COMPATIBILITY: buildRapidCompatibility(); break;
             case MODULE_AI_TRIGGER: buildAiTrigger(); break;
             case MODULE_COMBO_SPEED: buildComboSpeed(); break;
             case MODULE_FAN_CONTROL: buildFanControl(); break;
-            case MODULE_FREEFORM: buildFreeform(); break;
+            case MODULE_FREEFORM: case MODULE_FREEFORM_RULES: case MODULE_FREEFORM_LIMITS: buildFreeform(); break;
             case MODULE_AUDIO_GAIN: buildAudioGain(); break;
             case MODULE_SUPER_RESOLUTION: buildSuperResolution(); break;
             case MODULE_DIABLO_COEXIST: buildDiabloCoexist(); break;
@@ -253,14 +267,12 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_STATUS_CLOCK: buildStatusClock(); break;
             case MODULE_STATUS_METRICS: buildStatusMetrics(); break;
             case MODULE_DOUBLE_APP: buildDoubleApp(); break;
-            case MODULE_BEAUTIFY: buildBeautify(); break;
             case MODULE_SIGNATURE_INSTALL: buildSignatureInstall(); break;
             case MODULE_AUTOMATION: buildAutomation(); break;
             case MODULE_TILE: buildTile(); break;
-            case MODULE_DETAILED_DIAGNOSTICS: buildDetailedDiagnostics(); break;
             case MODULE_LAUNCHER_ICON: buildLauncherIcon(); ui.setContentView(root); ui.applyGestureInset(root, 8); return;
             case "store_download": buildStoreDownload(); break;
-            default: buildDiagnostics(); break;
+            default: finish(); break;
         }
         save = ui.accentButton(isStatusModule() ? "立即应用（修改会自动应用）" : "保存修改");
         ui.setButtonEnabled(save, false);
@@ -284,39 +296,29 @@ final class FeatureEditorController extends NativeEditorController {
         LinearLayout shoulder = ui.card();
         addSwitch(shoulder, AppConfig.SHOULDER_ENABLED, "全应用肩键",
                 "对加入游戏空间的所有应用开放肩键与连招资格，连招仍可自行开关", false);
-        LinearLayout.LayoutParams separator = new LinearLayout.LayoutParams(-1, ui.dp(1));
-        separator.setMargins(0, ui.dp(7), 0, ui.dp(7));
-        shoulder.addView(ui.divider(), separator);
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        rapidFeatureTitle = ui.featureTitle("极速连点", "按住实体肩键时连续触发点击，松开后停止。必须先完成本机兼容性测试，再开启并设置点击频率。");
-        copy.addView(rapidFeatureTitle, ui.wrap());
-        rapidFeatureDescription = ui.text("请先进行兼容性测试，以确保设备支持当前功能。", 11, ui.muted, false);
-        rapidFeatureDescription.setLineSpacing(ui.dp(1), 1.04f);
-        copy.addView(rapidFeatureDescription, ui.margins(0, 3, 8, 0));
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        rapidTestEntry = ui.button("兼容性测试");
-        rapidTestEntry.setTextSize(10);
-        rapidTestEntry.setMinWidth(0);
-        rapidTestEntry.setMinimumWidth(0);
-        rapidTestEntry.setMinHeight(0);
-        rapidTestEntry.setMinimumHeight(0);
-        rapidTestEntry.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), ui.dp(4));
-        rapidTestEntry.setOnClickListener(view -> {
-            rapidTestPanelRequested = true;
-            refreshRapidCompatibilityUi();
-            onRapidCompatibilityAction();
-        });
-        row.addView(rapidTestEntry, new LinearLayout.LayoutParams(-2, ui.dp(36)));
+        shoulder.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
         Switch rapidSwitch = new Switch(this);
-        ui.styleSwitch(rapidSwitch);
-        rapidSwitch.setContentDescription("极速连点");
-        rapidSwitch.setEnabled(false);
-        rapidSwitch.setVisibility(View.GONE);
+        rapidSwitch.setTag("config:"+AppConfig.TGK_RAPID_FIRE_ENABLED);
+        LinearLayout row=ui.featureRow("极速连点",
+                "按住实体肩键时连续触发点击，松开后停止。首次开启前须完成兼容性测试；通过后可设置点击频率。建议从 20 次/秒开始。",rapidSwitch);
         rapidSwitch.setOnCheckedChangeListener((button, checked) -> {
-            if (!loading) rapidParametersExpanded = checked;
+            if(!loading&&checked&&!rapidCompatibilityReady()){
+                boolean before=loading;loading=true;rapidSwitch.setChecked(false);loading=before;
+                updateRapidFeatureUi(false);
+                if(!rapidCompatibilityOpening){
+                    rapidCompatibilityOpening=true;
+                    toast("请先进入兼容性测试");
+                    afterPendingSaves(()->{
+                        rapidCompatibilityOpening=false;
+                        if(!rapidPagePaused)ModuleNavigation.open(owner,MODULE_RAPID_COMPATIBILITY);
+                    },"配置尚未保存，请稍后再进入兼容性测试。",()->rapidCompatibilityOpening=false);
+                }
+                return;
+            }
+            if (!loading) {
+                if(checked)rapidFeatureUnlocked=true;
+                rapidParametersExpanded = checked;
+            }
             markDirty();
             updateRapidFeatureUi(rapidFeatureUnlocked);
         });
@@ -330,33 +332,39 @@ final class FeatureEditorController extends NativeEditorController {
             rapidParametersExpanded = !rapidParametersExpanded;
             updateRapidFeatureUi(rapidFeatureUnlocked);
         });
-        row.addView(rapidSwitch, new LinearLayout.LayoutParams(-2, -2));
-        row.addView(rapidExpand, new LinearLayout.LayoutParams(ui.dp(28), ui.dp(44)));
-        shoulder.addView(row, ui.margins(0, 2, 0, 2));
+        row.removeViewAt(row.getChildCount()-1);
+        row.addView(rapidExpand, new LinearLayout.LayoutParams(ui.dp(25), ui.dp(44)));
+        shoulder.addView(row, ui.wrap());
         rapidParameters = new LinearLayout(this);
         rapidParameters.setOrientation(LinearLayout.VERTICAL);
-        rapidParameters.addView(ui.text("建议先从 20 次/秒开始；40～50 次/秒可能被个别游戏丢弃。",
-                11, ui.muted, false), ui.margins(0, 12, 0, 4));
-        addSlider(rapidParameters, AppConfig.TGK_RAPID_FIRE_COUNT, "点击频率（10～50 次/秒）", 10, 50, false);
+        addSlider(rapidParameters, AppConfig.TGK_RAPID_FIRE_COUNT, "点击频率（1～50 次/秒）", 1, 50, false);
         shoulder.addView(rapidParameters, ui.wrap());
         updateRapidFeatureUi(false);
-        page.addView(shoulder, ui.margins(0, 0, 0, 12));
+        page.addView(shoulder, ui.margins(0, 0, 0, embedded?0:12));
+    }
 
-        LinearLayout compatibility = detailCard("极速连点兼容性测试",
-                "自动核验系统、调用链和原生库，再按左、右肩键分别记录实体码、中上层码与系统层码。"
-                        + " 双侧稳定验证通过后只解锁开关，不会自动开启。");
+    private void buildRapidCompatibility() {
+        LinearLayout compatibility=ui.card();
+        compatibility.setTag("rapid-compatibility-panel");
         rapidCompatibilityStatus = ui.text("正在读取测试状态…", 11.5f, ui.muted, false);
+        rapidCompatibilityStatus.setTag("rapid-compatibility-status");
         rapidCompatibilityStatus.setLineSpacing(ui.dp(1), 1.05f);
-        compatibility.addView(rapidCompatibilityStatus, ui.margins(0, 9, 0, 0));
+        compatibility.addView(rapidCompatibilityStatus, ui.wrap());
         rapidCompatibilityAction = ui.accentButton("开始兼容性测试");
+        rapidCompatibilityAction.setTag("rapid-compatibility-start");
         rapidCompatibilityAction.setOnClickListener(view -> onRapidCompatibilityAction());
         compatibility.addView(rapidCompatibilityAction, ui.margins(0, 9, 0, 0));
         rapidCompatibilityCancel = ui.button("取消本次测试");
+        rapidCompatibilityCancel.setTag("rapid-compatibility-cancel");
         rapidCompatibilityCancel.setOnClickListener(view -> cancelRapidCompatibilityTest());
         compatibility.addView(rapidCompatibilityCancel, ui.margins(0, 6, 0, 0));
-        rapidCompatibilityPanel = compatibility;
-        compatibility.setVisibility(View.GONE);
-        page.addView(compatibility, ui.margins(0, 0, 0, 12));
+        page.addView(compatibility, ui.wrap());
+    }
+
+    private boolean rapidCompatibilityReady(){
+        RapidFireCompatibility.Token token=RapidFireCompatibility.Token.parse(config.get(AppConfig.TGK_RAPID_FIRE_COMPAT_TOKEN));
+        return rapidFingerprint!=null&&token!=null&&token.validFor(rapidFingerprint)
+                &&!diagnostic("ls_augment_tgk_rapid_fire_fuse_state").startsWith("fused");
     }
 
     private void updateRapidFeatureUi(boolean unlocked) {
@@ -365,15 +373,9 @@ final class FeatureEditorController extends NativeEditorController {
         Switch control = switches.get(AppConfig.TGK_RAPID_FIRE_ENABLED);
         boolean expandable = RapidFireLifecyclePolicy.canExpand(unlocked, control.isChecked());
         if (!expandable) rapidParametersExpanded = false;
-        rapidFeatureTitle.setAlpha(unlocked ? 1f : .7f);
-        rapidFeatureDescription.setText(unlocked
-                ? "兼容性测试通过，已开放极速连点功能，开启功能后配置点击速度即可使用。"
-                : "请先进行兼容性测试，以确保设备支持当前功能。");
-        rapidTestEntry.setVisibility(unlocked ? View.GONE : View.VISIBLE);
-        ui.setButtonEnabled(rapidTestEntry, rapidFingerprint != null && !rapidCaptureInFlight
-                && (rapidSession == null || rapidSession.state != RapidFireCompatibility.State.PREFLIGHT));
-        control.setVisibility(unlocked ? View.VISIBLE : View.GONE);
-        rapidExpand.setVisibility(unlocked ? View.VISIBLE : View.GONE);
+        control.setEnabled(true);
+        control.setVisibility(View.VISIBLE);
+        rapidExpand.setVisibility(View.VISIBLE);
         rapidExpand.setEnabled(expandable);
         rapidExpand.setAlpha(expandable ? 1f : 0.35f);
         rapidExpand.setRotation(rapidParametersExpanded ? 180f : 0f);
@@ -385,7 +387,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void refreshRapidCompatibilityAsync() {
-        if (!MODULE_SHOULDER.equals(section) || rapidFingerprintLoading) return;
+        if (!isRapidModule() || rapidFingerprintLoading || executor.isShutdown() || isDestroyed()) return;
         rapidFingerprintLoading = true;
         executor.execute(() -> {
             String fingerprint = RapidFireCompatibility.currentFingerprint(this);
@@ -393,10 +395,11 @@ final class FeatureEditorController extends NativeEditorController {
                     config.get(AppConfig.TGK_RAPID_FIRE_TEST_SESSION));
             main.post(() -> {
                 rapidFingerprintLoading = false;
+                if(isDestroyed()||isFinishing())return;
                 rapidFingerprint = fingerprint;
                 rapidSession = session != null && session.validFor(fingerprint) ? session : null;
                 refreshRapidCompatibilityUi();
-                if (!rapidAutoContinueAttempted && rapidSession != null
+                if (MODULE_RAPID_COMPATIBILITY.equals(section)&&!rapidPagePaused&&!rapidAutoContinueAttempted && rapidSession != null
                         && rapidSession.state == RapidFireCompatibility.State.NEEDS_RESTART) {
                     rapidAutoContinueAttempted = true;
                     runRapidPreflight(rapidSession);
@@ -406,10 +409,12 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void refreshRapidCompatibilityUi() {
-        if (rapidCompatibilityStatus == null) return;
+        if(!isRapidModule()||isDestroyed()||isFinishing())return;
         if (rapidFingerprint == null) {
-            rapidCompatibilityStatus.setText("正在计算设备兼容指纹…");
-            ui.setButtonEnabled(rapidCompatibilityAction, false);
+            if(rapidCompatibilityStatus!=null){
+                rapidCompatibilityStatus.setText("正在计算设备兼容指纹…");
+                ui.setButtonEnabled(rapidCompatibilityAction, false);
+            }
             updateRapidFeatureUi(false);
             refreshRapidCompatibilityAsync();
             return;
@@ -430,7 +435,7 @@ final class FeatureEditorController extends NativeEditorController {
         boolean unlocked = !fused && token != null && token.validFor(rapidFingerprint);
         Switch rapid = switches.get(AppConfig.TGK_RAPID_FIRE_ENABLED);
         if (rapid != null) {
-            rapid.setEnabled(unlocked);
+            rapid.setEnabled(true);
             if (!unlocked && rapid.isChecked()) {
                 boolean before = loading;
                 loading = true;
@@ -440,6 +445,7 @@ final class FeatureEditorController extends NativeEditorController {
             }
         }
         updateRapidFeatureUi(unlocked);
+        if(rapidCompatibilityStatus==null)return;
 
         RapidFireCompatibility.State state = fused ? RapidFireCompatibility.State.FUSED
                 : unlocked ? RapidFireCompatibility.State.PASSED
@@ -447,9 +453,6 @@ final class FeatureEditorController extends NativeEditorController {
         boolean expired = !unlocked && session != null && session.isExpired(System.currentTimeMillis());
         if (expired && rapidCaptureInFlight) stopRapidCapture();
         if (expired) state = RapidFireCompatibility.State.FAILED;
-        if (unlocked) rapidTestPanelRequested = false;
-        rapidCompatibilityPanel.setVisibility(!unlocked && (rapidTestPanelRequested
-                || session != null || fused) ? View.VISIBLE : View.GONE);
         boolean capturing = !expired && rapidCaptureInFlight && session != null
                 && session.id.equals(rapidCaptureSessionId)
                 && ((rapidCaptureLeft && state == RapidFireCompatibility.State.WAIT_LEFT)
@@ -502,7 +505,7 @@ final class FeatureEditorController extends NativeEditorController {
                 break;
             case PASSED:
                 text = unlocked ? "兼容性测试已通过，极速连点已解锁。"
-                        : "设备或模块版本已变化，旧兼容令牌失效，需要重新测试。";
+                        : "设备系统、游戏组件或肩键兼容协议已变化，需要重新测试。";
                 action = "重新进行兼容性测试";
                 break;
             case FUSED:
@@ -534,7 +537,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void onRapidCompatibilityAction() {
-        if (rapidCaptureInFlight) return;
+        if (!MODULE_RAPID_COMPATIBILITY.equals(section)||rapidPagePaused||isDestroyed()||isFinishing()||rapidCaptureInFlight) return;
         RapidFireCompatibility.Session session = rapidSession;
         long now = System.currentTimeMillis();
         RapidFireCompatibility.State state = session == null
@@ -582,6 +585,7 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void runRapidPreflight(RapidFireCompatibility.Session session) {
         if (session == null || session.isExpired(System.currentTimeMillis())) return;
+        final int preflightGeneration=rapidCaptureGeneration;
         RapidFireCompatibility.Session preflight = session.withState(
                 RapidFireCompatibility.State.PREFLIGHT,
                 System.currentTimeMillis());
@@ -612,8 +616,11 @@ final class FeatureEditorController extends NativeEditorController {
             update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION, resolved.serialize());
             update.put(AppConfig.TGK_RAPID_FIRE_COUNT,
                     String.valueOf(RapidFireCompatibility.TEST_CPS));
+            if(preflightGeneration!=rapidCaptureGeneration||!isCurrentRapidSession(session))return;
             AppConfig.SaveResult saved = config.save(update);
             main.post(() -> {
+                if(isDestroyed()||isFinishing()||preflightGeneration!=rapidCaptureGeneration
+                        ||!isCurrentRapidSession(session))return;
                 rapidSession = resolved;
                 if (!saved.success) toast(saved.message);
                 refreshRapidCompatibilityUi();
@@ -672,12 +679,12 @@ final class FeatureEditorController extends NativeEditorController {
             }
             RapidFirePhysicalCapture.Result result = controller.run(
                     getApplicationContext(), devices, left, () -> main.post(() -> {
-                        if (captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
+                        if (ResetWriteFence.stale(editorResetGeneration) || captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
                         rapidCaptureDeadline = System.currentTimeMillis()
                                 + RapidFirePhysicalCapture.CAPTURE_MS;
                         refreshRapidCompatibilityUi();
                     }), () -> main.post(() -> {
-                        if (captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
+                        if (ResetWriteFence.stale(editorResetGeneration) || captureGeneration != rapidCaptureGeneration || rapidPagePaused) return;
                         rapidCaptureFeedback = "已收到" + (left ? "左" : "右")
                                 + "肩键的按下和松开，正在结束采集并恢复原状态…";
                         refreshRapidCompatibilityUi();
@@ -731,7 +738,8 @@ final class FeatureEditorController extends NativeEditorController {
 
     private boolean isCurrentRapidSession(RapidFireCompatibility.Session session) {
         RapidFireCompatibility.Session current = rapidSession;
-        return session != null && current != null && session.id.equals(current.id);
+        return !ResetWriteFence.stale(editorResetGeneration) && session != null && current != null
+                &&!session.id.equals(rapidCancelledSessionId)&&session.id.equals(current.id);
     }
 
     private void stopRapidCapture() {
@@ -868,8 +876,10 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void persistRapidSession(RapidFireCompatibility.Session session,
             RapidFireCompatibility.Token token, String message) {
+        if(executor.isShutdown()||isDestroyed()||isFinishing())return;
+        final int generation=rapidCaptureGeneration;
         executor.execute(() -> {
-            if (session != null && !isCurrentRapidSession(session)) return;
+            if(generation!=rapidCaptureGeneration||(session != null && !isCurrentRapidSession(session)))return;
             LinkedHashMap<String, String> update = new LinkedHashMap<>();
             update.put(AppConfig.TGK_RAPID_FIRE_ENABLED, "0");
             update.put(AppConfig.TGK_RAPID_FIRE_TEST_SESSION,
@@ -878,6 +888,7 @@ final class FeatureEditorController extends NativeEditorController {
                     token.serialize());
             AppConfig.SaveResult result = config.save(update);
             main.post(() -> {
+                if(isDestroyed()||isFinishing())return;
                 if (session != null && !isCurrentRapidSession(session)) return;
                 rapidSession = session;
                 toast(result.success ? message : result.message);
@@ -935,6 +946,9 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void cancelRapidCompatibilityTest() {
+        if(executor.isShutdown()||isDestroyed()||isFinishing())return;
+        if(rapidSession!=null)rapidCancelledSessionId=rapidSession.id;
+        rapidSession=null;
         stopRapidCapture();
         executor.execute(() -> {
             LinkedHashMap<String, String> update = new LinkedHashMap<>();
@@ -1005,7 +1019,7 @@ final class FeatureEditorController extends NativeEditorController {
         LinearLayout body=settingsBody(card,AppConfig.AI_TRIGGER_ENABLED);
         addSlider(body,AppConfig.AI_TRIGGER_TEMPLATE_SCAN_MS,"模板扫描间隔 ms",80,2000,false);
         addSlider(body,AppConfig.AI_TRIGGER_CLICK_MS,"点击队列间隔 ms",10,500,false);
-        addSlider(body,AppConfig.AI_TRIGGER_COOLDOWN_MS,"策略冷却 ms",50,2000,false);
+        addSlider(body,AppConfig.AI_TRIGGER_COOLDOWN_MS,"策略冷却 ms",50,30000,false);
         addSlider(body,AppConfig.AI_TRIGGER_YOLO_SCAN_MS,"YOLO 扫描间隔 ms",150,1500,false);
         body.addView(ui.text("实际触发间隔也受识图和点击耗时影响；会等待本次点击结束后再触发。",11.5f,ui.muted,false),ui.margins(0,8,0,0));
     }
@@ -1016,34 +1030,44 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void buildFanControl() {
-        LinearLayout fan=featureCard(AppConfig.FAN_FIXED_ENABLED,"固定风扇转速",fanOemFullSpeedOnly()
-                ? "此机型的定速档位仍待验证，开启此项暂不调整转速；可使用下方原厂全速功能。"
-                : "跟随原厂风扇开关，匹配最接近的实测档位；不会自行启动风扇。");
-        LinearLayout speed=settingsBody(fan,AppConfig.FAN_FIXED_ENABLED);
-        addChoice(speed,ConfigSchema.FAN_FIXED_LEVEL,"固定方式",new String[][] {
-                {"0","转速"},{"1","一档"},{"2","二档"},
+        LinearLayout fan=featureCard(AppConfig.FAN_FIXED_ENABLED,"固定风扇转速",!fanVerifiedLevels()
+                ? "此机型的定速档位仍待验证，暂不支持固定转速。"
+                : FeatureHelp.fanFixedSpeed());
+        LinearLayout speed=settingsBody(fan,AppConfig.FAN_FIXED_ENABLED,0);
+        addChoice(speed,ConfigSchema.FAN_FIXED_LEVEL,"固定档位",new String[][] {
+                {"1","一档"},{"2","二档"},
                 {"3","三档"},{"4","四档"},{"5","五档"}});
-        speed.addView(ui.text("也可在控制中心长按风扇，选择“固定档位”后拖动设置一至五档。选择固定档位时，下面的目标转速不参与控制。",11.5f,ui.muted,false));
-        addSlider(speed,AppConfig.FAN_TARGET_RPM,"目标转速 RPM",500,500,1,false);
-        featureCard(AppConfig.FAN_UNLOCK_MAX,"风扇最高转速",fanOemFullSpeedOnly()
-                ? "跟随原厂极速模式调用原厂全速；不会自行启动风扇，也不代表突破原厂上限。"
-                : "允许使用已验证驱动的最高档；跟随原厂极速模式，不自行启动风扇。");
-        LinearLayout measurement=detailCard("本机转速测量",fanOemFullSpeedOnly()
+        boolean verifiedLevels=fanVerifiedLevels();
+        fan.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        addSwitch(fan,AppConfig.FAN_TILE_ENHANCEMENT_ENABLED,"散热风扇磁贴增强",verifiedLevels
+                ? FeatureHelp.fanTileEnhancement()
+                : "此机型的固定档位尚未验证，暂不支持磁贴固定转速增强。原厂风扇磁贴仍可正常使用。",false);
+        fan.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        boolean screenOffSupported=FanScreenOffPolicy.supportedDevice(
+                android.os.Build.DEVICE,android.os.Build.PRODUCT,android.os.Build.MODEL);
+        addSwitch(fan,AppConfig.FAN_SCREEN_OFF_ENABLED,"息屏风扇不停止运转",screenOffSupported
+                ? "让已开启的风扇在息屏后继续按原厂模式运转。手动关闭、通话及系统保护仍有效；关闭本功能恢复原厂息屏策略。首次安装或更新后需重启风扇作用域。"
+                : "此机型的原厂息屏策略尚未验证，暂不支持息屏保持。",false);
+        switches.get(AppConfig.FAN_SCREEN_OFF_ENABLED).setEnabled(screenOffSupported);
+        LinearLayout measurement=detailCard("本机转速测量",!fanVerifiedLevels()
                 ? "此机型暂不执行逐档测量，避免使用其他型号的驱动档位。"
-                : "依次检测 1～5 档，完成后恢复原厂档位。结果用于选择固定转速。");
+                : FeatureHelp.fanMeasurement());
         fanMeasurementSummary=ui.text("尚未测量",12,ui.muted,false);measurement.addView(fanMeasurementSummary);
         Button measure=ui.tonalButton("检测本机风扇转速");measure.setOnClickListener(v->showFanMeasurement());measurement.addView(measure,ui.margins(0,10,0,0));
         page.addView(measurement,ui.margins(0,0,0,12));refreshFanMeasurement();
+        switches.get(AppConfig.FAN_TILE_ENHANCEMENT_ENABLED).setEnabled(verifiedLevels);
+        switches.get(AppConfig.FAN_FIXED_ENABLED).setEnabled(verifiedLevels);
+        measure.setEnabled(verifiedLevels);
     }
-    private boolean fanOemFullSpeedOnly() {
-        return "NX769J".equalsIgnoreCase(android.os.Build.MODEL)
-                || "NX769J".equalsIgnoreCase(android.os.Build.DEVICE)
-                || "NX769J".equalsIgnoreCase(android.os.Build.PRODUCT);
+    private boolean fanVerifiedLevels() {
+        return "NX809J".equalsIgnoreCase(android.os.Build.MODEL)
+                || "NX809J".equalsIgnoreCase(android.os.Build.DEVICE)
+                || "NX809J".equalsIgnoreCase(android.os.Build.PRODUCT);
     }
     private void showFanMeasurement(){
-        if (fanOemFullSpeedOnly()) {
+        if (!fanVerifiedLevels()) {
             AppDialogs.builder(this).setTitle("暂不支持定速测量")
-                    .setMessage("此机型已适配原厂全速接口，定速所需的驱动档位仍待实机验证，暂不执行逐档测量。")
+                    .setMessage("此机型的驱动档位仍待实机验证，暂不执行逐档测量。")
                     .setPositiveButton("知道了",null).show();
             return;
         }
@@ -1095,15 +1119,14 @@ final class FeatureEditorController extends NativeEditorController {
             boolean currentProgress=!fanRequestToken.isEmpty()&&state.contains(";request="+fanRequestToken+";");
             if(measured!=null&&measured.measuredAt>=fanRequestAt){finishFanMeasurement("检测完成，已恢复原厂档位。结果已显示在页面。");}
             else if(!interrupted.isEmpty()){requestFanMeasurement(false);finishFanMeasurement(interrupted);}
-            else if(System.currentTimeMillis()-fanRequestAt>120000){requestFanMeasurement(false);fanDialog.setMessage("检测超时，已请求恢复原厂档位。请在运行诊断中导出日志排查。");fanRequestAt=0;}
+            else if(System.currentTimeMillis()-fanRequestAt>120000){requestFanMeasurement(false);fanDialog.setMessage("检测超时，已请求恢复原厂档位。请在模块页导出日志排查。");fanRequestAt=0;}
             else if(currentProgress&&state.startsWith("restoring;")){fanDialog.setMessage("采样已完成，正在恢复原厂档位…");}
             else if(currentProgress&&state.startsWith("measuring;")){java.util.regex.Matcher match=java.util.regex.Pattern.compile("level=(\\d+);sample=(\\d+)").matcher(state);if(match.find())fanDialog.setMessage("正在检测第 "+match.group(1)+" / 5 档，采样 "+match.group(2)+" / 5。取消将停止并恢复原档位。");}
         }
         FanCalibrationData data = FanCalibrationData.parse(encoded);
-        boolean oemFullSpeedOnly = fanOemFullSpeedOnly();
-        boolean current = !oemFullSpeedOnly && data != null && data.currentFor(FanHardwareIdentity.current());
-        StringBuilder text = new StringBuilder(oemFullSpeedOnly
-                ? "此机型支持原厂全速接口；定速档位和转速反馈仍待实机验证。\n"
+        boolean current = fanVerifiedLevels() && data != null && data.currentFor(FanHardwareIdentity.current());
+        StringBuilder text = new StringBuilder(!fanVerifiedLevels()
+                ? "此机型的定速档位和转速反馈仍待实机验证。\n"
                 : "已验证驱动最高档：5（同时调用原厂最高性能模式）\n");
         if (data == null) text.append("本机实测：尚未测量");
         else {
@@ -1114,33 +1137,23 @@ final class FeatureEditorController extends NativeEditorController {
             for (int i = 1; i <= 5; i++) text.append("\n").append(i).append(" 档：").append(data.rpm(i)).append(" RPM");
         }
         fanMeasurementSummary.setText(text);
-        Slider target = sliders.get(AppConfig.FAN_TARGET_RPM);
-        if (target != null) {
-            target.bar.setEnabled(current);
-            if (!encoded.equals(renderedFanMeasurement)) {
-                int requested = renderedFanMeasurement == null || renderedFanMeasurement.isEmpty()
-                        ? config.getInt(AppConfig.FAN_TARGET_RPM, 12000) : target.value();
-                target.min = current ? data.rpm(1) : 500;
-                target.max = current ? data.rpm(5) : 500;
-                target.bar.setMax(target.max - target.min);
-                target.setValue(requested);
-                renderedFanMeasurement = encoded;
-            }
-            if (!current) target.text.setText(oemFullSpeedOnly ? "此机型定速待验证，可使用原厂全速" : "请先测量本机各档转速");
-        }
     }
 
     private void buildFreeform() {
-        if(embedded){
-            addSwitch(page,AppConfig.FREEFORM_UNLIMITED,"解除小窗数量上限","允许同时创建并最小化超过三个自由窗口。",false);
-            page.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
-            addSwitch(page,AppConfig.FREEFORM_ALL_APPS,"全应用支持小窗","普通应用可使用小窗；系统关键界面保持原厂保护。",false);
-            addAppSelection(settingsBody(page,AppConfig.FREEFORM_ALL_APPS),AppConfig.FREEFORM_EXCLUDED_APPS,"遵循原厂小窗应用");
-            return;
-        }
-        featureCard(AppConfig.FREEFORM_UNLIMITED,"解除小窗数量上限","允许同时创建并最小化超过三个自由窗口。");
-        LinearLayout card=featureCard(AppConfig.FREEFORM_ALL_APPS,"全应用支持小窗","普通应用可使用小窗；系统关键界面保持原厂保护。");
-        addAppSelection(settingsBody(card,AppConfig.FREEFORM_ALL_APPS),AppConfig.FREEFORM_EXCLUDED_APPS,"遵循原厂小窗应用");
+        LinearLayout card;
+        if(!MODULE_FREEFORM_LIMITS.equals(section)){
+        card=featureCard(ConfigSchema.FREEFORM_GAME_LOGIN,"游戏登录跳转以小窗打开","游戏跳转微信、QQ 或其他登录授权页面时使用小窗。系统识别游戏，也可补充游戏名单。");
+        card.setTag("freeform-controls");
+        addAppSelection(settingsBody(card,ConfigSchema.FREEFORM_GAME_LOGIN,0),ConfigSchema.FREEFORM_GAME_APPS,"补充游戏名单");
+        card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        addSwitch(card,ConfigSchema.FREEFORM_EXTERNAL_APPS,"打开第三方应用以小窗打开","从前台应用跳转其他第三方应用时使用小窗；桌面启动、应用内部页面和系统界面保持原厂方式。",false);
+        if(MODULE_FREEFORM_RULES.equals(section))return;
+        card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        }else {card=ui.card();card.setTag("freeform-controls");page.addView(card,ui.wrap());}
+        addSwitch(card,AppConfig.FREEFORM_UNLIMITED,"解除小窗数量上限","允许同时创建并最小化超过三个自由窗口。",false);
+        card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        addSwitch(card,AppConfig.FREEFORM_ALL_APPS,"全应用支持小窗","普通应用可使用小窗；系统关键界面保持原厂保护。",false);
+        addAppSelection(settingsBody(card,AppConfig.FREEFORM_ALL_APPS,0),AppConfig.FREEFORM_EXCLUDED_APPS,"遵循原厂小窗应用");
     }
 
     private void buildAudioGain() {
@@ -1149,7 +1162,8 @@ final class FeatureEditorController extends NativeEditorController {
         addSlider(body,ConfigSchema.AUDIO_GAIN_STEP,"每次按键增加的百分比",1,20,1,false);
         String[] routes={"speaker","wired","bluetooth"},labels={"扬声器","有线 / USB 耳机","蓝牙音频"};
         for(int i=0;i<routes.length;i++){
-            LinearLayout channel=detailCard(labels[i],"100% 为原厂上限；超过后，总档数为基础档数加增强档数。实际可用增益取决于当前播放通道。");
+            LinearLayout channel=new LinearLayout(this);channel.setOrientation(LinearLayout.VERTICAL);
+            channel.addView(ui.featureTitle(labels[i],"100% 为原厂上限；超过后，总档数为基础档数加增强档数。实际可用增益取决于当前播放通道。"),ui.wrap());
             addSlider(channel,AudioGainPolicy.key(routes[i],3),"媒体上限（%）",100,300,5,false);
             addSlider(channel,AudioGainPolicy.key(routes[i],2),"铃声上限（%）",100,300,5,false);
             addSlider(channel,AudioGainPolicy.key(routes[i],4),"闹钟上限（%）",100,300,5,false);
@@ -1158,7 +1172,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private AppConfig.SaveResult saveConfiguration(Map<String, String> updates) {
-        return config.save(updates);
+        return isFreeformModule() ? config.saveFreeformControls(updates) : config.save(updates);
     }
 
     private void addAppSelection(LinearLayout parent, String key, String label) {
@@ -1330,10 +1344,10 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void buildStatusClock() {
         LinearLayout clock = detailCard("双行自定义时钟",
-                "两行分别使用标准日期格式；第二行留空就是单行。格式错误会保留上一次有效结果。"
-                        + " 扩展：N 农历月、NN 农历月干支、NNN 完整农历日期、NNNN 日期与节气、e 农历日、Y 干支年、A 生肖、G 公元、t 节气、I 时辰地支、II 时干支（按午夜换日）；"
-                        + " 农历和节气按手机公历日期查询香港天文台 1901–2100 年历表。"
-                        + " 其余字母走系统 SimpleDateFormat；不支持的字母将原样显示。");
+                "两行分别设置时间格式。第一行留空使用默认时间，第二行留空不显示；完整格式及可复制示例见下方说明。");
+        Button formatHelp=ui.button("查看完整时间格式与示例");
+        formatHelp.setOnClickListener(v->ui.showFeatureHelp("时间格式说明",StatusBarClockFormatHelp.text()));
+        clock.addView(formatHelp,ui.wrap());
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_CUSTOM, "自定义时钟", "替换 SystemUI 时钟文本。", false);
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_24H, "24 小时制", "第一行留空时使用；关闭为 12 小时制。", false);
         addSwitch(clock, AppConfig.STATUSBAR_CLOCK_SECONDS, "显示秒", "第一行留空时使用；自定义格式含 s/S 时会自动按秒刷新。", false);
@@ -1381,26 +1395,12 @@ final class FeatureEditorController extends NativeEditorController {
         page.addView(doubleApp, ui.margins(0, 0, 0, 12));
     }
 
-    private void buildBeautify() {
-        LinearLayout beautify = ui.card();
-        addSwitch(beautify, AppConfig.BEAUTIFY_UNLIMITED_TRIAL, "无限期试用",
-                "只阻止原厂 TryUse 到期复位任务；不改价格、购买结果或服务器权益。", false);
-        page.addView(beautify, ui.margins(0, 0, 0, 12));
-    }
-
     private void buildSignatureInstall() {
-        LinearLayout install = ui.card();
-        addSwitch(install, AppConfig.ALLOW_SIGNATURE_MISMATCH,
+        featureCard(AppConfig.ALLOW_SIGNATURE_MISMATCH,
                 "允许安装签名不一致的应用",
-                "仅处理同包名更新的签名冲突；不放行共享 UID，也不授予其他应用的签名级权限。",
-                false);
-        TextView warning = ui.text(
-                "风险提示：开启后会削弱 Android 的签名保护。不同签名的 APK 覆盖原应用后，"
-                        + "可以读取和使用原应用已有数据；请仅安装你确认来源与内容均可信的 APK。",
-                10.5f, ui.warning, false);
-        warning.setLineSpacing(ui.dp(1), 1.06f);
-        install.addView(warning, ui.margins(0, 11, 0, 2));
-        page.addView(install, ui.margins(0, 0, 0, 12));
+                "仅处理同包名更新的签名冲突；不放行共享 UID，也不授予其他应用的签名级权限。\n\n"
+                        + "风险提示：开启后会削弱 Android 的签名保护。不同签名的 APK 覆盖原应用后，"
+                        + "可以读取和使用原应用已有数据；请仅安装你确认来源与内容均可信的 APK。");
     }
 
     private void buildAutomation() {
@@ -1452,48 +1452,24 @@ final class FeatureEditorController extends NativeEditorController {
         render.run();
     }
 
-    private void buildDetailedDiagnostics() {
-        LinearLayout diagnostics = detailCard("详细诊断",
-                "仅排查问题时开启，排查结束后建议关闭，减少日志与额外开销。不会开启对应增强功能。");
-        addSwitch(diagnostics, AppConfig.SHOULDER_DIAGNOSTICS, "肩键详细诊断",
-                "记录肩键适配与调用信息；关闭时保留低频基础诊断。", false);
-        addSwitch(diagnostics, AppConfig.AI_TRIGGER_DIAGNOSTICS, "AI 触发器详细诊断",
-                "记录识别与点击信息；关闭时保留限频的普通日志。", false);
-        page.addView(diagnostics, ui.margins(0, 0, 0, 12));
-    }
-
-    private void buildDiagnostics() {
-        buildDetailedDiagnostics();
-        LinearLayout card=detailCard("日志","复现问题后尽快导出。最近任务黑屏会自动收集桌面退出记录、崩溃与图形日志，无需打开肩键或 AI 详细诊断。其他功能按需开启详细诊断并重启相关作用域；开启前的调用无法补录。");
-        Button export=ui.tonalButton("导出日志");card.addView(export,ui.margins(0,10,0,0));
-        card.addView(ui.text("日常日志仅保留重要操作结果与异常，按大小滚动保存。导出会重新采集设备、模块、Hook 状态，并包含已开启功能的详细调用记录。",11.5f,ui.muted,false),ui.margins(0,10,0,0));
-        export.setOnClickListener(v->{
-            if(dirty||pendingSaves>0){save(true);toast("正在保存诊断设置，请稍后导出");return;}
-            export.setEnabled(false);export.setText("正在收集日志…");
-            executor.execute(()->{String value=DiagnosticExport.build(this);
-                try(java.io.FileOutputStream cached=new java.io.FileOutputStream(new java.io.File(getCacheDir(),"pending-diagnostic-export.txt"))){cached.write(value.getBytes(StandardCharsets.UTF_8));}
-                catch(java.io.IOException error){main.post(()->{export.setEnabled(true);export.setText("导出日志");toast("无法准备日志文件，请重试");});return;}
-                main.post(()->{
-                if(isDestroyed())return;pendingExport=value;export.setEnabled(true);export.setText("导出日志");
-                startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").putExtra(Intent.EXTRA_TITLE,"红魔Duo-logs-"+System.currentTimeMillis()+".txt"),EXPORT_REQUEST);
-            });});
-        });page.addView(card,ui.margins(0,0,0,12));
-    }
-
     private void addSwitch(LinearLayout card, String key, String label, String description, boolean master) {
-        Switch control = new Switch(this);
+        Switch control = new Switch(this);control.setTag("config:"+key);
+        if(card!=page){int horizontal=embedded&&isInlineGroupModule()?0:14;card.setPadding(ui.dp(horizontal),ui.dp(2),ui.dp(horizontal),ui.dp(2));}
         LinearLayout row = ui.featureRow(label, description, control);
-        control.setOnCheckedChangeListener((button, checked) -> markDirty());
-        card.addView(row, embedded && (MODULE_SUPER_RESOLUTION.equals(section)||MODULE_FREEFORM.equals(section)) ? ui.wrap() : ui.margins(0, 2, 0, 2)); switches.put(key, control);
+        control.setOnCheckedChangeListener((button, checked) -> { markFanEdited(key); markDirty(); });
+        card.addView(row, ui.wrap()); switches.put(key, control);
     }
     private LinearLayout settingsBody(LinearLayout card, String key) {
+        return settingsBody(card,key,10);
+    }
+    private LinearLayout settingsBody(LinearLayout card, String key, int topGapDp) {
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
-        card.addView(body, ui.margins(0, 10, 0, 0));
+        card.addView(body, ui.margins(0, topGapDp, 0, 0));
         folds.add(ui.fold(switches.get(key), body)); return body;
     }
     private LinearLayout featureCard(String key, String title, String description) {
         LinearLayout card=ui.card();addSwitch(card,key,title,description,false);
-        page.addView(card,ui.margins(0,0,0,12));return card;
+        page.addView(card,ui.margins(0,0,0,embedded&&isInlineGroupModule()?0:12));return card;
     }
     private void buildStoreDownload() {
         LinearLayout card=featureCard(ConfigSchema.STORE_DOWNLOAD_ENABLED,"解除同时下载数量限制","设置应用商店允许同时下载的应用数量。保存后重启应用商店，使新队列配置生效。");
@@ -1541,6 +1517,7 @@ final class FeatureEditorController extends NativeEditorController {
             choice.values.put(option[0], button);
             button.setOnClickListener(view -> {
                 choice.select(option[0]);
+                markFanEdited(key);
                 markDirty();
             });
             row.addView(button, new LinearLayout.LayoutParams(0, ui.dp(42), 1.0f));
@@ -1686,7 +1663,7 @@ final class FeatureEditorController extends NativeEditorController {
         Slider slider = new Slider(key, label, min, max, safeStep, percent, bar, value);
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                slider.render(); if (fromUser) markDirty();
+                slider.render(); if (fromUser) { markFanEdited(key); markDirty(); }
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
@@ -1712,6 +1689,9 @@ final class FeatureEditorController extends NativeEditorController {
             slider.render();
         }
         for (Choice choice : choices.values()) choice.select(config.get(choice.key));
+        if (MODULE_FAN_CONTROL.equals(section)) {
+            fanEditedKeys.clear();
+        }
         positionValues.clear();
         StatusBarLayoutSpec.ParseResult positions =
                 StatusBarLayoutSpec.parse(config.get(AppConfig.STATUSBAR_LAYOUT_SPEC));
@@ -1729,9 +1709,9 @@ final class FeatureEditorController extends NativeEditorController {
         changeGeneration = 0L;
         if (save != null) ui.setButtonEnabled(save, false);
         renderRuntimeStatus();
-        if (MODULE_SHOULDER.equals(section)) refreshRapidCompatibilityAsync();
+        if (isRapidModule()) refreshRapidCompatibilityAsync();
         if (isStatusModule() || MODULE_AUDIO_GAIN.equals(section) || MODULE_FAN_CONTROL.equals(section)
-                || MODULE_SHOULDER.equals(section)) {
+                || isRapidModule()) {
             main.removeCallbacks(statusPoll);
             main.post(statusPoll);
         }
@@ -1739,26 +1719,55 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void save() { save(false); }
 
+    @Override void prepareScopeRestart(Runnable restart) {
+        afterPendingSaves(restart,"配置尚未保存，暂未重启。请确认设置后重试。",()->{});
+    }
+
+    private void afterPendingSaves(Runnable action,String failure,Runnable rejected) {
+        if(isDestroyed()||isFinishing()||executor.isShutdown())return;
+        save(true);
+        executor.execute(()->main.post(()->{
+            if(isDestroyed()||isFinishing())return;
+            if(dirty||pendingSaves>0){rejected.run();toast(failure);return;}
+            action.run();
+        }));
+    }
+
     @Override protected void onSaveInstanceState(Bundle state) {
+        if (ui == null) return;
+        ui.saveState(state);
+        if(MODULE_SHOULDER.equals(section))state.putBoolean("shoulder-draft-dirty",dirty||pendingSaves>0);
         Bundle values=new Bundle();
         for(Map.Entry<String,Switch> e:switches.entrySet())values.putString(e.getKey(),e.getValue().isChecked()?"1":"0");
         for(Map.Entry<String,EditText> e:inputs.entrySet())values.putString(e.getKey(),e.getValue().getText().toString());
         for(Slider slider:sliders.values())values.putString(slider.key,slider.serialized());
         for(Choice choice:choices.values())values.putString(choice.key,choice.selected);
         state.putBundle("editor-values",values);
+        if (MODULE_FAN_CONTROL.equals(section))
+            state.putStringArrayList("fan-edited-keys", new ArrayList<>(fanEditedKeys.keySet()));
     }
     private void restoreDraft(Bundle state) {
-        Bundle values=state==null?null:state.getBundle("editor-values");if(values==null)return;
+        // A clean parent may be recreated after the test page has updated its settings.
+        if(MODULE_SHOULDER.equals(section)&&state!=null&&!state.getBoolean("shoulder-draft-dirty",true))return;
+        Bundle values=state==null?null:state.getBundle("editor-values");if(values==null||values.isEmpty())return;
+        boolean changed=false;
+        for(String key:values.keySet())if(!config.get(key).equals(values.getString(key))){changed=true;break;}
         loading=true;
         for(Map.Entry<String,Switch> e:switches.entrySet())if(values.containsKey(e.getKey()))e.getValue().setChecked("1".equals(values.getString(e.getKey())));
         for(Map.Entry<String,EditText> e:inputs.entrySet())if(values.containsKey(e.getKey()))e.getValue().setText(values.getString(e.getKey()));
         for(Slider slider:sliders.values())if(values.containsKey(slider.key))try{float raw=Float.parseFloat(values.getString(slider.key));slider.setValue(Math.round(slider.percent?raw*100:raw));}catch(NumberFormatException ignored){}
         for(Choice choice:choices.values())if(values.containsKey(choice.key))choice.select(values.getString(choice.key));
-        for(UiKit.Fold fold:folds)fold.sync();loading=false;markDirty();
+        for(UiKit.Fold fold:folds)fold.sync();loading=false;
+        if (MODULE_FAN_CONTROL.equals(section)) {
+            ArrayList<String> edited=state.getStringArrayList("fan-edited-keys");
+            if (edited!=null) for (String key : edited) if (values.containsKey(key)) markFanEdited(key);
+        }
+        // Recreating an inline group must not write unchanged settings.
+        if((!embedded&&!isFreeformModule())||changed)markDirty();
     }
 
     private void save(boolean automatic) {
-        if (!dirty || queuedGeneration==changeGeneration || executor.isShutdown()) return;
+        if (config == null || ui == null || !dirty || queuedGeneration==changeGeneration || executor.isShutdown()) return;
         main.removeCallbacks(statusAutoSave);
         LinkedHashMap<String, String> updates = new LinkedHashMap<>();
         for (Map.Entry<String, Switch> entry : switches.entrySet()) {
@@ -1772,10 +1781,14 @@ final class FeatureEditorController extends NativeEditorController {
             updates.put(entry.getKey(),value==null?config.get(entry.getKey()):value);
         }
         for (Slider slider : sliders.values()) {
-            if (AppConfig.FAN_TARGET_RPM.equals(slider.key) && !slider.bar.isEnabled()) continue;
             updates.put(slider.key, slider.serialized());
         }
         for (Choice choice : choices.values()) updates.put(choice.key, choice.selected);
+        if (MODULE_FAN_CONTROL.equals(section))
+            updates.entrySet().removeIf(entry -> !fanEditedKeys.containsKey(entry.getKey()));
+        if (MODULE_FAN_CONTROL.equals(section) && updates.isEmpty()) {
+            dirty=false; queuedGeneration=changeGeneration; ui.setButtonEnabled(save,false); return;
+        }
         if (!iconControls.isEmpty()) {
             for (IconControl control : iconControls.values()) {
                 control.save(positionValues);
@@ -1786,15 +1799,20 @@ final class FeatureEditorController extends NativeEditorController {
         if (enabledIn(updates, AppConfig.SHOULDER_ENABLED, AppConfig.TGK_RAPID_FIRE_ENABLED,
                 AppConfig.AI_TRIGGER_ENABLED, AppConfig.COMBO_SPEED_ENABLED,
                 AppConfig.SUPER_MIRROR_LOW_MODE, AppConfig.SUPER_MIRROR_DIABLO_COEXIST,
-                AppConfig.FAN_FIXED_ENABLED, AppConfig.FAN_UNLOCK_MAX)) {
+                AppConfig.FAN_FIXED_ENABLED, AppConfig.FAN_SCREEN_OFF_ENABLED)) {
             updates.put(AppConfig.GAME_MASTER, "1");
+        }
+        if (MODULE_FAN_CONTROL.equals(section)
+                && (updates.containsKey(ConfigSchema.FAN_FIXED_LEVEL) || updates.containsKey(AppConfig.FAN_FIXED_ENABLED))
+                && switches.get(AppConfig.FAN_FIXED_ENABLED).isChecked()) {
+            updates.put(AppConfig.GAME_MASTER, "1");
+            updates.put(ConfigSchema.FAN_TILE_REQUEST, java.util.UUID.randomUUID().toString().replace("-", ""));
         }
         if (enabledIn(updates, AppConfig.STATUSBAR_DUAL_LEFT, AppConfig.STATUSBAR_DUAL_RIGHT,
                 AppConfig.STATUSBAR_FREE_POSITION, AppConfig.STATUSBAR_CLOCK_CUSTOM,
                 AppConfig.STATUSBAR_THERMAL, AppConfig.STATUSBAR_BATTERY_POWER)) {
             updates.put(AppConfig.SYSTEMUI_MASTER, "1");
         }
-        if (MODULE_FREEFORM.equals(section)) updates.put(AppConfig.FREEFORM_ENABLED, enabledIn(updates,AppConfig.FREEFORM_ALL_APPS,AppConfig.FREEFORM_UNLIMITED)?"1":"0");
         if (enabledIn(updates, AppConfig.DOUBLE_ANY_APP, AppConfig.DOUBLE_LOW_MEMORY,
                 AppConfig.BEAUTIFY_UNLIMITED_TRIAL)) {
             updates.put(AppConfig.APP_MASTER, "1");
@@ -1815,6 +1833,9 @@ final class FeatureEditorController extends NativeEditorController {
                     toast(result.message + "；" + restartHint());
                 }
                 if (result.success) {
+                    if (MODULE_FAN_CONTROL.equals(section)) {
+                        fanEditedKeys.entrySet().removeIf(entry -> entry.getValue() <= savingGeneration);
+                    }
                     dirty = queuedGeneration < changeGeneration;
                     renderRuntimeStatus();
                 } else {
@@ -1841,7 +1862,7 @@ final class FeatureEditorController extends NativeEditorController {
                     + statusLine("最近错误",
                     diagnostic("ls_augment_signature_install_last_error"));
         } else if (isGameModule()) {
-            if (MODULE_SHOULDER.equals(section)) {
+            if (isRapidModule()) {
                 prefix = statusLine("肩键安装", diagnostic("ls_augment_shoulder_installed"))
                         + statusLine("最近命中", diagnostic("ls_augment_shoulder_last_hit"))
                         + statusLine("连点调速", diagnostic("ls_augment_tgk_rapid_fire_installed"))
@@ -1869,7 +1890,7 @@ final class FeatureEditorController extends NativeEditorController {
                         + statusLine("最近命中", diagnostic("ls_augment_super_mirror_last_hit"))
                         + statusLine("最近错误", diagnostic("ls_augment_super_mirror_last_error"));
             }
-        } else if (MODULE_FREEFORM.equals(section)) {
+        } else if (isFreeformModule()) {
             prefix = statusLine("小窗 Hook", diagnostic("ls_augment_freeform_installed"))
                     + statusLine("最近命中", diagnostic("ls_augment_freeform_last_hit"))
                     + statusLine("最近错误", diagnostic("ls_augment_freeform_last_error"));
@@ -1901,10 +1922,9 @@ final class FeatureEditorController extends NativeEditorController {
             prefix = "磁贴状态：" + RuntimeStateStore.values(this).get(RemoteConfig.TILE);
         } else if (MODULE_LAUNCHER_ICON.equals(section)) {
             prefix = launcherIconVisible() ? "当前桌面图标可见" : "当前桌面图标已隐藏";
-        } else if (MODULE_DETAILED_DIAGNOSTICS.equals(section)) {
-            prefix = "仅控制详细日志，不改变功能开关或兼容性测试结果";
+
         } else {
-            prefix = "诊断与恢复工具已就绪";
+            prefix = "设置已加载";
         }
         status.setContentDescription(runtimeDetailsExpanded ? "收起运行详情" : "展开运行详情");
         String summary = runtimeDetailsExpanded
@@ -1987,19 +2007,8 @@ final class FeatureEditorController extends NativeEditorController {
         return false;
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != EXPORT_REQUEST || resultCode != RESULT_OK || data == null) return;
-        Uri uri = data.getData();
-        if (uri == null) return;
-        executor.execute(() -> {try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
-            if (output == null) throw new IllegalStateException("no_output");
-            try(java.io.FileInputStream cached=new java.io.FileInputStream(new java.io.File(getCacheDir(),"pending-diagnostic-export.txt"))){
-                byte[] buffer=new byte[8192];int count;while((count=cached.read(buffer))!=-1)output.write(buffer,0,count);
-            }
-            runOnUiThread(() -> {if(!isDestroyed())toast("诊断文件已导出");});
-        } catch (Throwable error) { runOnUiThread(() -> {if(!isDestroyed())toast("导出失败：" + error.getClass().getSimpleName());}); }});
+    private void markFanEdited(String key) {
+        if (!loading && MODULE_FAN_CONTROL.equals(section)) fanEditedKeys.put(key, changeGeneration + 1L);
     }
 
     private void markDirty() {
@@ -2017,10 +2026,13 @@ final class FeatureEditorController extends NativeEditorController {
     private String title() {
         switch (section) {
             case MODULE_SHOULDER: return "全应用肩键";
+            case MODULE_RAPID_COMPATIBILITY: return "兼容性测试";
             case MODULE_AI_TRIGGER: return "AI 触发器";
             case MODULE_COMBO_SPEED: return "一键连招速度";
             case MODULE_FAN_CONTROL: return "风扇控制";
             case MODULE_FREEFORM: return "小窗增强";
+            case MODULE_FREEFORM_RULES: return "跨应用跳转规则";
+            case MODULE_FREEFORM_LIMITS: return "小窗数量与应用范围";
             case MODULE_AUDIO_GAIN: return "音量增强";
             case MODULE_SUPER_RESOLUTION: return "超分破坏神";
             case MODULE_DIABLO_COEXIST: return "超分与破坏神";
@@ -2028,23 +2040,23 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_STATUS_CLOCK: return "时钟格式";
             case MODULE_STATUS_METRICS: return "实时数据";
             case MODULE_DOUBLE_APP: return "扩展应用双开";
-            case MODULE_BEAUTIFY: return "主题无限期试用";
+            case MODULE_BEAUTIFY: return "主题无限期使用";
             case MODULE_SIGNATURE_INSTALL: return "签名不一致安装";
             case MODULE_AUTOMATION: return "锁屏自动隐藏";
             case MODULE_TILE: return "快捷设置磁贴";
             case MODULE_LAUNCHER_ICON: return "桌面图标";
-            case MODULE_DETAILED_DIAGNOSTICS: return "运行诊断";
             case "store_download": return "应用商店同时下载";
-            default: return "运行诊断";
+            default: return "功能设置";
         }
     }
 
     private String subtitle() {
         switch (section) {
             case MODULE_SHOULDER: return "系统应用和第三方应用均可使用，由红魔 TGK 负责实体按键。";
+            case MODULE_RAPID_COMPATIBILITY: return "完成双侧实体肩键测试后，可开启极速连点。";
             case MODULE_AI_TRIGGER: return "降低模板、点击队列与 YOLO 的等待间隔。";
             case MODULE_COMBO_SPEED: return "为游戏助手的一键连招设置播放倍率，不改原始录制。";
-            case MODULE_FAN_CONTROL: return "固定目标转速，并按需解禁驱动 5 档满速。";
+            case MODULE_FAN_CONTROL: return "固定一至五档，查看本机转速并增强风扇磁贴。";
             case MODULE_FREEFORM: return "解除小窗创建与最小化限制，并放行普通应用进入自由窗口。";
             case MODULE_AUDIO_GAIN: return "按输出设备设置媒体、铃声和闹钟的增益上限；超过 100% 会追加档位，增加总档数。";
             case MODULE_SUPER_RESOLUTION: return "扩展红魔原生超分辨率的性能模式资格。";
@@ -2059,15 +2071,14 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_AUTOMATION: return "按需运行，无 KSU 模块依赖。";
             case MODULE_TILE: return "设置磁贴动作、名称和说明。";
             case MODULE_LAUNCHER_ICON: return "控制红魔Duo自身桌面入口。";
-            case MODULE_DETAILED_DIAGNOSTICS: return "集中管理各子功能的详细诊断，修改会自动保存。";
             default: return "查看兼容状态、最近命中、错误与恢复入口。";
         }
     }
 
     private String restartHint() {
         switch (section) {
-            case MODULE_DETAILED_DIAGNOSTICS: return "保存后重启游戏作用域，使全部诊断设置生效";
             case MODULE_SHOULDER:
+            case MODULE_RAPID_COMPATIBILITY:
             case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
             case MODULE_FAN_CONTROL:
@@ -2075,13 +2086,13 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_DIABLO_COEXIST: return MODULE_COMBO_SPEED.equals(section)
                     ? "倍率保存后下一次连招生效；首次安装或更新需重启游戏作用域"
                     : MODULE_FAN_CONTROL.equals(section)
-                    ? "保存后约 1 秒读取；首次安装或更新需重启风扇作用域"
+                    ? "保存后约 1 秒读取；首次安装或更新需重启风扇与 SystemUI 作用域"
                     : "重启游戏作用域后生效";
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS:
                 return "修改会自动保存并直接反馈；仅首次安装或更新模块代码后需重启一次 SystemUI";
-            case MODULE_FREEFORM:
+            case MODULE_FREEFORM: case MODULE_FREEFORM_RULES: case MODULE_FREEFORM_LIMITS:
             case MODULE_AUDIO_GAIN:
                 return "配置保存后约 1 秒读取；首次安装或更新模块代码需重启手机";
             case MODULE_DOUBLE_APP:
@@ -2093,19 +2104,18 @@ final class FeatureEditorController extends NativeEditorController {
 
     private String restartScope() {
         switch (section) {
-            case MODULE_DETAILED_DIAGNOSTICS: return ScopeRestartDialog.GAMES;
-            case MODULE_DIAGNOSTICS: return ScopeRestartDialog.GAMES;
             case "store_download": return ScopeRestartDialog.APPS;
             case MODULE_SHOULDER:
+            case MODULE_RAPID_COMPATIBILITY:
             case MODULE_AI_TRIGGER:
             case MODULE_COMBO_SPEED:
-            case MODULE_FAN_CONTROL:
             case MODULE_SUPER_RESOLUTION:
             case MODULE_DIABLO_COEXIST: return ScopeRestartDialog.GAMES;
+            case MODULE_FAN_CONTROL: return ScopeRestartDialog.FAN;
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:
             case MODULE_STATUS_METRICS: return ScopeRestartDialog.SYSTEM_UI;
-            case MODULE_FREEFORM: return ScopeRestartDialog.DEVICE;
+            case MODULE_FREEFORM: case MODULE_FREEFORM_RULES: case MODULE_FREEFORM_LIMITS: return ScopeRestartDialog.DEVICE;
             case MODULE_AUDIO_GAIN: return ScopeRestartDialog.DEVICE;
             case MODULE_DOUBLE_APP:
             case MODULE_BEAUTIFY: return ScopeRestartDialog.APPS;
@@ -2115,11 +2125,26 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private boolean isGameModule() {
-        return MODULE_SHOULDER.equals(section) || MODULE_AI_TRIGGER.equals(section)
+        return isRapidModule() || MODULE_AI_TRIGGER.equals(section)
                 || MODULE_COMBO_SPEED.equals(section)
                 || MODULE_FAN_CONTROL.equals(section)
                 || MODULE_SUPER_RESOLUTION.equals(section)
                 || MODULE_DIABLO_COEXIST.equals(section);
+    }
+
+    private boolean isInlineGroupModule() {
+        return isGameModule() || isFreeformModule()
+                || MODULE_AUDIO_GAIN.equals(section) || MODULE_SIGNATURE_INSTALL.equals(section);
+    }
+
+    private boolean isRapidModule() {
+        return MODULE_SHOULDER.equals(section)||MODULE_RAPID_COMPATIBILITY.equals(section);
+    }
+    private boolean isFreeformModule(){return MODULE_FREEFORM.equals(section)||MODULE_FREEFORM_RULES.equals(section)||MODULE_FREEFORM_LIMITS.equals(section);}
+
+    private boolean hiddenAccessDenied() {
+        return (MODULE_AUTOMATION.equals(section) || MODULE_TILE.equals(section))
+                && !HiddenEntrySession.isUnlocked();
     }
 
     private boolean isStatusModule() {

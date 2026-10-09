@@ -34,6 +34,15 @@ final class LauncherPagesHook {
     private static boolean installed;
     private static Controller controller;
 
+    static boolean pauseForReset(long revision){
+        if(Looper.myLooper()!=Looper.getMainLooper()||controller==null||controller.binding||controller.mutating)return false;
+        Controller c=controller;c.resetPaused=true;c.resetRevision=revision;
+        c.cancelPending();c.bindingGeneration++;c.main.removeCallbacks(c.cleanup);
+        if(c.editor!=null){c.editor.dismiss();c.editor=null;}
+        return true;
+    }
+    static SharedPreferences cachedResetPreferences(){return controller==null?null:controller.prefs;}
+
     static synchronized void install(AugmentModule module, ClassLoader loader) {
         if (installed) return;
         try {
@@ -188,7 +197,10 @@ final class LauncherPagesHook {
         SharedPreferences prefs;
         boolean ready, binding, mutating, subscribed;
         boolean pending;
-        int requestToken, bindingGeneration;
+        volatile int requestToken;
+        int bindingGeneration;
+        volatile boolean resetPaused;
+        long resetRevision;
         Runnable pendingCheck;
         LauncherPagesEditor editor;
         final WeakHashMap<View, LinearLayout.LayoutParams> menuLayouts = new WeakHashMap<>();
@@ -208,27 +220,28 @@ final class LauncherPagesHook {
                 context = view.getContext().getApplicationContext();
                 prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             }
+            LauncherResetHook.attach(context);
             if (!subscribed) {
                 subscribed = FeatureSettings.addSnapshotListener(context, () -> main.post(this::configurationChanged));
             }
         }
-        boolean enabled(String key) { return context != null && FeatureSettings.enabled(context, key); }
+        boolean enabled(String key) { return !resetPaused && context != null && FeatureSettings.enabled(context, key); }
         boolean keepEmpty() {
-            return prefs != null && LauncherPageOrder.preserveEmpty(FeatureSettings.hasVerifiedSnapshot(context),
+            return !resetPaused && prefs != null && LauncherPageOrder.preserveEmpty(FeatureSettings.hasVerifiedSnapshot(context),
                     enabled(LauncherOptions.KEEP_EMPTY), prefs.getBoolean("keep_empty", false));
         }
-        List<Integer> saved() { return prefs == null ? Collections.emptyList() : LauncherPageOrder.parse(prefs.getString("order", "")); }
+        List<Integer> saved() { return resetPaused || prefs == null ? Collections.emptyList() : LauncherPageOrder.parse(prefs.getString("order", "")); }
         List<Integer> order() throws Exception {
             ViewGroup ws = workspace.get();
             return ws == null ? Collections.emptyList() : t.ids(t.screenOrder.invoke(ws));
         }
         void scheduleCleanup() {
             main.removeCallbacks(cleanup);
-            if (ready && !binding && !mutating && keepEmpty()) main.postDelayed(cleanup, 250);
+            if (!resetPaused && ready && !binding && !mutating && keepEmpty()) main.postDelayed(cleanup, 250);
         }
         void cleanupPlaceholders() {
             ViewGroup ws = workspace.get();
-            if (ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating || !keepEmpty()) return;
+            if (resetPaused || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating || !keepEmpty()) return;
             try {
                 List<Integer> order = order();
                 if (!order.contains(-201) && !order.contains(-200)) return;
@@ -244,6 +257,10 @@ final class LauncherPagesHook {
         }
         void configurationChanged() {
             try {
+                if(resetPaused){
+                    if(!FeatureSettings.hasVerifiedSnapshot(context)||FeatureSettings.snapshot(context).revision==resetRevision)return;
+                    resetPaused=false;
+                }
                 ViewGroup menuView = menu.get();
                 if (menuView != null) attachMenu(menuView);
                 ViewGroup ws = workspace.get();
@@ -260,7 +277,7 @@ final class LauncherPagesHook {
             } catch (Throwable error) { failed(error); }
         }
         void save() {
-            if (prefs == null || !ready || binding || mutating) return;
+            if (resetPaused || prefs == null || !ready || binding || mutating) return;
             if (!prefs.contains("order") && !enabled(LauncherOptions.PAGE_REORDER) && !enabled(LauncherOptions.KEEP_EMPTY)) return;
             try {
                 boolean keep = keepEmpty();
@@ -354,7 +371,7 @@ final class LauncherPagesHook {
         }
         void checkEditable() throws Exception {
             ViewGroup ws = workspace.get();
-            if (ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating
+            if (resetPaused || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating
                     || (Boolean) TargetReflection.call(ws, "getIsDragOccuring")
                     || (Boolean) TargetReflection.call(ws, "isPageInTransition")) {
                 throw new PageUnavailable("桌面正在更新，请稍后再试");
@@ -476,6 +493,7 @@ final class LauncherPagesHook {
 
         /** One pending intent; wait for native animations, never retry an applied mutation. */
         void perform(Action action, Runnable onSuccess, Consumer<String> onFailure) {
+            if(resetPaused){onFailure.accept("模块正在重置，请稍候");return;}
             if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
             pending = true;
             int token = ++requestToken;
@@ -485,6 +503,7 @@ final class LauncherPagesHook {
             }, onFailure);
         }
         void addPage(Runnable onSuccess, Consumer<String> onFailure) {
+            if(resetPaused){onFailure.accept("模块正在重置，请稍候");return;}
             if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
             if (!enabled(LauncherOptions.KEEP_EMPTY)) { onFailure.accept("请先开启允许空白桌面"); return; }
             pending = true;
@@ -496,6 +515,7 @@ final class LauncherPagesHook {
                 // live/persisted order, so F() can legitimately return the same bound.
                 t.modelExecutor.execute(() -> {
                     try {
+                        if(resetPaused||token!=requestToken||!pending)return;
                         Object state = t.stateGet.invoke(null, context);
                         Object model = t.modelGet.invoke(state);
                         int minimum = (Integer) t.nextId.invoke(t.databaseGet.invoke(model));
@@ -515,7 +535,7 @@ final class LauncherPagesHook {
         }
         void awaitEditable(int token, ViewGroup expected, int generation, int attempts,
                            Action action, Consumer<String> onFailure) {
-            if (!pending || token != requestToken) return;
+            if (resetPaused || !pending || token != requestToken) return;
             if (pendingCheck != null) main.removeCallbacks(pendingCheck);
             pendingCheck = null;
             try {

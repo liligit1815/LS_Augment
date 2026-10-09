@@ -28,6 +28,7 @@ public class Resources {public final android.util.DisplayMetrics metrics=new and
 public class Rect {public int left,top,right,bottom;public Rect(){}public Rect(int l,int t,int r,int b){set(l,t,r,b);}
  public void set(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}public void set(Rect r){set(r.left,r.top,r.right,r.bottom);}
  public void offset(int x,int y){left+=x;right+=x;top+=y;bottom+=y;}public int width(){return right-left;}public int height(){return bottom-top;}
+ public boolean isEmpty(){return width()<=0||height()<=0;}
  public void union(Rect r){left=Math.min(left,r.left);top=Math.min(top,r.top);right=Math.max(right,r.right);bottom=Math.max(bottom,r.bottom);}
  public String toShortString(){return left+","+top+"-"+right+","+bottom;}
  public boolean equals(Object o){if(!(o instanceof Rect))return false;Rect r=(Rect)o;return left==r.left&&top==r.top&&right==r.right&&bottom==r.bottom;}
@@ -65,7 +66,11 @@ public class MotionEvent {public static final int ACTION_DOWN=0,ACTION_UP=1,ACTI
     "android/view/ViewParent.java": "package android.view;public interface ViewParent {}",
     "android/view/View.java": """package android.view;import java.util.*;import android.content.Context;
 public class View implements ViewParent {public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public int visibility=VISIBLE,windowVisibility=VISIBLE;
- public int width=64,height=64,left,top,invalidations,paddingTop;public boolean attached=true,shown=true;public ViewGroup parent;
+ public int width=64,height=64,left,top,invalidations,paddingTop,scrollX,scrollY;public boolean attached=true,shown=true;public ViewGroup parent;
+ public float translationX,translationY;public int getLeft(){return left;}public int getTop(){return top;}
+ public int getScrollX(){return scrollX;}public int getScrollY(){return scrollY;}
+ public float getTranslationX(){return translationX;}public float getTranslationY(){return translationY;}
+ public float getPivotX(){return width*.5f;}public float getPivotY(){return height*.5f;}
  public float scaleX=1,scaleY=1,rotation,rotationX,rotationY;public ViewParent getParent(){return parent;}
  public float getScaleX(){return scaleX;}public float getScaleY(){return scaleY;}public float getRotation(){return rotation;}
  public float getRotationX(){return rotationX;}public float getRotationY(){return rotationY;}
@@ -88,7 +93,7 @@ public class View implements ViewParent {public static final int VISIBLE=0,INVIS
 public class ViewGroup extends View {public final List<View> children=new ArrayList<>();
  public void addView(View v){children.add(v);v.parent=this;}public void removeAllViews(){for(View v:children)v.parent=null;children.clear();}
  public int getChildCount(){return children.size();}public View getChildAt(int n){return children.get(n);}
- public void offsetDescendantRectToMyCoords(View v,Rect r){while(v!=this){if(v==null)throw new IllegalArgumentException("not a descendant");r.offset(v.left,v.top);v=v.parent;}}}
+ public void offsetDescendantRectToMyCoords(View v,Rect r){while(v!=this){if(v==null)throw new IllegalArgumentException("not a descendant");r.offset(v.left-v.scrollX,v.top-v.scrollY);v=v.parent;}}}
 """,
     "android/widget/TextView.java": """package android.widget;
 public class TextView extends android.view.View {public int color=0xffffffff;public CharSequence text="Dock app";public float textSize=14;
@@ -353,8 +358,15 @@ public class TestLiquidGlassDockRuntime {
   h.shown=true;h.windowVisibility=View.GONE;Handler.tick();check(h.invalidations==invalidations,"hidden window refresh does not invalidate");
   close(h);check(Handler.pending()==0&&h.attachListeners.isEmpty(),"retention test leaves no queued work");
  }
+ static void hiddenLabelScroll()throws Exception{
+  Hotseat h=host();material(draw(h));Rect expected=new Rect();expected.set(glass(h).bounds);
+  for(View icon:h.cells.children){icon.scrollX=524288;icon.scrollY=200;}
+  material(draw(h));check(glass(h).bounds.equals(expected),"OEM hidden-label scrolling does not move visible icon bounds offscreen");
+  h.cells.scrollX=8;material(draw(h));check(glass(h).bounds.left==Math.max(0,expected.left-8),"container scrolling still moves child viewports");
+  close(h);
+ }
  public static void main(String[] args)throws Exception{
-  installAndDefaults();lifecycle();invalidGeometryAndContent();preferencesAndInput();contrastAndFallback();deviceLikeStructure();permanentRendererFailure();retention();
+  installAndDefaults();lifecycle();invalidGeometryAndContent();preferencesAndInput();contrastAndFallback();deviceLikeStructure();hiddenLabelScroll();permanentRendererFailure();retention();
   check(states().isEmpty()&&Handler.pending()==0,"all hosts and timers released after test");
   check(LayerBackdropSource.created==LayerBackdropSource.releases&&LiquidGlassDrawable.created==LiquidGlassDrawable.releases,"every created source and renderer reaches released state");
   check(module.errors.size()==1,"only deliberate renderer fault was reported");
@@ -364,7 +376,7 @@ public class TestLiquidGlassDockRuntime {
 """,
 }
 
-for name in ("EnhancementOption.java", "GlassOptions.java", "LiquidGlassPolicy.java",
+for name in ("EnhancementOption.java", "GlassOptions.java", "GlassGeometry.java", "LiquidGlassPolicy.java",
              "LiquidGlassDockPolicy.java", "hook/LiquidGlassDockHook.java"):
     files["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 

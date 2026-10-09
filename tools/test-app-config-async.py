@@ -22,16 +22,20 @@ sources = {name: code for name, code in base.items()
            if name.startswith('android/') or name == 'ls/augment/com/RootShell.java'}
 sources['android/content/Context.java'] = sources['android/content/Context.java'].replace(
     'public abstract class Context {',
-    'public abstract class Context { public static final int MODE_PRIVATE=0;public Context getApplicationContext(){return this;}')
+    'public abstract class Context { public static final int MODE_PRIVATE=0;public Context getApplicationContext(){return this;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}')
+sources['android/content/res/Resources.java'] = 'package android.content.res;public class Resources {public Configuration getConfiguration(){return new Configuration();}}'
+sources['android/content/res/Configuration.java'] = 'package android.content.res;public class Configuration {public static final int ORIENTATION_LANDSCAPE=2;public int orientation=1;}'
 constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', app)))
 sources['ls/augment/com/ConfigSchema.java'] = 'package ls.augment.com;import java.util.*;final class ConfigSchema {' + ''.join(
     f'static final String {name}="{name}";' for name in constants) + '''
 static Map<String,String> defaults(){Map<String,String> values=new LinkedHashMap<>();''' + ''.join(
-    f'values.put({name},"");' for name in constants) + '''values.put("flag","0");return values;}
+    f'values.put({name},"");' for name in constants) + '''values.put("flag","0");values.put("ls_augment_rm_signal_dual","0");values.put("ls_augment_rm_hide_mobile_type","0");return values;}
 static String normalize(String key,String value){return defaults().containsKey(key)?value:null;}
 static boolean truthy(String value){return "1".equals(value)||"true".equals(value);}}
 '''
 sources.update({
+    'ls/augment/com/FanCalibrationData.java': '''package ls.augment.com;final class FanCalibrationData {
+static boolean validRequest(String request,long now){return "measuring".equals(request);} }''',
     'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com;import java.util.*;
 final class ConfigSnapshot {final long revision,updatedAt;final Map<String,String> values;
 ConfigSnapshot(long r,long t,Map<String,String> v){revision=r;updatedAt=t;values=Collections.unmodifiableMap(new LinkedHashMap<>(v));}
@@ -74,6 +78,37 @@ import android.content.*;import java.util.*;import java.util.concurrent.*;import
 public final class TestAppConfigAsync {
  public static void main(String[] args)throws Exception {
   FakeContext context=new FakeContext();AppConfig config=new AppConfig(context);
+  testFreeformPages(context,config);
+  String dual="ls_augment_rm_signal_dual",hide="ls_augment_rm_hide_mobile_type";
+  check(config.save(Map.of(dual,"1")).success&&!config.getBoolean(hide),"enabling dual signal must preserve visible network types");
+  check(config.save(Map.of(hide,"1")).success&&config.getBoolean(dual),"hiding types must preserve dual signal");
+  check(config.save(Map.of(hide,"0")).success&&config.getBoolean(dual)&&!config.getBoolean(hide),"dual signal must allow turning off type hiding");
+  check(config.save(Map.of(dual,"0")).success&&!config.getBoolean(hide),"disabling dual signal must not enable type hiding");
+  check(config.save(Map.of(hide,"1",dual,"1")).success,"explicit hidden types save");
+  check(config.save(Map.of(dual,"0")).success&&config.getBoolean(hide),"disabling dual signal must preserve explicit type hiding");
+  Map<String,String> fixed=Map.of(ConfigSchema.FAN_FIXED_ENABLED,"1");
+  check(!config.saveFanTileSelection(fixed,config.configSnapshot().revision).success,"disabled tile must reject commands");
+  check(config.save(Map.of(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,"1")).success,"enable tile enhancement");
+  check(!config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED)&&!config.getBoolean(ConfigSchema.GAME_MASTER),"enabling tile must not enable fixed speed or game master");
+  long tileRevision=config.configSnapshot().revision;
+  check(config.saveFanTileSelection(fixed,tileRevision).success&&config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED),"current enabled generation accepts an explicit selection");
+  check(!config.saveFanTileSelection(Map.of(ConfigSchema.FAN_FIXED_ENABLED,"0"),tileRevision).success,"selection cannot reuse an obsolete revision");
+  tileRevision=config.configSnapshot().revision;
+  check(config.save(Map.of(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,"0")).success,"disable tile enhancement");
+  check(config.save(Map.of(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,"1")).success,"reenable tile enhancement");
+  check(!config.saveFanTileSelection(Map.of(ConfigSchema.FAN_FIXED_ENABLED,"0"),tileRevision).success&&config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED),"disable and reopen must reject the old command while preserving fixed speed");
+  check(config.save(Map.of(ConfigSchema.FAN_CALIBRATION_REQUEST,"measuring")).success,"begin calibration");
+  check(!config.saveFanTileSelection(fixed,config.configSnapshot().revision).success,"calibration must be rechecked inside the save lock");
+  check(config.save(Map.of(ConfigSchema.FAN_CALIBRATION_REQUEST,"")).success,"finish calibration");
+  java.lang.reflect.Field tileLockField=AppConfig.class.getDeclaredField("CONFIG_LOCK");tileLockField.setAccessible(true);
+  ExecutorService tileCaller=Executors.newSingleThreadExecutor();Future<AppConfig.SaveResult> waitingSelection;
+  long queuedRevision=config.configSnapshot().revision;
+  synchronized(tileLockField.get(null)){
+   waitingSelection=tileCaller.submit(()->config.saveFanTileSelection(Map.of(ConfigSchema.FAN_FIXED_ENABLED,"0"),queuedRevision));
+   check(config.save(Map.of(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,"0")).success,"disable while a selection awaits the configuration lock");
+  }
+  check(!waitingSelection.get(1,TimeUnit.SECONDS).success&&config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED),"queued selection must check the final disabled state atomically");
+  tileCaller.shutdownNow();
   FakePreferences remote=new FakePreferences();remote.blocked=true;
   ModuleScopeService.current=new io.github.libxposed.service.XposedService(){
    public long getFrameworkProperties(){check(Thread.currentThread().getName().equals("LSA-FrameworkConfig"),"framework properties on caller");return PROP_CAP_REMOTE;}
@@ -104,6 +139,57 @@ public final class TestAppConfigAsync {
    System.out.println("Actual AppConfig + FrameworkConfigSync: two durable saves and root initialization completed in "+elapsed+"ms while remote commit blocked; queue released and latest snapshot published after recovery");
   } finally {remote.blocked=false;remote.release.countDown();caller.shutdownNow();}
  }
+ static void testFreeformPages(FakeContext context,AppConfig first)throws Exception {
+  AppConfig second=new AppConfig(context);
+  String gate=ConfigSchema.FREEFORM_ENABLED,all=ConfigSchema.FREEFORM_ALL_APPS,
+   unlimited=ConfigSchema.FREEFORM_UNLIMITED,login=ConfigSchema.FREEFORM_GAME_LOGIN,
+   external=ConfigSchema.FREEFORM_EXTERNAL_APPS;
+  Map<String,String> off=Map.of(gate,"0",all,"0",unlimited,"0",login,"0",external,"0");
+  for(boolean limitsFirst:new boolean[]{true,false}){
+   check(first.save(off).success,"initialize independent freeform pages");
+   // Both pages prepare updates against the old state before either queued writer runs.
+   Map<String,String> limits=Map.of(all,"1",unlimited,"0"),rules=Map.of(login,"0",external,"0");
+   CountDownLatch prepared=new CountDownLatch(2),releaseLimits=new CountDownLatch(1),releaseRules=new CountDownLatch(1);
+   ExecutorService limitsWorker=Executors.newSingleThreadExecutor(),rulesWorker=Executors.newSingleThreadExecutor();
+   try{
+    Future<AppConfig.SaveResult> limitsSave=limitsWorker.submit(()->{prepared.countDown();releaseLimits.await();return first.saveFreeformControls(limits);});
+    Future<AppConfig.SaveResult> rulesSave=rulesWorker.submit(()->{prepared.countDown();releaseRules.await();return second.saveFreeformControls(rules);});
+    check(prepared.await(1,TimeUnit.SECONDS),"both page writes queued before either commits");
+    if(limitsFirst){releaseLimits.countDown();check(limitsSave.get(1,TimeUnit.SECONDS).success,"limits first commit");releaseRules.countDown();}
+    else{releaseRules.countDown();check(rulesSave.get(1,TimeUnit.SECONDS).success,"rules first commit");releaseLimits.countDown();}
+    check(limitsSave.get(1,TimeUnit.SECONDS).success&&rulesSave.get(1,TimeUnit.SECONDS).success,"both freeform page writes commit");
+    check(first.getBoolean(all)&&first.getBoolean(gate),"last writer must preserve sibling enablement in either commit order");
+    check("1".equals(context.prefs(AppConfig.PREFS).disk.get(gate)),"derived gate is durable with the child switch");
+   }finally{releaseLimits.countDown();releaseRules.countDown();limitsWorker.shutdownNow();rulesWorker.shutdownNow();}
+  }
+  check(first.save(off).success,"initialize lock-contention scenario");
+  java.lang.reflect.Field lockField=AppConfig.class.getDeclaredField("CONFIG_LOCK");lockField.setAccessible(true);
+  FutureTask<AppConfig.SaveResult> waitingRules=new FutureTask<>(()->second.saveFreeformControls(Map.of(login,"0",external,"0")));
+  Thread waitingWriter=new Thread(waitingRules,"freeform-sibling-writer");
+  synchronized(lockField.get(null)){
+   waitingWriter.start();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1);
+   while(waitingWriter.getState()!=Thread.State.BLOCKED){
+    check(System.nanoTime()<deadline,"queued freeform writer reaches configuration lock");Thread.yield();
+   }
+   check(first.saveFreeformControls(Map.of(all,"1")).success,"sibling enable commits while queued writer awaits the shared lock");
+  }
+  check(waitingRules.get(1,TimeUnit.SECONDS).success&&first.getBoolean(gate)&&first.getBoolean(all),"queued writer derives from the latest state after acquiring CONFIG_LOCK");
+  check(second.saveFreeformControls(Map.of(login,"1")).success,"enable independent login rule");
+  check(first.saveFreeformControls(Map.of(all,"0")).success&&first.getBoolean(gate),"disabling limits preserves saved login enablement");
+  check(second.saveFreeformControls(Map.of(login,"0")).success&&!first.getBoolean(gate),"last child off disables gate");
+  check(first.saveFreeformControls(Map.of(unlimited,"1")).success&&first.getBoolean(gate),"unlimited child enables gate");
+  check(second.saveFreeformControls(Map.of(external,"1")).success,"external jump child enables gate");
+  check(first.saveFreeformControls(Map.of(unlimited,"0")).success&&first.getBoolean(gate),"external jump survives limits save");
+  check(second.saveFreeformControls(Map.of(external,"0")).success&&!first.getBoolean(gate),"all four children participate in gate");
+  Map<String,String> before=first.snapshot();context.prefs(AppConfig.PREFS).failNext=1;
+  check(!first.saveFreeformControls(Map.of(all,"1")).success&&before.equals(first.snapshot()),"failed commit publishes neither child nor derived gate");
+  check(first.save(Map.of(gate,"0",all,"1")).success&&!first.getBoolean(gate)&&first.getBoolean(all),"generic import retains explicit legacy master-off semantics");
+  check(first.save(Map.of(login,"1")).success&&!first.getBoolean(gate),"partial generic import retains the existing gate");
+  check(first.saveFreeformControls(Map.of("flag","3")).success&&!first.getBoolean(gate),"unrelated updates must not derive a gate");
+  check(first.saveFreeformControls(Map.of(gate,"0",external,"1")).success&&!first.getBoolean(gate),"explicit master takes precedence even on editor save path");
+  check(first.resetToDefaults().success&&!first.getBoolean(gate)&&!first.getBoolean(all)&&!first.getBoolean(login)&&!first.getBoolean(external),"reset retains complete schema defaults");
+  System.out.println("Actual AppConfig freeform regression: both interleaved commit orders, four child gates, failed commit, import and reset semantics passed");
+ }
  static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}
 ''' + fault_classes + '\n}\n'
 
@@ -115,6 +201,6 @@ with tempfile.TemporaryDirectory(prefix='ls-app-config-async-') as folder:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(code, encoding='utf-8')
         files.append(path)
-    files += [SRC / name for name in ('AppConfig.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java')]
+    files += [SRC / name for name in ('AppConfig.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java')]
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', folder, *map(str, files)], check=True)
     subprocess.run(['java', '-cp', folder, 'ls.augment.com.TestAppConfigAsync'], check=True, timeout=10)

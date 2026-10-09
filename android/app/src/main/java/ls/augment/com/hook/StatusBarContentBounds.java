@@ -30,7 +30,8 @@ final class StatusBarContentBounds {
 
     private static View wifiSignal(View view) {
         try {
-            if ("wifi_signal".equals(view.getResources().getResourceEntryName(view.getId()))) return view;
+            String id=view.getResources().getResourceEntryName(view.getId());
+            if ("wifi_signal".equals(id)||"mobile_signal".equals(id)||"multi_user_avatar".equals(id)||"keyguard_user_switcher_avatar".equals(id)) return view;
         } catch (android.content.res.Resources.NotFoundException ignored) { }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
@@ -43,6 +44,9 @@ final class StatusBarContentBounds {
     }
 
     static Rect of(View view) {
+        Rect wifiAsset=StatusBarWifiAssetSpacingHook.bounds(view);if(wifiAsset!=null)return wifiAsset;
+        Rect bluetooth=BluetoothIconHook.contentBounds(view);
+        if(bluetooth!=null)return bluetooth;
         RectF bounds = new RectF();
         Rect stacked = RedMagicSystemUiHook.stackedSignalBounds(view);
         if (stacked != null) bounds.set(stacked);
@@ -54,6 +58,9 @@ final class StatusBarContentBounds {
                         || child.getTransitionAlpha() == 0
                         || RedMagicSystemUiHook.isCollapsedSignal(child)) continue;
                 RectF part = new RectF(of(child));
+                // Empty boundary space is part of the combination's layout box,
+                // even though it deliberately contains no drawable pixels.
+                StatusBarIconLayoutHook.includeChildBoundary(child,part);
                 child.getMatrix().mapRect(part);
                 part.offset(child.getLeft() - view.getScrollX(), child.getTop() - view.getScrollY());
                 bounds.union(part);

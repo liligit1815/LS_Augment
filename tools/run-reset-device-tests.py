@@ -32,7 +32,8 @@ def check(name, passed, detail):
 
 before, raw = prefs()
 (folder / 'before-cancel-private.xml').write_text(raw, encoding='utf-8')
-tap('round1-reset-cancel-open', '重置全部配置')
+shell('am start -n ls.augment.com/.SettingsActivity --es tab settings')
+tap('round1-reset-cancel-open', '重置配置')
 dialog = snapshot('round1-reset-cancel-dialog', verbose=False)
 check('RESET-01-confirmation', '确认重置' in (dialog / 'window.xml').read_text(encoding='utf-8'), 'Actual confirmation dialog is visible')
 tap('round1-reset-cancel', '取消')
@@ -43,9 +44,8 @@ check('RESET-02-cancel', before == after, 'Every persisted setting remains ident
 seed = instrument('seed-reset', 'round1-reset-seed')
 check('RESET-03-seed-hidden-app', seed.get('fixtureHidden') is True and seed.get('aliasHidden') is True,
       'Test app is actually hidden in PackageManager; module launcher alias is disabled; 9 nondefault values seeded')
-shell('am start -n ls.augment.com/.SettingsActivity')
-tap('round1-reset-seeded-entry', '配置备份与重置')
-tap('round1-reset-confirm-open', '重置全部配置')
+shell('am start -n ls.augment.com/.SettingsActivity --es tab settings')
+tap('round1-reset-confirm-open', '重置配置')
 tap('round1-reset-confirm', '确认重置')
 deadline = time.monotonic() + 50
 while time.monotonic() < deadline:

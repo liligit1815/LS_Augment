@@ -27,10 +27,22 @@ public final class StatusBarGridLayout {
     public static Map<String, Box> pack(List<Node> nodes, float width, float height,
             float left, float right, float top, float bottom, float gap,
             float cutoutLeft, float cutoutRight) {
+        return packInternal(nodes,width,height,left,right,top,bottom,gap,cutoutLeft,cutoutRight,true);
+    }
+    /** Component mode honors the requested gap; its caller reports insufficient height. */
+    static Map<String, Box> packMeasured(List<Node> nodes, float width, float height,
+            float left, float right, float top, float bottom, float gap,
+            float cutoutLeft, float cutoutRight) {
+        return packInternal(nodes,width,height,left,right,top,bottom,gap,cutoutLeft,cutoutRight,false);
+    }
+    private static Map<String, Box> packInternal(List<Node> nodes, float width, float height,
+            float left, float right, float top, float bottom, float gap,
+            float cutoutLeft, float cutoutRight,boolean legacyGap) {
         LinkedHashMap<String, Box> result = new LinkedHashMap<>();
         float usableW = Math.max(0, width-left-right), usableH = Math.max(0, height-top-bottom);
         if (usableW < 3 || usableH < 2) return result;
-        gap = Math.max(-usableH / 4, Math.min(gap, usableH / 4));
+        if(legacyGap)gap = Math.max(-usableH / 4, Math.min(gap, usableH / 4));
+        else if(gap>=usableH)return result;
         // Negative spacing brings rows closer without increasing their glyph sizes.
         float rowH = (usableH-Math.max(0,gap))/2;
         float[] ascent={0,0},descent={0,0},rowFit={1,1};

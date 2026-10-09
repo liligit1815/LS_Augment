@@ -7,7 +7,7 @@ final class SignalStackLayout {
         if(!Float.isFinite(left)||!Float.isFinite(top)||!Float.isFinite(width)||!Float.isFinite(height)
                 ||!Float.isFinite(slotWidth)||!Float.isFinite(slotHeight)||width<=0||height<=0||slotWidth<=0||slotHeight<=0)return null;
         float h=Math.min(height,slotHeight),w=Math.min(Math.min(width,slotWidth),h*(107f/85f));
-        h=w/(107f/85f);float gap=h*(4f/85f);
+        h=w/(107f/85f);float gap=h*(10f/85f);
         float x=Math.max(0,Math.min(slotWidth-w,left+(width-w)/2));
         float y=Math.max(0,Math.min(slotHeight-h,top+(height-h)/2));
         return new Geometry(x,y,w,(h-gap)/2,gap);

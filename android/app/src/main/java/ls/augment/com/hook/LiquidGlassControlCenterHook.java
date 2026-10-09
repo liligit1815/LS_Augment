@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import ls.augment.com.GlassOptions;
+import ls.augment.com.GlassGeometry;
 import ls.augment.com.LayerBackdropSource;
 import ls.augment.com.LiquidGlassDrawable;
 import static ls.augment.com.hook.SystemUiAdapter.*;
@@ -94,6 +95,7 @@ final class LiquidGlassControlCenterHook {
         LayerBackdropSource source;
         WeakReference<Surface> touched = new WeakReference<>(null);
         boolean attached, enabled, opaque, lessMotion, renderersFailed;
+        int priorityOwned;
         String lastDiagnostic = "";
 
         State(View view) { reference = new WeakReference<>(view); }
@@ -122,8 +124,8 @@ final class LiquidGlassControlCenterHook {
                 // Verified in the OEM smali: these are separate native tile containers.
                 Object all = field(panel, "allTilesLayout");
                 if (!(all instanceof ViewGroup)) { clear(); diagnostic(panel, "native_layout_unavailable"); return; }
-                if (source == null) source = new LayerBackdropSource(panel);
-                bounds.set(0, 0, panel.getWidth(), panel.getHeight()); source.setRegion(bounds);
+                priorityOwned=0;
+                bounds.set(0, 0, panel.getWidth(), panel.getHeight());
                 for (Surface surface : liveSurfaces()) surface.seen = false;
                 collectTiles((ViewGroup) all);
                 Object big = field(panel, "bigTilesLayout");
@@ -150,6 +152,7 @@ final class LiquidGlassControlCenterHook {
                     if (!surface.seen || !descendant(surface.view, panel)) {
                         surface.restore(); surfaces.remove(surface.view); continue;
                     }
+                    if(total==0){if(source==null)source=new LayerBackdropSource(panel);source.setRegion(bounds);}
                     total++;
                     if (surface.prepare((ViewGroup) panel)) ready++;
                     else {
@@ -164,6 +167,11 @@ final class LiquidGlassControlCenterHook {
                             if (hostReason.isEmpty()) hostReason = reason;
                         } else if (materialReason.isEmpty() && reason != null) materialReason = reason;
                     }
+                }
+                if(total==0){
+                    clear();
+                    diagnostic(panel,(priorityOwned>0?"appearance_priority":"native_controls_unavailable")+":ready=0/0;failed=0");
+                    return;
                 }
                 if (!stopFailedCapture()) {
                     // A newly available native control can recover independently of failed ones.
@@ -203,6 +211,7 @@ final class LiquidGlassControlCenterHook {
                 if (!(nativeBackground instanceof GradientDrawable)) continue;
                 View target = materialOwner(tile, (Drawable) nativeBackground, 0);
                 if (target != null) bind(target, tile, CIRCLE.equals(name), null);
+                else if(ControlCenterAppearanceHook.ownsMaterial(tile,tile,false))priorityOwned++;
             }
         }
         View materialOwner(View view, Drawable original, int depth) {
@@ -231,6 +240,7 @@ final class LiquidGlassControlCenterHook {
             bind(frame, frame, false, layers);
         }
         void bind(View view, View owner, boolean circle, LayerDrawable progress) {
+            if(ControlCenterAppearanceHook.ownsMaterial(view,owner,progress!=null)){priorityOwned++;return;}
             View panel = reference.get();
             if (panel == null || !descendant(view, panel)) return;
             WeakReference<Surface> saved = surfaces.get(view);
@@ -283,6 +293,7 @@ final class LiquidGlassControlCenterHook {
             return result;
         }
         void diagnostic(View view, String value) {
+            value += ";build=" + ls.augment.com.BuildConfig.VERSION_CODE + ";geometry=viewport_v2";
             if (value.equals(lastDiagnostic)) return; lastDiagnostic = value;
             FeatureSettings.diagnostic(view.getContext(), "ls_augment_rm_glass_cc_state", value);
         }
@@ -339,8 +350,7 @@ final class LiquidGlassControlCenterHook {
         }
         boolean prepare(ViewGroup panel) {
             Rect next = new Rect(0, 0, view.getWidth(), view.getHeight());
-            panel.offsetDescendantRectToMyCoords(view, next);
-            validGeometry = view.isShown() && !next.isEmpty() && state.bounds.contains(next);
+            validGeometry = view.isShown() && GlassGeometry.map(view, panel, next, true) && state.bounds.contains(next);
             if (!region.equals(next)) { region.set(next); glass.invalidateBackdrop(); }
             glass.setBounds(0, 0, view.getWidth(), view.getHeight());
             glass.updatePreferences(state.opaque, state.lessMotion);
@@ -376,7 +386,13 @@ final class LiquidGlassControlCenterHook {
         @Override public boolean draw(Canvas canvas, int width, int height) {
             return isValid() && state.source.drawRegion(canvas, region, width, height);
         }
-        @Override public boolean isValid() { return validGeometry && state.enabled && state.source != null && state.source.isValid(); }
+        @Override public boolean mapsLocalScale() { return true; }
+        @Override public boolean isValid() {
+            View panel=state.reference.get();
+            if (!validGeometry || !state.enabled || panel==null || state.source==null || !state.source.isValid()) return false;
+            Rect current=new Rect(0,0,view.getWidth(),view.getHeight());
+            return GlassGeometry.map(view,panel,current,true) && current.equals(region);
+        }
         @Override public long revision() { return state.source == null ? -1 : state.source.revision(); }
         boolean drawMaterial(Canvas canvas) {
             fallbackDrawn = false;

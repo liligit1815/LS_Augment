@@ -33,6 +33,7 @@ public final class ClockRegressionCases {
                 }
             }
             TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            defaultPeriodCases();
             String[][] lunar = {
                     {"1901-01-01", "庚子 鼠 冬 十一"},
                     {"2026-01-01", "乙巳 蛇 冬 十三"},
@@ -53,6 +54,10 @@ public final class ClockRegressionCases {
             check(format(civil("2026-09-11"), Locale.CHINA, "NN").equals("丁酉"), "eighth lunar month stem/branch per HKO September almanac");
             check(!StatusBarClockFormatter.needsSecondRefresh("N e t", "'ss'"), "date-only format does not poll every second");
             check(StatusBarClockFormatter.needsSecondRefresh("HH:mm:ss", "N e"), "custom seconds refresh");
+            check(StatusBarClockFormatter.needsMillisecondRefresh("HH:mm:ss.SSS"),"millisecond token requests frame refresh");
+            check(!StatusBarClockFormatter.needsMillisecondRefresh("HH:mm:ss 'SSS'"),"quoted milliseconds are literal text");
+            check(!StatusBarClockFormatter.needsMillisecondRefresh("HH:mm:ss"),"second-only clock never needs high frequency");
+            check(StatusBarClockFormatter.needsMillisecondRefresh("HH:mm", "ss.SSS"),"second line milliseconds request frame refresh");
             Calendar now = civil("2026-09-08"); now.set(Calendar.HOUR_OF_DAY, 23);
             check(format(now, Locale.CHINA, "I II aa").equals("子 丙子 晚上"), "乙 day 子 hour according to HKO hour-stem table");
             now = civil("2026-09-09"); now.set(Calendar.HOUR_OF_DAY, 0);
@@ -62,6 +67,45 @@ public final class ClockRegressionCases {
             check(format(civil("2101-01-01"), Locale.CHINA, "yyyy-MM-dd").equals("2101-01-01"), "standard date unaffected by lunar range");
             return checked;
         } finally { TimeZone.setDefault(original); }
+    }
+
+    private static void defaultPeriodCases() {
+        Calendar date = civil("2026-09-23");
+        date.set(Calendar.MINUTE, 5); date.set(Calendar.SECOND, 9);
+        int[] hours = {0, 5, 8, 11, 12, 13, 18, 20, 23};
+        String[] chinesePeriods = {"凌晨", "早上", "上午", "中午", "中午", "下午", "傍晚", "晚上", "晚上"};
+        for (Locale locale : new Locale[]{Locale.CHINA, Locale.US}) {
+            for (int i = 0; i < hours.length; i++) {
+                date.set(Calendar.HOUR_OF_DAY, hours[i]);
+                String period = locale.equals(Locale.CHINA) ? chinesePeriods[i] : (hours[i] < 12 ? "AM" : "PM");
+                String weekday = new SimpleDateFormat("E", locale).format(date.getTime());
+                for (boolean seconds : new boolean[]{false, true}) {
+                    String clock = new SimpleDateFormat(seconds ? "h:mm:ss" : "h:mm", locale).format(date.getTime());
+                    String nativeDefault = new SimpleDateFormat(seconds ? "h:mm:ss a" : "h:mm a", locale).format(date.getTime());
+                    StatusBarClockFormatter.FormatResult before = defaultFormat(date, locale, seconds, false, false, "", "");
+                    check(before.valid && before.text.equals(nativeDefault), "12h period off preserves system AM/PM " + locale + " " + hours[i]);
+                    StatusBarClockFormatter.FormatResult during = defaultFormat(date, locale, seconds, true, false, "", "");
+                    check(during.valid && during.text.equals(clock + " " + period), "12h default replaces AM/PM exactly once " + locale + " " + hours[i]);
+                    check(during.refreshEverySecond == seconds && !during.containsMilliseconds, "default period does not change ticker flags");
+                    check(defaultFormat(date, locale, seconds, false, false, "", "").text.equals(before.text), "turning default period back off preserves previous default");
+                    check(defaultFormat(date, locale, seconds, true, false, null, "").text.equals(during.text), "null default follows empty default");
+                    check(defaultFormat(date, locale, seconds, true, true, "", "'keep'").text.equals(clock + " " + period + " " + weekday + "\nkeep"), "period replacement preserves weekday and second line");
+                    String clock24 = new SimpleDateFormat(seconds ? "HH:mm:ss" : "HH:mm", locale).format(date.getTime());
+                    check(StatusBarClockFormatter.formatDetailed(date.getTimeInMillis(), locale, true, seconds, true, false, "", "").text.equals(clock24 + " " + period), "24h default period remains unchanged");
+                }
+                String explicitClock = new SimpleDateFormat("HH:mm", locale).format(date.getTime());
+                check(defaultFormat(date, locale, false, true, true, "aa HH:mm E", "'keep'").text.equals(period + " " + explicitClock + " " + weekday + " " + period + " " + weekday + "\nkeep"), "explicit custom tokens are not automatically deduplicated");
+                check(defaultFormat(date, locale, false, true, false, "h:mm a", "").text.equals(new SimpleDateFormat("h:mm a", locale).format(date.getTime()) + " " + period), "explicit standard a is not rewritten");
+                check(defaultFormat(date, locale, false, true, true, "'aa E' HH:mm", "").text.equals("aa E " + explicitClock + " " + period + " " + weekday), "quoted custom period and weekday stay literal");
+                check(defaultFormat(date, locale, false, true, false, " ", "").text.equals("  " + period), "nonempty whitespace is not reclassified as default");
+                check(StatusBarClockFormatter.format(date.getTimeInMillis(), locale, false, false, true, false, "h:mm '").equals(new SimpleDateFormat("h:mm a", locale).format(date.getTime())), "invalid custom format preserves native-style fallback");
+            }
+        }
+    }
+
+    private static StatusBarClockFormatter.FormatResult defaultFormat(Calendar date, Locale locale,
+            boolean seconds, boolean period, boolean weekday, String first, String second) {
+        return StatusBarClockFormatter.formatDetailed(date.getTimeInMillis(), locale, false, seconds, period, weekday, first, second);
     }
 
     private static Calendar civil(String iso) {

@@ -25,6 +25,11 @@ public final class TestHookAppCatalog {
         Set<String> editorRoutes = new HashSet<>();
         List<HookAppCatalog.Target> targets = new ArrayList<>(HookAppCatalog.targets());
         check(targets.stream().noneMatch(t -> HookAppCatalog.MODULE.equals(t.id)), "module preferences leaked onto home");
+        check(targets.size()==18,"home must contain 18 groups after theme consolidation");
+        check(targets.stream().noneMatch(t->HookAppCatalog.COLLAB.equals(t.id)),"standalone collaboration remains");
+        check(HookAppCatalog.find("collab")==HookAppCatalog.find("theme"),"old collaboration route must resolve to theme");
+        for(EnhancementOption option:CollabOptions.options())if(option.kind!=EnhancementOption.Kind.INTERNAL)
+            check(HookAppCatalog.THEME.equals(HookAppCatalog.targetForKey(option.key)),"collaboration option lost: "+option.key);
         targets.add(HookAppCatalog.find(HookAppCatalog.MODULE));
         int editorCount = 0;
         for (HookAppCatalog.Target target : targets) {
@@ -61,11 +66,14 @@ public final class TestHookAppCatalog {
         }
         check(visibleKeys.equals(allKeys), "some existing controls were lost");
         check(coveredPackages.equals(HookTargetRegistry.packages()), "scoped application is absent from inventory");
+        // GameExtrasHook.space() installs both watermark editor hooks in GameSpace.
+        check(HookAppCatalog.affectedPackages(GameOptions.WATERMARK_UNLIMITED).equals(
+                List.of("cn.nubia.gamelauncher")), "watermark scope must match the GameSpace editor consumer");
         check(!editorRoutes.contains("battery")&&HookAppCatalog.targetForRoute("battery")==null,"retired battery entry remains reachable");
         check(editorRoutes.containsAll(List.of("freeform", "audio_gain", "signature_install",
                 "status_layout", "launcher_custom", "launcher_compatibility", "shoulder", "combo_speed",
                 "super_resolution", "ai_trigger", "fan_control", "beautify", "double_app", "store_download",
-                "mi_health", "launcher_icon", "config_transfer", "diagnostics")), "existing editor was lost");
+                "mi_health", "launcher_icon", "config_transfer", "log_export")), "existing editor was lost");
         for (String concealed : List.of("hide", "hide_apps", "automation", "tile", "tile_setup")) {
             check(!editorRoutes.contains(concealed), "concealed editor bypasses the hidden-entry gate");
             check(HookAppCatalog.MODULE.equals(HookAppCatalog.targetForRoute(concealed)), "concealed route lost");
@@ -87,6 +95,13 @@ public final class TestHookAppCatalog {
         owner("mtp_name", HookAppCatalog.FILES);
         owner("third_party_launcher", HookAppCatalog.PERMISSIONS);
         owner("desktop_clock_pattern", HookAppCatalog.LAUNCHER);
+        owner("launcher_grid_enabled", HookAppCatalog.LAUNCHER);
+        owner("launcher_grid_rows", HookAppCatalog.LAUNCHER);
+        owner("launcher_grid_columns", HookAppCatalog.LAUNCHER);
+        check("launcher".equals(HookAppCatalog.find(HookAppCatalog.LAUNCHER).restartScope),
+                "desktop changes must suggest restarting only the launcher");
+        check("launcher_grid".equals(HookAppCatalog.sections(HookAppCatalog.LAUNCHER).get(0).id),
+                "desktop layout must be the first launcher section");
         owner("weather_time_period", HookAppCatalog.WEATHER);
         owner("screenshot_hide_status_bar", HookAppCatalog.SCREENSHOT);
         owner("record_hide_status_bar", HookAppCatalog.SCREENSHOT);

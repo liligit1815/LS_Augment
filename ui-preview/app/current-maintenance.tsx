@@ -1,17 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Download, Upload, RotateCcw, Info, ChevronRight } from 'lucide-react';
+import { Download, Upload, RotateCcw, ChevronRight } from 'lucide-react';
 import { Card, Help, identity, useModel } from './current-ui';
 import { backupSettings, downloadBackup } from './current-backup';
+import { downloadLog, recordEvent } from './current-log';
 
 type Settings = Record<string, string>;
 
 type CurrentMaintenanceProps = {
   reset: () => void;
   restore: (settings: Settings) => void;
-  /** The existing diagnostics menu route, not a phone or external-app action. */
-  diagnosticsRoute?: string;
 };
 
 const MAX_BACKUP_BYTES = 8_000_000;
@@ -72,7 +71,7 @@ function MaintenanceRow({
         <span className="c-setting-icon" aria-hidden="true">
           {icon}
         </span>
-        <strong>{title}</strong>
+        <span className="p-maintenance-copy"><strong>{title}</strong><small>{{"导出配置":"保存设置与自定义资源","导入配置":"选择备份文件","重置配置":"恢复默认设置并清除模块信息","导出日志":"设备、权限、功能配置与运行记录"}[title]}</small></span>
       </button>
       <Help title={title} text={help} />
       {navigate && (
@@ -90,7 +89,6 @@ function MaintenanceRow({
 export function CurrentMaintenance({
   reset,
   restore,
-  diagnosticsRoute = 'compatibility_help',
 }: CurrentMaintenanceProps) {
   const m = useModel();
   const file = useRef<HTMLInputElement>(null);
@@ -108,6 +106,7 @@ export function CurrentMaintenance({
   function exportConfig() {
     setError('');
     try {
+      recordEvent('config_export');
       downloadBackup(backupSettings(m.values));
       m.tell('网页配置已导出');
     } catch (problem) {
@@ -126,12 +125,12 @@ export function CurrentMaintenance({
   function confirmReset() {
     setError('');
     m.dialog(
-      '重置全部配置？',
+      '重置配置？',
       <>
         <p>
-          将恢复全部模块设置，并先恢复隐藏清单中的应用。健康绑定和本机测试凭据也会清除，需要重新绑定或测试。
-          {'\n\n'}
-          不会卸载应用或重排桌面页面。诊断日志保留。重置完成后需要重启手机。
+          模块会停止功能，恢复有可靠记录的系统改动及隐藏应用，清除健康绑定、全部应用名单、自定义素材、测试凭据、草稿和旧日志。
+          {'\n\n'}旧版本未保存的桌面布局、健康历史及云端数据无法可靠还原。恢复失败时保留所需记录；完成后需要重启手机。
+          {'\n\n'}本网页仅重置原型中的演示配置。
         </p>
         <footer>
           <button type="button" onClick={m.close}>
@@ -140,6 +139,7 @@ export function CurrentMaintenance({
           <button
             type="button"
             onClick={() => {
+              recordEvent('config_reset');
               reset();
               m.close();
               m.tell('原型演示：已恢复网页默认设置');
@@ -153,7 +153,7 @@ export function CurrentMaintenance({
   }
 
   return (
-    <Card
+    <><Card
       className="c-maintenance-card"
       label="配置与维护"
       path="SettingsActivity:maintenance"
@@ -188,20 +188,12 @@ export function CurrentMaintenance({
         disabled={reading}
       />
       <MaintenanceRow
-        title="恢复默认设置"
-        help="恢复全部模块设置，清除应用选择、图片和字体选择、健康绑定及肩键快捷候选，并恢复模块桌面入口。重置前可先导出配置。"
+        title="重置配置"
+        help="恢复模块默认设置，显示模块记录中隐藏的应用，清除健康绑定、所有应用名单、导入素材与运行记录。重置前可先导出配置。"
         icon={<RotateCcw size={22} />}
         path="ConfigTransferActivity:reset"
         onClick={confirmReset}
         disabled={reading}
-      />
-      <MaintenanceRow
-        title="日志及运行诊断"
-        help="检查框架、系统与桌面兼容性，查看日志与诊断"
-        icon={<Info size={22} />}
-        path={'route:' + diagnosticsRoute}
-        onClick={() => m.go(diagnosticsRoute)}
-        navigate
       />
 
       <input
@@ -264,5 +256,9 @@ export function CurrentMaintenance({
         </p>
       )}
     </Card>
+    <h3 className="c-group">日志</h3>
+    <Card className="c-maintenance-card" label="日志">
+      <MaintenanceRow title="导出日志" help="包含设备与模块版本、LSP/ROOT 状态、已开启功能、配置快照、近期操作及错误。原型导出包含手机只读信息快照和网页记录；未采集的真机日志会明确标记。" icon={<Download size={22}/>} path="log-export" onClick={()=>m.dialog('导出日志',<><p>包含设备与版本、权限状态、已开启功能、配置快照、最近操作及错误记录。</p><p className="c-note">当前为网页原型：设备信息来自只读快照，权限与操作来自所选示例；手机运行日志尚未采集。</p><footer><button onClick={m.close}>取消</button><button onClick={()=>{try{downloadLog(m.values);m.close();m.tell('日志已导出');}catch{m.tell('导出失败，请重试');}}}>导出日志文件</button></footer></>)}/>
+    </Card></>
   );
 }

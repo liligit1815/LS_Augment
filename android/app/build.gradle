@@ -14,6 +14,66 @@ def verifyShellAssets = tasks.register('verifyShellAssets') {
 }
 tasks.named('preBuild') { dependsOn verifyShellAssets }
 
+// Always capture the live website at build time. Never silently package stale names.
+def contributorAssets = tasks.register('syncContributorPage') {
+    def destination = layout.buildDirectory.file('generated/contributorAssets/contributors/index.html')
+    outputs.file(destination)
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+    doLast {
+        def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+        factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true)
+        def resources = factory.newDocumentBuilder().parse(file('src/main/res/values/contributors.xml'))
+        def strings = resources.getElementsByTagName('string')
+        def address = ''
+        for (int i = 0; i < strings.length; i++) {
+            if (strings.item(i).getAttribute('name') == 'contributors_page_url') {
+                address = strings.item(i).textContent.trim()
+            }
+        }
+        if (!address) throw new GradleException('Set contributors_page_url to the deployed HTTPS website before building. A live webpage snapshot is required.')
+        java.net.HttpURLConnection request = null
+        try {
+            def uri = new URI(address)
+            if (!'https'.equalsIgnoreCase(uri.scheme) || !uri.host || uri.userInfo || uri.fragment) {
+                throw new IOException('A direct HTTPS URL is required')
+            }
+            request = (java.net.HttpURLConnection) uri.toURL().openConnection()
+            request.connectTimeout = 10000
+            request.readTimeout = 10000
+            request.instanceFollowRedirects = false
+            request.setRequestProperty('Accept', 'text/html')
+            request.setRequestProperty('Cache-Control', 'no-cache')
+            if (request.responseCode != 200) throw new IOException("HTTP ${request.responseCode}; use the final URL without redirects")
+            if (!request.contentType?.toLowerCase(Locale.ROOT)?.startsWith('text/html')) {
+                throw new IOException('Expected text/html')
+            }
+            def bytes = new ByteArrayOutputStream()
+            request.inputStream.withCloseable { input ->
+                byte[] buffer = new byte[4096]
+                int count
+                while ((count = input.read(buffer)) != -1) {
+                    if (bytes.size() + count > 512 * 1024) throw new IOException('Page exceeds 512 KiB')
+                    bytes.write(buffer, 0, count)
+                }
+            }
+            def html = bytes.toString('UTF-8')
+            if (!html.contains('<meta name="redmagic-duo-contributors" content="1">') || !html.contains('</html>')) {
+                throw new IOException('Missing contributor page marker or incomplete HTML')
+            }
+            def target = destination.get().asFile
+            target.parentFile.mkdirs()
+            java.nio.file.Files.write(target.toPath(), bytes.toByteArray())
+            logger.lifecycle('Captured current contributor website for offline use.')
+        } catch (Exception error) {
+            throw new GradleException('Unable to capture the contributor website. Build stopped instead of packaging an old or local list.', error)
+        } finally {
+            request?.disconnect()
+        }
+    }
+}
+tasks.named('preBuild') { dependsOn contributorAssets }
+
 def versionFile = rootProject.file('version.properties')
 if (!versionFile.isFile()) {
     throw new GradleException("Missing version source: ${versionFile.absolutePath}")
@@ -64,16 +124,22 @@ android {
 
     // CI/local builds may inject the private development signing material via
     // environment variables. The key is deliberately not stored in source.
-    def injectedStore = System.getenv('LS_AUGMENT_KEYSTORE')
+    def localSigningFile = rootProject.file('../.signing/signing.local.json')
+    def localSigning = localSigningFile.isFile() ? new groovy.json.JsonSlurper().parse(localSigningFile) : [:]
+    def configuredStore = localSigning.keystore ? new File(localSigning.keystore.toString()) : null
+    if (configuredStore != null && !configuredStore.isFile()) {
+        configuredStore = rootProject.file('../.signing/' + localSigning.keystore.toString().replace('\\', '/').tokenize('/').last())
+    }
+    def injectedStore = System.getenv('LS_AUGMENT_KEYSTORE') ?: (configuredStore?.isFile() ? configuredStore.absolutePath : null)
     if (injectedStore != null && file(injectedStore).isFile()) {
         signingConfigs {
             lsAugmentDev {
                 storeFile file(injectedStore)
                 storeType 'PKCS12'
-                storePassword System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: 'lsaugment'
-                keyAlias System.getenv('LS_AUGMENT_KEY_ALIAS') ?: 'ls_augment'
+                storePassword System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: localSigning.storePassword ?: 'lsaugment'
+                keyAlias System.getenv('LS_AUGMENT_KEY_ALIAS') ?: localSigning.keyAlias ?: 'ls_augment'
                 keyPassword System.getenv('LS_AUGMENT_KEY_PASSWORD') ?:
-                        (System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: 'lsaugment')
+                        (localSigning.keyPassword ?: System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: localSigning.storePassword ?: 'lsaugment')
             }
         }
     }
@@ -93,6 +159,11 @@ android {
             }
         }
     }
+    tasks.matching { it.name == 'preBuild' || it.name == 'validateSigningDebug' || it.name == 'validateSigningRelease' }.configureEach {
+        doFirst {
+            if (injectedStore == null || !file(injectedStore).isFile()) throw new GradleException('Historical signing material is required; refusing an unsigned APK or fallback debug signature.')
+        }
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -103,6 +174,7 @@ android {
         buildConfig true
         prefab true
     }
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/contributorAssets'))
 
     externalNativeBuild {
         cmake {

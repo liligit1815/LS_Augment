@@ -37,6 +37,7 @@ final class DurablePreferences {
         Editor putBoolean(String key, boolean value) { next.put(key, value); return this; }
         Editor putLong(String key, long value) { next.put(key, value); return this; }
         Editor putInt(String key, int value) { next.put(key, value); return this; }
+        Editor clear() { next.clear(); return this; }
         Editor remove(String key) { next.remove(key); return this; }
 
         /** Callers serialize edits around their complete read/modify/write transaction. */

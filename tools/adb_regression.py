@@ -3,16 +3,31 @@ from pathlib import Path
 import argparse
 import base64
 import json
+import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-ADB = Path.home() / 'AppData/Local/Android/Sdk/platform-tools/adb.exe'
-SERIAL = '9125258103D6'
+def default_adb():
+    configured = os.environ.get('LS_AUGMENT_ADB')
+    if configured:
+        return Path(configured)
+    executable = 'adb.exe' if os.name == 'nt' else 'adb'
+    sdk = os.environ.get('ANDROID_SDK_ROOT') or os.environ.get('ANDROID_HOME')
+    candidates = [Path(sdk) / 'platform-tools' / executable] if sdk else []
+    local_data = os.environ.get('LOCALAPPDATA')
+    if local_data:
+        candidates.append(Path(local_data) / 'Android/Sdk/platform-tools' / executable)
+    candidates.append(ROOT / 'audit-output/android-sdk/platform-tools' / executable)
+    return next((path for path in candidates if path.is_file()), Path(shutil.which('adb') or 'adb'))
+
+ADB = default_adb()
+SERIAL = (os.environ.get('LS_AUGMENT_DEVICE') or os.environ.get('ANDROID_SERIAL') or '').strip()
 OUTPUT = ROOT / 'out/full-device-regression-20260908'
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -20,14 +35,29 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 def adb(*args, timeout=40, check=True):
+    if not SERIAL:
+        raise RuntimeError('Select a device with --serial, LS_AUGMENT_DEVICE or ANDROID_SERIAL before using ADB.')
     command = [str(ADB), '-s', SERIAL, *map(str, args)]
-    result = subprocess.run(command, capture_output=True, timeout=timeout)
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=timeout)
+    except FileNotFoundError as error:
+        raise RuntimeError('ADB executable unavailable; use --adb or LS_AUGMENT_ADB, configure the Android SDK, or add adb to PATH.') from error
     if check and result.returncode:
         raise RuntimeError(result.stderr.decode('utf-8', 'replace') + result.stdout.decode('utf-8', 'replace'))
     return result.stdout
 
 def shell(command, root=False, timeout=40):
     return adb('shell', 'su -c ' + shlex.quote(command) if root else command, timeout=timeout).decode('utf-8', 'replace').strip()
+
+def projection_is_idle(raw):
+    """Accept only an explicit empty grant in observed Android dump formats."""
+    if 'MEDIA PROJECTION MANAGER' not in raw:
+        return False
+    if re.search(r'Media Projection:\s*null\s*$', raw):
+        return True
+    grants=re.findall(r'mProjectionGrant\s*=\s*(\S+)',raw)
+    return grants==['null']
+
 
 def snapshot(label, verbose=True):
     if not re.fullmatch(r'[A-Za-z0-9_.-]+', label):
@@ -103,8 +133,12 @@ def tap(label, text):
     (folder / 'action.json').write_text(json.dumps({'action': 'tap', 'text': text, 'x': x, 'y': y}, ensure_ascii=False), encoding='utf-8')
     print(json.dumps({'action': 'tap', 'text': text, 'evidence': str(folder)}, ensure_ascii=False), flush=True)
 
-def instrument(operation, label, values=None):
+def instrument(operation, label, values=None, *, case_filter=None):
     command = 'am instrument -w -r -e operation ' + shlex.quote(operation) + ' -e label ' + shlex.quote(label)
+    if case_filter is not None:
+        if operation != 'back-gesture-customization' or not re.fullmatch(r'[a-z][a-z0-9-]*(?:,[a-z][a-z0-9-]*)*', case_filter):
+            raise ValueError('Case filter is only supported for named native gesture cases')
+        command += ' -e case ' + shlex.quote(case_filter)
     if values is not None:
         encoded = base64.b64encode(json.dumps(values, ensure_ascii=False).encode()).decode()
         command += ' -e values ' + shlex.quote(encoded)
@@ -127,7 +161,12 @@ if __name__ == '__main__':
     parser.add_argument('action', choices=('snapshot', 'tap', 'instrument'))
     parser.add_argument('label')
     parser.add_argument('value', nargs='?')
+    parser.add_argument('--adb', default=str(ADB), help='ADB executable; defaults to LS_AUGMENT_ADB, the Android SDK or PATH')
+    parser.add_argument('--serial', default=SERIAL, help='Target device; defaults to LS_AUGMENT_DEVICE or ANDROID_SERIAL')
     args = parser.parse_args()
+    if not args.serial or not args.serial.strip():
+        parser.error('Select a device with --serial, LS_AUGMENT_DEVICE or ANDROID_SERIAL.')
+    ADB, SERIAL = Path(args.adb), args.serial.strip()
     if args.action == 'snapshot': snapshot(args.label)
     elif args.action == 'tap': tap(args.label, args.value)
     else: instrument(args.value, args.label)

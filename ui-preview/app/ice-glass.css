@@ -1,0 +1,71 @@
+/* Selected concept 1. Background is the generated raster, controls remain live DOM. */
+.c-phone {width:390px;height:904px;--c-blue:#217ccc;--c-muted:#607891;font-size:14px;line-height:1.4;}
+.c-stage{background:#eef4f8;padding:16px;}
+.c-caption{font-size:12px;max-width:700px;text-align:center;}
+.c-phone .c-backdrop{object-fit:cover;}
+.c-phone .c-card,.c-phone .c-search,.c-phone .c-modal,.c-phone .c-bottom-nav{background:rgba(245,252,255,.38);border:1px solid rgba(255,255,255,.85);box-shadow:inset 1px 1px 1px #fff,inset -1px -1px 1px #82bbdd70,0 8px 24px #517da00b;backdrop-filter:blur(14px) saturate(1.12);-webkit-backdrop-filter:blur(14px) saturate(1.12);border-radius:28px;}
+.c-phone .c-card{padding:14px 16px;margin-bottom:12px;}
+.c-phone .c-detail-header{position:absolute;top:32px;left:0;right:0;height:70px;padding:14px 16px 8px;border:0;background:transparent;display:flex;align-items:center;gap:10px;}
+.c-phone .c-detail-header h1{visibility:hidden;flex:1;}
+.c-phone .c-detail-header button{height:42px;width:42px;flex:none;border-radius:50%;background:#effaff55;border:1px solid #ffffffbd;box-shadow:inset 1px 1px 1px white,0 3px 9px #80b8d91a;backdrop-filter:blur(12px);display:grid;place-items:center;}
+.c-phone .c-detail-header .c-restart-icon{color:#217ccc;}
+.c-phone .c-scroll{top:102px;bottom:28px;padding:8px 16px 32px;}
+.c-phone .c-main-scroll{top:32px;padding:25px 16px 100px;bottom:20px;}
+.c-phone h1.ice-page-title{font-size:32px;font-weight:700;line-height:1.25;padding:4px 6px 0;margin:0 0 26px;letter-spacing:0;}
+.c-phone .c-section-heading,.c-phone .c-group{font-size:13px;line-height:20px;color:#57728c;letter-spacing:0;margin:22px 6px 10px;}
+.c-phone .c-feature-group{padding:6px 16px;}
+.c-phone .c-feature-group>.c-feature+.c-feature{border-top:1px solid #759db326;}
+.c-phone .c-toggle-row,.c-phone .c-native-fold-head{min-height:58px;gap:0;}
+.c-phone .c-feature-title{gap:0;min-width:0;flex:1;}
+.c-phone .c-feature-title strong,.c-phone .c-native-fold-head strong{font-size:14.5px;line-height:1.35;font-weight:700;}
+.c-phone .c-feature-title .c-help{width:25px;min-width:25px;height:38px;opacity:.65;}
+.c-phone .c-switch{height:28px;width:46px;min-width:46px;border:1px solid #ffffff60;background:#b7d3e499;box-shadow:inset 0 1px 2px #66839d14;padding:1px;transition:background .18s;}
+.c-phone .c-switch[aria-checked=true]{background:#258cf0;box-shadow:inset 0 1px 3px #0d7ce069,0 2px 5px #237bb218;}
+.c-phone .c-switch span{position:absolute;left:2px;top:2px;width:22px;height:22px;background:#f7fdffee;border-radius:50%;border:1px solid #ffffffb0;box-shadow:inset 1px 1px 2px white,0 2px 3px #265d8130;transition:transform .2s;}
+.c-phone .c-switch[aria-checked=true] span{transform:translateX(18px);}
+.c-phone .c-switch:disabled{opacity:.4;cursor:default;}
+.c-phone .c-fold-arrow,.c-phone .c-switch-slot{width:25px;min-width:25px;margin-left:3px;}
+.c-phone .c-native-fold-head{display:flex;align-items:center;text-align:left;}
+.c-phone .c-native-fold-head strong{flex:1;}
+.ice-feature-icon{display:grid;place-items:center;width:38px;height:38px;min-width:38px;margin-right:10px;border-radius:12px;background:#7abaf226;color:#2589e5;}
+.c-phone .ice-section-statusbar>.c-section-heading{display:none;}
+.c-phone .ice-section-statusbar>.c-card{padding:16px;}
+.c-phone .ice-section-statusbar .c-inline-editor{padding:0;}
+.ice-status-entry{display:block;width:100%;border:0;background:transparent;text-align:left;padding:0;}
+.ice-status-entry-row{display:flex;align-items:center;gap:14px;}
+.ice-status-icon{width:64px;height:64px;flex:none;display:grid;place-items:center;color:white;background:#3494e9;border-radius:21px;box-shadow:inset 1px 2px 5px #d9f7ffb5,0 3px 8px #388cc532;}
+.ice-status-copy{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;}
+.ice-status-copy strong{font-size:17px;font-weight:700;}
+.ice-status-copy small{font-size:13px;line-height:1.6;color:#607891;}
+.ice-status-sample{margin-top:14px;height:40px;display:flex;align-items:center;justify-content:space-between;border-radius:24px;border:1px solid #ffffffad;box-shadow:inset 0 1px 2px white;background:#ffffff18;padding:0 20px;font-size:14px;font-weight:700;}
+.ice-status-sample>div{display:flex;gap:8px;align-items:center;}
+.c-phone .c-button,.c-phone .c-choice,.c-phone select,.c-phone input:not([type=range]):not([type=checkbox]),.c-phone textarea{background:#f1faff68;border:1px solid #ffffffb0;border-radius:15px;box-shadow:inset 0 1px 1px white,0 2px 4px #679abc0b;backdrop-filter:blur(9px);color:inherit;}
+.c-phone .c-button{font-size:14px;min-height:44px;}
+.c-phone .c-button:not(.secondary){background:#5eaaf135;color:#186caf;}
+.c-phone .c-modal{background:#e9f6ffdf;border-radius:28px;}
+.c-phone .c-modal h2{font-size:21px;}
+.c-phone .c-modal footer button{border-radius:16px;min-height:44px;background:#5eaaf12b;}
+.c-phone .c-app-card{border-radius:28px;}
+.c-phone .c-app-card strong{font-size:16px;}
+.c-phone .c-home-title{font-size:32px;}
+.c-phone .c-nav{background:#f3fcff63;backdrop-filter:blur(18px) saturate(1.1);box-shadow:inset 1px 1px 1px #fff,0 8px 22px #4d86b125;border:1px solid #ffffffb0;}
+.c-phone .c-nav button{border-radius:28px;}
+.c-phone .c-nav button[aria-current=page]{background:#79b7e944;}
+.c-phone input[type=range]{accent-color:#258cf0;}
+.c-phone button:focus-visible,.c-phone input:focus-visible{outline:2px solid #136db6;outline-offset:3px;}
+@media(prefers-reduced-motion:reduce){.c-phone *{transition:none!important;animation:none!important;}}
+@media(max-width:430px){.c-stage{padding:8px 0;}.c-caption{padding:0 8px;}}
+
+/* Clearer ice lenses: narrow rim, inset caustic, and a transparent centre. */
+.c-phone .c-card,.c-phone .c-search,.c-phone .c-app-list{
+  background:linear-gradient(125deg,#ffffff2b 0%,#ecf8ff19 44%,#d9f0ff26 100%);
+  border:1px solid #ffffffc9;
+  box-shadow:inset 0 1px 1px #ffffffed,inset 1px 0 1px #ffffff6b,inset 0 -1px 2px #73addb6b,0 3px 10px #315b8312;
+  backdrop-filter:blur(9px) saturate(1.16);-webkit-backdrop-filter:blur(9px) saturate(1.16);
+}
+
+/* Keep a 44px touch target while the visible switch stays 28px high. */
+.c-phone .c-switch{height:44px;min-height:44px;border:0;background:transparent!important;box-shadow:none!important;border-radius:22px;}
+.c-phone .c-switch:before{width:46px;height:28px;top:8px;left:0;border-radius:20px;background:#b7d3e499;border:1px solid #ffffff80;box-shadow:inset 0 1px 2px #66839d14;}
+.c-phone .c-switch[aria-checked=true]:before{background:#258cf0;}
+.c-phone .c-switch span,.c-phone .c-switch[aria-checked=true] span{top:11px;left:3px;}

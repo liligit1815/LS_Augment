@@ -50,8 +50,8 @@ final class AppConfig {
     static final String SUPER_MIRROR_LOW_MODE = ConfigSchema.SUPER_MIRROR_LOW_MODE;
     static final String SUPER_MIRROR_DIABLO_COEXIST = ConfigSchema.SUPER_MIRROR_DIABLO_COEXIST;
     static final String FAN_FIXED_ENABLED = ConfigSchema.FAN_FIXED_ENABLED;
-    static final String FAN_UNLOCK_MAX = ConfigSchema.FAN_UNLOCK_MAX;
-    static final String FAN_TARGET_RPM = ConfigSchema.FAN_TARGET_RPM;
+    static final String FAN_TILE_ENHANCEMENT_ENABLED = ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED;
+    static final String FAN_SCREEN_OFF_ENABLED = ConfigSchema.FAN_SCREEN_OFF_ENABLED;
 
     static final String SYSTEMUI_MASTER = ConfigSchema.SYSTEMUI_MASTER;
     static final String STATUSBAR_DUAL_LEFT = ConfigSchema.STATUSBAR_DUAL_LEFT;
@@ -104,8 +104,10 @@ final class AppConfig {
     private final Context context;
     private static DurablePreferences sharedConfig;
     private final DurablePreferences prefs;
+    private final long editorGeneration;
 
     AppConfig(Context context) {
+        editorGeneration = ResetWriteFence.generation();
         this.context = context.getApplicationContext();
         synchronized (CONFIG_LOCK) {
             if (sharedConfig == null) sharedConfig = new DurablePreferences(
@@ -113,6 +115,7 @@ final class AppConfig {
             this.prefs = sharedConfig;
         }
         synchronized (CONFIG_LOCK) {
+            if (ResetWriteFence.blocked()) return;
             if (!prefs.getBoolean("approved_ui_migration_v1",false)) {
                 boolean oldEnabled=getBoolean(ConfigSchema.HEALTH_ENABLED);
                 migrationEditor().putString(ConfigSchema.HEALTH_MULTIPLY_ENABLED,oldEnabled?"1":"0")
@@ -126,6 +129,13 @@ final class AppConfig {
                 migration.commit();
             }
             initializePrivateDefaults();
+            if (!prefs.getBoolean("fan_fixed_levels_only_v1", false)) {
+                migrationEditor()
+                        .putString(ConfigSchema.FAN_FIXED_LEVEL, get(ConfigSchema.FAN_FIXED_LEVEL))
+                        .putString(ConfigSchema.FAN_UNLOCK_MAX, "0")
+                        .remove(ConfigSchema.FAN_TARGET_RPM)
+                        .putBoolean("fan_fixed_levels_only_v1", true).commit();
+            }
             if (!prefs.getBoolean("recents_memory_unified_layout_v1",false)) {
                 DurablePreferences.Editor migration=migrationEditor()
                         .putBoolean("recents_memory_unified_layout_v1",true);
@@ -232,16 +242,40 @@ final class AppConfig {
     }
 
     SaveResult save(Map<String, String> updates) {
-        return save(updates, null, false);
+        return save(updates, null, false, false, false);
+    }
+
+    /** Split freeform pages derive their shared gate from the committed sibling controls. */
+    SaveResult saveFreeformControls(Map<String, String> updates) {
+        return save(updates, null, false, false, true);
+    }
+
+    /** A tile command must belong to the currently enabled configuration generation. */
+    SaveResult saveFanTileSelection(Map<String, String> updates, long expectedRevision) {
+        synchronized (CONFIG_LOCK) {
+            if (!getBoolean(FAN_TILE_ENHANCEMENT_ENABLED))
+                return new SaveResult(false, "散热风扇磁贴增强已关闭");
+            if (expectedRevision <= 0 || expectedRevision != prefs.getLong(SNAPSHOT_REVISION, 1L))
+                return new SaveResult(false, "配置已变更，请重新选择风扇转速");
+            if (FanCalibrationData.validRequest(get(ConfigSchema.FAN_CALIBRATION_REQUEST), System.currentTimeMillis()))
+                return new SaveResult(false, "正在测量转速，请完成或取消测量后再选择");
+            return save(updates);
+        }
+    }
+
+    /** Replace the complete store: retired keys and credentials must not survive a total reset. */
+    SaveResult resetToDefaults() {
+        return save(DEFAULTS, null, false, true, false);
     }
 
     /** Only the candidate membership is writable by the GameSpace provider route. */
     SaveResult setShoulderCandidate(ShoulderQuickSwitchPolicy.CaseRef ref, boolean checked) {
-        return save(java.util.Collections.emptyMap(), ref, checked);
+        return save(java.util.Collections.emptyMap(), ref, checked, false, false);
     }
 
     private SaveResult save(Map<String, String> updates,
-            ShoulderQuickSwitchPolicy.CaseRef candidate, boolean checked) {
+            ShoulderQuickSwitchPolicy.CaseRef candidate, boolean checked, boolean replace,
+            boolean deriveFreeformGate) {
         LinkedHashMap<String, String> clean = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : updates.entrySet()) {
             String value = ConfigSchema.normalize(entry.getKey(), entry.getValue());
@@ -250,7 +284,9 @@ final class AppConfig {
         }
         ConfigSnapshot runtime;
         synchronized (CONFIG_LOCK) {
-            LinkedHashMap<String, String> next = new LinkedHashMap<>(snapshotLocked());
+            if (ResetWriteFence.stale(editorGeneration))
+                return new SaveResult(false, "配置已被重置，请重新打开此页面后再修改");
+            LinkedHashMap<String, String> next = new LinkedHashMap<>(replace ? DEFAULTS : snapshotLocked());
             if (candidate != null) {
                 ShoulderQuickSwitchPolicy candidates = ShoulderQuickSwitchPolicy.parse(
                         next.get(ShoulderQuickSwitchPolicy.KEY));
@@ -262,6 +298,20 @@ final class AppConfig {
                 }
             }
             next.putAll(clean);
+            // Evaluate after merging under CONFIG_LOCK. UI-thread reads can miss
+            // a sibling page's queued save and otherwise turn an enabled page off.
+            // Explicit gates (including legacy imports and resets) retain their meaning.
+            if (deriveFreeformGate && !clean.containsKey(FREEFORM_ENABLED)
+                    && (clean.containsKey(FREEFORM_ALL_APPS) || clean.containsKey(FREEFORM_UNLIMITED)
+                    || clean.containsKey(ConfigSchema.FREEFORM_GAME_LOGIN)
+                    || clean.containsKey(ConfigSchema.FREEFORM_EXTERNAL_APPS))) {
+                boolean enabled = ConfigSchema.truthy(next.get(FREEFORM_ALL_APPS))
+                        || ConfigSchema.truthy(next.get(FREEFORM_UNLIMITED))
+                        || ConfigSchema.truthy(next.get(ConfigSchema.FREEFORM_GAME_LOGIN))
+                        || ConfigSchema.truthy(next.get(ConfigSchema.FREEFORM_EXTERNAL_APPS));
+                clean.put(FREEFORM_ENABLED, enabled ? "1" : "0");
+                next.put(FREEFORM_ENABLED, enabled ? "1" : "0");
+            }
             if (ConfigSchema.truthy(next.get(TGK_RAPID_FIRE_ENABLED))) {
                 RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(
                         next.get(TGK_RAPID_FIRE_COMPAT_TOKEN));
@@ -283,6 +333,12 @@ final class AppConfig {
             if (runtime == null) return new SaveResult(false, "无法生成完整配置快照");
 
             DurablePreferences.Editor editor = prefs.edit();
+            if (replace) editor.clear().putBoolean(PRIVATE_INITIALIZED, true)
+                    .putBoolean("approved_ui_migration_v1", true)
+                    .putBoolean("freeform_independent_migration_v1", true)
+                    .putBoolean("fan_fixed_levels_only_v1", true)
+                    .putBoolean("recents_memory_unified_layout_v1", true)
+                    .putBoolean("recents_memory_unified_size_v1", true);
             for (Map.Entry<String, String> entry : clean.entrySet()) {
                 editor.putString(entry.getKey(), entry.getValue());
             }

@@ -20,8 +20,8 @@ import org.json.JSONObject;
 /** Exercises native listener contracts after glass reparenting; never runs real configuration actions. */
 final class DialogUiDeviceCases {
     static JSONObject run(Instrumentation test) throws Exception {
-        Activity activity=test.startActivitySync(new Intent(test.getTargetContext(),ConfigTransferActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        Activity activity=test.startActivitySync(new Intent(test.getTargetContext(),SettingsActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("tab","settings"));
         Map<String,String> before=new AppConfig(activity).snapshot();
         AlertDialog[] active=new AlertDialog[1];
         int[] callbacks=new int[4];

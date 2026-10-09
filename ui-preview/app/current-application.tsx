@@ -1,244 +1,322 @@
 'use client';
-import type { ReactNode } from 'react';
+import {
+  ChevronRight,
+  Smartphone,
+  Wifi,
+  BatteryFull,
+  Check,
+  Sun,
+  LayoutGrid,
+  Volume2,
+  Gamepad2,
+  Fan,
+  Palette,
+  AppWindow,
+  Power,
+  Moon,
+  Usb,
+  Shield,
+  Clock,
+  AudioLines,
+  Download,
+  HeartPulse,
+  Layers,
+  Fingerprint,
+  Bell,
+} from 'lucide-react';
 import catalog from './current-catalog.json';
-import groups from './current-feature-groups.json';
-import editorData from './current-editor-data.json';
-import { Card, Toggle, LinkCard, useModel, type Option } from './current-ui';
-import { CurrentEditor } from './current-editors';
-import { OptionInput, ValueGate } from './current-feature-input';
+import {
+  Card,
+  Toggle,
+  LinkCard,
+  Button,
+  useModel,
+  identity,
+} from './current-ui';
+import { CurrentEditor, editorTitles } from './current-editors';
+import { FeatureRow } from './current-feature-row';
+import { NativeFold } from './current-native-controls';
+import { CurrentLauncherLayout } from './current-launcher-layout';
+import {
+  applicationSections,
+  sectionDestination,
+  sectionSummary,
+  activeFeatureCount,
+  usesEmbeddedEditors,
+  type ApplicationSection,
+  type ApplicationTarget,
+} from './current-hierarchy';
 
-type Feature = {
-  id: string;
-  title: string;
-  toggleKey: string | null;
-  parameterKeys: string[];
-  features: Feature[];
-  activation: { noOpValue: string; comparison: string };
-  hasConfiguration: boolean;
+const sectionIcons: Record<string, typeof LayoutGrid> = {
+  statusbar: Smartphone,
+  status_resources: Palette,
+  freeform: AppWindow,
+  audio: Volume2,
+  system: Shield,
+  connections: Wifi,
+  installer: Download,
+  quicksettings: LayoutGrid,
+  quicksettings_more: Sun,
+  primary_interaction: Power,
+  lockscreen: Moon,
+  aod: Clock,
+  volume_panel: Volume2,
+  interaction: Layers,
+  usb: Usb,
+  launcher_grid: LayoutGrid,
+  launcher: AppWindow,
+  dock_glass: Layers,
+  cleanup: Layers,
+  desktop_clock: Clock,
+  recents: Layers,
+  shoulder: Gamepad2,
+  combo: Gamepad2,
+  performance: Gamepad2,
+  ai: Smartphone,
+  fan: Fan,
+  theme: Palette,
+  collab_theme: Palette,
+  collab_fingerprint: Fingerprint,
+  collab_charging: BatteryFull,
+  collab_audio: AudioLines,
+  health: HeartPulse,
+  display_time: Clock,
+  developer: Usb,
+  download: Download,
+  double: Layers,
+  'update-link': Download,
+  update: Download,
+  weather: Sun,
+  nfc: Smartphone,
+  mtp: Usb,
+  default_apps: Shield,
+  capture: Smartphone,
+  plugins: Layers,
+  game_capture: Bell,
 };
-type Group = { id: string; title: string; features: Feature[] };
-type Target = (typeof catalog.targets)[number];
-const optionMap = Object.fromEntries(
-  catalog.options.map((o) => [o.key, o]),
-) as Record<string, Option>;
-const entrySection: Record<string, string> = {
-  freeform: 'freeform',
-  audio_gain: 'audio',
-  battery: 'battery',
-  signature_install: 'installer',
-  status_layout: 'statusbar',
-  launcher_custom: 'launcher',
-  shoulder: 'shoulder',
-  combo_speed: 'combo',
-  super_resolution: 'performance',
-  ai_trigger: 'ai',
-  fan_control: 'fan',
-  beautify: 'theme',
-  double_app: 'double',
-  store_download: 'download',
-  mi_health: 'health',
-};
-const sectionTitles: Record<string, string> = {
-  freeform: '小窗与多任务',
-  audio: '音量增强与规则',
-  battery: '电池',
-  installer: '应用安装规则',
-  statusbar: '状态栏',
-  launcher: '桌面与应用图标',
-  shoulder: '肩键',
-  combo: '连招',
-  performance: '性能与超分',
-  ai: 'AI 触发器',
-  fan: '风扇',
-  theme: '主题',
-  double: '应用双开',
-  download: '下载管理',
-  health: '步数与每日计划',
-};
-
-function FeatureRow({ feature: f }: { feature: Feature }) {
-  const toggle = f.toggleKey ? optionMap[f.toggleKey] : undefined;
-  const body = f.hasConfiguration ? (
-    <>
-      {f.parameterKeys.map((key) => (
-        <OptionInput key={key} option={optionMap[key]} />
-      ))}
-      {f.features.map((feature) => (
-        <div className="c-sub-feature" key={feature.id}>
-          <FeatureRow feature={feature} />
-        </div>
-      ))}
-    </>
-  ) : undefined;
-  if (toggle)
-    return (
-      <Toggle
-        name={toggle.key}
-        title={f.title}
-        help={toggle.help}
-        initial={toggle.defaultValue}
-      >
-        {body}
-      </Toggle>
-    );
-  const parameter = optionMap[f.parameterKeys[0]];
+function SectionLink({
+  section,
+  target,
+}: {
+  section: ApplicationSection;
+  target: ApplicationTarget;
+}) {
+  const m = useModel(),
+    Icon = sectionIcons[section.id] || Layers;
+  const active = activeFeatureCount(section, m.values),
+    isStatus = section.id === 'statusbar';
   return (
-    <ValueGate
-      name={f.id}
-      title={f.title}
-      help={parameter.help}
-      defaults={{ [parameter.key]: f.activation.noOpValue }}
-      comparison={f.activation.comparison}
+    <button
+      className={'d-preference-link' + (isStatus ? ' d-status-entry' : '')}
+      aria-label={section.title}
+      onClick={() => m.go(sectionDestination(target, section))}
+      {...identity(
+        'HookAppCatalog:' + target.id + '/' + section.id,
+        section.title,
+      )}
     >
-      {body}
-    </ValueGate>
+      <span className="d-preference-line">
+        <span className="c-setting-icon">
+          <Icon size={22} />
+        </span>
+        <span className="d-preference-copy">
+          <span className="d-preference-title">
+            <strong>{section.title}</strong>
+            {!isStatus && active > 0 ? (
+              <span className="d-row-state">
+                <Check size={12} />已设置 {active} 项
+              </span>
+            ) : null}
+          </span>
+          <small>{sectionSummary(section, target)}</small>
+        </span>
+        <ChevronRight size={18} />
+      </span>
+    </button>
   );
 }
-
-function InlineEditor({ route }: { route: string }) {
-  const m = useModel();
-  if (route === 'status_layout')
-    return (
-      <Toggle
-        name={editorData.defaults.SYSTEMUI_MASTER.key}
-        title="状态栏布局与实时预览"
-        help="开启后自定义状态栏布局、时钟、硬件信息及图标显示。"
-      >
-        <CurrentEditor route={route} embedded />
-      </Toggle>
-    );
-  if (route === 'launcher_custom') {
-    const defaults = Object.fromEntries(
-      Object.keys(m.values)
-        .filter((key) => key.startsWith('launcher:'))
-        .map((key) => [key, '']),
-    );
-    return (
-      <ValueGate
-        name="launcher_custom"
-        title="自定义应用图标与名称"
-        help="按用户空间选择应用，修改后自动保存。"
-        defaults={defaults}
-      >
-        <CurrentEditor route={route} embedded />
-      </ValueGate>
-    );
-  }
-  return <CurrentEditor route={route} embedded />;
-}
-
-export function CurrentApplication({ target }: { target: Target }) {
-  const m = useModel();
-  const source = groups.targets.find((t) => t.id === target.id);
-  const sections = (source?.sections || []).map((s) => ({
-    ...s,
-    entries: [] as string[],
-  }));
-  for (const entry of target.entries) {
-    if (entry.route === 'launcher_compatibility') continue; // Available from Settings > diagnostics.
-    const id = entrySection[entry.route] || entry.route;
-    let section = sections.find((s) => s.id === id);
-    if (!section) {
-      section = {
-        id,
-        title: sectionTitles[id] || entry.title,
-        features: [],
-        entries: [],
-      };
-      sections.push(section);
-    }
-    section.entries.push(entry.route);
-  }
-  const priorities: Record<string, string[]> = {
-    system: [
-      'freeform',
-      'system',
-      'audio',
-      'battery',
-      'connections',
-      'installer',
-    ],
-  };
-  const order = priorities[target.id];
-  if (order) sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  const section = (id: string, title: string, children: ReactNode) => (
-    <div key={id} className="c-application-section">
-      <h3 className="c-section-heading" id={'section-' + id}>
-        {title}
-      </h3>
-      <Card
-        className="c-feature-group"
-        path={'HookAppCatalog:' + target.id + '/' + id}
-        label={title}
-      >
-        {children}
-      </Card>
+export function CurrentApplication({ target }: { target: ApplicationTarget }) {
+  const sections = applicationSections(target);
+  return (
+    <div className="d-application">
+      {sections.length === 1 && sections[0].entries.length === 0 ? (
+        <CurrentApplicationSection target={target} section={sections[0]} />
+      ) : (
+        <Card
+          className="d-preference-group"
+          label={target.title + '功能分组'}
+        >
+          {sections.map((section) => (
+            <SectionLink key={section.id} section={section} target={target} />
+          ))}
+        </Card>
+      )}
     </div>
   );
+}
+function SectionFeatures({
+  section,
+  target,
+}: {
+  section: ApplicationSection;
+  target: ApplicationTarget;
+}) {
   return (
     <>
-      {sections.map((s) =>
-        section(
-          s.id,
-          sectionTitles[s.id] || s.title,
-          <>
-            {s.entries.map((route) => (
-              <div
-                className="c-feature c-inline-editor"
-                key={route}
-                data-editor={route}
-                data-native-path={'editor:' + route}
-              >
-                <InlineEditor route={route} />
-              </div>
-            ))}
-            {(s as Group).features.map((f) => (
-              <div
-                className="c-feature"
-                key={f.id}
-                data-native-path={
-                  'config:' + (f.toggleKey || f.parameterKeys[0])
-                }
-                data-ui-label={f.title}
-              >
-                <FeatureRow feature={f} />
-              </div>
-            ))}
-          </>,
-        ),
+      {target.id === 'launcher' && section.id === 'launcher_grid' && (
+        <CurrentLauncherLayout />
       )}
-      {target.id === 'settings' &&
-        section(
-          'developer',
-          '开发者设置',
-          <>
-            {catalog.deviceSettings.map((o) => (
-              <div className="c-feature" key={o.key}>
-                <Toggle
-                  name={'device:' + o.key}
-                  title={o.title}
-                  help={o.help}
-                />
-              </div>
-            ))}
-            <LinkCard
-              title="打开系统开发者设置"
-              onClick={() => m.tell('原型演示：打开系统开发者设置')}
-            />
-          </>,
-        )}
-      {target.id === 'update' &&
-        section(
-          'update-link',
-          '更新链接',
-          <LinkCard
-            title="查看已提取的更新链接"
-            help="系统更新应用准备安装时提取的更新地址。"
-            onClick={() =>
-              m.tell('尚未提取到链接；更新应用准备安装时才会产生。')
-            }
-          />,
-        )}
+      {section.features.map((f, index, all) => {
+        if (target.id === 'launcher' && f.id === 'launcher:launcher_grid')
+          return null;
+        if (
+          f.objectGroup &&
+          all.findIndex((x) => x.objectGroup === f.objectGroup) !== index
+        )
+          return null;
+        return (
+          <div
+            className="c-feature"
+            key={f.id}
+            {...identity(
+              'config:' + (f.toggleKey || f.parameterKeys[0]),
+              f.title,
+            )}
+          >
+            {f.objectGroup ? (
+              <NativeFold title={f.objectGroup}>
+                {all
+                  .filter((x) => x.objectGroup === f.objectGroup)
+                  .map((x) => (
+                    <FeatureRow key={x.id} feature={x} />
+                  ))}
+              </NativeFold>
+            ) : (
+              <FeatureRow feature={f} />
+            )}
+          </div>
+        );
+      })}
     </>
   );
+}
+export function CurrentApplicationSection({
+  target,
+  section,
+}: {
+  target: ApplicationTarget;
+  section: ApplicationSection;
+}) {
+  const m = useModel();
+  const inlineEditors = usesEmbeddedEditors(target.id, section);
+  return (
+    <div className="d-section-page">
+      {!inlineEditors && section.entries.length > 0 && (
+        <Card className="d-preference-group" label="专用编辑器">
+          {section.entries.map((route) => {
+            const entry = target.entries.find((e) => e.route === route),
+              Icon = sectionIcons[section.id] || Layers;
+            return (
+              <LinkCard
+                key={route}
+                route={route}
+                title={
+                  route === 'extra_dim'
+                    ? '极暗与快捷磁贴'
+                    : route === 'status_assets'
+                      ? '素材与字体'
+                      : entry?.title || editorTitles[route] || route
+                }
+                summary={
+                  route === 'extra_dim'
+                    ? '调整画面亮度与磁贴入口'
+                    : route === 'status_assets'
+                      ? sectionSummary(section, target)
+                      : entry?.summary || '设置此功能'
+                }
+                icon={<Icon size={22} />}
+              />
+            );
+          })}
+        </Card>
+      )}
+      {(section.features.length > 0 || (inlineEditors && section.entries.length > 0)) && (
+        <Card
+          className="c-feature-group d-setting-group"
+          label={section.title}
+          path={'HookAppCatalog:' + target.id + '/' + section.id}
+        >
+          {inlineEditors && section.entries.map((route) => (
+            route === 'extra_dim' ? <ExtraDimEditor key={route} embedded /> :
+              <CurrentEditor key={route} route={route} embedded />
+          ))}
+          <SectionFeatures section={section} target={target} />
+        </Card>
+      )}
+      {target.id === 'settings' && section.id === 'developer' && (
+        <Card className="c-feature-group d-setting-group">
+          {catalog.deviceSettings.map((o) => (
+            <div className="c-feature" key={o.key}>
+              <Toggle name={'device:' + o.key} title={o.title} help={o.help} />
+            </div>
+          ))}
+          <Button onClick={() => m.tell('原型演示：打开系统开发者设置')}>
+            打开系统开发者设置
+          </Button>
+        </Card>
+      )}
+      {target.id === 'theme' && section.id === 'collab_audio' && (
+        <Card>
+          <p className="d-page-description">
+            选择本地音频作为联名资源，原厂音频选项继续保留。
+          </p>
+          <Button
+            onClick={() =>
+              m.dialog(
+                '导入联名音频',
+                <>
+                  <p>请选择本地音频。</p>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    aria-label="选择联名音频"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        m.close();
+                        m.tell('已选择：' + file.name);
+                      }
+                    }}
+                  />
+                  <footer>
+                    <button onClick={m.close}>取消</button>
+                  </footer>
+                </>,
+              )
+            }
+          >
+            选择音频
+          </Button>
+        </Card>
+      )}
+      {target.id === 'update' && section.id === 'update-link' && (
+        <Card>
+          <p className="d-page-description">
+            尚未提取到更新链接。系统更新准备安装时会生成地址。
+          </p>
+          <Button onClick={() => m.tell('原型示例：尚未提取到更新链接')}>
+            刷新链接
+          </Button>
+        </Card>
+      )}
+    </div>
+  );
+}
+export function ExtraDimEditor({ embedded = false }: { embedded?: boolean }) {
+  const content = <Toggle
+    name="prototype:extra-dim-tile"
+    title="极暗"
+    help="开启后将极暗磁贴加入控制中心，关闭后移除磁贴。点击磁贴开关极暗，长按调节强度。"
+  />;
+  return embedded ? <div className="c-feature">{content}</div> : <Card>{content}</Card>;
 }

@@ -29,7 +29,7 @@ final class TileImageEditor {
     }
     void onResult(int request,int result,Intent data) {
         if(result!=Activity.RESULT_OK||data==null)return;
-        if(request==61&&data.getData()!=null)activity.startActivityForResult(new Intent(activity,IconCropActivity.class).setData(data.getData()).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),62);
+        if(request==61&&data.getData()!=null)activity.startActivityForResult(new Intent(activity,IconCropActivity.class).setData(data.getData()).putExtra("tile_icon",true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),62);
         if(request==62)save(data.getStringExtra("icon"));
     }
     private void save(String icon) {

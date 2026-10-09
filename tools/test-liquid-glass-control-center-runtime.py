@@ -65,6 +65,12 @@ public void invalidateDrawable(Drawable d){invalidateSelf();}public void schedul
 "android/view/View.java": """package android.view;import android.content.Context;import android.content.res.Resources;import android.graphics.*;import android.graphics.drawable.Drawable;
 public class View implements ViewParent,Drawable.Callback {
 public int width=200,height=80,left,top,id,invalidations;public boolean attached=true,shown=true;public ViewGroup parent;
+public float scaleX=1,scaleY=1,rotation,translationX,translationY;public int scrollX,scrollY;
+public int getLeft(){return left;}public int getTop(){return top;}public int getScrollX(){return scrollX;}public int getScrollY(){return scrollY;}
+public float getTranslationX(){return translationX;}public float getTranslationY(){return translationY;}
+public float getPivotX(){return width*.5f;}public float getPivotY(){return height*.5f;}
+public float getScaleX(){return scaleX;}public float getScaleY(){return scaleY;}public float getRotation(){return rotation;}
+public float getRotationX(){return 0;}public float getRotationY(){return 0;}
 public Drawable background;public final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();final Context context=new Context();final Resources resources=new Resources();
 private int pl,pt,pr,pb;
 public interface OnAttachStateChangeListener {void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}
@@ -87,6 +93,7 @@ public void offsetDescendantRectToMyCoords(View v,Rect r){while(v!=this){if(v==n
 "android/widget/SeekBar.java": """package android.widget;import android.graphics.drawable.Drawable;public class SeekBar extends android.view.View {public Drawable progress;public Drawable getProgressDrawable(){return progress;}}""",
 "android/widget/TextView.java": """package android.widget;public class TextView extends android.view.View {public int color=0xff000000;public int getCurrentTextColor(){return color;}}""",
 "ls/augment/com/GlassOptions.java": """package ls.augment.com;public class GlassOptions {public static final String CONTROL_CENTER="enabled",CC_REDUCE_TRANSPARENCY="opaque",CC_REDUCE_MOTION="motion";}""",
+"ls/augment/com/BuildConfig.java": "package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=20378;}",
 "ls/augment/com/LayerBackdropSource.java": """package ls.augment.com;import android.view.View;import android.graphics.*;
 public class LayerBackdropSource {public static int created,releases,requests;public boolean available=true,released;public long revision=1;public String reason="test-unavailable";
 public LayerBackdropSource(View v){created++;}public void setRegion(Rect r){}public void request(){requests++;}public boolean isValid(){return available&&!released;}
@@ -94,7 +101,7 @@ public boolean drawRegion(Canvas c,Rect r,int w,int h){c.events.add("region");re
 public String failureReason(){return reason;}public void release(){if(released)throw new AssertionError("double source release");released=true;releases++;}}""",
 "ls/augment/com/LiquidGlassDrawable.java": """package ls.augment.com;import android.view.View;import android.graphics.*;import android.graphics.drawable.Drawable;
 public class LiquidGlassDrawable extends Drawable {
-public interface BackdropSource {boolean draw(Canvas c,int w,int h);default boolean isValid(){return true;}default long revision(){return -1;}}
+public interface BackdropSource {boolean draw(Canvas c,int w,int h);default boolean isValid(){return true;}default long revision(){return -1;}default boolean mapsLocalScale(){return false;}}
 public static int created,releases;public final BackdropSource source;public boolean ready,released,light,iconOnly,controlSurface,opaque,motion,fallback=true,throwPrepare,failed,failGpu;public int tint;public float strength,radius;public String forcedReason;
 public LiquidGlassDrawable(View v,BackdropSource b,float r){source=b;radius=r;created++;}public void setIconOnly(boolean v){iconOnly=v;}public void setControlSurface(boolean v){controlSurface=v;}
 public void setMaterialTint(int c,float s){tint=c;strength=s;}public void setForegroundIsLight(boolean v){light=v;}public void invalidateBackdrop(){}
@@ -105,6 +112,7 @@ public boolean drawFallback(Canvas c){if(!c.isHardwareAccelerated()||!fallback||
 public void release(){if(released)throw new AssertionError("double glass release");released=true;releases++;}}
 """,
 "ls/augment/com/hook/AugmentModule.java": """package ls.augment.com.hook;public class AugmentModule {}""",
+"ls/augment/com/hook/ControlCenterAppearanceHook.java": """package ls.augment.com.hook;import android.view.View;public class ControlCenterAppearanceHook {static final java.util.Set<View> claimed=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());static final java.util.Map<View,Boolean> sliders=new java.util.IdentityHashMap<>();static boolean ownsMaterial(View view,View owner,boolean slider){sliders.put(view,slider);return claimed.contains(view);}static void claim(View...views){claimed.clear();java.util.Collections.addAll(claimed,views);}}""",
 "ls/augment/com/hook/SystemUiAdapter.java": """package ls.augment.com.hook;import java.lang.reflect.*;
 public class SystemUiAdapter {static final Object PASS=new Object();interface Patch {Object apply(Object o,Object[] a,Object r)throws Throwable;}
 static int hookNamed(AugmentModule m,ClassLoader l,String ns,String c,String name,int n,Patch b,Patch a){return 1;}
@@ -154,7 +162,26 @@ check(wide.getPaddingLeft()==9&&wide.getPaddingTop()==10&&wide.getPaddingRight()
 check(layers.findDrawableByLayerId(1)!=nativeTrack&&layers.findDrawableByLayerId(2)==nativeFill,"only slider background layer is wrapped");
 check(nativeFill.getLevel()==5100,"installing material preserves the native clipped fill level");
 check(LayerBackdropSource.created==1,"all controls share one compositor source");
-check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0"),"diagnostic counts the actual top-panel wide tile, circle, media and slider surfaces");
+check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0;build=20378;geometry=viewport_v2"),"diagnostic counts actual surfaces and identifies the loaded build and geometry revision");
+LiquidGlassDrawable originalWideGlass=glass(wide),originalCircleGlass=glass(circle.iconFrame),originalPlayerGlass=glass(player),originalSliderGlass=glass(volume);
+ControlCenterAppearanceHook.claim(wide,circle.iconFrame);call(state,"prepare");
+check(wide.getBackground()==wide.colorBackgroundDrawable&&circle.iconFrame.getBackground()==circle.colorBackgroundDrawable,"new tile appearance ownership restores both exact OEM tile backgrounds before it can bind");
+check(originalWideGlass.released&&originalCircleGlass.released&&!originalPlayerGlass.released&&!originalSliderGlass.released,"ownership changes release only the contested glass materials");
+check(player.getBackground()!=nativePlayer&&layers.findDrawableByLayerId(1)!=nativeTrack,"unclaimed media and slider retain glass when tile appearance takes priority");
+check(wide.colorBackgroundDrawable.getCallback()==wide&&wide.getPaddingLeft()==9&&wide.getPaddingBottom()==12,"ownership restoration returns native callbacks without losing padding");
+int priorityRequests=LayerBackdropSource.requests;LayerBackdropSource prioritySource=(LayerBackdropSource)field(state,"source");
+ControlCenterAppearanceHook.claim(wide,circle.iconFrame,player,volume);call(state,"prepare");
+check(player.getBackground()==nativePlayer&&volume.getBackground()==null&&layers.findDrawableByLayerId(1)==nativeTrack&&layers.findDrawableByLayerId(2)==nativeFill&&nativeFill.getLevel()==5100,"all-surface ownership transition restores media and slider identities and preserves progress");
+check(prioritySource.released&&field(state,"source")==null&&LayerBackdropSource.requests==priorityRequests,"all surfaces owned by appearance release compositor capture without another request");
+check(FeatureSettings.diagnostic.startsWith("appearance_priority:ready=0/0"),"priority handoff is distinguished from missing OEM controls");
+int priorityCreated=LayerBackdropSource.created;for(int i=0;i<10;i++)call(state,"prepare");check(LayerBackdropSource.created==priorityCreated&&LayerBackdropSource.requests==priorityRequests,"ownership-only frames do not recreate or request a compositor source");
+check(Boolean.TRUE.equals(ControlCenterAppearanceHook.sliders.get(volume))&&Boolean.FALSE.equals(ControlCenterAppearanceHook.sliders.get(wide)),"arbitration receives actual slider versus tile surface kind");
+Drawable appearanceTile=new Drawable(),appearanceMedia=new Drawable();wide.setBackground(appearanceTile);wide.setPadding(9,10,11,12);player.setBackground(appearanceMedia);call(state,"prepare");
+FeatureSettings.active=false;call(state,"refresh");check(wide.getBackground()==appearanceTile&&player.getBackground()==appearanceMedia,"disabling glass cannot overwrite backgrounds now owned by appearance");
+FeatureSettings.active=true;call(state,"refresh");call(state,"prepare");check(wide.getBackground()==appearanceTile&&player.getBackground()==appearanceMedia,"enabling glass while appearance owns a surface cannot nest wrappers");
+wide.setBackground(wide.colorBackgroundDrawable);wide.setPadding(9,10,11,12);player.setBackground(nativePlayer);ControlCenterAppearanceHook.claim();call(state,"prepare");
+check(glass(wide)!=originalWideGlass&&glass(player)!=originalPlayerGlass&&layers.findDrawableByLayerId(2)==nativeFill,"closing appearance allows glass to rebind cleanly with the original foreground and progress");
+check(field(wide.getBackground(),"original")==wide.colorBackgroundDrawable&&field(player.getBackground(),"original")==nativePlayer,"reacquired glass wraps the exact OEM material without nested old wrappers");
 LiquidGlassDrawable gw=glass(wide),gc=glass(circle.iconFrame),gv=glass(volume);
 gw.forcedReason="host_unavailable";call(state,"prepare");check(FeatureSettings.diagnostic.contains("ready=3/4;failed=0;reason=host_unavailable")&&FeatureSettings.diagnostic.contains("glass=host_unavailable"),"partial availability reports the host reason without claiming all controls are ready");
 int unchangedDiagnostics=FeatureSettings.diagnosticWrites;call(state,"prepare");check(FeatureSettings.diagnosticWrites==unchangedDiagnostics,"unchanged per-frame diagnostics do not write again");gw.forcedReason=null;
@@ -163,6 +190,13 @@ check(FeatureSettings.diagnostic.startsWith("translucent_fallback:ready=0/4;fail
 gw.failed=true;diagnosticSource.reason="capture_pending";call(state,"prepare");check(FeatureSettings.diagnostic.contains("failed=1;reason=renderer_unavailable")&&FeatureSettings.diagnostic.contains("source=capture_pending"),"permanent renderer failure takes priority over source unavailability while preserving source detail");
 gw.failed=false;diagnosticSource.available=true;diagnosticSource.reason="test-unavailable";call(state,"prepare");
 check(!gw.light&&gw.strength==0,"inactive native dark label matches glass");
+check(gw.source.mapsLocalScale(),"control source explicitly maps local scale");
+wide.scaleX=.8f;wide.scaleY=.8f;
+check(!gw.source.isValid(),"geometry change immediately rejects the previously sampled control crop");
+call(state,"prepare");check(gw.source.isValid(),"pressed control uses a newly mapped crop of the shared backdrop");
+Rect scaled=(Rect)field(gw.source,"region");check(scaled.width()==160&&scaled.height()==64,"local press scale changes sampled region on both axes");
+wide.rotation=5;call(state,"prepare");check(!gw.source.isValid(),"rotation cannot opt into axis-aligned texture mapping");
+wide.rotation=0;wide.scaleX=wide.scaleY=1;call(state,"prepare");
 check(!gc.iconOnly&&gc.controlSurface&&gc.light&&gc.strength==.62f,"active monochrome circle retains foreground contrast and controlled backdrop on stronger native tint");
 check(gv.radius==16,"slider material uses the native 16dp track corners, not a half-width capsule");
 circle.lastState=1;canvasForCircle(circle);check(!gc.light&&!gc.iconOnly&&gc.strength==0,"inactive dark circle glyph retains readable light backing");circle.lastState=2;
@@ -241,6 +275,7 @@ Panel unsupported=new Panel();ViewGroup unsupportedFrame=new ViewGroup();SeekBar
 GradientDrawable asymmetric=(GradientDrawable)unsupportedLayers.findDrawableByLayerId(1);asymmetric.radii=new float[]{8,8,16,16,8,8,16,16};unsupportedSeek.progress=unsupportedLayers;unsupportedFrame.addView(unsupportedSeek);unsupported.topPanel.volume=unsupportedFrame;unsupported.topPanel.mVolumeSlider=unsupportedSeek;unsupported.topPanel.addView(unsupportedFrame);
 Object unsupportedState=watch(unsupported);call(unsupportedState,"prepare");
 check(unsupportedFrame.getBackground()==null&&unsupportedLayers.findDrawableByLayerId(1)==asymmetric,"asymmetric native slider keeps its complete native outline and fill rather than adding a mismatched material");
+check(FeatureSettings.diagnostic.startsWith("native_controls_unavailable")&&field(unsupportedState,"source")==null,"missing compatible controls clear capture and do not retain stale priority diagnosis");
 unsupported.detach();
 System.out.println("PASS production LiquidGlassControlCenterHook runtime: "+checks+" checks (facade; GPU and real OEM visuals unverified)");
 }}
@@ -262,6 +297,9 @@ def java_tool(name):
 
 FILES["ls/augment/com/hook/LiquidGlassControlCenterHook.java"] = (
     ROOT / "android/app/src/main/java/ls/augment/com/hook/LiquidGlassControlCenterHook.java"
+).read_text(encoding="utf-8")
+FILES["ls/augment/com/GlassGeometry.java"] = (
+    ROOT / "android/app/src/main/java/ls/augment/com/GlassGeometry.java"
 ).read_text(encoding="utf-8")
 with tempfile.TemporaryDirectory(prefix="lsa-control-center-glass-") as directory:
     sources = []

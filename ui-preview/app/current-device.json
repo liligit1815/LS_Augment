@@ -1,0 +1,10 @@
+{
+  "source": "ADB read-only snapshot; not live browser detection",
+  "capturedAt": "2026-10-01",
+  "model": "NX809J",
+  "systemVersion": "RedMagicOS11.5.7MR1",
+  "androidVersion": "16",
+  "sdk": "36",
+  "moduleVersion": "2.0.0-alpha1-test20439",
+  "buildType": "release"
+}

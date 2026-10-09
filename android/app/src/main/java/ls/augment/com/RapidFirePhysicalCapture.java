@@ -15,6 +15,8 @@ final class RapidFirePhysicalCapture {
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private volatile File lease;
     private volatile File completion;
+    private final long generation = ResetWriteFence.generation();
+    private ModuleWorkerDrain.Ticket ticket;
 
     void cancel() {
         cancelled.set(true);
@@ -24,6 +26,19 @@ final class RapidFirePhysicalCapture {
 
     Result run(Context context, List<RapidFireInputDetector.Device> devices, boolean left,
             Runnable onReady, Runnable onPair) {
+        ticket = RapidCaptureReset.register(generation, this::cancel);
+        if (ticket == null) return new Result(null, "采集已取消");
+        try {
+            Result result = runRegistered(context, devices, left, onReady, onPair);
+            return cancelled() ? new Result(null, "采集已取消") : result;
+        } finally { ticket.close(); }
+    }
+
+    private boolean cancelled() { return cancelled.get() || ResetWriteFence.stale(generation) || ticket != null && !ticket.current(); }
+
+    private Result runRegistered(Context context, List<RapidFireInputDetector.Device> devices, boolean left,
+            Runnable onReady, Runnable onPair) {
+        if (cancelled()) return new Result(null, "采集已取消");
         String device0 = null;
         String device1 = null;
         for (RapidFireInputDetector.Device device : devices) {
@@ -38,7 +53,7 @@ final class RapidFirePhysicalCapture {
                 "3211fdc4b97aabe3c0db8f06f3ec07da8c3c382a6273412adb089940e9d4b532 ")) {
             return runReadOnly(context, devices, onReady);
         }
-        if (cancelled.get()) return new Result(null, "采集已取消");
+        if (cancelled()) return new Result(null, "采集已取消");
         RapidFireInputDetector.Device target = new RapidFireInputDetector.Device(
                 left ? device0 : device1, left ? "nubia_tgk_aw_sar0_ch0" : "nubia_tgk_aw_sar1_ch0");
         try (InputStream input = context.getAssets().open("rapid_input_capture.sh")) {
@@ -47,7 +62,7 @@ final class RapidFirePhysicalCapture {
                     + UUID.randomUUID() + ".lease");
             if (!lease.createNewFile()) return new Result(null, "无法建立临时肩键测试会话");
             completion = new File(lease.getCanonicalPath() + ".complete");
-            if (cancelled.get()) return new Result(null, "采集已取消");
+            if (cancelled()) return new Result(null, "采集已取消");
             AtomicBoolean ready = new AtomicBoolean();
             AtomicBoolean pair = new AtomicBoolean();
             RootShell.Result shell = RootShell.run("/system/bin/sh -c "
@@ -57,25 +72,26 @@ final class RapidFirePhysicalCapture {
                     + " " + RootShell.quote(target.path),
                     null, 20, 256 * 1024, output -> {
                         if (output.contains("LSA_CAPTURE_READY=")
-                                && !cancelled.get() && ready.compareAndSet(false, true)) {
-                            onReady.run();
+                                && !cancelled() && ready.compareAndSet(false, true)) {
+                            ticket.ifCurrent(onReady);
                         }
-                        if (ready.get() && !cancelled.get() && !pair.get()
+                        if (ready.get() && !cancelled() && !pair.get()
                                 && !output.contains("LSA_CAPTURE_END=")
                                 && RapidFireCaptureProtocol.observedPair(output, target) != null
                                 && pair.compareAndSet(false, true)) {
                             // This requests reader shutdown, not compatibility approval.
                             try { completion.createNewFile(); } catch (java.io.IOException ignored) { }
-                            onPair.run();
+                            ticket.ifCurrent(onPair);
                         }
                     });
-            context.getSharedPreferences(AppConfig.DIAGNOSTICS, 0).edit()
+            RapidCaptureReset.observeHardwareResult(shell);
+            ticket.ifCurrent(() -> context.getSharedPreferences(AppConfig.DIAGNOSTICS, 0).edit()
                     .putString("ls_augment_tgk_rapid_fire_physical_capture",
                             "module=" + BuildConfig.VERSION_NAME + "|time="
                                     + System.currentTimeMillis() + "|exit=" + shell.exitCode
-                                    + "|timeout=" + shell.timedOut + "|cancelled=" + cancelled.get()
-                                    + "|pair=" + pair.get() + "\n" + shell.output).apply();
-            if (cancelled.get()) return new Result(null, "采集已取消，肩键正在恢复原状态");
+                                    + "|timeout=" + shell.timedOut + "|cancelled=" + cancelled()
+                                    + "|pair=" + pair.get() + "\n" + shell.output).commit());
+            if (cancelled()) return new Result(null, "采集已取消，肩键正在恢复原状态");
             if (shell.output.contains("LSA_CAPTURE_ERROR=restore_failed")) {
                 return new Result(null, "肩键原状态恢复失败，测试已停止；请重新进入原厂游戏空间恢复肩键");
             }
@@ -102,23 +118,23 @@ final class RapidFirePhysicalCapture {
     }
 
     private Result runReadOnly(Context context,List<RapidFireInputDetector.Device> devices,Runnable onReady) {
-        if(cancelled.get())return new Result(null,"采集已取消");
+        if(cancelled())return new Result(null,"采集已取消");
         try(InputStream input=context.getAssets().open("rapid_input_readonly.sh")) {
             String script=ShellScriptSource.readUtf8(input);
             lease=new File(context.getCacheDir(),"rapid-input-"+UUID.randomUUID()+".lease");
-            if(!lease.createNewFile()||cancelled.get())return new Result(null,"采集已取消");
+            if(!lease.createNewFile()||cancelled())return new Result(null,"采集已取消");
             StringBuilder command=new StringBuilder("/system/bin/sh -c ")
                     .append(RootShell.quote(script))
                     .append(" -- ").append(Process.myPid()).append(' ').append(RootShell.quote(lease.getCanonicalPath()));
             for(RapidFireInputDetector.Device device:devices)command.append(' ').append(RootShell.quote(device.path));
             AtomicBoolean ready=new AtomicBoolean();
             RootShell.Result shell=RootShell.run(command.toString(),null,18,256*1024,output->{
-                if(output.contains("LSA_READONLY_READY=1")&&!cancelled.get()&&ready.compareAndSet(false,true))onReady.run();
+                if(output.contains("LSA_READONLY_READY=1")&&!cancelled()&&ready.compareAndSet(false,true))ticket.ifCurrent(onReady);
             });
-            context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).edit().putString(
+            ticket.ifCurrent(() -> context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).edit().putString(
                     "ls_augment_tgk_rapid_fire_physical_capture","module="+BuildConfig.VERSION_NAME
-                    +"|mode=read_only|exit="+shell.exitCode+"|time="+System.currentTimeMillis()+"\n"+shell.output).apply();
-            if(cancelled.get())return new Result(null,"采集已取消，肩键原状态未改变");
+                    +"|mode=read_only|exit="+shell.exitCode+"|time="+System.currentTimeMillis()+"\n"+shell.output).commit());
+            if(cancelled())return new Result(null,"采集已取消，肩键原状态未改变");
             if(!shell.isSuccess()||!RapidFireReadOnlyCaptureProtocol.isComplete(shell.output,devices))
                 return new Result(null,"肩键监听未完整结束，请重试；原厂肩键状态未改变");
             RapidFireInputDetector.Capture capture=RapidFireReadOnlyCaptureProtocol.observedPair(shell.output,devices);

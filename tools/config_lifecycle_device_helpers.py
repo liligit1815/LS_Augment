@@ -9,7 +9,7 @@ def events():
     raw=shell('/system/bin/cat '+EVENTS,root=True)
     return raw,[json.loads(s) for s in raw.splitlines() if s.strip()]
 def open_import(label):
-    shell('am start -W -f 0x10008000 -n ls.augment.com/.ConfigTransferActivity',root=True)
+    shell('am start -W -f 0x10008000 -n ls.augment.com/.SettingsActivity --es tab settings',root=True)
     touch(label+'-import',text='导入配置')
     root=hierarchy(label+'-picker')
     if any(n.get('text')=='03-slow-healthy.json' and visible(n) for n in root.iter('node')):return

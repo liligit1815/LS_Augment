@@ -21,8 +21,8 @@ import io.github.libxposed.api.XposedInterface.HookHandle;
 
 /**
  * Bridges the GameSpace TGK request into the native EventProducer profile in
- * system_server. The native layer is loaded only when a target above the OEM
- * 10 CPS ceiling is actually requested.
+ * system_server. The verified native layer applies every configured positive
+ * target (1–50 CPS); zero remains the OEM mapping-clear signal.
  */
 final class TgkRapidFireSystemHook {
     private static final String INPUT_MANAGER_SERVICE =
@@ -33,7 +33,6 @@ final class TgkRapidFireSystemHook {
             "android.hardware.input.IInputManager$Stub";
     private static final String INPUT_MANAGER_DESCRIPTOR =
             "android.hardware.input.IInputManager";
-    private static final int OEM_MAX_CPS = 10;
     private static final int MAX_CPS = 50;
 
     private static volatile long lastDiagnostic;
@@ -285,7 +284,7 @@ final class TgkRapidFireSystemHook {
             TgkRapidFireNative.clearTargets(context);
             return NO_AFTER_CALL;
         }
-        if (requested <= OEM_MAX_CPS) {
+        if (requested == 0) {
             // Clearing the native target is enough to restore the OEM path.
             // The inline hook remains installed for the lifetime of
             // system_server to avoid an unsafe concurrent unhook.
@@ -472,7 +471,7 @@ final class TgkRapidFireSystemHook {
         if (module == null || !TgkRapidFireNative.ensureInstalled(module, context)) return;
         TgkRapidFireNative.configureKeys(context, token.systemLeft, token.systemRight);
         int count = FeatureSettings.integer(context,
-                FeatureSettings.TGK_RAPID_FIRE_COUNT, 20, 10, MAX_CPS);
+                FeatureSettings.TGK_RAPID_FIRE_COUNT, 20, 1, MAX_CPS);
         TgkRapidFireNative.setTarget(context, token.systemLeft, count);
         TgkRapidFireNative.setTarget(context, token.systemRight, count);
     }

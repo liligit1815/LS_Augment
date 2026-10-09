@@ -11,7 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com/hook'
 SOURCES = {
-    'android/content/res/Resources.java': '''package android.content.res; public class Resources {public static class NotFoundException extends RuntimeException {} public String getResourceEntryName(int id){if(id==1)return "wifi_signal";throw new NotFoundException();}}''',
+    'android/content/res/Resources.java': '''package android.content.res; public class Resources {public static class NotFoundException extends RuntimeException {} public String getResourceEntryName(int id){if(id==1)return "wifi_signal";if(id==2)return "mobile_signal";if(id==3)return "multi_user_avatar";throw new NotFoundException();}}''',
     'android/graphics/Rect.java': '''package android.graphics;
 public class Rect {
  public int left,top,right,bottom;
@@ -129,10 +129,26 @@ public final class TestStatusBarContentBounds {
   wifiStrength.setVisibility(View.INVISIBLE);
   if(StatusBarContentBounds.wifiSignalHeight(wifi)!=12)throw new AssertionError("overflow dot keeps full-signal reference");checks++;
   if(StatusBarContentBounds.wifiSignalHeight(mobile)!=0)throw new AssertionError("mobile unchanged");checks++;
+  strength.id=2;if(StatusBarContentBounds.wifiSignalHeight(mobile)!=12)throw new AssertionError("mobile uses stable native signal glyph");checks++;
+  StatusBarIconLayoutHook.boundaries.put(strength,new float[]{3,4,5,6});
+  bounds(mobile,-1,2,19,24,"independent signal margins survive parent content-union packing");
+  bounds(strength,0,0,12,12,"leaf glyph bounds exclude its own reserved edge");
+  if(StatusBarContentBounds.wifiSignalHeight(mobile)!=12)throw new AssertionError("child boundaries do not shrink stable mobile glyph");checks++;
+  strength.setVisibility(View.GONE);bounds(mobile,0,0,0,0,"hidden child boundaries do not reserve a phantom cell");
+  ViewGroup switcher=group(0,0,40,40);ImageView avatar=image(3,4,24,24,24,24);avatar.id=3;switcher.addView(avatar);StatusBarIconLayoutHook.boundaries.put(avatar,new float[]{3,4,5,6});
+  bounds(switcher,0,0,32,34,"avatar companion reserves independent four-edge space");
+  if(StatusBarContentBounds.wifiSignalHeight(switcher)!=24)throw new AssertionError("avatar keeps its glyph size when companion expands");checks++;
+  ViewGroup isolated=group(5,7,12,12);ImageView imported=image(0,0,12,12,12,12);imported.id=1;isolated.addView(imported);StatusBarWifiAssetSpacingHook.reserved.put(isolated,new Rect(0,0,32,20));
+  bounds(isolated,0,0,32,20,"isolated custom pair contributes its complete reservation exactly once");
+  if(StatusBarContentBounds.wifiSignalHeight(isolated)!=12)throw new AssertionError("custom reservation cannot change native signal size reference");checks++;
+  ViewGroup outside=group(0,0,90,40);outside.addView(isolated);bounds(outside,5,7,37,27,"pair position translated once without duplicated placement margins");StatusBarWifiAssetSpacingHook.reserved.clear();bounds(isolated,0,0,12,12,"removing reservation immediately restores real native drawing bounds");
   System.out.println("StatusBarContentBounds: "+checks+" actual-source geometry assertions passed");
  }
 }''',
 }
+SOURCES['ls/augment/com/hook/BluetoothIconHook.java'] = 'package ls.augment.com.hook;class BluetoothIconHook {static android.graphics.Rect contentBounds(android.view.View v){return null;}}'
+SOURCES['ls/augment/com/hook/StatusBarWifiAssetSpacingHook.java'] = 'package ls.augment.com.hook;class StatusBarWifiAssetSpacingHook {static final java.util.Map<android.view.View,android.graphics.Rect> reserved=new java.util.IdentityHashMap<>();static android.graphics.Rect bounds(android.view.View view){return reserved.get(view);}}'
+SOURCES['ls/augment/com/hook/StatusBarIconLayoutHook.java'] = '''package ls.augment.com.hook;import android.view.View;import android.graphics.RectF;import java.util.*;class StatusBarIconLayoutHook {static final Map<View,float[]> boundaries=new IdentityHashMap<>();static void includeChildBoundary(View view,RectF bounds){float[] edge=boundaries.get(view);if(edge!=null&&!bounds.isEmpty()){bounds.left-=edge[0];bounds.top-=edge[1];bounds.right+=edge[2];bounds.bottom+=edge[3];}}}'''
 SOURCES['ls/augment/com/hook/StatusBarContentBounds.java'] = (
     JAVA / 'StatusBarContentBounds.java').read_text(encoding='utf-8')
 

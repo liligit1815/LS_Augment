@@ -19,7 +19,19 @@ final class DiagnosticExport {
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
             .append("详细记录仅包含开启后的有界窗口。队列丢弃、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据。\n");
-        source(out,"ROOT",RootShell.run("id",null,5,4096),4096);
+        RootShell.Result root=RootShell.run("id",null,5,4096);
+        source(out,"ROOT",root,4096);
+        out.append("systemVersion=").append(new DeviceInfo(context).systemVersion).append('\n')
+                .append("buildType=").append(BuildConfig.BUILD_TYPE).append('\n')
+                .append("currentVersionInjection=").append(RuntimeEnvironment.injected(context)?"VERIFIED_THIS_BOOT":"UNCONFIRMED").append('\n');
+        out.append("\n===== ENABLED FEATURE SWITCHES (configuration, not proof of execution) =====\n");
+        Map<String,String> values=config.snapshot();
+        Set<String> labelled=new HashSet<>();
+        for(EnhancementOption option:EnhancementCatalog.options())if(option.kind==EnhancementOption.Kind.BOOLEAN){
+            labelled.add(option.key);if(ConfigSchema.truthy(values.get(option.key)))out.append(option.title).append(" | ").append(option.key).append("=1\n");
+        }
+        for(Map.Entry<String,String> item:values.entrySet())if(!labelled.contains(item.getKey())&&"1".equals(item.getValue()))
+            out.append("enabled or numeric=1; see configuration: ").append(item.getKey()).append('\n');
         for(String pkg:HookTargetRegistry.packages()){
             if(pkg.equals("system"))continue;
             try{android.content.pm.PackageInfo info=context.getPackageManager().getPackageInfo(pkg,0);out.append("packageVersion ").append(pkg).append('=').append(info.versionName).append(" (").append(info.getLongVersionCode()).append(")\n");}
@@ -66,7 +78,7 @@ final class DiagnosticExport {
                         null,12,768*1024),768*1024);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
         if(ai)file(out,context,"AI_DETAIL","detail-AI.log",512*1024,"AI");
-        if(shoulder||ai){
+        {
             String since=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(start-30*60*1000));
             String tags="LS_Augment:I "+(ai?"LS_Augment_AI:I ":"")+(shoulder?"LS_Augment_TGK:I LS_AugmentNative:I ":"")+"*:S";
             RootShell.Result logs=RootShell.run("logcat -d -v epoch -T "+RootShell.quote(since)+" "+tags,null,12,1024*1024);

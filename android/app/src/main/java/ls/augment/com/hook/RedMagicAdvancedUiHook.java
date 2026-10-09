@@ -5,7 +5,9 @@ import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,10 +18,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
 import java.util.Calendar;
 import java.util.Locale;
 import java.util.Map;
@@ -40,8 +44,11 @@ final class RedMagicAdvancedUiHook {
         int count=SystemIconVisibilityHook.install(module,loader);
         count+=hook(module,loader,"com.android.systemui.statusbar.StatusBarIconView","isIconBlocked",0,
                 (o,a,r)->on(o,"ignore_system_icon_hide")?false:PASS,null);
-        count+=hook(module,loader,"com.zte.feature.signal.WifiUtils$Companion","getWifiSignalStrengthIconId",6,
-                (o,a,r)->on(o,"hide_wifi_standard")&&a[5] instanceof Integer?a[5]:PASS,null);
+        count+=WifiStandardHook.install(module,loader);
+        // Observe SystemUI's already-created dependency before its native color
+        // collector starts. Never reflect into hidden framework implementation APIs.
+        count+=hook(module,loader,"com.android.systemui.statusbar.notification.icon.ui.viewbinder.StatusBarIconViewBinder",
+                "bindIconColors",4,(o,a,r)->{rememberNotificationContrast(a);return PASS;},null);
         count+=hook(module,loader,"com.zte.feature.notification.NotificationUtil","shouldShowAppIcon",1,
                 (o,a,r)->on(o,"notification_native")?false:PASS,null);
         // The notification shade still uses white small glyphs over its native
@@ -51,13 +58,7 @@ final class RedMagicAdvancedUiHook {
         count+=hook(module,loader,"com.zte.feature.notification.MfvNotificationExtKt","mfvDecideStatusBarNotifIconColor",1,
                 (o,a,r)->on(o,"notification_native")?a[0]:PASS,null);
         count+=hook(module,loader,"com.zte.feature.notification.MfvNotificationExtKt","mfvUpdateBackground",1,
-                (o,a,r)->{
-                    if(!(a[0] instanceof View)||!on(a[0],"notification_native"))return PASS;
-                    ((View)a[0]).setBackground(null);
-                    call(a[0],"setUseAppIcon",false);
-                    call(a[0],"updateDrawable");
-                    return a[0];
-                },null);
+                (o,a,r)->a[0] instanceof View&&nativeNotificationBackground((View)a[0])?a[0]:PASS,null);
         // Keep the notification template's resolved small icon and contrast.
         // The OEM replacement clears its tint, including for legacy glyphs.
         count+=hook(module,loader,"com.zte.feature.notification.module.NotificationViewWrapperModule","processAppIcon",4,
@@ -95,12 +96,6 @@ final class RedMagicAdvancedUiHook {
             TextView view=(TextView)o;
             nativeFont(view);
             if(ControlCenterHeaderHook.renderClock(view))return PASS;
-            if(on(o,"qs_clock_period")&&ancestor(view,"CCHeaderView")){
-                android.text.SpannableStringBuilder text=new android.text.SpannableStringBuilder(view.getText()).append(" ");
-                int start=text.length();text.append(SystemUiPolicy.period(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)));
-                text.setSpan(new android.text.style.RelativeSizeSpan(.35f),start,text.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                view.setText(text);
-            }
             return PASS;
         });
         for(String type:new String[]{"com.zte.mifavor.views.MFVBatteryViewLayout","com.android.systemui.statusbar.phone.KeyguardStatusBarView"})
@@ -110,6 +105,135 @@ final class RedMagicAdvancedUiHook {
     }
 
     private static void aodClock(Object owner) { AodClockHook.changed(owner); }
+
+    // BEGIN native notification tint lifecycle: also exercised by the offline production facade.
+    private static final Map<View,NativeNotificationIcon> NATIVE_NOTIFICATION_ICONS=new WeakHashMap<>();
+    private static final Map<View,WeakReference<Object>> NATIVE_NOTIFICATION_CONTRAST=new WeakHashMap<>();
+    private static final ThreadLocal<Boolean> NATIVE_NOTIFICATION_REPLAY=ThreadLocal.withInitial(()->false);
+    private static Method notificationBackground,notificationColorized,notificationColor,notificationGrayscale;
+    private static void rememberNotificationContrast(Object[] args){
+        if(Looper.myLooper()!=Looper.getMainLooper()||args.length!=4||!(args[0] instanceof ImageView)
+                ||!args[0].getClass().getName().equals("com.android.systemui.statusbar.StatusBarIconView")
+                ||args[2]==null||!args[2].getClass().getName().equals("com.android.internal.util.ContrastColorUtil"))return;
+        // Binding may precede parent attachment. Only the later phone-scoped
+        // rendering path can mutate a view; shelf/AOD bindings are only weak keys.
+        NATIVE_NOTIFICATION_CONTRAST.put((View)args[0],new WeakReference<>(args[2]));
+    }
+    private static Object notificationContrast(View view){
+        WeakReference<Object> reference=NATIVE_NOTIFICATION_CONTRAST.get(view);
+        return reference==null?null:reference.get();
+    }
+    private static int notificationGrayscaleTag(View view){
+        return view.getResources().getIdentifier("icon_is_grayscale","id","com.android.systemui");
+    }
+    private static final class NativeNotificationIcon {
+        boolean owned,refreshing;WeakReference<Drawable> drawable=new WeakReference<>(null);
+        int appliedColor,paletteTint;boolean colorKnown;
+    }
+    static void applyNativeNotificationIcon(View view){
+        nativeNotificationBackground(view);
+    }
+    private static boolean nativeNotificationBackground(View view){
+        if(Looper.myLooper()!=Looper.getMainLooper()||NATIVE_NOTIFICATION_REPLAY.get()
+                ||!StatusBarNotificationSummaryHook.phoneNotificationIcon(view)||!(view instanceof ImageView))return false;
+        NativeNotificationIcon state=NATIVE_NOTIFICATION_ICONS.get(view);
+        if(state!=null&&state.refreshing)return false;
+        boolean enabled=on(view,"notification_native");
+        Integer tint=enabled&&notificationContrast(view)!=null&&notificationGrayscaleTag(view)!=0
+                ?StatusBarNotificationSummaryHook.nativeTintFor(view):null;
+        // Never strip a backdrop without a real palette. Undo our owned changes;
+        // an untouched new view continues through the existing OEM background path.
+        if(!enabled||tint==null){
+            if(state!=null&&state.owned)try{restoreNotificationIcon(view,state);return true;}
+            catch(ReflectiveOperationException error){notificationTintError(view,error);}
+            return false;
+        }
+        if(state==null){state=new NativeNotificationIcon();NATIVE_NOTIFICATION_ICONS.put(view,state);}
+        ImageView icon=(ImageView)view;
+        try{
+            notificationMethods(view);
+            state.refreshing=true;
+            boolean replaced=!state.owned||Boolean.TRUE.equals(field(view,"mUseAppIcon"));
+            if(replaced){
+                // Own the transition before changing drawable so failed tint can restore it.
+                state.owned=true;call(view,"setUseAppIcon",false);call(view,"updateDrawable");
+            }
+            Drawable current=icon.getDrawable();
+            if(current==null){restoreNotificationIcon(view,state);return false;}
+            boolean changed=replaced||current!=state.drawable.get();
+            if(changed||!state.colorKnown||state.paletteTint!=tint||!Integer.valueOf(state.appliedColor).equals(field(view,"mDrawableColor"))){
+                int color=notificationNativeColor(view,tint);
+                if(changed||!Integer.valueOf(color).equals(field(view,"mDrawableColor")))call(view,"setStaticDrawableColor",color);
+                state.drawable=new WeakReference<>(current);state.appliedColor=color;state.paletteTint=tint;state.colorKnown=true;
+            }
+            if(icon.getBackground()!=null)icon.setBackground(null);
+            state.owned=true;return true;
+        }catch(ReflectiveOperationException error){
+            notificationTintError(view,error);
+            if(state.owned)try{restoreNotificationIcon(view,state);}catch(ReflectiveOperationException restore){notificationTintError(view,restore);}
+            return false;
+        }finally{state.refreshing=false;}
+    }
+    private static void notificationMethods(View view)throws ReflectiveOperationException{
+        if(notificationBackground!=null)return;
+        ClassLoader loader=view.getClass().getClassLoader();
+        Class<?> type=Class.forName("com.zte.feature.notification.MfvNotificationExtKt",false,loader);
+        Object contrast=notificationContrast(view);
+        if(contrast==null)throw new NoSuchMethodException("native notification color dependency unavailable");
+        Class<?> utilities=Class.forName("com.android.systemui.statusbar.notification.NotificationUtils",false,loader);
+        Method background=type.getDeclaredMethod("mfvUpdateBackground",view.getClass());
+        Method colorized=type.getDeclaredMethod("mfvDecideStatusBarNotifIconBeColorized",boolean.class,view.getClass());
+        Method color=type.getDeclaredMethod("mfvDecideStatusBarNotifIconColor",int.class);
+        Method grayscale=utilities.getDeclaredMethod("isGrayscale",ImageView.class,contrast.getClass());
+        for(Method method:new Method[]{background,colorized,color,grayscale})method.setAccessible(true);
+        notificationColorized=colorized;notificationColor=color;notificationGrayscale=grayscale;
+        notificationBackground=background;
+    }
+    private static int notificationNativeColor(View view,int tint)throws ReflectiveOperationException{
+        Object contrast=notificationContrast(view);int tag=notificationGrayscaleTag(view);
+        if(contrast==null||tag==0)throw new NoSuchMethodException("native notification grayscale dependency unavailable");
+        // Both takeover and restoration inspect the current drawable, and refresh
+        // the same cache subsequently used by SystemUI's native color collector.
+        view.setTag(tag,null);
+        boolean gray=Boolean.TRUE.equals(notificationGrayscale.invoke(null,(ImageView)view,contrast));
+        boolean colorized=Boolean.TRUE.equals(notificationColorized.invoke(null,gray,view));
+        return colorized?((Number)notificationColor.invoke(null,tint)).intValue():0;
+    }
+    private static void restoreNotificationIcon(View view,NativeNotificationIcon state)throws ReflectiveOperationException{
+        notificationMethods(view);state.refreshing=true;
+        boolean previous=NATIVE_NOTIFICATION_REPLAY.get();NATIVE_NOTIFICATION_REPLAY.set(true);
+        boolean nativeReturned=false;
+        try{
+            int tag=notificationGrayscaleTag(view);
+            if(tag!=0)view.setTag(tag,null);
+            notificationBackground.invoke(null,view);
+            nativeReturned=true;
+            // A zero native tint is a real "preserve colored artwork" decision. The
+            // OEM color selector returns white in normal mode; no cached custom gray.
+            Integer tint=StatusBarNotificationSummaryHook.nativeTintFor(view);
+            Object nativeColor=field(view,"mDrawableColor");
+            int seed=tint!=null?tint:nativeColor instanceof Number?((Number)nativeColor).intValue():0;
+            if(notificationContrast(view)!=null&&tag!=0){
+                call(view,"setStaticDrawableColor",notificationNativeColor(view,seed));
+            }else{
+                // Dependency loss is a handoff, not a guessed grayscale decision:
+                // 0 clears our static color through the ROM's native no-color path.
+                call(view,"setStaticDrawableColor",0);
+                FeatureSettings.diagnostic(view.getContext(),"ls_augment_notification_native_tint_error",
+                        "native_handoff: grayscale dependency unavailable");
+            }
+        }finally{
+            if(nativeReturned){
+                state.owned=false;state.drawable.clear();state.colorKnown=false;
+                NATIVE_NOTIFICATION_ICONS.remove(view);
+            }
+            NATIVE_NOTIFICATION_REPLAY.set(previous);state.refreshing=false;
+        }
+    }
+    private static void notificationTintError(View view,ReflectiveOperationException error){
+        FeatureSettings.diagnosticError(view.getContext(),"ls_augment_notification_native_tint_error","native_notification_tint",error);
+    }
+    // END native notification tint lifecycle.
 
     private static Object nativeNotificationTemplateIcon(Object owner,Object[] args) {
         if(!(args[1] instanceof View)||!on(args[1],"notification_native"))return PASS;
@@ -192,8 +316,10 @@ final class RedMagicAdvancedUiHook {
         void update(String value,Object owner){
             View raw=view.get();if(!(raw instanceof LinearLayout))return;
             LinearLayout area=(LinearLayout)raw;TextView text=detail.get();
-            if(text==null){text=new TextView(area.getContext());text.setGravity(Gravity.CENTER);text.setIncludeFontPadding(false);text.setMaxLines(2);text.setShadowLayer(2,0,0,0x99000000);area.addView(text,new LinearLayout.LayoutParams(-1,-2));detail=new WeakReference<>(text);}
+            if(text==null){text=new TextView(area.getContext());text.setGravity(Gravity.CENTER);text.setIncludeFontPadding(false);text.setMaxLines(2);area.addView(text,new LinearLayout.LayoutParams(-1,-2));detail=new WeakReference<>(text);}
             Object nativeText=field(owner,"mLockScreenIndicationView");if(nativeText instanceof TextView)text.setTextColor(((TextView)nativeText).getTextColors());else text.setTextColor(0xffffffff);
+            // A soft opposing halo preserves the OEM color over mixed lockscreen wallpaper.
+            text.setShadowLayer(area.getResources().getDisplayMetrics().density,0,0,Color.luminance(text.getCurrentTextColor())<0.18f?0x99ffffff:0x99000000);
             text.setText(value);text.setTextSize(TypedValue.COMPLEX_UNIT_SP,FeatureSettings.integer(area.getContext(),P+"lock_charge_text_size",14,8,32));
             int gap=Math.round(FeatureSettings.integer(area.getContext(),P+"lock_charge_line_gap",2,0,40)*area.getResources().getDisplayMetrics().density);
             LinearLayout.LayoutParams own=(LinearLayout.LayoutParams)text.getLayoutParams();if(own.topMargin!=gap){own.topMargin=gap;text.setLayoutParams(own);}
@@ -222,6 +348,7 @@ final class RedMagicAdvancedUiHook {
     }
     private static void nativeFont(TextView view){
         FONT_TARGETS.put(view,Boolean.TRUE);
+        if(StatusBarAssetsHook.ownsFont(view)){StatusBarAssetsHook.applyFont(view,StatusBarAssetsHook.fontRole(view));return;}
         boolean preserve=RedMagicLegacyUiHook.preserveNativeAppearance(view);
         if(!preserve&&StatusBarGridHook.inBar(view)&&view.getClass().getSimpleName().equals("Clock")
                 &&FeatureSettings.enabled(view.getContext(),ConfigSchema.STATUSBAR_CLOCK_CUSTOM))return;
@@ -236,6 +363,7 @@ final class RedMagicAdvancedUiHook {
     private static int offset(Object owner,int original){if(original<=0)return original;int delta=FeatureSettings.integer(context(owner),P+"onehand_offset",0,-1000,1000);int result=original-delta;return result>0&&result<original*2.5?result:original;}
     private static boolean ancestor(View view,String name){for(View current=view;current!=null;current=current.getParent() instanceof View?(View)current.getParent():null)if(current.getClass().getSimpleName().contains(name))return true;return false;}
     private static boolean on(Object owner,String name){
+        if(name.equals("notification_native")&&NATIVE_NOTIFICATION_REPLAY.get())return false;
         if(RedMagicLegacyUiHook.positionSizeOnly(context(owner))&&(name.equals("ignore_system_icon_hide")
                 ||name.equals("hide_wifi_standard")||name.equals("notification_native")))return false;
         return FeatureSettings.enabled(context(owner),P+name);

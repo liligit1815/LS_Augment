@@ -18,6 +18,11 @@ EXPECTED_ACTION = 'android.service.quicksettings.action.QS_TILE'
 EXPECTED_LAUNCHER_ALIAS = 'ls.augment.com.LauncherAlias'
 EXPECTED_SETTINGS_ACTIVITY = 'ls.augment.com.SettingsActivity'
 MODULE_SETTINGS_CATEGORY = 'de.robv.android.xposed.category.MODULE_SETTINGS'
+EXPECTED_APP_PERMISSIONS = {
+    'android.permission.QUERY_ALL_PACKAGES',
+    'android.permission.RECEIVE_BOOT_COMPLETED',
+    'android.permission.INTERNET',  # Read-only contributors page.
+}
 
 
 def len8(buf: bytes, p: int):
@@ -144,15 +149,15 @@ def main():
     categories = [value(attrs, 'name') for tag, attrs in starts if tag == 'category']
     assert MODULE_SETTINGS_CATEGORY in categories, 'LSPosed module settings category missing'
     permissions = [value(attrs, 'name') for tag, attrs in starts if tag == 'uses-permission']
-    assert 'android.permission.INTERNET' not in permissions, \
-        'unexpected INTERNET permission; user analytics/cloud collection is disabled'
+    assert set(permissions) == EXPECTED_APP_PERMISSIONS, \
+        'compiled application permission set mismatch: ' + repr(permissions)
 
     print('Binary manifest checks: OK')
     print('tile_service_permission=' + EXPECTED_PERMISSION)
     print('tile_service_exported=true')
     print('qs_tile_action=' + EXPECTED_ACTION)
     print('launcher_alias=' + EXPECTED_LAUNCHER_ALIAS)
-    print('internet_permission=false')
+    print('internet_permission=true (contributors page)')
 
 if __name__ == '__main__':
     main()

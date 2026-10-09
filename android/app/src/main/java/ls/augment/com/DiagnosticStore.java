@@ -7,12 +7,13 @@ import java.io.File;
 
 final class DiagnosticStore {
     static synchronized Bundle record(Context context,Bundle extras) {
-        Bundle result=new Bundle();if(extras==null)return result;
+        Bundle result=new Bundle();if(extras==null||ResetWriteFence.blocked())return result;
         try{
             int pid=Binder.getCallingPid(),uid=Binder.getCallingUid();
             String raw=extras.getString("snapshot","");if(raw.length()>256*1024)return result;
             JSONObject snapshot=new JSONObject(raw);if(snapshot.getInt("pid")!=pid)return result;
-            snapshot.put("sourceUid",uid).put("receivedAt",System.currentTimeMillis());
+            snapshot.put("sourceUid",uid).put("receivedAt",System.currentTimeMillis())
+                    .put("receivedBoot",RuntimeEnvironment.bootCount(context));
             android.content.SharedPreferences prefs=context.getSharedPreferences("hook-processes",0);
             android.content.SharedPreferences.Editor editor=prefs.edit();
             if(prefs.getAll().size()>64){String oldest=null;long time=Long.MAX_VALUE;for(java.util.Map.Entry<String,?> e:prefs.getAll().entrySet())try{long at=new JSONObject(e.getValue().toString()).optLong("receivedAt");if(at<time){time=at;oldest=e.getKey();}}catch(Exception ignored){}if(oldest!=null)editor.remove(oldest);}

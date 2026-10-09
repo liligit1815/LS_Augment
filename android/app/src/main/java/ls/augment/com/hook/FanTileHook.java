@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -23,6 +24,9 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import ls.augment.com.ConfigSchema;
+import ls.augment.com.ConfigSnapshot;
+import ls.augment.com.FanCalibrationData;
+import ls.augment.com.FanTilePolicy;
 
 /** Extends only the OEM fan detail. Hardware commands remain in the fan process. */
 final class FanTileHook {
@@ -35,6 +39,7 @@ final class FanTileHook {
     });
     private static final String[] NAMES = {"一", "二", "三", "四", "五"};
     private static final java.util.Map<Object, Runnable> TILE_LISTENERS = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static final java.util.Map<Object, TileLabel> TILE_LABELS = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private FanTileHook() { }
 
     static int install(AugmentModule module, ClassLoader loader) {
@@ -55,7 +60,8 @@ final class FanTileHook {
                                     panel = new Panel(root);
                                     root.setTag(TAG, panel);
                                 }
-                                if (panel != null) panel.render();
+                                if (panel != null) panel.onNativeUpdated(name,
+                                        "updateSwitchVisibility".equals(name) ? Boolean.TRUE.equals(chain.getArg(0)) : null);
                             } catch (Throwable e) { module.logFeatureError("FAN_TILE_VIEW", e); }
                         }
                         return result;
@@ -66,7 +72,8 @@ final class FanTileHook {
             Method click = type.getDeclaredMethod("onClick", View.class);
             module.registerFeatureHook(module.prepareFeatureHook(click, "fan.tile.native_mode", true).intercept(chain -> {
                 Panel panel = panel((View) chain.getThisObject());
-                if (panel == null || panel.bypass) return chain.proceed();
+                if (panel == null || panel.bypass || !panel.isEnhanced()
+                        || !panel.snapshot.getBoolean("supported")) return chain.proceed();
                 View target = (View) chain.getArg(0);
                 if (target != panel.first && target != panel.second) return chain.proceed();
                 panel.select(0, () -> {
@@ -104,11 +111,25 @@ final class FanTileHook {
                     try {
                         Context context = (Context) field(chain.getThisObject(), "mContext");
                         Object state = chain.getArg(0);
-                        if (Boolean.TRUE.equals(field(state, "value"))
+                        Field labelField = findField(state.getClass(), "label");
+                        Object nativeLabel = labelField.get(state);
+                        TileLabel previous = TILE_LABELS.get(state);
+                        boolean updated = false;
+                        if (enhancementRequested(context) && Boolean.TRUE.equals(field(state, "value"))
                                 && FeatureSettings.enabled(context, ConfigSchema.GAME_MASTER, false)
                                 && FeatureSettings.enabled(context, ConfigSchema.FAN_FIXED_ENABLED, false)) {
-                            int level = FeatureSettings.integer(context, ConfigSchema.FAN_FIXED_LEVEL, 0, 0, 5);
-                            if (level > 0) findField(state.getClass(), "label").set(state, "固定" + NAMES[level - 1] + "档");
+                            int level = FeatureSettings.integer(context, ConfigSchema.FAN_FIXED_LEVEL, 1, 1, 5);
+                            if (level > 0) {
+                                String label = "固定" + NAMES[level - 1] + "档";
+                                if (previous != null && previous.enhanced.equals(nativeLabel)) nativeLabel = previous.nativeLabel;
+                                TILE_LABELS.put(state, new TileLabel(nativeLabel, label));
+                                labelField.set(state, label); updated = true;
+                            }
+                        }
+                        if (!updated && previous != null) {
+                            TILE_LABELS.remove(state);
+                            // Some OEM versions retain the previous label when only config changes.
+                            if (previous.enhanced.equals(nativeLabel)) labelField.set(state, previous.nativeLabel);
                         }
                     } catch (Throwable e) { module.logFeatureError("FAN_TILE_LABEL", e); }
                     return result;
@@ -121,6 +142,15 @@ final class FanTileHook {
     }
 
     private static Panel panel(View root) { Object p = root.getTag(TAG); return p instanceof Panel ? (Panel) p : null; }
+    private static final class TileLabel {
+        final Object nativeLabel;
+        final String enhanced;
+        TileLabel(Object nativeLabel, String enhanced) { this.nativeLabel = nativeLabel; this.enhanced = enhanced; }
+    }
+    private static boolean enhancementRequested(Context context) {
+        return FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
+                && FeatureSettings.enabled(context, ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED, false);
+    }
     private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
         for (Class<?> at = type; at != null; at = at.getSuperclass()) {
             try { Field f = at.getDeclaredField(name); f.setAccessible(true); return f; }
@@ -133,38 +163,47 @@ final class FanTileHook {
     private static final class Panel implements View.OnAttachStateChangeListener {
         final ViewGroup root;
         final Context context;
+        final LinearLayout container;
+        final View emptyDescription;
         final CheckedTextView first, second, fixed;
         final LinearLayout extra;
         final TextView chosenLevel, status;
         final TextView[] ticks = new TextView[5];
         final SeekBar slider;
         final Runnable poll = this::read;
+        final Runnable configurationListener = this::configurationChanged;
         final Rect backgroundBounds = new Rect();
+        final java.util.Map<android.graphics.drawable.Drawable, Rect> nativeBackgroundBounds = new java.util.WeakHashMap<>();
         final android.view.ViewTreeObserver.OnPreDrawListener resizeBackground = () -> { resizeNativeBackground(); return true; };
         Bundle snapshot = new Bundle();
-        boolean reading, sending, bypass, dragging;
+        boolean reading, sending, bypass, dragging, requested, enhanced, restoring;
+        boolean nativeFirstChecked, nativeSecondChecked;
+        boolean nativeSwitchOn;
+        int nativeContainerHeight, nativeRootHeight;
+        int nativeContainerVisibility, nativeEmptyVisibility, nativeFirstVisibility, nativeSecondVisibility;
         int generation;
         int pending = -1;
         long pendingSince;
+        long configurationRevision = -1;
 
         Panel(ViewGroup root) throws ReflectiveOperationException {
             this.root = root; context = root.getContext();
             first = (CheckedTextView) field(root, "mModeCheck1");
             second = (CheckedTextView) field(root, "mModeCheck2");
-            LinearLayout container = (LinearLayout) field(root, "mEditContainer");
-            // The OEM XML uses match_parent even though its original content is two rows.
-            ViewGroup.LayoutParams cp = container.getLayoutParams(); cp.height = ViewGroup.LayoutParams.WRAP_CONTENT; container.setLayoutParams(cp);
-            ViewGroup.LayoutParams rp = root.getLayoutParams(); if (rp != null) { rp.height = ViewGroup.LayoutParams.WRAP_CONTENT; root.setLayoutParams(rp); }
+            container = (LinearLayout) field(root, "mEditContainer");
+            emptyDescription = (View) field(root, "mEmptyDesc");
+            nativeSwitchOn = container.getVisibility() == View.VISIBLE;
+            captureNativeVisibility();
+            captureNativeChecks();
             fixed = new CheckedTextView(context);
-            fixed.setText("固定档位"); fixed.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, first.getTextSize());
+            fixed.setText("固定转速"); fixed.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, first.getTextSize());
             fixed.setTypeface(first.getTypeface()); fixed.setGravity(first.getGravity());
             // CheckedTextView.getPaddingRight includes its checkmark width. Copying it
             // would count that width twice and shift the third radio to the left.
             fixed.setPadding(first.getPaddingLeft(), first.getPaddingTop(), 0, first.getPaddingBottom());
             fixed.setMinHeight(dp(48)); fixed.setFocusable(true);
-            fixed.setContentDescription("固定档位");
+            fixed.setContentDescription("固定转速");
             fixed.setOnClickListener(v -> select(snapshot.getInt("rememberedLevel", 1), null));
-            container.addView(fixed, new LinearLayout.LayoutParams(-1, first.getLayoutParams().height));
             extra = new LinearLayout(context); extra.setOrientation(LinearLayout.VERTICAL);
             extra.setPadding(0, 0, 0, dp(10));
             chosenLevel = text("一档", 14); chosenLevel.setGravity(Gravity.CENTER);
@@ -202,27 +241,150 @@ final class FanTileHook {
                 ticks[i] = tick; tickRow.addView(tick, new LinearLayout.LayoutParams(0, -2, 1));
             }
             extra.addView(tickRow, new LinearLayout.LayoutParams(-1, -2));
-            container.addView(extra, new LinearLayout.LayoutParams(-1, -2));
             status = text("正在读取实际档位…", 12); status.setMinLines(2); status.setPadding(0, dp(8), 0, dp(12));
             status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_NONE);
-            container.addView(status, new LinearLayout.LayoutParams(-1, -2));
             root.addOnAttachStateChangeListener(this);
             if (root.isAttachedToWindow()) onViewAttachedToWindow(root);
         }
         int dp(float value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
         TextView text(String value, float sp) { TextView view = new TextView(context); view.setText(value); view.setTextSize(sp); return view; }
         @Override public void onViewAttachedToWindow(View view) {
-            generation++; MAIN.removeCallbacks(poll); MAIN.post(poll);
-            root.getViewTreeObserver().removeOnPreDrawListener(resizeBackground);
-            root.getViewTreeObserver().addOnPreDrawListener(resizeBackground);
+            generation++; reading = false; sending = false;
+            FeatureSettings.addSnapshotListener(context, configurationListener);
+            configurationChanged();
         }
         @Override public void onViewDetachedFromWindow(View view) {
-            generation++; MAIN.removeCallbacks(poll);
-            if (root.getViewTreeObserver().isAlive()) root.getViewTreeObserver().removeOnPreDrawListener(resizeBackground);
+            generation++; reading = false; sending = false;
+            MAIN.removeCallbacks(poll);
+            FeatureSettings.removeSnapshotListener(configurationListener);
+            setEnhanced(false);
+        }
+
+        void captureNativeChecks() {
+            nativeFirstChecked = first.isChecked(); nativeSecondChecked = second.isChecked();
+        }
+
+        void captureNativeVisibility() {
+            nativeContainerVisibility = container.getVisibility();
+            nativeEmptyVisibility = emptyDescription.getVisibility();
+        }
+
+        void onNativeUpdated(String method, Boolean switchOn) {
+            if (switchOn != null) {
+                nativeSwitchOn = switchOn;
+                captureNativeVisibility();
+            } else if (!enhanced) captureNativeVisibility();
+            if (restoring) return;
+            if (!enhanced || "updatePanel".equals(method)
+                    || first.isChecked() || second.isChecked()) captureNativeChecks();
+            reconcileRequested();
+            if (enhanced) render();
+        }
+
+        void reconcileRequested() {
+            ConfigSnapshot config = FeatureSettings.snapshot(context);
+            boolean next = FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
+                    && "1".equals(config.get(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED));
+            boolean changed = next != requested;
+            if (changed) {
+                requested = next; generation++; reading = false; sending = false;
+                pending = -1; dragging = false;
+                MAIN.removeCallbacks(poll);
+                if (!requested) { snapshot = new Bundle(); configurationRevision = -1; }
+            }
+            boolean configurationChanged = requested && seedConfiguration(config);
+            // QSDetail reuses its view. Detach removes our rows without changing the
+            // saved request, so attach must restore them before any telemetry reply.
+            boolean remount = enhanced != requested;
+            setEnhanced(requested);
+            if (requested && (changed || configurationChanged || remount)) {
+                render();
+                if (root.isAttachedToWindow()) { MAIN.removeCallbacks(poll); MAIN.post(poll); }
+            }
+        }
+
+        boolean seedConfiguration(ConfigSnapshot config) {
+            if (configurationRevision == config.revision) return false;
+            configurationRevision = config.revision;
+            // This is an immutable, verified process cache. It only describes the
+            // saved choice; capability, write permission and applied state still
+            // require the provider response. No IPC or hardware read runs here.
+            Bundle initial = new Bundle();
+            int level = Integer.parseInt(config.get(ConfigSchema.FAN_FIXED_LEVEL));
+            initial.putInt("rememberedLevel", level);
+            initial.putInt("selected", "1".equals(config.get(ConfigSchema.GAME_MASTER))
+                    && "1".equals(config.get(ConfigSchema.FAN_FIXED_ENABLED)) ? level : 0);
+            initial.putString("request", config.get(ConfigSchema.FAN_TILE_REQUEST));
+            initial.putBoolean("measuring", FanCalibrationData.validRequest(
+                    config.get(ConfigSchema.FAN_CALIBRATION_REQUEST), System.currentTimeMillis()));
+            initial.putBoolean("manual", nativeSwitchOn);
+            initial.putInt("mode", nativeFirstChecked ? 1 : nativeSecondChecked ? 0 : -1);
+            initial.putBoolean("loading", true);
+            snapshot = initial;
+            return true;
+        }
+
+        void configurationChanged() {
+            reconcileRequested();
+            if (requested && root.isAttachedToWindow()) {
+                MAIN.removeCallbacks(poll); MAIN.post(poll);
+            }
+        }
+
+        boolean isEnhanced() {
+            reconcileRequested();
+            return enhanced && requested;
+        }
+
+        void setEnhanced(boolean enable) {
+            if (enhanced == enable) return;
+            enhanced = enable; generation++; reading = false; sending = false;
+            pending = -1; dragging = false;
+            if (enable) {
+                captureNativeChecks();
+                captureNativeVisibility();
+                nativeFirstVisibility = first.getVisibility(); nativeSecondVisibility = second.getVisibility();
+                // Change OEM layout only while the independently enabled extension is visible.
+                ViewGroup.LayoutParams cp = container.getLayoutParams();
+                nativeContainerHeight = cp.height; cp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                container.setLayoutParams(cp);
+                ViewGroup.LayoutParams rp = root.getLayoutParams();
+                nativeRootHeight = rp == null ? ViewGroup.LayoutParams.WRAP_CONTENT : rp.height;
+                if (rp != null) { rp.height = ViewGroup.LayoutParams.WRAP_CONTENT; root.setLayoutParams(rp); }
+                container.addView(fixed, new LinearLayout.LayoutParams(-1, first.getLayoutParams().height));
+                container.addView(extra, new LinearLayout.LayoutParams(-1, -2));
+                container.addView(status, new LinearLayout.LayoutParams(-1, -2));
+                root.getViewTreeObserver().removeOnPreDrawListener(resizeBackground);
+                root.getViewTreeObserver().addOnPreDrawListener(resizeBackground);
+            } else {
+                container.removeView(fixed); container.removeView(extra); container.removeView(status);
+                first.setVisibility(nativeFirstVisibility); second.setVisibility(nativeSecondVisibility);
+                ViewGroup.LayoutParams cp = container.getLayoutParams(); cp.height = nativeContainerHeight;
+                container.setLayoutParams(cp);
+                ViewGroup.LayoutParams rp = root.getLayoutParams();
+                if (rp != null) { rp.height = nativeRootHeight; root.setLayoutParams(rp); }
+                if (root.getViewTreeObserver().isAlive()) root.getViewTreeObserver().removeOnPreDrawListener(resizeBackground);
+                for (java.util.Map.Entry<android.graphics.drawable.Drawable, Rect> original : nativeBackgroundBounds.entrySet())
+                    original.getKey().setBounds(original.getValue());
+                nativeBackgroundBounds.clear();
+                restoring = true;
+                try {
+                    // Restore the latest OEM switch state using the real method signature.
+                    Method update = root.getClass().getDeclaredMethod("updateSwitchVisibility", boolean.class);
+                    update.setAccessible(true); update.invoke(root, nativeSwitchOn);
+                } catch (ReflectiveOperationException unavailable) {
+                    container.setVisibility(nativeContainerVisibility);
+                    emptyDescription.setVisibility(nativeEmptyVisibility);
+                } finally {
+                    first.setChecked(nativeFirstChecked); second.setChecked(nativeSecondChecked);
+                    restoring = false;
+                }
+            }
+            root.requestLayout();
         }
 
         void resizeNativeBackground() {
-            if (!root.isShown()) return;
+            if (!isEnhanced() || !root.isShown()) return;
             for (android.view.ViewParent p = root.getParent(); p instanceof ViewGroup; p = p.getParent()) {
                 if (!"com.zte.mifavor.qs.QSDetail".equals(p.getClass().getName())) continue;
                 ViewGroup detail = (ViewGroup) p;
@@ -235,14 +397,19 @@ final class FanTileHook {
                     if (container == null || container.getWidth() == 0) return;
                     container.getDrawingRect(backgroundBounds);
                     detail.offsetDescendantRectToMyCoords(container, backgroundBounds);
-                    if (!background.getBounds().equals(backgroundBounds)) background.setBounds(backgroundBounds);
+                    if (!background.getBounds().equals(backgroundBounds)) {
+                        if (!nativeBackgroundBounds.containsKey(background))
+                            nativeBackgroundBounds.put(background, new Rect(background.getBounds()));
+                        background.setBounds(backgroundBounds);
+                    }
                 } catch (ReflectiveOperationException ignored) { }
                 return;
             }
         }
 
         void read() {
-            if (!root.isAttachedToWindow()) return;
+            reconcileRequested();
+            if (!requested || !root.isAttachedToWindow()) return;
             if (!root.isShown() || reading || sending) { schedule(); return; }
             reading = true; final int requestGeneration = generation;
             WORKER.execute(() -> {
@@ -251,33 +418,49 @@ final class FanTileHook {
                 catch (RuntimeException unavailable) { value = null; }
                 final Bundle result = value;
                 MAIN.post(() -> {
-                    reading = false;
                     if (requestGeneration != generation || !root.isAttachedToWindow()) return;
-                    if (result != null && result.getBoolean("ok")) snapshot = result;
-                    else snapshot = new Bundle();
+                    reading = false;
+                    if (result != null && result.getBoolean("ok")
+                            && result.getLong("revision", -1L) < configurationRevision) {
+                        // A config notification may arrive while telemetry is being
+                        // sampled. Keep the newer saved choice and refresh the data.
+                        MAIN.removeCallbacks(poll); MAIN.post(poll); return;
+                    }
+                    if (result != null && result.getBoolean("ok")) {
+                        snapshot = result;
+                        setEnhanced(requested && snapshot.getBoolean("enhancementEnabled"));
+                    } else {
+                        snapshot = new Bundle(snapshot);
+                        snapshot.putBoolean("loading", false);
+                        snapshot.putBoolean("ok", false); snapshot.putBoolean("supported", false);
+                    }
                     if (pending >= 0 && (snapshot.getInt("selected", -1) == pending
                             || SystemClock.elapsedRealtime() - pendingSince > 6000)) pending = -1;
                     render(); schedule();
                 });
             });
         }
-        void schedule() { MAIN.removeCallbacks(poll); if (root.isAttachedToWindow()) MAIN.postDelayed(poll, 1200); }
+        void schedule() { MAIN.removeCallbacks(poll); if (requested && root.isAttachedToWindow()) MAIN.postDelayed(poll, 1200); }
 
         void select(int level, Runnable nativeClick) {
-            if (sending) return;
+            if (!isEnhanced() || !snapshot.getBoolean("ok") || !snapshot.getBoolean("supported")
+                    || snapshot.getBoolean("measuring") || sending || !root.isAttachedToWindow()) return;
+            final int requestGeneration = generation;
+            final long revision = snapshot.getLong("revision", -1L);
             sending = true; render();
             WORKER.execute(() -> {
                 Bundle result;
                 try {
-                    Bundle args = new Bundle(); args.putInt("level", level);
+                    Bundle args = new Bundle(); args.putInt("level", level); args.putLong("revision", revision);
                     result = context.getContentResolver().call(PROVIDER, "fan_tile_select", null, args);
                 } catch (RuntimeException unavailable) { result = null; }
                 final Bundle reply = result;
                 MAIN.post(() -> {
+                    if (reply != null && reply.getBoolean("ok")) FeatureSettings.invalidateSnapshot();
+                    if (requestGeneration != generation || !root.isAttachedToWindow() || !isEnhanced()) return;
                     sending = false;
                     if (reply != null && reply.getBoolean("ok")) {
                         pending = level; pendingSince = SystemClock.elapsedRealtime();
-                        FeatureSettings.invalidateSnapshot();
                         if (nativeClick != null) nativeClick.run();
                     } else Toast.makeText(context, reply == null ? "风扇控制暂时不可用" : reply.getString("message", "风扇档位未保存"), Toast.LENGTH_SHORT).show();
                     render(); MAIN.removeCallbacks(poll); MAIN.post(poll);
@@ -286,6 +469,7 @@ final class FanTileHook {
         }
 
         void render() {
+            if (!isEnhanced()) return;
             int selected = pending >= 0 ? pending : snapshot.getInt("selected", 0);
             boolean supported = snapshot.getBoolean("supported");
             boolean fresh = snapshot.getBoolean("hardwareValid") && SystemClock.elapsedRealtime() - snapshot.getLong("sampledAt") < 5000;
@@ -298,8 +482,8 @@ final class FanTileHook {
             android.graphics.drawable.Drawable check = first.getCheckMarkDrawable();
             if (check != null && check.getConstantState() != null)
                 fixed.setCheckMarkDrawable(check.getConstantState().newDrawable(context.getResources()).mutate());
-            fixed.setChecked(selected > 0 || snapshot.getBoolean("fixedRpm"));
-            fixed.setEnabled(supported && enabled && !sending && !snapshot.getBoolean("measuring"));
+            fixed.setChecked(selected > 0);
+            fixed.setEnabled(snapshot.getBoolean("ok") && supported && enabled && !sending && !snapshot.getBoolean("measuring"));
             fixed.setAlpha(fixed.isEnabled() ? 1f : .45f);
             extra.setVisibility(fixed.isChecked() ? View.VISIBLE : View.GONE);
             slider.setEnabled(fixed.isEnabled());
@@ -308,10 +492,15 @@ final class FanTileHook {
             int displayLevel = selected > 0 ? selected : Math.max(1, Math.min(5, snapshot.getInt("level", 1)));
             if (!dragging) slider.setProgress(displayLevel - 1);
             for (int i = 0; i < 5; i++) { ticks[i].setTextColor(selected == i + 1 ? accent : foreground); ticks[i].setAlpha(selected == i + 1 ? 1f : .6f); }
-            if (selected > 0 || snapshot.getBoolean("fixedRpm")) { first.setChecked(false); second.setChecked(false); }
-            else { first.setChecked(snapshot.getInt("mode", 1) == 1); second.setChecked(snapshot.getInt("mode", 1) == 0); }
+            if (selected > 0) { first.setChecked(false); second.setChecked(false); }
+            else {
+                int mode = snapshot.getInt("mode", -1);
+                first.setChecked(mode < 0 ? nativeFirstChecked : mode == 1);
+                second.setChecked(mode < 0 ? nativeSecondChecked : mode == 0);
+            }
             String detail;
-            if (!snapshot.getBoolean("ok")) detail = "正在读取实际档位…";
+            if (snapshot.getBoolean("loading")) detail = "正在读取实际档位和转速…";
+            else if (!snapshot.getBoolean("ok")) detail = "风扇控制暂时不可用，请稍后重试";
             else if (!supported) detail = "此机型尚未验证固定一至五档";
             else if (snapshot.getBoolean("measuring")) detail = "正在测量转速，暂不能切换档位";
             else if (!fresh) detail = "实际档位和转速暂时不可用";
@@ -324,9 +513,9 @@ final class FanTileHook {
                 boolean applied = fresh && snapshot.getInt("enabled") == 1 && snapshot.getInt("level") == selected
                         && control.startsWith("controlled;") && control.contains(";level=" + selected + ";")
                         && control.contains(";selection=" + snapshot.getString("request", "") + ";");
-                state = "固定" + NAMES[selected - 1] + "档 · " + (applied ? "已生效"
+                state = "固定" + NAMES[selected - 1] + "档 · " + (snapshot.getBoolean("loading") ? "正在读取状态" : applied ? "已生效"
                         : control.startsWith("locked;") ? "已暂停，请重新选择" : !enabled ? "等待开启" : "切换中");
-            } else state = snapshot.getBoolean("fixedRpm") ? "按目标转速匹配档位" : "跟随原厂散热模式";
+            } else state = "跟随原厂散热模式";
             status.setText(detail + "\n" + state);
         }
     }

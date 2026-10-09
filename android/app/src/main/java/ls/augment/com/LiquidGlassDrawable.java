@@ -33,6 +33,8 @@ public final class LiquidGlassDrawable extends Drawable {
         default boolean isValid(){return true;}
         /** Stable generation for unchanged pixels, or -1 for an unversioned source. */
         default long revision(){return -1;}
+        /** True only when the source maps the current local scale into verified backdrop coordinates. */
+        default boolean mapsLocalScale(){return false;}
     }
 
     private final WeakReference<View> host;
@@ -95,7 +97,7 @@ public final class LiquidGlassDrawable extends Drawable {
         if(released){ready=false;failure="released";return false;}
         if(failed){ready=false;return false;}
         if(view==null||!view.isAttachedToWindow()||!view.isHardwareAccelerated()
-                ||b.width()<=0||b.height()<=0||!validHost(view)){ready=false;revealStartedAt=-1;failure="host_unavailable";return false;}
+                ||b.width()<=0||b.height()<=0||!validOpticalHost(view)){ready=false;revealStartedAt=-1;failure="host_unavailable";return false;}
         long now=SystemClock.uptimeMillis();
         if(now-lastAccessibilityRead>1000){
             lastAccessibilityRead=now;
@@ -157,7 +159,7 @@ public final class LiquidGlassDrawable extends Drawable {
     @Override public void draw(Canvas canvas) {
         if(!isReady()||!canvas.isHardwareAccelerated())return;
         View view=host.get();
-        if(view==null||!view.isAttachedToWindow()||!validHost(view)
+        if(view==null||!view.isAttachedToWindow()||!validOpticalHost(view)
                 ||(!reduceTransparency&&!source.isValid())){ready=false;revealStartedAt=-1;failure="backdrop_or_host_unavailable";return;}
         Rect b=getBounds();if(b.isEmpty())return;
         int save=canvas.save();canvas.translate(b.left,b.top);
@@ -267,6 +269,11 @@ public final class LiquidGlassDrawable extends Drawable {
         android.view.ViewGroup.LayoutParams params=view.getRootView().getLayoutParams();
         return !(params instanceof WindowManager.LayoutParams)
                 ||((((WindowManager.LayoutParams)params).flags&WindowManager.LayoutParams.FLAG_SECURE)==0);
+    }
+    private boolean validOpticalHost(View view){
+        // The compositor source still validates its own unscaled capture host. Only
+        // explicitly mapped control-local transforms may use a scaled optical canvas.
+        return controlSurface&&source.mapsLocalScale()?validFallbackHost(view):validHost(view);
     }
     @Override protected void onBoundsChange(Rect bounds){sampledAt=0;ready=false;revealStartedAt=-1;}
     @Override public void setAlpha(int value){alpha=Math.max(0,Math.min(255,value));redraw();}

@@ -136,21 +136,13 @@ public final class HideAppsActivity extends Activity {
     }
 
     private void build() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(ui.backgroundDrawable());
-        root.setPadding(0, ui.topAppInset(), 0, 0);
-
-        LinearLayout header = ui.header("消失吧APP", true);
-        header.setPadding(ui.dp(10), ui.dp(4), ui.dp(12), ui.dp(2));
-        ScopeRestartDialog.addButton(this, ui, header, ScopeRestartDialog.SETTINGS);
-        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout root=ui.detailChrome("应用管理",ScopeRestartDialog.SETTINGS);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(ui.dp(14), ui.dp(8), ui.dp(14), ui.dp(20));
+        page.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(32));
         scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -181,13 +173,13 @@ public final class HideAppsActivity extends Activity {
         automationCard.addView(switchRow("锁屏自动隐藏", "由 LSPosed 监听锁屏，自动隐藏“应用隐藏”中已保存的应用；需同时开启应用隐藏。",
                 automationEnabled = new Switch(this), config.getBoolean(AppConfig.AUTOMATION_ENABLED)), ui.wrap());
         automationCard.addView(automationPanel, ui.margins(0, 10, 0, 0));
-        page.addView(automationCard, ui.margins(0, 0, 0, 10));
+
 
         LinearLayout tileCard = ui.card();
         tileCard.addView(switchRow("快捷磁贴", "在快捷设置中隐藏或显示应用，可自定义磁贴图片、名称和说明。关闭后磁贴停止操作应用。",
                 tileEnabled = new Switch(this), config.getBoolean(AppConfig.TILE_ENABLED)), ui.wrap());
         tileCard.addView(tilePanel, ui.margins(0, 10, 0, 0));
-        page.addView(tileCard, ui.margins(0, 0, 0, 10));
+
 
         hideAllButton = ui.accentButton("全部隐藏");
         showAllButton = ui.button("全部显示");
@@ -213,7 +205,7 @@ public final class HideAppsActivity extends Activity {
         appsExpand.setImageResource(R.drawable.ic_expand_more);
         appsExpand.setColorFilter(ui.accent);
         appsExpand.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 12)));
-        appsHeading.addView(appsExpand, new LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)));
+        appsHeading.addView(appsExpand, new LinearLayout.LayoutParams(ui.dp(25), ui.dp(44)));
         apps.addView(appsHeading, ui.wrap());
         appConfigBody = new LinearLayout(this);
         appConfigBody.setOrientation(LinearLayout.VERTICAL);

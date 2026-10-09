@@ -80,6 +80,8 @@ files['com/zte/feature/globalaction/GlobalAnimationUtils.java']='package com.zte
 files['com/zte/feature/globalaction/MfvGlobalActionsDialog.java']=files['com/zte/feature/globalaction/MfvGlobalActionsDialog.java'].replace('public int calls;', 'public GlobalAnimationUtils mGlobalAnim=new GlobalAnimationUtils();public void startVisiableAnim(){mGlobalAnim.nativeStarted=true;}public int calls;').replace('public void startUnSelectedAnim(){}','public void startUnSelectedAnim(){mGlobalAnim.nativeStarted=true;}')
 files['ls/augment/com/hook/TestPowerMenu.java']=files['ls/augment/com/hook/TestPowerMenu.java'].replace(' ViewGroup action=button(d,0);', ' check(rows(d).visibility==View.INVISIBLE&&d.mGlobalAnim.starts==0,"init never reveals extras before native entrance");AugmentModule.call(d,MFVActionsDialog.class,"startVisiableAnim",new Class[]{});check(rows(d).visibility==View.VISIBLE&&d.mGlobalAnim.starts==4,"four actions use native entrance during the same UI dispatch");ViewGroup action=button(d,0);').replace('check(labels[i].equals', 'check(((PowerModeIconDrawable)NativePowerActionFactory.find(button(d,i),ImageView.class).getDrawable()).mode.equals(labels[i]),"distinct glyph for each mode");check(labels[i].equals')
 files['ls/augment/com/hook/PowerMenuModesHook.java']=(SRC/'hook/PowerMenuModesHook.java').read_text(encoding='utf-8')
+# The independent OEM lifecycle repair has its own framework-shaped regression harness.
+files['ls/augment/com/hook/PowerMenuLifecycleHook.java']='package ls.augment.com.hook;class PowerMenuLifecycleHook{static void install(AugmentModule m,ClassLoader l){}}'
 with tempfile.TemporaryDirectory(prefix='lsa-power-modes-') as temp:
  sources=[]
  for name,source in files.items():

@@ -3,14 +3,16 @@ package ls.augment.com;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Presets own only layout keys. OEM behaviours and unrelated settings survive. */
+/** One-time layout and appearance choices; later edits are never constrained by a preset. */
 final class StatusBarPresets {
     static final String[] NAMES={"原生简洁","双排信息","性能监控"};
     static final String[] DESCRIPTIONS={
-        "保留系统原生时钟与图标，只整理位置；暂停自定义硬件信息。",
+        "单排原生时钟与图标，关闭双排信号、自定义蓝牙样式和硬件信息；应用后可自由修改。",
         "双排日期时钟、通知、网速与三合一电池，隐藏硬件读数。",
         "单排时钟，第二排集中显示温度、电流和功率，保留通知与网速。"};
     private StatusBarPresets(){}
+    static boolean ownsRelatedKey(String key){return SystemUiOptions.SIGNAL_DUAL.equals(key)
+            ||(SystemUiOptions.PREFIX+"statusbar_hide").equals(key);}
     static StatusBarGridSpec arrange(StatusBarGridSpec source){
         String[] zones={"L1","L1","R1","RS","L2","L2","L2","R2","R2","R2"};
         int[] orders={0,10,0,90,20,30,40,10,20,30};
@@ -26,7 +28,11 @@ final class StatusBarPresets {
         if(preset<0||preset>=NAMES.length)throw new IllegalArgumentException("preset");
         Map<String,String> values=new LinkedHashMap<>();
         values.put(ConfigSchema.SYSTEMUI_MASTER,"1");
-        values.put(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY,preset==0?"1":"0");
+        values.put(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY,"0");
+        values.put(SystemUiOptions.SIGNAL_DUAL,"0");
+        values.put(SystemUiOptions.PREFIX+"statusbar_hide","0");
+        values.put(ConfigSchema.STATUSBAR_NATIVE_BATTERY_ENABLED,"0");
+        if(preset==0)values.put(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE,"0");
         values.put(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,"2");
         for(String key:new String[]{ConfigSchema.STATUSBAR_HEIGHT_DP,ConfigSchema.STATUSBAR_LEFT_MARGIN_DP,ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP,ConfigSchema.STATUSBAR_TOP_MARGIN_DP,ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP})values.put(key,"0");
         values.put(ConfigSchema.STATUSBAR_CLOCK_ROWS,preset==1?"2":"1");

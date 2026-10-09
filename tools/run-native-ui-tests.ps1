@@ -7,7 +7,13 @@ $taskSources=@('EnhancementOption','EnhancementCatalog','SystemOptions','SystemU
 $taskSources+=Join-Path $PSScriptRoot 'TestNativeFeatureGroups.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestHiddenEntrySession.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestLauncherEditQueue.java'
-& javac -encoding UTF-8 --release 17 -d $taskClasses @taskSources
+$taskSources+=Join-Path $taskJava 'ModuleHierarchy.java'
+$taskSources+=Join-Path $taskJava 'BrightnessRange.java'
+$taskSources+=Join-Path $taskJava 'LauncherGridSpec.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestModuleHierarchy.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestModuleFeatureSearch.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestStatusBarIconLayout.java'
+& javac -encoding UTF-8 --release 17 -sourcepath (Join-Path $taskRoot 'android/app/src/main/java') -d $taskClasses @taskSources
 if($LASTEXITCODE -ne 0){throw 'Native UI policy tests did not compile'}
 & java -cp $taskClasses ls.augment.com.TestNativeFeatureGroups
 if($LASTEXITCODE -ne 0){throw 'Native feature group checks failed'}
@@ -15,3 +21,9 @@ if($LASTEXITCODE -ne 0){throw 'Native feature group checks failed'}
 if($LASTEXITCODE -ne 0){throw 'Hidden entry checks failed'}
 & java -cp $taskClasses ls.augment.com.TestLauncherEditQueue
 if($LASTEXITCODE -ne 0){throw 'Launcher draft checks failed'}
+& java -cp $taskClasses ls.augment.com.TestModuleHierarchy
+if($LASTEXITCODE -ne 0){throw 'Module hierarchy checks failed'}
+& java -cp $taskClasses ls.augment.com.TestModuleFeatureSearch
+if($LASTEXITCODE -ne 0){throw 'Module feature search checks failed'}
+& java -cp $taskClasses ls.augment.com.TestStatusBarIconLayout
+if($LASTEXITCODE -ne 0){throw 'Status bar icon layout policy checks failed'}

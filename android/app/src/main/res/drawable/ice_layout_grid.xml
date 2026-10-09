@@ -1,0 +1,7 @@
+<!-- Lucide icons, ISC license. Generated from installed lucide-react; geometry unmodified. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+<path android:pathData="M4.0,3.0 H9.0 Q10.0,3.0 10.0,4.0 V9.0 Q10.0,10.0 9.0,10.0 H4.0 Q3.0,10.0 3.0,9.0 V4.0 Q3.0,3.0 4.0,3.0 Z" android:fillColor="#00000000" android:strokeColor="#FF1F74C5" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+<path android:pathData="M15.0,3.0 H20.0 Q21.0,3.0 21.0,4.0 V9.0 Q21.0,10.0 20.0,10.0 H15.0 Q14.0,10.0 14.0,9.0 V4.0 Q14.0,3.0 15.0,3.0 Z" android:fillColor="#00000000" android:strokeColor="#FF1F74C5" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+<path android:pathData="M15.0,14.0 H20.0 Q21.0,14.0 21.0,15.0 V20.0 Q21.0,21.0 20.0,21.0 H15.0 Q14.0,21.0 14.0,20.0 V15.0 Q14.0,14.0 15.0,14.0 Z" android:fillColor="#00000000" android:strokeColor="#FF1F74C5" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+<path android:pathData="M4.0,14.0 H9.0 Q10.0,14.0 10.0,15.0 V20.0 Q10.0,21.0 9.0,21.0 H4.0 Q3.0,21.0 3.0,20.0 V15.0 Q3.0,14.0 4.0,14.0 Z" android:fillColor="#00000000" android:strokeColor="#FF1F74C5" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>

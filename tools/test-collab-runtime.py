@@ -11,6 +11,7 @@ files = {
 public class Context {public android.content.res.Resources getResources(){return new android.content.res.Resources();}public ClassLoader getClassLoader(){return getClass().getClassLoader();}public String getPackageName(){return "com.zte.beautify";}}
 """,
     "android/os/Build.java": "package android.os;public class Build{public static String DEVICE=\"NX809J\",MODEL=\"NX809J\";}",
+    "android/os/Bundle.java": "package android.os;public class Bundle {}",
     "android/content/res/Resources.java": "package android.content.res;public class Resources {public int getIdentifier(String n,String t,String p){return 99;}public String getString(int id){return \"native\";}public CharSequence getText(int id){return \"native\";}}",
     "android/graphics/Bitmap.java": "package android.graphics;public class Bitmap {}",
     "android/graphics/BitmapFactory.java": """package android.graphics;
@@ -50,6 +51,7 @@ public class AugmentModule {public static AugmentModule active;public static fin
     "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;
 import java.util.*;import android.content.Context;
 class FeatureSettings {static Context current=new Context();static final Map<String,String> values=new HashMap<>(),diagnostics=new HashMap<>();
+ static boolean verified=true;static boolean hasVerifiedSnapshot(Context c){return verified;}
  static final Map<String,Integer> writes=new HashMap<>();
  static boolean enabled(Context c,String key){return "1".equals(values.get(key));}
  static int integer(Context c,String key,int fallback,int min,int max){return Math.max(min,Math.min(max,Integer.parseInt(values.getOrDefault(key,""+fallback))));}

@@ -43,6 +43,8 @@ final class StatusBarWindowSizingHook {
                     if(nativeCall||!WINDOW_DIMENSION.get())return original;
                     if(!FeatureSettings.enabled(c,ConfigSchema.SYSTEMUI_MASTER))return original;
                     int height=FeatureSettings.integer(c,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP);
+                    // Component layout never changes the application inset;
+                    // only the explicit status-bar height setting does.
                     return ConfigSchema.statusBarHeightPx(original,height,c.getResources().getDisplayMetrics().density);
                 }));installed++;
             }

@@ -4,6 +4,8 @@ import android.app.*;
 import android.content.Intent;
 import android.os.*;
 import android.text.*;
+import android.view.*;
+import android.content.res.ColorStateList;
 import android.widget.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -12,7 +14,7 @@ import java.util.concurrent.*;
 
 final class HealthEditorController extends NativeEditorController {
     HealthEditorController(Activity owner,String route,boolean embedded){super(owner,route,embedded);}
-    private UiKit ui;private AppConfig config;private TextView accountView,preview,backgroundView;
+    private UiKit ui;private AppConfig config;private TextView accountView,accountHint,accountAction,preview,rate,planSummary;
     private Switch multiplyEnabled,planEnabled,dailyLimitEnabled;private SeekBar multiplier;
     private EditText executions,steps,dailyLimitSteps;private Button fromButton,toButton;
     private final CheckBox[] days=new CheckBox[7];
@@ -20,72 +22,113 @@ final class HealthEditorController extends NativeEditorController {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private String bound="",planId=UUID.randomUUID().toString().replace("-","");
     private long seed=new Random().nextLong(),generation,queuedGeneration=-1;private LocalDate date=LocalDate.now();
-    private int from=540,to=1080,pendingSaves;private boolean loading=true,dirty,planDraftChanged,resumed;
+    private int from=540,to=1080,pendingSaves;private boolean loading=true,dirty,planDraftChanged,resumed,invalidDraft;
     private final Map<String,String> queuedValues=new LinkedHashMap<>();
-    private UiKit.Fold multiplyFold,planFold,dailyLimitFold;
+    private View planDetails;private LinearLayout planBody;
+    private UiKit.Fold multiplyFold,planFold,limitFold;
+    private boolean revertingToggle,awaitingBinding,bindingDialogVisible;private long bindingRequestedAt;
     private final Runnable autoSave=()->save();
-    private final Runnable statusRefresh=new Runnable(){public void run(){if(!resumed)return;showBackground();main.postDelayed(this,2000);}};
+    private final Runnable statusRefresh=new Runnable(){public void run(){if(!resumed)return;showAccount();checkPendingBinding();main.postDelayed(this,2000);}};
     @Override public void onCreate(Bundle state){
         super.onCreate(state);ui=editorUi();config=new AppConfig(this);
         StepPlan old=StepPlan.parse(config.get(ConfigSchema.HEALTH_PLAN));bound=config.get(ConfigSchema.HEALTH_ACCOUNT);
         if(old!=null){planId=old.id;seed=old.seed;date=old.startDate;from=old.fromMinute;to=old.toMinute;}
-        LinearLayout page=ui.detailPage("步数修改",ScopeRestartDialog.APPS);
-        LinearLayout connection=ui.card();page.addView(connection,ui.margins(0,8,0,12));
-        connection.addView(ui.featureTitle("账户绑定", "先打开小米运动健康并等待账户接入，再绑定当前账户。步数倍速和增步计划只用于已绑定的本机账户；切换账户后需要重新确认绑定。"));
-        accountView=ui.text("",13,ui.text,true);connection.addView(accountView,ui.margins(0,0,0,10));
-        LinearLayout accountActions=new LinearLayout(this);
-        Button open=ui.tonalButton("打开健康应用");open.setOnClickListener(v->openHealth());accountActions.addView(open,new LinearLayout.LayoutParams(0,ui.dp(44),1));
-        Button bind=ui.tonalButton("绑定当前账户");bind.setOnClickListener(v->{
-            String active=config.diagnostic("ls_augment_health_account_runtime");
-            if(!active.matches("[0-9a-f]{64}")||!fresh()){toast("先打开小米运动健康，等待账户接入后再绑定");return;}
-            if(!bound.equals(active)){planId=UUID.randomUUID().toString().replace("-","");date=LocalDate.now();planDraftChanged=true;}
-            bound=active;showAccount();changed();
-        });LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,ui.dp(44),1);bp.setMargins(ui.dp(8),0,0,0);accountActions.addView(bind,bp);connection.addView(accountActions);
-        backgroundView=ui.text("",12,ui.muted,false);connection.addView(backgroundView,ui.margins(0,10,0,0));
-        connection.addView(ui.text("后台执行需要在系统电池优化中允许小米运动健康自启动和后台运行。强行停止后需重新打开。云同步遵循健康应用的自动同步间隔，需要立即同步时可打开健康应用。",11,ui.muted,false),ui.margins(0,6,0,0));
-        LinearLayout multiply=ui.card();page.addView(multiply,ui.margins(0,0,0,12));
+        LinearLayout page=ui.detailPage("小米运动健康",ScopeRestartDialog.APPS);
+        ui.addDetailSectionTitle(page,"账号绑定");
+        LinearLayout connection=ui.preferenceCard();page.addView(connection,ui.margins(0,0,0,9));
+        accountView=ui.text("",12,ui.muted,false);accountView.setTag("health-account");
+        LinearLayout accountRow=navigationRow("小米账号","people",accountView,this::requestBinding);
+        accountAction=ui.text("",12,ui.muted,false);accountRow.addView(accountAction,accountRow.getChildCount()-1,new LinearLayout.LayoutParams(-2,-2));
+        connection.addView(accountRow,ui.wrap());divider(connection);
+        connection.addView(navigationRow("打开运动健康","heart",null,this::openHealth),ui.wrap());
+        accountHint=ui.text("",12,ui.muted,false);page.addView(accountHint,ui.margins(3,0,3,8));
+
+        ui.addDetailSectionTitle(page,"步数设置");
+        LinearLayout settings=ui.preferenceCard();page.addView(settings,ui.margins(0,0,0,9));
         multiplyEnabled=new Switch(this);multiplyEnabled.setChecked(config.getBoolean(ConfigSchema.HEALTH_MULTIPLY_ENABLED));
-        multiply.addView(ui.featureRow("真实步数加倍","1 倍为原始步数；随机增加的步数不会再乘倍数。",multiplyEnabled));
-        LinearLayout multiplyBody=new LinearLayout(this);multiplyBody.setOrientation(LinearLayout.VERTICAL);multiply.addView(multiplyBody);multiplyFold=ui.fold(multiplyEnabled,multiplyBody);
-        multiplyBody.addView(ui.featureTitle("步数倍数", "设置新记录的真实步数按 1–10 倍计入，1 倍保持原值。随机计划增加的步数不会再次乘倍数。"));
-        TextView rate=ui.text("",12,ui.muted,false);multiplyBody.addView(rate);multiplier=new SeekBar(this);multiplier.setMax(9);multiplier.setProgress(Math.max(0,Math.min(9,config.getInt(ConfigSchema.HEALTH_MULTIPLIER,100)/100-1)));multiplyBody.addView(multiplier);
-        rate.setText("当前："+(multiplier.getProgress()+1)+" 倍");
+        LinearLayout multiply=column(),multiplyBody=editorBody();
+        LinearLayout multiplyHeader=featureRow("修改步数倍率","新记录的真实步数按 1–10 倍计入，1 倍保持原值。随机增加的步数不会再次乘倍数。","settings",multiplyEnabled);
+        multiply.addView(multiplyHeader,ui.wrap());multiply.addView(multiplyBody,ui.wrap());settings.addView(multiply,ui.wrap());
+        multiplyFold=featureFold(multiplyEnabled,multiplyHeader,multiplyBody);
+        rate=ui.text("",12,ui.muted,false);rate.setContentDescription("当前步数倍率");multiplyBody.addView(rate,ui.margins(0,2,0,0));
+        LinearLayout rateRow=row();
+        Button minus=ui.tonalButton("−"),plus=ui.tonalButton("＋");minus.setContentDescription("减少一倍");plus.setContentDescription("增加一倍");
+        minus.setPadding(0,0,0,0);plus.setPadding(0,0,0,0);
+        rateRow.addView(minus,new LinearLayout.LayoutParams(ui.dp(44),ui.dp(44)));
+        multiplier=new SeekBar(this);multiplier.setContentDescription("步数倍率，1 至 10 倍");multiplier.setMax(9);multiplier.setProgress(Math.max(0,Math.min(9,config.getInt(ConfigSchema.HEALTH_MULTIPLIER,100)/100-1)));
+        multiplier.setProgressTintList(ColorStateList.valueOf(ui.accent));multiplier.setThumbTintList(ColorStateList.valueOf(ui.accent));rateRow.addView(multiplier,new LinearLayout.LayoutParams(0,ui.dp(44),1));
+        rateRow.addView(plus,new LinearLayout.LayoutParams(ui.dp(44),ui.dp(44)));multiplyBody.addView(rateRow,ui.margins(0,6,0,0));
+        Runnable showRate=()->{rate.setText("当前："+(multiplier.getProgress()+1)+" 倍");minus.setEnabled(multiplier.getProgress()>0);plus.setEnabled(multiplier.getProgress()<9);};showRate.run();
+        minus.setOnClickListener(v->{multiplier.setProgress(multiplier.getProgress()-1);changed();});plus.setOnClickListener(v->{multiplier.setProgress(multiplier.getProgress()+1);changed();});
         multiplier.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}
-            public void onProgressChanged(SeekBar s,int n,boolean user){rate.setText("当前："+(n+1)+" 倍");if(user)changed();}});
-        LinearLayout plan=ui.card();page.addView(plan,ui.margins(0,0,0,12));planEnabled=new Switch(this);planEnabled.setChecked(config.getBoolean(ConfigSchema.HEALTH_PLAN_ENABLED));
-        plan.addView(ui.featureRow("随机增加步数","在指定时间范围内随机执行，按选中的星期重复。",planEnabled));
-        LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);plan.addView(body);planFold=ui.fold(planEnabled,body);
-        body.addView(ui.featureTitle("执行时间", "在开始与结束时间之间随机选择执行时刻。结束时间早于开始时间时，按跨午夜范围处理，执行星期归开始当天；开始和结束不能相同。"));
-        LinearLayout times=new LinearLayout(this);fromButton=ui.tonalButton("");toButton=ui.tonalButton("");
+            public void onProgressChanged(SeekBar s,int n,boolean user){showRate.run();if(user)changed();}});
+
+        divider(settings);
+        planEnabled=new Switch(this);planEnabled.setChecked(config.getBoolean(ConfigSchema.HEALTH_PLAN_ENABLED));
+        LinearLayout plan=column(),body=editorBody();planBody=body;
+        LinearLayout planHeader=featureRow("随机增加步数","在指定时间段内随机执行，按所选星期重复。当天已生成的时间表保持不变，修改从下一执行日应用。","heart",planEnabled);
+        plan.addView(planHeader,ui.wrap());plan.addView(body,ui.wrap());settings.addView(plan,ui.wrap());
+        planFold=featureFold(planEnabled,planHeader,body);planDetails=planHeader;
+        planSummary=ui.text("",12,ui.muted,false);body.addView(planSummary,ui.margins(0,2,0,6));
+        body.addView(ui.featureTitle("执行时间","每次执行须落在不同分钟。结束时间早于开始时间时按跨午夜处理，执行星期归开始当天；开始和结束不能相同。"),ui.wrap());
+        LinearLayout times=row();fromButton=ui.tonalButton("");toButton=ui.tonalButton("");
         fromButton.setOnClickListener(v->pickTime(true));toButton.setOnClickListener(v->pickTime(false));times.addView(fromButton,new LinearLayout.LayoutParams(0,ui.dp(44),1));
-        LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,ui.dp(44),1);tp.setMargins(ui.dp(8),0,0,0);times.addView(toButton,tp);body.addView(times,ui.margins(0,10,0,8));
-        executions=input(body,"随机执行次数",old==null?10:old.executions>0?old.executions:1);
-        steps=input(body,"每次增加步数",old==null?200:old.executions>0?old.stepsPerExecution:old.amount);
-        body.addView(ui.section("执行星期","选择需要执行的日期；跨午夜的时间范围归开始当天。"),ui.margins(0,10,0,4));
+        LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,ui.dp(44),1);tp.leftMargin=ui.dp(8);times.addView(toButton,tp);body.addView(times,ui.margins(0,0,0,6));
+        LinearLayout numbers=row(),countColumn=column(),stepsColumn=column();numbers.setBaselineAligned(false);numbers.addView(countColumn,new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(0,-2,1);np.leftMargin=ui.dp(10);numbers.addView(stepsColumn,np);body.addView(numbers);
+        executions=input(countColumn,"随机执行次数",old==null?10:old.executions>0?old.executions:1);
+        steps=input(stepsColumn,"每次增加步数",old==null?200:old.executions>0?old.stepsPerExecution:old.amount);
+        body.addView(ui.featureTitle("重复星期","选择至少一天。跨午夜的时间范围归开始当天。"),ui.margins(0,6,0,0));
         String[] labels={"一","二","三","四","五","六","日"};
-        for(int r=0;r<2;r++){LinearLayout row=new LinearLayout(this);for(int i=r*4;i<Math.min(7,r*4+4);i++){
-            CheckBox box=new CheckBox(this);box.setText("周"+labels[i]);box.setTextSize(12);ui.styleCheckBox(box);box.setChecked(((old==null?31:old.weekdays)&(1<<i))!=0);days[i]=box;row.addView(box,new LinearLayout.LayoutParams(0,-2,1));box.setOnCheckedChangeListener((b,c)->planChanged());}body.addView(row);}
-        preview=ui.text("",12,ui.muted,false);body.addView(preview,ui.margins(0,8,0,0));
-        body.addView(ui.text("修改自动保存。当天已生成的时间表保持不变，修改用于下一执行日；关闭后停止后续新增，已保存的步数保留。",11,ui.muted,false),ui.margins(0,10,0,0));
-        LinearLayout limit=ui.card();page.addView(limit,ui.margins(0,0,0,12));
+        for(int r=0;r<2;r++){
+            LinearLayout week=row();
+            for(int i=r*4;i<Math.min(7,r*4+4);i++){
+                CheckBox box=new CheckBox(this);box.setText("周"+labels[i]);box.setContentDescription("星期"+labels[i]);box.setTextSize(UiKit.compactTextSize(14));ui.styleCheckBox(box);box.setChecked(((old==null?31:old.weekdays)&(1<<i))!=0);days[i]=box;
+                week.addView(box,new LinearLayout.LayoutParams(0,ui.dp(48),1));box.setOnCheckedChangeListener((b,c)->planChanged());
+            }
+            if(r==1)week.addView(new View(this),new LinearLayout.LayoutParams(0,ui.dp(48),1));body.addView(week,ui.wrap());
+        }
+        preview=ui.text("",12,ui.muted,false);body.addView(preview,ui.margins(0,4,0,0));
+
+        divider(settings);
         dailyLimitEnabled=new Switch(this);dailyLimitEnabled.setChecked(config.getBoolean(ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED));
-        limit.addView(ui.featureRow("当日步数上限","当日步数达到或超过上限后，停止加倍和随机增加的额外步数。",dailyLimitEnabled));
-        LinearLayout limitBody=new LinearLayout(this);limitBody.setOrientation(LinearLayout.VERTICAL);limit.addView(limitBody);dailyLimitFold=ui.fold(dailyLimitEnabled,limitBody);
+        LinearLayout limit=column(),limitBody=editorBody();
+        LinearLayout limitHeader=featureRow("当日步数上限","达到上限后停止倍率和计划带来的额外增步。真实步行继续记录，已有步数保留；提高或关闭上限不会补发先前受限的计划步数。","shield",dailyLimitEnabled);
+        limit.addView(limitHeader,ui.wrap());limit.addView(limitBody,ui.wrap());settings.addView(limit,ui.wrap());limitFold=featureFold(dailyLimitEnabled,limitHeader,limitBody);
         dailyLimitSteps=input(limitBody,"上限步数",config.getInt(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,10000),this::changed);
-        limitBody.addView(ui.text("可设置 1–1000000 步，修改自动保存。真实步行仍正常记录，已有步数不会减少；次日按新一天重新计算。提高或关闭上限后恢复后续增步，先前受限的计划步数不补发。",11,ui.muted,false),ui.margins(0,8,0,0));
-        multiplyEnabled.setOnCheckedChangeListener((b,c)->{if(c&&bound.isEmpty()){multiplyEnabled.setChecked(false);toast("请先绑定账户");return;}changed();});
-        planEnabled.setOnCheckedChangeListener((b,c)->{if(c&&bound.isEmpty()){planEnabled.setChecked(false);toast("请先绑定账户");return;}changed();});
-        dailyLimitEnabled.setOnCheckedChangeListener((b,c)->changed());
-        loading=false;showAccount();updatePreview();
+        limitBody.addView(ui.text("可设置 1–1000000 步",12,ui.muted,false),ui.margins(0,6,0,0));
+
+        installGate(multiplyEnabled);installGate(planEnabled);installGate(dailyLimitEnabled);
+        if(state!=null){awaitingBinding=state.getBoolean("healthAwaitingBinding");bindingRequestedAt=state.getLong("healthBindingRequestedAt");showPlan(state.getBoolean("healthPlanExpanded"));}
+        loading=false;showAccount();updatePreview();ui.restoreState(state);
     }
+    private LinearLayout row(){return ui.groupRow();}
+    private LinearLayout column(){LinearLayout column=new LinearLayout(this);column.setOrientation(LinearLayout.VERTICAL);return column;}
+    private LinearLayout editorBody(){LinearLayout body=column();body.setPadding(ui.dp(12),0,ui.dp(6),ui.dp(12));return body;}
+    private void divider(LinearLayout card){card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));}
+    private ImageView icon(String glyph,int size,boolean tile){
+        ImageView icon=new ImageView(this);icon.setImageDrawable(new GlassIcon(glyph,ui.accent));icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        if(tile){icon.setPadding(ui.dp(8),ui.dp(8),ui.dp(8),ui.dp(8));icon.setBackground(ui.round(ui.accentContainer,12));}
+        icon.setLayoutParams(new LinearLayout.LayoutParams(ui.dp(size),ui.dp(size)));return icon;
+    }
+    private LinearLayout navigationRow(String title,String glyph,TextView summary,Runnable action){
+        LinearLayout row=ui.groupRow();row.setPadding(0,ui.dp(4),0,ui.dp(4));row.addView(icon(glyph,28,false));
+        LinearLayout copy=column();copy.addView(ui.text(title,15,ui.text,true));if(summary!=null)copy.addView(summary,ui.margins(0,4,0,0));
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);cp.leftMargin=ui.dp(12);cp.rightMargin=ui.dp(6);row.addView(copy,cp);
+        ImageView arrow=new ImageView(this);arrow.setImageDrawable(new GlassIcon("arrow",ui.muted));arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(arrow,new LinearLayout.LayoutParams(ui.dp(15),ui.dp(15)));
+        row.setForeground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,22)));row.setFocusable(true);row.setOnClickListener(v->action.run());return row;
+    }
+    private LinearLayout featureRow(String title,String help,String glyph,Switch toggle){
+        LinearLayout row=ui.featureRow(title,help,toggle);row.setMinimumHeight(ui.dp(48));
+        ImageView icon=icon(glyph,38,true);LinearLayout.LayoutParams p=(LinearLayout.LayoutParams)icon.getLayoutParams();p.rightMargin=ui.dp(12);row.addView(icon,0,p);return row;
+    }
+    private UiKit.Fold featureFold(Switch toggle,LinearLayout header,LinearLayout body){
+        UiKit.Fold fold=ui.fold(toggle,body);
+        header.setForeground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,22)));header.setFocusable(true);header.setOnClickListener(v->fold.show(body.getVisibility()!=View.VISIBLE));return fold;
+    }
+    private void showPlan(boolean show){planFold.show(show);}
     private EditText input(LinearLayout parent,String label,int value){return input(parent,label,value,this::planChanged);}
-    private EditText input(LinearLayout parent,String label,int value,Runnable onChange){parent.addView(ui.featureTitle(label,inputHelp(label)),ui.margins(0,8,0,4));EditText e=new EditText(this);ui.styleInput(e);e.setSingleLine(true);e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setContentDescription(label);e.setText(""+value);parent.addView(e);
+    private EditText input(LinearLayout parent,String label,int value,Runnable onChange){parent.addView(ui.text(label,13,ui.muted,false),ui.margins(0,8,0,6));EditText e=new EditText(this);ui.styleInput(e);e.setSingleLine(true);e.setSelectAllOnFocus(true);e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);e.setContentDescription(label);e.setText(""+value);parent.addView(e,new LinearLayout.LayoutParams(-1,ui.dp(48)));
         e.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){onChange.run();}public void afterTextChanged(Editable e){}});return e;}
-    private String inputHelp(String label){
-        if("随机执行次数".equals(label))return "设置每个执行日随机增步的次数，范围 1–100。每次必须落在不同分钟，次数不能超过所选时间范围的分钟数。";
-        if("每次增加步数".equals(label))return "设置每次计划执行增加的步数。执行次数乘以每次步数为每日计划总量，不能超过 1000000 步；已启用的当日上限仍会限制实际新增。";
-        return "设置当日步数上限，范围 1–1000000。两类增步共用额度，到达上限后停止额外新增；真实步行继续记录，已有步数不会减少。";
-    }
     private android.app.Dialog pickTime(boolean start){
         int m=start?from:to%1440;
         LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER);
@@ -114,62 +157,138 @@ final class HealthEditorController extends NativeEditorController {
     }
     private String time(int minute){return String.format(Locale.ROOT,"%02d:%02d",minute/60,minute%60);}
     private StepPlan draft(){int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;return new StepPlan(planId,bound,ZoneId.systemDefault().getId(),date,from,to,Integer.parseInt(executions.getText().toString()),Integer.parseInt(steps.getText().toString()),mask,seed);}
-    private void updatePreview(){fromButton.setText("开始："+time(from));toButton.setText("结束："+time(to));
+    private void updatePreview(){fromButton.setText("开始  "+time(from));toButton.setText((to<=from?"次日  ":"结束  ")+time(to));
+        int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;
+        String repeat=mask==127?"每天":mask==31?"工作日":mask==96?"周末":"每周 "+Integer.bitCount(mask)+" 天";
+        try{long total=Math.multiplyExact(Long.parseLong(executions.getText().toString()),Long.parseLong(steps.getText().toString()));planSummary.setText(time(from)+"–"+(to<=from?"次日 ":"")+time(to)+" · "+repeat+"\n每日计划 "+total+" 步");}
+        catch(Exception ignored){planSummary.setText("请完善执行次数和每次步数");}
         StepPlan existing=StepPlan.parse(config.get(ConfigSchema.HEALTH_PLAN));
-        if(!planDraftChanged&&existing!=null&&existing.executions==0){preview.setText("保留的一次性计划："+existing.startDate+"，共 "+existing.amount+" 步。修改计划后将按所选星期重复执行。");return;}
+        if(!planDraftChanged&&existing!=null&&existing.executions==0){planSummary.setText("一次性计划 · "+existing.startDate+" · "+existing.amount+" 步");preview.setText("保留原有一次性计划；修改后按所选星期重复。");return;}
         try{StepPlan p=draft();LocalDate day=LocalDate.now();if(day.isBefore(p.startDate))day=p.startDate;for(int i=0;i<7&&!p.runsOn(day);i++)day=day.plusDays(1);
-            StringBuilder text=new StringBuilder("每日合计："+p.amount+" 步\n随机时间示例（"+day+"）：\n");int n=0;
-            for(Map.Entry<Long,Integer> e:p.timetable(day).entrySet()){if(n++>=8){text.append("……");break;}text.append(Instant.ofEpochSecond(e.getKey()).atZone(ZoneId.of(p.zone)).format(DateTimeFormatter.ofPattern("MM/dd HH:mm"))).append(" +").append(e.getValue()).append(" 步\n");}preview.setText(text);
+            StringBuilder text=new StringBuilder("时间示例 · "+day+"\n");int n=0;
+            for(Map.Entry<Long,Integer> e:p.timetable(day).entrySet()){if(n++>=3){text.append("… 共 ").append(p.executions).append(" 次");break;}text.append(Instant.ofEpochSecond(e.getKey()).atZone(ZoneId.of(p.zone)).format(DateTimeFormatter.ofPattern("MM/dd HH:mm"))).append(" +").append(e.getValue()).append(" 步\n");}preview.setText(text.toString().trim());
         }catch(Exception e){preview.setText(bound.isEmpty()?"绑定账户后可预览计划。":"请设置有效次数、步数、时间范围，并至少选择一天。每次须落在不同分钟，每日合计不超过 1000000 步。");}}
     private void planChanged(){if(loading)return;planDraftChanged=true;changed();}
-    private void changed(){if(loading)return;multiplyFold.sync();planFold.sync();dailyLimitFold.sync();updatePreview();dirty=true;generation++;main.removeCallbacks(autoSave);main.postDelayed(autoSave,600);}
+    private void changed(){if(loading)return;updatePreview();dirty=true;generation++;main.removeCallbacks(autoSave);main.postDelayed(autoSave,600);}
     private void save(){save(false);}
     private void save(boolean flushPending){
         if(!dirty||worker.isShutdown()||(!flushPending&&pendingSaves>0)
                 ||(pendingSaves>0&&queuedGeneration==generation))return;
         LinkedHashMap<String,String> updates=new LinkedHashMap<>();
+        invalidDraft=false;
         appendDailyLimitUpdates(updates);
         appendHealthUpdates(updates);
         if(updates.isEmpty())return;
         // Freeze the valid UI values now; the serial queue survives Activity destruction.
         Map<String,String> frozen=Collections.unmodifiableMap(new LinkedHashMap<>(updates));
-        long current=generation;queuedGeneration=current;queuedValues.putAll(frozen);pendingSaves++;
+        long current=generation;boolean partial=invalidDraft;queuedGeneration=current;queuedValues.putAll(frozen);pendingSaves++;
         worker.execute(()->{AppConfig.SaveResult result=config.save(frozen);main.post(()->{
             pendingSaves--;if(pendingSaves==0)queuedValues.clear();
-            if(result.success){dirty=generation!=current;if(dirty&&pendingSaves==0&&!isDestroyed())main.post(autoSave);}
-            else toast(result.message);
+            if(result.success){dirty=generation!=current;if(!isDestroyed()&&!dirty&&partial)toast("部分输入无效，请修正后保存");if(dirty&&pendingSaves==0&&!isDestroyed())main.post(autoSave);}
+            else{toast(result.message);}
         });});
     }
     private String queuedOrSaved(String key){return queuedValues.containsKey(key)?queuedValues.get(key):config.get(key);}
     private void appendDailyLimitUpdates(Map<String,String> updates){
         String value=ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getText().toString());
         boolean enabled=dailyLimitEnabled.isChecked();
+        if(enabled&&!ConfigSchema.truthy(queuedOrSaved(ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED))&&!canEnable()){
+            revert(dailyLimitEnabled);enabled=false;showBindingRequired();
+        }
+        if(value==null)invalidDraft=true;
         dailyLimitSteps.setError(value==null&&enabled?"请输入 1–1000000 的整数；此项未保存，仍使用原上限设置。":null);
         // An unfinished limit draft must not block switching it off or saving other settings.
         if(value!=null){updates.put(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,value);updates.put(ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED,enabled?"1":"0");}
         else if(!enabled)updates.put(ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED,"0");
     }
     private void appendHealthUpdates(Map<String,String> updates){
+        for(Switch toggle:new Switch[]{multiplyEnabled,planEnabled}){
+            String key=toggle==multiplyEnabled?ConfigSchema.HEALTH_MULTIPLY_ENABLED:ConfigSchema.HEALTH_PLAN_ENABLED;
+            if(toggle.isChecked()&&!ConfigSchema.truthy(queuedOrSaved(key))&&!canEnable()){revert(toggle);showBindingRequired();}
+        }
         boolean enabled=multiplyEnabled.isChecked()||planEnabled.isChecked();if(enabled&&bound.isEmpty())return;
-        String plan=queuedOrSaved(ConfigSchema.HEALTH_PLAN);if(!bound.isEmpty()&&(planDraftChanged||(plan.isEmpty()&&planEnabled.isChecked())))try{plan=draft().serialize();}catch(Exception e){if(planEnabled.isChecked())return;}
+        String plan=queuedOrSaved(ConfigSchema.HEALTH_PLAN);if(!bound.isEmpty()&&(planDraftChanged||(plan.isEmpty()&&planEnabled.isChecked())))try{plan=draft().serialize();}catch(Exception e){invalidDraft=true;}
         updates.put(ConfigSchema.HEALTH_ENABLED,enabled?"1":"0");updates.put(ConfigSchema.HEALTH_MULTIPLY_ENABLED,multiplyEnabled.isChecked()?"1":"0");updates.put(ConfigSchema.HEALTH_PLAN_ENABLED,planEnabled.isChecked()?"1":"0");
         updates.put(ConfigSchema.HEALTH_BACKGROUND,"1");updates.put(ConfigSchema.HEALTH_MULTIPLIER,""+((multiplier.getProgress()+1)*100));updates.put(ConfigSchema.HEALTH_ACCOUNT,bound);updates.put(ConfigSchema.HEALTH_PLAN,plan);
         if(multiplyEnabled.isChecked()&&(!ConfigSchema.truthy(queuedOrSaved(ConfigSchema.HEALTH_MULTIPLY_ENABLED))||!bound.equals(queuedOrSaved(ConfigSchema.HEALTH_ACCOUNT))))updates.put(ConfigSchema.HEALTH_SINCE,""+(System.currentTimeMillis()/1000));
     }
-    private boolean fresh(){try{long age=System.currentTimeMillis()-Long.parseLong(config.diagnostic("ls_augment_health_heartbeat"));return age>=0&&age<90000;}catch(Exception e){return false;}}
-    private void showAccount(){accountView.setText(bound.isEmpty()?"尚未绑定账户":"已绑定本机账户 · "+bound.substring(0,8));}
-    private void showBackground(){
-        if(!config.getBoolean(ConfigSchema.HEALTH_ENABLED)||!config.getBoolean(ConfigSchema.HEALTH_BACKGROUND)){backgroundView.setText("后台执行已关闭");return;}
-        String status=config.diagnostic("ls_augment_health_background_runtime");
-        if("原生数据服务已连接".equals(status))status=fresh()?"后台执行正常":"后台暂无响应，请检查自启动和后台运行权限";
-        String runtime=config.diagnostic("ls_augment_health_runtime");
-        java.util.regex.Matcher pending=java.util.regex.Pattern.compile("待同步 (\\d+ 段|核对中)").matcher(runtime);
-        if(pending.find())status+=(status.isEmpty()?"":" · ")+pending.group();
-        backgroundView.setText(status.isEmpty()?"等待后台服务连接":status);
+    private HealthAccountState activeAccount(){return HealthAccountState.parse(config.diagnostic(HealthAccountState.RUNTIME));}
+    private boolean canEnable(){return HealthAccountState.canEnable(bound,activeAccount(),System.currentTimeMillis());}
+    private void rememberAccount(HealthAccountState account){
+        if(account==null||!account.matches(bound))return;
+        String value=HealthAccountState.encode(account.binding,account.account,account.observedAt);
+        HealthAccountState previous=HealthAccountState.parse(config.diagnostic(HealthAccountState.BINDING));
+        if(previous==null||!previous.matches(bound)||!previous.account.equals(account.account))
+            getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE).edit().putString(HealthAccountState.BINDING,value).apply();
     }
-    private void openHealth(){Intent i=getPackageManager().getLaunchIntentForPackage("com.mi.health");if(i==null)toast("未找到小米运动健康");else startActivity(i);}
+    private void showAccount(){
+        HealthAccountState active=activeAccount();boolean fresh=active!=null&&active.fresh(System.currentTimeMillis());
+        if(fresh&&active.matches(bound))rememberAccount(active);
+        HealthAccountState display=HealthAccountState.parse(config.diagnostic(HealthAccountState.BINDING));
+        accountView.setText(bound.isEmpty()?"尚未绑定本机账户":display!=null&&display.matches(bound)?"已绑定本机账户："+display.account:"已绑定本机账户：待读取小米账号");
+        boolean ready=HealthAccountState.canEnable(bound,active,System.currentTimeMillis());
+        accountHint.setVisibility(ready?View.GONE:View.VISIBLE);
+        accountHint.setText(ready?"仅对这个小米账号生效，切换账号后需重新绑定。":fresh&&!active.signedIn()?"请先在小米运动健康登录小米账号。":fresh&&!bound.isEmpty()&&!active.matches(bound)?"检测到账号已切换，请重新绑定后再开启功能。":bound.isEmpty()?"开启功能前，请先绑定小米运动健康中的账号。":"打开运动健康核验账号后，可开启新的功能。");
+        accountAction.setText(ready?"已绑定":bound.isEmpty()?"去绑定":"待核验");
+    }
+    private void installGate(Switch toggle){toggle.setOnCheckedChangeListener((button,on)->{
+        if(loading||revertingToggle)return;
+        if(on&&!canEnable()){revert(toggle);showBindingRequired();return;}
+        if(on&&toggle==planEnabled){try{StepPlan existing=StepPlan.parse(queuedOrSaved(ConfigSchema.HEALTH_PLAN));if(planDraftChanged||existing==null||!bound.equals(existing.account))draft();}catch(Exception invalid){restorePlanInputs();toast("无效的计划参数已恢复为上次有效设置");}}
+        if(on&&toggle==dailyLimitEnabled&&ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getText().toString())==null){
+            loading=true;try{dailyLimitSteps.setText(queuedOrSaved(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS));dailyLimitSteps.setError(null);}finally{loading=false;}toast("无效的上限已恢复为上次有效设置");
+        }
+        multiplyFold.sync();planFold.sync();limitFold.sync();changed();
+    });}
+    private void restorePlanInputs(){
+        // Closed features cannot expose their editor, so an unfinished draft must
+        // not prevent the next enable from opening it with valid parameters.
+        StepPlan saved=StepPlan.parse(queuedOrSaved(ConfigSchema.HEALTH_PLAN));
+        loading=true;try{
+            from=saved==null?540:saved.fromMinute;to=saved==null?1080:saved.toMinute;
+            executions.setText(""+(saved==null?10:saved.executions>0?saved.executions:1));
+            steps.setText(""+(saved==null?200:saved.executions>0?saved.stepsPerExecution:saved.amount));
+            for(int i=0;i<7;i++)days[i].setChecked(((saved==null?31:saved.weekdays)&(1<<i))!=0);
+        }finally{loading=false;}
+    }
+    private void revert(Switch toggle){revertingToggle=true;try{toggle.setChecked(false);}finally{revertingToggle=false;}multiplyFold.sync();planFold.sync();limitFold.sync();}
+    private void showBindingRequired(){
+        if(isDestroyed()||!resumed||bindingDialogVisible)return;
+        HealthAccountState active=activeAccount();String message=bound.isEmpty()?"请先绑定小米运动健康账号，再开启此功能。":active!=null&&active.fresh(System.currentTimeMillis())&&!active.matches(bound)?"小米运动健康当前账号与绑定账号不一致，请先重新绑定。":"请先打开小米运动健康核验当前账号，再开启此功能。";
+        bindingDialogVisible=true;Dialog dialog=ui.glassDialog("需要绑定账号",ui.text(message,15,ui.text,false),"去绑定",()->{bindingDialogVisible=false;requestBinding();},"取消");dialog.setOnDismissListener(d->{bindingDialogVisible=false;});
+    }
+    private void requestBinding(){
+        HealthAccountState active=activeAccount();
+        if(active==null||!active.fresh(System.currentTimeMillis())||!active.signedIn()){
+            awaitingBinding=true;bindingRequestedAt=System.currentTimeMillis();toast("请在小米运动健康登录账号，然后返回此页完成绑定");openHealth();return;
+        }
+        awaitingBinding=false;confirmBinding(active);
+    }
+    private void checkPendingBinding(){
+        if(!awaitingBinding||bindingDialogVisible)return;
+        HealthAccountState active=activeAccount();if(active!=null&&active.signedIn()&&active.fresh(System.currentTimeMillis())&&active.observedAt>=bindingRequestedAt){awaitingBinding=false;confirmBinding(active);}
+    }
+    private void confirmBinding(HealthAccountState observed){
+        if(bindingDialogVisible||isDestroyed())return;
+        bindingDialogVisible=true;boolean same=observed.matches(bound);
+        Dialog dialog=ui.glassDialog(same?"本机绑定账号":"绑定小米账号",ui.text("小米账号："+observed.account+"\n\n"+(same?"当前账号与绑定账号一致。":"绑定后，请手动开启需要的功能。切换绑定将关闭原有功能开关。"),15,ui.text,false),same?"完成":"确认绑定",()->{
+            HealthAccountState current=activeAccount();if(current==null||!current.fresh(System.currentTimeMillis())||!current.binding.equals(observed.binding)){toast("账号状态已变化，请重新核验");return;}
+            if(!observed.matches(bound)){revert(multiplyEnabled);revert(planEnabled);revert(dailyLimitEnabled);planId=UUID.randomUUID().toString().replace("-","");date=LocalDate.now();planDraftChanged=true;bound=observed.binding;changed();}
+            rememberAccount(current);showAccount();
+        },same?null:"取消");dialog.setOnDismissListener(d->{bindingDialogVisible=false;});
+    }
+    private void openHealth(){Intent i=getPackageManager().getLaunchIntentForPackage("com.mi.health");if(i==null){awaitingBinding=false;toast("未找到小米运动健康");}else {
+        // Account discovery is requested only by this explicit action. A later reset
+        // replaces the snapshot checksum, so an old launch cannot revive a probe.
+        save(true);worker.execute(()->main.post(()->{
+            if(isDestroyed()||isFinishing())return;
+            i.putExtra(HealthIdentityProbe.EXTRA,HealthIdentityProbe.create(config.configSnapshot(),android.os.Process.myUid()/100000,System.currentTimeMillis()));
+            try{startActivity(i);}catch(android.content.ActivityNotFoundException|SecurityException error){awaitingBinding=false;toast("无法打开小米运动健康，请确认应用未被停用");}
+        }));
+    }}
     private void toast(String text){Toast.makeText(this,text,Toast.LENGTH_LONG).show();}
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putBoolean("healthPlanExpanded",planBody.getVisibility()==View.VISIBLE);state.putBoolean("healthAwaitingBinding",awaitingBinding);state.putLong("healthBindingRequestedAt",bindingRequestedAt);}
     @Override protected void onResume(){super.onResume();resumed=true;main.removeCallbacks(statusRefresh);main.post(statusRefresh);}
     @Override protected void onPause(){resumed=false;main.removeCallbacks(statusRefresh);main.removeCallbacks(autoSave);save(true);super.onPause();}
-    @Override protected void onDestroy(){main.removeCallbacks(autoSave);save(true);worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){resumed=false;main.removeCallbacks(statusRefresh);main.removeCallbacks(autoSave);save(true);worker.shutdown();super.onDestroy();}
 }

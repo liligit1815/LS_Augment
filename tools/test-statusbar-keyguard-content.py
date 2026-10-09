@@ -25,7 +25,15 @@ carrier_layout = layout[carrier_start:layout.index('for(Map.Entry<String,TextVie
 
 harness = '''import java.util.*;
 public class TestKeyguardContent {
+  static class Context {final Map<String,Boolean> settings=new HashMap<>();}
+  static class FeatureSettings {static boolean enabled(Context context,String key){return Boolean.TRUE.equals(context.settings.get(key));}}
   static class View {
+    int left,top,right,bottom,measuredWidth,measuredHeight;
+    static class MeasureSpec {static final int EXACTLY=0x40000000;static int makeMeasureSpec(int size,int mode){return size|mode;}}
+    int getLeft(){return left;}int getTop(){return top;}int getRight(){return right;}int getBottom(){return bottom;}
+    int getMeasuredWidth(){return measuredWidth;}int getMeasuredHeight(){return measuredHeight;}
+    void measure(int w,int h){measuredWidth=w&0x3fffffff;measuredHeight=h&0x3fffffff;}
+    void layout(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}
     float x,y,sx=1,sy=1,alpha=1; View parent;
     float getTranslationX(){return x;} void setTranslationX(float value){x=value;}
     float getTranslationY(){return y;} void setTranslationY(float value){y=value;}
@@ -52,12 +60,14 @@ public class TestKeyguardContent {
   // GEOMETRY
   static class State {
     final ViewGroup root;
+    final Context context=new Context();
     final Map<View,Geometry> geometry=new IdentityHashMap<>();
     final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();
     final StatusBarClipping explicitClips=new StatusBarClipping();
     final Map<String,Object> groups=new HashMap<>();
     final List<String> companions=new ArrayList<>();
     boolean onlyPosition; TextView keyguardClock; ConnectivityIconView connectivityIcon;
+    boolean packingSuspended;String packingIssue="";long lastWitness;
     State(ViewGroup root){this.root=root;STATES.put(root,this);}
     boolean positionOnly(){return onlyPosition;}
     void addCompanion(List<StatusBarGridLayout.Node> nodes,Map<String,View> views,
@@ -95,8 +105,10 @@ public class TestKeyguardContent {
     full.keyguardClock.alpha=0;full.frame();
     alpha(carrier,0,"hiding configured clock does not reveal unconfigured carrier");
     check(full.companions.isEmpty(),"hidden configured clock has no leftover carrier slot");
-    full.frame();full.restore();
+    full.frame();full.packingSuspended=true;full.packingIssue="crowded";full.lastWitness=1234;full.restore();
     alpha(carrier,.72f,"repeated frames retain original alpha for disable/detach restore");
+    check(!full.packingSuspended&&full.packingIssue.isEmpty()&&full.lastWitness==0,
+        "restoring keyguard discards stale crowding ownership and diagnostics");
     check(full.geometry.isEmpty(),"restore releases ownership");
     check(carrier.x==7&&carrier.y==2&&carrier.sx==.8f&&carrier.sy==.9f,
         "replacement preserves native position and scale");
@@ -109,6 +121,26 @@ public class TestKeyguardContent {
     mode.keyguardClock=null;mode.frame();
     alpha(mode.root.carrier,.66f,"missing injected clock restores carrier fallback");
     check(mode.companions.equals(List.of("clock.carrier")),"fallback carrier remains in layout");
+
+    State independent=create(true,.64f);independent.keyguardClock=new TextView();
+    String lockEnabled=ls.augment.com.CarrierTextOptions.key("lock","enabled");
+    independent.context.settings.put(lockEnabled,true);independent.frame();
+    alpha(independent.root.carrier,.64f,"independent lockscreen carrier keeps native opacity beside custom clock");
+    check(independent.companions.equals(List.of("clock.carrier")),"independent carrier remains a measured layout companion");
+    independent.context.settings.put(lockEnabled,false);independent.frame();
+    alpha(independent.root.carrier,0,"disabling independent carrier returns ownership to custom clock");
+    check(independent.companions.isEmpty(),"disabled independent carrier reserves no extra slot");
+    independent.root.carrier.alpha=.28f;independent.frame();
+    independent.context.settings.put(lockEnabled,true);independent.frame();
+    alpha(independent.root.carrier,.28f,"re-enabling independent carrier restores the latest OEM fade not the initial value");
+    independent.restore();alpha(independent.root.carrier,.28f,"grid restore preserves latest independent carrier opacity");
+    State hiddenIndependent=create(true,0);hiddenIndependent.keyguardClock=new TextView();
+    hiddenIndependent.context.settings.put(lockEnabled,true);hiddenIndependent.frame();
+    alpha(hiddenIndependent.root.carrier,0,"independent text never makes a natively transparent carrier visible");
+    State otherPanel=create(true,.49f);otherPanel.keyguardClock=new TextView();
+    otherPanel.context.settings.put(ls.augment.com.CarrierTextOptions.key("notification","enabled"),true);
+    otherPanel.context.settings.put(ls.augment.com.CarrierTextOptions.key("control","enabled"),true);otherPanel.frame();
+    alpha(otherPanel.root.carrier,0,"other panels cannot enable the lockscreen carrier companion");
 
     State nativeOnly=create(true,.45f);nativeOnly.frame();
     alpha(nativeOnly.root.carrier,.45f,"native clock path preserves original opacity");
@@ -147,7 +179,7 @@ for marker, production in {
     'OWN': block('Geometry own('),
     'REPLACE': block('boolean replaceKeyguardCarrier('),
     'UPDATE': block('void updateKeyguardCarrier('),
-    'RESTORE': block('void restore(){for(Map.Entry<View,Geometry>'),
+    'RESTORE': block('void restore(){'),
     'OBSERVE': observe,
     'CARRIER_LAYOUT': carrier_layout,
 }.items():
@@ -156,5 +188,7 @@ for marker, production in {
 with tempfile.TemporaryDirectory(prefix='lsa-keyguard-content-') as directory:
     test = Path(directory) / 'TestKeyguardContent.java'
     test.write_text(harness, encoding='utf-8')
-    subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, str(test)], check=True)
+    models = ROOT / 'android/app/src/main/java/ls/augment/com'
+    subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, str(test),
+                    str(models / 'CarrierTextOptions.java'), str(models / 'EnhancementOption.java')], check=True)
     subprocess.run(['java', '-cp', directory, 'TestKeyguardContent'], check=True, timeout=15)

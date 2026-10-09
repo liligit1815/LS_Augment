@@ -20,12 +20,18 @@ final class FanTileControl {
                 .getString("ls_augment_fan_control_installed", "");
         // The application UID cannot stat this sysfs directory under SELinux.
         // Capability is probed in the OEM fan process, where hardware access lives.
-        boolean supported = ("NX809J".equalsIgnoreCase(Build.DEVICE)
-                || "NX809J".equalsIgnoreCase(Build.MODEL) || "NX809J".equalsIgnoreCase(Build.PRODUCT))
+        boolean supported = FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
                 && installed.contains("capability=verified_levels_1_5");
+        if (!config.getBoolean(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED)) {
+            result.putBoolean("ok", false);
+            result.putBoolean("enhancementEnabled", false);
+            result.putString("message", "散热风扇磁贴增强已关闭");
+            return result;
+        }
         if ("fan_tile_select".equals(method)) {
-            if (arg != null || extras == null || extras.size() != 1
-                    || !(extras.get("level") instanceof Integer)) return result;
+            if (arg != null || extras == null || extras.size() != 2
+                    || !(extras.get("level") instanceof Integer)
+                    || !(extras.get("revision") instanceof Long)) return result;
             int level = extras.getInt("level", -1);
             if (!FanTilePolicy.validSelection(level)) return result;
             if (level > 0 && !supported) return fail("此机型尚未验证固定档位");
@@ -34,27 +40,22 @@ final class FanTileControl {
                 return fail("正在测量转速，请完成或取消测量后再选择");
             if (level > 0 && !installed.contains("capability=verified_levels_1_5"))
                 return fail("风扇控制尚未就绪，请重启风扇作用域");
-            LinkedHashMap<String, String> updates = new LinkedHashMap<>();
-            if (level > 0) updates.put(ConfigSchema.FAN_FIXED_LEVEL, String.valueOf(level));
-            updates.put(ConfigSchema.FAN_FIXED_ENABLED, level > 0 ? "1" : "0");
-            updates.put(ConfigSchema.FAN_TILE_REQUEST, java.util.UUID.randomUUID().toString().replace("-", ""));
-            // Match the module editor: an explicit feature selection enables its master.
-            if (level > 0) updates.put(ConfigSchema.GAME_MASTER, "1");
-            AppConfig.SaveResult saved = config.save(updates);
+            LinkedHashMap<String, String> updates = FanTilePolicy.selectionUpdates(level);
+            AppConfig.SaveResult saved = config.saveFanTileSelection(updates, extras.getLong("revision", -1L));
             result.putBoolean("ok", saved.success);
             result.putString("message", saved.message);
             return result;
         }
-        if (arg != null || extras != null) return result;
+        if (!"fan_tile_read".equals(method) || arg != null || extras != null) return result;
         result.putBoolean("ok", true);
+        result.putBoolean("enhancementEnabled", true);
+        result.putLong("revision", config.configSnapshot().revision);
         result.putBoolean("supported", supported);
-        result.putInt("rememberedLevel", Math.max(1, config.getInt(ConfigSchema.FAN_FIXED_LEVEL, 1)));
+        int fixedLevel = config.getInt(ConfigSchema.FAN_FIXED_LEVEL, 1);
+        result.putInt("rememberedLevel", fixedLevel);
         result.putInt("selected", config.getBoolean(ConfigSchema.GAME_MASTER)
                 && config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED)
-                ? config.getInt(ConfigSchema.FAN_FIXED_LEVEL, 0) : 0);
-        result.putBoolean("fixedRpm", config.getBoolean(ConfigSchema.GAME_MASTER)
-                && config.getBoolean(ConfigSchema.FAN_FIXED_ENABLED)
-                && config.getInt(ConfigSchema.FAN_FIXED_LEVEL, 0) == 0);
+                ? fixedLevel : 0);
         result.putString("request", config.get(ConfigSchema.FAN_TILE_REQUEST));
         result.putInt("mode", Settings.System.getInt(context.getContentResolver(), "fan_state_of_mode", -1));
         result.putBoolean("manual", Settings.System.getInt(context.getContentResolver(), "fan_state_of_manual", 0) > 0);

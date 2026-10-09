@@ -135,6 +135,7 @@ final class GameExtrasHook {
     }
 
     private void assist(){
+        GamePerformanceMonitorHook.install(module,loader);
         // Resolve k/l or readable aliases independently of GameSpace's four-argument route.
         plugin("cn.nubia.gameassist.plugin.config.PluginConfig",true);
         String active="cn.nubia.gameassist.dessert.policy.ActiveModeController";

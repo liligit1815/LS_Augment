@@ -77,7 +77,7 @@ public final class UiWindowRunner extends Instrumentation {
             String label=arguments.getString("label");
             if(label==null||!label.matches("[A-Za-z0-9_.-]+"))throw new IllegalArgumentException("Invalid evidence label");
             File directory=new File(getTargetContext().getFilesDir(),"ui-windows");directory.mkdirs();
-            JSONObject report=new JSONObject().put("at",System.currentTimeMillis()).put("uiWindows",windows).put("textEvents",events).put("batterySamples",samples).put("status","pass");
+            JSONObject report=new JSONObject().put("at",System.currentTimeMillis()).put("observerSchema",2).put("uiWindows",windows).put("textEvents",events).put("batterySamples",samples).put("status","pass");
             Files.write(new File(directory,label+".json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
             result.putString("status","pass");finish(Activity.RESULT_OK,result);
         }catch(Throwable error){result.putString("status","fail");result.putString("error",android.util.Log.getStackTraceString(error));finish(Activity.RESULT_CANCELED,result);}
@@ -90,6 +90,7 @@ public final class UiWindowRunner extends Instrumentation {
     }
     private static JSONObject node(AccessibilityNodeInfo node,int depth)throws Exception {
         if(node==null||depth>35)return new JSONObject();
+        JSONObject rendering=rendering(node);
         Rect bounds=new Rect();node.getBoundsInScreen(bounds);
         JSONObject value=new JSONObject().put("package",String.valueOf(node.getPackageName()))
                 .put("id",String.valueOf(node.getViewIdResourceName())).put("class",String.valueOf(node.getClassName()))
@@ -97,8 +98,32 @@ public final class UiWindowRunner extends Instrumentation {
                 .put("clickable",node.isClickable()).put("checkable",node.isCheckable()).put("checked",node.isChecked())
                 .put("enabled",node.isEnabled()).put("focusable",node.isFocusable()).put("focused",node.isFocused())
                 .put("scrollable",node.isScrollable()).put("longClickable",node.isLongClickable()).put("password",node.isPassword())
-                .put("selected",node.isSelected()).put("visible",node.isVisibleToUser()).put("bounds",bounds.toShortString());
+                .put("selected",node.isSelected()).put("visible",node.isVisibleToUser()).put("bounds",bounds.toShortString())
+                .put("renderingInfo",rendering==null?JSONObject.NULL:rendering);
+        // Read-only geometry/slider evidence. Never perform an accessibility action.
+        AccessibilityNodeInfo.RangeInfo range=node.getRangeInfo();
+        if(range!=null&&Float.isFinite(range.getMin())&&Float.isFinite(range.getMax())&&Float.isFinite(range.getCurrent()))
+            value.put("rangeInfo",new JSONObject().put("type",range.getType()).put("min",range.getMin()).put("max",range.getMax()).put("current",range.getCurrent()));
+        JSONArray actions=new JSONArray();for(AccessibilityNodeInfo.AccessibilityAction action:node.getActionList())actions.put(action.getId());
+        value.put("actionIds",actions);
         JSONArray children=new JSONArray();for(int i=0;i<node.getChildCount();i++)children.put(node(node.getChild(i),depth+1));
         return value.put("children",children);
+    }
+    /** Optional read-only framework metadata, not a font-size estimate from settings. */
+    private static JSONObject rendering(AccessibilityNodeInfo node){
+        if(android.os.Build.VERSION.SDK_INT<30)return null;
+        String id=String.valueOf(node.getViewIdResourceName());
+        if(!id.endsWith("/clock")&&!id.endsWith("/date"))return null;
+        try{
+            java.util.List<String> available=node.getAvailableExtraData();
+            if(available!=null&&available.contains(AccessibilityNodeInfo.EXTRA_DATA_RENDERING_INFO_KEY))
+                node.refreshWithExtraData(AccessibilityNodeInfo.EXTRA_DATA_RENDERING_INFO_KEY,Bundle.EMPTY);
+            AccessibilityNodeInfo.ExtraRenderingInfo info=node.getExtraRenderingInfo();
+            if(info==null||!Float.isFinite(info.getTextSizeInPx())||info.getTextSizeInPx()<=0)return null;
+            JSONObject result=new JSONObject().put("textSizePx",info.getTextSizeInPx()).put("textSizeUnit",info.getTextSizeUnit());
+            android.util.Size size=info.getLayoutSize();
+            if(size!=null)result.put("layoutWidth",size.getWidth()).put("layoutHeight",size.getHeight());
+            return result;
+        }catch(Exception unavailable){return null;}
     }
 }

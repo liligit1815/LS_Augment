@@ -301,6 +301,8 @@ public final class AugmentModule extends RootEarlyModule {
             return;
         }
         readyPackageName = callbackPackageName;
+        if ("com.android.systemui".equals(readyPackageName) || "com.android.settings".equals(readyPackageName))
+            FullBrightnessHook.install(this,param.getClassLoader());
         HookTelemetry.ready(readyPackageName);
         logInfo("PACKAGE_READY_TARGET package=" + readyPackageName
                 + " process=" + processName + " first=" + param.isFirstPackage());
@@ -360,6 +362,9 @@ public final class AugmentModule extends RootEarlyModule {
             return;
         }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            LauncherResetHook.install(this);
+            LauncherGridHook.install(this, param.getClassLoader());
             LauncherCustomizationHook.install(this, param.getClassLoader());
             LauncherPagesHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
@@ -389,6 +394,7 @@ public final class AugmentModule extends RootEarlyModule {
 
         // Install the actual Settings hooks immediately when the app classloader
         // is ready. Filtering must not depend on the diagnostic Context witness.
+        AudioGainUiHook.installSettings(this, param.getClassLoader());
         installSettingsHooks(param.getClassLoader());
 
         // Persist lifecycle/setup state as soon as a Settings Context is
@@ -430,10 +436,19 @@ public final class AugmentModule extends RootEarlyModule {
         installSystemUiStage("core", () -> SystemUiHook.install(this, classLoader));
         installSystemUiStage("tile_icon", () -> OwnTileIconHook.install(this, classLoader));
         installSystemUiStage("fan_tile", () -> FanTileHook.install(this, classLoader));
+        installSystemUiStage("extra_dim_tile", () -> ExtraDimTileHook.install(this, classLoader));
         installSystemUiStage("audio", () -> AudioGainUiHook.install(this, classLoader));
         installSystemUiStage("redmagic", () -> RedMagicSystemUiHook.install(this, classLoader));
         installSystemUiStage("back_gesture", () -> BackGestureIconHook.install(this, classLoader));
+        installSystemUiStage("dynamic_island", () -> DynamicIslandHook.install(this, classLoader));
+        installSystemUiStage("notification_media", () -> NotificationMediaCardHook.install(this, classLoader));
         installSystemUiStage("glass", () -> LiquidGlassControlCenterHook.install(this, classLoader));
+        installSystemUiStage("notification_appearance", () -> NotificationAppearanceHook.install(this, classLoader));
+        installSystemUiStage("control_center_appearance", () -> ControlCenterAppearanceHook.install(this, classLoader));
+        installSystemUiStage("icon_layout", () -> StatusBarIconLayoutHook.install(this, classLoader));
+        installSystemUiStage("privacy_dot_spacing", () -> PrivacyDotSpacingHook.install(this, classLoader));
+        installSystemUiStage("notification_summary", () -> StatusBarNotificationSummaryHook.install(this, classLoader));
+        installSystemUiStage("carrier_text", () -> CarrierTextHook.install(this, classLoader));
         systemUiHooksInstalled = true;
     }
 
@@ -470,6 +485,7 @@ public final class AugmentModule extends RootEarlyModule {
     private synchronized void installFanControlHooks(ClassLoader classLoader) {
         if (fanControlHooksInstalled) return;
         int installed = FanControlHook.install(this, classLoader);
+        installed += FanScreenOffHook.install(this, classLoader);
         fanControlHooksInstalled = installed > 0;
         logInfo("FAN_CONTROL_READY installed=" + installed);
     }
@@ -516,6 +532,7 @@ public final class AugmentModule extends RootEarlyModule {
      */
     private void installSystemServerHooks(ClassLoader classLoader, String source) {
         if (!systemServerProcess) return;
+        ExtraDimHook.install(this,classLoader);
         // Constructor-only options use the framework's boot copy. Never wait inside AudioService.
         FeatureSettings.awaitBootSnapshot();
         // PackageReady may later be delivered for framework packages hosted in
@@ -571,6 +588,7 @@ public final class AugmentModule extends RootEarlyModule {
             systemServerLifecycleRetryScheduled = false;
             ScreenOffAutomationHook.attach(context);
             HealthBackgroundHook.attach(context);
+            SmsCodeClipboardHook.attach(context);
             if (tgkRapidFireSystemHooksInstalled) {
                 TgkRapidFireSystemHook.onSystemContextReady(context);
             }

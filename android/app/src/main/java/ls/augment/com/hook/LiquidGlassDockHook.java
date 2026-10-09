@@ -14,6 +14,7 @@ import android.widget.TextView;
 import java.lang.ref.WeakReference;
 import java.util.WeakHashMap;
 import ls.augment.com.GlassOptions;
+import ls.augment.com.GlassGeometry;
 import ls.augment.com.LayerBackdropSource;
 import ls.augment.com.LiquidGlassDockPolicy;
 import ls.augment.com.LiquidGlassPolicy;
@@ -71,7 +72,7 @@ final class LiquidGlassDockHook {
 
     private static void publish(View view,String value){
         FeatureSettings.diagnostic(view.getContext(),DIAGNOSTIC,
-                "build="+ls.augment.com.BuildConfig.VERSION_CODE+";"+value);
+                "build="+ls.augment.com.BuildConfig.VERSION_CODE+";geometry=viewport_v2;"+value);
     }
 
     /** A non-null transparent theme drawable is still an empty dock, not an existing tray. */
@@ -124,7 +125,11 @@ final class LiquidGlassDockHook {
                         }
                     }
                 }
-                view.offsetDescendantRectToMyCoords(icon,item);
+                // OEM TextViews can scroll their hidden label by 524288px. That scroll
+                // does not move the compound icon's viewport and must not move the tray.
+                if(!GlassGeometry.map(icon,view,item,false)||view.getScrollX()!=0||view.getScrollY()!=0){
+                    clearMaterial();status("unsupported_icon_transform");return;
+                }
                 if(!found){union.set(item);found=true;}else union.union(item);
                 visibleIcons++;
             }

@@ -11,6 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {
     'ls/augment/com/LauncherOptions.java': 'package ls.augment.com;public class LauncherOptions {public static final int RECENTS_MEMORY_MAX_TOP_DP=2000;}',
     'android/graphics/Insets.java': 'package android.graphics;public class Insets {public int left,top,right,bottom;}',
+    'android/graphics/Rect.java': 'package android.graphics;public class Rect {public int left,top,right,bottom;}',
+    'android/graphics/Paint.java': '''package android.graphics;
+public class Paint {
+    public float size=12,forcedAdvance=Float.NaN;public int forcedInkLeft=0,forcedInkRight=-1;
+    public float measureText(String text,int start,int end){return Float.isNaN(forcedAdvance)?(end-start)*size*.5f:forcedAdvance;}
+    public void getTextBounds(String text,int start,int end,Rect out){out.left=forcedInkLeft;out.right=forcedInkRight<0?(int)Math.ceil(measureText(text,start,end)):forcedInkRight;out.top=0;out.bottom=(int)Math.ceil(size);}
+}''',
     'android/view/WindowInsets.java': 'package android.view;public class WindowInsets {public android.graphics.Insets safe=new android.graphics.Insets();public android.graphics.Insets getInsetsIgnoringVisibility(int type){return safe;}public static class Type {public static int systemBars(){return 1;}public static int displayCutout(){return 2;}}}',
     'android/os/Looper.java': 'package android.os; public class Looper { public static Looper getMainLooper(){return new Looper();} }',
     'android/os/SystemClock.java': 'package android.os; public class SystemClock { public static long now=10000; public static long elapsedRealtime(){return now;} }',
@@ -73,11 +80,11 @@ public class FrameLayout extends ViewGroup {public FrameLayout(Context c){super(
     'android/widget/TextView.java': '''package android.widget;
 import android.content.Context;import android.content.res.ColorStateList;import android.view.View;
 public class TextView extends View {
-    public CharSequence text="";public float size=12;public ColorStateList colors=ColorStateList.valueOf(0xccffffff);public int gravity;
+    public CharSequence text="";public float size=12;public ColorStateList colors=ColorStateList.valueOf(0xccffffff);public int gravity,paddingLeft,paddingRight;public final android.graphics.Paint paint=new android.graphics.Paint();
     public TextView(Context c){super(c);}public void setGravity(int v){gravity=v;}public void setTextDirection(int v){}public void setIncludeFontPadding(boolean v){}
-    public void setTextSize(int unit,float v){size=v;}public void setText(CharSequence v){text=v;}public CharSequence getText(){return text;}
-    public void setTextColor(ColorStateList c){colors=c;}public ColorStateList getTextColors(){return colors;}public void setPadding(int a,int b,int c,int d){}public void setPaddingRelative(int a,int b,int c,int d){}
-    public void measure(int w,int h){int lines=text.toString().split("\\n",-1).length;measuredHeight=Math.round(size*1.3f*lines);measuredWidth=Math.min(w & 0x3fffffff,Math.round(text.length()*size*.5f));}
+    public void setTextSize(int unit,float v){size=v;paint.size=v;}public void setText(CharSequence v){text=v;}public CharSequence getText(){return text;}public android.graphics.Paint getPaint(){return paint;}
+    public void setTextColor(ColorStateList c){colors=c;}public ColorStateList getTextColors(){return colors;}public void setPadding(int a,int b,int c,int d){paddingLeft=a;paddingRight=c;}public void setPaddingRelative(int a,int b,int c,int d){setPadding(a,b,c,d);}public int getPaddingLeft(){return paddingLeft;}public int getPaddingRight(){return paddingRight;}
+    public void measure(int w,int h){String[] lines=text.toString().split("\\n",-1);measuredHeight=Math.round(size*1.3f*lines.length);float advance=0;for(String line:lines)advance=Math.max(advance,paint.measureText(line,0,line.length()));int cap=w & 0x3fffffff;measuredWidth=(w & 0xc0000000)==MeasureSpec.EXACTLY?cap:Math.min(cap,(int)Math.ceil(advance)+paddingLeft+paddingRight);}
 }''',
     'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;
 import java.util.*;import android.content.Context;
@@ -149,6 +156,19 @@ public class TestLauncherRecentsMemoryLifecycle {
             module.call("onDetachedFromWindow",recents);Handler.drain();check(host.children.size()==baseline,"detach removes only module decoration");check(FeatureSettings.listeners.isEmpty(),"detach unregisters settings listener");check(FeatureSettings.diagnostics.get("ls_augment_rm_recents_memory_state").startsWith("detached;"),"detached diagnostic");if(nativeMemory!=null)check(nativeMemory.alpha==.7f&&nativeMemory.accessibility==2,"detached legacy view returns original attributes");
             check(recents.originals>8,"native callbacks proceed");
         }
+        // A controlled glyph overhang reproduces the missing right half of a
+        // last character. Values below are a boundary fixture, not measured
+        // ROM font metrics. Exercise the real hook rather than copy its maths.
+        FeatureSettings.values.clear();Context context=new Context();context.resources.metrics.density=3.25f;
+        FrameLayout host=new FrameLayout(context);host.width=1216;host.height=2688;RecentsView recents=new RecentsView(context);host.addView(recents);
+        FeatureSettings.set("custom","1");FeatureSettings.set("style","0");FeatureSettings.set("content","0");FeatureSettings.set("simple_size","12");FeatureSettings.set("portrait_left","200");
+        module.call("onAttachedToWindow",recents);module.call("setOverviewStateEnabled",recents,true);settle(host);TextView text=label(host);
+        text.paint.forcedAdvance=737f;text.paint.forcedInkLeft=-3;text.paint.forcedInkRight=749;
+        module.call("onLayout",recents,false,0,0,1216,2688);Handler.drain();FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)text.params;
+        check(text.getPaddingLeft()+text.paint.forcedInkLeft>=0&&text.getPaddingLeft()+text.paint.forcedInkRight<=p.width-text.getPaddingRight()
+                &&p.leftMargin+p.width<host.width&&text.size==12&&"200".equals(FeatureSettings.text(context,"ls_augment_rm_recents_memory_portrait_left","")),
+                "full glyph ink fits both TextView and safe screen edge without shrinking or rewriting saved position");
+        module.call("onDetachedFromWindow",recents);Handler.drain();
         if(!module.errors.isEmpty())throw new AssertionError("hook errors",module.errors.get(0));
         System.out.println("PASS LauncherRecentsMemory lifecycle "+checks+" checks; Android/Xposed boundary doubles, no device");
     }

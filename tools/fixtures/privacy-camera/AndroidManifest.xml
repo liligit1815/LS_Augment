@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ls.augment.privacycamerafixture" android:versionCode="2" android:versionName="1.1-preview">
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="34" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <application android:label="隐私指示器验证" android:theme="@android:style/Theme.Material.Light"
+        android:allowBackup="false" android:debuggable="false" android:supportsRtl="true"
+        android:usesCleartextTraffic="false">
+        <activity android:name=".PrivacyCameraActivity" android:exported="true"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

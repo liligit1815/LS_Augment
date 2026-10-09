@@ -2,8 +2,8 @@
 
 The retained-overlay regression needs a failure with an already populated grid:
 cleaning only the original transforms put every custom label back at (0, 0).
-This harness executes the actual Geometry, stopMetrics, restore, failLayout and
-queued metrics callback bodies. It requires a JDK and never accesses a device.
+This harness executes production cleanup, temporary fallback/recovery, ownership
+and adaptive packing bodies. It requires a JDK and never accesses a device.
 """
 from pathlib import Path
 import subprocess
@@ -26,9 +26,17 @@ def extract(source, marker):
 
 HARNESS = r'''package ls.augment.com.hook;
 import java.util.*;
+import ls.augment.com.StatusBarGridLayout;
+import ls.augment.com.StatusBarAdaptiveLayout;
 public final class TestStatusBarFailureCleanup {
  static class View {
   String slot; ViewGroup parent;
+  int left,top,right,bottom,measuredWidth,measuredHeight;
+  static class MeasureSpec {static final int EXACTLY=0x40000000;static int makeMeasureSpec(int size,int mode){return size|mode;}}
+  int getLeft(){return left;}int getTop(){return top;}int getRight(){return right;}int getBottom(){return bottom;}
+  int getMeasuredWidth(){return measuredWidth;}int getMeasuredHeight(){return measuredHeight;}
+  void measure(int w,int h){measuredWidth=w&0x3fffffff;measuredHeight=h&0x3fffffff;}
+  void layout(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}
   float x,y,sx=1,sy=1,alpha=1;
   ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();
   float getTranslationX(){return x;} float getTranslationY(){return y;}
@@ -37,6 +45,7 @@ public final class TestStatusBarFailureCleanup {
   void setScaleX(float v){sx=v;} void setScaleY(float v){sy=v;} void setAlpha(float v){alpha=v;}
   ViewGroup.LayoutParams getLayoutParams(){return params;}
   void setLayoutParams(ViewGroup.LayoutParams value){params=value;}
+  View getParent(){return parent;}
  }
  static class ViewGroup extends View {
   static class LayoutParams {static final int WRAP_CONTENT=-2;int width=WRAP_CONTENT;}
@@ -59,13 +68,15 @@ public final class TestStatusBarFailureCleanup {
  static class ModernStatusBarMobileView extends View {}
  static class StatusBarBluetoothView extends View {}
  static class StatusBarClipping {void restore(){}}
+ static class StatusBarWifiAssetSpacingHook {static int rejects;static void gridRejected(View root){rejects++;}}
  static class Context {}
  static class Handler {
   final List<Runnable> pending=new ArrayList<>();int clearCalls;
   void removeCallbacksAndMessages(Object token){pending.clear();clearCalls++;}
  }
  static class HandlerThread {int quitCalls;boolean quitSafely(){quitCalls++;return true;}}
- static class ConnectivityIconView extends View {int closeCalls;void close(){closeCalls++;}}
+ static class ConnectivityIconView extends View {int closeCalls;boolean ready=true,placed=true;void close(){closeCalls++;}boolean ready(){return ready;}boolean usable(){return ready;}boolean placed(){return placed;}void uncommit(){placed=false;}void commit(){placed=true;}String reason(){return "ok";}void publish(String state,int w,int h){}}
+ static class RedMagicSystemUiHook {static void stackedGridRejected(View root){}}
  static class FeatureSettings {
   static final String SYSTEMUI_LAST_ERROR="error",SYSTEMUI_ACTIVE="active",SYSTEMUI_LAYOUT_STATE="layout";
   static final Map<String,String> diagnostics=new LinkedHashMap<>();
@@ -76,10 +87,15 @@ public final class TestStatusBarFailureCleanup {
  }
  static class SystemUiHook {
   static final List<TextView> released=new ArrayList<>();
+  static int clockRefreshes;static void refreshGridClock(View root){clockRefreshes++;}
+  static void resetGridClock(View root){}static void suspendGridClock(View root){}
   static String slotOf(View view){return view.slot;}
   static void releaseGridClock(TextView clock){released.add(clock);}
  }
  static boolean isKeyguard(ViewGroup root){return root.keyguard;}
+ static final Map<ViewGroup,State> STATES=new IdentityHashMap<>();
+ static State stateFor(View view){for(View at=view;at!=null;at=at.parent){State state=STATES.get(at);if(state!=null)return state;}return null;}
+ // OWNERSHIP
  // GEOMETRY
  // BASE_ID
  static class State {
@@ -91,7 +107,14 @@ public final class TestStatusBarFailureCleanup {
   final Map<String,TextView> metrics=new LinkedHashMap<>();
   final TextView[] clockLines=new TextView[2];
   FrameLayout overlay;TextView keyguardClock;ConnectivityIconView connectivityIcon;
-  Handler worker;HandlerThread thread;long metricsGeneration;boolean active=true,layoutFailed;
+  Handler worker;HandlerThread thread;long metricsGeneration,lastWitness;boolean active=true,layoutFailed;
+  Object batteryInk;View batteryInkView;String batteryInkInputs="",trialClockCapacity;boolean circleTrial;final List<View> circleNative=new ArrayList<>();
+  static class PackingCapacityBlock{}PackingCapacityBlock packingCapacityBlock;void clearRejectedCapacity(){packingCapacityBlock=null;}
+  boolean packingSuspended,positionOnly;String packingIssue="";
+  boolean positionOnly(){return positionOnly;}boolean connectivityGroup(){return !positionOnly;}
+  State(){STATES.put(root,this);}
+  Geometry own(View view){return geometry.computeIfAbsent(view,Geometry::new);}
+  void prepareReplacement(View view){Geometry original=own(view);view.setAlpha(0);original.mark(view);}
   int px(float value){return Math.round(value);}
   // METHODS
   Runnable pendingSample(Map<String,String> values,long generation){return () -> // SAMPLE_BODY
@@ -191,9 +214,47 @@ public final class TestStatusBarFailureCleanup {
   state.pendingSample(Map.of("cpu","current"),state.metricsGeneration).run();
   check("current".equals(currentMetric.text),"current-generation samples still update normally");
  }
+ static void recovery(){
+  State state=new State();View battery=new View(),wifi=new View();battery.alpha=.7f;wifi.alpha=.8f;
+  state.root.addView(battery);state.root.addView(wifi);
+  state.overlay=new FrameLayout();state.root.addView(state.overlay);
+  state.connectivityIcon=new ConnectivityIconView();state.root.addView(state.connectivityIcon);
+  state.worker=new Handler();state.thread=new HandlerThread();state.metricsGeneration=9;
+  check(!ownsConnectivityReplacement(battery),"ready data alone cannot claim a replacement without placement");
+  List<StatusBarGridLayout.Node> nodes=List.of(new StatusBarGridLayout.Node("clock","LS",0,170,16),new StatusBarGridLayout.Node("battery","RS",1,28,26));
+  // Alternate real crowded and roomy measured layouts; no saved preference changes.
+  for(int frame=0;frame<80;frame++){
+   boolean fits=frame%4>=2;state.root.width=fits?240:180;
+   state.prepareReplacement(battery);state.prepareReplacement(wifi);
+   state.overlay.setAlpha(1);state.connectivityIcon.setAlpha(1);
+   StatusBarAdaptiveLayout.Result result=StatusBarAdaptiveLayout.pack(nodes,state.root.width,32,4,4,0,0,2,0,0);
+   check(result.valid==fits,"actual adaptive layout decides overflow/recovery at the new width");
+   if(result.valid){
+    Geometry original=state.own(state.connectivityIcon);state.connectivityIcon.x=result.boxes.get("battery").x;original.mark(state.connectivityIcon);
+    state.connectivityIcon.commit();
+    state.resumePacking();
+    check(ownsIconLayout(battery)&&ownsConnectivityReplacement(battery),"successful placement regains native/icon ownership");
+    close(0,battery.alpha,"successful replacement hides native battery");close(1,state.connectivityIcon.alpha,"successful replacement becomes visible");
+    check(state.packingIssue.isEmpty(),"recovery clears transient reason");
+   }else{
+    state.suspendPacking(result.reason);
+    check(state.active&&!state.layoutFailed,"crowding keeps the live controller eligible to recover");
+    check(!ownsIconLayout(battery)&&!ownsConnectivityReplacement(battery)&&!hasGridTransform(battery),"fallback yields all native ownership");
+    close(.7f,battery.alpha,"fallback restores native battery opacity");close(.8f,wifi.alpha,"fallback restores native Wi-Fi opacity");
+    close(0,state.connectivityIcon.alpha,"fallback never displays stale replacement");close(0,state.overlay.alpha,"fallback hides retained metric/clock overlay");
+    check(state.geometry.isEmpty(),"fallback releases transform baselines before the next candidate");
+   }
+   check(state.worker!=null&&state.thread!=null&&state.metricsGeneration==9,"transient fallback retains listeners and metrics lifecycle");
+  }
+  state.suspendPacking("crowded");
+  check(StatusBarWifiAssetSpacingHook.rejects>0,"packing fallback revokes imported Wi-Fi cell placement before native restore");
+  check(!ownsIconLayout(battery)&&!ownsConnectivityReplacement(battery),"packing fallback releases component and replacement ownership");
+  state.restore();check(!state.packingSuspended&&state.packingIssue.isEmpty(),"config restore discards old packing suspension");
+  close(.7f,battery.alpha,"mode switch preserves the recovered native battery");
+ }
  public static void main(String[] args){
-  identification();cleanup(false);cleanup(true);
-  System.out.println("Status bar failure cleanup: "+checks+" actual-method identification, teardown, stale-sample and diagnostic assertions passed");
+  identification();cleanup(false);cleanup(true);recovery();
+  System.out.println("Status bar failure cleanup: "+checks+" actual-method cleanup, adaptive recovery and ownership assertions passed");
  }
 }
 '''
@@ -204,6 +265,9 @@ def main():
     methods = '\n'.join(extract(source, marker) for marker in (
         'boolean isConnectivity(View view)', 'void stopMetrics()',
         'void restore()', 'void failLayout(Throwable error)',
+        'void suspendPacking(String reason)', 'void resumePacking()',
+        'void restorePlacement()',
+        'boolean usingConnectivityIcon()', 'boolean connectivityPlaced()',
     ))
     sample = extract(source, 'main.post(()->{if(!active||metricsGeneration!=generation)return;')
     sample = sample[sample.index('{'):]
@@ -211,6 +275,11 @@ def main():
                .replace('// DIAGNOSTIC_ERROR', extract((SOURCE.parent / 'FeatureSettings.java').read_text(encoding='utf-8'), 'static void diagnosticError('))
                .replace('// GEOMETRY', extract(source, 'private static final class Geometry {'))
                .replace('// BASE_ID', extract(source, 'private static String baseId(String id)'))
+               .replace('// OWNERSHIP', '\n'.join(extract(source, marker) for marker in (
+                   'static boolean ownsIconLayout(',
+                   'static boolean ownsConnectivityReplacement(',
+                   'static boolean hasGridTransform(',
+               )))
                .replace('// METHODS', methods)
                .replace('// SAMPLE_BODY', sample))
     with tempfile.TemporaryDirectory(prefix='lsa-statusbar-failure-') as directory:
@@ -227,6 +296,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding='utf-8')
             files.append(str(target))
+        files += [str(SOURCE.parent.parent / name) for name in ('StatusBarGridLayout.java','StatusBarAdaptiveLayout.java')]
         subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, *files], check=True)
         subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestStatusBarFailureCleanup'], check=True, timeout=20)
 

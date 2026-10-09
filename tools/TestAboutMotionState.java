@@ -5,6 +5,9 @@ public final class TestAboutMotionState {
 
     public static void main(String[] args) {
         boundaries();
+        close(0,AboutMotionState.at(230,1).compactVersionAlpha,"compact version hidden until brand collapse");
+        close(.5f,AboutMotionState.at(250,1).compactVersionAlpha,"compact version fade midpoint");
+        close(1,AboutMotionState.at(270,1).compactVersionAlpha,"compact version readable after collapse");
         densityNormalization();
         reversalAndBounds();
         invalidInput();
@@ -19,7 +22,7 @@ public final class TestAboutMotionState {
         close(1, top.brandAlpha, "top brand opacity");
         close(1, top.brandScale, "top brand scale");
         close(1, top.backgroundAlpha, "top background opacity");
-        require(!top.titleVisible, "toolbar title hidden at top");
+        close(0,top.compactVersionAlpha,"compact card hidden at top");
 
         AboutMotionState halfway = AboutMotionState.at(95, 1);
         close(.5f, halfway.versionAlpha, "version opacity halfway through its fade");
@@ -31,20 +34,20 @@ public final class TestAboutMotionState {
         close(0, brandStart.versionAlpha, "version fully transparent at 190 dp");
         close(1, brandStart.brandAlpha, "brand fade begins at 190 dp");
         close(1, brandStart.brandScale, "brand retains full scale at 190 dp");
-        require(!brandStart.titleVisible, "toolbar title hidden at brand fade start");
+        close(0,brandStart.compactVersionAlpha,"compact card hidden at brand fade start");
 
         AboutMotionState middle = AboutMotionState.at(210, 1);
         close(.5f, middle.brandAlpha, "brand fade midpoint");
         close(.95f, middle.brandScale, "brand scale midpoint");
-        require(!middle.titleVisible, "toolbar title hidden during brand fade");
-        require(!AboutMotionState.at(229.5f, 1).titleVisible, "title hidden just below 230 dp");
+        close(0,middle.compactVersionAlpha,"compact card hidden during brand fade");
+        close(0,AboutMotionState.at(229.5f,1).compactVersionAlpha,"compact card hidden just below 230 dp");
         require(AboutMotionState.at(229.5f, 1).brandAlpha > 0, "brand visible just below 230 dp");
 
-        AboutMotionState titleStart = AboutMotionState.at(230, 1);
-        close(0, titleStart.brandAlpha, "brand transparent at 230 dp");
-        close(.9f, titleStart.brandScale, "brand reaches final scale at 230 dp");
-        require(titleStart.titleVisible, "toolbar title appears exactly at 230 dp");
-        require(titleStart.backgroundAlpha > 0, "background fade continues after the title appears");
+        AboutMotionState compactStart = AboutMotionState.at(230, 1);
+        close(0, compactStart.brandAlpha, "brand transparent at 230 dp");
+        close(.9f, compactStart.brandScale, "brand reaches final scale at 230 dp");
+        close(0,compactStart.compactVersionAlpha,"compact card fade starts at 230 dp");
+        require(compactStart.backgroundAlpha > 0, "background fade continues after brand collapse");
 
         AboutMotionState scaleMidpoint = AboutMotionState.at(194.5f, 1);
         close(.95f, scaleMidpoint.versionScale, "version scale uses the 389 dp span");
@@ -56,7 +59,7 @@ public final class TestAboutMotionState {
         close(0, end.brandAlpha, "end brand opacity");
         close(.9f, end.brandScale, "end brand scale");
         close(0, end.backgroundAlpha, "end background opacity");
-        require(end.titleVisible, "end toolbar title visible");
+        close(1,end.compactVersionAlpha,"compact card visible at end");
         same(end, AboutMotionState.at(10000, 1), "scroll past the end stays clamped");
     }
 
@@ -67,10 +70,8 @@ public final class TestAboutMotionState {
                         "same dp at density " + density + " position " + dp);
             }
         }
-        require(!AboutMotionState.at(230, 2).titleVisible,
-                "230 physical pixels at density 2 is only 115 dp");
-        require(AboutMotionState.at(460, 2).titleVisible,
-                "title threshold scales to 460 physical pixels at density 2");
+        close(0,AboutMotionState.at(230,2).compactVersionAlpha,"230 physical pixels at density 2 is only 115 dp");
+        close(1,AboutMotionState.at(540,2).compactVersionAlpha,"compact card reaches full alpha at 540 physical pixels at density 2");
     }
 
     private static void reversalAndBounds() {
@@ -84,6 +85,8 @@ public final class TestAboutMotionState {
             bounded(next.brandAlpha, 0, 1, "brand opacity bounded");
             bounded(next.brandScale, .9f, 1, "brand scale bounded");
             bounded(next.backgroundAlpha, 0, 1, "background opacity bounded");
+            bounded(next.compactVersionAlpha,0,1,"compact card alpha bounded");
+            require(next.compactVersionAlpha>=previous.compactVersionAlpha,"compact card appears monotonically");
             require(next.versionAlpha <= previous.versionAlpha, "version fade monotonic downwards");
             require(next.versionScale <= previous.versionScale, "version scale monotonic downwards");
             require(next.brandAlpha <= previous.brandAlpha, "brand fade monotonic downwards");
@@ -124,7 +127,7 @@ public final class TestAboutMotionState {
         close(expected.brandAlpha, actual.brandAlpha, message + " brand alpha");
         close(expected.brandScale, actual.brandScale, message + " brand scale");
         close(expected.backgroundAlpha, actual.backgroundAlpha, message + " background alpha");
-        require(expected.titleVisible == actual.titleVisible, message + " title visibility");
+        close(expected.compactVersionAlpha,actual.compactVersionAlpha,message+" compact card alpha");
     }
 
     private static void exact(AboutMotionState expected, AboutMotionState actual, String message) {
@@ -133,7 +136,7 @@ public final class TestAboutMotionState {
                 && Float.floatToIntBits(expected.brandAlpha) == Float.floatToIntBits(actual.brandAlpha)
                 && Float.floatToIntBits(expected.brandScale) == Float.floatToIntBits(actual.brandScale)
                 && Float.floatToIntBits(expected.backgroundAlpha) == Float.floatToIntBits(actual.backgroundAlpha)
-                && expected.titleVisible == actual.titleVisible, message);
+                && Float.floatToIntBits(expected.compactVersionAlpha) == Float.floatToIntBits(actual.compactVersionAlpha), message);
     }
 
     private static void bounded(float value, float min, float max, String message) {

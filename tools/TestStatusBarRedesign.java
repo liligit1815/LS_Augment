@@ -8,10 +8,31 @@ public final class TestStatusBarRedesign {
         for(int preset=0;preset<StatusBarPresets.NAMES.length;preset++){
             Map<String,String> values=StatusBarPresets.values(preset);
             for(Map.Entry<String,String> e:values.entrySet()){
-                require(e.getKey().equals(ConfigSchema.SYSTEMUI_MASTER)||e.getKey().startsWith("ls_augment_statusbar_"),"preset changed unrelated setting");
+                require(e.getKey().equals(ConfigSchema.SYSTEMUI_MASTER)||e.getKey().startsWith("ls_augment_statusbar_")||StatusBarPresets.ownsRelatedKey(e.getKey()),"preset changed unrelated setting");
                 require(ConfigSchema.normalize(e.getKey(),e.getValue())!=null,"invalid preset: "+e.getKey());
             }
             require(StatusBarGridSpec.parse(values.get(ConfigSchema.STATUSBAR_GRID))!=null,"preset grid round trip");
+            require("0".equals(values.get(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)),"presets must not force position-only mode");
+            ConfigEditDraft draft=new ConfigEditDraft();
+            Map<String,String> before=new LinkedHashMap<>(ConfigSchema.defaults());
+            before.put(SystemUiOptions.SIGNAL_DUAL,"1");before.put(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY,"1");
+            for(Map.Entry<String,String> e:before.entrySet())draft.seed(e.getKey(),e.getValue());
+            for(Map.Entry<String,String> e:values.entrySet())draft.seed(e.getKey(),e.getValue());
+            require(!draft.hasPending(),"preset preview must not write settings");
+            for(Map.Entry<String,String> e:before.entrySet())draft.seed(e.getKey(),e.getValue());
+            require("1".equals(draft.get(SystemUiOptions.SIGNAL_DUAL)),"cancel restores dual signal selection");
+            for(Map.Entry<String,String> e:values.entrySet())draft.put(e.getKey(),e.getValue());
+            ConfigEditDraft.Batch applied=draft.takePending();draft.complete(applied,true);
+            require("0".equals(draft.get(SystemUiOptions.SIGNAL_DUAL)),"preset explicitly selects native signal");
+            draft.put(SystemUiOptions.SIGNAL_DUAL,"1");
+            ConfigEditDraft.Batch edited=draft.takePending();
+            require(edited.values.size()==1&&"1".equals(edited.values.get(SystemUiOptions.SIGNAL_DUAL)),"later dual signal edit must not reapply preset settings");
+            require("0".equals(draft.get(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)),"editing preset leaves position-only mode disabled");
+            if(preset==0){
+                require("0".equals(values.get(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)),"native preset disables Bluetooth artwork override");
+                require("0".equals(values.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM)),"native preset disables custom clock");
+                require("0".equals(values.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)),"native preset disables three-in-one icon");
+            }
         }
         StatusBarGridSpec input=StatusBarGridSpec.defaults().with("current",new StatusBarGridSpec.Item("C1",87,21,true));
         StatusBarGridSpec arranged=StatusBarPresets.arrange(input);

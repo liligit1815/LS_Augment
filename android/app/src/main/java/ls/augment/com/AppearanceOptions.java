@@ -10,6 +10,7 @@ public final class AppearanceOptions {
     public static final String LIGHT_MASK = "ls_augment_appearance_light_mask";
     public static final String DARK_MASK = "ls_augment_appearance_dark_mask";
     public static final String TWO_PANE = "ls_augment_appearance_two_pane";
+    public static final String ANGULAR_CARDS = "ls_augment_appearance_angular_cards";
     private AppearanceOptions() {}
     public static List<EnhancementOption> options() {
         return Arrays.asList(

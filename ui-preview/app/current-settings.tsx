@@ -1,21 +1,14 @@
 /* eslint-disable nextjs/no-img-element -- Local native assets must retain their measured dimensions; user-selected images are data URLs. */
 'use client';
-import { useRef, useState } from 'react';
-import { Card, FeatureTitle, LinkCard, Button, useModel } from './current-ui';
+import { useState } from 'react';
+import { Card, FeatureTitle, Button, useModel } from './current-ui';
 import catalog from './current-catalog.json';
-import { CurrentCompatibility } from './current-compatibility';
 import legal from './current-legal.json';
 import scopePackages from './current-scope.json';
-import { backupSettings, downloadBackup } from './current-backup';
 export const settingTitles: Record<string, string> = {
   support: '支持',
   contributors: '贡献者',
   scope: '作用域同步',
-  config_transfer: '配置备份与重置',
-  compatibility_help: '日志及运行诊断',
-  framework: '框架兼容性',
-  version: '当前版本兼容性',
-  launcher_compatibility: '修改版桌面兼容性',
 };
 export function LegalContent({ kind }: { kind: string }) {
   return (
@@ -32,16 +25,10 @@ export function LegalContent({ kind }: { kind: string }) {
 }
 export function CurrentSettingsPage({
   route,
-  reset,
-  restore,
 }: {
   route: string;
-  reset: () => void;
-  restore: (settings: Record<string, string>) => void;
 }) {
   const m = useModel(),
-    file = useRef<HTMLInputElement>(null),
-    [error, setError] = useState(''),
     [refresh, setRefresh] = useState(false);
   const notice = (title: string, copy: string) =>
     m.dialog(
@@ -98,35 +85,6 @@ export function CurrentSettingsPage({
             </div>
           ))}
         </Card>
-      </>
-    );
-  if (route === 'compatibility_help')
-    return (
-      <>
-        {[
-          [
-            '框架兼容性',
-            '检查框架连接、版本与 API，并区分连接状态和当前模块加载证据。',
-            'framework',
-          ],
-          [
-            '当前版本兼容性',
-            '对照当前模块收录的适配基准，读取本机系统和目标应用的实际版本。',
-            'version',
-          ],
-          [
-            '修改版桌面兼容性',
-            '检查修改版桌面所需的机型、系统、原厂签名、版本与关键权限；不会安装或替换桌面。',
-            'launcher_compatibility',
-          ],
-          [
-            '日志与诊断',
-            '查看详细日志选项并按需导出诊断。进入页面不会自动启用日志或重启应用。',
-            'diagnostics',
-          ],
-        ].map(([title, help, r]) => (
-          <LinkCard key={r} title={title} help={help} route={r} />
-        ))}
       </>
     );
   if (route === 'scope')
@@ -205,116 +163,5 @@ export function CurrentSettingsPage({
         </Card>
       </>
     );
-  if (route === 'config_transfer') {
-    const exportConfig = () => {
-      downloadBackup(backupSettings(m.values));
-      m.tell('网页配置已导出');
-    };
-    return (
-      <>
-        <Card>
-          <FeatureTitle
-            title="配置备份"
-            help="导出功能设置、应用选择、自定义图片、字体与肩键候选。不包含账户绑定、执行日志和设备测试凭据。导入后按需重启作用域。"
-          />
-          <Button onClick={exportConfig}>导出配置</Button>
-          <Button onClick={() => file.current?.click()}>导入配置</Button>
-          <input
-            type="file"
-            hidden
-            ref={file}
-            accept=".json,application/json"
-            aria-label="导入配置文件"
-            onChange={async (e) => {
-              const input = e.currentTarget,
-                f = input.files?.[0];
-              if (!f) return;
-              try {
-                if (f.size > 8_000_000) throw Error('文件过大');
-                const d = JSON.parse(await f.text());
-                if (
-                  d.format !== 'LS_Augment.UIPrototype' ||
-                  d.version !== 2 ||
-                  !d.settings ||
-                  typeof d.settings !== 'object' ||
-                  Array.isArray(d.settings) ||
-                  !Object.values(d.settings).every((v) => typeof v === 'string')
-                )
-                  throw Error('请选择当前网页原型导出的配置文件');
-                const entries = Object.entries(d.settings) as [
-                  string,
-                  string,
-                ][];
-                m.dialog(
-                  '导入配置',
-                  <>
-                    <p>
-                      已校验 {entries.length} 项网页设置。导入将替换对应设置。
-                    </p>
-                    <footer>
-                      <button onClick={m.close}>取消</button>
-                      <button
-                        onClick={() => {
-                          restore(Object.fromEntries(entries));
-                          m.close();
-                          m.tell('网页配置已导入');
-                        }}
-                      >
-                        导入
-                      </button>
-                    </footer>
-                  </>,
-                );
-                setError('');
-              } catch (ex) {
-                setError(ex instanceof Error ? ex.message : '导入失败');
-              }
-              input.value = '';
-            }}
-          />
-          {error && (
-            <p role="alert" className="c-error">
-              {error}
-            </p>
-          )}
-        </Card>
-        <Card>
-          <FeatureTitle
-            title="恢复默认设置"
-            help="恢复全部模块设置，清除应用选择、图片和字体选择、健康绑定及肩键快捷候选，并恢复模块桌面入口。重置前可先导出配置。"
-          />
-          <Button
-            onClick={() =>
-              m.dialog(
-                '重置全部配置？',
-                <>
-                  <p>
-                    将恢复全部模块设置，并先恢复隐藏清单中的应用。健康绑定和本机测试凭据也会清除，需要重新绑定或测试。
-                    {'\n\n'}
-                    不会卸载应用或重排桌面页面。诊断日志保留。重置完成后需要重启手机。
-                  </p>
-                  <footer>
-                    <button onClick={m.close}>取消</button>
-                    <button
-                      onClick={() => {
-                        reset();
-                        m.close();
-                        m.tell('原型演示：已恢复网页默认设置');
-                      }}
-                    >
-                      确认重置
-                    </button>
-                  </footer>
-                </>,
-              )
-            }
-          >
-            重置全部配置
-          </Button>
-        </Card>
-        <p className="c-note">此原型的备份用于保存界面操作状态。</p>
-      </>
-    );
-  }
-  return <CurrentCompatibility route={route} />;
+  return <p className="c-note">此页面不可用。</p>;
 }

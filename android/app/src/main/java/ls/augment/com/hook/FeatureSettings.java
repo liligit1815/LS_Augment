@@ -124,8 +124,7 @@ final class FeatureSettings {
     static final String FREEFORM_UNLIMITED = ConfigSchema.FREEFORM_UNLIMITED;
     static final String FREEFORM_ALL_APPS = ConfigSchema.FREEFORM_ALL_APPS;
     static final String FAN_FIXED_ENABLED = ConfigSchema.FAN_FIXED_ENABLED;
-    static final String FAN_UNLOCK_MAX = ConfigSchema.FAN_UNLOCK_MAX;
-    static final String FAN_TARGET_RPM = ConfigSchema.FAN_TARGET_RPM;
+    static final String FAN_TILE_ENHANCEMENT_ENABLED = ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED;
     static final String FAN_CONTROL_ACTIVE = "ls_augment_fan_control_active";
     static final String FAN_CONTROL_INSTALLED = "ls_augment_fan_control_installed";
     static final String FAN_CONTROL_LAST_ERROR = "ls_augment_fan_control_last_error";
@@ -650,8 +649,9 @@ final class FeatureSettings {
                 if(value.retryAt>SystemClock.elapsedRealtime())continue;
                 if (++count > 64) break;
                 if (writeDiagnostic(entry.getKey(), value)) DIAGNOSTICS.remove(entry.getKey(), value);
-                else if (value.retryAt<=SystemClock.elapsedRealtime()
-                        && ++value.failures >= 3 && DIAGNOSTICS.remove(entry.getKey(), value)) {
+                else if ((value.retryAt<=SystemClock.elapsedRealtime()||entry.getKey().equals("ls_augment_system_server_lifecycle"))
+                        && ++value.failures >= (entry.getKey().equals("ls_augment_system_server_lifecycle")?20:3)
+                        && DIAGNOSTICS.remove(entry.getKey(), value)) {
                     // A boot-time Provider miss must not permanently deduplicate
                     // an installation witness that was never delivered. Only
                     // forget this failed value; a newer queued value owns its cache.
@@ -672,6 +672,8 @@ final class FeatureSettings {
             long retry=result==null?0:result.getLong("retryAfterMs",0);
             if(retry>0)pending.retryAt=SystemClock.elapsedRealtime()+Math.min(30_000,retry);
         } catch (Throwable ignored) { }
+        if(key.equals("ls_augment_system_server_lifecycle")&&pending.retryAt<=SystemClock.elapsedRealtime())
+            pending.retryAt=SystemClock.elapsedRealtime()+Math.min(10_000,1000L*(pending.failures+1));
         return false;
     }
 

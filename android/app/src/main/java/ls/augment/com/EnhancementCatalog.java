@@ -11,6 +11,11 @@ public final class EnhancementCatalog {
         all.addAll(CollabOptions.options());
         all.addAll(EntryVisibilityOptions.options());
         all.addAll(GlassOptions.options());
+        all.addAll(NotificationAppearanceOptions.options());
+        all.addAll(ControlCenterAppearanceOptions.options());
+        all.addAll(StatusBarIconLayoutOptions.options());
+        all.addAll(NotificationSummaryOptions.options());
+        all.addAll(CarrierTextOptions.options());
         return Collections.unmodifiableList(all);
     }
     public static String title(String group) {

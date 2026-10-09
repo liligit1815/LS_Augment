@@ -37,7 +37,7 @@ constexpr char kInputReaderPath[] = "/system/lib64/libinputreader.so";
 constexpr char kRapidDataSymbol[] =
         "_ZN7android13EventProducer22updateTgkRapidFireDataEi";
 
-constexpr int kMinCps = 10;
+constexpr int kMinCps = 1;
 constexpr int kMaxCps = 50;
 constexpr int64_t kNanosecondsPerSecond = 1000000000LL;
 constexpr int32_t kMinimumPhaseNanoseconds = 5000000;
@@ -185,7 +185,7 @@ void updateRapidDataProxy(void* self, int keyCode) {
     const int cps = desiredCpsForKey(keyCode);
     const RapidDataProfile* profile = profileForKey(keyCode);
     const RapidDataOffsets* offsets = offsetsForKey(profile, keyCode);
-    if (self == nullptr || offsets == nullptr || cps <= kMinCps
+    if (self == nullptr || offsets == nullptr || cps < kMinCps
             || cps > kMaxCps) {
         return;
     }

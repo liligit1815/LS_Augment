@@ -1,6 +1,7 @@
 package ls.augment.com.hook;
 
-import android.app.Application;
+import android.app.Activity;
+import android.content.Intent;
 import android.content.Context;
 import android.os.*;
 import android.os.Process;
@@ -12,6 +13,9 @@ import java.security.MessageDigest;
 import java.time.*;
 import java.util.*;
 import ls.augment.com.ConfigSchema;
+import ls.augment.com.ConfigSnapshot;
+import ls.augment.com.HealthIdentityProbe;
+import ls.augment.com.HealthAccountState;
 import ls.augment.com.StepMath;
 import ls.augment.com.StepPlan;
 import ls.augment.com.StepDailyLimit;
@@ -43,17 +47,33 @@ final class MiHealthHook {
                 try{return chain.proceed();}finally{LOCAL.set(old);}
             }));
             module.registerFeatureHook(module.prepareFeatureHook(insert,"health.persist",true).intercept(chain->{
+                if(!"steps".equals(chain.getArg(0))||GENERATED.get())return chain.proceed();
                 Controller c=ensure(module,loader);
-                if(c==null||!"steps".equals(chain.getArg(0))||GENERATED.get())return chain.proceed();
+                if(c==null||!c.configured())return chain.proceed();
                 StepLedger.Guard guard;
-                try{guard=c.ledger.guard();}catch(Exception e){c.error("等待记录写入",e);return chain.proceed();}
-                try(guard){
-                    Controller.AccountPin pin=null;
-                    try{pin=c.pinAccount();c.transform((List<?>)chain.getArg(1),LOCAL.get(),Boolean.TRUE.equals(chain.getArg(2)));}
-                    catch(Throwable e){c.error("保存适配失败",e);}
-                    try{Object result=chain.proceed();c.request();return result;}
-                    finally{if(pin!=null)pin.close();}
+                // Do not touch a lock/database until a valid enabled binding matches
+                // the current account. Disabled records pass through the native DAO.
+                Controller.AccountPin pin;
+                try{pin=c.pinAccount();}catch(Exception e){c.error("等待账户接入",e);return chain.proceed();}
+                try(pin){
+                    if(!c.enabled(c.currentAccount()))return chain.proceed();
+                    try{guard=c.ledger().guard();}catch(Exception e){c.error("等待记录写入",e);return chain.proceed();}
+                    try(guard){
+                        try{c.transform((List<?>)chain.getArg(1),LOCAL.get(),Boolean.TRUE.equals(chain.getArg(2)));}
+                        catch(Throwable e){c.error("保存适配失败",e);}
+                        Object result=chain.proceed();c.request();return result;
+                    }
                 }
+            }));
+            Method resume=Activity.class.getDeclaredMethod("onResume");
+            module.registerFeatureHook(module.prepareFeatureHook(resume,"health.identity.probe",false).intercept(chain->{
+                Object result=chain.proceed();Activity activity=(Activity)chain.getThisObject();
+                Intent intent=activity.getIntent();
+                if("com.mi.health".equals(activity.getPackageName())&&intent!=null&&intent.hasExtra(HealthIdentityProbe.EXTRA)){
+                    String probe=intent.getStringExtra(HealthIdentityProbe.EXTRA);intent.removeExtra(HealthIdentityProbe.EXTRA);
+                    Controller c=ensure(module,loader);if(c!=null)c.probe(probe);
+                }
+                return result;
             }));
             installed=true;
             Handler main=new Handler(Looper.getMainLooper());
@@ -68,36 +88,85 @@ final class MiHealthHook {
     }
     static final class Controller {
         final AugmentModule module;final Context context;final ClassLoader loader;
-        final Handler worker;final StepLedger ledger;
+        final Handler worker;private StepLedger ledger;
+        private String identityProbe="";private final Set<String> consumedProbes=new LinkedHashSet<>();
         volatile boolean compatible;volatile long gap;String account="",lastError="";long lastSync;int pendingUploads;
         Controller(AugmentModule module,Context context,ClassLoader loader){
-            this.module=module;this.context=context;this.loader=loader;ledger=new StepLedger(context);
+            this.module=module;this.context=context;this.loader=loader;
             HandlerThread t=new HandlerThread("LS-health-records",Process.THREAD_PRIORITY_BACKGROUND);t.start();worker=new Handler(t.getLooper());
             FeatureSettings.addSnapshotListener(context,this::request);worker.post(tick);
         }
         final Runnable tick=new Runnable(){public void run(){
-            try{refreshIdentity();if(!compatible)checkAdapter();reconcile();}
-            catch(Throwable e){error("等待健康应用初始化",e);}
-            worker.postDelayed(this,30000);
+            runCycle("等待健康应用初始化");
+            if(configured())worker.postDelayed(this,30000);
         }};
-        final Runnable requested=()->{try{refreshIdentity();if(!compatible)checkAdapter();reconcile();}catch(Throwable e){error("步数处理失败",e);}};
-        void request(){worker.removeCallbacks(requested);worker.postDelayed(requested,1200);}
+        final Runnable requested=new Runnable(){public void run(){runCycle("步数处理失败");worker.removeCallbacks(tick);if(configured())worker.postDelayed(tick,30000);}};
+        void request(){worker.removeCallbacks(requested);worker.removeCallbacks(tick);worker.postDelayed(requested,1200);}
+        void runCycle(String stage){
+            if(!configured()){pause();return;}
+            try{refreshIdentity();if(!enabled(account))return;if(!compatible)checkAdapter();reconcile();}
+            catch(Throwable e){if(configured())error(stage,e);}
+        }
+        void pause(){worker.removeCallbacks(tick);account="";pendingUploads=0;lastError="";
+            // Keep old durable intents for an explicit reset/recovery. Closing or
+            // disabling must never erase historical restoration evidence.
+            if(!probePending(identityProbe)||FeatureSettings.hasVerifiedSnapshot(context)&&!probeValid(identityProbe)){
+                identityProbe="";worker.removeCallbacks(probing);}}
+        boolean configured(){return configured(FeatureSettings.snapshot(context));}
+        static boolean configured(ConfigSnapshot snapshot){
+            if(snapshot==null||!ConfigSchema.truthy(snapshot.get(ConfigSchema.HEALTH_ENABLED)))return false;
+            String bound=snapshot.get(ConfigSchema.HEALTH_ACCOUNT);if(bound==null||!bound.matches("[0-9a-f]{64}"))return false;
+            if(ConfigSchema.truthy(snapshot.get(ConfigSchema.HEALTH_MULTIPLY_ENABLED)))return true;
+            StepPlan plan=StepPlan.parse(Objects.toString(snapshot.get(ConfigSchema.HEALTH_PLAN),""));
+            return ConfigSchema.truthy(snapshot.get(ConfigSchema.HEALTH_PLAN_ENABLED))&&plan!=null&&bound.equals(plan.account);
+        }
+        synchronized StepLedger ledger()throws Exception{
+            if(ledger==null){if(!configured()||!enabled(currentAccount()))throw new IllegalStateException("健康功能未启用或账户未匹配");ledger=new StepLedger(context);}
+            return ledger;
+        }
+        boolean probePending(String probe){return HealthIdentityProbe.pending(probe,Process.myUid()/100000,System.currentTimeMillis());}
+        boolean probeValid(String probe){return FeatureSettings.hasVerifiedSnapshot(context)&&HealthIdentityProbe.valid(probe,FeatureSettings.snapshot(context),Process.myUid()/100000,System.currentTimeMillis());}
+        void probe(String probe){worker.post(()->{
+            if(!probePending(probe)||consumedProbes.contains(probe)
+                    ||FeatureSettings.hasVerifiedSnapshot(context)&&!probeValid(probe))return;
+            consumedProbes.removeIf(previous->!probePending(previous));
+            if(consumedProbes.size()>=64)return;
+            consumedProbes.add(probe);identityProbe=probe;worker.removeCallbacks(probing);worker.post(probing);
+        });}
+        final Runnable probing=new Runnable(){public void run(){
+            String request=identityProbe;if(!probePending(request)){identityProbe="";return;}
+            if(!FeatureSettings.hasVerifiedSnapshot(context)){worker.postDelayed(this,1000);return;}
+            if(!probeValid(request)){identityProbe="";return;}
+            try{
+                Identity observed=identity();String discovered=observed.id;
+                if(!probeValid(request)||!request.equals(identityProbe))return;
+                publishIdentity(observed);
+                FeatureSettings.diagnostic(context,"ls_augment_health_account_runtime",discovered);
+                FeatureSettings.diagnostic(context,"ls_augment_health_heartbeat",""+System.currentTimeMillis());
+                if(!discovered.isEmpty()){identityProbe="";return;}
+            }catch(Exception ignored){/* Native account initialization can finish after resume. */}
+            if(probeValid(request))worker.postDelayed(this,1000);else identityProbe="";
+        }};
         Class<?> type(String name)throws ClassNotFoundException{return Class.forName(name,false,loader);}
         Object utils()throws ReflectiveOperationException{return TargetReflection.singleton(type(BASE+"persist.db.utils.DailyRecordDaoUtils"));}
         Object database()throws ReflectiveOperationException{return TargetReflection.call(TargetReflection.singleton(type(BASE+"persist.db.FitnessDatabase")),"getInstance");}
         String currentAccount()throws Exception{
             String pinned=PINNED_ACCOUNT.get();return pinned!=null?pinned:identity().id;
         }
-        static final class Identity {final String id;final Object database;Identity(String id,Object database){this.id=id;this.database=database;}}
+        static final class Identity {final String id,account;final Object database;Identity(String id,String account,Object database){this.id=id;this.account=account;this.database=database;}}
         Identity identity()throws Exception{
             Class<?> accountClass=type("com.xiaomi.fitness.account.manager.AccountManager");
             Object manager=TargetReflection.call(type("com.xiaomi.fitness.account.extensions.AccountManagerExtKt"),"getInstance",TargetReflection.singleton(accountClass));
             Object id=TargetReflection.call(manager,"getUserId");
-            if(!(id instanceof String)||((String)id).isEmpty())return new Identity("",null);
+            if(!(id instanceof String)||((String)id).isEmpty())return new Identity("","",null);
             Object db=database(),helper=TargetReflection.call(db,"getOpenHelper");
             String path=String.valueOf(TargetReflection.call(helper,"getDatabaseName"));
             if(!id.equals(TargetReflection.call(manager,"getUserId")))throw new IllegalStateException("账户正在切换");
-            return new Identity(hash((Process.myUid()/100000)+"|"+id+"|"+path),db);
+            return new Identity(hash((Process.myUid()/100000)+"|"+id+"|"+path),(String)id,db);
+        }
+        void publishIdentity(Identity identity){
+            FeatureSettings.diagnostic(context,HealthAccountState.RUNTIME,
+                    HealthAccountState.encode(identity.id,identity.account,System.currentTimeMillis()));
         }
         final class AccountPin implements AutoCloseable {
             final String previousAccount=PINNED_ACCOUNT.get();final Object previousDb=PINNED_DB.get();
@@ -107,13 +176,17 @@ final class MiHealthHook {
         }
         AccountPin pinAccount()throws Exception{return new AccountPin();}
         void refreshIdentity()throws Exception{
-            account=currentAccount();
+            if(!configured())return;
+            Identity observed=identity();account=observed.id;
+            if(!configured()){account="";return;}
+            publishIdentity(observed);
             FeatureSettings.diagnostic(context,"ls_augment_health_account_runtime",account);
             FeatureSettings.diagnostic(context,"ls_augment_health_heartbeat",""+System.currentTimeMillis());
             if(account.isEmpty())FeatureSettings.diagnostic(context,"ls_augment_health_runtime","已接入，等待在小米运动健康选择地区并登录账户");
         }
-        boolean enabled(String id){return !id.isEmpty()&&id.equals(FeatureSettings.text(context,ConfigSchema.HEALTH_ACCOUNT,""))
-                &&FeatureSettings.enabled(context,ConfigSchema.HEALTH_ENABLED);}
+        boolean enabled(String id){ConfigSnapshot snapshot=FeatureSettings.snapshot(context);
+            return id!=null&&!id.isEmpty()&&configured(snapshot)&&id.equals(snapshot.get(ConfigSchema.HEALTH_ACCOUNT));}
+        boolean planEnabled(String id){return enabled(id)&&FeatureSettings.enabled(context,ConfigSchema.HEALTH_PLAN_ENABLED);}
         int dailyLimit(String id){
             return !id.isEmpty()&&id.equals(FeatureSettings.text(context,ConfigSchema.HEALTH_ACCOUNT,""))
                     &&FeatureSettings.enabled(context,ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED)
@@ -225,17 +298,19 @@ final class MiHealthHook {
                     throw new IllegalStateException("原厂记录替换或待同步标记校验未通过");
             }finally{TargetReflection.call(temporary,"close");}
             compatible=true;lastError="";
-            FeatureSettings.diagnostic(context,"ls_augment_health_compatibility","通过：原厂临时数据库写入、去重、待同步标记与多来源合并校验");
+            if(configured())FeatureSettings.diagnostic(context,"ls_augment_health_compatibility","通过：原厂临时数据库写入、去重、待同步标记与多来源合并校验");
         }
         void transform(List<?> entities,boolean local,boolean replaceAll)throws Exception{
-            String id=currentAccount();if(id.isEmpty())return;
+            if(!configured()||entities.isEmpty())return;
+            String id=currentAccount();if(!enabled(id))return;
             String[] phone=phoneSources();
             int percent=enabled(id)&&FeatureSettings.enabled(context,ConfigSchema.HEALTH_MULTIPLY_ENABLED)?FeatureSettings.integer(context,ConfigSchema.HEALTH_MULTIPLIER,100,100,1000):100;
             if(!compatible)return;
             long since;
             try{since=Long.parseLong(FeatureSettings.text(context,ConfigSchema.HEALTH_SINCE,"0"));}catch(Exception ignored){since=Long.MAX_VALUE;}
             int limit=dailyLimit(id);Map<Long,Budget> days=new HashMap<>();
-            SQLiteDatabase db=ledger.getWritableDatabase();db.beginTransaction();
+            if(!enabled(id))return;
+            StepLedger ledger=ledger();SQLiteDatabase db=ledger.getWritableDatabase();db.beginTransaction();
             List<Object[]> changes=new ArrayList<>();
             try{
                 // Match the native DAO's replace-first-five / insert-ignore path as
@@ -287,6 +362,7 @@ final class MiHealthHook {
                 db.setTransactionSuccessful();
             }finally{db.endTransaction();}
             // The intent is durable before any entity is changed. Retries reuse the same output.
+            if(!enabled(id))return;
             for(Object[] change:changes){TargetReflection.call(change[0],"setRecordValue",change[1]);if(Boolean.TRUE.equals(change[2]))TargetReflection.call(change[0],"setUpload",false);}
         }
         static final class Reading {
@@ -294,10 +370,15 @@ final class MiHealthHook {
             StepLedger.Record old;Budget budget;
         }
         void reconcile()throws Exception{
-            try(StepLedger.Guard guard=ledger.guard();AccountPin pin=pinAccount()){reconcileLocked();}
+            if(!configured()||!FeatureSettings.enabled(context,ConfigSchema.HEALTH_PLAN_ENABLED))return;
+            try(AccountPin pin=pinAccount()){
+                if(!planEnabled(currentAccount()))return;
+                try(StepLedger.Guard guard=ledger().guard()){reconcileLocked();}
+            }
         }
         void reconcileLocked()throws Exception{
-            String id=currentAccount();if(id.isEmpty()||!compatible)return;
+            if(!configured())return;
+            String id=currentAccount();if(!planEnabled(id)||!compatible)return;
             long now=System.currentTimeMillis()/1000;
             // Snapshot version-1 awards before admitting any newly scheduled requests.
             // Otherwise a new plan sharing an old minute would inherit unlimited credit.
@@ -310,7 +391,7 @@ final class MiHealthHook {
                     ledger.award(id,event.getKey(),event.getValue(),event.getValue());
             }
             StepPlan p=StepPlan.parse(FeatureSettings.text(context,ConfigSchema.HEALTH_PLAN,""));
-            if(enabled(id)&&FeatureSettings.enabled(context,ConfigSchema.HEALTH_PLAN_ENABLED)&&p!=null&&p.account.equals(id))ledger.admit(p,now-60);
+            if(planEnabled(id)&&p!=null&&p.account.equals(id))ledger.admit(p,now-60);
             Map<Long,Integer> due=ledger.admitted(id);Map<Long,Integer> buckets=new TreeMap<>();
             ZoneId zone=ZoneId.systemDefault();
             for(Map.Entry<Long,Integer> e:due.entrySet()){
@@ -319,13 +400,13 @@ final class MiHealthHook {
             }
             int changed=0;pendingUploads=0;int limit=dailyLimit(id);Map<Long,Budget> days=new HashMap<>();
             for(Map.Entry<Long,Integer> bucket:buckets.entrySet())if(reconcileBucket(id,bucket.getKey(),bucket.getValue(),due,budget(id,bucket.getKey(),limit,days)))changed++;
-            if((changed>0||pendingUploads>0)&&now-lastSync>=60&&id.equals(identity().id)){
+            if(planEnabled(id)&&(changed>0||pendingUploads>0)&&now-lastSync>=60&&id.equals(identity().id)){
                 Object syncer=TargetReflection.call(utils(),"getServerSyncer");
                 Class<?> callback=type(BASE+"export.api.FitnessServerSyncCallback");
                 Object result=Proxy.newProxyInstance(loader,new Class<?>[]{callback},(proxy,method,args)->{
                     if(method.getDeclaringClass()==Object.class){if(method.getName().equals("hashCode"))return System.identityHashCode(proxy);
                         if(method.getName().equals("equals"))return proxy==args[0];return "LS-health-sync";}
-                    if(method.getName().equals("onSyncResult"))FeatureSettings.diagnostic(context,"ls_augment_health_sync",
+                    if(method.getName().equals("onSyncResult")&&enabled(id))FeatureSettings.diagnostic(context,"ls_augment_health_sync",
                             (Boolean.TRUE.equals(args[0])?"已收到同步响应，完成情况以待同步记录为准":"原厂同步未完成，将按原厂流程重试")+"；ts="+System.currentTimeMillis());
                     return null;
                 });
@@ -337,9 +418,11 @@ final class MiHealthHook {
             lastError="";
             int admitted=due.values().stream().mapToInt(Integer::intValue).sum();
             boolean incomplete=days.values().stream().anyMatch(day->!day.complete);
+            if(!enabled(id))return;
             FeatureSettings.diagnostic(context,"ls_augment_health_runtime","已接入保存与同步；计划累计已到时 "+admitted+" 步；本轮更新 "+changed+" 个时间段；待同步 "+(changed>0?"核对中":pendingUploads+" 段")+"；"+(enabled(id)?"配置生效":"已停止新增")+(limit>0?"；当日上限 "+limit+(incomplete?"，等待详细步数同步":""):"")+"；ts="+System.currentTimeMillis());
         }
         boolean reconcileBucket(String id,long bucket,int bonus,Map<Long,Integer> due,Budget budget)throws Exception{
+            if(!planEnabled(id))return false;
             Object db=database(),dao=TargetReflection.call(db,"stepRecordItemDao");
             Class<?> query=type("androidx.sqlite.db.SimpleSQLiteQuery");
             Object q=query.getConstructor(String.class,Object[].class).newInstance(
@@ -422,6 +505,7 @@ final class MiHealthHook {
                 models.add(type(BASE+"DailyRecordItemModel").getConstructor(long.class,int.class,type(BASE+"export.data.item.DailyRecordItem")).newInstance(targetTime,offset,step));
             }intents.setTransactionSuccessful();}finally{intents.endTransaction();}
             if(models.isEmpty()&&obsolete.isEmpty())return false;
+            if(!planEnabled(id))return false;
             if(!id.equals(identity().id))throw new IllegalStateException("账户已切换，本轮计划暂停");
             boolean prior=GENERATED.get();GENERATED.set(true);
             Object previousDb=PINNED_DB.get();PINNED_DB.set(db);
@@ -435,6 +519,7 @@ final class MiHealthHook {
             return true;
         }
         void error(String stage,Throwable e){
+            if(!configured())return;
             Throwable cause=e instanceof InvocationTargetException&&e.getCause()!=null?e.getCause():e;
             String message=stage+"："+cause.getClass().getSimpleName()+" "+Objects.toString(cause.getMessage(),"");
             if(!message.equals(lastError)){lastError=message;FeatureSettings.diagnostic(context,"ls_augment_health_runtime",message);module.logFeatureError("HEALTH",cause);}

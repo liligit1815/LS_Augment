@@ -14,13 +14,15 @@ public final class StatusBarClockFormatter {
         public final String text;
         public final String error;
         public final boolean refreshEverySecond;
+        public final boolean containsMilliseconds;
 
         private FormatResult(boolean valid, String text, String error,
-                boolean refreshEverySecond) {
+                boolean refreshEverySecond,boolean containsMilliseconds) {
             this.valid = valid;
             this.text = text;
             this.error = error;
             this.refreshEverySecond = refreshEverySecond;
+            this.containsMilliseconds=containsMilliseconds;
         }
     }
 
@@ -45,7 +47,7 @@ public final class StatusBarClockFormatter {
         String error = null;
         try {
             String first = isEmpty(firstPattern)
-                    ? builtIn(date, safeLocale, use24Hour, showSeconds)
+                    ? builtIn(date, safeLocale, use24Hour, showSeconds, !showPeriod)
                     : formatPattern(firstPattern, timestamp, calendar, safeLocale);
             out.append(first);
             if (showPeriod) {
@@ -70,7 +72,7 @@ public final class StatusBarClockFormatter {
         }
         boolean valid = error == null || error.isEmpty();
         return new FormatResult(valid, out.toString(), valid ? "" : error,
-                showSeconds || needsSecondRefresh(firstPattern, secondPattern));
+                showSeconds || needsSecondRefresh(firstPattern, secondPattern),needsMillisecondRefresh(firstPattern,secondPattern));
     }
 
     private static String formatPattern(String pattern, long timestamp,
@@ -137,6 +139,10 @@ public final class StatusBarClockFormatter {
     }
 
     static boolean needsSecondRefresh(String... patterns) {
+        return containsUnquoted("sS",patterns);
+    }
+    static boolean needsMillisecondRefresh(String... patterns){return containsUnquoted("S",patterns);}
+    private static boolean containsUnquoted(String tokens,String... patterns) {
         if (patterns == null) return false;
         for (String pattern : patterns) {
             if (pattern == null) continue;
@@ -151,7 +157,7 @@ public final class StatusBarClockFormatter {
                     }
                     continue;
                 }
-                if (!quoted && (c == 's' || c == 'S')) {
+                if (!quoted && tokens.indexOf(c)>=0) {
                     return true;
                 }
             }
@@ -177,9 +183,16 @@ public final class StatusBarClockFormatter {
     }
 
     private static String builtIn(Date date, Locale locale, boolean use24Hour, boolean showSeconds) {
+        return builtIn(date, locale, use24Hour, showSeconds, true);
+    }
+
+    private static String builtIn(Date date, Locale locale, boolean use24Hour,
+            boolean showSeconds, boolean includeSystemPeriod) {
         String pattern;
         if (use24Hour) pattern = showSeconds ? "HH:mm:ss" : "HH:mm";
-        else pattern = showSeconds ? "h:mm:ss a" : "h:mm a";
+        // Only the generated default replaces system AM/PM with the module period.
+        // Explicit custom patterns retain their literal/token and append semantics.
+        else pattern = (showSeconds ? "h:mm:ss" : "h:mm") + (includeSystemPeriod ? " a" : "");
         return new SimpleDateFormat(pattern, locale).format(date);
     }
 

@@ -120,7 +120,7 @@ class AlertDialog {
  Click positive,negative;Cancel cancel;String message="";Builder(Object context){}
  Builder setTitle(String s){return this;}Builder setMessage(String s){message=s;return this;}
  Builder setNegativeButton(String s,Click c){negative=c;return this;}Builder setPositiveButton(String s,Click c){positive=c;return this;}
- Builder setOnCancelListener(Cancel c){cancel=c;return this;}void show(){last=this;}
+ Builder setOnCancelListener(Cancel c){cancel=c;return this;}AlertDialog show(){last=this;return new AlertDialog();}
  void confirm(){positive.run(null,0);}void cancel(){if(cancel!=null)cancel.run(null);}
  }
 }
@@ -129,9 +129,26 @@ class File {
  Path toPath(){throw new AssertionError("No media I/O expected");}
 }
 class LauncherIconStore {static File directory(Object c){return new File();}static File file(Object c,String h){return new File();}}
-class ManagedFont {static File file(Object c,String h){return new File();}static void store(Object c,String h,byte[] b){throw new AssertionError("media");}static void validate(String h,byte[] b){} }
+class ManagedFont {static final int MAX_BYTES=2097152;static File file(Object c,String h){return new File();}static void store(Object c,String h,byte[] b){throw new AssertionError("media");}static void validate(String h,byte[] b){} }
 class RapidFireCompatibility {static Object currentFingerprint(Object c){return null;}static class Token {static Token parse(String s){return null;}boolean validFor(Object o){return false;}}}
 class BuildConfig {static final String VERSION_NAME="fixture";}
+class AppDialogs {static AlertDialog.Builder builder(Object owner){return new AlertDialog.Builder(owner);}}
+class ResetWriteFence {static boolean blocked;static boolean stale(long generation){return blocked;}}
+class BackGestureIconPolicy {static String key(int side,String slot){return side+":"+slot;}}
+class GestureArtwork {static final int MAX_BYTES=2097152;static GestureArtwork decode(byte[] bytes,boolean a,boolean b){throw new AssertionError("media");}void stop(){}}
+class StatusBarAssetReferences {
+ static Set<String> statusbarIcons(Map<String,String> values){return Collections.emptySet();}
+}
+class StatusBarAssetStore {
+ static final int MAX_BYTES=2097152;static File file(Object owner,String hash){return new File();}
+ static byte[] read(Object owner,String hash){throw new AssertionError("media");}static void validate(String hash,byte[] bytes){}
+ static void store(Object owner,String hash,byte[] bytes){throw new AssertionError("media");}
+}
+class StatusBarAssetPack {
+ static JSONObject exportNotices(Object owner,Set<String> hashes){return new JSONObject();}
+ static Map<String,String> parseNotices(JSONObject notices,Set<String> hashes){return Collections.emptyMap();}
+ static void restoreNotices(Object owner,Map<String,String> notices){}
+}
 '''
 
 UI_PREFIX = r'''
@@ -167,15 +184,24 @@ IMPORT_PREFIX = r'''
 class ConfigTransferActivity {
  static final int MAX_DOCUMENT_BYTES=32*1024*1024;static final Set<String> EXCLUDED=Collections.emptySet();
  final AppConfig config=new AppConfig();final RootHideManager manager=new RootHideManager(config);final Queue worker=new Queue();
- final List<String> notices=new ArrayList<>();boolean closed;
- ConfigTransferActivity(){RootHideManager.importing=manager;AlertDialog.last=null;}
+ final List<String> notices=new ArrayList<>();boolean closed;long editorResetGeneration;AlertDialog actionDialog;
+ final TransferSession transfer=new TransferSession();
+ final class TransferSession {
+  String phase="starting";java.util.function.Consumer<ConfigTransferActivity> pendingUi;
+  void deliver(java.util.function.Consumer<ConfigTransferActivity> action){pendingUi=action;if(!closed)action.accept(ConfigTransferActivity.this);}
+  void clearUi(){pendingUi=null;}
+ }
+ ConfigTransferActivity(){RootHideManager.importing=manager;AlertDialog.last=null;ResetWriteFence.blocked=false;}
  void prepare(String raw)throws Exception{prepareDocument(raw,raw!=null);}
  void prepareDocument(String raw,boolean include)throws Exception{JSONObject settings=new JSONObject().put("label","imported");if(include)settings.put(AppConfig.HIDE_TARGETS,raw);prepareImport(new JSONObject().put("format","LS_Augment.settings").put("version",1).put("settings",settings));}
  JSONObject exported()throws Exception{return exportDocument();}
  void confirm(){AlertDialog.last.confirm();worker.runAll();}
- void runWhileOpen(Runnable r){if(!closed)r.run();}void finishDirect(){closed=true;}
- void notice(String s){notices.add(s);}void reviewReport(String title,String s){notices.add(s);}
+ void runWhileOpen(Runnable r){if(!closed)r.run();}void finishDirect(){transfer.clearUi();closed=true;}
+ void complete(String s){notices.add(s);finishDirect();}void reviewReport(String title,String s){notices.add(s);}
  static Set<String> iconHashes(JSONObject v){return Collections.emptySet();}static Set<String> fontHashes(JSONObject v){return Collections.emptySet();}
+ static Set<String> noticeHashes(Map<String,String> v){return Collections.emptySet();}
+ static Map<String,String> valueMap(JSONObject values){Map<String,String> out=new LinkedHashMap<>();for(String k:values.data.keySet())out.put(k,values.getString(k));return out;}
+ static String backupFile(File file,int limit,long[] budget){throw new AssertionError("media");}
  Preferences getSharedPreferences(String s,int n){return new Preferences();}static class Preferences{Preferences edit(){return this;}Preferences clear(){return this;}boolean commit(){return true;}}
 }
 '''
@@ -219,6 +245,7 @@ public final class TestUserUiTransfer {
   for(String raw:new String[]{"v9:10:42:"+PKG,"10:"+PKG+";bad"," v3:10:42:"+PKG,"x".repeat(65537)})test("bad import rejects complete document length="+raw.length(),()->{var a=new ConfigTransferActivity();a.config.values.put(AppConfig.HIDE_TARGETS,"original");boolean failed=false;try{a.prepare(raw);}catch(Exception expected){failed=true;}check(failed&&AlertDialog.last==null,"invalid import offered confirmation");noWrites(a);check(a.config.get(AppConfig.HIDE_TARGETS).equals("original"),"old selection changed");});
   for(int step:new int[]{1,2})test("validation failure at step "+step+" has zero writes",()->{var a=new ConfigTransferActivity();a.manager.failValidationAt=step;if(step==1){try{a.prepare("10:"+PKG);throw new AssertionError("accepted");}catch(IOException expected){}}else{a.prepare("10:"+PKG);a.confirm();}noWrites(a);});
   test("cancel import leaves all targets/settings untouched",()->{var a=new ConfigTransferActivity();a.prepare("v3:10:42:"+PKG);AlertDialog.last.cancel();a.worker.runAll();noWrites(a);});
+  test("reset fence invalidates prepared import before any write",()->{var a=new ConfigTransferActivity();a.prepare("v3:10:42:"+PKG);ResetWriteFence.blocked=true;a.confirm();noWrites(a);check(a.closed&&!a.notices.isEmpty(),"stale import did not report/return");});
   test("export keeps mixed records and imported source serials",()->{var a=new ConfigTransferActivity();String raw="10:"+PKG+"\np3:10:41:"+PKG+";v3:10:42:"+PKG;a.config.values.put(AppConfig.HIDE_TARGETS,raw);var doc=a.exported();check(doc.getJSONObject("settings").getString(AppConfig.HIDE_TARGETS).equals(raw),"export lost raw selection");check(doc.optInt("version")==1,"unexpected envelope change");});
   test("export preserves unknown raw for diagnosis and future recovery",()->{var a=new ConfigTransferActivity();String raw="v9:10:42:"+PKG;a.config.values.put(AppConfig.HIDE_TARGETS,raw);check(a.exported().getJSONObject("settings").getString(AppConfig.HIDE_TARGETS).equals(raw),"unknown export lost");});
   System.out.println("User UI/transfer: "+passed+" passed, "+failed+" failed, 0 skipped");if(failed>0)System.exit(1);
@@ -231,6 +258,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--activity-source", type=Path, default=SRC / "HideAppsActivity.java")
     parser.add_argument("--transfer-source", type=Path, default=SRC / "ConfigTransferActivity.java")
+    parser.add_argument("--transfer-only", action="store_true", help="Run import/export policy cases without the independent HideAppsActivity UI suite")
     args = parser.parse_args()
     activity = args.activity_source.read_text(encoding="utf-8-sig")
     transfer = args.transfer_source.read_text(encoding="utf-8-sig")
@@ -245,15 +273,31 @@ def main():
         if len(matches) != 1:
             raise ValueError("Expected one method: " + name)
         return member(text, matches[0].group())
-    ui_methods = "\n".join(find_method(activity, n) for n in ui_names)
-    # AppItem is an internal model, made package-visible only for fixture setup.
-    ui_methods += "\n" + member(activity, "    private static final class AppItem {").replace("private static final", "static final", 1)
-    ui_class = UI_PREFIX.rsplit("}", 1)[0] + ui_methods + "\n}"
-    transfer_methods = "\n".join(find_method(transfer, n) for n in ["prepareImport(", "importTargets(", "exportDocument()"])
+    if args.transfer_only:
+        ui_class = ""
+        transfer_start = TEST.index('  for(String raw:new String[]{"10:"+PKG')
+        transfer_cases = TEST[transfer_start:].replace("User UI/transfer:", "Transfer policy:")
+        tests = r'''
+public final class TestUserUiTransfer {
+ static int passed,failed;static final String PKG="org.example.app";
+ interface Test {void run()throws Exception;}
+ static void test(String name,Test run){try{File.directoryWrites=0;ConfigSchema.targetNormalizations=0;run.run();passed++;System.out.println("PASS "+name);}catch(Throwable e){failed++;System.out.println("FAIL "+name+": "+e);}}
+ static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
+ static void noWrites(ConfigTransferActivity activity){check(activity.config.saves==0&&activity.manager.targetWrites==0&&File.directoryWrites==0,"partial import writes");}
+ public static void main(String[] args)throws Exception{
+''' + transfer_cases
+    else:
+        ui_methods = "\n".join(find_method(activity, n) for n in ui_names)
+        # AppItem is an internal model, made package-visible only for fixture setup.
+        ui_methods += "\n" + member(activity, "    private static final class AppItem {").replace("private static final", "static final", 1)
+        ui_class = UI_PREFIX.rsplit("}", 1)[0] + ui_methods + "\n}"
+        tests = TEST
+    transfer_methods = "\n".join(find_method(transfer, n) for n in ["prepareImport(", "confirmImport(", "importTargets(", "importedSize(", "exportDocument()"])
     transfer_class = IMPORT_PREFIX.rsplit("}", 1)[0] + transfer_methods + "\n}"
     models = "\n".join(member(manager, "    static final class " + name) for name in ["Target", "UserRecord", "UserDirectory"])
     manager_class = r'''
 class RootHideManager {
+ static final java.util.concurrent.locks.ReentrantLock ACTION_LOCK=new java.util.concurrent.locks.ReentrantLock();
  static final int APP_METADATA_FLAGS=0;enum State{VISIBLE,HIDDEN,MISSING,ERROR}
  static RootHideManager importing;final AppConfig config;int targetWrites,validations,failValidationAt;boolean failSave;
  long requestSerial=-1;List<AppRecord> apps=Collections.emptyList();List<UserRecord> users=Collections.emptyList();
@@ -270,7 +314,7 @@ class RootHideManager {
  static class OperationResult{final boolean success,runtimeSynced,reviewRequired=false;final String message;OperationResult(boolean s,String m){success=s;runtimeSynced=s;message=m;}static OperationResult success(String m){return new OperationResult(true,m);}static OperationResult failure(String m){return new OperationResult(false,m);}}
 ''' + models + "\n}"
     sources = {
-        "ls/augment/com/TestUserUiTransfer.java": BOUNDARIES + manager_class + ui_class + transfer_class + TEST,
+        "ls/augment/com/TestUserUiTransfer.java": BOUNDARIES + manager_class + ui_class + transfer_class + tests,
         "ls/augment/com/HideTargetCodec.java": (SRC / "HideTargetCodec.java").read_text(encoding="utf-8-sig"),
         "android/util/AtomicFile.java": "package android.util;public class AtomicFile {public AtomicFile(Object f){}public java.io.FileOutputStream startWrite(){throw new AssertionError(\"media\");}public void finishWrite(java.io.FileOutputStream f){}public void failWrite(java.io.FileOutputStream f){}}",
         "android/graphics/BitmapFactory.java": "package android.graphics;public class BitmapFactory {public static class Options{public boolean inJustDecodeBounds;public int outWidth,outHeight;}public static void decodeByteArray(byte[] b,int x,int y,Options o){}}",

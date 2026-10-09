@@ -78,7 +78,7 @@ public final class TestHideUserConfigRaw {
         app.write_bytes(args.app_source.read_bytes())
         files += [app, *production, *[SRC / name for name in (
             'ConfigSnapshot.java', 'FrameworkConfigSync.java', 'DurablePreferences.java',
-            'RuntimeStateStore.java', 'RemoteConfig.java')]]
+            'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java')]]
         subprocess.run(['javac', '--release', '17', '-encoding', 'UTF-8', '-d', folder,
                         *map(str, dict.fromkeys(files))], check=True, timeout=40)
         return subprocess.run(['java', '-cp', folder, 'ls.augment.com.TestHideUserConfigRaw'],

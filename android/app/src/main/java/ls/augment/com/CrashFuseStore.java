@@ -32,6 +32,12 @@ public final class CrashFuseStore {
         }
     }
 
+    static boolean clearForReset(Context context) {
+        synchronized (LOCK) {
+            return preferences(context).edit().clear().putBoolean("migrated", true).commit();
+        }
+    }
+
     /** Import only the previous safety state; never reset a tripped fuse during upgrade. */
     static boolean importLegacy(Context context) {
         synchronized (LOCK) {
@@ -57,7 +63,7 @@ public final class CrashFuseStore {
 
     static Bundle refresh(Context context, Bundle request) {
         Bundle result = new Bundle();
-        if (request == null) return result;
+        if (request == null || ResetWriteFence.blocked()) return result;
         String session = request.getString("session", "");
         if (!session.matches("[0-9a-f-]{36}")) return result;
         synchronized (LOCK) {

@@ -18,7 +18,7 @@ final class AuditLog {
     private AuditLog() { }
 
     static synchronized void write(Context context, String category, String message) {
-        if (context == null) return;
+        if (context == null || ResetWriteFence.blocked()) return;
         try {
             File file = new File(context.getFilesDir(), "ls_augment.log");
             String clean = message == null ? "" : message.replace('\r', ' ').replace('\n', ' ');

@@ -51,7 +51,7 @@ public class TestWindowOffset {
   FeatureSettings.selected=96;check(intercept(new Chain(()->intercept(new Chain(()->107))))==312,"full upper bound");
   try{intercept(new Chain(()->{throw new IllegalStateException();}));throw new AssertionError("expected original exception");}catch(IllegalStateException expected){}
   check(!NATIVE_DIMENSION.get(),"exception cannot leak thread-local guard");
-  System.out.println("Status bar window offset: 9 actual-interceptor assertions passed");
+  System.out.println("Status bar window offset: native offsets, explicit paper height and nested guards passed");
  }
 }
 '''.replace('/* HEIGHT_BODY */', height).replace('INTERCEPTOR', interceptor)

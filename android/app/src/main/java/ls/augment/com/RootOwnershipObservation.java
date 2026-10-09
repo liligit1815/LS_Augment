@@ -1,7 +1,6 @@
 package ls.augment.com;
 
 import android.util.SparseArray;
-import io.github.libxposed.api.XposedInterface;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -23,8 +22,6 @@ final class RootOwnershipObservation {
     private static final String SETTING_BASE = "com.android.server.pm.SettingBase";
     private static final String PARSED = "com.android.internal.pm.parsing.pkg.AndroidPackageInternal";
     private static final String USER_STATE = "com.android.server.pm.pkg.PackageUserStateImpl";
-    private static final String WATCHABLE = "com.android.server.utils.Watchable";
-    private static final String WATCHER = "com.android.server.utils.Watcher";
     private static final String MAP = "com.android.server.utils.WatchedArrayMap";
     private static final int MAX_TARGETS = 8192, MAX_OBJECTS = MAX_TARGETS * 2 + 2;
 
@@ -48,20 +45,13 @@ final class RootOwnershipObservation {
         this.requestFailure = requestFailure;
     }
 
-    static RootOwnershipObservation prepare(XposedInterface module, ClassLoader services,
-            RootOwnershipProfile.Resolved profile, String profileFailure) {
-        return prepare(module, services, profile, profileFailure, null, "not connected");
-    }
-
-    static RootOwnershipObservation prepare(XposedInterface module, ClassLoader services,
-            RootOwnershipProfile.Resolved profile, String profileFailure,
+    /** Consumes only the bridge resolved by this runtime's system-server entry. */
+    static RootOwnershipObservation prepare(RootOwnershipProfile.Resolved profile,
+            RootWatcherBridgeFactory factory, Throwable preparationFailure,
             RootHiddenRequestIngress requests, String requestFailure) {
-        RootWatcherBridgeFactory factory = null;
-        Throwable error = null;
-        try {
-            if (profile == null) throw new IllegalStateException("Native observation profile unavailable: " + profileFailure);
-            factory = RootWatcherBridgeFactory.load(module, services, profile.type(WATCHER), profile.type(WATCHABLE));
-        } catch (Throwable unavailable) { error = unavailable; }
+        Throwable error = preparationFailure;
+        if (error == null && (profile == null || factory == null))
+            error = new IllegalStateException("Native observation bridge was not prepared by this runtime");
         RootOwnershipObservation observation = new RootOwnershipObservation(profile, factory, requests, requestFailure);
         if (error != null) observation.fail(error);
         return observation;

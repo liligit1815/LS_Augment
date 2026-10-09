@@ -17,6 +17,8 @@ final class PowerMenuModesHook {
     static final String[] LABELS={"Fastboot","Fastbootd","Recovery","9008"};
     static final String[] REASONS={"bootloader","fastboot","recovery","edl"};
     static void install(AugmentModule module,ClassLoader loader){
+        // The OEM lifecycle bug also occurs with advanced reboot actions disabled.
+        PowerMenuLifecycleHook.install(module,loader);
         try{
             Class<?> type=Class.forName("com.zte.feature.globalaction.MfvGlobalActionsDialog$MFVActionsDialog",false,loader);
             if(!Dialog.class.isAssignableFrom(type))throw new NoSuchMethodException("Not an OEM dialog");

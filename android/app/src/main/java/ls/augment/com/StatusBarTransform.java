@@ -5,11 +5,16 @@ public final class StatusBarTransform {
     private StatusBarTransform() { }
 
     public static float scale(float desired, float contentSize, float ancestorScale) {
-        return desired / Math.max(1f, contentSize) / ancestorScale;
+        return finite((double)desired / Math.max(1f, contentSize) / ancestorScale);
     }
 
     public static float translation(float targetInParent, float contentStart,
             float pivot, float scale) {
-        return targetInParent - pivot - (contentStart - pivot) * scale;
+        return finite((double)targetInParent - pivot - ((double)contentStart - pivot) * scale);
+    }
+
+    /** Android transform properties are floats even when logical worksheet geometry is larger. */
+    public static float finite(double value) {
+        return Double.isNaN(value) ? 0f : (float)Math.max(-Float.MAX_VALUE,Math.min(Float.MAX_VALUE,value));
     }
 }

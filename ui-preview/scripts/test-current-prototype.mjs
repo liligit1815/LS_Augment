@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import ts from 'typescript';
-import {backupSettings, restoreSettings} from '../app/current-backup.ts';
+import {backupSettings, normalizeFanSettings, restoreSettings} from '../app/current-backup.ts';
 import {clockPatternValid, validText} from '../app/current-validation.ts';
 import {POST} from '../app/api/config-export/route.ts';
 
@@ -25,6 +25,13 @@ const unbound=restoreSettings({}, {...before,[key('HEALTH_PLAN_ENABLED')]:'1',[k
 assert.equal(unbound[key('HEALTH_PLAN_ENABLED')],'0');
 assert.equal(unbound[key('TGK_RAPID_FIRE_ENABLED')],'0');
 assert.equal(unbound['prototype:health-bound'],undefined);
+const legacyFan={...defaults,[key('FAN_FIXED_LEVEL')]:'0',ls_augment_fan_target_rpm:'16880',ls_augment_fan_unlock_max:'1'};
+for(const migrated of [normalizeFanSettings(legacyFan),backupSettings(legacyFan),restoreSettings({},legacyFan,defaults)]) {
+ assert.equal(migrated[key('FAN_FIXED_LEVEL')],'1');
+ assert.equal(migrated.ls_augment_fan_target_rpm,undefined);
+ assert.equal(migrated.ls_augment_fan_unlock_max,undefined);
+}
+assert.equal(normalizeFanSettings({...legacyFan,[key('FAN_FIXED_LEVEL')]:'5'})[key('FAN_FIXED_LEVEL')],'5');
 assert(clockPatternValid("HH:mm '本地'"));
 assert(!clockPatternValid("HH:mm '未闭合"));
 assert(!clockPatternValid('PPP'));
@@ -53,9 +60,9 @@ assert.equal(healthDraftUpdates({...draft,account:''})[key('HEALTH_PLAN_ENABLED'
 assert.equal(healthDraftUpdates({...draft,limit:'',limitEnabled:false})[key('HEALTH_DAILY_LIMIT_ENABLED')],'0');
 
 const catalog=read('current-catalog.json');
-assert.equal(catalog.targets.length,18);
+assert.equal(catalog.targets.length,19);
 assert.equal(new Set(read('current-scope.json')).size,26);
-assert.equal(catalog.targets.flatMap(t=>t.sections.flatMap(s=>s.options)).length,199);
+assert.equal(catalog.targets.flatMap(t=>t.sections.flatMap(s=>s.options)).length,250);
 for(const body of [{format:'LS_Augment.UIPrototype',version:2,settings:emptyBackup},{format:'LS_Augment.UIPrototype',version:1,status:{enabled:true},settings:{legacy:true}}]){
  const response=await POST(new Request('http://localhost/api/config-export',{method:'POST',body:new URLSearchParams({configuration:JSON.stringify(body)})}));
  assert.equal(response.status,200);
@@ -64,4 +71,4 @@ for(const body of [{format:'LS_Augment.UIPrototype',version:2,settings:emptyBack
 }
 const rejected=await POST(new Request('http://localhost/api/config-export',{method:'POST',body:new URLSearchParams({configuration:'{"format":"wrong"}'})}));
 assert.equal(rejected.status,400);
-console.log('PASS: backup replacement and runtime exclusions; health plan boundaries; text validation; 18 targets/199 settings/26 scopes; v1/v2 downloads.');
+console.log('PASS: backup replacement and runtime exclusions; health plan boundaries; text validation; 19 targets/250 settings/26 scopes; v1/v2 downloads.');

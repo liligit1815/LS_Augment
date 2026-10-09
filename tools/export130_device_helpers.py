@@ -55,7 +55,9 @@ def import_document(label, letter, expected_path, confirm=True, picker_open=Fals
         shell('settings get global ls_augment_config_snapshot_v1'), encoding='utf-8')
     (folder / 'logcat-private.txt').write_bytes(adb('logcat', '-d', '-v', 'epoch'))
     returned = capture(label + '-returned')
-    assert any(n.get('text') == '配置备份与重置' and n.get('visible') for n in returned)
+    assert not any(n.get('text') == '配置备份与重置' and n.get('visible') for n in returned)
+    for title in ('模块设置', '导出配置', '导入配置', '重置配置'):
+        assert any(n.get('text') == title and n.get('visible') for n in returned), title
     (folder / 'end-ms.txt').write_text(shell('date +%s%3N'))
     changes = {k: [prefs(before).get(k), prefs(after).get(k)]
                for k in prefs(before).keys() | prefs(after).keys()

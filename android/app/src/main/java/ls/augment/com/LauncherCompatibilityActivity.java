@@ -24,7 +24,7 @@ public final class LauncherCompatibilityActivity extends Activity {
     @Override public void onCreate(Bundle state){
         super.onCreate(state);UiKit ui=new UiKit(this);
         LinearLayout page=ui.detailPage("修改版桌面兼容性",null);
-        page.setPadding(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(24));
+        page.setPadding(ui.dp(16),0,ui.dp(16),ui.dp(24));
         page.addView(ui.text("安装本项目修改版桌面前，先检查本机环境。检测不会安装应用或修改系统。",12,ui.muted,false));
         LinearLayout card=ui.card();card.setPadding(ui.dp(12),ui.dp(12),ui.dp(12),ui.dp(12));
         page.addView(card,ui.margins(0,8,0,8));

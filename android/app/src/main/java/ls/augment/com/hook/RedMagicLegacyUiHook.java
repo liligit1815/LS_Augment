@@ -41,7 +41,20 @@ final class RedMagicLegacyUiHook {
     private static final Map<View,Float> BATTERY_ALPHAS=new WeakHashMap<>();
     private static final Map<View,String> BATTERY_PALETTES=new WeakHashMap<>();
     private static final Map<View,String> BATTERY_STYLES=new WeakHashMap<>();
+    private static ls.augment.com.ConfigSnapshot hidingSnapshot;
+    private static final java.util.Set<String> LEGACY_HIDING=new java.util.HashSet<>(),LEGACY_SLOTS=new java.util.HashSet<>();
+    private static boolean legacyHidingActive;
+    private static int legacyWifiScope,legacyMobileScope,legacyHotspotScope;
+    private static final Map<View,LegacyHideContext> HIDE_CONTEXTS=new WeakHashMap<>();
+    private static final class LegacyHideContext {long checked;Object parent;int scope;boolean preserve;}
     private RedMagicLegacyUiHook() { }
+    static String hiddenReason(View view){
+        for(View at=view;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null){
+            if(HIDDEN.containsKey(at)&&at.getVisibility()!=View.VISIBLE)return "模块隐藏：已设置图标、SIM 或显示位置规则";
+            if(ALPHAS.containsKey(at)&&at.getAlpha()==0||KEYGUARD_TRANSITION_ALPHAS.containsKey(at)&&at.getTransitionAlpha()==0)return "模块隐藏整个状态栏";
+            if(StatusBarGridHook.isBarRoot(at))break;
+        }return "";
+    }
     static int install(AugmentModule module, ClassLoader loader) {
         int count = installBattery(module, loader);
         count += installClock(module, loader);
@@ -94,9 +107,9 @@ final class RedMagicLegacyUiHook {
         String id = id(view); boolean hide = false, managed = false;
         if (id.equals("wifi_in") || id.equals("wifi_out") || id.equals("wifi_inout")) {hide=on(view,"hide_wifi_activity");managed=true;}
         if (id.equals("wifi_standard") || id.equals("wifi_type")) {hide=on(view,"hide_wifi_standard");managed=true;}
-        if (id.equals("mobile_in") || id.equals("mobile_out")) {hide=on(view,"hide_mobile_activity");managed=true;}
+        if (id.equals("mobile_in") || id.equals("mobile_out") || id.equals("mobile_inout") || id.equals("data_inout")) {hide=on(view,"hide_mobile_activity");managed=true;}
         if (id.equals("mobile_type") || id.equals("mobile_type_container")) {hide=on(view,"hide_mobile_type");managed=true;}
-        if (id.equals("mobile_volte")) {hide=on(view,"hide_hd_small");managed=true;}
+        if (id.equals("mobile_volte")||id.equals("mobile_ims")) {hide=on(view,"hide_hd_small");managed=true;}
         if(type.equals("MFVBatteryViewLayout")&&inBar(view)){
             refreshBatteryStyle(view);
             batteryAppearance(view);
@@ -137,6 +150,47 @@ final class RedMagicLegacyUiHook {
             for(String name:names.split(",")) if(!name.trim().isEmpty()&&name.trim().equalsIgnoreCase(slot)) hide=true;
         }
         return hide;
+    }
+
+    /** Share existing global switches with synthetic rows and the three-in-one renderer. */
+    static boolean hiddenFor(View view,String semanticId){
+        if(view==null||semanticId==null)return false;
+        ls.augment.com.ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());
+        if(snapshot!=hidingSnapshot){
+            hidingSnapshot=snapshot;LEGACY_HIDING.clear();LEGACY_SLOTS.clear();HIDE_CONTEXTS.clear();
+            if(snapshot!=null){
+                for(String name:new String[]{"hide_sim1","hide_sim2","hide_hd_small","hide_hd_large","hide_mobile_type","hide_mobile_activity","hide_wifi_standard","hide_wifi_activity"})
+                    if("1".equals(snapshot.get(P+name)))LEGACY_HIDING.add(name);
+                for(String slot:snapshot.values().getOrDefault(P+"hidden_icon_slots","").split(","))if(!slot.trim().isEmpty())LEGACY_SLOTS.add(slot.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+            legacyWifiScope=legacyScope(snapshot,"wifi");legacyMobileScope=legacyScope(snapshot,"mobile");legacyHotspotScope=legacyScope(snapshot,"hotspot");
+            legacyHidingActive=!LEGACY_HIDING.isEmpty()||!LEGACY_SLOTS.isEmpty()||legacyWifiScope!=0||legacyMobileScope!=0||legacyHotspotScope!=0;
+        }
+        // Most frames have no legacy visibility overrides. No ancestry scan,
+        // reflection, string splitting, or config-provider read is needed then.
+        if(!legacyHidingActive)return false;
+        LegacyHideContext context=HIDE_CONTEXTS.get(view);long now=SystemClock.uptimeMillis();
+        if(context==null){context=new LegacyHideContext();HIDE_CONTEXTS.put(view,context);context.checked=-1000;}
+        if(context.parent!=view.getParent()||now-context.checked>=200){
+            context.parent=view.getParent();context.checked=now;context.scope=iconContext(view);context.preserve=preserveNativeAppearance(view);
+        }
+        if(context.preserve)return false;
+        String family=semanticId.substring(0,semanticId.indexOf('.')<0?semanticId.length():semanticId.indexOf('.'));
+        boolean mobile=family.equals("mobile1")||family.equals("mobile2");
+        if(mobile&&LEGACY_HIDING.contains(family.equals("mobile1")?"hide_sim1":"hide_sim2"))return true;
+        if(mobile&&semanticId.endsWith(".volte")&&LEGACY_HIDING.contains("hide_hd_small"))return true;
+        if(mobile&&semanticId.endsWith(".type")&&LEGACY_HIDING.contains("hide_mobile_type"))return true;
+        if(mobile&&semanticId.contains(".activity_")&&LEGACY_HIDING.contains("hide_mobile_activity"))return true;
+        if((family.equals("wifi")||family.equals("secondary_wifi"))&&semanticId.contains(".activity_")&&LEGACY_HIDING.contains("hide_wifi_activity"))return true;
+        if((family.equals("wifi")||family.equals("secondary_wifi"))&&semanticId.endsWith(".standard")&&LEGACY_HIDING.contains("hide_wifi_standard"))return true;
+        if(family.equals("ims_icon")&&LEGACY_HIDING.contains("hide_hd_large"))return true;
+        int selected=mobile?legacyMobileScope:family.equals("wifi")?legacyWifiScope:family.equals("hotspot")?legacyHotspotScope:0;
+        if(selected==6||selected>0&&selected==context.scope)return true;
+        String slot=mobile?"mobile":family;
+        return LEGACY_SLOTS.contains(slot.toLowerCase(java.util.Locale.ROOT));
+    }
+    private static int legacyScope(ls.augment.com.ConfigSnapshot snapshot,String family){
+        try{return snapshot==null?0:Integer.parseInt(snapshot.get(P+"hide_"+family+"_scope"));}catch(RuntimeException ignored){return 0;}
     }
 
     private static void refreshBatteryStyle(View view) {
@@ -293,7 +347,7 @@ final class RedMagicLegacyUiHook {
         count+=hook(module,loader,"com.zte.utils.QsDimenUtils$Companion","getMaxQsPanelRowCount",0,(o,a,r)->on(o,"qs_grid")?grid(o,"rows",3,1,8):PASS,null);
         count+=hook(module,loader,"com.zte.feature.qs.layout.QsCustomizerModule","getColumns",-1,(o,a,r)->on(o,"qs_grid")?grid(o,"edit_columns",4,2,10):PASS,null);
         String type="com.zte.controlcenter.widget.CCHeaderView";
-        count+=hook(module,loader,type,"shouldQsCarrierVisible",0,(o,a,r)->choice(o,"qs_carrier"),null);
+        count+=hook(module,loader,type,"shouldQsCarrierVisible",0,(o,a,r)->CarrierTextHook.headerEnabled(o)?Boolean.TRUE:choice(o,"qs_carrier"),null);
         count+=hook(module,loader,type,"showSearchButton",0,(o,a,r)->choice(o,"qs_search"),null);
         count+=hook(module,loader,type,"handleClickDate",0,(o,a,r)->{
             if(!on(o,"qs_calendar"))return PASS;

@@ -132,7 +132,7 @@ final class FanControlHook {
         }
     }
 
-    private enum ControlKind { NONE, FIXED_LEVEL, OEM_EXTREME, OEM_FULL_SPEED, CALIBRATION }
+    private enum ControlKind { NONE, FIXED_LEVEL, CALIBRATION }
 
     private static final class Controller implements Runnable {
         private final AugmentModule module;
@@ -164,6 +164,8 @@ final class FanControlHook {
         private long lastDiagnosticAt;
         private String lastCalibrationRequest = "";
         private String lastTileRequest = "";
+        private boolean lastFixedRequested;
+        private int lastFixedLevel = FanControlPolicy.MIN_LEVEL;
         private String activeCalibrationRequest = "";
         private int[][] calibrationSamples;
         private int calibrationLevel;
@@ -293,21 +295,28 @@ final class FanControlHook {
                         current, FeatureSettings.GAME_MASTER, false);
                 boolean fixed = master && FeatureSettings.enabled(
                         current, FeatureSettings.FAN_FIXED_ENABLED, false);
-                int fixedLevel = fixed ? FeatureSettings.integer(current,
-                        ConfigSchema.FAN_FIXED_LEVEL, 0, 0, 5) : 0;
+                int fixedLevel = FeatureSettings.integer(current,
+                        ConfigSchema.FAN_FIXED_LEVEL, 1, 1, 5);
                 String tileRequest = FeatureSettings.text(current, ConfigSchema.FAN_TILE_REQUEST, "");
-                if (!tileRequest.equals(lastTileRequest)) {
+                boolean fixedSelectionChanged = fixed != lastFixedRequested
+                        || (fixed && fixedLevel != lastFixedLevel);
+                if (fixedSelectionChanged || !tileRequest.equals(lastTileRequest)) {
                     lastTileRequest = tileRequest;
                     // Explicit user selection starts a fresh request. It may follow an
                     // external OEM mode change which correctly suspended the old request.
-                    safeRelease("tile_selection", true);
+                    // Keep a still-owned fixed session's original restore point while
+                    // changing levels; an asynchronous restore would race the new write.
+                    if (!fixed || (controlKind != ControlKind.NONE && !oemStateStillCaptured()))
+                        safeRelease("fixed_selection", true);
                     sessionLocked = false;
                     validRpmSamples = 0;
-                    nativeSettle.nativeEvent(android.os.SystemClock.elapsedRealtime());
+                    if (controlKind == ControlKind.NONE)
+                        nativeSettle.nativeEvent(android.os.SystemClock.elapsedRealtime());
+                    lastDiagnosticAt = 0L;
                     FeatureSettings.diagnostic(current, FeatureSettings.FAN_CONTROL_LAST_ERROR, "");
                 }
-                boolean unlock = master && FeatureSettings.enabled(
-                        current, FeatureSettings.FAN_UNLOCK_MAX, false);
+                lastFixedRequested = fixed;
+                lastFixedLevel = fixedLevel;
                 String request = FeatureSettings.text(current,
                         ConfigSchema.FAN_CALIBRATION_REQUEST, "");
                 boolean validRequest = FanCalibrationData.validRequest(request,
@@ -318,7 +327,7 @@ final class FanControlHook {
                 }
                 boolean calibrationPending = validRequest
                         && !request.equals(lastCalibrationRequest);
-                boolean requested = fixed || unlock || calibrationPending
+                boolean requested = fixed || calibrationPending
                         || controlKind == ControlKind.CALIBRATION;
 
                 if (!profile.allowsLevelWrites()) {
@@ -330,16 +339,14 @@ final class FanControlHook {
                                 "ls_augment_fan_calibration_consumed", request);
                         reportCalibrationOutcome(request, "calibration_levels_unverified");
                     }
-                    if (!unlock) {
-                        safeRelease("feature_off", true);
-                        String reason = fixed ? "fixed_speed_unverified"
-                                : calibrationPending ? "calibration_levels_unverified" : "feature_off";
-                        FeatureSettings.diagnostic(current, FeatureSettings.FAN_CONTROL_LAST_ERROR,
-                                "feature_off".equals(reason) ? "" : reason);
-                        status("idle;reason=" + reason, 0L);
-                        keepRunning = false;
-                        return;
-                    }
+                    safeRelease("feature_off", true);
+                    String reason = fixed ? "fixed_speed_unverified"
+                            : calibrationPending ? "calibration_levels_unverified" : "feature_off";
+                    FeatureSettings.diagnostic(current, FeatureSettings.FAN_CONTROL_LAST_ERROR,
+                            "feature_off".equals(reason) ? "" : reason);
+                    status("idle;reason=" + reason, 0L);
+                    keepRunning = false;
+                    return;
                 }
 
                 ReadResult enable = readInt(profile.enableNode);
@@ -414,11 +421,6 @@ final class FanControlHook {
                     return;
                 }
 
-                if (!profile.allowsLevelWrites()) {
-                    requestOemFullSpeed(unlock, fixed, mode, manual);
-                    return;
-                }
-
                 ReadResult rpm = readInt(FAN_RPM);
                 if (!rpm.valid || !FanControlPolicy.isReasonableRpm(rpm.value)) {
                     failSession("rpm_invalid");
@@ -432,8 +434,7 @@ final class FanControlHook {
                     return;
                 }
 
-                if (controlKind == ControlKind.NONE && (calibrationPending || fixed
-                        || FanControlPolicy.shouldForceUnlockedExtreme(unlock, false, mode, true))) {
+                if (controlKind == ControlKind.NONE && (calibrationPending || fixed)) {
                     ReadResult nativeLevel = readInt(FAN_LEVEL);
                     if (!nativeLevel.valid || nativeLevel.value < 0 || nativeLevel.value > 5) {
                         failSession("capture_failed");
@@ -468,15 +469,6 @@ final class FanControlHook {
                 }
 
                 if (fixed) {
-                    FanCalibrationData measurement = FanCalibrationData.parse(
-                            FeatureSettings.text(current, ConfigSchema.FAN_MEASUREMENT, ""));
-                    if (fixedLevel == 0 && (measurement == null
-                            || !measurement.currentFor(FanHardwareIdentity.current()))) {
-                        safeRelease("measurement_required", true);
-                        status("armed;reason=measurement_required;actual=" + actualRpm, 3_000L);
-                        return;
-                    }
-                    boolean allowLevelFive = unlock && mode == 0;
                     if (controlKind != ControlKind.FIXED_LEVEL) {
                         // Internal priorities share one OEM session. Releasing
                         // and recapturing here can capture our own level while
@@ -487,39 +479,14 @@ final class FanControlHook {
                         }
                         controlKind = ControlKind.FIXED_LEVEL;
                     }
-                    int requestedRpm = FeatureSettings.integer(current,
-                            FeatureSettings.FAN_TARGET_RPM, 12_000,
-                            500, 100_000);
-                    // A numbered selection addresses the verified driver directly. In
-                    // particular, identical calibration RPMs must not merge two levels.
-                    int level = fixedLevel > 0 ? fixedLevel
-                            : FanControlPolicy.targetLevel(requestedRpm, allowLevelFive, measurement);
-                    boolean applied = ensureLevel(level);
-                    int effective = fixedLevel > 0 ? 0 : FanControlPolicy.effectiveTargetRpm(
-                            requestedRpm, allowLevelFive, measurement);
+                    boolean applied = ensureLevel(fixedLevel);
                     status((applied ? "controlled" : "applying")
-                            + ";kind=" + (fixedLevel > 0 ? "fixed_level" : "fixed") + ";target=" + effective
-                            + ";actual=" + actualRpm + ";level=" + level
-                            + ";measured=" + (measurement == null ? 0 : measurement.rpm(level))
+                            + ";kind=fixed_level;actual=" + actualRpm + ";level=" + fixedLevel
                             + ";restore_level=" + capturedLevel
                             + ";oem_extreme=" + (mode == 0), 3_000L);
-                } else if (FanControlPolicy.shouldForceUnlockedExtreme(
-                        unlock, false, mode, true)) {
-                    if (controlKind != ControlKind.OEM_EXTREME) {
-                        if (controlKind == ControlKind.NONE && !captureOemState(mode, manual)) {
-                            failSession("capture_failed");
-                            return;
-                        }
-                        controlKind = ControlKind.OEM_EXTREME;
-                    }
-                    boolean applied = ensureLevel(FanControlPolicy.UNLOCKED_MAX_LEVEL);
-                    status((applied ? "controlled" : "applying")
-                                    + ";kind=oem_extreme;level=5;actual=" + actualRpm
-                                    + ";restore_level=" + capturedLevel,
-                            3_000L);
                 } else {
-                    safeRelease("waiting_for_oem_extreme", true);
-                    status("armed;waiting_for_oem_extreme", 3_000L);
+                    safeRelease("feature_off", true);
+                    status("idle;reason=feature_off", 0L);
                 }
                 FeatureSettings.diagnostic(current,
                         FeatureSettings.FAN_CONTROL_LAST_ERROR, "");
@@ -580,31 +547,6 @@ final class FanControlHook {
             restoreOemPower();
             write(FAN_LEVEL, String.valueOf(capturedLevel));
             status("restoring;level=" + capturedLevel + ";actual=" + actualRpm, 0L);
-        }
-
-        private void requestOemFullSpeed(boolean unlock, boolean fixed, int mode, int manual)
-                throws Exception {
-            if (!FanControlPolicy.shouldForceUnlockedExtreme(unlock, false, mode, true)) {
-                safeRelease("waiting_for_oem_extreme", true);
-                status("armed;waiting_for_oem_extreme", 3_000L);
-                return;
-            }
-            if (controlKind == ControlKind.NONE) {
-                // No level capture or write: the old ROM only proves its own full-speed API.
-                capturedMode = mode;
-                capturedManual = manual;
-                controlKind = ControlKind.OEM_FULL_SPEED;
-            }
-            activateMaxPower();
-            ReadResult rpm = profile.rpmNode.isEmpty() ? ReadResult.invalid() : readInt(profile.rpmNode);
-            String actual = rpm.valid && FanControlPolicy.isReasonableRpm(rpm.value)
-                    ? String.valueOf(rpm.value) : "unavailable";
-            // The vendor wrapper returns void and may swallow errors. Report the request,
-            // never claim a measured speed increase or an unlocked hardware maximum.
-            status("oem_full_speed_requested;power_type=113;actual=" + actual
-                    + ";fixed=" + (fixed ? "unverified" : "off"), 3_000L);
-            FeatureSettings.diagnostic(context, FeatureSettings.FAN_CONTROL_LAST_ERROR,
-                    fixed ? "fixed_speed_unverified" : "");
         }
 
         private void finishCalibrationRestore() {
@@ -715,7 +657,7 @@ final class FanControlHook {
         private boolean ensureLevel(int desiredLevel) throws Exception {
             if (!profile.allowsLevelWrites()) throw new IllegalStateException("level_control_unverified");
             if (desiredLevel < FanControlPolicy.MIN_LEVEL
-                    || desiredLevel > FanControlPolicy.UNLOCKED_MAX_LEVEL) {
+                    || desiredLevel > FanControlPolicy.MAX_LEVEL) {
                 throw new IllegalArgumentException("invalid_fan_level");
             }
             if (desiredLevel == 5 && controlKind != ControlKind.CALIBRATION) activateMaxPower();
@@ -728,7 +670,7 @@ final class FanControlHook {
             }
             ReadResult observed = readInt(FAN_LEVEL);
             if (!observed.valid || observed.value < 0
-                    || observed.value > FanControlPolicy.UNLOCKED_MAX_LEVEL) {
+                    || observed.value > FanControlPolicy.MAX_LEVEL) {
                 throw new IllegalStateException("fan_level_read_failed");
             }
             switch (levelCommand.observe(desiredLevel, observed.value,

@@ -20,6 +20,11 @@ public final class TestStatusBarTransform {
                         near(target+desired,parentOffset+ancestor*(translation+pivot+(left+size-pivot)*scale));
                     }
                 }
-        System.out.println("PASS status bar: ancestor scale, overflow bounds, pivots and repeated absolute placement");
+        near(Float.MAX_VALUE,StatusBarTransform.scale(Float.MAX_VALUE,1,.5f));
+        near(Float.MAX_VALUE,StatusBarTransform.translation(0,0,64,Float.MAX_VALUE));
+        near(-Float.MAX_VALUE,StatusBarTransform.translation(0,64,0,Float.MAX_VALUE));
+        if(!Float.isFinite(StatusBarTransform.finite(Double.POSITIVE_INFINITY))
+                ||!Float.isFinite(StatusBarTransform.finite(Double.NaN)))throw new AssertionError("native transform must remain finite");
+        System.out.println("PASS status bar: ancestor scale, overflow bounds, pivots, repeated absolute placement and finite extreme transforms");
     }
 }

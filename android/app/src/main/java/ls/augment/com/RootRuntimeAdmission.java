@@ -19,6 +19,8 @@ final class RootRuntimeAdmission implements RootTransactionEngine.Admission {
     private final RootProcessGroupProfile.Resolved processGroup;
     private final RootOwnershipProfile.Resolved ownershipProfile;
     private final String ownershipProfileFailure;
+    private final RootWatcherBridgeFactory watcherFactory;
+    private final Throwable watcherPreparationFailure;
     private final RootHiddenRequestIngress hiddenRequests;
     private final String hiddenRequestFailure;
     private final Class<?> shellClass;
@@ -50,6 +52,19 @@ final class RootRuntimeAdmission implements RootTransactionEngine.Admission {
                 || Process.myUid()!=1000 || Process.myTid()!=Process.myPid())
             throw new IllegalStateException("Root entry must be prepared on actual system main");
         main=new Handler(loop);
+        // Resolve only this generation's tiny bridge while its framework APK is
+        // still present. A later module update may unlink that path. No native
+        // observer is constructed, bound or registered until the first PREPARE.
+        RootWatcherBridgeFactory preparedFactory=null;
+        Throwable preparationFailure=null;
+        try {
+            if(ownershipProfile==null)
+                throw new IllegalStateException("Native observation profile unavailable: "+ownershipProfileFailure);
+            preparedFactory=RootWatcherBridgeFactory.load(module,loader,
+                    ownershipProfile.type("com.android.server.utils.Watcher"),
+                    ownershipProfile.type("com.android.server.utils.Watchable"));
+        }catch(Throwable unavailable){preparationFailure=unavailable;}
+        watcherFactory=preparedFactory;watcherPreparationFailure=preparationFailure;
     }
 
     static RootRuntimeAdmission create(RootEarlyCoordinator.RuntimePermit permit)throws Throwable {
@@ -150,17 +165,17 @@ final class RootRuntimeAdmission implements RootTransactionEngine.Admission {
             synchronized(control) {
                 if(consumed || this!=bundlePermit || revoked || bundle!=null || !"PREPARING".equals(state))
                     throw new IllegalStateException("Root bundle permit unavailable");
-                consumed=true;return new BundleInputs(installer.domain,loader,processGroup,shell,RootRuntimeAdmission.this,module,ownershipProfile,ownershipProfileFailure,hiddenRequests,hiddenRequestFailure);
+                consumed=true;return new BundleInputs(installer.domain,loader,processGroup,shell,RootRuntimeAdmission.this,ownershipProfile,watcherFactory,watcherPreparationFailure,hiddenRequests,hiddenRequestFailure);
             }
         }
     }
     static final class BundleInputs {
         final RootLifecycleDomain domain;final ClassLoader loader;final RootProcessGroupProfile.Resolved processGroup;
         final Object shell;final RootRuntimeAdmission admission;
-        final RootEarlyModule module;final RootOwnershipProfile.Resolved ownershipProfile;final String ownershipProfileFailure;
+        final RootOwnershipProfile.Resolved ownershipProfile;final RootWatcherBridgeFactory watcherFactory;final Throwable watcherPreparationFailure;
         final RootHiddenRequestIngress hiddenRequests;final String hiddenRequestFailure;
         private BundleInputs(RootLifecycleDomain d,ClassLoader l,RootProcessGroupProfile.Resolved p,Object s,RootRuntimeAdmission a,
-                RootEarlyModule m,RootOwnershipProfile.Resolved o,String f,RootHiddenRequestIngress h,String hf){domain=d;loader=l;processGroup=p;shell=s;admission=a;module=m;ownershipProfile=o;ownershipProfileFailure=f;hiddenRequests=h;hiddenRequestFailure=hf;}
+                RootOwnershipProfile.Resolved o,RootWatcherBridgeFactory w,Throwable f,RootHiddenRequestIngress h,String hf){domain=d;loader=l;processGroup=p;shell=s;admission=a;ownershipProfile=o;watcherFactory=w;watcherPreparationFailure=f;hiddenRequests=h;hiddenRequestFailure=hf;}
     }
 
     @Override public RootTransactionEngine.AdmissionTicket capture(RootTransactionEngine owner) {

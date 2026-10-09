@@ -11,13 +11,24 @@ public final class SystemUiOptions {
     public static final String POWER_MODES = PREFIX + "power_reboot_modes";
     public static final String PRIVACY_HIDE = PREFIX + "privacy_hide";
     public static final String SIGNAL_DUAL = PREFIX + "signal_dual";
+    public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
+    public static final String ISLAND = PREFIX + "island_enabled";
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
     public static final String QS_BRIGHTNESS_PERCENT = PREFIX + "qs_brightness_percent";
     public static final String QS_VOLUME_PERCENT = PREFIX + "qs_volume_percent";
     private SystemUiOptions() { }
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
-        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","同组通知折叠为一张卡片和下方层叠边缘，展开后保留原厂组标题、收起按钮和通知操作。"));
+        out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","仅在音乐播放、新通知或刚接通电源时出现；没有活动时隐藏。轻点打开来源，长按展开详情与音乐控制；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","播放时显示封面与律动，暂停后短暂保留控制入口并自动收起；已暂停的旧会话不会上岛。",1,"关闭","开启"));
+        out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","新通知短暂上岛；遵循勿扰、通知重要性及锁屏隐私，不取消原通知。",1,"关闭","开启"));
+        out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电提示","刚接通电源时显示电量，5 秒后收起；持续充电、开启功能或解锁不会让提示常驻。",1,"关闭","开启"));
+        out.add(EnhancementOption.integer(PREFIX+"island_width","system","胶囊宽度（dp）","紧凑状态的宽度。可配合状态栏图标位置调整，避免遮挡。",120,96,240));
+        out.add(EnhancementOption.integer(PREFIX+"island_height","system","胶囊高度（dp）","实际高度不超过当前状态栏。",32,20,48));
+        out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));
+        out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
+        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","整个通知列表堆叠","通知列表保留指定数量的完整卡片，其余在底部堆叠，滚动时依原生顺序展开。保留应用内分组、清除、展开和通知操作；锁屏使用原厂列表。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
         out.add(EnhancementOption.toggle(BackGestureIconPolicy.ENABLED,"system","自定义侧滑返回图标","系统界面作用域。两侧独立选择图标和遮罩，支持 GIF、动态 WebP 及初音未来预设；大小最高 10 倍。保留原厂返回判定和悬停动作，更新后需重启系统界面。"));
         for(int side=0;side<2;side++) {
@@ -34,7 +45,7 @@ public final class SystemUiOptions {
             out.add(EnhancementOption.integer(p+"offset_y_dp","system",title+"下移（dp）","正数向下，负数向上。",0,-512,512));
         }
         out.add(EnhancementOption.toggle(PRIVACY_HIDE, "statusbar", "隐藏隐私小绿点", "隐藏状态栏隐私绿点和使用提醒胶囊，权限设置和访问记录保持原样。"));
-        out.add(EnhancementOption.toggle(SIGNAL_DUAL, "statusbar", "双卡信号上下排列", "用两排紧凑短柱显示真实信号，流量卡在上、另一张卡在下；单卡恢复原厂显示。"));
+        out.add(EnhancementOption.toggle(SIGNAL_DUAL, "statusbar", "双排信号图标", "等宽对齐的圆角信号柱，单卡仅显示下排；每张卡的网络类型可显示在对应行左侧，各隐藏开关独立控制。"));
         out.add(EnhancementOption.toggle(AUDIO_NO_SAFE_WARNING, "audio", "取消音量过高提示", "取消安全音量和累计声音剂量提示；与现有音量增益、档数设置共同生效。"));
         bool(out, "hide_wifi_activity", "statusbar", "隐藏 Wi-Fi 收发箭头");
         bool(out, "hide_wifi_standard", "statusbar", "隐藏 Wi-Fi 标准数字");
@@ -49,7 +60,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.choice(PREFIX+"hide_wifi_scope","statusbar","隐藏 Wi-Fi 图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.choice(PREFIX+"hide_hotspot_scope","statusbar","隐藏热点图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.choice(PREFIX+"hide_mobile_scope","statusbar","隐藏移动网络图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
-        out.add(EnhancementOption.text(PREFIX + "hidden_icon_slots", "statusbar", "其他隐藏图标", "填写图标槽位，以英文逗号分隔，例如 alarm_clock,bluetooth。", "", 1024));
+        out.add(EnhancementOption.text(PREFIX + "hidden_icon_slots", "statusbar", "其他隐藏图标", "展开清单并勾选要隐藏的系统图标；只隐藏图标，不关闭相应服务。", "", 1024));
         out.add(EnhancementOption.choice(PREFIX + "battery_style", "statusbar", "电池样式", "继续使用原厂电池图形及当前布局位置。", 0, "遵循原厂", "电池内显示数字", "电池后显示数字", "数字后显示电池", "仅电池图标", "仅电量数字", "隐藏电池"));
         bool(out, "battery_hide_percent", "statusbar", "隐藏电量百分号");
         out.add(EnhancementOption.integer(PREFIX+"battery_width_dp","statusbar","电池固定宽度","0 为原厂宽度，包含电池图标和外置数字。",0,0,120));
@@ -76,6 +87,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX + "charging_duration", "lockscreen", "充电动画持续秒数", "启用自定义充电动画后生效。", 6, 1, 120));
         out.add(EnhancementOption.integer(PREFIX + "charging_delay", "lockscreen", "充电动画延迟秒数", "启用自定义充电动画后生效。", 0, 0, 60));
         out.add(EnhancementOption.toggle(QS_BRIGHTNESS_PERCENT, "quicksettings", "亮度显示百分比", "控制中心亮度条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
+        out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围。需要 Root；当前支持 NX809J。极低档显示 0.5%，原厂范围保留 0%–100%，扩展最高约 116.5%。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
         out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心及展开音量面板显示百分比；增益开启时可超过 100%，同一行只显示一份数字。"));
         bool(out, "qs_grid", "quicksettings", "自定义控制中心行列");
         out.add(EnhancementOption.integer(PREFIX + "qs_columns", "quicksettings", "竖屏列数", "控制中心普通磁贴列数。", 4, 2, 8));

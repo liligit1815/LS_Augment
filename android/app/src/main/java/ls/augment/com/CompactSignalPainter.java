@@ -11,20 +11,26 @@ public final class CompactSignalPainter {
     }
     public void draw(Canvas canvas,float x,float y,float width,float height,int first,int second,
             int firstBars,int secondBars,int rows,int color,int inactive){
+        draw(canvas,x,y,width,height,first,second,firstBars,secondBars,rows,color,inactive,.5f);
+    }
+    public void draw(Canvas canvas,float x,float y,float width,float height,int first,int second,
+            int firstBars,int secondBars,int rows,int color,int inactive,float corner){
         if(rows<1||width<=0||height<=0)return;
-        rows=Math.min(2,rows);float gapY=height*(4f/85f);
+        rows=Math.min(2,rows);float gapY=height*(10f/85f);
         float row=(height-(rows-1)*gapY)/rows;
         int dim=(color&0xffffff)|(((color>>>24)*Math.max(0,Math.min(100,inactive))/100)<<24);
         for(int r=0;r<rows;r++){
             int columns=(r==0?firstBars:secondBars)==5?5:4;
-            // Supplied 114x120 PNG: ink x=4..110, y=16..100; 16px bars, 6.75px gaps.
-            float cell=width/(columns+(columns-1)*6.75f/16f),gapX=cell*6.75f/16f;
+            // A wider gutter keeps rounded columns distinct at status-bar sizes.
+            // Each SIM keeps its OEM four/five-level scale in the same row width.
+            float cell=width/(columns+(columns-1)*.8f),gapX=cell*.8f;
             int lit=Math.max(0,Math.min(columns,r==0?first:second));
             for(int c=0;c<columns;c++){
                 float minimum=row*(20f/41f),bar=minimum+(row-minimum)*c/(columns-1);
                 float left=x+c*(cell+gapX),bottom=y+r*(row+gapY)+row;
                 paint.setColor(c<lit?color:dim);
-                canvas.drawRoundRect(left,bottom-bar,left+cell,bottom,0,0,paint);
+                float radius=Math.min(cell,bar)*Math.max(0,Math.min(.5f,corner));
+                canvas.drawRoundRect(left,bottom-bar,left+cell,bottom,radius,radius,paint);
             }
         }
     }

@@ -18,6 +18,10 @@ final class ProviderDiagnostics {
         // Bound expensive normalization, preference snapshots and disk requests at the boundary.
         if (!POLICY.allowRequest(callerUid, SystemClock.elapsedRealtime())) return Result.THROTTLED;
         String normalized = DiagnosticWritePolicy.normalize(key, value);
+        if (RuntimeEnvironment.LIFECYCLE.equals(key)) {
+            if (callerUid != 1000) return Result.INVALID;
+            RuntimeEnvironment.record(context, callerUid, normalized);
+        }
         synchronized (LOCK) {
             SharedPreferences prefs = context.getSharedPreferences(AppConfig.DIAGNOSTICS, 0);
             Map<String, ?> stored = prefs.getAll();

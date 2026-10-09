@@ -1,0 +1,336 @@
+.c-sheet-editor,
+.c-launcher-layout {
+  color: #24445e;
+}
+.c-layout-help {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #526d83;
+  margin: 8px 0 12px;
+}
+.c-sheet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+.c-sheet-heading strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.c-sheet-heading > span {
+  font-size: 12px;
+  color: #52748f;
+}
+.c-layout-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin: 12px 0;
+}
+.c-layout-number,
+.c-layout-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.c-layout-number > span,
+.c-layout-select > span {
+  color: #355771;
+  line-height: 1.4;
+}
+.c-layout-number input,
+.c-layout-select input,
+.c-layout-select select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  border: 1px solid #b7d0e4;
+  border-radius: 7px;
+  background: #f5faff;
+  padding: 6px 9px;
+  color: #24445e;
+  font: inherit;
+}
+.c-layout-number input:focus,
+.c-layout-select input:focus,
+.c-layout-select select:focus {
+  outline: 2px solid #2175c6;
+  outline-offset: 1px;
+}
+.c-sheet-scroll {
+  width: 100%;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #acc8df;
+  border-radius: 8px;
+  background: #f7fbff;
+}
+.c-sheet-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+}
+.c-sheet-table th,
+.c-sheet-table td {
+  padding: 0;
+  border-right: 1px solid #c5daeb;
+  border-bottom: 1px solid #c5daeb;
+}
+.c-sheet-table tr:last-child > * {
+  border-bottom: 0;
+}
+.c-sheet-table tr > :last-child {
+  border-right: 0;
+}
+.c-sheet-table th {
+  background: #e1edf7;
+  color: #496b85;
+  text-align: center;
+  font-weight: 500;
+  height: 28px;
+}
+.c-sheet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.c-sheet-table tr > th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 30px;
+}
+.c-sheet-table td {
+  min-width: 56px;
+  position: relative;
+}
+.c-sheet-table td.is-selected {
+  background: #e0f0ff;
+  outline: 2px solid #227acb;
+  outline-offset: -2px;
+}
+.c-sheet-table td > button {
+  border: 0;
+  margin: 0;
+  padding: 6px 4px;
+  background: transparent;
+  color: #24445e;
+  width: 100%;
+  height: 100%;
+  min-height: 47px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font: inherit;
+}
+.c-sheet-table td > button:focus-visible {
+  outline: 2px solid #174e84;
+  outline-offset: -4px;
+}
+.c-sheet-table td > button[draggable='true'] {
+  cursor: grab;
+}
+.c-sheet-table small {
+  font-size: 11px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.c-sheet-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  min-height: 17px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.c-sheet-glyph img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+.c-sheet-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+.c-sheet-tools button,
+.c-launcher-presets button {
+  border: 1px solid #bcd5e9;
+  border-radius: 7px;
+  background: #edf6fd;
+  color: #236296;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.c-sheet-tools button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.c-sheet-inspector {
+  background: #e6f2fc80;
+  border: 1px solid #c1d9eb;
+  border-radius: 10px;
+  padding: 12px;
+}
+.c-sheet-inspector .c-native-fold {
+  margin: 0;
+}
+.c-layout-error {
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 8px 10px;
+  color: #8c321f;
+  background: #fff1e9;
+  border-radius: 6px;
+}
+.c-sheet-preview {
+  width: 100%;
+  position: relative;
+  overflow: auto;
+  border: 1px solid #c0d6e9;
+  background: #e7f3ff;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.c-sheet-preview-stage {
+  position: relative;
+  margin: 5px auto;
+}
+.c-sheet-preview-stage > button {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  color: #173c59;
+  border: 0;
+  border-radius: 2px;
+  outline: 1px dashed #b8d1e3;
+  background: transparent;
+  overflow: hidden;
+  line-height: 1.2;
+  font-family: inherit;
+  cursor: pointer;
+}
+.c-sheet-preview-stage > button:hover,
+.c-sheet-preview-stage > button:focus-visible {
+  background: #cce5fb;
+}
+.c-sheet-preview-stage > button.has-readability-issue {
+  outline: 1px dashed #bd4f27;
+  background: #fff0e580;
+}
+.c-readability-warning {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #943b20;
+  margin: 4px 0 0;
+}
+.c-sheet-ink {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  max-width: none;
+}
+.c-sheet-ink svg {
+  flex-shrink: 0;
+}
+.c-sheet-icon-group {
+  display: inline-grid;
+  align-items: center;
+  gap: 1px;
+}
+.c-sheet-ink img {
+  width: 1em;
+  height: 1em;
+  object-fit: contain;
+}
+.c-sheet-battery {
+  width: 1.8em;
+  height: 1.8em;
+  border: 0.16em solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  font-weight: 600;
+}
+.c-sheet-mode {
+  padding: 0 0 10px;
+}
+.c-sheet-mode > .c-native-select {
+  margin-top: 0;
+}
+.c-launcher-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 12px 0;
+}
+.c-launcher-presets button {
+  padding: 9px 2px;
+}
+.c-launcher-presets button[aria-pressed='true'] {
+  background: #2175c6;
+  color: white;
+  border-color: #2175c6;
+}
+.c-launcher-grid-preview {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  height: 255px;
+  padding: 14px;
+  margin: 12px 0;
+  box-sizing: border-box;
+  background: #e2eff9;
+  border: 1px solid #c1d8e9;
+  border-radius: 12px;
+}
+.c-launcher-grid-preview > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #b9cfdf;
+  border-radius: 4px;
+  min-width: 0;
+  min-height: 0;
+}
+.c-launcher-grid-preview i {
+  display: block;
+  width: 64%;
+  max-width: 29px;
+  aspect-ratio: 1;
+  max-height: 80%;
+  background: var(--tile-color);
+  border-radius: 25%;
+}
+.c-launcher-capacity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0;
+  color: #315875;
+  font-size: 13px;
+}
+.c-launcher-capacity strong {
+  font-size: 16px;
+}

@@ -46,5 +46,6 @@ abstract class NativeEditorController extends ContextThemeWrapper {
     protected void onDestroy() { destroyed=true; }
     protected void onSaveInstanceState(Bundle state) { }
     protected void onActivityResult(int request,int result,Intent data) { }
+    void prepareScopeRestart(Runnable restart){restart.run();}
     public void onBackPressed(){finish();}
 }

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="redmagic-duo-contributors" content="1">
+  <meta name="description" content="感谢为红魔 Duo 提供帮助的贡献者、开发团队与捐赠者。">
+  <meta name="color-scheme" content="light dark">
+  <title>贡献者 · 红魔 Duo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231f74c5'/%3E%3Cpath d='M9 8h6a8 8 0 0 1 0 16H9zm4 4v8h2a4 4 0 0 0 0-8z' fill='white'/%3E%3C/svg%3E">
+  <style>
+    :root { color-scheme:light; --bg:#e8f4ff; --end:#f8fcff; --surface:#fbfdff; --text:#14233a; --muted:#526780; --accent:#1f74c5; --tint:#dcefff; --line:#d4e4f2; --shadow:0 16px 50px #245c8910; }
+    @media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --bg:#0c1829; --end:#142336; --surface:#1b2d41; --text:#e8f2ff; --muted:#a3b6cd; --accent:#72bbff; --tint:#1e4060; --line:#32485f; --shadow:0 16px 50px #0002; } }
+    :root[data-theme="dark"] { color-scheme:dark; --bg:#0c1829; --end:#142336; --surface:#1b2d41; --text:#e8f2ff; --muted:#a3b6cd; --accent:#72bbff; --tint:#1e4060; --line:#32485f; --shadow:0 16px 50px #0002; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--text); background:linear-gradient(145deg,var(--bg),var(--end)); font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; font-size:1rem; line-height:1.65; min-height:100vh; }
+    main { max-width:920px; margin:auto; padding:48px 28px 32px; }
+    .brand { margin:0; font-size:1.75rem; font-weight:750; line-height:1.3; letter-spacing:-.02em; }
+    header { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 16px; padding-bottom:28px; }
+    .tagline { margin:0; color:var(--muted); font-size:1.125rem; line-height:1.5; }
+    .section-heading { display:flex; align-items:baseline; gap:12px; margin:0 0 14px; flex-wrap:wrap; }
+    h2 { margin:0; font-size:1rem; font-weight:700; }
+    .en { color:var(--muted); font-size:.75rem; letter-spacing:.1em; }
+    ul { list-style:none; padding:0; margin:0; }
+    .people { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .person { display:flex; align-items:center; gap:16px; min-width:0; padding:22px; background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow); }
+    .initial { display:flex; flex:none; align-items:center; justify-content:center; width:48px; height:48px; border-radius:15px; background:var(--tint); color:var(--accent); font-size:1.25rem; font-weight:750; }
+    .person h3 { margin:0; font-size:1rem; font-weight:650; overflow-wrap:anywhere; }
+    .role { color:var(--muted); margin:3px 0 0; font-size:.875rem; }
+    .support { margin-top:34px; }
+    .support-card { padding:24px; border:1px solid var(--line); border-radius:20px; background:var(--surface); }
+    .support-card p { margin:0 0 18px; color:var(--muted); font-size:.875rem; }
+    .donors { display:flex; flex-wrap:wrap; gap:10px; }
+    .donors li { padding:9px 17px; border-radius:12px; background:var(--tint); color:var(--text); overflow-wrap:anywhere; max-width:100%; }
+    footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:30px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:.75rem; }
+    @media (max-width:600px) { main { padding:24px 18px; } header { padding-bottom:26px; column-gap:12px; } .brand { font-size:1.5rem; } .tagline { font-size:1rem; } .people { grid-template-columns:1fr; gap:10px; } .person { padding:17px 18px; border-radius:17px; } .support { margin-top:28px; } .support-card { padding:20px 18px; border-radius:17px; } }
+    @media (prefers-reduced-motion:no-preference) { main { animation:enter .35s ease-out; } @keyframes enter { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1 class="brand">红魔 Duo</h1>
+      <p class="tagline">让红魔更顺手</p>
+    </header>
+    <section aria-labelledby="contributors-title">
+      <div class="section-heading"><h2 id="contributors-title">贡献者</h2><span class="en" aria-hidden="true">CONTRIBUTORS</span></div>
+      <!-- 维护名单：复制一个 li.person 修改姓名和类别即可；不需要修改 App。 -->
+      <ul class="people">
+        <li class="person"><span class="initial" aria-hidden="true">卒</span><div><h3>卒迹</h3><p class="role">个人贡献者</p></div></li>
+        <li class="person"><span class="initial" aria-hidden="true">S</span><div><h3>绀漓丨Sevtinge</h3><p class="role">个人贡献者</p></div></li>
+        <li class="person"><span class="initial" aria-hidden="true">红</span><div><h3>红魔助手开发团队</h3><p class="role">开发团队</p></div></li>
+        <li class="person"><span class="initial" aria-hidden="true">H</span><div><h3>HyperCeiler开发团队</h3><p class="role">开发团队</p></div></li>
+      </ul>
+    </section>
+    <section class="support" aria-labelledby="donors-title">
+      <div class="section-heading"><h2 id="donors-title">捐赠列表</h2><span class="en" aria-hidden="true">SUPPORTERS</span></div>
+      <div class="support-card">
+        <p>感谢以下捐赠者对项目的支持。</p>
+        <!-- 维护捐赠者：每个 li 是一位捐赠者。 -->
+        <ul class="donors">
+          <li>kj2548</li>
+          <li>福福</li>
+          <li>隐隐约约月</li>
+          <li>夕梦月初</li>
+          <li>ninemans</li>
+          <li>停！别浪费时间聊天</li>
+          <li>萌爱oo</li>
+          <li>ღ᭄爱莉瑟琳ঞৣ</li>
+        </ul>
+      </div>
+    </section>
+    <footer><span>红魔 Duo · 贡献与支持</span></footer>
+  </main>
+</body>
+</html>

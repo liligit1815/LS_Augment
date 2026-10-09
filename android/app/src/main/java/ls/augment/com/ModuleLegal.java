@@ -20,6 +20,7 @@ final class ModuleLegal {
             + "配置导入会替换对应设置。请先备份，并核对来源、设备及版本。配置备份不等于系统或应用数据备份，也不包含健康账户绑定、执行日志或设备测试凭据。首次同意记录单独保存在本机，不随模块配置导入导出。"},
         {"四、本地信息与用途",
             "为提供应用选择、隐藏管理、双开及肩键候选等功能，模块会读取已安装应用的名称、包名及必要状态；为配置和兼容性判断，会读取设备型号、系统版本及相关硬件信息。模块保存你选择的功能设置、应用清单、自定义图片或字体。\n\n"
+            + "启用短信验证码自动加入剪贴板时，模块会在本机处理新收到的短信，仅将识别出的验证码写入当前用户的系统剪贴板供输入法粘贴；不读取历史短信，不保存或记录短信正文及验证码。\n\n"
             + "启用健康相关功能时，会按该功能说明处理账户绑定标识、步数与计划状态。诊断记录可能含机型、系统与应用信息、配置、作用域和运行事件；开启详细诊断后会记录更多相关调用信息。配置及模块日志在设备本地保存，供功能执行、状态展示及故障排查使用。"},
         {"五、权限、联网与分享",
             "本安装包声明应用列表查询和接收系统启动广播权限，分别用于相关应用管理和开机后的功能恢复；系统修改依赖你授予的 Root 权限及 LSPosed 作用域。选择导入或导出文件时，由系统文件选择器提供你选定文件的访问权限。\n\n"
@@ -59,18 +60,18 @@ final class ModuleLegal {
         show(activity, ui, "用户协议与隐私说明", new int[]{0, 1, 2, 3, 4, 5, 6});
     }
 
-    static void showTerms(Activity activity, UiKit ui) {
-        show(activity, ui, "用户协议", new int[]{0, 1, 2, 5, 6});
+    static android.app.Dialog showTerms(Activity activity, UiKit ui) {
+        return show(activity, ui, "用户协议", new int[]{0, 1, 2, 5, 6});
     }
 
-    static void showPrivacy(Activity activity, UiKit ui) {
-        show(activity, ui, "隐私政策", new int[]{0, 3, 4, 5, 6});
+    static android.app.Dialog showPrivacy(Activity activity, UiKit ui) {
+        return show(activity, ui, "隐私政策", new int[]{0, 3, 4, 5, 6});
     }
 
-    private static void show(Activity activity, UiKit ui, String documentTitle, int[] sections) {
+    private static android.app.Dialog show(Activity activity, UiKit ui, String documentTitle, int[] sections) {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         append(ui, content, documentTitle, sections);
-        ui.glassDialog(documentTitle, content, "关闭", null, null);
+        return ui.glassDialog(documentTitle, content, "关闭", null, null);
     }
 }

@@ -6,7 +6,7 @@ import android.view.View;
 
 /** One reusable snapshot of the actual page background, shared by all content lenses. */
 final class GlassScene {
-    static final int SCALE = 4;
+    static final int SCALE = 2;
     final View source;
     private final int blurRadius;
     private Bitmap bitmap;

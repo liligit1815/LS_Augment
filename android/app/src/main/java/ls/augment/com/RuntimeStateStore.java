@@ -60,4 +60,12 @@ final class RuntimeStateStore {
         result.putLong(RemoteConfig.RUNTIME_REVISION, (Long) values.get(RemoteConfig.RUNTIME_REVISION));
         return result;
     }
+
+    static boolean clearForReset(Context context) {
+        synchronized (LOCK) {
+            if (!preferences(context).edit().clear().commit()) return false;
+        }
+        FrameworkConfigSync.request();
+        return true;
+    }
 }

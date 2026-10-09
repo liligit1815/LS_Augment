@@ -13,12 +13,13 @@ import java.util.concurrent.*;
 public final class IconCropActivity extends Activity {
     private UiKit ui;private Crop crop;private Button done;private final ExecutorService worker=Executors.newSingleThreadExecutor();
     @Override public void onCreate(Bundle saved){
-        super.onCreate(saved);ui=new UiKit(this);LinearLayout page=ui.scrollPage();page.addView(ui.header("裁剪图片",true));
+        super.onCreate(saved);ui=new UiKit(this);LinearLayout page=ui.detailPage("裁剪图片",null);
         page.addView(ui.text("拖动图片调整位置，双指缩放。方框内的内容会保存为图标。",12,ui.muted,false));
         crop=new Crop();crop.fit=getIntent().getBooleanExtra("gesture_icon",false);
         if(saved!=null)crop.fit=saved.getBoolean("fit",crop.fit);
         if(getIntent().getBooleanExtra("gesture_icon",false)){
-            Switch fit=new Switch(this);fit.setText("完整显示（透明留边）");fit.setChecked(crop.fit);page.addView(fit,ui.wrap());
+            Switch fit=new Switch(this);fit.setChecked(crop.fit);LinearLayout settings=ui.preferenceCard();
+            settings.addView(ui.featureRow("完整显示（透明留边）",null,fit),ui.wrap());page.addView(settings,ui.margins(0,8,0,8));
             fit.setOnCheckedChangeListener((v,on)->{crop.fit=on;crop.zoom=1;crop.x=crop.y=0;crop.invalidate();});
         }
         page.addView(crop,new LinearLayout.LayoutParams(-1,ui.dp(300)));
@@ -41,7 +42,7 @@ public final class IconCropActivity extends Activity {
         float ratio(){return bitmap==null?1:edge()/(fit?Math.max(bitmap.getWidth(),bitmap.getHeight()):Math.min(bitmap.getWidth(),bitmap.getHeight()))*zoom;}
         void clamp(){if(bitmap==null)return;float f=ratio(),e=edge(),dx=Math.max(0,(bitmap.getWidth()*f-e)/2),dy=Math.max(0,(bitmap.getHeight()*f-e)/2);x=Math.max(-dx,Math.min(dx,x));y=Math.max(-dy,Math.min(dy,y));}
         void image(Canvas c,float centerX,float centerY,float factor){if(bitmap==null)return;c.translate(centerX+x*factor,centerY+y*factor);c.scale(ratio()*factor,ratio()*factor);c.drawBitmap(bitmap,-bitmap.getWidth()/2f,-bitmap.getHeight()/2f,paint);}
-        @Override protected void onDraw(Canvas c){super.onDraw(c);c.drawColor(0xffdcefff);if(bitmap==null)return;clamp();float e=edge(),left=(getWidth()-e)/2,top=(getHeight()-e)/2;
+        @Override protected void onDraw(Canvas c){super.onDraw(c);c.drawColor(ui.accentContainer);if(bitmap==null)return;clamp();float e=edge(),left=(getWidth()-e)/2,top=(getHeight()-e)/2;
             c.save();c.clipRect(left,top,left+e,top+e);image(c,getWidth()/2f,getHeight()/2f,1);c.restore();paint.setStyle(Paint.Style.STROKE);paint.setColor(ui.accent);paint.setStrokeWidth(ui.dp(2));c.drawRect(left,top,left+e,top+e,paint);paint.setStyle(Paint.Style.FILL);}
         @Override public boolean onTouchEvent(MotionEvent e){getParent().requestDisallowInterceptTouchEvent(true);scale.onTouchEvent(e);
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN){lastX=e.getX();lastY=e.getY();return true;}

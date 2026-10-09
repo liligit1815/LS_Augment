@@ -36,8 +36,9 @@ final class OemAppExtrasHook {
             });
         OemHooks.methods(m,l,type,"getCookUI",null,6,key("installer_hide_purify"),chain->{
             Object result=chain.proceed();
-            for(String field:new String[]{"cleanBgColor","hidePureModeSwitchLayout","hideWarningLayout"})OemHooks.set(result,true,field);
-            for(String field:new String[]{"needIsolate","showRiskCheckbox","showSwlimitLearnMore"})OemHooks.set(result,false,field);
+            // This preference owns only the pure-mode entry. Keep the native warning,
+            // risk acknowledgement, isolation decision and security background intact.
+            OemHooks.set(result,true,"hidePureModeSwitchLayout");
             return result;
         });
         OemHooks.methods(m,l,"com.android.packageinstaller.InstallStaging","installScanningInit",void.class,1,key("installer_skip_scan"),chain->{

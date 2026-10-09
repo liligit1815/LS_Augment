@@ -138,7 +138,7 @@ final class TgkRapidFireHook {
                 || !token.acceptsUpper(keyCode)) {
             return chain.proceed();
         }
-        int count = FeatureSettings.integer(context, COUNT, 20, 10, 50);
+        int count = FeatureSettings.integer(context, COUNT, 20, 1, 50);
         // Always send the current value.  The OEM TGK cache can still contain
         // a previous higher value after the user lowers the slider; retaining
         // the old >= count shortcut would make the system_server layer see a

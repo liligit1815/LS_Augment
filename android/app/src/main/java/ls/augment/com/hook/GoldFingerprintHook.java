@@ -12,6 +12,7 @@ final class GoldFingerprintHook {
     static final int NAME_ID=0x7e002076;
     private static final ThreadLocal<Boolean> SCOPE=ThreadLocal.withInitial(()->false);
     private static final java.util.Set<java.lang.reflect.Method> SENSOR=new java.util.HashSet<>();
+    private static final java.util.Set<java.lang.reflect.Method> SETTINGS_DEOPT=new java.util.HashSet<>();
     static boolean scoped(){return SCOPE.get();}
     static boolean enter(boolean gold){boolean old=SCOPE.get();SCOPE.set(gold);return old;}
     static void leave(boolean previous){SCOPE.set(previous);}
@@ -45,6 +46,36 @@ final class GoldFingerprintHook {
                     Integer.valueOf(NAME_ID).equals(chain.getArg(0))?NAME:chain.proceed(),new Class<?>[]{int.class});
         methods(module,loader,"com.zte.fingerprint.theme.StyleFlag","getAnimStyleName",String.class,2,"",chain->
                 FLAG.equals(chain.getArg(0))?NAME:chain.proceed(),new Class<?>[]{String.class,Context.class});
+        String activity="com.zte.fingerprint.main.SensoruiSettingsActivity";
+        int installed=methods(module,loader,activity,"getCurrentIndexByDatabaseStyle",int.class,1,"",chain->{
+            Object original=chain.proceed();
+            if(!Integer.valueOf(-1).equals(original)||!FLAG.equals(chain.getArg(0)))return original;
+            try{
+                Context c=context(chain.getThisObject(),null);
+                if(c==null||!FeatureSettings.hasVerifiedSnapshot(c)
+                        ||FeatureSettings.enabled(c,CollabOptions.FP_GOLD))return original;
+                // Resolve this page's stock item, without changing the persisted custom flag.
+                Object value=field(chain.getThisObject(),"mStyleList");
+                if(value instanceof List<?>){
+                    List<?> items=(List<?>)value;
+                    for(int i=0;i<items.size();i++)
+                        if("20".equals(field(items.get(i),"fingerprintStyleFlag")))return i;
+                }
+            }catch(RuntimeException|LinkageError unavailable){ /* Preserve the native missing selection. */ }
+            return original;
+        },new Class<?>[]{String.class});
+        if(installed>0)try{
+            Class<?> type=Class.forName(activity,false,loader);
+            // The private lookup can be inlined into this caller and then into onCreate.
+            deoptSettingsCaller(module,type.getDeclaredMethod("getCurrentStyle",String.class,String.class));
+            deoptSettingsCaller(module,type.getDeclaredMethod("onCreate",android.os.Bundle.class));
+        }catch(ReflectiveOperationException|RuntimeException|LinkageError error){module.logFeatureError("GOLD_SETTINGS_DEOPT",error);}
+    }
+
+    private static void deoptSettingsCaller(AugmentModule module,java.lang.reflect.Method method){
+        synchronized(SETTINGS_DEOPT){
+            if(!SETTINGS_DEOPT.contains(method)&&module.deoptimize(method))SETTINGS_DEOPT.add(method);
+        }
     }
 
     static void installSensor(AugmentModule module,ClassLoader loader){

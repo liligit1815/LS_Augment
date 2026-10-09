@@ -138,7 +138,8 @@ public class TestLiquidGlassDrawable {
  static int checks;
  static void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
  static void near(float actual,float expected,String message){check(Math.abs(actual-expected)<.00001f,message+": "+actual);}
- static class Source implements LiquidGlassDrawable.BackdropSource {boolean valid=true,drawResult=true;long generation=1;int samples,color=0xffaabbcc;Canvas sampledCanvas;
+ static class Source implements LiquidGlassDrawable.BackdropSource {boolean valid=true,drawResult=true,mappedScale;long generation=1;int samples,color=0xffaabbcc;Canvas sampledCanvas;
+  public boolean mapsLocalScale(){return mappedScale;}
   public boolean isValid(){return valid;}public long revision(){return generation;}
   public boolean draw(Canvas c,int w,int h){samples++;sampledCanvas=c;check(!c.hardware,"source draws only into software sample buffer");
    check(c.bitmap!=null&&w>0&&h>0,"source gets local positive bounds");if(drawResult)c.drawColor(color);return drawResult;}}
@@ -265,7 +266,16 @@ public class TestLiquidGlassDrawable {
   ((WindowManager.LayoutParams)parent.params).flags=0;f.view.shown=false;refuse(f,"hidden scaled control cannot paint");f.view.shown=true;
   parent.scaleX=parent.scaleY=1;check(f.glass.prepare()&&f.source.samples==1,"stable geometry begins verified capture normally");
   parent.scaleX=.94f;check(draw(f.glass).commands.isEmpty(),"scaled control cannot reuse a previously valid optical texture");f.glass.release();}
- public static void main(String[] args){uniformsAndTint();cacheAndStaleFrames();unavailableFallback();safety();opaquePreference();rejectionAndFaults();interactionAndRelease();controlReveal();controlBackdropCalming();scaledControlFallback();
+ static void mappedControlScale(){Fixture f=new Fixture();f.glass.setControlSurface(true);f.glass.updatePreferences(false,true);
+  f.source.mappedScale=true;f.view.scaleX=f.view.scaleY=.94f;
+  check(f.glass.prepare(),"verified mapped control remains optical during press scale");optical(draw(f.glass));
+  f.source.valid=false;check(draw(f.glass).commands.isEmpty(),"mapped scale cannot reuse an invalid compositor source");
+  f.source.valid=true;f.view.rotation=1;check(!f.glass.prepare(),"mapped scale does not allow rotation");
+  f.view.rotation=0;((WindowManager.LayoutParams)f.view.params).flags=WindowManager.LayoutParams.FLAG_SECURE;
+  check(!f.glass.prepare(),"mapped scale does not allow secure windows");
+  ((WindowManager.LayoutParams)f.view.params).flags=0;f.glass.setControlSurface(false);
+  check(!f.glass.prepare(),"mapped source cannot broaden Dock transform rules");f.glass.release();}
+ public static void main(String[] args){uniformsAndTint();cacheAndStaleFrames();unavailableFallback();safety();opaquePreference();rejectionAndFaults();interactionAndRelease();controlReveal();controlBackdropCalming();scaledControlFallback();mappedControlScale();
   check(ValueAnimator.active.isEmpty(),"all test animations released");System.out.println("PASS production LiquidGlassDrawable runtime: "+checks+" checks (Java facade; AGSL/GPU not executed)");}
 }
 """,

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -123,14 +124,14 @@ checks = {
                                   'resolver_bypassed_no_clone'),
     'scope restart': (src / 'ScopeRestartDialog.java', '重启作用域'),
     'super mirror': (src / 'hook/SuperMirrorDiabloHook.java', 'DB-02'),
-    'fan fixed rpm policy': (src / 'hook/FanControlPolicy.java',
-                             'data.closestLevel'),
+    'fan fixed level policy': (src / 'hook/FanControlPolicy.java',
+                               'static final int MAX_LEVEL = 5'),
     'fan OEM-session-only control': (src / 'hook/FanControlHook.java',
                                      'fan_enable_writes=0'),
     'fan control UI': (src / 'FeatureEditorController.java',
                        'AppConfig.FAN_FIXED_ENABLED,"固定风扇转速"'),
-    'fan max level UI': (src / 'FeatureEditorController.java',
-                         'AppConfig.FAN_UNLOCK_MAX,"风扇最高转速"'),
+    'fan fixed level UI': (src / 'FeatureEditorController.java',
+                           'ConfigSchema.FAN_FIXED_LEVEL,"固定档位"'),
     'shoulder all installed app target': (src / 'hook/AugmentModule.java',
                                                'ApplicationInfo.FLAG_INSTALLED'),
     'auxiliary line OEM state ownership': (src / 'hook/AugmentModule.java',
@@ -152,7 +153,7 @@ checks = {
     'freeform hook': (src / 'hook/FreeformHook.java',
                       'WINDOW_REPLY_ICON_MANAGER'),
     'TGK rapid-fire system hook': (src / 'hook/TgkRapidFireSystemHook.java',
-                                   'OEM_MAX_CPS'),
+                                   'if (requested == 0)'),
     'TGK native build': (app / 'src/main/cpp/CMakeLists.txt',
                          'tgk_rapid_native.cpp'),
     'atomic configuration snapshot': (src / 'ConfigSnapshot.java',
@@ -409,6 +410,12 @@ def check_source_packaging():
                 path = project / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture\n', encoding='utf-8')
+            # The source packager uses the index as its manifest. Each fixture
+            # must own a repository; otherwise Git would inspect the parent checkout.
+            subprocess.run(['git', 'init', '-q', str(project)], check=True)
+            subprocess.run(['git', '-C', str(project), 'add', '--all'], check=True)
+            untracked = project / 'tools/local-process-record.py'
+            untracked.write_text('must not be packaged\n', encoding='utf-8')
             output = workspace / f'{project_name}.zip'
             packaged = subprocess.run(
                 [sys.executable, '-', str(workspace), project_name, str(output)],
@@ -426,8 +433,20 @@ def check_source_packaging():
 
 def check_manifest():
     manifest_text = (app / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
-    assert 'android.permission.INTERNET' not in manifest_text, \
-        'user analytics/cloud collection must remain disabled'
+    android_name = '{http://schemas.android.com/apk/res/android}name'
+    permissions = {node.attrib[android_name]
+                   for node in ET.fromstring(manifest_text).findall('uses-permission')}
+    assert permissions == {
+        'android.permission.QUERY_ALL_PACKAGES',
+        'android.permission.RECEIVE_BOOT_COMPLETED',
+        'android.permission.INTERNET',
+    }, f'unexpected application permission set: {permissions}'
+    # INTERNET supports the read-only contributors page. Its WebView must keep
+    # scripts and remote subresources disabled when displaying fetched HTML.
+    contributors = (src / 'ContributorsActivity.java').read_text(encoding='utf-8')
+    assert 'HttpURLConnection' in contributors
+    assert 'settings.setJavaScriptEnabled(false)' in contributors
+    assert 'settings.setBlockNetworkLoads(true)' in contributors
 
 
 def check_hidden_navigation():

@@ -51,7 +51,7 @@ def level(target, label):
     nodes = capture(label + '-before')
     sliders = [n for n in nodes if n.get('description') == '固定档位拖拽条']
     if not sliders:
-        click(label + '-fixed', '固定档位')
+        click(label + '-fixed', '固定转速')
         time.sleep(2)
         nodes = capture(label + '-expanded')
         sliders = [n for n in nodes if n.get('description') == '固定档位拖拽条']
@@ -79,7 +79,7 @@ def level(target, label):
     result = {'target': target, 'pass': streak >= 3, 'samples': samples}
     (OUT / (label + '-result.json')).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     nodes = capture(label + '-after')
-    result['selectedUi'] = any(n.get('text') == '固定档位' and n.get('checked') for n in nodes) \
+    result['selectedUi'] = any(n.get('text') == '固定转速' and n.get('checked') for n in nodes) \
         and all(not n.get('checked') for n in nodes if n.get('text') in ['均衡散热', '疾速散热'])
     result['appliedUi'] = any('已生效' in (n.get('text') or '') for n in nodes)
     (OUT / (label + '-result.json')).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -99,7 +99,7 @@ def native(mode, label):
             time.sleep(2); break
         time.sleep(.7)
     nodes = capture(label + '-after')
-    checked = [n.get('text') for n in nodes if n.get('checked') and n.get('text') in ['均衡散热', '疾速散热', '固定档位']]
+    checked = [n.get('text') for n in nodes if n.get('checked') and n.get('text') in ['均衡散热', '疾速散热', '固定转速']]
     passed = checked == [name] and not any(n.get('description') == '固定档位拖拽条' for n in nodes) \
         and value['mode'] == str(mode) and cfg['ls_augment_fan_fixed_enabled'] == '0'
     result = {'pass': passed, 'checked': checked, 'samples': samples}

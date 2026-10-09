@@ -25,6 +25,9 @@ final class NativeFeatureGroups {
     /** Related settings live in the corresponding status-bar editor tab. */
     static String statusBarDestination(Feature feature) {
         String key=feature.toggleKey==null?feature.parameterKeys[0]:feature.toggleKey;
+        if(key.startsWith(NotificationSummaryOptions.P))return "notifications";
+        if(key.equals(StatusBarIconSpacingSpec.KEY))return "assets";
+        if(key.equals(StatusBarIconOrderPolicy.ENABLED))return "icons";
         String suffix=key.substring(SystemUiOptions.PREFIX.length());
         if(suffix.startsWith("network_"))return "network";
         if(suffix.startsWith("metrics_"))return "metrics";
@@ -36,7 +39,7 @@ final class NativeFeatureGroups {
         return "layout";
     }
     static String objectGroup(Feature f){
-        if(f.id.equals("systemui:qs_brightness_percent")||f.id.equals("systemui:qs_volume_percent"))return "亮度与音量";
+        if(f.id.equals("systemui:qs_brightness_percent")||f.id.equals("systemui:qs_volume_percent")||f.id.equals("systemui:full_brightness"))return "亮度与音量";
         if(f.id.equals("systemui:qs_search")||f.id.equals("systemui:qs_browser"))return "搜索按钮";
         if(f.id.equals("systemui:notification_weather")||f.id.equals("systemui:qs_calendar")||f.id.startsWith("systemui:qs_clock_"))return "面板日期、天气与时钟";
         if(f.id.startsWith("systemui:lock_clock_"))return "锁屏时钟";
@@ -50,19 +53,43 @@ final class NativeFeatureGroups {
         for(EnhancementOption o:EnhancementCatalog.group(group))if(available.contains(o.key))result.add(new Feature(o.key,o.title,o.kind==EnhancementOption.Kind.BOOLEAN?o.key:null,o.kind==EnhancementOption.Kind.BOOLEAN?new String[0]:new String[]{o.key},o.kind==EnhancementOption.Kind.INTEGER||o.kind==EnhancementOption.Kind.DECIMAL?"number":"trimmedString",o.defaultValue,new Feature[0]));
         return result;
     }
+    private static Feature configured(String id,String title,String toggle,List<EnhancementOption> options,String prefix){
+        List<String> parameters=new ArrayList<>();for(EnhancementOption option:options)if(option.key.startsWith(prefix)&&!option.key.equals(toggle))parameters.add(option.key);
+        return new Feature(id,title,toggle,parameters.toArray(new String[0]),"boolean","0",new Feature[0]);
+    }
     static final Section[] SECTIONS={
-        new Section("collab","collab_theme","联名预置主题", new Feature[]{
-            new Feature("collab:theme","解锁联名预置主题",CollabOptions.THEME,
-                    new String[]{CollabOptions.THEME_VARIANT},"boolean","0",new Feature[]{})
+        new Section("systemui","notification_clock","通知页大时钟",new Feature[]{
+            configured("systemui:notification_clock_portrait","竖屏通知页大时钟",NotificationAppearanceOptions.CLOCK_PORTRAIT,NotificationAppearanceOptions.options(),NotificationAppearanceOptions.clock(false,"")),
+            configured("systemui:notification_clock_landscape","横屏通知页大时钟",NotificationAppearanceOptions.CLOCK_LANDSCAPE,NotificationAppearanceOptions.options(),NotificationAppearanceOptions.clock(true,""))
         }),
-        new Section("collab","collab_fingerprint","联名指纹样式", new Feature[]{
+        new Section("systemui","notification_clear","通知清除按钮",new Feature[]{
+            configured("systemui:notification_clear","通知清除按钮样式",NotificationAppearanceOptions.CLEAR,NotificationAppearanceOptions.options(),NotificationAppearanceOptions.PREFIX+"clear_")
+        }),
+        new Section("systemui","cc_appearance","控制中心外观",new Feature[]{
+            new Feature("systemui:cc_corners","控制中心统一圆角",ControlCenterAppearanceOptions.CORNERS,new String[]{ControlCenterAppearanceOptions.RADIUS},"boolean","0",new Feature[0]),
+            configured("systemui:cc_tiles","活动磁贴配色",ControlCenterAppearanceOptions.TILES,ControlCenterAppearanceOptions.options(),ControlCenterAppearanceOptions.PREFIX+"tile_"),
+            configured("systemui:cc_media","控制中心音乐封面背景",ControlCenterAppearanceOptions.MEDIA,ControlCenterAppearanceOptions.options(),ControlCenterAppearanceOptions.PREFIX+"media_")
+        }),
+        new Section("systemui","carrier_text","运营商文字",new Feature[]{
+            configured("systemui:carrier_notification","通知页运营商文字",CarrierTextOptions.key("notification","enabled"),CarrierTextOptions.options(),CarrierTextOptions.key("notification","")),
+            configured("systemui:carrier_control","控制中心运营商文字",CarrierTextOptions.key("control","enabled"),CarrierTextOptions.options(),CarrierTextOptions.key("control","")),
+            configured("systemui:carrier_lock","锁屏运营商文字",CarrierTextOptions.key("lock","enabled"),CarrierTextOptions.options(),CarrierTextOptions.key("lock",""))
+        }),
+        new Section("systemui","notification_summary","通知区域汇总",new Feature[]{
+            configured("systemui:notification_summary","通知区域汇总",NotificationSummaryOptions.ENABLED,NotificationSummaryOptions.options(),NotificationSummaryOptions.P)
+        }),
+        new Section("systemui","icon_layout","图标边距与优先级",new Feature[]{
+            new Feature("systemui:icon_spacing","每个图标边界间距",null,new String[]{StatusBarIconSpacingSpec.KEY},"trimmedString","",new Feature[0]),
+            new Feature("systemui:icon_priority","系统提示图标优先级",StatusBarIconOrderPolicy.ENABLED,new String[]{StatusBarIconOrderPolicy.LIMIT,StatusBarIconOrderPolicy.ORDER},"boolean","0",new Feature[0])
+        }),
+        new Section("theme","collab_fingerprint","联名指纹样式", new Feature[]{
             new Feature("collab:chisa","千咲",CollabOptions.FP_CHISA,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("collab:chun","椿",CollabOptions.FP_CHUN,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("collab:fighting","念箍",CollabOptions.FP_FIGHTING,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("collab:gold","臻金传说",CollabOptions.FP_GOLD,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("collab:lty","洛天依",CollabOptions.FP_LTY,new String[]{},"boolean","0",new Feature[]{})
         }),
-        new Section("collab","collab_charging","联名充电动画", new Feature[]{
+        new Section("theme","collab_charging","联名充电动画", new Feature[]{
             new Feature("collab:charging","联名充电动画",CollabOptions.CHARGING,
                     new String[]{CollabOptions.CHARGING_STYLE},"boolean","0",new Feature[]{})
         }),
@@ -72,6 +99,10 @@ final class NativeFeatureGroups {
                 new Feature("glass:cc_transparency","减少透明度",GlassOptions.CC_REDUCE_TRANSPARENCY,new String[]{},"boolean","0",new Feature[]{}),
                 new Feature("glass:cc_motion","减少动态效果",GlassOptions.CC_REDUCE_MOTION,new String[]{},"boolean","0",new Feature[]{})
             })
+        }),
+        new Section("launcher","launcher_grid","桌面布局",new Feature[]{
+            new Feature("launcher:launcher_grid","自定义桌面布局",LauncherGridSpec.ENABLED,
+                    new String[]{LauncherGridSpec.COLUMNS,LauncherGridSpec.ROWS},"boolean","0",new Feature[]{})
         }),
         new Section("launcher","dock_glass","桌面 Dock", new Feature[]{
             new Feature("launcher:liquid_glass","液态玻璃 Dock",GlassOptions.DOCK,
@@ -91,6 +122,7 @@ final class NativeFeatureGroups {
                     BackGestureIconPolicy.parameterKeys(),"boolean","0",new Feature[]{})
         }),
         new Section("system","system","系统行为", new Feature[]{
+            new Feature("ls_augment_rm_sms_code_clipboard","短信验证码自动加入剪贴板",SystemOptions.SMS_CODE_CLIPBOARD,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_rm_secure_capture","允许受限窗口截图和录屏","ls_augment_rm_secure_capture",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_strong_auth_timeout","取消每 72 小时强制验证密码","ls_augment_rm_strong_auth_timeout",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_lock_timeout_enabled","自定义锁屏息屏时间","ls_augment_rm_lock_timeout_enabled",new String[]{"ls_augment_rm_lock_timeout_seconds"},"boolean","0", new Feature[]{}),
@@ -121,7 +153,7 @@ final class NativeFeatureGroups {
         }),
         new Section("systemui","statusbar","状态栏细节", new Feature[]{
             new Feature("systemui:privacy_hide","隐藏隐私小绿点","ls_augment_rm_privacy_hide",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature("systemui:signal_dual","双卡信号上下排列","ls_augment_rm_signal_dual",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("systemui:signal_dual","双排信号图标","ls_augment_rm_signal_dual",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_wifi_activity","隐藏 Wi-Fi 收发箭头","ls_augment_rm_hide_wifi_activity",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_wifi_standard","隐藏 Wi-Fi 标准数字","ls_augment_rm_hide_wifi_standard",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_mobile_activity","隐藏移动网络收发箭头","ls_augment_rm_hide_mobile_activity",new String[]{},"boolean","0", new Feature[]{}),
@@ -155,10 +187,19 @@ final class NativeFeatureGroups {
                 new Feature("ls_augment_rm_metrics_charging_only","仅充电时显示电流和功率","ls_augment_rm_metrics_charging_only",new String[]{},"boolean","0", new Feature[]{})
             })
         }),
+        new Section("systemui","notification_center","通知中心", new Feature[]{
+            new Feature("systemui:notification_media_hide","取消通知中心的音乐卡片",SystemUiOptions.NOTIFICATION_MEDIA_HIDE,new String[]{},"boolean","0",new Feature[]{})
+        }),
+        new Section("systemui","island","灵动岛", new Feature[]{
+            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x","ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{})
+        }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
-            new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("systemui:notification_stack","整个通知列表堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{NotificationAppearanceOptions.STACK_COUNT,NotificationAppearanceOptions.STACK_STEP,NotificationAppearanceOptions.STACK_INSET},"boolean","0",new Feature[]{
+                new Feature("systemui:notification_stack_landscape","横屏使用列表堆叠",NotificationAppearanceOptions.STACK_LANDSCAPE,new String[]{},"boolean","0",new Feature[]{})
+            }),
             new Feature("systemui:notification_weather","通知中心显示当日天气","ls_augment_rm_notification_weather",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_brightness_percent","亮度显示百分比","ls_augment_rm_qs_brightness_percent",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("systemui:full_brightness","完整亮度",BrightnessRange.ENABLED,new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_volume_percent","音量显示百分比","ls_augment_rm_qs_volume_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_grid","自定义控制中心行列","ls_augment_rm_qs_grid",new String[]{"ls_augment_rm_qs_columns","ls_augment_rm_qs_rows","ls_augment_rm_qs_land_columns","ls_augment_rm_qs_land_rows","ls_augment_rm_qs_edit_columns","ls_augment_rm_qs_land_edit_columns"},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_carrier","运营商名称",null,new String[]{"ls_augment_rm_qs_carrier"},"number","0", new Feature[]{}),
@@ -240,7 +281,8 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_game_all_ratios","开放全部游戏画面比例","ls_augment_game_all_ratios",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("game","plugins","游戏插件", new Feature[]{
-            new Feature("ls_augment_game_plugins_unlocked","开放游戏插件资格","ls_augment_game_plugins_unlocked",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_game_plugins_unlocked","开放游戏插件资格","ls_augment_game_plugins_unlocked",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature(GameOptions.PERFORMANCE_MONITOR,"自定义性能监测",GameOptions.PERFORMANCE_MONITOR,new String[]{GameOptions.MONITOR_TRANSPARENCY},"boolean","0",new Feature[]{})
         }),
         new Section("game","game_capture","录制、高光与红魔时刻", new Feature[]{
             new Feature("game:watermark","红魔水印字数解限",GameOptions.WATERMARK_UNLIMITED,new String[]{},"boolean","0",new Feature[]{}),
@@ -248,8 +290,10 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_game_highlights_unlocked","开放游戏高光","ls_augment_game_highlights_unlocked",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_game_redmagic_time_unlocked","红魔时刻模式解限","ls_augment_game_redmagic_time_unlocked",new String[]{},"boolean","0", new Feature[]{})
         }),
-        new Section("theme","theme","主题下载", new Feature[]{
-            new Feature("ls_augment_rm_theme_no_login","主题下载免登录","ls_augment_rm_theme_no_login",new String[]{},"boolean","0", new Feature[]{})
+        new Section("theme","theme","主题资源", new Feature[]{
+            new Feature("beautify:unlimited_trial","主题无限期使用",ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("ls_augment_rm_theme_no_login","主题下载免登录","ls_augment_rm_theme_no_login",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("collab:theme","联名主题",CollabOptions.THEME,new String[]{CollabOptions.THEME_VARIANT},"boolean","0",new Feature[]{})
         }),
         new Section("installer","installer","应用安装规则", new Feature[]{
             new Feature("ls_augment_rm_installer_skip_scan","跳过安装包扫描","ls_augment_rm_installer_skip_scan",new String[]{},"boolean","0", new Feature[]{}),
@@ -279,7 +323,7 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_nfc_mute","NFC 识别静音","ls_augment_rm_nfc_mute",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_nfc_screen_off","允许 NFC 息屏识别","ls_augment_rm_nfc_screen_off",new String[]{},"boolean","0", new Feature[]{})
         }),
-        new Section("files","mtp","电脑文件传输", new Feature[]{
+        new Section("files","mtp","MTP传输", new Feature[]{
             new Feature("ls_augment_rm_mtp_hide_category","隐藏 MTP 分类浏览","ls_augment_rm_mtp_hide_category",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_mtp_name_enabled","自定义 MTP 存储名称","ls_augment_rm_mtp_name_enabled",new String[]{"ls_augment_rm_mtp_name"},"boolean","0", new Feature[]{})
         }),

@@ -19,8 +19,8 @@ for (const t of grouping.targets) {
   assert(catalog.targets.some((c) => c.id === t.id));
   for (const s of t.sections) walk(s.features);
 }
-assert.equal(actual.length, 199);
-assert.equal(new Set(actual).size, 199);
+assert.equal(actual.length, 250);
+assert.equal(new Set(actual).size, 250);
 assert.deepEqual([...actual].sort(), [...expected].sort());
 const wifi = features.find((f) => f.toggleKey?.includes('wifi_country_enabled'));
 assert(wifi && wifi.parameterKeys.some((k) => k.endsWith('wifi_country')));
@@ -41,4 +41,4 @@ state.alpha = '100';
 state = {...state, ...overrideUpdates('sample', '0', state, defaults)};
 state = {...state, ...overrideUpdates('sample', '1', state, defaults)};
 assert.equal(state.alpha, '100');
-console.log('PASS: 199 unique options; recursive Wi-Fi/OTA ownership; numeric off values; saved configuration survives disable/enable.');
+console.log('PASS: 250 unique options; recursive Wi-Fi/OTA ownership; numeric off values; saved configuration survives disable/enable.');

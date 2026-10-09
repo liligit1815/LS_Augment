@@ -33,7 +33,7 @@ final class RootTransactionBundle {
 
     static RootTransactionBundle createForRuntime(RootRuntimeAdmission.BundlePermit permit)throws Throwable {
         RootRuntimeAdmission.BundleInputs input=java.util.Objects.requireNonNull(permit).consume();
-        RootOwnershipObservation observation=RootOwnershipObservation.prepare(input.module,input.loader,input.ownershipProfile,input.ownershipProfileFailure,input.hiddenRequests,input.hiddenRequestFailure);
+        RootOwnershipObservation observation=RootOwnershipObservation.prepare(input.ownershipProfile,input.watcherFactory,input.watcherPreparationFailure,input.hiddenRequests,input.hiddenRequestFailure);
         return new RootTransactionBundle(input.domain,input.loader,input.processGroup,input.shell,input.admission,observation);
     }
 

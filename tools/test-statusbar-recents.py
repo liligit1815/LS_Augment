@@ -26,7 +26,7 @@ class FeatureSettings {static final String SYSTEMUI_MASTER="master",STATUSBAR_CL
 import android.view.View;import android.content.Context;import java.util.*;
 class StatusBarGridHook {
  static class Phone extends View {}static class Keyguard extends View {}
- static class State {Context context;boolean active;State(View v){context=v.context;}boolean positionOnly(){return context.position;}}
+ static class State {Context context;boolean active,packingSuspended;State(View v){context=v.context;}boolean positionOnly(){return context.position;}}
  static final Map<View,State> STATES=new IdentityHashMap<>();
  static boolean isBarRoot(View v){return v instanceof Phone||v instanceof Keyguard;}
  static boolean isKeyguard(View v){return v instanceof Keyguard;}
@@ -63,18 +63,19 @@ public class TestRecents {
  static int checks;static void check(boolean ok,String m){checks++;if(!ok)throw new AssertionError(m);}
  public static void main(String[] args)throws Throwable{
   AugmentModule module=new AugmentModule();check(StatusBarRecentsHook.install(module,TestRecents.class.getClassLoader())==2&&module.errors==0,"both exact hooks registered");
-  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<16;flags++){
+  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<32;flags++){
    View root=lock?new StatusBarGridHook.Keyguard():new StatusBarGridHook.Phone();
    root.context.master=(flags&1)!=0;root.context.custom=(flags&2)!=0;root.context.position=(flags&4)!=0;
    StatusBarGridHook.State state=new StatusBarGridHook.State(root);state.active=(flags&8)!=0;StatusBarGridHook.STATES.put(root,state);
-   boolean grid=!lock&&state.active&&root.context.master&&!root.context.position;
+   state.packingSuspended=(flags&16)!=0;
+   boolean grid=!lock&&state.active&&root.context.master&&!root.context.position&&!state.packingSuspended;
    View parent=new View();parent.parent=root;TextView clock=new TextView();clock.parent=parent;
    Canvas canvas=new Canvas();Object result=module.invoke(new StatusBarClockFeature(),"handleOnDraw",new Class<?>[]{TextView.class,Canvas.class,TextPaint.class},clock,canvas,new TextPaint());
    boolean bypass=grid&&root.context.custom;
-   check(result.equals(!bypass)&&canvas.translates==(bypass?0:1)&&module.originalCalls==(bypass?0:1),"custom clock leaves canvas untouched; other modes use OEM once");
+   check(result.equals(!bypass)&&canvas.translates==(bypass?0:1)&&module.originalCalls==(bypass?0:1),"custom clock bypasses only active layout; crowded fallback calls native draw once");
    RedMagicFunctionIconFeature cooling=new RedMagicFunctionIconFeature();cooling.mIconContainer=parent;
    LauncherProxyServiceAdapt.hide(module,cooling,View.INVISIBLE);
-   check(cooling.calls==(grid?0:1)&&parent.visibility==(grid?View.VISIBLE:View.INVISIBLE),"only managed phone grid preserves launcher visibility");
+   check(cooling.calls==(grid?0:1)&&parent.visibility==(grid?View.VISIBLE:View.INVISIBLE),"only active phone grid preserves launcher visibility; crowded fallback yields");
    parent.visibility=View.VISIBLE;int before=cooling.calls;
    module.invoke(cooling,"hideView",new Class<?>[]{int.class,boolean.class},View.INVISIBLE,true);
    check(cooling.calls==before+1&&parent.visibility==View.INVISIBLE,"heads-up/non-launcher hiding preserved");

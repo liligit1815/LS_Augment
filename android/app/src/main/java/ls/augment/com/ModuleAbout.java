@@ -23,12 +23,7 @@ final class ModuleAbout {
         DeviceInfo device = new DeviceInfo(activity);
         LinearLayout hardware = group(ui, parent, "当前设备");
         hardware.setTag("about-device-card");
-        TextView deviceName = ui.text(device.name, 18, ui.text, true);
-        deviceName.setTag("device-info:name");
-        deviceName.setTextIsSelectable(true);
-        hardware.addView(deviceName, ui.margins(0, 4, 0, 6));
         row(ui, hardware, "设备型号", device.model, "model");
-        row(ui, hardware, "安卓版本", device.androidVersion, "android");
         LinearLayout systemVersion = row(ui, hardware, "系统版本", device.systemVersion, "system");
         systemVersion.setTag("about-system-version-entry");
         systemVersion.setOnClickListener(onSystemVersionTap);
@@ -40,45 +35,23 @@ final class ModuleAbout {
             if (child instanceof TextView) ((TextView) child).setTextIsSelectable(false);
             child.setClickable(false); child.setFocusable(false);
         }
-        row(ui, hardware, "桌面版本", device.launcherVersion, "launcher");
+        row(ui, hardware, "Android 版本", device.androidVersion, "android");
 
-        LinearLayout developer = group(ui, parent, "开发者");
-        developer.setTag("about-developer-profile");
-        LinearLayout profile = new LinearLayout(activity);
-        profile.setGravity(Gravity.CENTER_VERTICAL);
-        profile.setPadding(0, ui.dp(6), 0, ui.dp(6));
-        ImageView avatar = new ImageView(activity);
-        avatar.setImageResource(R.drawable.avatar_liligit1815);
-        avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        avatar.setBackground(ui.round(Color.TRANSPARENT, 28));
-        avatar.setClipToOutline(true);
-        avatar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        profile.addView(avatar, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-        LinearLayout person = new LinearLayout(activity);
-        person.setOrientation(LinearLayout.VERTICAL);
-        person.addView(ui.text("liligit1815", 13, ui.text, true), ui.wrap());
-        person.addView(ui.text("问题反馈、版本查询，请点击前往 GitHub", 11.5f, ui.muted, false), ui.margins(0, 4, 0, 0));
-        LinearLayout.LayoutParams personParams = new LinearLayout.LayoutParams(0, -2, 1);
-        personParams.setMarginStart(ui.dp(13));
-        profile.addView(person, personParams);
-        profile.addView(arrow(ui), new LinearLayout.LayoutParams(ui.dp(18), ui.dp(22)));
-        developer.setClickable(true); developer.setFocusable(true);
-        developer.setForeground(ui.pressable(ui.round(Color.TRANSPARENT,22)));
-        developer.setOnClickListener(view -> open(activity, REPOSITORY));
-        developer.setContentDescription("liligit1815，问题反馈、版本查询，点击前往 GitHub");
-        developer.addView(profile, ui.wrap());
-
-        single(ui, parent, "贡献者", "感谢为项目提供帮助的个人与团队", view ->
-                activity.startActivity(new Intent(activity, ContributorsActivity.class)));
-        single(ui, parent, "支持", "您可以在此处捐赠以支持我们。", view ->
-                activity.startActivity(new Intent(activity, SupportActivity.class)));
+        LinearLayout community=ui.card();community.setPadding(ui.dp(12),0,ui.dp(12),0);
+        community.setTag("about-developer-profile");
+        action(ui,community,"开发者","liligit1815",view->open(activity,REPOSITORY));
+        community.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        action(ui,community,"贡献者","",view->activity.startActivity(new Intent(activity,ContributorsActivity.class)));
+        community.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        action(ui,community,"支持","",view->activity.startActivity(new Intent(activity,SupportActivity.class)));
+        parent.addView(community,ui.margins(0,0,0,12));
 
         LinearLayout legal = ui.card();
         legal.setTag("about-legal-card");
         legal.setPadding(ui.dp(12), ui.dp(1), ui.dp(12), ui.dp(1));
-        action(ui, legal, "用户协议", "使用前了解功能边界与注意事项", view -> ModuleLegal.showTerms(activity, ui));
+        action(ui, legal, "用户协议", "", view -> ModuleLegal.showTerms(activity, ui));
         legal.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
-        action(ui, legal, "隐私政策", "了解本地信息、权限与数据管理", view -> ModuleLegal.showPrivacy(activity, ui));
+        action(ui, legal, "隐私政策", "", view -> ModuleLegal.showPrivacy(activity, ui));
         parent.addView(legal, ui.margins(0, 0, 0, 8));
         return hardware;
     }
@@ -93,18 +66,11 @@ final class ModuleAbout {
     }
 
     private static LinearLayout row(UiKit ui, LinearLayout parent, String label, String value, String key) {
-        LinearLayout row = new LinearLayout(ui.activity);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(0, ui.dp(7), 0, ui.dp(7));
-        TextView title = ui.text(label, 11, ui.muted, false);
-        row.addView(title, ui.wrap());
-        TextView content = ui.text(value, 15, ui.text, false);
-        content.setTag("device-info:"+key);
-        content.setTextIsSelectable(true);
-        content.setLineSpacing(ui.dp(2), 1f);
-        row.addView(content, ui.margins(0, 3, 0, 0));
-        parent.addView(row, ui.wrap());
-        return row;
+        LinearLayout row=new LinearLayout(ui.activity);row.setGravity(Gravity.CENTER_VERTICAL);row.setMinimumHeight(ui.dp(48));
+        row.addView(ui.text(label,14,ui.text,false),new LinearLayout.LayoutParams(-2,-2));
+        TextView content=ui.text(value,12,ui.muted,false);content.setGravity(Gravity.END);content.setTag("device-info:"+key);
+        LinearLayout.LayoutParams text=new LinearLayout.LayoutParams(0,-2,1);text.leftMargin=ui.dp(12);row.addView(content,text);
+        parent.addView(row,ui.wrap());return row;
     }
 
     private static void single(UiKit ui, LinearLayout parent, String title, String summary, View.OnClickListener click) {
@@ -115,16 +81,15 @@ final class ModuleAbout {
     }
 
     private static void action(UiKit ui, LinearLayout parent, String title, String summary, View.OnClickListener click) {
-        LinearLayout row = new LinearLayout(ui.activity);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, ui.dp(9), 0, ui.dp(9));
-        LinearLayout copy = new LinearLayout(ui.activity);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.addView(ui.text(title, 12.5f, ui.text, true), ui.wrap());
-        copy.addView(ui.text(summary, 11.5f, ui.muted, false), ui.margins(0, 4, 0, 0));
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout row = ui.groupRow();
+        row.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        ImageView icon=new ImageView(ui.activity);
+        if("开发者".equals(title)){icon.setImageResource(R.drawable.avatar_liligit1815);icon.setBackground(ui.round(Color.TRANSPARENT,20));icon.setClipToOutline(true);}
+        else icon.setImageDrawable(new GlassIcon("贡献者".equals(title)?"people":"支持".equals(title)?"heart":"用户协议".equals(title)?"document":"shield",ui.accent));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(icon,new LinearLayout.LayoutParams(ui.dp(26),ui.dp(26)));
+        TextView label=ui.text(title,15,ui.text,true);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.leftMargin=ui.dp(14);row.addView(label,lp);
+        if(!summary.isEmpty())row.addView(ui.text(summary,12,ui.muted,false),new LinearLayout.LayoutParams(-2,-2));
         row.addView(arrow(ui), new LinearLayout.LayoutParams(ui.dp(18), ui.dp(22)));
-        row.setMinimumHeight(ui.dp(54));
         clickable(ui, row, click);
         parent.addView(row, ui.wrap());
     }

@@ -1,8 +1,5 @@
 package ls.augment.com.hook;
 
-import android.text.Layout;
-import android.text.TextPaint;
-import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewStub;
@@ -60,35 +57,40 @@ final class ControlCenterHeaderHook {
         }
         return false;
     }
+    static void spaceBlocked(TextView clock,boolean blocked){
+        for(State state:STATES.values())if(state.clock()==clock&&state.spaceBlocked!=blocked){
+            state.spaceBlocked=blocked;
+            boolean seconds=!blocked&&FeatureSettings.enabled(clock.getContext(),P+"clock_seconds");
+            state.setSecondsTicker(clock,seconds);
+            try{set(clock,"mShowSeconds",seconds||Boolean.TRUE.equals(state.nativeSeconds));call(clock,"updateShowSeconds");call(clock,"updateClock");}
+            catch(ReflectiveOperationException ignored){ }
+        }
+    }
 
     private static final class State implements ViewTreeObserver.OnPreDrawListener {
         final WeakReference<ViewGroup> reference;
         final Runnable listener=this::refresh;
-        TextPaint paint=new TextPaint();
-        boolean attached,refreshing,showCarrier,customClock,carrierManaged,logoManaged;
+        boolean attached,refreshing,showCarrier,customClock,carrierManaged,logoManaged,clockGeometryDirty=true;
         WeakReference<View> wiredSearch=new WeakReference<>(null);
         boolean searchClickable;
         Boolean nativeSeconds;
-        boolean secondsTicker;
+        boolean secondsTicker,spaceBlocked;
         final Runnable secondTick=this::tickSeconds;
-        Float nativeSize;
         ConfigSnapshot lastSnapshot;
         String signature="";
         SimpleDateFormat secondsFormat;
-        String formatSignature="",lastTimeText="";
+        String formatSignature="",lastTimeText="",fittedClockText="";
         long formattedSecond=Long.MIN_VALUE,lastClockDiagnostic;
 
         State(ViewGroup view){reference=new WeakReference<>(view);rememberClock();}
         TextView clock(){Object value=field(reference.get(),"mClockView");return value instanceof TextView?(TextView)value:null;}
         void rememberClock(){
             TextView clock=clock();if(clock==null)return;
-            if(nativeSize==null)nativeSize=clock.getTextSize();
             Object seconds=field(clock,"mShowSeconds");if(nativeSeconds==null&&seconds instanceof Boolean)nativeSeconds=(Boolean)seconds;
         }
         void resources(){
-            // updateHeaderResources resets the native text size for this density.
-            TextView clock=clock();if(clock!=null)nativeSize=clock.getTextSize();
-            lastSnapshot=null;signature="";refresh();
+            // Layout owns the native font baseline; this state owns formatting.
+            lastSnapshot=null;signature="";clockGeometryDirty=true;refresh();
         }
         void attach(){
             ViewGroup view=reference.get();if(view==null||attached)return;
@@ -98,22 +100,23 @@ final class ControlCenterHeaderHook {
         }
         void refresh(){
             ViewGroup view=reference.get();if(view==null||!attached||refreshing)return;
+            ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());if(snapshot==lastSnapshot)return;
             // Inflation can publish the header before its clock field is bound.
             // Do not cache an unapplied settings signature in that case.
             if(clock()==null)return;
-            ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());if(snapshot==lastSnapshot)return;
             lastSnapshot=snapshot;
             clockDebug="attached;revision="+snapshot.revision+";seconds="+snapshot.get(P+"clock_seconds")+";clock="+clock().getClass().getName();
             FeatureSettings.diagnostic(view.getContext(),P+"clock_config",clockDebug);
             String next=snapshot.get(P+"clock_seconds")+'|'+snapshot.get(P+"clock_period")+'|'+snapshot.get(P+"carrier")+'|'+snapshot.get(P+"search")+'|'+snapshot.get(P+"browser");
-            if(next.equals(signature))return;signature=next;refreshing=true;
+            for(String panel:new String[]{"notification","control"})for(String option:new String[]{"enabled","mode","text","pattern","size"})next+='|'+snapshot.get(ls.augment.com.CarrierTextOptions.key(panel,option));
+            if(next.equals(signature))return;signature=next;refreshing=true;clockGeometryDirty=true;
             try{
                 rememberClock();TextView clock=clock();
                 boolean seconds="1".equals(snapshot.get(P+"clock_seconds"));
                 customClock=seconds||"1".equals(snapshot.get(P+"clock_period"));
                 if(clock!=null){
-                    setSecondsTicker(clock,seconds);
-                    boolean desired=seconds||Boolean.TRUE.equals(nativeSeconds);
+                    setSecondsTicker(clock,seconds&&!spaceBlocked);
+                    boolean desired=seconds&&!spaceBlocked||Boolean.TRUE.equals(nativeSeconds);
                     if(!Boolean.valueOf(desired).equals(field(clock,"mShowSeconds"))){set(clock,"mShowSeconds",desired);call(clock,"updateShowSeconds");}
                     call(clock,"updateClock");
                     renderClock();
@@ -135,6 +138,7 @@ final class ControlCenterHeaderHook {
                 }
                 lastCarrier=show;showCarrier=show;
                 carrierVisibility();call(view,"updateVisibilities");
+                CarrierTextHook.bindHeader(view);
                 boolean search=!"2".equals(snapshot.get(P+"search"))&&("1".equals(snapshot.get(P+"search"))||!snapshot.get(P+"browser").isEmpty());
                 wireSearch(view,search);view.requestLayout();fitClock();
             }catch(ReflectiveOperationException error){FeatureSettings.diagnostic(view.getContext(),"ls_augment_rm_qs_header_error",error.toString());}
@@ -155,34 +159,42 @@ final class ControlCenterHeaderHook {
             clock.postDelayed(secondTick,1000L-Math.floorMod(System.currentTimeMillis(),1000L));
         }
         boolean renderClock(){
+            if(!customClock)return false;
             TextView clock=clock();
-            if(!attached||!secondsTicker||clock==null||Boolean.TRUE.equals(field(clock,"mDemoMode")))return false;
-            long now=System.currentTimeMillis(),second=now/1000L;
+            if(!attached||spaceBlocked||clock==null||Boolean.TRUE.equals(field(clock,"mDemoMode")))return false;
+            boolean seconds=FeatureSettings.enabled(clock.getContext(),P+"clock_seconds");
+            boolean period=FeatureSettings.enabled(clock.getContext(),P+"clock_period");
+            if(!seconds&&!period)return false;
+            long now=System.currentTimeMillis(),second=now/(seconds?1000L:60_000L);
+            Locale locale=clock.getResources().getConfiguration().getLocales().get(0);
+            boolean hour24=android.text.format.DateFormat.is24HourFormat(clock.getContext());
+            TimeZone zone=TimeZone.getDefault();
+            String next=locale.toLanguageTag()+"|"+hour24+"|"+zone.getID()+"|"+seconds;
+            if(!next.equals(formatSignature)){secondsFormat=null;formatSignature=next;}
             if(second!=formattedSecond||secondsFormat==null){
-                Locale locale=clock.getResources().getConfiguration().getLocales().get(0);
-                boolean hour24=android.text.format.DateFormat.is24HourFormat(clock.getContext());
-                TimeZone zone=TimeZone.getDefault();
-                String next=locale.toLanguageTag()+"|"+hour24+"|"+zone.getID();
-                if(!next.equals(formatSignature)||secondsFormat==null){
-                    secondsFormat=new SimpleDateFormat(hour24?"HH:mm:ss":"h:mm:ss",locale);
+                if(secondsFormat==null){
+                    secondsFormat=new SimpleDateFormat((hour24?"HH:mm":"h:mm")+(seconds?":ss":""),locale);
                     secondsFormat.setTimeZone(zone);formatSignature=next;
                 }
                 lastTimeText=secondsFormat.format(new Date(now));formattedSecond=second;
             }
             android.text.SpannableStringBuilder text=new android.text.SpannableStringBuilder(lastTimeText);
-            if(FeatureSettings.enabled(clock.getContext(),P+"clock_period")){
+            if(period){
                 text.append(" ");int start=text.length();
                 java.util.Calendar time=java.util.Calendar.getInstance();time.setTimeInMillis(now);
                 text.append(SystemUiPolicy.period(time.get(java.util.Calendar.HOUR_OF_DAY)));
                 text.setSpan(new android.text.style.RelativeSizeSpan(.35f),start,text.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            if(!text.toString().contentEquals(clock.getText()))clock.setText(text);
-            clock.setContentDescription(text.toString());
+            // Layout may break only semantic boundaries. A steady pre-draw must not
+            // remove those breaks and restart measurement on every frame.
+            String current=clock.getText().toString().replace("\n:",":").replace('\n',' ');
+            if(!text.toString().equals(current)){clock.setText(text);clockGeometryDirty=true;}
+            if(!android.text.TextUtils.equals(clock.getContentDescription(),text))clock.setContentDescription(text.toString());
             clockDebug="rendered;text="+text+";time="+now;
             if(clock.isShown()&&now-lastClockDiagnostic>=10_000L){
                 lastClockDiagnostic=now;
                 FeatureSettings.diagnostic(clock.getContext(),"ls_augment_rm_qs_clock_runtime",
-                        "seconds=true;text="+text+";nativeSeconds="+field(clock,"mShowSeconds")+";time="+now);
+                        "seconds="+seconds+";period="+period+";text="+text+";nativeSeconds="+field(clock,"mShowSeconds")+";time="+now);
             }
             return true;
         }
@@ -207,25 +219,31 @@ final class ControlCenterHeaderHook {
             if(show&&Boolean.TRUE.equals(call(feature,"enabled"))){call(manager,"registerLogoBroadcast");logoManaged=true;}
             else if(logoManaged){call(manager,"unregisterLogoBroadcast");logoManaged=false;}
         }
-        void carrierVisibility(){Object view=field(reference.get(),"carrierText");if(view instanceof View)((View)view).setVisibility(showCarrier?View.VISIBLE:View.GONE);}
+        void carrierVisibility(){Object view=field(reference.get(),"carrierText");if(view instanceof View&&((View)view).getVisibility()!=(showCarrier?View.VISIBLE:View.GONE))((View)view).setVisibility(showCarrier?View.VISIBLE:View.GONE);}
         void fitClock(){
-            ViewGroup view=reference.get();TextView clock=clock();
-            if(view==null||clock==null||nativeSize==null||view.getWidth()<=0)return;
-            float size=nativeSize;
-            if(customClock){
-                paint.set(clock.getPaint());paint.setTextSize(nativeSize);
-                float width=Layout.getDesiredWidth(clock.getText(),paint);
-                // The other half holds native status icons and up to three
-                // footer actions. Keep the original size when the text fits.
-                float available=view.getWidth()*.5f-clock.getPaddingLeft()-clock.getPaddingRight();
-                if(width>available&&available>0)size*=available/width;
-            }
-            if(Math.abs(clock.getTextSize()-size)>.25f)clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,size);
+            View view=reference.get();TextView clock=clock();if(clock==null)return;
+            // Native minute updates can invalidate a fixed-width TextView without
+            // asking its parent to lay out again. Observe its actual text too.
+            if(!clockGeometryDirty&&(view==null||!view.isLayoutRequested())&&android.text.TextUtils.equals(fittedClockText,clock.getText()))return;
+            clockGeometryDirty=false;NotificationAppearanceHook.clockChanged(clock);fittedClockText=clock.getText().toString();
         }
-        @Override public boolean onPreDraw(){refresh();renderClock();carrierVisibility();fitClock();return true;}
+        @Override public boolean onPreDraw(){
+            View view=reference.get();
+            // A hidden QS header still shares the shade's ViewTreeObserver. Its
+            // skipped layout must never cancel the visible lockscreen's draw.
+            if(!attached||view==null||!view.isShown()||view.getWindowVisibility()!=View.VISIBLE)return true;
+            refresh();renderClock();carrierVisibility();fitClock();
+            // A new time string may need another real layout traversal. Do not
+            // expose one frame of the old, narrower text or icon rectangle.
+            return !view.isLayoutRequested();
+        }
         void detach(){
             attached=false;FeatureSettings.removeSnapshotListener(listener);
-            TextView clock=clock();if(clock!=null)clock.removeCallbacks(secondTick);secondsTicker=false;
+            TextView clock=clock();if(clock!=null){
+                clock.removeCallbacks(secondTick);
+                try{if(nativeSeconds!=null)set(clock,"mShowSeconds",nativeSeconds);call(clock,"updateShowSeconds");call(clock,"updateClock");}
+                catch(ReflectiveOperationException ignored){ }
+            }secondsTicker=false;spaceBlocked=false;
             restoreSearch();
             View view=reference.get();if(view!=null)view.getViewTreeObserver().removeOnPreDrawListener(this);
             if(carrierManaged)try{listenCarrier(false);}catch(ReflectiveOperationException ignored){}

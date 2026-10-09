@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 必填：Cloudflare 部署后的固定 HTTPS 地址。每次构建下载该网页生成离线快照。 -->
+    <string name="contributors_page_url" translatable="false">https://redmagic-duo-contributors.pages.dev/</string>
+</resources>

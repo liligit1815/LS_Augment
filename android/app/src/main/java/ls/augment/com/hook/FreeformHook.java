@@ -183,7 +183,7 @@ final class FreeformHook {
     static int install(AugmentModule module, ClassLoader classLoader) {
         if (module == null || classLoader == null) return 0;
         bindContext(findSystemContext(classLoader));
-        int installed = 0;
+        int installed = FreeformLaunchHook.install(module, classLoader);
         int deoptimized = 0;
         try {
             Class<?> service = Class.forName(ATM_SERVICE, false, classLoader);

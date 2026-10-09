@@ -7,10 +7,12 @@ public final class SystemOptions {
     public static final String PREFIX="ls_augment_rm_";
     public static String key(String suffix){return PREFIX+suffix;}
     public static final String NO_SAFE_WARNING=key("audio_no_safe_warning");
+    public static final String SMS_CODE_CLIPBOARD=key("sms_code_clipboard");
     private SystemOptions() { }
     public static List<EnhancementOption> options() {
         List<EnhancementOption> o=new ArrayList<>();
         String[][] switches={
+            {"sms_code_clipboard","system","短信验证码自动加入剪贴板","收到验证码短信后自动复制验证码，供输入法粘贴；输入法候选提示取决于其剪贴板设置。"},
             {"secure_capture","system","允许受限窗口截图和录屏","允许捕获设置了禁止截图标记的窗口。"},
             {"screenshot_hide_status_bar","system","截图隐藏状态栏","仅从原厂截图结果中排除状态栏，手机上的显示保持正常。"},
             {"record_hide_status_bar","system","录屏隐藏状态栏","原厂录屏期间隐藏画面中的状态栏。截图和录屏同时进行时，任一隐藏选项生效都会同时影响两者。"},
@@ -48,11 +50,13 @@ public final class SystemOptions {
             {"third_party_launcher","launcher","允许设置第三方默认桌面","放宽原厂默认桌面的选择限制。"},
             {"settings_long_timeout","system","扩展自动息屏时间选项","恢复原厂较长等待时间与从不选项。"},
             {"settings_hide_battery_percent","system","隐藏系统电量百分比设置项","仅隐藏系统设置中的入口，电池显示继续由 LS 配置。"},
-            {"settings_time_period","system","系统时间选择器显示中文时段","在时间选择与摘要中显示凌晨、清晨等时段。"},
+            {"settings_time_period","system","系统时间选择器显示中文时段","在时间选择与摘要中显示凌晨、早上等时段。"},
             {"desktop_clock_enabled","launcher","桌面时钟增强","为原厂桌面时钟使用下面的时间格式。"},
             {"weather_time_period","launcher","天气显示中文时段","仅旧版桌面天气时钟组件：把上午／下午细分为凌晨、早上、上午、中午、下午、傍晚、晚上。当前红魔新版组件由“桌面时钟显示中文时段”控制；此项不会向通知中心添加天气。"}
         };
         for(String[] s:switches)o.add(EnhancementOption.toggle(key(s[0]),s[1],s[2],s[3]));
+        o.add(EnhancementOption.toggle(ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL,"theme","主题无限期使用",
+                "处理已确认试用资源的本地到期恢复流程，让原厂主题试用继续保留。不会修改支付结果、账号权益或服务器资源资格。"));
         o.add(EnhancementOption.integer(key("lock_timeout_seconds"),"system","锁屏息屏时间（秒）","修改后在下一次锁屏等待中使用。",15,1,86400));
         String[] streams={"alarm","media","notification","ring","call"};
         String[] labels={"闹钟","媒体","通知","铃声","通话"};

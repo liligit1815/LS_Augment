@@ -16,6 +16,21 @@ public final class LauncherMemoryLayout {
         height = sideways ? this.right - left : this.bottom - top;
     }
 
+    /** Include glyph overhang, not only the typographic advance used by measure. */
+    public static int drawingWidth(float advance, int inkLeft, int inkRight, int drawingInset) {
+        int startOverhang = Math.max(0, -inkLeft);
+        return Math.max(1, (int) Math.ceil(Math.max(advance, inkRight))
+                + startOverhang + Math.max(0, drawingInset));
+    }
+
+    public int textWidth(int endInset) {
+        return Math.max(1, width - Math.max(0, endInset));
+    }
+
+    public int textLeft(int requestedLeft, int labelWidth, int endInset) {
+        return Math.min(Math.max(0, requestedLeft), Math.max(0, textWidth(endInset) - labelWidth));
+    }
+
     public int x(int logicalLeft, int logicalTop) {
         switch (rotation) {
             case 90: return right - logicalTop;

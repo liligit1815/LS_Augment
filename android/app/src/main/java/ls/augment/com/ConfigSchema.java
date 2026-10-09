@@ -2,6 +2,7 @@ package ls.augment.com;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -53,14 +54,21 @@ public final class ConfigSchema {
     public static final String FREEFORM_UNLIMITED = "ls_augment_freeform_unlimited";
     public static final String FREEFORM_ALL_APPS = "ls_augment_freeform_all_apps";
     public static final String FREEFORM_EXCLUDED_APPS = "ls_augment_freeform_excluded_apps";
+    public static final String FREEFORM_GAME_LOGIN = "ls_augment_freeform_game_login";
+    public static final String FREEFORM_EXTERNAL_APPS = "ls_augment_freeform_external_apps";
+    public static final String FREEFORM_GAME_APPS = "ls_augment_freeform_game_apps";
+    public static final String STATUSBAR_BLUETOOTH_STYLE = "ls_augment_statusbar_bluetooth_style";
     public static final String SUPER_MIRROR_LOW_MODE = "ls_augment_super_mirror_low_mode";
     public static final String SUPER_MIRROR_DIABLO_COEXIST =
             "ls_augment_super_mirror_diablo_coexist";
     public static final String FAN_FIXED_ENABLED = "ls_augment_fan_fixed_enabled";
     public static final String FAN_FIXED_LEVEL = "ls_augment_fan_fixed_level";
+    public static final String FAN_TILE_ENHANCEMENT_ENABLED = "ls_augment_fan_tile_enhancement_enabled";
+    public static final String FAN_SCREEN_OFF_ENABLED = "ls_augment_fan_screen_off_enabled";
     public static final String FAN_TILE_REQUEST = "ls_augment_fan_tile_request";
-    public static final String FAN_UNLOCK_MAX = "ls_augment_fan_unlock_max";
-    public static final String FAN_TARGET_RPM = "ls_augment_fan_target_rpm";
+    /** Retired backup fields; never published to the fan runtime. */
+    @Deprecated public static final String FAN_UNLOCK_MAX = "ls_augment_fan_unlock_max";
+    @Deprecated public static final String FAN_TARGET_RPM = "ls_augment_fan_target_rpm";
     public static final String FAN_CALIBRATION_REQUEST = "ls_augment_fan_calibration_request";
     public static final String FAN_MEASUREMENT = "ls_augment_fan_measurement";
 
@@ -76,6 +84,10 @@ public final class ConfigSchema {
     public static final String HEALTH_SINCE = "ls_augment_health_since";
     public static final String LAUNCHER_OVERRIDES = "ls_augment_launcher_overrides";
     public static final String STATUSBAR_GRID = "ls_augment_statusbar_grid_v2";
+    public static final String STATUSBAR_SHEET = StatusBarSheetSpec.KEY;
+    public static final String STATUSBAR_LAYOUT_MODE = StatusBarSheetSpec.MODE_KEY;
+    public static final String STATUSBAR_ARTWORK = StatusBarThemeSpec.KEY;
+    public static final String STATUSBAR_FONTS = StatusBarFontSpec.KEY;
     public static final String STATUSBAR_POSITION_SIZE_ONLY = "ls_augment_statusbar_position_size_only";
     public static final String STATUSBAR_CONNECTIVITY_GROUP = "ls_augment_statusbar_connectivity_group";
     public static final String STATUSBAR_NATIVE_BATTERY_ENABLED = "ls_augment_statusbar_native_battery_enabled";
@@ -152,6 +164,7 @@ public final class ConfigSchema {
     public static final String STATUSBAR_BATTERY_POWER = "ls_augment_statusbar_battery_power";
     public static final String STATUSBAR_NOTIFICATION_MAX =
             "ls_augment_statusbar_notification_max";
+    public static final String STATUSBAR_NOTIFICATION_UNLIMITED = "ls_augment_statusbar_notification_unlimited";
     public static final String STATUSBAR_ICON_SCALE = "ls_augment_statusbar_icon_scale";
     public static final String STATUSBAR_DEBUG_OVERLAY = "ls_augment_statusbar_debug_overlay";
     public static final String STATUSBAR_NOTIFICATION_HIDE =
@@ -187,10 +200,13 @@ public final class ConfigSchema {
     }
 
     private static final LinkedHashMap<String, Entry> ENTRIES = new LinkedHashMap<>();
+    private static final Set<String> BOOLEAN_KEYS = new LinkedHashSet<>();
     private static final Map<String, String> DEFAULTS;
     private static final Map<String, String> RUNTIME_DEFAULTS;
 
     static {
+        add(AppearanceOptions.ANGULAR_CARDS, "1", false,
+                value -> truthy(value) ? "1" : "0");
         addBoolean(HIDE_MASTER, false);
         add(HIDE_TARGETS, "", false, value -> length(value, 64 * 1024));
         add(TILE_ICON, "", true, value -> value.isEmpty() || value.matches("[0-9a-f]{64}") ? value : null);
@@ -211,7 +227,7 @@ public final class ConfigSchema {
         addBoolean(SHOULDER_ENABLED, false);
         addBoolean(SHOULDER_DIAGNOSTICS, false);
         addBoolean(TGK_RAPID_FIRE_ENABLED, false);
-        addInteger(TGK_RAPID_FIRE_COUNT, 20, 10, 50);
+        addInteger(TGK_RAPID_FIRE_COUNT, 20, 1, 50);
         add(TGK_RAPID_FIRE_COMPAT_TOKEN, "", true, value -> length(value, 4096));
         add(TGK_RAPID_FIRE_TEST_SESSION, "", true, value -> length(value, 4096));
         addBoolean(COMBO_SPEED_ENABLED, false);
@@ -225,14 +241,20 @@ public final class ConfigSchema {
         addBoolean(FREEFORM_ENABLED, false);
         addBoolean(FREEFORM_UNLIMITED, false);
         addBoolean(FREEFORM_ALL_APPS, false);
+        addBoolean(FREEFORM_GAME_LOGIN, false);
+        addBoolean(FREEFORM_EXTERNAL_APPS, false);
+        add(FREEFORM_GAME_APPS, "", true, AppPackageSet::normalize);
         add(FREEFORM_EXCLUDED_APPS, "", true, AppPackageSet::normalize);
         addBoolean(SUPER_MIRROR_LOW_MODE, false);
         addBoolean(SUPER_MIRROR_DIABLO_COEXIST, false);
         addBoolean(FAN_FIXED_ENABLED, false);
-        addInteger(FAN_FIXED_LEVEL, 0, 0, 5);
+        // Zero selected the retired RPM mode. Migrate it to the lowest valid level.
+        add(FAN_FIXED_LEVEL, "1", true, value -> "0".equals(value) ? "1" : integer(value, 1, 5));
+        addBoolean(FAN_TILE_ENHANCEMENT_ENABLED, false);
+        addBoolean(FAN_SCREEN_OFF_ENABLED, false);
         add(FAN_TILE_REQUEST, "", true, value -> value.isEmpty() || value.matches("[0-9a-f]{32}") ? value : null);
-        addBoolean(FAN_UNLOCK_MAX, false);
-        addInteger(FAN_TARGET_RPM, 12000, 500, 100000);
+        add(FAN_UNLOCK_MAX, "0", false, value -> "0");
+        add(FAN_TARGET_RPM, "0", false, value -> "0");
         add(FAN_CALIBRATION_REQUEST, "", true, value -> value.isEmpty()
                 || value.matches("[0-9]{13}:[0-9a-f]{32}") ? value : null);
         add(FAN_MEASUREMENT, "", true, value -> value.isEmpty()
@@ -259,9 +281,33 @@ public final class ConfigSchema {
             StatusBarGridSpec parsed = StatusBarGridSpec.parse(value);
             return parsed == null ? null : value.isEmpty() ? "" : parsed.serialize();
         });
+        // The retired sheet editor is never activated, including by old backups.
+        // Keep its data readable so upgrades do not invalidate unrelated settings.
+        add(STATUSBAR_LAYOUT_MODE, "regions", true, value ->
+                "regions".equals(value) || "sheet".equals(value) ? "regions" : null);
+        add(STATUSBAR_SHEET, "", true, value -> {
+            if (value.isEmpty()) return "";
+            StatusBarSheetSpec parsed = StatusBarSheetSpec.parse(value);
+            // Persisted SS1 snapshots are checksummed over their original text.
+            // Preserve those archived bytes; no UI or runtime consumes the sheet.
+            return parsed == null ? null : value.startsWith("SS1;") ? value : parsed.serialize();
+        });
         addBoolean(STATUSBAR_SYSTEM_TWO_ROWS, true);
+        add(STATUSBAR_ARTWORK, "", true, value -> {
+            StatusBarThemeSpec spec=StatusBarThemeSpec.parse(value);
+            return spec==null?null:spec.serialize();
+        });
+        add(STATUSBAR_FONTS, "", true, value -> {
+            StatusBarFontSpec spec=StatusBarFontSpec.parse(value);
+            return spec==null?null:spec.serialize();
+        });
+        add(StatusBarVisibilitySpec.KEY, "", true, value -> {
+            StatusBarVisibilitySpec spec=StatusBarVisibilitySpec.parse(value);
+            return spec==null?null:spec.serialize();
+        });
         addBoolean(STATUSBAR_POSITION_SIZE_ONLY, false);
         addBoolean(STATUSBAR_CONNECTIVITY_GROUP, false);
+        addInteger(STATUSBAR_BLUETOOTH_STYLE, 0, 0, 2);
         // Preserve native customization on upgrades that have never selected three-in-one.
         addBoolean(STATUSBAR_NATIVE_BATTERY_ENABLED, true);
         addInteger(STATUSBAR_CONNECTIVITY_SIZE, 26, 18, 40);
@@ -328,6 +374,7 @@ public final class ConfigSchema {
         addBoolean(STATUSBAR_THERMAL, false);
         addBoolean(STATUSBAR_BATTERY_POWER, false);
         addInteger(STATUSBAR_NOTIFICATION_MAX, 0, 0, 20);
+        addBoolean(STATUSBAR_NOTIFICATION_UNLIMITED, false);
         addDecimal(STATUSBAR_ICON_SCALE, 1.0f, 0.5f, 2.0f);
         addBoolean(STATUSBAR_DEBUG_OVERLAY, false);
         addBoolean(STATUSBAR_NOTIFICATION_HIDE, false);
@@ -336,7 +383,6 @@ public final class ConfigSchema {
         addBoolean(APP_MASTER, false);
         addBoolean(DOUBLE_ANY_APP, false);
         addBoolean(DOUBLE_LOW_MEMORY, false);
-        addBoolean(BEAUTIFY_UNLIMITED_TRIAL, false);
         addBoolean(ALLOW_SIGNATURE_MISMATCH, false);
         addBoolean(AUTOMATION_ENABLED, false);
         add(AUTOMATION_SCOPE, "current", true,
@@ -344,6 +390,7 @@ public final class ConfigSchema {
 
         for (EnhancementOption option : EnhancementCatalog.options()) {
             add(option.key, option.defaultValue, true, option::normalize);
+            if (option.kind == EnhancementOption.Kind.BOOLEAN) BOOLEAN_KEYS.add(option.key);
         }
         LinkedHashMap<String, String> defaults = new LinkedHashMap<>();
         LinkedHashMap<String, String> runtimeDefaults = new LinkedHashMap<>();
@@ -389,6 +436,10 @@ public final class ConfigSchema {
         return RUNTIME_DEFAULTS.keySet();
     }
 
+    public static Set<String> booleanKeys() {
+        return Collections.unmodifiableSet(BOOLEAN_KEYS);
+    }
+
     public static String normalize(String key, String raw) {
         Entry entry = ENTRIES.get(key);
         if (entry == null) return null;
@@ -402,6 +453,7 @@ public final class ConfigSchema {
     }
 
     private static void addBoolean(String key, boolean defaultValue) {
+        BOOLEAN_KEYS.add(key);
         add(key, defaultValue ? "1" : "0", true,
                 value -> truthy(value) ? "1" : "0");
     }

@@ -6,6 +6,8 @@ import {
   useState,
   useEffect,
   useRef,
+  useId,
+  useCallback,
   type ReactNode,
 } from 'react';
 import editorHelp from './current-editor-help.json';
@@ -19,6 +21,12 @@ import {
   ChevronDown,
   ArrowLeft,
   RotateCw,
+  Bell,
+  Clock,
+  Sun,
+  Power,
+  Undo2,
+  LayoutGrid,
 } from 'lucide-react';
 export type Option = {
   key: string;
@@ -39,9 +47,30 @@ export type Model = {
   tell: (s: string) => void;
   dialog: (title: string, body: ReactNode) => void;
   close: () => void;
+  registerNavigationGuard?: (guard?: (route: string) => boolean) => void;
 };
 export const CurrentContext = createContext<Model>(null!);
 export const useModel = () => useContext(CurrentContext);
+// Presentation state stays separate from exported module configuration.
+export const PresentationContext = createContext({
+  route: '',
+  state: {} as Record<string, boolean>,
+  set: (_key: string, _value: boolean) => {},
+});
+export function useDisclosure(name: string) {
+  const presentation = useContext(PresentationContext);
+  const setPresentation = presentation.set;
+  const key = presentation.route + ':' + name;
+  const [local, setLocal] = useState(false);
+  const update = useCallback(
+    (value: boolean) => {
+      setLocal(value);
+      setPresentation(key, value);
+    },
+    [key, setPresentation],
+  );
+  return [presentation.state[key] ?? local, update] as const;
+}
 export const identity = (path: string, label: string) => ({
   'data-native-path': path,
   'data-ui-label': label,
@@ -90,6 +119,22 @@ export function Help({ title, text }: { title: string; text?: string }) {
     </button>
   ) : null;
 }
+export function IceIcon({ title }: { title: string }) {
+  const icons: Record<string, typeof Bell> = {
+    液态玻璃控制中心: LayoutGrid,
+    通知堆叠: Bell,
+    '面板日期、天气与时钟': Clock,
+    亮度与音量: Sun,
+    电源菜单高级重启: Power,
+    自定义侧滑返回图标: Undo2,
+  };
+  const Icon = icons[title];
+  return Icon ? (
+    <span className="ice-feature-icon" aria-hidden="true">
+      <Icon size={22} />
+    </span>
+  ) : null;
+}
 export function FeatureTitle({
   title,
   help,
@@ -99,6 +144,7 @@ export function FeatureTitle({
 }) {
   return (
     <div className="c-feature-title">
+      <IceIcon title={title} />
       <strong>{title}</strong>
       <Help title={title} text={help} />
     </div>
@@ -111,6 +157,11 @@ export function Toggle({
   children,
   initial = '0',
   disabled = false,
+  accessibleWhileOff = false,
+  summary,
+  reveal = 0,
+  switchDisabled = false,
+  beforeEnable,
 }: {
   name: string;
   title: string;
@@ -118,11 +169,25 @@ export function Toggle({
   children?: ReactNode;
   initial?: string;
   disabled?: boolean;
+  accessibleWhileOff?: boolean;
+  summary?: string;
+  reveal?: number;
+  switchDisabled?: boolean;
+  beforeEnable?: () => boolean;
 }) {
   const m = useModel(),
     on = (m.values[name] ?? initial) === '1',
-    [expanded, expand] = useState(on);
-  useEffect(() => expand(on), [on]);
+    [expanded, expand] = useDisclosure('toggle:' + name);
+  const bodyId = useId();
+  const previous = useRef(on);
+  useEffect(() => {
+    if (previous.current !== on) expand(on);
+    previous.current = on;
+  }, [on, expand]);
+  const visible = (on || accessibleWhileOff) && expanded;
+  useEffect(() => {
+    if (reveal) expand(true);
+  }, [reveal, expand]);
   return (
     <div {...identity('config:' + name, title)}>
       <div className="c-toggle-row">
@@ -136,23 +201,27 @@ export function Toggle({
           aria-label={title}
           aria-checked={on}
           className="c-switch"
-          disabled={disabled}
-          onClick={() => m.set(name, on ? '0' : '1')}
+          disabled={disabled || switchDisabled}
+          onClick={() => {
+            if (!on && beforeEnable && !beforeEnable()) return;
+            m.set(name, on ? '0' : '1');
+          }}
         >
           <span />
         </button>
         {children ? (
           <button
             className="c-fold-arrow"
-            aria-label={(on && expanded ? '收起' : '展开') + title + '配置'}
-            aria-expanded={on && expanded}
-            disabled={!on || disabled}
+            aria-label={(visible ? '收起' : '展开') + title + '配置'}
+            aria-expanded={visible}
+            aria-controls={bodyId}
+            disabled={(!on && !accessibleWhileOff) || disabled}
             onClick={() => expand(!expanded)}
           >
             <ChevronDown
               size={18}
               style={{
-                transform: expanded && on ? 'rotate(180deg)' : undefined,
+                transform: visible ? 'rotate(180deg)' : undefined,
               }}
             />
           </button>
@@ -160,8 +229,11 @@ export function Toggle({
           <span className="c-switch-slot" aria-hidden="true" />
         )}
       </div>
-      {on && !disabled && expanded && children ? (
-        <div className="c-fold-body">{children}</div>
+      {summary && <p className="c-component-summary">{summary}</p>}
+      {children ? (
+        <div id={bodyId} className="c-fold-body" hidden={!visible || disabled}>
+          {children}
+        </div>
       ) : null}
     </div>
   );
@@ -212,10 +284,12 @@ export function Button({
   children,
   onClick,
   secondary = false,
+  disabled = false,
 }: {
   children: ReactNode;
   onClick: () => void;
   secondary?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -224,6 +298,7 @@ export function Button({
         ? identity('action:' + children, children)
         : {})}
       onClick={onClick}
+      disabled={disabled}
     >
       {children}
     </button>
@@ -271,6 +346,8 @@ export function Range({
         value={value}
         onChange={(e) => {
           m.set(name, e.target.value);
+          if (name === 'prototype:extra-dim-strength')
+            m.set('prototype:extra-dim-active', '1');
           if (name === 'status:clock:size')
             m.set('ls_augment_statusbar_clock_size_sp', '0');
         }}
@@ -649,11 +726,11 @@ export function Header({
 }) {
   const m = useModel();
   return (
-    <header className="c-detail-header">
+    <header className="c-detail-header" aria-label={title + '页面操作'}>
       <button aria-label="返回上一页" onClick={m.back}>
         <ArrowLeft size={24} />
       </button>
-      <h1>{title}</h1>
+      <span className="d-header-spacer" aria-hidden="true" />
       {restart && (
         <button
           className="c-restart-icon"

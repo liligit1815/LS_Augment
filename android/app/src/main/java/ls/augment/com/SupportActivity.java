@@ -23,7 +23,7 @@ public final class SupportActivity extends Activity {
         super.onCreate(state);
         UiKit ui=new UiKit(this);
         LinearLayout page=ui.detailPage("支持",null);
-        page.setPadding(ui.dp(14),ui.dp(8),ui.dp(14),ui.dp(24));
+        page.setPadding(ui.dp(16),0,ui.dp(16),ui.dp(24));
         TextView description=ui.text("",11.5f,ui.muted,false);
         description.setTag("support-description");
         String message="感谢您的支持！\n捐赠并不能为您带来特权，但能帮助我继续进行维护。\n您可以在此处联系到我。";

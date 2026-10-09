@@ -13,140 +13,294 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /** Direct application controls backed by the real catalogue and reusable native editors. */
-public class EnhancementSettingsActivity extends Activity implements NativeEditorController.Host {
-    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+public class EnhancementSettingsActivity extends Activity implements NativeEditorController.Host, ScopeRestartDialog.Preparation {
+    // Retain admission/order across configuration recreation, without retaining an Activity.
+    private static final class InputSession {
+        final ExecutorService worker=Executors.newSingleThreadExecutor();
+        final FieldEditQueue pending=new FieldEditQueue();
+        Bundle invalidInputs;
+        private String failure;
+        synchronized void failed(String message){failure=message;}
+        synchronized String takeFailure(){String message=failure;failure=null;return message;}
+    }
+    private InputSession inputSession;
+    private ExecutorService worker;
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final LinkedHashMap<String,String> draft=new LinkedHashMap<>(),pending=new LinkedHashMap<>();
+    private final LinkedHashMap<String,String> draft=new LinkedHashMap<>();
+    private FieldEditQueue pending;
+    private Bundle invalidInputs;
     private final Map<String,EnhancementOption> options=new LinkedHashMap<>();
     private final Map<String,NativeEditorController> editors=new LinkedHashMap<>();
     private final Map<String,View> controls=new LinkedHashMap<>();
+    private final Map<String,TextView> inputErrors=new LinkedHashMap<>();
+    private final Map<String,TextView> aodParameterStates=new LinkedHashMap<>();
+    private final Map<String,Button> aodParameterRestores=new LinkedHashMap<>();
     private final Runnable autoSave=this::flush;
     private UiKit ui;private AppConfig config;private LinearLayout body;private SharedPreferences gateMemory;
     private String group,targetId,query="",fontKey,pendingEditor;
+    private static final String AOD_FONT_KEY=SystemUiOptions.PREFIX+"aod_clock_font";
+    // Main-thread request state only; restoring the font retires old import callbacks.
+    private long aodFontGeneration,aodFontPickerGeneration;
+    private boolean aodFontPickerPending,aodFontImportPending;
+    private boolean resumedDirectory;
     private View queryAnchor;private Bundle editorStates;
     private ArrayAdapter<String> memoryContentAdapter;
     private View memoryColorsRow;
+    private TextView launcherGridRuntime;
+    private LinearLayout updateLinksContent;
+    private SharedPreferences updateLinksPreferences;
+    private int updateLinksRequest;
+    private final Runnable reloadUpdateLinks=this::refreshUpdateLinks;
+    private final SharedPreferences.OnSharedPreferenceChangeListener updateLinksListener=(prefs,key)->{
+        main.removeCallbacks(reloadUpdateLinks);main.post(reloadUpdateLinks);
+    };
     private BackGestureIconEditor backGestureIcons;
+    private ExtraDimTilePreference extraDimTile;
+    private final Map<String,ModuleHierarchy.Section> sectionStates=new LinkedHashMap<>();
+    private SharedPreferences sectionPreferences;
+    private final SharedPreferences.OnSharedPreferenceChangeListener sectionListener=(prefs,key)->runOnUiThread(this::refreshSectionCounts);
     private static final String UI_MEMORY="native_value_overrides";
     public static void open(Activity owner,String group){owner.startActivity(new Intent(owner,EnhancementSettingsActivity.class).putExtra("group",group));}
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);config=new AppConfig(this);ui=new UiKit(this);
+        super.onCreate(state);
+        Object retained=getLastNonConfigurationInstance();
+        inputSession=retained instanceof InputSession?(InputSession)retained:new InputSession();
+        worker=inputSession.worker;pending=inputSession.pending;invalidInputs=inputSession.invalidInputs;
+        config=new AppConfig(this);ui=new UiKit(this);
         group=getIntent().getStringExtra("group");if(group==null)group="system";
-        targetId=getIntent().getStringExtra("target");query=getIntent().getStringExtra("query");if(query==null)query="";
-        if(targetId!=null&&HookAppCatalog.find(targetId)==null){toast("未找到此应用的配置页面");finish();return;}
+        targetId=getIntent().getStringExtra("target");if("collab".equals(targetId))targetId="theme";query=getIntent().getStringExtra("query");if(query==null)query="";
+        if(!(this instanceof StatusBarSettingsActivity)&&(targetId!=null||getIntent().hasExtra("group"))){
+            String route=ModuleHierarchy.resolve(ModuleNavigation.route(this));
+            if(!route.startsWith("target-")&&ModuleHierarchy.group(route)==null){ModuleNavigation.open(this,route);finish();return;}
+            getIntent().putExtra(ModuleNavigation.EXTRA_ROUTE,route);
+            if(ModuleHierarchy.isRestricted(route)&&!HiddenEntrySession.isUnlocked()){finish();return;}
+            ModuleHierarchy.Section selected=ModuleHierarchy.group(route);if(selected!=null)targetId=selected.target;
+            else if(route.startsWith("target-"))targetId=route.substring(7);
+        }
+        if(targetId!=null&&ModulePresentationCatalog.find(targetId)==null){toast("未找到此功能分组");finish();return;}
+        // Snapshot intent before confirmed: completion may remove it only after durable publication.
+        Map<String,String> retainedValues=pending.restorableValues();
         for(EnhancementOption o:EnhancementCatalog.options()){options.put(o.key,o);draft.put(o.key,config.get(o.key));}
         gateMemory=getSharedPreferences(UI_MEMORY,MODE_PRIVATE);
-        if(state!=null){fontKey=state.getString("fontKey");pendingEditor=state.getString("pendingEditor");editorStates=state.getBundle("editors");Bundle saved=state.getBundle("draft");if(saved!=null)for(String key:draft.keySet()){String value=saved.getString(key);if(value!=null&&ConfigSchema.normalize(key,value)!=null){draft.put(key,value);if(!value.equals(config.get(key)))pending.put(key,value);}}}
+        if(state!=null){
+            fontKey=state.getString("fontKey");pendingEditor=state.getString("pendingEditor");editorStates=state.getBundle("editors");
+            aodFontGeneration=state.getLong("aodFontGeneration",0);
+            aodFontPickerGeneration=state.getLong("aodFontPickerGeneration",0);
+            aodFontPickerPending=state.getBoolean("aodFontPickerPending",false);
+            // A retained queue is newer than the Bundle snapshot and already owns old in-flight writes.
+            Bundle saved=isApplicationDirectory()||retained instanceof InputSession?null:state.getBundle("draft");
+            if(saved!=null)for(String key:saved.keySet()){
+                if(!draft.containsKey(key))continue;
+                String value=saved.getString(key);if(value==null)continue;
+                String normalized=ConfigSchema.normalize(key,value);
+                if(normalized!=null){draft.put(key,normalized);if(!normalized.equals(config.get(key)))pending.put(key,normalized);}
+            }
+        }
+        draft.putAll(retainedValues);
         if(this instanceof StatusBarSettingsActivity){
-            StatusBarEditorController editor=new StatusBarEditorController(this,"status_layout",false);
-            editor.setRelatedFeatures(NativeFeatureGroups.forGroup("statusbar"),this::feature);
-            editors.put("status_layout",editor);
-            editor.onCreate(editorStates==null?null:editorStates.getBundle("status_layout"));
-        }else render(state==null?0:state.getInt("scrollY"));
+            StatusBarEditorController editor=new StatusBarEditorController(this,ModuleNavigation.route(this),false);
+            editor.setRelatedFeatures(ModuleHierarchy.statusBarFeatures(),this::feature);
+            editors.put(editor.route,editor);
+            editor.onCreate(editorStates==null?null:editorStates.getBundle(editor.route));
+        }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);}
+        if(!sectionStates.isEmpty()){sectionPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);sectionPreferences.registerOnSharedPreferenceChangeListener(sectionListener);refreshSectionCounts();}
         if(!pending.isEmpty())main.post(autoSave);
-    }
-    private static final class SectionPlan {
-        final String id,title;final List<NativeFeatureGroups.Feature> features=new ArrayList<>();final List<HookAppCatalog.Entry> entries=new ArrayList<>();
-        SectionPlan(String id,String title){this.id=id;this.title=title;}
+        // Old-save failure remains visible after a configuration recreation.
+        worker.execute(()->main.post(this::showSaveFailure));
     }
     private void render(int previousY){
-        HookAppCatalog.Target target=HookAppCatalog.find(targetId);
-        String scope=target!=null?target.restartScope:Arrays.asList("statusbar","lockscreen","aod","quicksettings").contains(group)?ScopeRestartDialog.SYSTEM_UI:ScopeRestartDialog.APPS;
-        body=ui.detailPage(target==null?EnhancementCatalog.title(group):target.title,scope);
-        LinkedHashMap<String,SectionPlan> sections=new LinkedHashMap<>();
-        if(target==null){SectionPlan s=new SectionPlan(group,EnhancementCatalog.title(group));s.features.addAll(NativeFeatureGroups.forGroup(group));sections.put(group,s);}
-        else{
-            for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget(target.id)){SectionPlan s=new SectionPlan(section.id,section.title);s.features.addAll(section.features);sections.put(s.id,s);}
-            for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id)){
-                if("launcher_compatibility".equals(entry.route))continue;
-                String id=entrySection(entry.route);SectionPlan s=sections.get(id);
-                if(s==null){s=new SectionPlan(id,sectionTitle(id,entry.title));sections.put(id,s);}s.entries.add(entry);
-            }
-        }
-        List<SectionPlan> ordered=new ArrayList<>(sections.values());
-        if("system".equals(targetId)){List<String> order=Arrays.asList("freeform","system","audio","battery","connections","installer");ordered.sort(Comparator.comparingInt(s->{int i=order.indexOf(s.id);return i<0?99:i;}));}
-        boolean groupedSystemUi="systemui".equals(targetId)||target==null&&Arrays.asList("statusbar","quicksettings","lockscreen","aod").contains(group);
-        for(SectionPlan section:ordered){
-            LinearLayout card=category(section.id,sectionTitle(section.id,section.title));
-            for(HookAppCatalog.Entry entry:section.entries){
+        String route=ModuleNavigation.route(this);
+        ModulePresentationCatalog.Category target=ModulePresentationCatalog.find(targetId);
+        ModuleHierarchy.Section selected=ModuleHierarchy.group(route);
+        String scope=selected!=null?ModuleHierarchy.restartScope(selected):target!=null?target.restartScope:null;
+        String title=ModuleHierarchy.title(route);
+        body=ui.detailPage(title.isEmpty()?EnhancementCatalog.title(group):title,scope);
+        sectionStates.clear();aodParameterStates.clear();aodParameterRestores.clear();
+        if(target!=null&&selected==null){
+            LinearLayout card=ui.preferenceCard();card.setTag("application-groups:"+targetId);body.addView(card,ui.wrap());
+            for(ModuleHierarchy.Section section:ModuleHierarchy.sections(targetId)){
+                if(section.restricted&&!HiddenEntrySession.isUnlocked())continue;
                 if(card.getChildCount()>0)divider(card);
-                if("status_layout".equals(entry.route)){
-                    View open;
-                    if(groupedSystemUi){
-                        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);
-                        row.setPadding(0,ui.dp(8),0,ui.dp(8));row.setClickable(true);row.setFocusable(true);
-                        row.setForeground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,12)));
-                        row.addView(ui.featureTitle("编辑状态栏","点选预览编辑 · 自动避让 · 布局预设"),ui.wrap());
-                        row.setOnClickListener(v->startActivity(new Intent(this,StatusBarSettingsActivity.class)));open=row;
-                    }else open=ui.categoryCard("","编辑状态栏","点选预览编辑 · 自动避让 · 布局预设",null,v->startActivity(new Intent(this,StatusBarSettingsActivity.class)));
-                    open.setContentDescription("编辑状态栏");card.addView(open,ui.wrap());
-                    considerQuery(open,entry.title,entry.summary);
-                    for(NativeFeatureGroups.Feature f:section.features)for(String key:f.allKeys()){
-                        EnhancementOption option=options.get(key);if(option!=null)considerQuery(open,option.title,option.summary);
-                    }
-                    section.features.clear();continue;
-                }
-                NativeEditorController editor=createEditor(entry.route);editors.put(entry.route,editor);
-                if(editor instanceof StatusBarEditorController){
-                    ((StatusBarEditorController)editor).setRelatedFeatures(new ArrayList<>(section.features),this::feature);
-                    section.features.clear();
-                }
-                editor.onCreate(editorStates==null?null:editorStates.getBundle(entry.route));
-                card.addView(editor.view(),ui.wrap());considerQuery(editor.view(),entry.title,entry.summary);
+                String label=section.title,summary=ModuleHierarchy.summary(section);
+                card.addView(ui.preferenceRow(section.route(),label,label.equals(summary)?"":summary,()->ModuleNavigation.open(this,section.route())),ui.wrap());
+                sectionStates.put(section.route(),section);
             }
-            java.util.Set<String> shownGroups=new java.util.HashSet<>();
-            for(NativeFeatureGroups.Feature feature:section.features){
-                String object=NativeFeatureGroups.objectGroup(feature);
-                if(!object.isEmpty()&&!shownGroups.add(object))continue;
-                if(card.getChildCount()>0)divider(card);
-                if(object.isEmpty()){
-                    card.addView(feature(feature),ui.wrap());
-                }
-                else{
-                    LinearLayout settings=new LinearLayout(this);settings.setOrientation(LinearLayout.VERTICAL);
-                    for(NativeFeatureGroups.Feature member:section.features)if(object.equals(NativeFeatureGroups.objectGroup(member))){
-                        if(settings.getChildCount()>0)divider(settings);settings.addView(feature(member),ui.wrap());
-                    }
-                    card.addView(groupedSystemUi?ui.foldingSection(object,settings,!query.isEmpty()):ui.collapsible(object,"同一对象的显示与行为集中配置，各项保留独立开关。",settings,!query.isEmpty()),ui.wrap());
+        }else if(selected!=null&&ModuleHierarchy.hasInlineEditors(selected)){
+            renderInlineSection(selected);
+        }else{
+            List<NativeFeatureGroups.Feature> features=selected==null?NativeFeatureGroups.forGroup(group):selected.features;
+            if(selected!=null&&!selected.entries.isEmpty()){
+                LinearLayout links=ui.preferenceCard();body.addView(links,ui.margins(0,0,0,features.isEmpty()?0:12));
+                for(String entry:selected.entries){
+                    if(links.getChildCount()>0)divider(links);
+                    links.addView(ui.preferenceRow(entry,ModuleHierarchy.title(entry),null,()->ModuleNavigation.open(this,entry)),ui.wrap());
                 }
             }
+            if(!features.isEmpty()){
+                LinearLayout card=category(selected==null?group:selected.id,title);
+                addSectionFeatures(card,features);
+            }
+            String id=selected==null?group:selected.id;
+            if(selected!=null&&!selected.deviceSettings.isEmpty())DeviceSettingsActions.add(this,ui,category(id,title),worker,selected.deviceSettings.toArray(new String[0]));
+            if("collab_audio".equals(id))CollabAudioImporter.addAction(this,ui,category(id,title),worker);
         }
-        if("settings".equals(targetId)||target==null&&"connections".equals(group))DeviceSettingsActions.add(this,ui,category("developer","开发者设置"),worker);
-        if(HookAppCatalog.COLLAB.equals(targetId))
-            CollabAudioImporter.addAction(this,ui,category("collab_audio","联名音频"),worker);
-        if("update".equals(targetId)||target==null&&"update".equals(group)){
-            LinearLayout card=category("update-link","更新链接");Button url=ui.tonalButton("查看已提取的更新链接");card.addView(url,ui.wrap());
-            url.setOnClickListener(v->worker.execute(()->{Bundle data=getContentResolver().call(android.net.Uri.parse("content://ls.augment.com.config"),"ota_url_get",null,null);String value=data==null?"":data.getString("url","");runOnUiThread(()->{if(isDestroyed())return;if(value.isEmpty()){toast("尚未提取到链接；更新应用准备安装时才会产生。");return;}AppDialogs.builder(this).setTitle("系统更新链接").setMessage(value).setNegativeButton("关闭",null).setPositiveButton("复制",(d,w)->{getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("系统更新链接",value));toast("链接已复制");}).show();});}));
+        addRelated(route);
+        refreshSectionCounts();
+        body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,previousY);});
+    }
+    private void addRelated(String route){
+        List<ModulePresentationCatalog.Related> links=ModulePresentationCatalog.related(route);
+        if(links.isEmpty())return;
+        ui.addDetailSectionTitle(body,"相关功能");
+        LinearLayout card=ui.preferenceCard();body.addView(card,ui.wrap());
+        for(ModulePresentationCatalog.Related link:links){
+            if(ModuleHierarchy.isRestricted(link.route)&&!HiddenEntrySession.isUnlocked())continue;
+            if(card.getChildCount()>0)divider(card);
+            card.addView(ui.preferenceRow(link.route,link.title,link.summary,()->ModuleNavigation.open(this,link.route)),ui.wrap());
         }
-        body.post(()->{ScrollView scroll=scrollView();if(scroll==null)return;if(queryAnchor!=null){Rect r=new Rect();queryAnchor.getDrawingRect(r);body.offsetDescendantRectToMyCoords(queryAnchor,r);scroll.scrollTo(0,Math.max(0,r.top-ui.dp(10)));}else scroll.scrollTo(0,previousY);});
+    }
+    private void renderInlineSection(ModuleHierarchy.Section section){
+        LinearLayout card=category(section.id,section.title);
+        for(String entry:section.entries){
+            if(card.getChildCount()>0)divider(card);
+            if("extra_dim".equals(entry)){
+                extraDimTile=new ExtraDimTilePreference(this,ui,worker);
+                LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+                content.setTag("inline-editor:"+entry);content.addView(extraDimTile.view(),ui.wrap());card.addView(content,ui.wrap());
+                continue;
+            }
+            NativeEditorController editor="launcher_custom".equals(entry)
+                    ?new LauncherEditorController(this,entry,true):new FeatureEditorController(this,entry,true);
+            editors.put(entry,editor);
+            editor.onCreate(editorStates==null?null:editorStates.getBundle(entry));
+            View content=editor.view();content.setTag("inline-editor:"+entry);
+            card.addView(content,ui.wrap());
+        }
+        addSectionFeatures(card,section.features);
+    }
+    private void addSectionFeatures(LinearLayout card,List<NativeFeatureGroups.Feature> features){
+        Set<String> shown=new HashSet<>();
+        for(NativeFeatureGroups.Feature feature:features){
+            String object=NativeFeatureGroups.objectGroup(feature);
+            if(!object.isEmpty()&&!shown.add(object))continue;
+            if(card.getChildCount()>0)divider(card);
+            if(object.isEmpty())card.addView(feature(feature),ui.wrap());
+            else{
+                LinearLayout settings=new LinearLayout(this);settings.setOrientation(LinearLayout.VERTICAL);settings.setPadding(ui.dp(12),0,0,0);
+                for(NativeFeatureGroups.Feature member:features)if(object.equals(NativeFeatureGroups.objectGroup(member))){
+                    if(settings.getChildCount()>0)divider(settings);settings.addView(feature(member),ui.wrap());
+                }
+                card.addView(ui.foldingSection(object,settings,false),ui.wrap());
+            }
+        }
+    }
+    private void refreshUpdateLinks(){
+        if(updateLinksContent==null||worker.isShutdown())return;
+        int request=++updateLinksRequest;
+        worker.execute(()->{
+            List<OtaCapturedLinks.Entry> entries=OtaCapturedLinks.read(updateLinksPreferences);
+            runOnUiThread(()->{if(!isDestroyed()&&!isFinishing()&&request==updateLinksRequest)renderUpdateLinks(entries);});
+        });
+    }
+    private void renderUpdateLinks(List<OtaCapturedLinks.Entry> entries){
+        updateLinksContent.removeAllViews();
+        if(entries.isEmpty()){
+            TextView empty=ui.text("尚未提取到更新链接\n更新应用准备安装时，提取到的更新包会显示在这里。",13,ui.muted,false);
+            empty.setTag("update-links-empty");empty.setLineSpacing(ui.dp(3),1);
+            updateLinksContent.addView(empty,ui.margins(0,8,0,12));return;
+        }
+        int index=0;
+        for(OtaCapturedLinks.Entry entry:entries){
+            OtaPackageLabel label=entry.label();
+            if(index>0)divider(updateLinksContent);
+            LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);
+            row.setTag("update-link:"+index++);row.setMinimumHeight(ui.dp(48));row.setPadding(0,ui.dp(10),0,ui.dp(10));
+            TextView name=ui.text(label.title,14,ui.accent,true);name.setMaxLines(3);name.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(name,ui.wrap());
+            TextView source=ui.text(label.details,12,ui.muted,false);source.setMaxLines(3);source.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(source,ui.margins(0,4,0,0));
+            String time=entry.time<=0?"":android.text.format.DateFormat.format("MM-dd HH:mm",entry.time)+" 提取 · ";
+            row.addView(ui.text(time+"点击复制链接",12,ui.muted,false),ui.margins(0,4,0,0));
+            row.setFocusable(true);row.setScreenReaderFocusable(true);
+            row.setForeground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,12)));
+            row.setOnClickListener(v->{
+                ClipboardManager clipboard=getSystemService(ClipboardManager.class);
+                if(clipboard==null){toast("暂时无法复制链接");return;}
+                clipboard.setPrimaryClip(ClipData.newPlainText("系统更新链接",entry.url));
+                Toast.makeText(this,"系统更新链接已复制",Toast.LENGTH_SHORT).show();
+            });
+            updateLinksContent.addView(row,ui.wrap());
+        }
     }
     private LinearLayout category(String id,String title){
-        TextView heading=ui.overline(title);AppearanceController.section(heading,title);body.addView(heading,ui.margins(3,body.getChildCount()==0?0:16,3,16));
-        LinearLayout card=ui.card();card.setTag("application-category:"+targetId+":"+id);card.setPadding(ui.dp(12),ui.dp(2),ui.dp(12),ui.dp(2));body.addView(card,ui.wrap());return card;
+        String tag="application-category:"+targetId+":"+id;
+        LinearLayout existing=body.findViewWithTag(tag);if(existing!=null)return existing;
+        LinearLayout card=ui.card();card.setTag(tag);card.setPadding(ui.dp(14),ui.dp(2),ui.dp(14),ui.dp(2));body.addView(card,ui.wrap());return card;
     }
+    private void refreshSectionCounts(){
+        if(body==null||isDestroyed())return;
+        for(ModuleHierarchy.Section section:sectionStates.values()){
+            TextView label=body.findViewWithTag("setting-count:"+section.route());if(label==null)continue;
+            int count=ModuleHierarchy.activeCount(section,config::get);label.setText("✓ 已设置 "+count+" 项");label.setVisibility(count==0?View.GONE:View.VISIBLE);
+        }
+    }
+    void selectStatusComponent(String id){for(NativeEditorController editor:editors.values())if(editor instanceof StatusBarEditorController)((StatusBarEditorController)editor).selectComponent(id);}
     private void divider(LinearLayout card){card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));}
     private View feature(NativeFeatureGroups.Feature f){
+        boolean updateLink="ls_augment_rm_ota_capture_url".equals(f.id);
         LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setTag("native-feature:"+f.id);
         String key=f.toggleKey==null?f.parameterKeys[0]:f.toggleKey;EnhancementOption option=options.get(key);
+        if(f.toggleKey==null&&("systemui:aod_clock_font".equals(f.id)||"systemui:aod_clock_scale".equals(f.id)))
+            return aodParameter(f,option);
+        if("systemui:qs_carrier".equals(f.id)){
+            // This single choice already includes the native/no-override state.
+            View choice=input(option);
+            choice.setPadding(choice.getPaddingLeft(),0,choice.getPaddingRight(),choice.getPaddingBottom());
+            card.addView(choice,ui.wrap());
+            considerQuery(card,option.title,option.summary);
+            return card;
+        }
         Switch toggle=new Switch(this);toggle.setTag("config:"+key);
         boolean active=f.toggleKey!=null?ConfigSchema.truthy(value(key)):ValueOverrideState.active(f.comparison,value(key),f.noOpValue);
         if(f.toggleKey==null&&gateMemory.contains("value:"+key)
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
         toggle.setChecked(active);card.addView(ui.featureRow(f.title,FeatureHelp.forOption(option),toggle),ui.wrap());
-        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(ui.dp(12),0,0,0);
         if("systemui:back_icon_enabled".equals(f.id)){
             backGestureIcons=new BackGestureIconEditor(this,ui,worker,this::value,(k,v)->change(k,v,null));
             content.addView(backGestureIcons.view(),ui.wrap());
         }
         else if("ls_augment_rm_recents_memory_custom".equals(f.id))memoryControls(content);
-        else for(String parameter:f.parameterKeys)content.addView(input(options.get(parameter)),ui.wrap());
+        else if("systemui:island_enabled".equals(f.id))islandControls(content);
+        else if(GameOptions.PERFORMANCE_MONITOR.equals(f.id))monitorControls(content);
+        else if("launcher:launcher_grid".equals(f.id)){
+            LauncherGridEditor grid=new LauncherGridEditor(this,ui,this::value,this::changeLauncherGrid);
+            content.addView(grid.view(),ui.wrap());
+        }
+        else if(updateLink){
+            content.setTag("update-link-actions");updateLinksContent=content;
+            content.addView(ui.text("正在读取已提取的更新链接…",13,ui.muted,false),ui.margins(0,8,0,12));
+            updateLinksPreferences=getSharedPreferences(OtaCapturedLinks.PREFS,MODE_PRIVATE);
+            updateLinksPreferences.registerOnSharedPreferenceChangeListener(updateLinksListener);
+        }
+        else for(String parameter:f.parameterKeys){
+            EnhancementOption parameterOption=options.get(parameter);
+            boolean parentOwnsTitle=f.toggleKey==null&&f.parameterKeys.length==1
+                    &&f.children.length==0&&f.title.equals(parameterOption.title);
+            content.addView(input(parameterOption,parentOwnsTitle),ui.wrap());
+        }
         for(NativeFeatureGroups.Feature child:f.children)content.addView(feature(child),ui.wrap());
-        UiKit.Fold fold=null;if(f.hasConfiguration()){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
+        syncConditionalInputs();
+        UiKit.Fold fold=null;if(f.hasConfiguration()||updateLink){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
+        if("launcher:launcher_grid".equals(f.id)){
+            launcherGridRuntime=ui.text("",12,ui.muted,false);launcherGridRuntime.setTag("launcher-grid-runtime");
+            card.addView(launcherGridRuntime,ui.margins(0,8,0,4));refreshLauncherGridRuntime();
+        }
         final UiKit.Fold configFold=fold;
         toggle.setOnCheckedChangeListener((view,on)->{
             if(configFold!=null)configFold.sync();
-            if(f.toggleKey!=null)change(key,on?"1":"0",toggle);
+            if(f.toggleKey!=null){change(key,on?"1":"0",toggle);if(LauncherGridSpec.ENABLED.equals(key))refreshLauncherGridRuntime();}
             else{
                 SharedPreferences.Editor memory=gateMemory.edit().putBoolean("open:"+key,on);String next;
                 if(!on){memory.putString("remember:"+key,value(key));next=f.noOpValue;}
@@ -156,6 +310,122 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         });
         for(String owned:f.allKeys()){EnhancementOption o=options.get(owned);if(o!=null)considerQuery(card,o.title,o.summary);}
         return card;
+    }
+    /** These values are real configuration, not Boolean feature gates. */
+    private View aodParameter(NativeFeatureGroups.Feature feature,EnhancementOption option){
+        String key=option.key;boolean font="systemui:aod_clock_font".equals(feature.id);
+        TextView state=ui.text("",13,ui.muted,false);
+        state.setTag("aod-parameter-state:"+key);state.setMaxLines(3);
+        state.setEllipsize(TextUtils.TruncateAt.END);aodParameterStates.put(key,state);
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(ui.dp(12),0,0,0);
+        if(font){
+            Button select=ui.tonalButton(value(key).isEmpty()?"选择字体文件":"更换字体");
+            select.setTag("aod-parameter-select:"+key);aodParameterActionSize(select);
+            controls.put(key,select);content.addView(select,ui.wrap());
+            select.setOnClickListener(v->selectAodFont());
+        }else content.addView(input(option,true),ui.wrap());
+        Button restore=ui.tonalButton(font?"恢复原厂字体":"恢复原厂大小");
+        restore.setTag("aod-parameter-restore:"+key);aodParameterActionSize(restore);
+        aodParameterRestores.put(key,restore);content.addView(restore,ui.margins(0,8,0,8));
+        restore.setOnClickListener(v->{
+            if(font)cancelAodFontImport();
+            change(key,feature.noOpValue,controls.get(key));refreshInput(key,feature.noOpValue);
+        });
+        LinearLayout section=ui.parameterSection(feature.title,FeatureHelp.forOption(option),state,content,true);
+        section.setTag("native-feature:"+feature.id);refreshAodParameterState(key);
+        considerQuery(section,option.title,option.summary);return section;
+    }
+    private void aodParameterActionSize(Button button){
+        button.setMinHeight(ui.dp(48));button.setMinimumHeight(ui.dp(48));
+    }
+    private void refreshAodParameterState(String key){
+        TextView state=aodParameterStates.get(key);if(state==null)return;
+        String selected=value(key);boolean font=key.endsWith("_clock_font");
+        boolean original=font?selected.isEmpty():!ValueOverrideState.active("number",selected,"1.0");
+        if(font){
+            String name=original?"原厂字体":getSharedPreferences("statusbar_asset_names",MODE_PRIVATE).getString(selected,"");
+            if(name==null||name.trim().isEmpty())name=selected.startsWith("/")?new java.io.File(selected).getName():"已选择自定义字体";
+            state.setText("当前字体："+name+(aodFontImportPending?"\n正在导入字体…":""));
+        }else state.setText(original?"原厂大小（1.0 倍）":selected+" 倍");
+        Button restore=aodParameterRestores.get(key);
+        boolean importing=font&&(aodFontPickerPending||aodFontImportPending);
+        if(restore!=null){
+            if(font)restore.setText(importing?"取消导入并恢复原厂字体":"恢复原厂字体");
+            restore.setEnabled(!original||pending.isInvalid(key)||importing);
+        }
+    }
+    private void selectAodFont(){
+        fontKey=AOD_FONT_KEY;aodFontPickerGeneration=++aodFontGeneration;
+        aodFontPickerPending=true;aodFontImportPending=false;refreshAodParameterState(AOD_FONT_KEY);
+        try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),84);}
+        catch(RuntimeException error){
+            aodFontPickerPending=false;refreshAodParameterState(AOD_FONT_KEY);
+            toast("无法选择字体文件："+error.getMessage());
+        }
+    }
+    private void cancelAodFontImport(){
+        ++aodFontGeneration;aodFontPickerPending=false;aodFontImportPending=false;
+    }
+    private boolean currentAodFontRequest(long generation){return generation==aodFontGeneration;}
+    private void importAodFont(android.net.Uri uri,long generation){
+        try{worker.execute(()->{
+            try(InputStream in=getContentResolver().openInputStream(uri)){
+                if(in==null)throw new IllegalArgumentException("无法打开文件");
+                String reference=ManagedFont.importFile(this,in);
+                runOnUiThread(()->{
+                    if(isDestroyed()||!currentAodFontRequest(generation))return;
+                    aodFontImportPending=false;
+                    change(AOD_FONT_KEY,reference,controls.get(AOD_FONT_KEY));refreshInput(AOD_FONT_KEY,reference);
+                });
+            }catch(Exception error){runOnUiThread(()->aodFontImportFailed(generation,error));}
+        });}catch(RejectedExecutionException error){aodFontImportFailed(generation,error);}
+    }
+    private void aodFontImportFailed(long generation,Exception error){
+        if(isDestroyed()||!currentAodFontRequest(generation))return;
+        aodFontImportPending=false;refreshAodParameterState(AOD_FONT_KEY);
+        toast("字体未导入："+error.getMessage());
+    }
+    private void islandControls(LinearLayout content){
+        content.setPadding(0,0,0,0);
+        content.addView(ui.text("有活动时出现 · 轻点打开 · 长按展开",12,ui.muted,false),ui.margins(0,8,0,8));
+        for(String suffix:new String[]{"music","notifications","charging"}){
+            String key=SystemUiOptions.PREFIX+"island_"+suffix;
+            EnhancementOption option=options.get(key);
+            Switch control=new Switch(this);control.setTag("config:"+key);control.setChecked(ConfigSchema.truthy(value(key)));
+            controls.put(key,control);
+            content.addView(ui.featureRow(option.title,FeatureHelp.forOption(option),control),ui.wrap());
+            control.setOnCheckedChangeListener((button,on)->change(key,on?"1":"0",control));
+            if("notifications".equals(suffix)){
+                LinearLayout timing=new LinearLayout(this);timing.setOrientation(LinearLayout.VERTICAL);timing.setPadding(ui.dp(12),0,0,0);
+                timing.addView(input(options.get(SystemUiOptions.PREFIX+"island_notice_seconds")),ui.wrap());content.addView(timing,ui.wrap());
+                UiKit.Fold timingFold=ui.fold(control,timing);
+                control.setOnCheckedChangeListener((button,on)->{timingFold.sync();change(key,on?"1":"0",control);});
+            }
+            divider(content);
+        }
+        LinearLayout geometry=new LinearLayout(this);geometry.setOrientation(LinearLayout.VERTICAL);geometry.setPadding(ui.dp(12),0,0,0);
+        for(String suffix:new String[]{"width","height","offset_x"})geometry.addView(input(options.get(SystemUiOptions.PREFIX+"island_"+suffix)),ui.wrap());
+        content.addView(ui.foldingSection("大小与位置",geometry,false),ui.wrap());
+    }
+    private void monitorControls(LinearLayout content){
+        content.addView(ui.featureTitle("监测项目","勾选游戏空间性能监控弹窗需要显示的项目，至少保留一项。时间为当前时间，游戏时长由原厂插件统计。"),ui.margins(0,3,0,0));
+        LinearLayout checks=new LinearLayout(this);checks.setOrientation(LinearLayout.VERTICAL);
+        checks.setTag("config:"+GameOptions.MONITOR_ITEMS);controls.put(GameOptions.MONITOR_ITEMS,checks);content.addView(checks,ui.wrap());
+        String[] items=GamePerformanceMonitorConfig.items(),labels=GamePerformanceMonitorConfig.labels();
+        for(int i=0;i<items.length;i++){
+            String item=items[i];CheckBox box=new CheckBox(this);box.setTag(item);box.setText(labels[i]);
+            ui.styleCheckBox(box);box.setTextSize(UiKit.compactTextSize(14f));
+            box.setChecked(GamePerformanceMonitorConfig.selected(value(GameOptions.MONITOR_ITEMS),item));checks.addView(box,ui.wrap());
+            box.setOnCheckedChangeListener((button,on)->{
+                Set<String> selected=tokens(value(GameOptions.MONITOR_ITEMS));
+                if(on)selected.add(item);else selected.remove(item);
+                if(selected.isEmpty()){box.setChecked(true);toast("至少保留一项监测项目");return;}
+                change(GameOptions.MONITOR_ITEMS,String.join(",",selected),box);
+            });
+        }
+        content.addView(input(options.get(GameOptions.MONITOR_TRANSPARENCY)),ui.margins(0,8,0,0));
     }
     private void memoryControls(LinearLayout content){
         String prefix="ls_augment_rm_recents_memory_";
@@ -178,8 +448,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(memoryColorsRow!=null)memoryColorsRow.setVisibility("2".equals(value("ls_augment_rm_recents_memory_color_mode"))?View.VISIBLE:View.GONE);
     }
     private String value(String key){return draft.getOrDefault(key,config.get(key));}
-    private View input(EnhancementOption option){
-        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);row.setPadding(0,ui.dp(3),0,ui.dp(8));row.addView(ui.featureTitle(option.title,FeatureHelp.forOption(option)),ui.wrap());
+    private View input(EnhancementOption option){return input(option,false);}
+    private View input(EnhancementOption option,boolean parentOwnsTitle){
+        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);row.setPadding(0,ui.dp(3),0,ui.dp(8));
+        if(!parentOwnsTitle)row.addView(ui.featureTitle(option.title,FeatureHelp.forOption(option)),ui.wrap());
         if(CollabOptions.THEME_VARIANT.equals(option.key))return themeChoice(row,option);
         if(option.kind==EnhancementOption.Kind.CHOICE){
             Spinner choice=ui.choiceSpinner("选择选项","ls_augment_rm_recents_memory_content".equals(option.key)?this::memoryExampleText:null);choice.setContentDescription(option.title);if("ls_augment_rm_recents_memory_content".equals(option.key)){
@@ -190,6 +462,12 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 choice.setAdapter(memoryContentAdapter);
             }else choice.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,option.choices));choice.setSelection(Integer.parseInt(value(option.key)));row.addView(choice,ui.wrap());controls.put(option.key,choice);
             choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int position,long id){change(option.key,String.valueOf(position),choice);}});
+        }else if(NotificationSummaryOptions.ASSET.equals(option.key)){
+            Button button=ui.tonalButton(value(option.key).isEmpty()?"选择图片":"更换图片");row.addView(button,ui.wrap());controls.put(option.key,button);
+            button.setOnClickListener(v->AppDialogs.builder(this).setTitle(option.title).setItems(new String[]{"选择图片","移除图片"},(d,i)->{
+                if(i==1){change(option.key,"",button);refreshInput(option.key,"");return;}
+                startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),85);
+            }).show());
         }else if(option.key.endsWith("_clock_font")){
             Button button=ui.tonalButton(value(option.key).isEmpty()?"选择字体文件":"更换字体");row.addView(button,ui.wrap());controls.put(option.key,button);
             button.setOnClickListener(v->AppDialogs.builder(this).setTitle(option.title).setItems(new String[]{"选择字体文件","恢复原厂字体"},(d,i)->{if(i==1){change(option.key,"",button);refreshInput(option.key,"");return;}fontKey=option.key;startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),84);}).show());
@@ -199,10 +477,19 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(int i=0;i<slots.length;i++){String slot=slots[i];CheckBox box=new CheckBox(this);box.setTag(slot);box.setText(labels[i]);ui.styleCheckBox(box);box.setChecked(tokens(value(option.key)).contains(slot));checks.addView(box,ui.wrap());box.setOnCheckedChangeListener((v,on)->{Set<String> selected=tokens(value(option.key));if(on)selected.add(slot);else selected.remove(slot);change(option.key,String.join(",",selected),box);});}
         }else{
             EditText field=new EditText(this);ui.styleInput(field);field.setContentDescription(option.title);field.setText(value(option.key));
+            if(GameOptions.MONITOR_TRANSPARENCY.equals(option.key))field.setTag("config:"+option.key);
             if(option.kind==EnhancementOption.Kind.INTEGER)field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED);
             else if(option.kind==EnhancementOption.Kind.DECIMAL)field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED);
             row.addView(field,ui.wrap());controls.put(option.key,field);
-            field.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){String normalized=option.normalize(s.toString());if(normalized==null){field.setError(option.kind==EnhancementOption.Kind.INTEGER||option.kind==EnhancementOption.Kind.DECIMAL?"请输入 "+option.minimum+"～"+option.maximum+" 之间的有效数值":"请输入有效内容");return;}field.setError(null);change(option.key,normalized,field);}public void afterTextChanged(Editable e){}});
+            TextView error=ui.inlineInputError(field,option.key);inputErrors.put(option.key,error);row.addView(error,ui.margins(0,4,0,0));
+            field.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){
+                String normalized=option.normalize(s.toString());
+                if(normalized==null){invalidInput(option);return;}
+                error.setText("");error.setVisibility(View.GONE);change(option.key,normalized,field);
+            }public void afterTextChanged(Editable e){}});
+            // Invalid raw text is UI state only; it must never become a restorable save intent.
+            String invalid=invalidInputs==null?null:invalidInputs.getString(option.key);
+            if(invalid!=null&&option.normalize(invalid)==null){invalidInputs.remove(option.key);field.setText(invalid);}
         }
         return row;
     }
@@ -241,41 +528,173 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             if(spinner.getTag() instanceof int[]){int[] variants=(int[])spinner.getTag();int position=0;for(int i=0;i<variants.length;i++)if(variants[i]==selected)position=i;spinner.setSelection(position);}
             else spinner.setSelection(selected);
         }
-        else if(view instanceof Button)((Button)view).setText(next.isEmpty()?"选择字体文件":"更换字体");
+        else if(view instanceof Button)((Button)view).setText(NotificationSummaryOptions.ASSET.equals(key)?(next.isEmpty()?"选择图片":"更换图片"):(next.isEmpty()?"选择字体文件":"更换字体"));
         else if(view instanceof LinearLayout){LinearLayout checks=(LinearLayout)view;Set<String> selected=tokens(next);for(int i=0;i<checks.getChildCount();i++){CheckBox box=(CheckBox)checks.getChildAt(i);box.setChecked(selected.contains(box.getTag()));}}
+        refreshAodParameterState(key);
+    }
+    private String invalidMessage(EnhancementOption option){
+        if(option.kind==EnhancementOption.Kind.INTEGER)return "请输入 "+(long)option.minimum+"～"+(long)option.maximum+" 之间的整数";
+        if(option.kind==EnhancementOption.Kind.DECIMAL)return "请输入 "+option.minimum+"～"+option.maximum+" 之间的有效数值";
+        return "请输入有效内容";
+    }
+    private void invalidFeedback(EnhancementOption option,String saved){
+        TextView error=inputErrors.get(option.key);if(error==null)return;
+        error.setText(invalidMessage(option)+"；"+saved);error.setVisibility(View.VISIBLE);
+    }
+    private void confirmInvalidInput(EnhancementOption option,long generation){
+        if(isDestroyed()||!pending.isInvalid(option.key,generation))return;
+        try{String saved=config.get(option.key);draft.put(option.key,saved);invalidFeedback(option,"已保存："+(saved.isEmpty()?"空内容":saved));refreshAodParameterState(option.key);}
+        catch(RuntimeException failure){invalidFeedback(option,"暂时无法确认已保存值，请重新打开此页");}
+    }
+    private void invalidInput(EnhancementOption option){
+        long generation=pending.invalidate(option.key);refreshAodParameterState(option.key);
+        if(pending.isEmpty())main.removeCallbacks(autoSave);
+        // Do not promise cancellation after claim. The same FIFO confirms the durable outcome.
+        try{draft.put(option.key,config.get(option.key));}
+        catch(RuntimeException failure){invalidFeedback(option,"暂时无法确认已保存值，请重新打开此页");return;}
+        if(pending.isInFlight(option.key))invalidFeedback(option,"正在确认已保存值…");
+        else confirmInvalidInput(option,generation);
+        try{worker.execute(()->main.post(()->confirmInvalidInput(option,generation)));}
+        catch(RejectedExecutionException failure){invalidFeedback(option,"暂时无法确认已保存值，请重新打开此页");}
     }
     private void change(String key,String value,View control){
-        if(value.equals(draft.get(key)))return;String normalized=ConfigSchema.normalize(key,value);if(normalized==null)return;
+        String normalized=ConfigSchema.normalize(key,value);if(normalized==null)return;
+        if(normalized.equals(draft.get(key))&&!pending.needsSubmission(key))return;
         draft.put(key,normalized);pending.put(key,normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        refreshAodParameterState(key);
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();
         if("ls_augment_rm_recents_memory_color_mode".equals(key))syncMemoryColorsVisibility();
+        syncConditionalInputs();
+    }
+    private void syncConditionalInputs(){
+        String mode=value(NotificationSummaryOptions.MODE);
+        inputVisible(NotificationSummaryOptions.SYMBOL,"0".equals(mode));
+        inputVisible(NotificationSummaryOptions.TEXT,"1".equals(mode));
+        inputVisible(NotificationSummaryOptions.ASSET,"2".equals(mode));
+        for(String panel:CarrierTextOptions.PANELS){
+            String carrierMode=value(CarrierTextOptions.key(panel,"mode"));
+            inputVisible(CarrierTextOptions.key(panel,"text"),"1".equals(carrierMode));
+            inputVisible(CarrierTextOptions.key(panel,"pattern"),"2".equals(carrierMode));
+        }
+        boolean gradient="1".equals(value(ControlCenterAppearanceOptions.TILE_GRADIENT));
+        for(String key:new String[]{ControlCenterAppearanceOptions.TILE_END_LIGHT,ControlCenterAppearanceOptions.TILE_END_DARK,ControlCenterAppearanceOptions.TILE_DIRECTION})inputVisible(key,gradient);
+        boolean glow="1".equals(value(ControlCenterAppearanceOptions.MEDIA_GLOW));
+        inputVisible(ControlCenterAppearanceOptions.GLOW_OPACITY,glow);inputVisible(ControlCenterAppearanceOptions.GLOW_WIDTH,glow);
+    }
+    private void inputVisible(String key,boolean visible){
+        View control=controls.get(key);if(control!=null&&control.getParent() instanceof View)((View)control.getParent()).setVisibility(visible?View.VISIBLE:View.GONE);
+    }
+    /** Validate the full preset first; all three keys then share the existing atomic save batch. */
+    private void changeLauncherGrid(Map<String,String> values){
+        LinkedHashMap<String,String> normalized=new LinkedHashMap<>();
+        for(String key:new String[]{LauncherGridSpec.ENABLED,LauncherGridSpec.ROWS,LauncherGridSpec.COLUMNS}){
+            String next=ConfigSchema.normalize(key,values.get(key));
+            if(next==null){toast("桌面布局未保存，请选择 3～12 行和列。");return;}
+            normalized.put(key,next);
+        }
+        if(normalized.entrySet().stream().allMatch(entry->entry.getValue().equals(draft.get(entry.getKey()))&&!pending.needsSubmission(entry.getKey())))return;
+        draft.putAll(normalized);pending.putAll(normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);refreshLauncherGridRuntime();
+    }
+    private void refreshLauncherGridRuntime(){
+        if(launcherGridRuntime==null)return;
+        LauncherGridSpec grid=LauncherGridSpec.parse(value(LauncherGridSpec.ENABLED),value(LauncherGridSpec.ROWS),value(LauncherGridSpec.COLUMNS));
+        if(grid==null)grid=LauncherGridSpec.defaults();
+        String selected=grid.enabled?"当前选择："+grid.columns+" 列 × "+grid.rows+" 行（重启桌面后尝试应用）":"当前选择：系统原厂布局（重启桌面后尝试恢复）";
+        String feedback="尚未收到桌面运行反馈。";
+        try{
+            String raw=config.diagnostic("ls_augment_launcher_grid_runtime");
+            if(!raw.isEmpty()){
+                org.json.JSONObject state=new org.json.JSONObject(raw);String kind=state.optString("state"),label;
+                switch(kind){case "active":label="自定义布局已应用";break;case "native":label="使用系统原厂布局";break;case "restored":label="已恢复系统原厂布局";break;case "blocked":label="布局未更改";break;case "pending_restart":label="等待重启桌面";break;case "unsupported":label="当前桌面暂不支持";break;default:label="等待桌面确认";}
+                int rows=state.optInt("effectiveRows"),columns=state.optInt("effectiveColumns");
+                feedback="上次桌面反馈："+label+(rows>0&&columns>0?"，实际 "+columns+" 列 × "+rows+" 行":"")+"。";
+                String error=state.optString("error");if(!error.isEmpty())feedback+="\n"+error;
+            }
+        }catch(Exception ignored){feedback="桌面反馈暂不可读，请重启桌面后查看。";}
+        launcherGridRuntime.setText(selected+"\n"+feedback+"\n若现有小组件或文件夹超出新格数，桌面会保留原布局，请先调整占用后再试。");
+    }
+    @Override public void prepareScopeRestart(Runnable restart){
+        if(isFinishing()||isDestroyed()||worker.isShutdown())return;
+        flush();
+        worker.execute(()->main.post(()->{
+            if(isFinishing()||isDestroyed())return;
+            if(!pending.isEmpty()){toast("配置尚未保存，暂未重启。请确认设置后重试。");return;}
+            prepareEditorRestart(editors.values().iterator(),restart);
+        }));
+    }
+    private void prepareEditorRestart(Iterator<NativeEditorController> remaining,Runnable restart){
+        if(isFinishing()||isDestroyed())return;
+        if(remaining.hasNext())remaining.next().prepareScopeRestart(()->prepareEditorRestart(remaining,restart));
+        else restart.run();
     }
     private void flush(){
         main.removeCallbacks(autoSave);if(pending.isEmpty()||worker.isShutdown())return;
-        LinkedHashMap<String,String> batch=new LinkedHashMap<>(pending);pending.clear();
-        worker.execute(()->{AppConfig.SaveResult result=config.save(batch);if(result.success){SharedPreferences.Editor memory=gateMemory.edit();for(Map.Entry<String,String> entry:batch.entrySet())memory.putString("value:"+entry.getKey(),entry.getValue());memory.commit();}else runOnUiThread(()->{if(!isDestroyed()){for(Map.Entry<String,String> entry:batch.entrySet())if(entry.getValue().equals(draft.get(entry.getKey())))pending.putIfAbsent(entry.getKey(),entry.getValue());toast("未保存："+result.message);}});});
+        FieldEditQueue.Batch batch=pending.takePending();
+        worker.execute(()->{
+            FieldEditQueue.Batch claimed=pending.claim(batch);if(claimed.isEmpty())return;
+            boolean saved=false;String failure=null;
+            try{
+                Map<String,String> values=claimed.values();AppConfig.SaveResult result=config.save(values);saved=result.success;
+                if(saved){
+                    SharedPreferences.Editor memory=gateMemory.edit();
+                    for(Map.Entry<String,String> entry:values.entrySet())memory.putString("value:"+entry.getKey(),entry.getValue());
+                    if(!memory.commit())failure="配置已保存，但输入记忆未保存，请重新打开此页确认";
+                }else failure="未保存："+result.message;
+            }catch(RuntimeException error){failure=saved?"配置已保存，但输入记忆未完成，请重新打开此页确认":"保存状态暂时无法确认，请重新打开此页确认";}
+            finally{pending.complete(claimed,saved);}
+            if(failure!=null){inputSession.failed(failure);main.post(this::showSaveFailure);}
+        });
+    }
+    private void showSaveFailure(){
+        if(isDestroyed())return;String message=inputSession.takeFailure();if(message!=null)toast(message);
     }
     private void considerQuery(View view,String title,String summary){if(queryAnchor==null&&!query.isEmpty()&&(title+summary).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))queryAnchor=view;}
+    private boolean isApplicationDirectory(){return targetId!=null&&ModuleHierarchy.group(ModuleNavigation.route(this))==null;}
     private ScrollView scrollView(){ViewParent parent=body==null?null:body.getParent();while(parent!=null){if(parent instanceof ScrollView)return (ScrollView)parent;parent=parent.getParent();}return null;}
-    private NativeEditorController createEditor(String route){
-        if("status_layout".equals(route))return new StatusBarEditorController(this,route,true);
-        if("mi_health".equals(route))return new HealthEditorController(this,route,true);
-        if("launcher_custom".equals(route))return new LauncherEditorController(this,route,true);
-        return new FeatureEditorController(this,route,true);
-    }
     @Override public void launchEditorResult(NativeEditorController editor,Intent intent,int request){pendingEditor=editor.route;startActivityForResult(intent,request);}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(backGestureIcons!=null&&backGestureIcons.onResult(request,result,data))return;
         if(pendingEditor!=null){NativeEditorController editor=editors.get(pendingEditor);pendingEditor=null;if(editor!=null)editor.onActivityResult(request,result,data);return;}
+        if(request==85){
+            if(result!=RESULT_OK||data==null||data.getData()==null||worker.isShutdown())return;
+            worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){
+                if(in==null)throw new IllegalArgumentException("无法打开图片");
+                String name="通知汇总图片";
+                try(android.database.Cursor cursor=getContentResolver().query(data.getData(),new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){
+                    if(cursor!=null&&cursor.moveToFirst()&&cursor.getString(0)!=null)name=cursor.getString(0);
+                }
+                String hash=StatusBarAssetStore.importFile(this,in,name);
+                runOnUiThread(()->{if(isDestroyed()||isFinishing())return;change(NotificationSummaryOptions.ASSET,hash,controls.get(NotificationSummaryOptions.ASSET));refreshInput(NotificationSummaryOptions.ASSET,hash);});
+            }catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("图片未导入："+error.getMessage());});}});
+            return;
+        }
+        if(request==84&&AOD_FONT_KEY.equals(fontKey)){
+            long generation=aodFontPickerGeneration;
+            if(!aodFontPickerPending||!currentAodFontRequest(generation))return;
+            aodFontPickerPending=false;
+            if(result!=RESULT_OK||data==null||data.getData()==null){refreshAodParameterState(AOD_FONT_KEY);return;}
+            aodFontImportPending=true;refreshAodParameterState(AOD_FONT_KEY);
+            importAodFont(data.getData(),generation);return;
+        }
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
-    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);ScrollView scroll=scrollView();state.putInt("scrollY",scroll==null?0:scroll.getScrollY());Bundle values=new Bundle();for(Map.Entry<String,String> e:draft.entrySet())values.putString(e.getKey(),e.getValue());state.putBundle("draft",values);Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();worker.shutdown();super.onDestroy();}
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
+        // A pending picker can return to the recreated page; an old Activity import is not resumed.
+        state.putLong("aodFontGeneration",aodFontGeneration);state.putLong("aodFontPickerGeneration",aodFontPickerGeneration);
+        state.putBoolean("aodFontPickerPending",aodFontPickerPending);ScrollView scroll=scrollView();state.putInt("scrollY",scroll==null?0:scroll.getScrollY());if(!isApplicationDirectory()){
+            Bundle values=new Bundle();
+            for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
+            state.putBundle("draft",values);
+        }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
+    @Override protected void onDestroy(){if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override public Object onRetainNonConfigurationInstance(){
+        Bundle invalid=new Bundle();
+        for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());
+        inputSession.invalidInputs=invalid;return inputSession;
+    }
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
-    private static String entrySection(String route){switch(route){case "audio_gain":return "audio";case "status_layout":return "statusbar";case "launcher_custom":return "launcher";case "signature_install":return "installer";case "combo_speed":return "combo";case "super_resolution":return "performance";case "ai_trigger":return "ai";case "fan_control":return "fan";case "beautify":return "theme";case "double_app":return "double";case "store_download":return "download";case "mi_health":return "health";default:return route;}}
-    private static String sectionTitle(String id,String fallback){switch(id){case "freeform":return "小窗与多任务";case "audio":return "音量增强与规则";case "battery":return "电池";case "installer":return "应用安装规则";case "statusbar":return "状态栏";case "launcher":return "桌面与应用图标";case "shoulder":return "肩键";case "combo":return "连招";case "performance":return "性能与超分";case "ai":return "AI 触发器";case "fan":return "风扇";case "double":return "应用双开";case "download":return "下载管理";case "health":return "步数与每日计划";default:return fallback;}}
 }

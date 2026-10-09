@@ -8,6 +8,9 @@ public final class GameOptions {
     public static final String WATERMARK_UNLIMITED = "ls_augment_game_watermark_unlimited";
     public static final String QUICK_SWITCH = "ls_augment_tgk_quick_switch";
     public static final String PLUGINS = "ls_augment_game_plugins_unlocked";
+    public static final String PERFORMANCE_MONITOR = "ls_augment_game_performance_monitor";
+    public static final String MONITOR_ITEMS = "ls_augment_game_monitor_items";
+    public static final String MONITOR_TRANSPARENCY = "ls_augment_game_monitor_transparency";
     public static final String COMBO_LIMITS = "ls_augment_combo_extended_limits";
     public static final String HIDE_DIABLO_DIALOG = "ls_augment_game_hide_diablo_dialog";
     public static final String COLLAPSE_PANEL = "ls_augment_game_prevent_panel_collapse";
@@ -22,6 +25,9 @@ public final class GameOptions {
             EnhancementOption.toggle(QUICK_SWITCH,"game","肩键方案快捷切换","在原厂肩键方案页勾选参与方案：一个直接应用，两个点击互切，更多以下拉选择。"),
             EnhancementOption.internal(ShoulderQuickSwitchPolicy.KEY,ShoulderQuickSwitchPolicy.EMPTY,ShoulderQuickSwitchPolicy::normalize),
             EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","开放原厂提供的插件入口，原厂继续负责功能运行。"),
+            EnhancementOption.toggle(PERFORMANCE_MONITOR,"game","自定义性能监测","选择游戏空间性能监控弹窗显示的项目，并调整背景透明度；数据继续来自原厂监控插件。"),
+            EnhancementOption.internal(MONITOR_ITEMS,GamePerformanceMonitorConfig.DEFAULT_ITEMS,GamePerformanceMonitorConfig::normalizeItems),
+            EnhancementOption.integer(MONITOR_TRANSPARENCY,"game","背景透明度（%）","调整游戏空间性能监控弹窗的背景透明度。0% 为不透明，100% 为完全透明；文字和图标不受影响。",50,0,100),
             EnhancementOption.toggle(COMBO_LIMITS,"game","扩展连招循环设置","循环次数允许输入六位数字，循环间隔最长可设为一小时。"),
             EnhancementOption.toggle(HIDE_DIABLO_DIALOG,"game","隐藏破坏神模式提示","隐藏原厂破坏神模式提示与退出悬浮提示。"),
             EnhancementOption.toggle(COLLAPSE_PANEL,"game","切换模式时保持游戏面板","切换破坏神模式或超境画质时，阻止随后的自动收起。"),

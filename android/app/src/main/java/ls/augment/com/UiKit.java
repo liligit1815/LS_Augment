@@ -24,9 +24,13 @@ import android.widget.TextView;
 
 /** Ice Blue settings design system shared by every LS_Augment screen. */
 final class UiKit {
+    // docs/红魔Duo-UI规范.md: one 8–12dp gap below breadcrumbs, never Home alignment padding.
+    static final int DETAIL_CONTENT_GAP_DP = 8;
     final Activity activity;
     final boolean dark;
+    final boolean angularCards;
     final AppearanceController appearance;
+    boolean flatCards;
 
     // Sky blue + ice white roles. Cards remain translucent over the quiet gradient.
     final int background, backgroundEnd, rail, card, cardHigh, text, muted, accent,
@@ -34,6 +38,7 @@ final class UiKit {
 
     UiKit(Activity activity) {
         this.activity = activity;
+        angularCards = new AppConfig(activity).getBoolean(AppearanceOptions.ANGULAR_CARDS);
         appearance = new AppearanceController(activity);
         dark = appearance.dark;
         background = dark ? Color.rgb(12,24,41) : Color.rgb(232,244,255);
@@ -60,13 +65,14 @@ final class UiKit {
                 & ~android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
                 | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
-        window.setStatusBarColor(background);
-        window.setNavigationBarColor(backgroundEnd);
+        boolean configurationAction=activity instanceof ConfigTransferActivity;
+        window.setStatusBarColor(configurationAction?Color.TRANSPARENT:background);
+        window.setNavigationBarColor(configurationAction?Color.TRANSPARENT:backgroundEnd);
         if (Build.VERSION.SDK_INT >= 26) {
             window.getDecorView().setSystemUiVisibility(
                     dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                             | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-            window.setNavigationBarDividerColor(backgroundEnd);
+            window.setNavigationBarDividerColor(configurationAction?Color.TRANSPARENT:backgroundEnd);
         }
         if (Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null) {
             int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
@@ -107,25 +113,139 @@ final class UiKit {
             LinearLayout body=new LinearLayout(activity);body.setOrientation(LinearLayout.VERTICAL);
             setContentView(body);return body;
         }
-        LinearLayout root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(backgroundDrawable());
-        LinearLayout head=header(title,true);head.setPadding(dp(10),dp(4),dp(12),dp(2));
-        if(scope!=null)ScopeRestartDialog.addButton(activity,this,head,scope);
-        root.addView(head,new LinearLayout.LayoutParams(-1,-2));root.addView(divider(),new LinearLayout.LayoutParams(-1,dp(1)));
+        LinearLayout root=detailChrome(title,scope);
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(true);
-        LinearLayout body=new LinearLayout(activity);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(14),dp(10),dp(14),dp(26));
+        scroll.setTag("detail-scroll");scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout body=new LinearLayout(activity);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(16),0,dp(16),dp(32));
         scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
         root.addView(adaptiveDetailBody(scroll,body),new LinearLayout.LayoutParams(-1,0,1));
         appearance.addStatus(this,body,title);
         setContentView(root);applyGestureInset(root,8);return body;
     }
 
+    LinearLayout brandHeading(){
+        LinearLayout heading=new LinearLayout(activity);heading.setGravity(Gravity.BOTTOM);heading.setBaselineAligned(true);
+        heading.addView(text("红魔Duo",30,text,true),new LinearLayout.LayoutParams(-2,-2));
+        LinearLayout.LayoutParams phrase=new LinearLayout.LayoutParams(-2,-2);phrase.leftMargin=dp(12);
+        heading.addView(text("让红魔更顺手",14,muted,false),phrase);return heading;
+    }
+    LinearLayout detailChrome(String fallbackTitle,String scope){
+        ModuleNavigation.register(activity);
+        LinearLayout root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);root.setBackground(backgroundDrawable());
+        LinearLayout head=header("",true);head.setTag("detail-header");head.setPadding(dp(16),dp(8),dp(16),dp(8));
+        if(scope!=null)ScopeRestartDialog.addButton(activity,this,head,scope);
+        root.addView(head,new LinearLayout.LayoutParams(-1,dp(60)));
+        String route=ModuleNavigation.route(activity);if(route==null)route="home";
+        android.widget.HorizontalScrollView path=new android.widget.HorizontalScrollView(activity);
+        path.setTag("page-path");path.setContentDescription("页面路径");path.setHorizontalScrollBarEnabled(false);
+        path.setPadding(dp(20),0,dp(20),0);path.setClipToPadding(false);
+        LinearLayout crumbs=new LinearLayout(activity);crumbs.setGravity(Gravity.CENTER_VERTICAL);
+        java.util.List<String> routes=ModuleHierarchy.path(route);
+        for(int i=0;i<routes.size();i++){
+            String destination=routes.get(i);boolean current=i==routes.size()-1;
+            if(i>0){ImageView arrow=new ImageView(activity);arrow.setImageResource(R.drawable.ic_chevron_right);arrow.setColorFilter(muted);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);LinearLayout.LayoutParams gap=new LinearLayout.LayoutParams(dp(12),dp(12));gap.setMargins(dp(7),0,dp(7),0);crumbs.addView(arrow,gap);}
+            String title=ModuleHierarchy.title(destination);if(current&&title.isEmpty())title=fallbackTitle;
+            TextView label=text(title,13.225f,current?text:accent,current);label.setTextSize(13.225f);label.setGravity(Gravity.CENTER_VERTICAL);label.setSingleLine(true);
+            label.setTag("breadcrumb:"+destination);
+            if(current){label.setAccessibilityHeading(true);label.setContentDescription(title+"，当前页面");}
+            else{label.setFocusable(true);label.setBackground(pressable(round(Color.TRANSPARENT,8)));label.setOnClickListener(v->ModuleNavigation.ancestor(activity,destination));}
+            crumbs.addView(label,new LinearLayout.LayoutParams(-2,dp(44)));
+        }
+        path.addView(crumbs);root.addView(path,new LinearLayout.LayoutParams(-1,dp(44)));
+        // Keep the current title inside the trailing inset even when the path overflows.
+        path.post(()->path.scrollTo(Math.max(0,crumbs.getWidth()+path.getPaddingLeft()
+                +path.getPaddingRight()-path.getWidth()),0));
+        View gap=new View(activity);gap.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.addView(gap,new LinearLayout.LayoutParams(1,dp(DETAIL_CONTENT_GAP_DP)));
+        return root;
+    }
+
+    void addDetailSectionTitle(LinearLayout body,String title){
+        TextView label=text(title,12,muted,true);label.setTag("section-title:"+title);label.setAccessibilityHeading(true);
+        // detailChrome already owns the first section's top gap.
+        body.addView(label,margins(3,body.getChildCount()==0?0:8,0,16));
+    }
+
+    LinearLayout preferenceCard(){LinearLayout value=card();value.setPadding(dp(14),0,dp(14),0);value.setTag("preference-card");return value;}
+    LinearLayout preferenceRow(String id,String title,String summary,Runnable action){
+        LinearLayout row=groupRow();row.setTag("navigation:"+id);row.setPadding(0,dp(4),0,dp(4));
+        ImageView icon=new ImageView(activity);icon.setImageResource(navigationIcon(id));icon.setColorFilter(accent);icon.setPadding(dp(8),dp(8),dp(8),dp(8));icon.setBackground(round(dark?0x402b82c8:0x407dbcf2,12));icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(36),dp(36));ip.rightMargin=dp(12);row.addView(icon,ip);
+        LinearLayout copy=new LinearLayout(activity);copy.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout titleRow=new LinearLayout(activity);titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name=text(title,15,text,true);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);titleRow.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+        TextView state=text("",12,accent,false);state.setTag("setting-count:"+id);state.setVisibility(View.GONE);titleRow.addView(state);copy.addView(titleRow,wrap());
+        if(summary!=null&&!summary.isEmpty()){TextView detail=text(summary,12,muted,false);detail.setSingleLine(true);detail.setEllipsize(android.text.TextUtils.TruncateAt.END);copy.addView(detail,margins(0,3,6,0));}
+        row.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView arrow=new ImageView(activity);arrow.setImageResource(R.drawable.ic_chevron_right);arrow.setColorFilter(muted);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);row.addView(arrow,new LinearLayout.LayoutParams(dp(18),dp(18)));
+        row.setClickable(true);row.setFocusable(true);row.setForeground(pressable(round(Color.TRANSPARENT,12)));row.setOnClickListener(v->action.run());return row;
+    }
+    private int navigationIcon(String route){
+        String id=route.substring(route.lastIndexOf('/')+1);
+        if(route.startsWith("status_surface/")){
+            switch(id){case "main":return R.drawable.ice_app_window;case "lock":return R.drawable.ice_moon;case "notification":return R.drawable.ice_bell;case "control":return R.drawable.ice_layout_grid;}
+        }
+        if(route.startsWith("asset/")){
+            if(id.startsWith("wifi")||id.startsWith("secondary_wifi"))return R.drawable.ice_wifi;
+            if(id.startsWith("mobile")||id.startsWith("dual_signal"))return R.drawable.ice_signal;
+            if(id.startsWith("battery")||id.startsWith("connectivity"))return R.drawable.ice_battery_full;
+            if(id.equals("clock"))return R.drawable.ice_clock;
+            if(id.equals("notifications"))return R.drawable.ice_bell;
+        }
+        switch(id){
+            case "status_layout":case "statusbar":return R.drawable.ice_smartphone;
+            case "status_assets":case "status_resources":case "theme":case "collab_theme":return R.drawable.ice_palette;
+            case "status_arrangement":case "status_surfaces":return R.drawable.ice_layout_grid;
+            case "status_clock":return R.drawable.ice_clock;
+            case "status_notifications":return R.drawable.ice_bell;
+            case "status_metrics":return R.drawable.ice_heart_pulse;
+            case "status_network":return R.drawable.ice_signal;
+            case "status_battery":return R.drawable.ice_battery_full;
+            case "status_icons":return R.drawable.ice_layers;
+            case "primary_interaction":return R.drawable.ice_power;
+            case "lockscreen":return R.drawable.ice_moon;
+            case "aod":case "desktop_clock":return R.drawable.ice_clock;
+            case "audio":case "audio_gain":case "volume_panel":return R.drawable.ice_volume2;
+            case "connections":return R.drawable.ice_wifi;
+            case "installer":case "download":case "update-link":case "update":return R.drawable.ice_download;
+            case "system":case "default_apps":return R.drawable.ice_shield;
+            case "freeform":case "launcher":case "launcher_custom":return R.drawable.ice_app_window;
+            case "shoulder":case "combo":case "performance":return R.drawable.ice_gamepad2;
+            case "ai":case "nfc":case "capture":return R.drawable.ice_smartphone;
+            case "fan":return R.drawable.ice_fan;
+            case "collab_fingerprint":return R.drawable.ice_fingerprint;
+            case "collab_charging":return R.drawable.ice_battery_full;
+            case "collab_audio":return R.drawable.ice_audio_lines;
+            case "health":return R.drawable.ice_heart_pulse;
+            case "display_time":return R.drawable.ice_clock;
+            case "developer":case "usb":case "mtp":return R.drawable.ice_usb;
+            case "weather":case "quicksettings_more":return R.drawable.ice_sun;
+            case "quicksettings":case "launcher_grid":return R.drawable.ice_layout_grid;
+            case "game_capture":return R.drawable.ice_bell;
+            default:return R.drawable.ice_layers;
+        }
+    }
+
     private java.util.function.Consumer<View> contentReceiver;
+    private final java.util.Map<String,java.util.function.Supplier<Boolean>> foldValues=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,java.util.function.Consumer<Boolean>> foldSetters=new java.util.LinkedHashMap<>();
+    void saveState(android.os.Bundle state){android.os.Bundle values=new android.os.Bundle();for(String key:foldValues.keySet())values.putBoolean(key,foldValues.get(key).get());state.putBundle("ui-folds",values);}
+    void restoreState(android.os.Bundle state){android.os.Bundle values=state==null?null:state.getBundle("ui-folds");if(values==null)return;for(String key:values.keySet())if(foldSetters.containsKey(key))foldSetters.get(key).accept(values.getBoolean(key));}
     void setContentReceiver(java.util.function.Consumer<View> receiver){contentReceiver=receiver;}
     boolean embedded(){return contentReceiver!=null;}
     void setContentView(View content) {
+        compactFeatureCards(content);
         if(contentReceiver!=null)contentReceiver.accept(content);
         else appearance.setContentView(this, content);
+    }
+    private void compactFeatureCards(View view){
+        if(!(view instanceof android.view.ViewGroup))return;
+        android.view.ViewGroup group=(android.view.ViewGroup)view;
+        for(int i=0;i<group.getChildCount();i++){
+            View child=group.getChildAt(i);
+            if(view instanceof LiquidGlassLayout&&"feature-row".equals(child.getTag()))view.setPadding(view.getPaddingLeft(),dp(2),view.getPaddingRight(),dp(2));
+            compactFeatureCards(child);
+        }
     }
 
     View adaptiveDetailBody(ScrollView scroll, LinearLayout body) {
@@ -175,9 +295,9 @@ final class UiKit {
             button.setScaleType(ImageView.ScaleType.CENTER);
             button.setColorFilter(text);
             button.setPadding(dp(11), dp(11), dp(11), dp(11));
-            button.setBackground(pressable(round(Color.TRANSPARENT, 50)));
+            button.setBackground(pressable(controlGlass(button,22,IceGlassControlDrawable.NEUTRAL)));
             button.setContentDescription("返回上一页");
-            button.setOnClickListener(view -> activity.finish());
+            button.setOnClickListener(view -> activity.onBackPressed());
             row.addView(button, new LinearLayout.LayoutParams(dp(44), dp(44)));
             LinearLayout.LayoutParams spacer = new LinearLayout.LayoutParams(dp(6), 1);
             row.addView(new View(activity), spacer);
@@ -207,14 +327,24 @@ final class UiKit {
         return outer;
     }
 
+    LinearLayout groupRow() {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(48));
+        return row;
+    }
+
+    int surfaceRadiusDp(int roundedRadius) { return angularCards ? 4 : Math.max(26, roundedRadius); }
+
     LinearLayout card() {
-        if(embedded()){
+        if(embedded()||flatCards){
             LinearLayout flat=new LinearLayout(activity);flat.setOrientation(LinearLayout.VERTICAL);
             flat.setPadding(0,dp(3),0,dp(3));return flat;
         }
-        LinearLayout value = new LiquidGlassLayout(this, 22, true);
+        LinearLayout value = new LiquidGlassLayout(this, 4, true);
         value.setOrientation(LinearLayout.VERTICAL);
-        value.setPadding(dp(12), dp(10), dp(12), dp(10));
+        value.setPadding(dp(16), dp(12), dp(16), dp(12));
         if (Build.VERSION.SDK_INT >= 21) value.setElevation(dp(3));
         if (Build.VERSION.SDK_INT >= 28) {
             value.setOutlineSpotShadowColor(0x203c86b8);
@@ -233,7 +363,7 @@ final class UiKit {
 
     /** A separate 44 dp target keeps help taps independent of the value or switch. */
     LinearLayout featureTitle(String title, String description) {
-        return featureTitle(title, description, 12.5f);
+        return featureTitle(title, description, 14.5f);
     }
 
     LinearLayout featureTitle(String title, String description, float size) {
@@ -243,14 +373,19 @@ final class UiKit {
         LinearLayout row = new LinearLayout(activity) {
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
                 if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED)
-                    name.setMaxWidth(Math.max(dp(20), View.MeasureSpec.getSize(widthSpec) - dp(38)));
+                    name.setMaxWidth(Math.max(dp(20), View.MeasureSpec.getSize(widthSpec) - dp(25) - (iceIcon(title)!=0?dp(46):0)));
                 super.onMeasure(widthSpec, heightSpec);
             }
         };
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(name, new LinearLayout.LayoutParams(-2, -2));
+        int glyph=iceIcon(title);
+        if(glyph!=0){ImageView icon=new ImageView(activity);icon.setImageResource(glyph);icon.setColorFilter(accent);
+            icon.setPadding(dp(9),dp(9),dp(9),dp(9));icon.setBackground(round(dark?0x402b82c8:0x407dbcf2,12));
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(36),dp(36));p.rightMargin=dp(10);row.addView(icon,p);}
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
         if (description != null && !description.trim().isEmpty())
-            row.addView(helpButton(title, description), new LinearLayout.LayoutParams(dp(36), dp(44)));
+            row.addView(helpButton(title, description), new LinearLayout.LayoutParams(dp(25), dp(44)));
         return row;
     }
 
@@ -283,7 +418,7 @@ final class UiKit {
             Runnable action, String negative) {
         android.app.Dialog dialog = new android.app.Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        LiquidGlassLayout body = new LiquidGlassLayout(this, 28);
+        LiquidGlassLayout body = new LiquidGlassLayout(this, 4);
         body.setTag("liquid-glass-dialog");
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(22), dp(24), dp(22), dp(20));
@@ -305,7 +440,7 @@ final class UiKit {
         actions.setGravity(Gravity.CENTER_VERTICAL);
         if (negative != null) {
             Button cancel = button(negative);
-            cancel.setBackground(pressable(roundStroke(dark ? 0x544c7094 : 0x68ffffff, 18, outline, 1)));
+            cancel.setBackground(pressable(controlGlass(cancel,18,IceGlassControlDrawable.NEUTRAL)));
             cancel.setOnClickListener(v -> dialog.cancel());
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1);
             cancel.setMinimumHeight(dp(48));
@@ -316,7 +451,7 @@ final class UiKit {
         Button confirm = button(positive);
         confirm.setTag("glass-dialog-confirm");
         confirm.setTextColor(accent);
-        confirm.setBackground(pressable(roundStroke(dark ? 0xa535638c : 0xb0b9e1ff, 18, accent, 1)));
+        confirm.setBackground(pressable(controlGlass(confirm,18,IceGlassControlDrawable.TONAL)));
         confirm.setOnClickListener(v -> { dialog.dismiss(); if (action != null) action.run(); });
         confirm.setMinimumHeight(dp(48));
         actions.addView(confirm, new LinearLayout.LayoutParams(0, -2, 1));
@@ -380,12 +515,13 @@ final class UiKit {
                 return true;
             }
         };
+        spinner.setMinimumHeight(dp(48));
         spinner.setBackgroundTintList(ColorStateList.valueOf(accent));
         return spinner;
     }
 
     TextView overline(String value) {
-        TextView view = text(value, 11, accent, true);
+        TextView view = text(value, 13, muted, true);
         view.setLetterSpacing(0.04f);
         view.setAllCaps(false);
         return view;
@@ -401,10 +537,13 @@ final class UiKit {
         return view;
     }
 
+    // Preserve Android sp accessibility scaling while reducing the base UI typography.
+    static float compactTextSize(float size) { return Math.max(10f, size * .86f); }
+
     TextView text(String value, float size, int color, boolean bold) {
         TextView view = new TextView(activity);
         view.setText(value);
-        view.setTextSize(size >= 18 && size < 24 ? size - 2 : size >= 14 && size < 18 ? size - 1.5f : size);
+        view.setTextSize(compactTextSize(size));
         view.setTextColor(color);
         view.setIncludeFontPadding(false);
         view.setTypeface(Typeface.create("sans-serif", bold
@@ -415,14 +554,13 @@ final class UiKit {
     Button button(String value) {
         Button button = new Button(activity);
         button.setText(value);
-        button.setTextSize(12.5f);
+        button.setTextSize(compactTextSize(14f));
         button.setTextColor(text);
         button.setAllCaps(false);
         button.setMinHeight(dp(44));
         button.setMinimumHeight(dp(44));
         button.setPadding(dp(13), dp(7), dp(13), dp(7));
-        button.setBackground(pressable(roundStroke(dark ? Color.argb(226,27,45,65) : Color.argb(226, 255, 255, 255),
-                12, outline, 1)));
+        button.setBackground(pressable(controlGlass(button,16,IceGlassControlDrawable.NEUTRAL)));
         button.setStateListAnimator(null);
         button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return button;
@@ -431,21 +569,21 @@ final class UiKit {
     Button tonalButton(String value) {
         Button button = button(value);
         button.setTextColor(accent);
-        button.setBackground(pressable(roundStroke(accentContainer, 12, outline, 1)));
+        button.setBackground(pressable(controlGlass(button,16,IceGlassControlDrawable.TONAL)));
         return button;
     }
 
     Button accentButton(String value) {
         Button button = button(value);
         button.setTextColor(Color.WHITE);
-        button.setBackground(pressable(round(accent, 12)));
+        button.setBackground(pressable(controlGlass(button,16,IceGlassControlDrawable.ACCENT)));
         return button;
     }
 
     Button dangerButton(String value) {
         Button button = button(value);
         button.setTextColor(danger);
-        button.setBackground(pressable(roundStroke(dangerContainer, 12, danger, 1)));
+        button.setBackground(pressable(controlGlass(button,16,IceGlassControlDrawable.DANGER)));
         return button;
     }
 
@@ -454,8 +592,8 @@ final class UiKit {
         button.setAlpha(1f);
         button.setTextColor(enabled ? Color.WHITE : muted);
         button.setBackground(enabled
-                ? pressable(round(accent, 12))
-                : roundStroke(accentContainer, 12, outline, 1));
+                ? pressable(controlGlass(button,16,IceGlassControlDrawable.ACCENT))
+                : controlGlass(button,16,IceGlassControlDrawable.NEUTRAL));
     }
 
     void styleSwitch(Switch control) {
@@ -464,13 +602,13 @@ final class UiKit {
                 new int[]{-android.R.attr.state_checked}
         };
         control.setShowText(false);
-        control.setMinWidth(dp(50));
-        control.setMinimumWidth(dp(50));
+        control.setMinWidth(dp(46));
+        control.setMinimumWidth(dp(46));
         control.setMinHeight(dp(44));
-        control.setThumbTintList(new ColorStateList(states,
-                new int[]{Color.WHITE, Color.WHITE}));
-        control.setTrackTintList(new ColorStateList(states,
-                new int[]{accent, dark ? Color.rgb(77,100,127) : Color.rgb(183, 199, 215)}));
+        control.setThumbTintList(null);control.setTrackTintList(null);
+        control.setSplitTrack(false);control.setSwitchMinWidth(dp(46));
+        control.setTrackDrawable(controlGlass(control,20,IceGlassControlDrawable.TRACK));
+        control.setThumbDrawable(controlGlass(control,20,IceGlassControlDrawable.THUMB));
     }
 
     void styleCheckBox(CheckBox control) {
@@ -484,24 +622,50 @@ final class UiKit {
         control.setMinHeight(dp(48));
     }
 
+    /** Inline feedback for a newly created field; the caller owns text and spacing. */
+    TextView inlineInputError(EditText field, String key) {
+        TextView error = text("", 12, danger, false);
+        error.setTag("input-error:" + key);
+        error.setVisibility(View.GONE);
+        error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        field.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host,
+                    android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                boolean invalid = error.getVisibility() == View.VISIBLE && error.length() > 0;
+                info.setContentInvalid(invalid);
+                info.setError(invalid ? error.getText() : null);
+            }
+        });
+        return error;
+    }
+
     void styleInput(EditText input) {
         input.setTextColor(text);
         input.setHintTextColor(muted);
-        input.setTextSize(12.5f);
+        input.setTextSize(compactTextSize(14f));
         input.setMinHeight(dp(48));
+        // Numeric input types can replace TextView's pixel minimum with one line.
+        // Keep the shared touch target at the View layer as well.
+        input.setMinimumHeight(dp(48));
         input.setPadding(dp(13), dp(8), dp(13), dp(8));
-        input.setBackground(roundStroke(dark ? Color.argb(236,27,45,65) : Color.argb(236, 255, 255, 255), 12, outline, 1));
+        input.setBackground(controlGlass(input,16,IceGlassControlDrawable.NEUTRAL));
     }
 
     /** Shared feature header. The arrow slot also aligns non-expandable switches. */
     LinearLayout featureRow(String title, String description, Switch control) {
-        LinearLayout row = new LinearLayout(activity);
+        LinearLayout row = new LinearLayout(activity){
+            @Override protected void onAttachedToWindow(){super.onAttachedToWindow();
+                if(getParent() instanceof LiquidGlassLayout){View card=(View)getParent();card.setPadding(card.getPaddingLeft(),dp(2),card.getPaddingRight(),dp(2));}
+            }
+        };
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setTag("feature-row");row.setMinimumHeight(dp(44));
         row.addView(section(title, description), new LinearLayout.LayoutParams(0, -2, 1));
         styleSwitch(control);
         control.setContentDescription(title);
-        row.addView(control, new LinearLayout.LayoutParams(-2, dp(44)));
-        row.addView(switchSlot(), new LinearLayout.LayoutParams(dp(28), dp(44)));
+        row.addView(control, new LinearLayout.LayoutParams(dp(46), dp(44)));
+        row.addView(switchSlot(), new LinearLayout.LayoutParams(dp(25), dp(44)));
         return row;
     }
 
@@ -535,7 +699,7 @@ final class UiKit {
             arrow.setImageResource(R.drawable.ic_expand_more);
             arrow.setColorFilter(muted);
             arrow.setBackground(pressable(round(Color.TRANSPARENT, 12)));
-            row.addView(arrow, new LinearLayout.LayoutParams(dp(28), dp(44)));
+            row.addView(arrow, new LinearLayout.LayoutParams(dp(25), dp(44)));
             arrow.setOnClickListener(v -> {
                 if (!accessibleWhileOff && !control.isChecked()) {
                     android.widget.Toast.makeText(activity, "请先开启功能", android.widget.Toast.LENGTH_SHORT).show();
@@ -544,6 +708,8 @@ final class UiKit {
                 show(content.getVisibility() != View.VISIBLE);
             });
             wasEnabled = control.isChecked() && control.isEnabled(); show(false);
+            String key="switch:"+(control.getTag()==null?control.getContentDescription():control.getTag());
+            foldValues.put(key,()->content.getVisibility()==View.VISIBLE);foldSetters.put(key,this::show);
         }
         void sync() {
             boolean enabled = control.isChecked() && control.isEnabled();
@@ -576,47 +742,37 @@ final class UiKit {
         return foldingGroup(title,content,initiallyExpanded,false);
     }
 
+    /** Value settings share feature help/arrow columns without pretending to be a switch. */
+    LinearLayout parameterSection(String title,String description,View summary,View content,
+            boolean initiallyExpanded){
+        LinearLayout outer=foldingGroup(title,description,content,initiallyExpanded,false);
+        LinearLayout head=(LinearLayout)outer.getChildAt(0);
+        // Keep the help column aligned with neighboring Boolean feature rows.
+        head.addView(switchSlot(),head.getChildCount()-1,new LinearLayout.LayoutParams(dp(46),dp(44)));
+        outer.addView(summary,1,margins(12,3,0,8));return outer;
+    }
+
     private LinearLayout foldingGroup(String title, View content, boolean initiallyExpanded,boolean ownCard) {
+        return foldingGroup(title,null,content,initiallyExpanded,ownCard);
+    }
+    private LinearLayout foldingGroup(String title,String description,View content,boolean initiallyExpanded,boolean ownCard) {
         LinearLayout outer=ownCard?card():new LinearLayout(activity),head=new LinearLayout(activity);
         outer.setOrientation(LinearLayout.VERTICAL);head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(text(title,13,text,true),new LinearLayout.LayoutParams(0,-2,1));
+        head.setMinimumHeight(dp(44));if(ownCard)outer.setPadding(dp(16),dp(2),dp(16),dp(2));
+        head.addView(featureTitle(title,description,14.5f),new LinearLayout.LayoutParams(0,-2,1));
         ImageButton arrow=new ImageButton(activity);arrow.setImageResource(R.drawable.ic_expand_more);arrow.setColorFilter(muted);
-        arrow.setBackground(pressable(round(Color.TRANSPARENT,12)));head.addView(arrow,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        arrow.setBackground(pressable(round(Color.TRANSPARENT,12)));head.addView(arrow,new LinearLayout.LayoutParams(dp(25),dp(44)));
         outer.addView(head,wrap());outer.addView(content,wrap());content.setVisibility(initiallyExpanded?View.VISIBLE:View.GONE);
         Runnable update=()->{boolean open=content.getVisibility()==View.VISIBLE;arrow.setRotation(open?180:0);arrow.setContentDescription((open?"收起":"展开")+title);};
         View.OnClickListener toggle=v->{content.setVisibility(content.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);update.run();};
-        arrow.setOnClickListener(toggle);head.setOnClickListener(toggle);update.run();return outer;
+        arrow.setOnClickListener(toggle);head.setOnClickListener(toggle);update.run();
+        foldValues.put("group:"+title,()->content.getVisibility()==View.VISIBLE);
+        foldSetters.put("group:"+title,open->{content.setVisibility(open?View.VISIBLE:View.GONE);update.run();});return outer;
     }
 
     LinearLayout collapsible(String title, String description, View content,
             boolean initiallyExpanded) {
-        LinearLayout outer = card();
-        LinearLayout head = new LinearLayout(activity);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout copy = section(title, description);
-        Button action = tonalButton(initiallyExpanded ? "收起" : "展开");
-        action.setMinWidth(dp(60));
-        head.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        head.addView(action, new LinearLayout.LayoutParams(-2, dp(48)));
-        outer.addView(head, wrap());
-        LinearLayout body = new LinearLayout(activity);
-        body.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
-        dividerParams.setMargins(0, dp(10), 0, dp(10));
-        body.addView(divider(), dividerParams);
-        body.addView(content, wrap());
-        body.setVisibility(initiallyExpanded ? View.VISIBLE : View.GONE);
-        View.OnClickListener toggle = view -> {
-            boolean expand = body.getVisibility() != View.VISIBLE;
-            body.setVisibility(expand ? View.VISIBLE : View.GONE);
-            action.setText(expand ? "收起" : "展开");
-        };
-        action.setOnClickListener(toggle);
-        head.setClickable(true);
-        head.setFocusable(true);
-        head.setOnClickListener(toggle);
-        outer.addView(body, wrap());
-        return outer;
+        return foldingGroup(title,description,content,initiallyExpanded,true);
     }
 
     GradientDrawable round(int color, int radiusDp) {
@@ -632,9 +788,23 @@ final class UiKit {
         return drawable;
     }
 
+    private int iceIcon(String title){
+        if("液态玻璃控制中心".equals(title))return R.drawable.ice_layout_grid;
+        if("通知堆叠".equals(title))return R.drawable.ice_bell;
+        if("面板日期、天气与时钟".equals(title))return R.drawable.ice_clock;
+        if("亮度与音量".equals(title))return R.drawable.ice_sun;
+        if("电源菜单高级重启".equals(title))return R.drawable.ice_power;
+        if("自定义侧滑返回图标".equals(title))return R.drawable.ice_undo2;
+        return 0;
+    }
+
+    Drawable controlGlass(View owner,int radiusDp,int role) {
+        return new IceGlassControlDrawable(this,owner,radiusDp,role);
+    }
+
     Drawable glass(int radiusDp) {
         // Quiet content surfaces; real optical controls use LiquidGlassLayout.
-        return roundStroke(dark ? 0xe6253b54 : 0xcff7fcff, radiusDp,
+        return roundStroke(dark ? 0xe6253b54 : 0xcff7fcff, surfaceRadiusDp(radiusDp),
                 dark ? 0x6653789c : 0xddffffff, 1);
     }
 

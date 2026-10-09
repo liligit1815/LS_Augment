@@ -7,7 +7,7 @@ final class FeatureDescriptions {
     static String forKey(String key, String label) {
         switch (key) {
             case ConfigSchema.SYSTEMUI_MASTER: return "启用本模块的状态栏布局与组件设置。关闭后恢复系统布局，各组件配置仍会保留。";
-            case ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY: return "仅调整原生时钟和图标组的位置、大小与顺序，保留原生行数、字体及图标样式。暂停自定义时钟、双排图标、硬件信息和自定义网速；原有设置保留，关闭此模式后恢复。";
+            case ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY: return "调整原生时钟和图标组的位置、大小与顺序，保留原生行数和字体。双排信号可独立开启；暂停自定义时钟、通知与系统图标分两排、硬件信息和自定义网速，原有设置保留，关闭此模式后恢复。";
             case ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP: return "开启时自动关闭原生电池图标功能；关闭时不会开启另一项。两项可以同时关闭，恢复默认电池外观与布局，并跟随状态栏整体布局；两边配置都会保留。外圈显示电量。高级设置中，三个内部区域可分别选择内容、移动和缩放，闪电与旁路充电插头也可分别调整。仅调整位置和大小模式下暂停。";
             case ConfigSchema.STATUSBAR_CONNECTIVITY_PLUG_COLOR: return "设置闪电和插头共用的颜色。普通充电显示闪电，旁路充电显示插头；拔掉电源后隐藏。默认位于电量数字右侧，位置和大小可在各自的高级设置中调整。支持 #RRGGBB 或含透明度的 #AARRGGBB。";
             case ConfigSchema.STATUSBAR_CONNECTIVITY_COLORS: return "充电时电量弧显示绿色，低电量时显示红色；关闭后随状态栏使用黑白色。";
@@ -26,8 +26,8 @@ final class FeatureDescriptions {
             case ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP: return "设置状态栏内容下方的额外留白，单位 dp。";
             case ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP: return "调整状态栏上下两排之间的间距，单位 dp。负数仅在内容不碰撞时生效；检测到交叠时自动使用安全间距，原设置保留。正数增大间距。";
             case ConfigSchema.STATUSBAR_CLOCK_CUSTOM: return "启用自定义时钟文字和排版；关闭后恢复原厂时钟显示。";
-            case ConfigSchema.STATUSBAR_CLOCK_PATTERN: return "设置第一行时间格式。HH:mm 为 24 小时时间，hh:mm 为 12 小时时间，ss 为秒；固定文字使用单引号。留空时使用下方默认时间选项。";
-            case ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND: return "设置第二行时间格式，例如 MM/dd E。仅在时钟选择双排时显示此输入项；切回单排保留格式，再次选择双排可继续使用。留空不绘制第二行文字。";
+            case ConfigSchema.STATUSBAR_CLOCK_PATTERN: return "设置第一行时间格式。HH:mm 为 24 小时时间，hh:mm 为 12 小时时间，ss 为秒；固定文字使用单引号。留空时使用下方默认时间选项。点击“查看完整时间格式与示例”可查阅日期、星期、周数、毫秒、时区和农历等全部格式，并复制示例。";
+            case ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND: return "设置第二行时间格式，例如 MM/dd E。与第一行支持相同格式，可在“查看完整时间格式与示例”中查询和复制。仅在时钟选择双排时显示此输入项；切回单排保留格式，再次选择双排可继续使用。留空不绘制第二行文字。";
             case ConfigSchema.STATUSBAR_CLOCK_24H: return "第一行格式留空时，默认时钟使用 24 小时制；关闭后使用 12 小时制。";
             case ConfigSchema.STATUSBAR_CLOCK_SECONDS: return "默认时钟显示秒数。自定义格式需要包含秒数格式符才会显示相应内容。";
             case ConfigSchema.STATUSBAR_CLOCK_PERIOD: return "在默认时钟中显示上午、下午等时段文字。";
@@ -48,7 +48,9 @@ final class FeatureDescriptions {
             case ConfigSchema.AI_TRIGGER_COOLDOWN_MS: return "设置 AI 识别策略再次触发前的冷却时间，单位毫秒，避免同一结果过于频繁地触发。";
             case ConfigSchema.AI_TRIGGER_YOLO_SCAN_MS: return "设置 YOLO 识别扫描的等待间隔，单位毫秒；实际触发速度取决于模型识别和点击耗时。";
             case ConfigSchema.COMBO_SPEED_RATE: return "调整已录制连招的播放速度，1 倍为原速度；此设置调整播放间隔，不会重新录制动作。";
-            case ConfigSchema.FAN_TARGET_RPM: return "选择期望的风扇转速，单位 RPM。先测量本机各档转速，模块会匹配最接近的硬件档位，并非连续无级调速。";
+            case ConfigSchema.FAN_FIXED_ENABLED: return FeatureHelp.fanFixedSpeed();
+            case ConfigSchema.FAN_FIXED_LEVEL: return "选择固定一至五档，直接使用对应硬件档位，不需要先测量。风扇关闭时仅保存档位，不会自行启动风扇。";
+            case ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED: return FeatureHelp.fanTileEnhancement();
             case ConfigSchema.AUDIO_GAIN_STEP: return "这里只控制第二段“额外增强”：达到原厂最高音量后，每按一次音量加键增加多少个百分点，不改变第一段的基础档数。最后一档不超过设定上限。"
                     + "\n\n" + FeatureHelp.audioGainStages()
                     + "\n\n这里的百分比表示软件增益，不代表实测响度同比增加。";

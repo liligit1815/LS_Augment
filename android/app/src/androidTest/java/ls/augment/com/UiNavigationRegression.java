@@ -120,14 +120,90 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             }), "real module environment status");
             // Let a pre-authorized Root provider's transient status toast finish naturally.
             SystemClock.sleep(2500);
-            testColdHome(home);
+            requireText(home,"红魔Duo");requireText(home,"让红魔更顺手");
+            require(onMain(()->home.getWindow().getDecorView().findViewWithTag("module-runtime-card"))==null,"status card must be on Module instead of Home");
+            require(HookAppCatalog.targets().size()==18,"theme merge group count");
+            TextView homeTitle=onMain(()->(TextView)findText(home.getWindow().getDecorView(),"红魔Duo",false));
+            float homeTitleSp=onMain(()->homeTitle.getTextSize()/homeTitle.getResources().getDisplayMetrics().scaledDensity);
+            require(homeTitleSp<26f&&homeTitleSp>25f,"home typography reduction missing");
+            report.put("homeTitleSp",homeTitleSp);
+            JSONObject homeInsets=measureInsets(home,homeTitle);requireTopGap(homeInsets,12);
+            report.put("homeInsets",homeInsets);
             screenshot("60-preview-home");
-            clickDescription(home, "设置");
-            requireNavigation(home, "设置");
+            report.put("homeStatusCardRemoved",true);
+            report.put("runtimeLoadedVersion",field(home,"loadedModuleVersion"));
+            report.put("runtimeInjectionConfirmed",field(home,"runtimeActive"));
+            testLiquidGlassBackdrop(home);
+            testLiquidGlassNavigation((SettingsActivity)home);
+            clickDescription(home, "模块");
+            requireNavigation(home, "模块");
+            View runtimeCard=onMain(()->home.getWindow().getDecorView().findViewWithTag("module-runtime-card"));
+            require(runtimeCard!=null,"missing Module status card");requireText(home,"模块状态");
+            require(onMain(()->((ViewGroup)runtimeCard.getParent()).getChildAt(1)==runtimeCard),"status must follow the shared brand heading as the first Module card");
+            requireText(home,"红魔Duo");requireText(home,"让红魔更顺手");
+            ImageView moduleIcon=onMain(()->home.getWindow().getDecorView().findViewWithTag("navigation-icon:settings"));
+            require("module".equals(field(moduleIcon.getDrawable(),"kind")),"module navigation must use the Duo outline");
+            testCompatibilityHelp(home);
+            JSONObject moduleInsets=measureInsets(home,onMain(()->findText(home.getWindow().getDecorView(),"红魔Duo",false)));requireTopGap(moduleInsets,12);
+            report.put("moduleInsets",moduleInsets);
+            report.put("moduleStartsWithBrandHeading",true).put("runtimeIsFirstModuleCard",true).put("moduleNavigationDuoOutline",true);
             screenshot("61-preview-settings");
+            captureReadyStatusStyle((SettingsActivity)home);
+            requireText(home,"模块设置");requireText(home,"棱角卡片");
+            testCardShapes((SettingsActivity)home);
             clickDescription(home, "关于");
             requireNavigation(home, "关于");
+            require(!hasText(home,"桌面版本"),"launcher version still shown");
+            requireAboutHeading(home);
+            JSONObject aboutInsets=measureInsets(home,onMain(()->findText(home.getWindow().getDecorView(),"红魔Duo",false)));requireTopGap(aboutInsets,12);
+            report.put("aboutInsets",aboutInsets).put("aboutUsesSharedBrandHeading",true).put("aboutBrandCardRemoved",true);
             screenshot("62-preview-about");
+            AboutScrollView previewScroll=aboutScroll(home);
+            onMain(()->{previewScroll.scrollTo(0,previewScroll.getChildAt(0).getHeight());return null;});instrumentation.waitForIdleSync();
+            awaitStableWindow(home,previewScroll);requireAboutHeading(home);
+            screenshot("65-preview-about-maximum-scroll");
+            onMain(()->{previewScroll.scrollTo(0,0);return null;});instrumentation.waitForIdleSync();
+            requireAboutHeading(home);
+            report.put("aboutNormalScrollReversible",true);
+            onMain(()->{ModuleNavigation.openTarget(home,"theme","");return null;});
+            Activity theme=awaitActivity(EnhancementSettingsActivity.class,home);
+            requireText(theme,"主题资源");require(!hasText(theme,"联名预置主题")&&!hasText(theme,"联名主题"),"Collaboration theme is inside theme resources");requireText(theme,"联名指纹样式");requireText(theme,"联名充电动画");
+            report.put("detailInsets",measureInsets(theme,onMain(()->findDescription(theme.getWindow().getDecorView(),"返回上一页"))));
+            screenshot("64-preview-theme");
+            clickDescription(theme,"返回上一页");awaitSame(home);clickDescription(home,"模块");
+            File exported=new File(directory,"native-log-export.txt");if(exported.exists())exported.delete();
+            int[] pickerCalls={0};
+            Instrumentation.ActivityMonitor picker=new Instrumentation.ActivityMonitor(){
+                @Override public Instrumentation.ActivityResult onStartActivity(Intent intent){
+                    if(!Intent.ACTION_CREATE_DOCUMENT.equals(intent.getAction()))return null;
+                    pickerCalls[0]++;
+                    return new Instrumentation.ActivityResult(Activity.RESULT_OK,new Intent().setData(android.net.Uri.fromFile(exported)));
+                }
+            };
+            instrumentation.addMonitor(picker);
+            try {
+                clickDescription(home,"导出日志");
+                Activity exporting;
+                try{exporting=awaitActivity(LogExportActivity.class,home);}catch(AssertionError error){
+                    for(Activity seen:activities)if(seen instanceof LogExportActivity){Object job=onMain(()->field(seen,"job"));
+                        throw new AssertionError("Log export ended before resume: phase="+field(job,"phase")+" message="+field(job,"message"),error);}
+                    throw error;
+                }
+                onMain(()->{exporting.recreate();return null;});
+                long deadline=SystemClock.uptimeMillis()+120000;
+                while(SystemClock.uptimeMillis()<deadline){
+                    if(exported.isFile()&&new String(Files.readAllBytes(exported.toPath()),StandardCharsets.UTF_8).contains("collectionFinished="))break;
+                    SystemClock.sleep(200);
+                }
+                require(pickerCalls[0]==1,"document picker repeated or bypassed after rotation");
+                require(exported.isFile(),"log export did not write document");
+            }finally{instrumentation.removeMonitor(picker);}
+            String log=new String(Files.readAllBytes(exported.toPath()),StandardCharsets.UTF_8);
+            for(String required:new String[]{"device=","systemVersion=","CONFIGURATION AT EXPORT","ENABLED FEATURE SWITCHES","PER-PROCESS HOOK EVIDENCE","collectionFinished="})
+                require(log.contains(required),"log missing "+required);
+            report.put("realLogBytes",log.getBytes(StandardCharsets.UTF_8).length).put("themeConsolidated",true)
+                    .put("logExportSurvivesRotation",true).put("logSavedThroughActivityResult",true);
+
         } catch (Throwable error) {
             failure = error;
             report.put("failure", android.util.Log.getStackTraceString(error));
@@ -232,7 +308,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             passed("versioned-consent-gate");
 
             requireNavigation(home, "主页");
-            requireText(home, "应用配置");
+            require(!hasText(home, "应用配置"), "Home list heading must be removed");
             require(HookAppCatalog.targets().size() == 18, "Expected 18 application destinations");
             testColdHome(home);
             screenshot("04-home");
@@ -340,8 +416,8 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         await(() -> onMain(() -> rotated.positionMs() >= savedPosition + 100 ? Boolean.TRUE : null),
                 "playback continues from the restored position");
         // This existing, read-only help Activity creates an actual pause/stop transition.
-        onMain(() -> { rotated.startActivity(new Intent(rotated, ModuleHelpActivity.class)); return null; });
-        Activity covering = awaitActivity(ModuleHelpActivity.class, rotated);
+        onMain(() -> { rotated.startActivity(new Intent(rotated, ContributorsActivity.class)); return null; });
+        Activity covering = awaitActivity(ContributorsActivity.class, rotated);
         await(() -> onMain(() -> !rotated.hasWindowFocus() ? Boolean.TRUE : null), "opening loses foreground");
         int stopped = onMain(rotated::positionMs);
         SystemClock.sleep(450);
@@ -414,7 +490,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         awaitSame(home);
         setSearch(home, "");
 
-        clickDescription(home, "设置");
+        clickDescription(home, "模块");
         // The appearance editor remains available internally for its explanation test;
         // it is no longer a standalone entry in the Settings navigation.
         onMain(() -> { EnhancementSettingsActivity.open(home, "appearance"); return null; });
@@ -425,7 +501,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         requireFeatureTextSize(choicePage, appearance.title);
         clickDescription(choicePage, "返回上一页");
         awaitSame(home);
-        requireNavigation(home, "设置");
+        requireNavigation(home, "模块");
 
         clickDescription(home, "主页");
         setSearch(home, "com.mi.health");
@@ -568,7 +644,6 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
     private void testSearch(Activity home) throws Exception {
         setSearch(home, "com.mi.health");
         requireText(home, "小米运动健康");
-        requireText(home, "1 个应用");
         require(!hasText(home, "系统框架"), "Package search retained unrelated app");
         screenshot("05-search-package");
         setSearch(home, "时钟");
@@ -580,7 +655,6 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         requireTextContaining(home, "没有找到相关应用或功能");
         screenshot("07-search-empty");
         clickDescription(home, "清除搜索");
-        requireText(home, "18 个应用");
         passed("search-package-feature-empty-clear");
     }
 
@@ -907,6 +981,8 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             clickText(home, target.title);
             Activity detail = awaitDifferent(home);
             require(!(detail instanceof OnboardingActivity), "Consent unexpectedly reopened for " + target.id);
+            require(ModuleHierarchy.resolve("target-"+target.id).equals(ModuleNavigation.route(detail)),
+                    "Application navigation uses its resolved hierarchy destination: "+target.id);
             if (detail instanceof EnhancementSettingsActivity) {
                 require(target.id.equals(detail.getIntent().getStringExtra("target")), "Wrong target route: " + target.id);
                 requireText(detail, target.title);
@@ -933,8 +1009,8 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
     }
 
     private void testSettings(Activity home) throws Exception {
-        clickDescription(home, "设置");
-        requireNavigation(home, "设置");
+        clickDescription(home, "模块");
+        requireNavigation(home, "模块");
         String[] labels = {"作用域同步", "备份与还原"};
         for (String label : new String[]{"桌面图标", "作用域同步", "备份与还原", "日志及运行诊断"}) requireText(home, label);
         for (String removed : new String[]{"额外作用域", "界面外观", "运行诊断", "帮助"})
@@ -975,7 +1051,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
                 });
                 instrumentation.waitForIdleSync();
                 require(resumed == home && !home.isFinishing(), "Launcher icon switch navigated away from Settings");
-                requireNavigation(home, "设置");
+                requireNavigation(home, "模块");
             }
         } finally {
             boolean restored = onMain(() -> {
@@ -1004,7 +1080,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             screenshot((index++) + "-setting");
             clickDescription(detail, "返回上一页");
             awaitSame(home);
-            requireNavigation(home, "设置");
+            requireNavigation(home, "模块");
         }
         testCompatibilityHelp(home);
         require(context.getPackageManager().getComponentEnabledSetting(alias) == aliasBefore,
@@ -1117,7 +1193,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         onMain(() -> { scroll.scrollTo(0, dp(110)); return null; });
         awaitStableWindow(home, scroll);
         int homeY = onMain(scroll::getScrollY);
-        clickDescription(home, "设置");
+        clickDescription(home, "模块");
         onMain(() -> { scroll.scrollTo(0, dp(55)); return null; });
         awaitStableWindow(home, scroll);
         int settingsY = onMain(scroll::getScrollY);
@@ -1164,7 +1240,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         require(onMain(scroll::getScrollY) == homeY, "About navigation lost the Home scroll position");
         require(onMain(() -> Math.abs(scroll.reboundOffset()) < .5f), "About rebound leaked into Home");
         assertAboutDisposed(home);
-        clickDescription(home, "设置");
+        clickDescription(home, "模块");
         awaitStableWindow(home, scroll);
         require(onMain(scroll::getScrollY) == settingsY, "About navigation lost the Settings scroll position");
         assertAboutDisposed(home);
@@ -1230,14 +1306,14 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
                 .put("versionAlpha", aboutView(activity, "version").getAlpha())
                 .put("versionScale", aboutView(activity, "version").getScaleX())
                 .put("backgroundAlpha", aboutView(activity, "background").getAlpha())
-                .put("titleAlpha", aboutView(activity, "title").getAlpha()));
+                .put("compactVersionAlpha",activity.getWindow().getDecorView().findViewWithTag("about-compact-version-card").getAlpha()));
     }
 
     private void assertAboutDisposed(Activity activity) {
         onMain(() -> {
             View decor = activity.getWindow().getDecorView();
             require(decor.findViewWithTag("about-motion-hero") == null
-                    && decor.findViewWithTag("about-motion-title") == null,
+                    && decor.findViewWithTag("about-compact-version-card") == null,
                     "Leaving About retained an overlay above another page");
             assertAboutBackground(activity, 1f);
             return null;
@@ -1266,12 +1342,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
                     "About version scale at " + y);
             assertNear(version.getScaleY(), version.getScaleX(), .001f, "About version scale is not uniform");
             assertAboutBackground(activity, Math.max(0f, 1f - y / 389f));
-            assertNear(aboutView(activity, "title").getAlpha(), y >= 230f ? 1f : 0f, .01f,
-                    "Collapsed About title alpha at " + y);
-            int[] scrollLocation = new int[2];
-            scroll.getLocationOnScreen(scrollLocation);
-            assertNear(scaledCenter(aboutView(activity, "title"))[0],
-                    scrollLocation[0] + scroll.getWidth() / 2f, dp(2), "About title is not horizontally centered");
+            require(activity.getWindow().getDecorView().findViewWithTag("about-motion-title")==null,"About title reappeared while scrolling");
             assertFixedCenter(brand, fixedBrand, "About brand was carried by list scrolling");
             assertFixedCenter(aboutView(activity, "hero"), fixedHero, "About hero moved with the list");
             return null;
@@ -1508,10 +1579,21 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         int originY = onMain(scroll::getScrollY);
         Activity contributors = awaitDifferent(home);
         require("ContributorsActivity".equals(contributors.getClass().getSimpleName()), "Contributors did not open its own page");
-        for (String name : new String[]{"贡献者", "卒迹", "绀漓丨Sevtinge", "红魔助手开发团队", "HyperCeiler开发团队"})
-            requireText(contributors, name);
-        require(!hasText(contributors, "绀漓|Sevtnge"), "Contributor still contains the previous spelling");
-        require(!hasText(contributors, "微信") && !hasText(contributors, "支付宝"), "Contribution list contains payment actions");
+        requireText(contributors, "贡献者");
+        // Names now belong to the website and can change without an APK release.
+        // Check the rendered document via accessibility, not Android TextViews.
+        await(() -> {
+            AccessibilityNodeInfo root = instrumentation.getUiAutomation().getRootInActiveWindow();
+            if (root == null) return null;
+            try { return hasAccessibleText(root, "红魔 Duo") ? Boolean.TRUE : null; }
+            finally { root.recycle(); }
+        }, "contributor webpage rendered");
+        onMain(() -> {
+            android.webkit.WebView web = (android.webkit.WebView) field(contributors, "web");
+            require(!web.getSettings().getJavaScriptEnabled(), "Contributor webpage enabled scripts");
+            require(!web.getSettings().getAllowFileAccess(), "Contributor webpage enabled local file access");
+            return null;
+        });
         screenshot("56-about-contributors");
         returnToAbout(contributors, home, originY);
         passed("about-contributors-secondary-page-and-scroll-return", new JSONObject().put("returnedScrollY", originY));
@@ -1702,70 +1784,10 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
     }
 
     private void testCompatibilityHelp(Activity home) throws Exception {
-        SharedPreferences preferences = context.getSharedPreferences(AppConfig.PREFS, Context.MODE_PRIVATE);
-        Map<String, Object> before = copy(preferences.getAll());
-        requireNavigation(home, "设置");
-        tapSettingsDiagnostics(home);
-        AboutScrollView settings = aboutScroll(home);
-        int originY = onMain(settings::getScrollY);
-        Activity help = awaitActivity(ModuleHelpActivity.class, home);
-        for (String text : new String[]{"日志及运行诊断", "框架兼容性", "当前版本兼容性", "修改版桌面兼容性", "日志与诊断"})
-            requireText(help, text);
-        require(onMain(() -> taggedViewCount(help.getWindow().getDecorView(), "help-menu:")) == 4,
-                "Help must show exactly four menu entries");
-        require(!hasText(help, "刷新检查") && !hasText(help, "框架连接") && !hasText(help, "设备与系统"),
-                "Help menu still contains inline compatibility results");
-        screenshot("55-help-menu");
-        JSONArray checks = new JSONArray();
-        for (String section : new String[]{"framework", "version"}) {
-            click(help, () -> help.getWindow().getDecorView().findViewWithTag("help-menu:" + section), section);
-            Activity detail = awaitDifferent(help);
-            require("CompatibilityDetailsActivity".equals(detail.getClass().getSimpleName())
-                    && section.equals(detail.getIntent().getStringExtra("section")), "Help opened the wrong compatibility section");
-            awaitCompatibility(detail);
-            String[] required = "framework".equals(section)
-                    ? new String[]{"框架兼容性", "框架连接", "框架 API", "当前模块加载"}
-                    : new String[]{"当前版本兼容性", "系统兼容性", "软件适配情况", "设备与系统", "系统构建", "运行架构"};
-            for (String text : required) requireText(detail, text);
-            require(!hasText(detail, "framework".equals(section) ? "系统兼容性" : "框架连接"),
-                    "Compatibility detail includes another menu's result group");
-            int initialGeneration = onMain(() -> (Integer) field(detail, "generation"));
-            screenshot("framework".equals(section) ? "80-help-framework" : "81-help-version");
-            clickText(detail, "刷新检查");
-            awaitCompatibility(detail);
-            require(onMain(() -> (Integer) field(detail, "generation")) > initialGeneration,
-                    "Compatibility refresh did not perform another check");
-            require(before.equals(copy(preferences.getAll())), "Compatibility checking changed module configuration");
-            checks.put(new JSONObject().put("section", section).put("initialGeneration", initialGeneration));
-            clickDescription(detail, "返回上一页");
-            awaitSame(help);
-        }
-        click(help, () -> help.getWindow().getDecorView().findViewWithTag("help-menu:launcher"), "launcher compatibility");
-        Activity launcher = awaitActivity(LauncherCompatibilityActivity.class, help);
-        requireText(launcher, "修改版桌面兼容性");
-        await(() -> onMain(() -> ((Button) field(launcher, "refresh")).isEnabled()
-                && !"正在检测…".contentEquals(((TextView) field(launcher, "result")).getText()) ? Boolean.TRUE : null),
-                "complete read-only modified launcher compatibility check");
-        screenshot("82-help-launcher");
-        clickDescription(launcher, "返回上一页");
-        awaitSame(help);
-        click(help, () -> help.getWindow().getDecorView().findViewWithTag("help-menu:diagnostics"), "diagnostics");
-        Activity diagnostics = awaitActivity(FeatureActivity.class, help);
-        require("diagnostics".equals(diagnostics.getIntent().getStringExtra(FeatureActivity.EXTRA_MODULE)),
-                "Help diagnostics opened another feature editor");
-        requireText(diagnostics, "运行诊断");
-        screenshot("83-help-diagnostics");
-        clickDescription(diagnostics, "返回上一页");
-        awaitSame(help);
-        require(before.equals(copy(preferences.getAll())), "Compatibility checking changed module configuration");
-        clickDescription(help, "返回上一页");
-        awaitSame(home);
-        awaitStableWindow(home, settings);
-        requireNavigation(home, "设置");
-        require(onMain(settings::getScrollY) == originY, "Returning from diagnostics lost the Settings scroll position");
-        passed("help-framework-system-software-read-only-refresh", new JSONObject()
-                .put("mainConfigurationUnchanged", true).put("checks", checks).put("internalMenuDestinations", 4)
-                .put("entryTab", "设置").put("returnedSettingsScrollY", originY));
+        requireNavigation(home,"模块");
+        requireText(home,"模块设置");requireText(home,"导出日志");
+        require(!hasText(home,"运行诊断")&&!hasText(home,"红魔Duo 自身设置"),"retired module headings/diagnostics still visible");
+        passed("module-settings-log-export-without-diagnostics",new JSONObject().put("removed",true));
     }
 
     private static int taggedViewCount(View view, String prefix) {
@@ -1838,8 +1860,166 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
         resumed = null;
     }
 
+    private JSONObject measureInsets(Activity activity,View first) {
+        return onMain(()->{
+            View decor=activity.getWindow().getDecorView();
+            WindowInsets insets=decor.getRootWindowInsets();
+            android.graphics.Insets safe=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+            int[] at=new int[2];first.getLocationOnScreen(at);
+            JSONObject measured=new JSONObject().put("safeTopPx",safe.top).put("firstTopPx",at[1])
+                    .put("firstHeightPx",first.getHeight()).put("gapDp",(at[1]-safe.top)/activity.getResources().getDisplayMetrics().density);
+            JSONArray ancestors=new JSONArray();
+            View view=first;
+            while(view!=null){
+                view.getLocationOnScreen(at);
+                ancestors.put(new JSONObject().put("type",view.getClass().getSimpleName()).put("topPx",at[1])
+                        .put("paddingTopPx",view.getPaddingTop()).put("heightPx",view.getHeight()));
+                view=view.getParent() instanceof View?(View)view.getParent():null;
+            }
+            return measured.put("ancestors",ancestors);
+        });
+    }
+
+    private void testLiquidGlassNavigation(SettingsActivity home) throws Exception {
+        LiquidGlassLayout dock=onMain(()->(LiquidGlassLayout)home.getWindow().getDecorView().findViewWithTag("liquid-glass-navigation"));
+        View first=onMain(()->dock.getChildAt(0));
+        require(((Number)field(dock,"radius")).floatValue()/context.getResources().getDisplayMetrics().density>=32,"dock must remain a continuous capsule");
+        float slot=onMain(()->(dock.getWidth()-dock.getPaddingLeft()-dock.getPaddingRight())/3f);
+        float start=onMain(()->dock.getPaddingLeft()+slot*.5f),end=start+slot*2,y=onMain(()->dock.getHeight()*.5f);
+        long down=SystemClock.uptimeMillis();dockEvent(dock,down,MotionEvent.ACTION_DOWN,start,y);
+        for(int i=1;i<=8;i++){dockEvent(dock,down,MotionEvent.ACTION_MOVE,start+(end-start)*i/8f,y);SystemClock.sleep(16);}
+        require(Boolean.TRUE.equals(field(dock,"dragging")),"horizontal drag must be captured by dock");
+        require(((Number)field(dock,"pressure")).floatValue()>0,"drag must expand lens");
+        screenshot("74-liquid-glass-dock-drag");
+        dockEvent(dock,down,MotionEvent.ACTION_CANCEL,end,y);SystemClock.sleep(550);
+        requireNavigation(home,"主页");
+        require(Math.abs(((Number)field(dock,"selectionPosition")).floatValue())<.01f,"cancelled drag must settle back to selected page");
+        down=SystemClock.uptimeMillis();dockEvent(dock,down,MotionEvent.ACTION_DOWN,start,y);
+        for(int i=1;i<=8;i++){dockEvent(dock,down,MotionEvent.ACTION_MOVE,start+(end-start)*i/8f,y);SystemClock.sleep(16);}
+        dockEvent(dock,down,MotionEvent.ACTION_UP,end,y);SystemClock.sleep(550);
+        requireNavigation(home,"关于");
+        require(onMain(()->dock.getChildAt(0))==first,"page switches must preserve dock children and ongoing optics");
+        require(onMain(dock::opticalEffectActive),"dock GPU optics must remain active after drag navigation");
+        require(field(dock,"lensOptics")!=null,"selection must have an independent optical lens");
+        screenshot("75-liquid-glass-dock-about");
+        clickDescription(home,"模块");clickDescription(home,"主页");SystemClock.sleep(550);
+        requireNavigation(home,"主页");
+        require(Math.abs(((Number)field(dock,"selectionPosition")).floatValue())<.01f,"rapid switches must settle on the latest tab");
+        report.put("glassDock",new JSONObject().put("dragSwitch",true).put("cancelRestoresSelection",true)
+                .put("rapidSwitchSettles",true).put("persistentChildren",true).put("capsuleIndependentOfCardShape",true)
+                .put("independentOpticalLens",true));
+    }
+    private void dockEvent(LiquidGlassLayout dock,long down,int action,float x,float y) {
+        onMain(()->{MotionEvent event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,x,y,0);
+            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);try{dock.dispatchTouchEvent(event);}finally{event.recycle();}return null;});
+    }
+
+    private static void requireTopGap(JSONObject measured,int expectedDp) throws Exception {
+        require(measured.getInt("safeTopPx")>0,"missing real status-bar inset");
+        require(Math.abs(measured.getDouble("gapDp")-expectedDp)<.5,"unexpected gap below status bar: "+measured);
+    }
+
+    /** Render only a ready UI state; never write injection or permission evidence. */
+    private void captureReadyStatusStyle(SettingsActivity home) throws Exception {
+        String[] names={"runtimeActive","rootGranted","loadedModuleVersion","environmentKnown","environmentLoading"};
+        Object[] original=new Object[names.length];
+        onMain(()->{
+            for(int i=0;i<names.length;i++)original[i]=field(home,names[i]);return null;
+        });
+        java.lang.reflect.Method apply=SettingsActivity.class.getDeclaredMethod("applyEnvironment");apply.setAccessible(true);
+        try {
+            onMain(()->{
+                Object[] ready={true,true,BuildConfig.VERSION_NAME,true,false};
+                for(int i=0;i<names.length;i++){Field value=SettingsActivity.class.getDeclaredField(names[i]);value.setAccessible(true);value.set(home,ready[i]);}
+                apply.invoke(home);
+                View card=home.getWindow().getDecorView().findViewWithTag("module-runtime-card");
+                require(((Number)field(card,"surfaceTint")).intValue()==0,"healthy status must share the normal glass card surface");
+                return null;
+            });
+            instrumentation.waitForIdleSync();screenshot("70-preview-module-ready-style");
+            report.put("readyStatusSharesNormalGlass",true).put("readyStyleScreenshotIsUiPreview",true);
+        } finally {
+            onMain(()->{
+                for(int i=0;i<names.length;i++){Field value=SettingsActivity.class.getDeclaredField(names[i]);value.setAccessible(true);value.set(home,original[i]);}
+                apply.invoke(home);return null;
+            });
+        }
+    }
+
+    private void testCardShapes(SettingsActivity home) throws Exception {
+        SharedPreferences prefs=context.getSharedPreferences(AppConfig.PREFS,0);
+        Map<String,Object> before=copy(prefs.getAll());
+        boolean original=new AppConfig(context).getBoolean(AppearanceOptions.ANGULAR_CARDS);
+        try {
+            setCardShape(home,false);requireCardShape(home,false);
+            require(!onMain(()->new UiKit(home).angularCards),"rounded preference must survive a new UI instance");
+            screenshot("67-preview-module-rounded");
+            clickDescription(home,"主页");requireCardShape(home,false);
+            clickDescription(home,"关于");
+            AboutScrollView body=aboutScroll(home);
+            onMain(()->{body.scrollTo(0,body.getChildAt(0).getHeight());return null;});
+            instrumentation.waitForIdleSync();requireCardShape(home,false);requireAboutHeading(home);
+            screenshot("68-preview-about-rounded");
+            onMain(()->{body.scrollTo(0,0);return null;});instrumentation.waitForIdleSync();
+            onMain(()->{ModuleNavigation.openTarget(home,"theme","");return null;});
+            Activity theme=awaitActivity(EnhancementSettingsActivity.class,home);
+            requireCardShape(theme,false);screenshot("69-preview-theme-rounded");
+            clickDescription(theme,"返回上一页");awaitSame(home);clickDescription(home,"模块");
+            setCardShape(home,true);requireCardShape(home,true);
+            report.put("cardShapeAllPages",true).put("cardShapePreferencePersisted",true);
+            screenshot("66-preview-module-angular");
+        } finally {
+            try {
+                if(!home.isDestroyed()&&onMain(()->home.getWindow().getDecorView().findViewWithTag("settings-angular-cards-switch"))!=null)setCardShape(home,original);
+            } finally {
+                require(restore(prefs,before),"card shape test must restore the original configuration");
+                FrameworkConfigSync.request();
+            }
+        }
+    }
+    private void setCardShape(SettingsActivity home,boolean angular) {
+        onMain(()->{
+            CompoundButton toggle=(CompoundButton)home.getWindow().getDecorView().findViewWithTag("settings-angular-cards-switch");
+            require(toggle!=null,"card shape switch missing");toggle.setChecked(angular);return null;
+        });instrumentation.waitForIdleSync();
+    }
+    private void requireCardShape(Activity activity,boolean angular) {
+        onMain(()->{
+            int count=checkCardShape(activity.getWindow().getDecorView(),angular);
+            require(count>0,"page must contain a shared glass card");return null;
+        });
+    }
+    private int checkCardShape(View view,boolean angular) throws Exception {
+        int count=0;
+        if(view instanceof LiquidGlassLayout && !"liquid-glass-navigation".equals(view.getTag())){
+            float radius=((Number)field(view,"radius")).floatValue()/view.getResources().getDisplayMetrics().density;
+            require(angular?Math.abs(radius-4)<.01f:radius>=26,"glass card radius does not follow module setting");count++;
+        }
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)count+=checkCardShape(group.getChildAt(i),angular);}
+        return count;
+    }
+
+    private void requireAboutHeading(Activity activity) {
+        onMain(()->{
+            View root=activity.getWindow().getDecorView();
+            for(String tag:new String[]{"about-motion-title","about-motion-hero","about-motion-placeholder","about-motion-collapse-tail","about-compact-version-card"})
+                require(root.findViewWithTag(tag)==null,"obsolete About card or spacer remains: "+tag);
+            TextView title=(TextView)findText(root,"红魔Duo",false),slogan=(TextView)findText(root,"让红魔更顺手",false);
+            View device=root.findViewWithTag("about-device-card");
+            require(title!=null&&slogan!=null&&device!=null,"About shared heading or device card missing");
+            View heading=(View)title.getParent();ViewGroup page=(ViewGroup)device.getParent();
+            require(page.getChildAt(0)==heading&&page.getChildAt(1)==device,"device card must follow the shared heading directly");
+            float density=activity.getResources().getDisplayMetrics().density;
+            require(Math.abs(device.getTop()-heading.getBottom()-Math.round(22*density))<=1,"About heading spacing differs from Home");
+            require(Math.abs(title.getTextSize()/title.getResources().getDisplayMetrics().scaledDensity-25.8f)<.1f,"About heading typography differs from Home");
+            AboutScrollView body=(AboutScrollView)field(activity,"scroll");
+            require(body.getClipBounds()==null&&device.getTranslationY()==0,"About normal content must not have a compact-header mask or translation");
+            return null;
+        });
+    }
+
     private void requireNavigation(Activity activity, String selected) {
-        for (String name : new String[]{"主页", "设置", "关于"}) {
+        for (String name : new String[]{"主页", "模块", "关于"}) {
             View item = onMain(() -> findDescription(activity.getWindow().getDecorView(), name));
             require(item != null && onMain(() -> item.isClickable()), "Missing clickable navigation: " + name);
             require(onMain(() -> item.isSelected()) == name.equals(selected), "Wrong navigation selection: " + selected);

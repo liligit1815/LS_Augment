@@ -81,6 +81,7 @@ final class AppearanceController {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Rect capturedBounds = new Rect();
         private boolean supported;
+        private android.graphics.drawable.Drawable art;
         Background(UiKit ui) { super(activity); this.ui = ui; setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO); }
         @Override protected void onAttachedToWindow() {
             super.onAttachedToWindow();
@@ -103,40 +104,12 @@ final class AppearanceController {
                 canvas.drawBitmap(glassScene.cachedBitmap(),null,capturedBounds,paint);
                 return;
             }
-            android.graphics.drawable.Drawable base = ui.backgroundDrawable();
-            base.setBounds(0, 0, getWidth(), getHeight()); base.draw(canvas);
-            {
-                float radius = Math.max(getWidth(), getHeight()) * .65f;
-                int cloud = dark ? Color.rgb(20, 95, 161) : Color.rgb(177, 216, 252);
-                paint.setShader(new RadialGradient(getWidth() * .13f, getHeight() * .24f,
-                        radius, cloud, Color.TRANSPARENT, Shader.TileMode.CLAMP));
-                canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
-                paint.setShader(new RadialGradient(getWidth() * .92f, getHeight() * .75f,
-                        radius * .72f, dark ? Color.rgb(42, 77, 140) : Color.rgb(190, 233, 248),
-                        Color.TRANSPARENT, Shader.TileMode.CLAMP));
-                canvas.drawRect(0, 0, getWidth(), getHeight(), paint); paint.setShader(null);
-            }
-            // The cards refract these real, continuous contours as they move over the page.
-            float w=getWidth(), h=getHeight();
-            android.graphics.RectF arc=new android.graphics.RectF(w*.30f,h*.08f,w*1.66f,h*.65f);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new android.graphics.LinearGradient(arc.left,arc.top,arc.right,arc.bottom,
-                    dark?new int[]{0x502a78bc,0x1424bcde,0x80466bbe}:new int[]{0x706fbcf4,0x38f4ffff,0x887ba7e7},
-                    new float[]{0,.5f,1},Shader.TileMode.CLAMP));
-            canvas.drawOval(arc,paint);
-            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(ui.dp(2));
-            paint.setShader(new android.graphics.LinearGradient(arc.left,arc.top,arc.right,arc.bottom,
-                    new int[]{dark?0x704b9bc7:0x98ffffff,0x0affffff,dark?0x7072c6f0:0xa884bef4},null,Shader.TileMode.CLAMP));
-            canvas.drawOval(arc,paint);
-            arc.set(-w*.80f,h*.49f,w*.94f,h*1.04f);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new android.graphics.LinearGradient(0,arc.top,w,arc.bottom,
-                    dark?new int[]{0x304ea5b5,0x553b6493,0x101b386b}:new int[]{0x56b3eafa,0x58a5caf5,0x10ffffff},null,Shader.TileMode.CLAMP));
-            canvas.drawOval(arc,paint);
-            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(ui.dp(2));
-            paint.setShader(new android.graphics.LinearGradient(0,arc.top,w,arc.bottom,
-                    new int[]{0x08ffffff,dark?0x8057a9cc:0xbbf4ffff,0x04ffffff},null,Shader.TileMode.CLAMP));
-            canvas.drawOval(arc,paint);paint.setStyle(Paint.Style.FILL);paint.setShader(null);
+            if(art==null)art=activity.getDrawable(R.drawable.duo_ice_background);
+            if(art!=null){
+                art.setBounds(0,0,getWidth(),getHeight());
+                if(dark)art.setColorFilter(new android.graphics.PorterDuffColorFilter(0xff193b61,android.graphics.PorterDuff.Mode.MULTIPLY));
+                art.draw(canvas);
+            }else canvas.drawColor(ui.background);
             if (!blur) return;
             paint.setColor(dark ? Color.argb(AppearanceOptions.maskAlpha(mask), 12, 24, 41)
                     : Color.argb(AppearanceOptions.maskAlpha(mask), 248, 252, 255));

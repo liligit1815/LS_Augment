@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.WeakHashMap;
 import ls.augment.com.SystemUiOptions;
+import ls.augment.com.ConfigSchema;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
 /** Rebuild native icons from the unchanged OEM hide list when its override changes. */
@@ -29,12 +30,20 @@ final class SystemIconVisibilityHook {
                 }, null);
         count += hook(owner, loader, "com.android.systemui.statusbar.phone.ui.StatusBarIconController",
                 "getIconHideList", 2, (o,a,r) -> a[0] instanceof Context
-                        && enabled((Context)a[0]) ? new ArraySet<String>() : PASS, null);
+                        && enabled((Context)a[0]) ? new ArraySet<String>() : PASS, (o,a,r)->{
+                    if(a[0] instanceof Context&&bluetooth((Context)a[0])&&r instanceof java.util.Set){
+                        ArraySet<String> visible=new ArraySet<>();
+                        for(Object slot:(java.util.Set<?>)r)if(slot instanceof String&&!"bluetooth".equals(slot))visible.add((String)slot);
+                        return visible;
+                    }
+                    return PASS;
+                });
         // The OEM also blocks some classic icons per container, outside its
         // user hide list. Set the actual constructor input, not only the query.
         count += hook(owner, loader, "com.android.systemui.statusbar.phone.ui.IconManager", "addIcon", 4,
                 (o,a,r) -> {
-                    if (a[2] instanceof Boolean && enabled(context(o))) a[2] = false;
+                    if (a[2] instanceof Boolean && (enabled(context(o))
+                            ||("bluetooth".equals(a[1])&&bluetooth(context(o))))) a[2] = false;
                     return PASS;
                 }, null);
         return count;
@@ -42,7 +51,7 @@ final class SystemIconVisibilityHook {
 
     private static void remember(Object owner, String nativeValue) {
         Context context = context(owner);
-        CONTROLLERS.put(owner, new State(nativeValue, enabled(context)));
+        CONTROLLERS.put(owner, new State(nativeValue, enabled(context),bluetooth(context)));
         if (!observing && context != null) {
             observing = FeatureSettings.addSnapshotListener(context, () -> MAIN.post(SystemIconVisibilityHook::refresh));
         }
@@ -53,7 +62,7 @@ final class SystemIconVisibilityHook {
         // callback that ran before the module's asynchronous snapshot arrived.
         for (Object owner : new ArrayList<>(CONTROLLERS.keySet())) {
             State state = CONTROLLERS.get(owner);
-            if (state == null || state.enabled == enabled(context(owner))) continue;
+            if (state == null || (state.enabled == enabled(context(owner))&&state.bluetooth==bluetooth(context(owner)))) continue;
             try { call(owner, "onTuningChanged", NATIVE_KEY, state.nativeValue); }
             catch (ReflectiveOperationException error) { module.logFeatureError("RM_ICON_VISIBILITY_REFRESH", error); }
         }
@@ -63,9 +72,14 @@ final class SystemIconVisibilityHook {
         return !RedMagicLegacyUiHook.positionSizeOnly(context) && FeatureSettings.enabled(context, KEY);
     }
 
+    private static boolean bluetooth(Context context){
+        return !RedMagicLegacyUiHook.positionSizeOnly(context)
+                &&FeatureSettings.integer(context,ConfigSchema.STATUSBAR_BLUETOOTH_STYLE,0,0,2)>0;
+    }
+
     private static final class State {
         final String nativeValue;
-        final boolean enabled;
-        State(String value, boolean enabled) { nativeValue = value; this.enabled = enabled; }
+        final boolean enabled,bluetooth;
+        State(String value, boolean enabled,boolean bluetooth) { nativeValue = value; this.enabled = enabled;this.bluetooth=bluetooth; }
     }
 }

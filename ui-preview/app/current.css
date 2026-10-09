@@ -1,7 +1,19 @@
 @font-face {
   font-family: CurrentDevice;
-  src: url('/current/device.woff2') format('woff2');
+  src: url('/current/native-regular.woff2') format('woff2');
   font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: CurrentDevice;
+  src: url('/current/native-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: block;
+}
+@font-face {
+  font-family: NativeLatin;
+  src: url('/current/native-latin.woff2') format('woff2');
+  font-weight: 100 900;
   font-display: block;
 }
 .c-stage {
@@ -31,7 +43,8 @@
   background: #f8fcff;
   color: #14233a;
   font:
-    13px/1.22 CurrentDevice,
+    13px/1.22 NativeLatin,
+    CurrentDevice,
     Device,
     sans-serif;
   --c-blue: #1f74c5;
@@ -738,16 +751,6 @@
   color: var(--c-muted) !important;
   margin-top: 8px;
 }
-.c-about-title {
-  position: absolute;
-  top: 39px;
-  left: 20px;
-  right: 20px;
-  text-align: center;
-  font-size: 15.5px;
-  font-weight: 700;
-  pointer-events: none;
-}
 .c-device {
   padding: 10px 12px 8px;
 }
@@ -1183,13 +1186,6 @@
   padding-bottom: 15px;
 }
 
-.c-about-title {
-  top: 32px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-}
 
 .c-scrim-dismiss {
   position: absolute;
@@ -1432,3 +1428,431 @@
 .c-main-scroll:has(.c-launcher-setting) .c-intro {
   margin-bottom: 26px !important;
 }
+
+/* test20378: measured native editor, 1216 x 2688 at density 3.25. */
+.c-feature-group .c-toggle-row {
+  min-height: 44px;
+}
+.c-feature-group .c-fold-arrow,
+.c-feature-group .c-switch-slot {
+  height: 44px;
+}
+.c-native-fold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+}
+.c-native-fold-head > svg {
+  flex: none;
+  margin: 0 10px;
+}
+.c-native-fold > div[hidden] {
+  display: none;
+}
+.c-feature-group .c-native-fold > div {
+  padding-left: 8px;
+  padding-bottom: 8px;
+}
+.c-feature-group .c-inline-editor .c-link {
+  min-height: 60px;
+}
+.c-feature-group .c-inline-editor .c-link-copy > small {
+  display: none;
+}
+.c-status-scroll {
+  top: 90px;
+  bottom: 20px;
+  padding: 0;
+  overflow: hidden;
+}
+.c-native-status {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.c-status-master {
+  height: 44px;
+  padding: 0 14px;
+  flex: none;
+}
+.c-status-master .c-toggle-row {
+  height: 44px;
+  min-height: 44px;
+}
+.c-status-master .c-switch-slot {
+  display: none;
+}
+.c-native-status-top {
+  position: relative;
+  padding: 8px 14px 0;
+  flex: none;
+}
+.c-native-status .c-preview-hint {
+  height: 16px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #62788b;
+}
+.c-native-status .c-live-status {
+  display: block;
+  width: 100%;
+  height: 62px;
+}
+.c-preview-targets {
+  position: absolute;
+  top: 24px;
+  left: 14px;
+  right: 14px;
+  height: 62px;
+}
+.c-preview-targets button {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+.c-preview-targets button:hover {
+  background: #3a8bdd12;
+}
+.c-native-status .c-preview-feedback {
+  font-size: 11px;
+  height: 22px;
+  line-height: 22px;
+  color: #64788a;
+}
+.c-native-actions {
+  display: flex;
+  gap: 8px;
+  height: 44px;
+}
+.c-native-actions > button {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 9px;
+  background: #e5f1fb;
+  color: #1974c4;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 5px;
+}
+.c-native-actions > button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.c-native-tabs {
+  display: flex;
+  gap: 8px;
+  height: 44px;
+  margin-top: 8px;
+}
+.c-native-tabs > button {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 0;
+}
+.c-native-tabs > button[aria-selected='true'] {
+  background: #e5f1fb;
+  color: #1974c4;
+  font-weight: 700;
+}
+.c-native-config {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 12px 14px 24px;
+  overscroll-behavior: contain;
+}
+.c-native-config > [hidden] {
+  display: none;
+}
+.c-native-config .c-toggle-row {
+  min-height: 44px;
+  margin: 0;
+}
+.c-native-config .c-feature-title {
+  min-height: 44px;
+}
+.c-native-config .c-fold-arrow,
+.c-native-config .c-switch-slot {
+  width: 28px;
+  height: 44px;
+  margin-right: -5px;
+}
+.c-native-config .c-switch {
+  margin-right: 0;
+}
+.c-native-config .c-fold-body {
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.c-native-config .c-status-component {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border-radius: 22px;
+}
+.c-native-config .c-component-summary {
+  font-size: 11px;
+  line-height: 16px;
+  color: #62788b;
+  margin: 0 0 6px;
+}
+.c-native-note {
+  font-size: 11px;
+  color: #62788b;
+  line-height: 17px;
+  margin: 4px 0 !important;
+}
+.c-native-config .c-status-related > div {
+  margin: 4px 0;
+}
+.c-native-select select {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 9px;
+  background: #fff4;
+  padding: 0 10px;
+  color: #14233a;
+}
+.c-native-config .c-range {
+  padding: 0;
+  margin: 0;
+}
+.c-native-config .c-range small {
+  display: block;
+  font-size: 11px;
+  height: 17px;
+  line-height: 17px;
+  color: #62788b;
+}
+.c-native-config .c-range input[type='range'] {
+  display: block;
+  width: 100%;
+  height: 18px;
+  margin: 0 0 6px;
+}
+.c-native-config .c-native-fold {
+  margin: 8px 0;
+}
+.c-native-config .c-native-fold-head {
+  font-size: 12px;
+}
+.c-native-config .c-native-fold .c-field {
+  padding: 0;
+  margin: 0;
+}
+.c-native-config .c-field input {
+  height: 48px;
+}
+.c-order-summary {
+  margin: 6px 0 3px !important;
+}
+.c-native-config .c-reset-status {
+  height: 44px;
+  min-height: 44px;
+  margin-top: 18px;
+  width: 100%;
+  font-size: 12px;
+}
+.c-order-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border-bottom: 1px solid #91b8d04d;
+  cursor: grab;
+}
+.c-order-dialog-row > span {
+  flex: 1;
+}
+.c-order-dialog-row > button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: #e5f1fb;
+  border-radius: 8px;
+}
+.c-preset-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 6px;
+  border: 0;
+  border-bottom: 1px solid #91b8d04d;
+  background: none;
+}
+.c-preset-choice small {
+  line-height: 1.5;
+  color: #64788a;
+}
+.c-preset-banner {
+  padding: 8px 0;
+}
+.c-preset-banner p {
+  font-size: 11px;
+  color: #1974c4;
+  margin-bottom: 6px;
+}
+.c-application-section > .c-section-heading {
+  margin: 16px 3px 16px !important;
+  line-height: 16px;
+  letter-spacing: 0;
+}
+.c-application-section:first-child > .c-section-heading {
+  margin-top: 0 !important;
+}
+.c-feature-group {
+  padding: 0 12px;
+}
+.c-native-tabs > button {
+  border-radius: 13px;
+  background: #e5f1fb;
+  color: #1974c4;
+}
+.c-native-tabs > button[aria-selected='true'] {
+  background: #2175c6;
+  color: white;
+}
+.c-native-actions > button {
+  border-radius: 13px;
+}
+.c-native-status .c-status-master .c-switch {
+  margin-right: 30px;
+}
+.c-native-config .c-status-related > div {
+  margin: 0;
+  border-top: 1px solid #ffffff60;
+}
+.c-native-config .c-native-note {
+  font-size: 12px;
+}
+.c-native-config .c-component-summary,
+.c-native-config .c-order-summary {
+  font-size: 11px;
+}
+.c-native-config .c-reset-status {
+  border: 1px solid #bdd7ec;
+  box-shadow: none;
+  background: #e2f1fb80;
+}
+.c-gesture-side {
+  margin-top: 16px;
+}
+.c-gesture-side h3 {
+  font-size: 13px;
+}
+.c-gesture-preview {
+  position: relative;
+  height: 172px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #d9ecf966;
+}
+.c-gesture-preview.left {
+  justify-content: flex-start;
+  padding-left: 20px;
+}
+.c-gesture-preview.right {
+  justify-content: flex-end;
+  padding-right: 20px;
+}
+.c-gesture-preview img {
+  width: 40px;
+  height: 64px;
+  object-fit: contain;
+  z-index: 1;
+}
+.c-gesture-preview .c-gesture-mask {
+  position: absolute;
+  width: 80px;
+  height: 130px;
+  z-index: 0;
+}
+.c-gesture-actions {
+  display: flex;
+  gap: 8px;
+}
+.c-gesture-actions .c-button {
+  flex: 1;
+  font-size: 11px;
+}
+.c-back-gesture .c-native-note {
+  line-height: 18px;
+}
+.c-fold-body[hidden] {
+  display: none !important;
+}
+.c-latest-system-bar {
+  padding: 0;
+  display: block;
+  height: 32px;
+}
+.c-system-chrome {
+  width: 100%;
+  height: 32px;
+  display: block;
+}
+.c-native-status .c-live-status {
+  cursor: pointer;
+}
+.c-native-select select {
+  background-color: transparent;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 5z' fill='%232175c6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 18px center;
+}
+.c-native-config .c-range input[type='range'] {
+  width: calc(100% - 32px);
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.c-native-config .c-native-actions > button {
+  background: #e2f1fb40;
+  border: 1px solid #c4dcee;
+  font-weight: 400;
+}
+.c-native-config .c-status-component .c-switch {
+  margin-right: 6px;
+}
+.c-native-config .c-status-component .c-fold-arrow {
+  margin-right: 1px;
+}
+.c-restore-sample {
+  font: inherit;
+  color: #2175c6;
+  border: 0;
+  background: transparent;
+  margin-left: 12px;
+  cursor: pointer;
+}
+.c-native-config .c-battery-component {margin-bottom:16px;}
+.c-native-config .c-battery-component > div > .c-toggle-row {margin:4px 0;}
+.c-native-config .c-status-component + .c-status-component {margin-top:16px;}
+.c-native-config #status-pane-4 {margin-top:-8px;}
+.c-native-config #status-pane-4 .c-status-component {margin-top:8px;}
+.c-native-config .c-order-summary {font-size:10.5px;}
+.c-application-section > .c-section-heading {margin-top:18px!important;}

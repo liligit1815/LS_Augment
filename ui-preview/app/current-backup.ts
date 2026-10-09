@@ -4,9 +4,24 @@ const runtime = (key: string) =>
 const safe = (key: string) =>
   !['__proto__', 'prototype', 'constructor'].includes(key);
 
+export function normalizeFanSettings(values: Settings): Settings {
+  const result = { ...values };
+  delete result.ls_augment_fan_target_rpm;
+  delete result.ls_augment_fan_unlock_max;
+  if ('ls_augment_fan_fixed_level' in result) {
+    const level = Number(result.ls_augment_fan_fixed_level);
+    if (!Number.isInteger(level) || level < 1 || level > 5) {
+      result.ls_augment_fan_fixed_level = '1';
+    }
+  }
+  return result;
+}
+
 export function backupSettings(values: Settings) {
-  return Object.fromEntries(
-    Object.entries(values).filter(([key]) => safe(key) && !runtime(key)),
+  return normalizeFanSettings(
+    Object.fromEntries(
+      Object.entries(values).filter(([key]) => safe(key) && !runtime(key)),
+    ),
   );
 }
 

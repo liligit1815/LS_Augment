@@ -1,9 +1,14 @@
 """Exercise GOLDEN SAGA render hooks alongside the existing qualification hook."""
 from pathlib import Path
-import subprocess,tempfile
+import argparse,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[1]
 base=(ROOT/'tools/test-collab-runtime.py').read_text(encoding='utf8')
 ns={'__file__':str(ROOT/'tools/test-collab-runtime.py')};exec(base[:base.index('with tempfile.TemporaryDirectory')],ns);files=ns['files'];SRC=ns['SRC']
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--gold-source',type=Path,help='Run the same regression against a saved GoldFingerprintHook.java')
+options=parser.parse_args()
+if options.gold_source:
+ files['ls/augment/com/hook/GoldFingerprintHook.java']=options.gold_source.read_text(encoding='utf8')
 files['android/content/Context.java']='''package android.content;public class Context {
  public final android.content.res.Resources resources=new android.content.res.Resources();
  public ClassLoader getClassLoader(){return getClass().getClassLoader();}public String getPackageName(){return "com.fingerprint.sensorservice";}
@@ -13,9 +18,10 @@ files['android/content/res/Resources.java']='''package android.content.res;publi
  public String getString(int id){return "native";}public CharSequence getText(int id){return "native";}public int id=99;public int getIdentifier(String n,String t,String p){return id;}}
 '''
 s=files['ls/augment/com/hook/AugmentModule.java']
+s=s.replace('public boolean deoptimize(java.lang.reflect.Executable method){return true;}', 'public final Map<java.lang.reflect.Executable,Integer> deopts=new HashMap<>();public boolean deoptimize(java.lang.reflect.Executable method){deopts.merge(method,1,Integer::sum);return true;}')
 s=s.replace('hooks.put(method,h);','''Hooker previous=hooks.get(method);hooks.put(method,previous==null?h:chain->h.intercept(new Call(chain.getThisObject(),chain.getArgs().toArray(),()->previous.intercept(new Call(chain.getThisObject(),currentArgs.get(),()->chain.proceed(currentArgs.get()))))));''')
 s=s.replace(' public static Object dispatch(Class<?> type', ''' public static Object owned(Object owner,String name,Class<?>[] types,Object[] args,Original original){
- try{Method m=owner.getClass().getDeclaredMethod(name,types);Hooker h=active.hooks.get(m);return h==null?original.run():h.intercept(new Call(owner,args,original));}catch(Throwable e){throw new RuntimeException(e);}}
+ try{Method m=owner.getClass().getDeclaredMethod(name,types);Hooker h=active.hooks.get(m);return h==null?new Call(owner,args,original).proceed():h.intercept(new Call(owner,args,original));}catch(Throwable e){throw new RuntimeException(e);}}
  public static Object dispatch(Class<?> type''');files['ls/augment/com/hook/AugmentModule.java']=s
 s=files['ls/augment/com/hook/FeatureSettings.java'].replace('static final Map<String,Integer> writes', 'static final java.util.List<Runnable> listeners=new java.util.ArrayList<>();\n static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}static void removeSnapshotListener(Runnable r){listeners.remove(r);}\n static final Map<String,Integer> writes')
 s=s.replace('static Context from(Object o){return current;}', 'static Context from(Object owner){if(owner instanceof Context)return (Context)owner;Object found=OemHooks.field(owner,"context");return found instanceof Context?(Context)found:current;}')
@@ -33,6 +39,24 @@ public class FlameCipher {public String fingerprintStyleFlag="20",fingerprintAni
 public FlameCipher create(android.content.Context c){return this;}}
 '''
 files['com/zte/fingerprint/theme/StyleFlag.java']='package com.zte.fingerprint.theme;public class StyleFlag{public static String getAnimStyleName(String flag,android.content.Context c){return "native";}}'
+files['com/zte/fingerprint/main/SensoruiSettingsActivity.java']='''package com.zte.fingerprint.main;
+import java.util.*;import android.content.Context;import android.os.Bundle;import ls.augment.com.hook.AugmentModule;
+import com.zte.fingerprint.theme.normal.FlameCipher;
+public class SensoruiSettingsActivity {
+ public Context context=new Context();public ArrayList<FlameCipher> mStyleList=new ArrayList<>();
+ public String databaseStyle="20376",lastLookup,previewFlag;public int calls,selectedIndex=-1,previewInitializations;public boolean fail;
+ private int getCurrentIndexByDatabaseStyle(String flag){return (Integer)AugmentModule.owned(this,"getCurrentIndexByDatabaseStyle",new Class[]{String.class},new Object[]{flag},()->{
+  calls++;String current=(String)AugmentModule.currentArgs.get()[0];lastLookup=current;
+  if(fail)throw new IllegalStateException("native index failure");
+  for(int i=0;i<mStyleList.size();i++)if(current!=null&&current.equals(mStyleList.get(i).fingerprintStyleFlag))return i;
+  return -1;
+ });}
+ public int getCurrentStyle(String source,String flag){return getCurrentIndexByDatabaseStyle(flag);}
+ protected void onCreate(Bundle saved){selectedIndex=getCurrentStyle("onCreate",databaseStyle);
+  if(selectedIndex>=0){previewFlag=mStyleList.get(selectedIndex).fingerprintStyleFlag;previewInitializations++;}}
+ public void open(){onCreate(new Bundle());}
+}
+'''
 files['com/fingerprint/sensorservice/config/OperatorConfig.java']='package com.fingerprint.sensorservice.config;import ls.augment.com.hook.AugmentModule;public class OperatorConfig{public static boolean isCustomizeForTTYE(){return (Boolean)AugmentModule.dispatch(OperatorConfig.class,"isCustomizeForTTYE",new Class[]{},new Object[]{},()->false);}}'
 files['com/fingerprint/sensorservice/view/FloatWindowSensorView.java']='package com.fingerprint.sensorservice.view;import ls.augment.com.hook.AugmentModule;public class FloatWindowSensorView{public String seen;public boolean golden;public void setSensorViewIconForRedMagic(boolean a,int b,String flag){AugmentModule.owned(this,"setSensorViewIconForRedMagic",new Class[]{boolean.class,int.class,String.class},new Object[]{a,b,flag},()->{seen=(String)AugmentModule.currentArgs.get()[2];golden=com.fingerprint.sensorservice.config.OperatorConfig.isCustomizeForTTYE();return null;});}}'
 files['ls/augment/com/hook/CollabRenderHook.java']=(SRC/'hook/CollabRenderHook.java').read_text(encoding='utf8')
@@ -40,6 +64,7 @@ files['ls/augment/com/hook/TestCollabRender.java']='''package ls.augment.com.hoo
 import ls.augment.com.CollabOptions;import com.fingerprint.sensorservice.view.*;import com.zte.fingerprint.theme.normal.FlameCipher;import java.util.*;
 public class TestCollabRender{
 static int checks,qualificationCalls;static void check(boolean b,String s){checks++;if(!b)throw new AssertionError(s);}
+static FlameCipher item(String flag){FlameCipher i=new FlameCipher();i.fingerprintStyleFlag=flag;return i;}
 public static void main(String[] args)throws Throwable{
 AugmentModule m=new AugmentModule();AugmentModule.active=m;ClassLoader loader=TestCollabRender.class.getClassLoader();
 CollabUnlockHook.install(m,loader,"com.fingerprint.sensorservice");
@@ -70,7 +95,49 @@ context.resources.id=0;List<Object> missing=new ArrayList<>(List.of(nativeItem))
 for(String name:new String[]{"getText","getString"}){var method=android.content.res.Resources.class.getDeclaredMethod(name,int.class);check(GoldFingerprintHook.NAME.equals(m.hooks.get(method).intercept(new AugmentModule.Call(context.resources,new Object[]{GoldFingerprintHook.NAME_ID},()->"native"))),"carousel resource title resolves");check("native".equals(m.hooks.get(method).intercept(new AugmentModule.Call(context.resources,new Object[]{20},()->"native"))),"native title resources unchanged");}
 var label=com.zte.fingerprint.theme.StyleFlag.class.getDeclaredMethod("getAnimStyleName",String.class,android.content.Context.class);
 check(GoldFingerprintHook.NAME.equals(m.hooks.get(label).intercept(new AugmentModule.Call(null,new Object[]{GoldFingerprintHook.FLAG,context},()->"native"))),"personalization summary resolves custom name");
-System.out.println("PASS independent gold render/list/names: "+checks+" checks");}}
+System.out.println("PASS existing independent gold render/list/names: "+checks+" checks");
+var page=new com.zte.fingerprint.main.SensoruiSettingsActivity();
+page.mStyleList=new ArrayList<>(List.of(item("0"),item("16"),nativeItem));
+FeatureSettings.set(CollabOptions.FP_GOLD,false);int originalCalls=page.calls;page.open();
+check(page.selectedIndex==2&&"20".equals(page.previewFlag)&&page.previewInitializations==1,"GOLD_OFF_MISSING_SELECTION: persisted 20376 initializes the existing stock20 preview");
+check(page.calls==originalCalls+1&&GoldFingerprintHook.FLAG.equals(page.lastLookup)&&GoldFingerprintHook.FLAG.equals(page.databaseStyle),"native lookup runs once with original flag; stored selection unchanged");
+check(page.mStyleList.size()==3&&page.mStyleList.get(2)==nativeItem&&nativeItem.fingerprintStyleFlag.equals("20"),"fallback leaves the original list and native item unchanged");
+var lookup=page.getClass().getDeclaredMethod("getCurrentIndexByDatabaseStyle",String.class);
+var caller=page.getClass().getDeclaredMethod("getCurrentStyle",String.class,String.class);
+var create=page.getClass().getDeclaredMethod("onCreate",android.os.Bundle.class);
+check(m.deopts.getOrDefault(caller,0)==1&&m.deopts.getOrDefault(create,0)==1,"both exact settings callers deoptimized once");
+int hooks=m.hooks.size(),listeners=FeatureSettings.listeners.size();
+CollabRenderHook.install(m,loader,"com.zte.fingerprints");CollabRenderHook.install(m,loader,"com.zte.fingerprints");
+check(m.hooks.size()==hooks&&m.deopts.get(caller)==1&&m.deopts.get(create)==1&&FeatureSettings.listeners.size()==listeners,"repeat installation has no duplicate hook, deopt or listener");
+page.mStyleList=new ArrayList<>(List.of(nativeItem,item("16")));page.open();
+check(page.selectedIndex==0&&"20".equals(page.previewFlag),"reordered list resolves the current stock20 index without a cache");
+FeatureSettings.set(CollabOptions.FP_GOLD,true);page.mStyleList=new ArrayList<>(List.of(nativeItem,gold));page.open();
+check(page.selectedIndex==1&&GoldFingerprintHook.FLAG.equals(page.previewFlag),"Gold ON uses the native match for its independent item");
+FeatureSettings.set(CollabOptions.FP_GOLD,false);page.mStyleList=new ArrayList<>(List.of(item("0"),nativeItem));page.open();
+check(page.selectedIndex==1&&"20".equals(page.previewFlag)&&GoldFingerprintHook.FLAG.equals(page.databaseStyle),"OFF after ON falls back again while preserving the stored custom flag");
+page.mStyleList.add(0,gold);page.open();
+check(page.selectedIndex==0&&GoldFingerprintHook.FLAG.equals(page.previewFlag),"an existing native match is never replaced even when Gold is OFF");
+page.mStyleList=new ArrayList<>(List.of(nativeItem,item("16")));
+check(page.getCurrentStyle("test","20")==0&&page.getCurrentStyle("test","16")==1,"native flags retain their original indices");
+check(page.getCurrentStyle("test","999")==-1&&page.getCurrentStyle("test",null)==-1,"unrelated missing and null flags keep the native missing result");
+FeatureSettings.set(CollabOptions.FP_GOLD,true);
+check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==-1,"Gold ON with its candidate absent does not silently select stock20");
+FeatureSettings.set(CollabOptions.FP_GOLD,false);page.mStyleList=new ArrayList<>(List.of(item("16")));
+check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==-1,"missing stock20 preserves negative native index");
+page.mStyleList.clear();check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==-1,"empty list preserves negative native index");
+page.mStyleList.add(nativeItem);FeatureSettings.verified=false;
+check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==-1,"unverified startup configuration cannot trigger the OFF fallback");FeatureSettings.verified=true;
+android.content.Context prior=FeatureSettings.current;FeatureSettings.current=null;page.context=null;
+check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==-1,"missing context preserves the original result");page.context=context;FeatureSettings.current=prior;
+check(Integer.valueOf(-1).equals(m.hooks.get(lookup).intercept(new AugmentModule.Call(new Object(),new Object[]{GoldFingerprintHook.FLAG},()->-1))),"missing list reflection preserves original result");
+check(Integer.valueOf(-2).equals(m.hooks.get(lookup).intercept(new AugmentModule.Call(page,new Object[]{GoldFingerprintHook.FLAG},()->-2))),"only the verified native minus-one sentinel is adapted");
+page.fail=true;originalCalls=page.calls;boolean nativeFailure=false;
+try{page.getCurrentStyle("test",GoldFingerprintHook.FLAG);}catch(RuntimeException expected){Throwable cause=expected;while(cause.getCause()!=null)cause=cause.getCause();nativeFailure=cause instanceof IllegalStateException&&"native index failure".equals(cause.getMessage());}
+check(nativeFailure&&page.calls==originalCalls+1,"original index exception propagates without retry");page.fail=false;
+final int[] existingCalls={0};m.prepareFeatureHook(lookup,"test.coexisting.index",false).intercept(c->{existingCalls[0]++;return c.proceed();});originalCalls=page.calls;
+check(page.getCurrentStyle("test",GoldFingerprintHook.FLAG)==0&&page.calls==originalCalls+1&&existingCalls[0]==1,"coexisting hook and original each execute once without recursion");
+check(FeatureSettings.listeners.size()==listeners&&GoldFingerprintHook.FLAG.equals(page.databaseStyle),"all settings fallback transitions keep listeners and persisted selection unchanged");
+System.out.println("PASS independent gold settings preview and render: "+checks+" checks");}}
 '''
 with tempfile.TemporaryDirectory(prefix='duo-gold-render-') as tmp:
  paths=[]

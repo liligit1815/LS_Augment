@@ -6,7 +6,7 @@ export function CurrentBackground({ opacity = 1 }: { opacity?: number }) {
       aria-hidden="true"
       alt=""
       className="c-backdrop"
-      src="/current/native-background.png"
+      src="/current/duo-ice-background.png"
       style={{ opacity }}
     />
   );

@@ -6,6 +6,7 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <package android:name="io.github.lsf.augment" />
@@ -34,13 +35,13 @@
 
         <activity android:name=".OnboardingActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ModuleScopeActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
-        <activity android:name=".ModuleHelpActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
-        <activity android:name=".CompatibilityDetailsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ContributorsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".SupportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
 
         <activity android:name=".HideMenuActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
-        <activity android:name=".ConfigTransferActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ExtraDimSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".LogExportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ConfigTransferActivity" android:theme="@style/Theme.LSAugment.ConfigAction" android:exported="false" />
         <activity android:name=".EnhancementSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".LauncherCompatibilityActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
@@ -75,6 +76,8 @@
 
         <activity android:name=".StatusBarSettingsActivity" android:exported="false"
             android:theme="@style/Theme.LSAugment.Settings" />
+        <activity android:name=".StatusBarAssetsActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
         <activity android:name=".HealthSettingsActivity" android:exported="false"
             android:theme="@style/Theme.LSAugment.Settings" />
         <activity android:name=".LauncherCustomizationActivity" android:exported="false"
@@ -93,6 +96,19 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.LSAugment.Transparent" />
+
+        <activity android:name=".ExtraDimActivity" android:exported="true"
+            android:excludeFromRecents="true" android:theme="@style/Theme.LSAugment.Floating">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <service android:name=".ExtraDimTileService" android:exported="true"
+            android:icon="@drawable/ic_extra_dim" android:label="极暗"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
 
         <service
             android:name=".AugmentTileService"

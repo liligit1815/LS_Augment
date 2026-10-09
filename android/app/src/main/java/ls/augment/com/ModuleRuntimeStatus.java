@@ -4,6 +4,13 @@ package ls.augment.com;
 public final class ModuleRuntimeStatus {
     private ModuleRuntimeStatus() { }
 
+    public static boolean matchesReceipt(String witness,String version,int receivedBoot,int currentBoot) {
+        if(receivedBoot<0||currentBoot!=receivedBoot||witness==null)return false;
+        String pid="";
+        for(String field:witness.split("[|;]"))if(field.startsWith("pid="))pid=field.substring(4);
+        return matches(witness,version,pid);
+    }
+
     public static boolean matches(String witness, String version, String currentPid) {
         if (witness == null || witness.isEmpty() || version == null || currentPid == null
                 || !currentPid.trim().matches("[1-9][0-9]*")) return false;
@@ -24,6 +31,14 @@ public final class ModuleRuntimeStatus {
         return bootId != null && bootId.matches("[a-f0-9-]{36}")
                 && matches(witness, version, currentPid)
                 && java.util.Arrays.asList(witness.split("[|;]")).contains("boot=" + bootId);
+    }
+
+    public static boolean matchesTelemetry(String loadedVersion,String expectedVersion,int reportedPid,
+            String liveSystemPid,int sourceUid,boolean moduleLoaded,int receivedBoot,int currentBoot) {
+        return sourceUid==1000&&moduleLoaded&&receivedBoot>=0&&receivedBoot==currentBoot
+                &&loadedVersion!=null&&!loadedVersion.isEmpty()&&loadedVersion.length()<=100
+                &&loadedVersion.equals(expectedVersion)&&reportedPid>0
+                &&String.valueOf(reportedPid).equals(liveSystemPid);
     }
 
     public static String bootId() {

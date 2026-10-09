@@ -14,6 +14,7 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.WeakHashMap;
 import ls.augment.com.SystemUiOptions;
+import ls.augment.com.AudioGainState;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
 /** Adds text to the upright native slider frame without changing its children or touch handling. */
@@ -66,6 +67,45 @@ final class ControlCenterSliderPercentHook {
         ViewTreeObserver observer;
         PercentLabel label;
         boolean attached, added;
+        AudioGainStateClient.Watch gainWatch;
+        String attemptedRange="",issuedNative="",presentationNative="";
+        long issuedRequest,consumedRequest,presentedRequest;
+        boolean gainSession,releasing;
+        String nativeIdentity(){View v=source.get();return liveStream()+":"+field(v,"mMax")+":"+field(v,"mCurrentStreamLevel")+":"+field(v,"mTracking");}
+        String nativeFence(){SeekBar s=slider.get();return nativeIdentity()+":"+(s==null?-1:s.getProgress());}
+        void captureRequest(long request){issuedRequest=request;issuedNative=nativeFence();}
+        void readDiagnostic(String stage,String value){View view=source.get();if(volume&&view!=null)try{FeatureSettings.diagnostic(view.getContext(),"ls_augment_audio_gain_read_cc_"+stage,value);}catch(RuntimeException ignored){}}
+        int liveStream(){Object value=field(source.get(),"mCurStream");return value instanceof Integer?(Integer)value:-1;}
+        void gainArrived(){
+            View view=source.get();SeekBar seek=slider.get();AudioGainState state=gainWatch==null?null:gainWatch.state();
+            if(state==null)readDiagnostic("packet","state_unavailable");
+            if(attached&&view!=null&&seek!=null&&state!=null&&state.request==issuedRequest&&state.request>consumedRequest){
+                readDiagnostic("packet","issued="+(state.request==issuedRequest)+";fence="+issuedNative.equals(nativeFence())+";native="+nativeIdentity()+";total="+state.total);
+                consumedRequest=state.request;presentedRequest=0;
+                // A new OEM event/gesture after request start owns the control. Never replay an older packet over it.
+                if(state.stream==liveStream()&&issuedNative.equals(nativeFence())){
+                    Object maximum=field(view,"mMax"),minimum=field(view,"mMin"),mode=field(view,"mAudioMode"),scale=field(view,"MAX_VALUE");
+                    if(!Boolean.TRUE.equals(field(view,"mTracking"))&&maximum instanceof Integer&&minimum instanceof Integer&&(Integer)minimum==0&&mode instanceof Integer
+                            &&scale instanceof Integer&&(Integer)scale==seek.getMax()&&seek.getMin()==0){
+                        try{
+                            String key=state.configuration+":"+state.device+":"+state.total;
+                            if((Integer)maximum!=state.total&&!attemptedRange.equals(key)){attemptedRange=key;set(view,"mMax",state.total);maximum=field(view,"mMax");}
+                            if((state.extended()||releasing)&&maximum instanceof Integer&&(Integer)maximum==state.total){
+                                Object progress=call(view,"getCurrentProgress",state.current,state.total);
+                                if(progress instanceof Integer&&(Integer)progress>=0&&(Integer)progress<=seek.getMax()){
+                                    set(view,"mCurrentStreamLevel",state.current);
+                                    call(view,"updateVolumeIcon",state.current);
+                                    if(seek.getProgress()!=(Integer)progress)call(view,"updateVolumeProgress",progress,"module gain readback");
+                                    gainSession=state.extended();if(releasing&&!state.extended())releasing=false;
+                                }
+                            }
+                        }catch(ReflectiveOperationException ignored){}
+                    }
+                    presentedRequest=state.request;presentationNative=nativeIdentity();
+                }
+            }
+            refreshSafely();
+        }
 
         State(View view, boolean volume) {
             source = new WeakReference<>(view);
@@ -95,6 +135,7 @@ final class ControlCenterSliderPercentHook {
             observer = holder.getViewTreeObserver();
             observer.addOnPreDrawListener(this);
             FeatureSettings.addSnapshotListener(view.getContext(), settingsChanged);
+            if(volume)gainWatch=new AudioGainStateClient.Watch(view,this::gainArrived,this::captureRequest);
             refreshSafely();
         }
 
@@ -115,7 +156,20 @@ final class ControlCenterSliderPercentHook {
             SeekBar seek = slider.get();
             View symbol = icon.get();
             if (!attached || holder == null || seek == null || symbol == null) return;
-            if (!FeatureSettings.enabled(holder.getContext(), key)) { hide(); return; }
+            String fullBrightness = volume ? null : FullBrightnessHook.label(seek);
+            boolean percentEnabled=FeatureSettings.enabled(holder.getContext(),key);
+            int stream=volume?liveStream():-1;
+            boolean supported=!ls.augment.com.AudioGainPolicy.stream(stream).isEmpty();
+            boolean liveWanted=volume&&AudioGainState.wanted(FeatureSettings.snapshot(holder.getContext()),stream);
+            if(volume&&gainWatch!=null){
+                if(!supported){gainSession=false;releasing=false;}
+                else if(gainSession&&!liveWanted)releasing=true;
+                if(liveWanted)releasing=false;
+                // One live off read restores a range previously synchronized from actual extension.
+                gainWatch.bind(supported&&(liveWanted&&percentEnabled||releasing)?stream:-1);
+            }
+            if (fullBrightness == null && !percentEnabled) { hide(); return; }
+            if(releasing){hide();return;}
             int percent = ControlCenterPercent.of(seek.getProgress(), seek.getMin(), seek.getMax());
             if (percent < 0 || holder.getWidth() <= 0 || holder.getHeight() <= 0) { hide(); return; }
             float density = holder.getResources().getDisplayMetrics().density;
@@ -129,7 +183,16 @@ final class ControlCenterSliderPercentHook {
             float size = Math.min(14f * holder.getResources().getDisplayMetrics().scaledDensity,
                     Math.min(available / 1.4f, holder.getWidth() / 3.4f));
             if (size < 8f * density) { hide(); return; }
-            label.update(percent + "%", holder.getWidth(), holder.getHeight(), bottom, size, density);
+            String text = fullBrightness == null ? percent + "%" : fullBrightness;
+            if(liveWanted){
+                AudioGainState live=gainWatch==null?null:gainWatch.state();Object maximum=field(source.get(),"mMax"),minimum=field(source.get(),"mMin"),scale=field(source.get(),"MAX_VALUE");
+                if(live==null||live.request!=presentedRequest||!presentationNative.equals(nativeIdentity())||!(maximum instanceof Integer)||(Integer)maximum!=live.total||!(minimum instanceof Integer)||(Integer)minimum!=0||!(scale instanceof Integer)||(Integer)scale!=seek.getMax()||seek.getMin()!=0){
+                    readDiagnostic("present",live==null?"state_unavailable":"reject;request="+(live.request==presentedRequest)+";native="+presentationNative.equals(nativeIdentity())+";max="+maximum+";total="+live.total+";scale="+scale+";seek="+seek.getMin()+"/"+seek.getMax());hide();return;}
+                readDiagnostic("present","ready;current="+live.current+";total="+live.total+";native="+nativeIdentity());
+                if(live.extended())text=live.percent()+"%";
+            }
+            if (text.length() > 5) size = Math.min(size,holder.getWidth()/(text.length()*0.65f));
+            label.update(text, holder.getWidth(), holder.getHeight(), bottom, size, density);
             if (!added) { holder.getOverlay().add(label); added = true; }
         }
 
@@ -141,6 +204,7 @@ final class ControlCenterSliderPercentHook {
 
         void detach() {
             attached = false;
+            if(gainWatch!=null)gainWatch.close();gainWatch=null;attemptedRange="";issuedRequest=consumedRequest=presentedRequest=0;gainSession=releasing=false;
             FeatureSettings.removeSnapshotListener(settingsChanged);
             if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
             observer = null;

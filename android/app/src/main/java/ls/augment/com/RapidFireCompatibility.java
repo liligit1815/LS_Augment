@@ -8,11 +8,14 @@ import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
-import java.util.Locale;
 import java.util.UUID;
 
-/** Versioned compatibility identity, guided-test session and unlock token. */
+/** Device compatibility identity, guided-test session and persistent unlock token. */
 public final class RapidFireCompatibility {
+    // Bump only when shoulder routing, native layout or the required test contract
+    // changes incompatibly. App releases and unrelated configuration schemas do not
+    // change what a completed physical-key test proves.
+    public static final int COMPATIBILITY_REVISION = 1;
     public static final long SESSION_MAX_MS = 10L * 60L * 1000L;
     public static final long STABILITY_REQUIRED_MS = 10_000L;
     public static final int TEST_CPS = 20;
@@ -23,7 +26,7 @@ public final class RapidFireCompatibility {
     private static final String TOKEN_PREFIX = "RFT2";
     private static final String SESSION_PREFIX = "RFS2";
     private static volatile String cachedNativeHash;
-    private static volatile String cachedFingerprint;
+    private static volatile Identity cachedIdentity;
     private static volatile long cachedFingerprintAt;
     private static volatile Context asyncContext;
     private static volatile Runnable asyncListener;
@@ -49,13 +52,13 @@ public final class RapidFireCompatibility {
 
     public static String currentFingerprint(Context context) {
         long now = System.currentTimeMillis();
-        String value = cachedFingerprint;
-        if (value != null && now - cachedFingerprintAt < 5_000L) return value;
+        Identity value = cachedIdentity;
+        if (value != null && now - cachedFingerprintAt < 5_000L) return value.fingerprint;
         // PackageManager can acquire the system install lock. Never hold a module
         // monitor across those calls; duplicate app-side reads are harmless.
         {
-            value = cachedFingerprint;
-            if (value != null && now - cachedFingerprintAt < 5_000L) return value;
+            value = cachedIdentity;
+            if (value != null && now - cachedFingerprintAt < 5_000L) return value.fingerprint;
             StringBuilder source = new StringBuilder();
             source.append("sdk=").append(Build.VERSION.SDK_INT)
                     .append("|release=").append(Build.VERSION.RELEASE)
@@ -69,12 +72,45 @@ public final class RapidFireCompatibility {
                     .append("|gameassist=").append(packageVersion(context,
                             "cn.nubia.gameassist"))
                     .append("|inputreader=").append(inputReaderSha256())
-                    .append("|symbol=").append(SYMBOL_SIGNATURE)
-                    .append("|module=").append(BuildConfig.VERSION_NAME)
-                    .append("|schema=").append(ConfigSchema.VERSION);
-            cachedFingerprint = sha256(source.toString());
+                    .append("|symbol=").append(SYMBOL_SIGNATURE);
+            String environment = source.toString();
+            Identity identity = value != null && value.environment.equals(environment)
+                    ? value : new Identity(environment);
+            cachedIdentity = identity;
             cachedFingerprintAt = now;
-            return cachedFingerprint;
+            return identity.fingerprint;
+        }
+    }
+
+    private static final class Identity {
+        final String environment;
+        final String fingerprint;
+        final java.util.Set<String> legacyFingerprints;
+
+        Identity(String environment) {
+            this.environment = environment;
+            fingerprint = sha256(environment + "|shoulderCompatibility=" + COMPATIBILITY_REVISION);
+            // The system hook creates identities on its worker. Prepare aliases
+            // here too, so checking a token on the input path is only a set lookup.
+            legacyFingerprints = legacyFingerprints(environment);
+        }
+
+        private static java.util.Set<String> legacyFingerprints(String environment) {
+            // RFT2 did not store its originating app version, only the combined
+            // hash. Recompute the bounded, audited release line against TODAY'S
+            // complete environment; a changed ROM, OEM app or inputreader cannot
+            // match. Never broaden this range automatically with new releases.
+            // test20354 (e59e83ac) already has the current left/right mapping and
+            // cadence/stability test contract; subsequent releases through 20439
+            // did not change that contract. A future contract bump retires these
+            // aliases as well as tokens issued with this revision.
+            if (COMPATIBILITY_REVISION != 1) return java.util.Collections.emptySet();
+            java.util.HashSet<String> computed = new java.util.HashSet<>();
+            for (int build = 20354; build <= 20439; build++) {
+                computed.add(sha256(environment + "|module=2.0.0-alpha1-test"
+                        + build + "|schema=1"));
+            }
+            return java.util.Collections.unmodifiableSet(computed);
         }
     }
 
@@ -189,7 +225,12 @@ public final class RapidFireCompatibility {
         }
 
         public boolean validFor(String currentFingerprint) {
-            return isStructurallyValid() && fingerprint.equals(currentFingerprint);
+            if (!isStructurallyValid() || currentFingerprint == null
+                    || currentFingerprint.isEmpty()) return false;
+            if (fingerprint.equals(currentFingerprint)) return true;
+            Identity identity = cachedIdentity;
+            return identity != null && identity.fingerprint.equals(currentFingerprint)
+                    && identity.legacyFingerprints.contains(fingerprint);
         }
 
         public boolean acceptsUpper(int keyCode) {
@@ -393,8 +434,12 @@ public final class RapidFireCompatibility {
     }
 
     private static String hex(byte[] value) {
-        StringBuilder out = new StringBuilder(value.length * 2);
-        for (byte item : value) out.append(String.format(Locale.ROOT, "%02x", item & 0xff));
-        return out.toString();
+        char[] digits = "0123456789abcdef".toCharArray();
+        char[] out = new char[value.length * 2];
+        for (int i = 0; i < value.length; i++) {
+            out[i * 2] = digits[(value[i] & 0xff) >>> 4];
+            out[i * 2 + 1] = digits[value[i] & 0xf];
+        }
+        return new String(out);
     }
 }

@@ -1,0 +1,74 @@
+{
+  "system": {
+    "package": "android",
+    "file": "/current/theme-system.png"
+  },
+  "systemui": {
+    "package": "com.android.systemui",
+    "file": "/current/theme-systemui.png"
+  },
+  "settings": {
+    "package": "com.android.settings",
+    "file": "/current/theme-settings.png"
+  },
+  "launcher": {
+    "package": "com.zte.mifavor.launcher",
+    "file": "/current/theme-launcher.png"
+  },
+  "game": {
+    "package": "cn.nubia.gamelauncher",
+    "file": "/current/theme-game.png"
+  },
+  "ai_trigger": {
+    "package": "com.zte.game.plugintrigger",
+    "file": "/current/theme-ai_trigger.png"
+  },
+  "fan": {
+    "package": "cn.nubia.fan",
+    "file": "/current/theme-fan.png"
+  },
+  "theme": {
+    "package": "com.zte.beautify",
+    "file": "/current/theme-theme.png"
+  },
+  "collab": {
+    "package": "com.zte.beautify",
+    "file": "/current/theme-collab.png"
+  },
+  "doubleapp": {
+    "package": "com.zte.cn.doubleapp",
+    "file": "/current/theme-doubleapp.png"
+  },
+  "store": {
+    "package": "cn.nubia.neostore",
+    "file": "/current/theme-store.png"
+  },
+  "installer": {
+    "package": "com.android.packageinstaller",
+    "file": "/current/theme-installer.png"
+  },
+  "update": {
+    "package": "com.zte.zdm",
+    "file": "/current/theme-update.png"
+  },
+  "weather": {
+    "package": "com.zte.mifavor.weather",
+    "file": "/current/theme-weather.png"
+  },
+  "nfc": {
+    "package": "com.android.nfc",
+    "file": "/current/theme-nfc.png"
+  },
+  "files": {
+    "package": "cn.nubia.filebrowser",
+    "file": "/current/theme-files.png"
+  },
+  "permissions": {
+    "package": "com.android.permissioncontroller",
+    "file": "/current/theme-permissions.png"
+  },
+  "screenshot": {
+    "package": "com.android.ztescreenshot",
+    "file": "/current/theme-screenshot.png"
+  }
+}

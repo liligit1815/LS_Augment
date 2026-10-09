@@ -7,13 +7,18 @@ public final class TestNativeFeatureGroups {
     private static final Map<String,EnhancementOption> OPTIONS=new HashMap<>();
     private static int independent;
     public static void main(String[] args){
-        for(EnhancementOption option:EnhancementCatalog.options())OPTIONS.put(option.key,option);
+        for(EnhancementOption option:EnhancementCatalog.options()){
+            OPTIONS.put(option.key,option);
+            if(option.kind!=EnhancementOption.Kind.INTERNAL)require(!FeatureHelp.forOption(option).isEmpty(),"Every rendered control has help: "+option.key);
+        }
         Set<String> expected=new HashSet<>(),seen=new HashSet<>();
         for(HookAppCatalog.Target target:HookAppCatalog.targets()){
             Set<String> targetExpected=new HashSet<>(),targetActual=new HashSet<>();
             for(HookAppCatalog.Section s:HookAppCatalog.sections(target.id))for(EnhancementOption o:s.options){targetExpected.add(o.key);expected.add(o.key);}
             for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget(target.id))for(NativeFeatureGroups.Feature f:section.features){check(f,seen);targetActual.addAll(f.allKeys());}
-            require(targetExpected.equals(targetActual),"target ownership differs: "+target.id);
+            Set<String> missing=new HashSet<>(targetExpected);missing.removeAll(targetActual);
+            Set<String> extra=new HashSet<>(targetActual);extra.removeAll(targetExpected);
+            require(targetExpected.equals(targetActual),"target ownership differs: "+target.id+" missing="+missing+" extra="+extra);
         }
         require(expected.equals(seen),"native options must be covered exactly once");
         require(!seen.contains(SystemOptions.key("thermal_notifications")),"retired thermal control must be absent");
@@ -30,7 +35,8 @@ public final class TestNativeFeatureGroups {
         require("network".equals(NativeFeatureGroups.statusBarDestination(find("ls_augment_rm_network_custom"))),"network options stay together");
         require("息屏时钟".equals(NativeFeatureGroups.objectGroup(find("ls_augment_rm_aod_seconds"))),"AOD seconds stays with clock appearance");
         require("息屏时钟".equals(NativeFeatureGroups.objectGroup(find("ls_augment_rm_aod_period"))),"AOD period stays with clock appearance");
-        require(independent==14,"all 14 independent value overrides retain their real no-op semantics");
+        require(independent==15,"all 15 independent value overrides retain their real no-op semantics");
+        require("assets".equals(NativeFeatureGroups.statusBarDestination(find(StatusBarIconSpacingSpec.KEY))),"per-icon spacing belongs to its asset editor");
         NativeFeatureGroups.Feature wifi=find("ls_augment_rm_wifi_country_enabled");
         require(wifi.allKeys().equals(Arrays.asList("ls_augment_rm_wifi_country_enabled","ls_augment_rm_wifi_country")),"Wi-Fi country is owned by its true switch");
         NativeFeatureGroups.Feature usb=find("ls_augment_rm_usb_hide_dialog");
@@ -49,7 +55,7 @@ public final class TestNativeFeatureGroups {
         require("1.5".equals(ValueOverrideState.restore(scale,"1.5","1.0")),"valid remembered scale restores exactly");
         System.out.println("Native feature grouping and value gates: OK ("+seen.size()+" options)");
     }
-    private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(key.equals(f.toggleKey))return f;throw new AssertionError("missing feature "+key);}
+    private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(f.allKeys().contains(key))return f;throw new AssertionError("missing feature "+key);}
     private static void check(NativeFeatureGroups.Feature f,Set<String> seen){
         if(f.toggleKey!=null){require(OPTIONS.get(f.toggleKey).kind==EnhancementOption.Kind.BOOLEAN,"parent must be a real boolean");require(seen.add(f.toggleKey),"duplicate switch "+f.toggleKey);}
         else{independent++;require(f.parameterKeys.length==1,"independent parameters cannot be accidentally grouped");EnhancementOption o=OPTIONS.get(f.parameterKeys[0]);require(o.normalize(f.noOpValue)!=null,"no-op must be a valid native value");require(!ValueOverrideState.active(f.comparison,o.defaultValue,f.noOpValue),"native default must not enable override");}

@@ -104,4 +104,34 @@ design-qa.md
 !/docs/项目结构与文件说明.md
 !/docs/配置项参考-test20354.md
 !/docs/跨设备开发说明.md
+!/docs/红魔Duo-UI规范.md
+!/docs/statusbar-assets.md
 !/docs/releases/
+/docs/releases/*
+!/docs/releases/v2.0.0-alpha1-test20378.md
+!/docs/releases/v2.0.0-alpha1-test20496.md
+
+# 本地统计与设计过程记录
+/*.xlsx
+/*.xlsx.inspect.ndjson
+/ui-preview/annotation-changes.md
+/ui-preview/module-log-requirements.md
+/ui-preview/multi-level-design.md
+/ui-preview/prototype-test*.md
+/ui-preview/review-log-test.txt
+
+# 仅用于本机单次取证或迭代的包装脚本
+/tools/check-back-gesture-probe.py
+/tools/check-header-clock-20455.py
+/tools/check-notification-viewport.py
+/tools/check-wifi-asset-spacing-local.py
+/tools/compile-wifi-asset-spacing-focused.py
+/tools/prepare-wifi-child-assets-fixture.py
+/tools/total-reset-device-session.py
+/tools/total-reset-run-live.py
+/tools/run-statusbar-customization-audit.py
+/tools/run-statusbar-user-assets-audit.py
+/tools/build-ui-observer-range.py
+/tools/build-ui-observer-rendering.py
+/ui-preview/scripts/compare-latest.py
+/ui-preview/scripts/control-audit-routes.mjs

@@ -29,6 +29,8 @@ import io.github.libxposed.api.XposedInterface.HookHandle;
 import ls.augment.com.BackGestureIconPolicy;
 import ls.augment.com.GestureArtwork;
 import ls.augment.com.ConfigSnapshot;
+import ls.augment.com.BackGestureRuntimeObservation;
+import ls.augment.com.BuildConfig;
 
 /** RedMagic SeaWave adapter. Neither input dispatch nor the OEM animation is replaced. */
 final class BackGestureIconHook {
@@ -70,11 +72,11 @@ final class BackGestureIconHook {
             method(wave,"updateIconRect",void.class,false);
             handles.add(owner.prepareFeatureHook(get,"back_icon.bitmap",false).intercept(chain->{
                 Object original=chain.proceed();Frame frame=DRAW.get();
-                if(!installed||frame==null||Boolean.TRUE.equals(chain.getArg(0)))return original;
+                if(!installed||frame==null||Boolean.TRUE.equals(chain.getArg(0))){BackGestureProbeHook.iconReturned(false);return original;}
                 try {
-                    if(!BackGestureIconPolicy.eligible(frame.side,false,original!=null&&original==backBitmap.get(null)))return original;
-                    frame.adjust();record(frame.view,frame.side);return frame.artwork.frame();
-                } catch(Throwable error) {frame.restore();report(error);return original;}
+                    if(!BackGestureIconPolicy.eligible(frame.side,false,original!=null&&original==backBitmap.get(null))){BackGestureProbeHook.iconReturned(false);return original;}
+                    frame.adjust();record(frame.view,frame.side);Bitmap selected=frame.artwork.frame();BackGestureProbeHook.iconReturned(true);return selected;
+                } catch(Throwable error) {frame.restore();report(error);BackGestureProbeHook.iconReturned(false);return original;}
             }));
             handles.add(owner.prepareFeatureHook(draw,"back_icon.draw",false).intercept(chain->{
                 View view=(View)chain.getThisObject();ensureContext(view.getContext());
@@ -138,6 +140,8 @@ final class BackGestureIconHook {
                 waveInstalled=true;
             }catch(Throwable error){owner.logFeatureError("BACK_ICON_WAVE_UNAVAILABLE",error);}
             installed=true;for(HookHandle handle:handles)owner.registerFeatureHook(handle);
+            BackGestureProbeHook.install(owner,loader);
+            if(context!=null)MAIN.post(()->BackGestureProbeHook.attach(context));
             // Callers can inline these small final/static methods on an optimized ROM.
             owner.deoptimize(draw);owner.deoptimize(wave.getDeclaredMethod("onDraw",Canvas.class));
             owner.logFeatureInfo("BACK_ICON_READY adapter=SeaWaveView hooks="+handles.size());
@@ -164,6 +168,7 @@ final class BackGestureIconHook {
         context=value.getApplicationContext();if(context==null)context=value;
         Context app=context;
         MAIN.post(()->{
+            BackGestureProbeHook.attach(app);
             FeatureSettings.addSnapshotListener(app,BackGestureIconHook::refresh);
             FeatureSettings.diagnostic(app,"ls_augment_back_icon_adapter","SeaWaveView; installed="+installed+";wave="+waveInstalled);
             refresh();
@@ -173,13 +178,16 @@ final class BackGestureIconHook {
     private static void refresh() {
         if(context==null||!installed)return;
         ConfigSnapshot snapshot=FeatureSettings.snapshot(context);
-        StringBuilder key=new StringBuilder(snapshot.get(BackGestureIconPolicy.ENABLED));
-        for(String parameter:BackGestureIconPolicy.parameterKeys())key.append('|').append(snapshot.get(parameter));
-        if(signature.equals(key.toString()))return;
-        signature=key.toString();long token=++generation;
-        State next=new State(snapshot);requested=next;
-        if(!next.enabled){ready.stop();synchronized(SESSIONS){for(State state:SESSIONS.values())state.stop();SESSIONS.clear();}ready=next;return;}
-        State previous=ready;
+        String key=BackGestureRuntimeObservation.parameterSignature(snapshot::get);
+        // An unrelated save still needs an ACK for its current revision. It need not decode identical assets again.
+        if(signature.equals(key)){publishObservation();return;}
+        signature=key;long token=++generation;
+        State next=new State(snapshot);next.resourceGeneration=token;requested=next;
+        if(!next.enabled){
+            ready.stop();synchronized(SESSIONS){for(State state:SESSIONS.values())state.stop();SESSIONS.clear();}
+            ready=next;publishObservation();return;
+        }
+        publishObservation();
         WORKER.execute(()->{
             if(token!=generation)return;
             boolean failed=false;
@@ -199,11 +207,31 @@ final class BackGestureIconHook {
                 if(token!=generation)return;
                 ready=next;
                 FeatureSettings.diagnostic(context,"ls_augment_back_icon_resources","left="+resourceState(next,0)+";right="+resourceState(next,1));
+                publishObservation();
                 if(!retry)FeatureSettings.diagnostic(context,"ls_augment_back_icon_error","");
                 // Includes early boot, a temporarily unavailable Provider, and unlock recovery.
                 if(retry)MAIN.postDelayed(()->{if(token==generation){signature="";refresh();}},5000);
             });
         });
+    }
+    static boolean probeCurrent(long revision,long resourceGeneration){
+        return context!=null&&installed&&FeatureSettings.snapshot(context).revision==revision&&generation==resourceGeneration
+                &&ready==requested&&ready.resourceGeneration==resourceGeneration;
+    }
+    private static void publishObservation() {
+        // FeatureSettings may have published a newer snapshot while its main-thread listener is still queued.
+        // Never label old assets with that newer parameter signature, even if this worker just completed.
+        ConfigSnapshot current=FeatureSettings.snapshot(context);State state=ready;
+        boolean committed=state==requested&&state.resourceGeneration==generation
+                &&state.parameterSignature.equals(BackGestureRuntimeObservation.parameterSignature(current::get));
+        int mask=0;
+        if(committed)for(int side=0;side<2;side++){
+            if(state.images[side]!=null)mask|=1<<(side*2);
+            if(state.backgrounds[side]!=null)mask|=2<<(side*2);
+        }
+        FeatureSettings.diagnostic(context,BackGestureRuntimeObservation.KEY,
+                BackGestureRuntimeObservation.create(current.revision,current::get,generation,android.os.Process.myPid(),
+                        BuildConfig.VERSION_CODE,SystemClock.elapsedRealtime(),android.os.Process.getStartElapsedRealtime(),committed,mask).serialize());
     }
     private static String resourceState(State state,int side){return !state.sides[side].custom?"stock":state.images[side]==null?"unavailable_stock":state.backgrounds[side]==null?"icon_ready":"icon_and_background_ready";}
     private static GestureArtwork load(Context context,String assetHash,boolean mirror,boolean squareIcon)throws Exception {
@@ -217,10 +245,11 @@ final class BackGestureIconHook {
     }
     private static final class State {
         final boolean enabled;
+        final String parameterSignature;
         final BackGestureIconPolicy.Side[] sides=new BackGestureIconPolicy.Side[2];
         final GestureArtwork[] images=new GestureArtwork[2];
         final GestureArtwork[] backgrounds=new GestureArtwork[2];
-        long playback;
+        long playback,resourceGeneration;
         void start(View view,int side){
             long token=++playback;
             // The OEM caller may only attach/show its window after onActionDown returns.
@@ -230,13 +259,15 @@ final class BackGestureIconHook {
             });
         }
         void stop(){playback++;for(GestureArtwork image:images)if(image!=null)image.stop();for(GestureArtwork image:backgrounds)if(image!=null)image.stop();}
-        State(ConfigSnapshot snapshot){enabled="1".equals(snapshot.get(BackGestureIconPolicy.ENABLED));for(int side=0;side<2;side++)sides[side]=new BackGestureIconPolicy.Side(snapshot::get,side);}
+        State(ConfigSnapshot snapshot){enabled="1".equals(snapshot.get(BackGestureIconPolicy.ENABLED));parameterSignature=BackGestureRuntimeObservation.parameterSignature(snapshot::get);for(int side=0;side<2;side++)sides[side]=new BackGestureIconPolicy.Side(snapshot::get,side);}
         static State empty(){return new State(ConfigSnapshot.safeDefaults());}
     }
     private static WaveFrame waveFrame(View view)throws Exception {
         if(!installed||!requested.enabled)return null;
         int side=position.getInt(view);
-        if(side<0||side>1||hover.getBoolean(view))return null;
+        // Long side swipes reuse this wave while mIsHover selects the OEM shortcut icon.
+        // Keep the chosen background through that transition; drawIcon still preserves mSide.
+        if(side<0||side>1)return null;
         if(!BackGestureIconPolicy.validAsset(requested.sides[side].backgroundHash)&&requested.sides[side].backgroundScale==100)return null;
         State state;synchronized(SESSIONS){state=SESSIONS.get(view);}if(state==null)state=ready;
         if(!state.enabled||(state.backgrounds[side]==null&&state.sides[side].backgroundScale==100))return null;

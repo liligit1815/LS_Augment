@@ -21,11 +21,14 @@ public final class LSConfigProvider extends ContentProvider {
     private static final Object AUTOMATION_LOCK = new Object();
     private static String lastAutomationRequest = "";
     private static volatile android.os.IBinder captureSurfaceController;
+    private static volatile android.os.IBinder audioGainReadController;
+    private static long audioGainDiscoveryAt=-1000;
     @Override
     public boolean onCreate() {
         removeLegacyFanNotification();
         // Rediscover the live SystemUI endpoint if this provider process was reclaimed.
         if(getContext()!=null)try{getContext().sendBroadcast(new Intent("ls.augment.com.CAPTURE_SURFACE_REDISCOVER").setPackage("com.android.systemui"));}catch(RuntimeException ignored) { }
+        if(getContext()!=null)try{getContext().sendBroadcast(new Intent(AudioGainState.REDISCOVER).setPackage("android"));}catch(RuntimeException ignored){}
         return true;
     }
 
@@ -33,6 +36,27 @@ public final class LSConfigProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
         if (getContext() == null) return result;
+        if ("launcher_reset_read".equals(method)||"launcher_reset_ack".equals(method)) {
+            if(arg!=null)return result;
+            int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return LauncherResetRuntime.call(getContext(),method,uid,pid,caller,packages,extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("statusbar_inventory_publish".equals(method)) {
+            if(Binder.getCallingUid()/100000!=Process.myUid()/100000)return result;
+            String[] callers=getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
+            if(callers==null||!java.util.Arrays.asList(callers).contains("com.android.systemui"))return result;
+            boolean accepted=extras!=null&&StatusBarInventoryBridge.publish(extras.getString("payload"));
+            result.putBoolean("ok",accepted);
+            if(accepted)getContext().getContentResolver().notifyChange(Uri.parse("content://ls.augment.com.config/statusbar-inventory"),null);
+            return result;
+        }
+        if ("statusbar_inventory_get".equals(method)) {
+            return Binder.getCallingUid()==Process.myUid()?StatusBarInventoryBridge.read():result;
+        }
         if ("recovery_refresh".equals(method)) {
             // The user-run emergency Root script can request verification, never change config.
             if (Binder.getCallingUid() != Process.ROOT_UID) return result;
@@ -41,6 +65,46 @@ public final class LSConfigProvider extends ContentProvider {
             finally { Binder.restoreCallingIdentity(identity); }
         }
         if (!allowedCaller()) return result;
+        if(AudioGainState.REGISTER.equals(method)||AudioGainState.GET.equals(method)){
+            result.putString("state","invalid_argument");if(arg!=null)return result;
+            int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            boolean registering=AudioGainState.REGISTER.equals(method);String required=registering?"android":"com.android.systemui";result.putString("state","caller_identity");
+            if(uid/100000!=Process.myUid()/100000||!required.equals(caller)||packages==null||!java.util.Arrays.asList(packages).contains(required))return result;
+            if(registering){if(uid!=Process.SYSTEM_UID)return result;}
+            else try{if(uid!=getContext().getPackageManager().getApplicationInfo("com.android.systemui",0).uid)return result;}
+            catch(android.content.pm.PackageManager.NameNotFoundException unavailable){return result;}
+            if(registering){
+                result.putString("state","registration_contract");if(extras==null||extras.size()!=2||extras.getInt("version",-1)!=BuildConfig.VERSION_CODE)return result;
+                android.os.IBinder endpoint=extras.getBinder("controller");result.putString("state","dead_registration_endpoint");
+                if(endpoint==null||!endpoint.isBinderAlive())return result;
+                if(endpoint==audioGainReadController){result.putBoolean("ok",true);result.putString("state","registered");return result;}
+                try{endpoint.linkToDeath(()->{if(audioGainReadController==endpoint)audioGainReadController=null;},0);audioGainReadController=endpoint;result.putBoolean("ok",true);result.putString("state","registered");}catch(android.os.RemoteException ignored){result.putString("state","registration_died");}
+            }else{
+                result.putString("state","get_contract");if(extras!=null)return result;
+                android.os.IBinder endpoint=audioGainReadController;result.putString("state","missing_endpoint");
+                if(endpoint!=null&&endpoint.isBinderAlive()){result.putBinder("controller",endpoint);result.putInt("version",BuildConfig.VERSION_CODE);result.putString("state","ready");}
+                else synchronized(LSConfigProvider.class){long now=android.os.SystemClock.elapsedRealtime();if(now-audioGainDiscoveryAt>=1000){audioGainDiscoveryAt=now;
+                    long identity=Binder.clearCallingIdentity();try{getContext().sendBroadcast(new Intent(AudioGainState.REDISCOVER).setPackage("android"));}finally{Binder.restoreCallingIdentity(identity);}}}
+            }
+            return result;
+        }
+        if ("extra_dim_read".equals(method) || "extra_dim_select".equals(method)) {
+            int caller=Binder.getCallingUid();
+            if(arg!=null || !BrightnessRange.allowedCaller(caller,Process.myUid(),getCallingPackage(),
+                    getContext().getPackageManager().getPackagesForUid(caller))
+                    || caller!=Process.myUid() && !"com.android.systemui".equals(getCallingPackage()))return result;
+            long identity=Binder.clearCallingIdentity();
+            try{return ExtraDimControl.call(getContext(),method,extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("brightness_read".equals(method) || "brightness_select".equals(method)) {
+            int caller = Binder.getCallingUid();
+            if (arg != null || !BrightnessRange.allowedCaller(caller,Process.myUid(),getCallingPackage(),
+                    getContext().getPackageManager().getPackagesForUid(caller))) return result;
+            long identity = Binder.clearCallingIdentity();
+            try { return FullBrightnessControl.get(getContext()).call(method,extras); }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
         if (PowerModePolicy.CALL.equals(method)) {
             int caller = Binder.getCallingUid();
             if (!PowerModePolicy.allowedCaller(caller, Process.myUid(), getCallingPackage(),
@@ -86,7 +150,7 @@ public final class LSConfigProvider extends ContentProvider {
             if(uid/100000!=Process.myUid()/100000||!"com.zte.zdm".equals(getCallingPackage())
                     ||packages==null||!java.util.Arrays.asList(packages).contains("com.zte.zdm")
                     ||!OtaBufferPolicy.validUrl(url)||!new AppConfig(getContext()).getBoolean(SystemOptions.key("ota_capture_url")))return result;
-            boolean saved=getContext().getSharedPreferences("ota_capture",0).edit().putString("url",url).putLong("time",System.currentTimeMillis()).commit();
+            boolean saved=OtaCapturedLinks.record(getContext().getSharedPreferences(OtaCapturedLinks.PREFS,0),url,System.currentTimeMillis());
             result.putBoolean("ok",saved);return result;
         }
         if ("ota_url_get".equals(method)) {
@@ -317,6 +381,15 @@ public final class LSConfigProvider extends ContentProvider {
         if(getContext()==null||!"r".equals(mode)||!allowedCaller())throw new java.io.FileNotFoundException("read only");
         int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
         java.util.List<String> path=uri.getPathSegments();
+        if(path.size()==2&&"statusbar-icon".equals(path.get(0))) {
+            if(uid/100000!=Process.myUid()/100000)throw new java.io.FileNotFoundException("same user only");
+            if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
+                throw new java.io.FileNotFoundException("systemui reader only");
+            String hash=path.get(1);
+            if(!hash.matches("[0-9a-f]{64}")||(uid!=Process.myUid()&&!StatusBarAssetReferences.statusbarIcons(new AppConfig(getContext()).snapshot()).contains(hash)))
+                throw new java.io.FileNotFoundException("unconfigured statusbar icon");
+            return android.os.ParcelFileDescriptor.open(StatusBarAssetStore.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+        }
         if(path.size()==2&&"gesture-icon".equals(path.get(0))) {
             if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
                 throw new java.io.FileNotFoundException("systemui reader only");
@@ -331,13 +404,13 @@ public final class LSConfigProvider extends ContentProvider {
             return android.os.ParcelFileDescriptor.open(LauncherIconStore.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
         }
         if(path.size()==2&&"font".equals(path.get(0))) {
+            if(uid/100000!=Process.myUid()/100000)throw new java.io.FileNotFoundException("same user only");
             if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))
                 throw new java.io.FileNotFoundException("font reader only");
             String hash=path.get(1),reference="font:"+hash;
             if(!ManagedFont.reference(reference))throw new java.io.FileNotFoundException("invalid font");
-            AppConfig config=new AppConfig(getContext());boolean used=false;
-            for(EnhancementOption option:EnhancementCatalog.options())
-                if(option.key.endsWith("_clock_font")&&reference.equals(config.get(option.key)))used=true;
+            AppConfig config=new AppConfig(getContext());boolean used=uid==Process.myUid()
+                    ||StatusBarAssetReferences.fonts(config.snapshot()).contains(hash);
             if(!used)throw new java.io.FileNotFoundException("unconfigured font");
             return android.os.ParcelFileDescriptor.open(ManagedFont.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
         }

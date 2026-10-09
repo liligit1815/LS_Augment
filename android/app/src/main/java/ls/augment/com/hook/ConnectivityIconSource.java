@@ -30,20 +30,26 @@ final class ConnectivityIconSource {
     private final Map<Integer,Radio> radios=new LinkedHashMap<>();
     private SubscriptionManager subscriptions;
     private SubscriptionManager.OnSubscriptionsChangedListener subscriptionListener;
+    private TelephonyManager telephony;
+    private ActiveDataListener activeDataListener;
+    private boolean activeDataListening;
     private ConnectivityManager connectivity;
     private ConnectivityManager.NetworkCallback wifiCallback;
     private String wifiError="",wifiListenerError="",wifiReason="initial",wifiPhase="unread";
     private int wifiRadioState=WifiManager.WIFI_STATE_UNKNOWN;
     private boolean wifiLinkConnected;
+    private ConnectivityIconState.WifiInternet wifiInternet=ConnectivityIconState.WifiInternet.UNKNOWN;
+    private String wifiInternetError="";
     private boolean receiverRegistered,subscriptionListening,wifiRead,subscriptionsRead;
     volatile boolean ready;
     private volatile boolean closed;
     private final Runnable wifiRecheck=()->{if(!closed){wifi();publish();}};
-    private int battery=-1,wifiLevel,data=-1;
+    private int battery=-1,wifiLevel,wifiBars=4,activeData=-1,defaultData=-1;
     private int signalBars=4;
     private java.lang.reflect.Method operatorLevelMethod;
     private boolean charging,wifiConnected,airplane;
     volatile ConnectivityIconState state=ConnectivityIconState.unknown();
+    int dataActivity(int subscription){return state.dataActivity(subscription);}
     volatile String error="";
     ConnectivityIconSource(Context context,Runnable changed){this.context=context;this.changed=changed;
         thread.start();worker=new Handler(thread.getLooper());executor=task->{if(!closed)worker.post(task);};
@@ -72,7 +78,25 @@ final class ConnectivityIconSource {
     }catch(RuntimeException failure){error="start:"+failure.getClass().getSimpleName();}
         try{context.getContentResolver().registerContentObserver(Settings.Global.getUriFor(CHARGE_SEPARATION),false,powerObserver);powerObserverRegistered=true;}
         catch(RuntimeException failure){powerError="observer:"+failure.getClass().getSimpleName();}
-        readPowerMode();startWifiListener();refreshWifi("initial");refreshSubscriptions();publish();}
+        readPowerMode();startActiveDataListener();startWifiListener();refreshWifi("initial");refreshSubscriptions();publish();}
+    private final class ActiveDataListener extends TelephonyCallback implements TelephonyCallback.ActiveDataSubscriptionIdListener {
+        @Override public void onActiveDataSubscriptionIdChanged(int id){
+            if(closed)return;
+            activeData=SubscriptionManager.isValidSubscriptionId(id)?id:SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+            publish();
+        }
+    }
+    @android.annotation.SuppressLint("MissingPermission")
+    private void startActiveDataListener(){
+        try{
+            telephony=context.getSystemService(TelephonyManager.class);
+            activeData=SubscriptionManager.getActiveDataSubscriptionId();
+            if(telephony==null)return;
+            activeDataListener=new ActiveDataListener();
+            telephony.registerTelephonyCallback(TelephonyManager.INCLUDE_LOCATION_DATA_NONE,executor,activeDataListener);
+            activeDataListening=true;
+        }catch(RuntimeException failure){error="active_data:"+failure.getClass().getSimpleName();}
+    }
     private void battery(Intent intent){int level=intent.getIntExtra(BatteryManager.EXTRA_LEVEL,-1),scale=intent.getIntExtra(BatteryManager.EXTRA_SCALE,100);
         battery=level<0||scale<=0?-1:Math.round(level*100f/scale);
         batteryStatus=intent.getIntExtra(BatteryManager.EXTRA_STATUS,-1);
@@ -108,7 +132,8 @@ final class ConnectivityIconSource {
         for(long delay:new long[]{250,1000,2500,5000})worker.postDelayed(wifiRecheck,delay);
     }
     @SuppressWarnings("deprecation")
-    private void wifi(){try{WifiManager manager=context.getSystemService(WifiManager.class);
+    private void wifi(){wifiInternet=ConnectivityIconState.WifiInternet.UNKNOWN;wifiInternetError="";
+        try{WifiManager manager=context.getSystemService(WifiManager.class);
         wifiRadioState=manager==null?WifiManager.WIFI_STATE_UNKNOWN:manager.getWifiState();
         WifiInfo info=wifiRadioState==WifiManager.WIFI_STATE_ENABLED?manager.getConnectionInfo():null;
         wifiPhase=info==null?"none":String.valueOf(info.getSupplicantState());
@@ -118,18 +143,35 @@ final class ConnectivityIconSource {
         wifiLinkConnected=link!=null&&link.isConnected();
         wifiConnected=wifiRadioState==WifiManager.WIFI_STATE_ENABLED&&wifiLinkConnected&&info!=null
                 &&info.getSupplicantState()==SupplicantState.COMPLETED;
-        wifiLevel=wifiConnected?WifiManager.calculateSignalLevel(info.getRssi(),4):0;wifiRead=true;wifiError="";
-    }catch(RuntimeException failure){wifiConnected=false;wifiLevel=0;wifiError=failure.getClass().getSimpleName();}
+        if(manager!=null)wifiBars=Math.max(1,manager.getMaxSignalLevel());
+        wifiLevel=wifiConnected?manager.calculateSignalLevel(info.getRssi()):0;wifiRead=manager!=null;wifiError="";
+        if(wifiConnected)readWifiInternet(manager);
+    }catch(RuntimeException failure){wifiRead=false;wifiConnected=false;wifiLevel=0;wifiError=failure.getClass().getSimpleName();}
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_wifi_input","radio="+wifiRadioState
                 +";link="+wifiLinkConnected+";phase="+wifiPhase+";connected="+wifiConnected+";level="+wifiLevel
-                +";callback="+(wifiCallback!=null)+";event="+wifiReason+";error="+wifiError+";listenerError="+wifiListenerError);
+                +";bars="+wifiBars+";internet="+wifiInternet+";internetError="+wifiInternetError+";callback="+(wifiCallback!=null)+";event="+wifiReason+";error="+wifiError+";listenerError="+wifiListenerError);
+    }
+    private void readWifiInternet(WifiManager manager){
+        try{
+            // Same primary-network API used by this ROM's WifiStatusTracker.
+            // A validated mobile/VPN default or secondary Wi-Fi must not validate this link.
+            Object current=SystemUiAdapter.call(manager,"getCurrentNetwork");
+            NetworkCapabilities capabilities=current instanceof Network&&connectivity!=null
+                    ?connectivity.getNetworkCapabilities((Network)current):null;
+            if(capabilities!=null&&capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))
+                wifiInternet=capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                        ?ConnectivityIconState.WifiInternet.VALIDATED:ConnectivityIconState.WifiInternet.NO_INTERNET;
+        }catch(ReflectiveOperationException|RuntimeException|LinkageError unavailable){
+            wifiInternetError=unavailable.getClass().getSimpleName();
+        }
     }
     // Runs in the SystemUI host, whose permissions are independent of the module manifest.
     // Permission denial is handled explicitly; do not request phone/location access in the APK.
     @android.annotation.SuppressLint("MissingPermission")
     private void refreshSubscriptions(){if(closed)return;
         try{airplane=Settings.Global.getInt(context.getContentResolver(),Settings.Global.AIRPLANE_MODE_ON,0)!=0;
-            data=SubscriptionManager.getDefaultDataSubscriptionId();
+            defaultData=SubscriptionManager.getDefaultDataSubscriptionId();
+            activeData=SubscriptionManager.getActiveDataSubscriptionId();
             List<SubscriptionInfo> active=subscriptions==null?Collections.emptyList():subscriptions.getActiveSubscriptionInfoList();
             if(active==null)active=Collections.emptyList();Set<Integer> keep=new HashSet<>();
             for(SubscriptionInfo sub:active)if(sub.getSimSlotIndex()>=0){int id=sub.getSubscriptionId();keep.add(id);
@@ -143,7 +185,9 @@ final class ConnectivityIconSource {
             error="subscriptions:permission_denied";
         }catch(RuntimeException failure){error="subscriptions:"+failure.getClass().getSimpleName();}
         publish();}
-    private final class Radio extends TelephonyCallback implements TelephonyCallback.SignalStrengthsListener,TelephonyCallback.ServiceStateListener {
+    private final class Radio extends TelephonyCallback implements TelephonyCallback.SignalStrengthsListener,TelephonyCallback.ServiceStateListener,TelephonyCallback.DataActivityListener,TelephonyCallback.DataConnectionStateListener {
+        int activity,dataState=TelephonyManager.DATA_UNKNOWN,networkType=TelephonyManager.NETWORK_TYPE_UNKNOWN;
+        boolean activityKnown,dataConnectionKnown;
         final int id,slot;TelephonyManager manager;int level=-1,standardLevel=-1,nativeLevel=-1;String levelSource="unread";ServiceState service;boolean listening;
         Radio(int id,int slot){this.id=id;this.slot=slot;}
         // SystemUI host authorization is enforced by telephony; NONE omits location data.
@@ -156,11 +200,20 @@ final class ConnectivityIconSource {
             catch(SecurityException denied){service=null;} // An allowed callback may still supply state.
             catch(RuntimeException ignored){} // The initial callback can still supply service state.
             SignalStrength strength=manager.getSignalStrength();readLevel(strength);
+            try{activity=manager.getDataActivity();activityKnown=true;}catch(RuntimeException ignored){}
+            try{dataState=manager.getDataState();dataConnectionKnown=true;networkType=manager.getDataNetworkType();}catch(RuntimeException ignored){}
             manager.registerTelephonyCallback(TelephonyManager.INCLUDE_LOCATION_DATA_NONE,executor,this);listening=true;
         }catch(SecurityException denied){listening=false;error="radio:permission_denied";}
         catch(RuntimeException failure){error="radio:"+failure.getClass().getSimpleName();}}
         @Override public void onSignalStrengthsChanged(SignalStrength strength){if(closed||radios.get(id)!=this)return;readLevel(strength);publish();}
         @Override public void onServiceStateChanged(ServiceState service){if(closed||radios.get(id)!=this)return;this.service=service;publish();}
+        @Override public void onDataActivity(int direction){if(closed||radios.get(id)!=this)return;activity=direction;activityKnown=true;publish();}
+        @Override public void onDataConnectionStateChanged(int state,int type){
+            if(closed||radios.get(id)!=this)return;
+            dataState=state;dataConnectionKnown=true;networkType=type;
+            if(state!=TelephonyManager.DATA_CONNECTED){activity=TelephonyManager.DATA_ACTIVITY_NONE;activityKnown=false;}
+            publish();
+        }
         void readLevel(SignalStrength strength){
             nativeLevel=-1;
             if(strength==null){level=-1;standardLevel=-1;levelSource="unread";return;}
@@ -178,10 +231,13 @@ final class ConnectivityIconSource {
             // never the strongest unrelated radio technology in the list.
             level=standardLevel;levelSource=operatorLevelMethod==null?"android":"android_fallback";
         }
-        int displayedLevel(){if(service==null)return level;
-            if(service.getState()==ServiceState.STATE_IN_SERVICE)return level;
-            for(NetworkRegistrationInfo info:service.getNetworkRegistrationInfoList())if(info.isRegistered())return level;
-            return 0;}
+        boolean inService(){if(service==null)return false;
+            if(service.getState()==ServiceState.STATE_IN_SERVICE)return true;
+            // IWLAN registration must not make a cellular radio appear in service.
+            for(NetworkRegistrationInfo info:service.getNetworkRegistrationInfoList())
+                if(info.getTransportType()==AccessNetworkConstants.TRANSPORT_TYPE_WWAN&&info.isRegistered())return true;
+            return false;}
+        int displayedLevel(){return service==null?level:inService()?level:0;}
         void close(){if(listening&&manager!=null)try{manager.unregisterTelephonyCallback(this);}catch(RuntimeException ignored){}listening=false;}
     }
     private void initializeSignalPolicy(){
@@ -206,17 +262,22 @@ final class ConnectivityIconSource {
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_signal_policy",policy);
     }
     private void publish(){if(closed)return;ArrayList<ConnectivityIconState.Sim> sims=new ArrayList<>();
-        for(Radio radio:radios.values())sims.add(new ConnectivityIconState.Sim(radio.id,radio.slot,radio.displayedLevel(),signalBars));
+        for(Radio radio:radios.values())sims.add(new ConnectivityIconState.Sim(radio.id,radio.slot,radio.displayedLevel(),signalBars,
+                radio.service!=null,radio.inService(),radio.service!=null&&radio.service.getRoaming(),
+                radio.dataConnectionKnown,radio.dataState==TelephonyManager.DATA_CONNECTED,radio.activity,radio.activityKnown,radio.networkType));
         ConnectivityIconState.PowerState power=ConnectivityIconState.powerState(plugged,charging,chargeSeparation);
-        state=new ConnectivityIconState(battery,power,wifiConnected,wifiLevel,airplane,data,sims);
+        state=new ConnectivityIconState(battery,power,wifiRead,wifiConnected,wifiLevel,wifiBars,airplane,activeData,defaultData,sims,wifiInternet);
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_charge_input","plugged="+plugged+";status="+batteryStatus
                 +";separation="+chargeSeparation+";mode="+power+";observer="+powerObserverRegistered+";error="+powerError);
         boolean radiosReady=true;for(Radio radio:radios.values())radiosReady&=radio.listening;
         ready=receiverRegistered&&subscriptionListening&&battery>=0&&wifiRead&&subscriptionsRead&&radiosReady;
-        StringBuilder witness=new StringBuilder("bars=").append(signalBars);
+        StringBuilder witness=new StringBuilder("bars=").append(signalBars).append(";activeData=").append(activeData)
+                .append(";defaultData=").append(defaultData).append(";activeCallback=").append(activeDataListening);
         for(Radio radio:radios.values())witness.append(";SIM").append(radio.slot+1).append("{source=").append(radio.levelSource)
                 .append(",standard=").append(radio.standardLevel).append(",native=").append(radio.nativeLevel)
-                .append(",display=").append(radio.displayedLevel()).append('}');
+                .append(",display=").append(radio.displayedLevel()).append(",subId=").append(radio.id)
+                .append(",serviceKnown=").append(radio.service!=null).append(",inService=").append(radio.inService())
+                .append(",dataState=").append(radio.dataState).append(",activity=").append(state.dataActivity(radio.id)).append('}');
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_signal_input",witness.toString());
         changed.run();}
     void close(){if(closed)return;closed=true;worker.post(()->{
@@ -225,5 +286,6 @@ final class ConnectivityIconSource {
         if(connectivity!=null&&wifiCallback!=null)try{connectivity.unregisterNetworkCallback(wifiCallback);}catch(RuntimeException ignored){}
         if(receiverRegistered)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}
         if(subscriptions!=null&&subscriptionListener!=null)try{subscriptions.removeOnSubscriptionsChangedListener(subscriptionListener);}catch(RuntimeException ignored){}
+        if(telephony!=null&&activeDataListener!=null&&activeDataListening)try{telephony.unregisterTelephonyCallback(activeDataListener);}catch(RuntimeException ignored){}
         for(Radio radio:radios.values())radio.close();radios.clear();thread.quitSafely();});}
 }

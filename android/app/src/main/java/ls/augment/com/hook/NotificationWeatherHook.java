@@ -155,6 +155,7 @@ final class NotificationWeatherHook {
         void alignLabel() {
             RelativeLayout view = header.get(); TextView text = label.get();
             if (view == null || text == null || view.getWidth() <= 0) return;
+            if (NotificationAppearanceHook.ownsWeather(text)) return;
             View date = child(view, "date");
             if (date == null) return;
             android.graphics.Rect rect = new android.graphics.Rect();

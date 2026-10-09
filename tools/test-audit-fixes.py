@@ -26,8 +26,12 @@ public interface SharedPreferences {Map<String,?> getAll();Editor edit();
 interface Editor {Editor putString(String key,String value);void apply();}}''',
     'ls/augment/com/ConfigSchema.java': '''package ls.augment.com;final class ConfigSchema {
 static final String STATUSBAR_CLOCK_CUSTOM="custom";
+static final String SYSTEMUI_MASTER="systemui_master";
 static boolean truthy(String s){return "1".equals(s);}static String normalize(String k,String v){return v;}
 static boolean contains(String k){return "ls_augment_reserved".equals(k);}}''',
+    'ls/augment/com/RuntimeEnvironment.java': '''package ls.augment.com;
+final class RuntimeEnvironment {static final String LIFECYCLE="ls_augment_system_server_lifecycle";
+static void record(android.content.Context context,int callerUid,String value){}}''',
     'ls/augment/com/AppConfig.java': '''package ls.augment.com;import java.util.*;
 final class AppConfig {static final String DIAGNOSTICS="diagnostics";
 static Map<String,String> disk=new LinkedHashMap<>();static boolean succeed=true;

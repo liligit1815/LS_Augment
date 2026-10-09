@@ -32,6 +32,11 @@ public final class TestStatusBarNativeNetwork {
  static class Rect {int left,top,right,bottom;Rect(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}int width(){return right-left;}int height(){return bottom-top;}boolean isEmpty(){return left>=right||top>=bottom;}}
  static class View {
   static final int VISIBLE=0,GONE=8;String slot="other";int left,top,width,height,visibility=VISIBLE;
+  int measuredWidth,measuredHeight;
+  static class MeasureSpec {static final int EXACTLY=0x40000000;static int makeMeasureSpec(int size,int mode){return size|mode;}}
+  int getBottom(){return top+height;}int getMeasuredWidth(){return measuredWidth;}int getMeasuredHeight(){return measuredHeight;}
+  void measure(int w,int h){measuredWidth=w&0x3fffffff;measuredHeight=h&0x3fffffff;}
+  void layout(int l,int t,int r,int b){left=l;top=t;width=r-l;height=b-t;}
   float x,y,sx=1,sy=1,alpha=1,transitionAlpha=1,pivotX;Rect ink;
   View(int l,int t,int w,int h){left=l;top=t;width=w;height=h;pivotX=w/2f;ink=new Rect(0,0,w,h);}
   int getLeft(){return left;}int getTop(){return top;}int getRight(){return left+width;}int getWidth(){return width;}int getVisibility(){return visibility;}

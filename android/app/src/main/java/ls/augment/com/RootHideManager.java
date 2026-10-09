@@ -27,6 +27,7 @@ final class RootHideManager {
     private static final String BACKUP_FILE = ROOT_DIR + "/targets.backup.conf";
     private static final String EMERGENCY_FILE = ROOT_DIR + "/emergency_restore.sh";
     static final ReentrantLock ACTION_LOCK = new ReentrantLock();
+    private static final String RESET_REQUIRED = "配置已被重置，请重新打开此页面后再操作";
     private static final Pattern PACKAGE = Pattern.compile(
             "[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+");
     private static final Pattern USER = Pattern.compile("UserInfo\\{(\\d+):([^:}]*)");
@@ -49,12 +50,14 @@ final class RootHideManager {
 
     private final Context context;
     private final AppConfig config;
+    private final long actionGeneration;
     private final HideTargetStore targetStore = new HideTargetStore();
     private volatile HideTargetStore.Snapshot targetSnapshot;
     private volatile String targetProblem = "独立应用名单尚未读取";
 
     RootHideManager(Context context) {
         this.context = context.getApplicationContext();
+        this.actionGeneration = ResetWriteFence.generation();
         this.config = new AppConfig(this.context);
     }
 
@@ -67,34 +70,48 @@ final class RootHideManager {
     }
 
     String rootAuthorizationProblem() {
+        if (ResetWriteFence.stale(actionGeneration)) return RESET_REQUIRED;
         return context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
                 .getBoolean("root_prompt_suppressed", false) ? "Root 授权已被拒绝" : "";
     }
 
     RootStatus requestRootStatus() {
-        context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
-                .edit().putBoolean("root_prompt_suppressed", false).apply();
-        return probeRoot();
+        ACTION_LOCK.lock();
+        try {
+            if (ResetWriteFence.stale(actionGeneration)) return resetRootStatus();
+            context.getSharedPreferences(AppConfig.DIAGNOSTICS, Context.MODE_PRIVATE)
+                    .edit().putBoolean("root_prompt_suppressed", false).apply();
+            return probeRoot();
+        } finally { ACTION_LOCK.unlock(); }
     }
 
     private RootStatus probeRoot() {
-        RootShell.Result result = RootShell.run(
-                "printf 'uid='; id -u; if [ -d /data/adb/ksu ]; then printf '|provider=KernelSU'; "
-                        + "elif [ -d /data/adb/magisk ]; then printf '|provider=Magisk'; "
-                        + "elif [ -d /data/adb/ap ]; then printf '|provider=APatch'; "
-                        + "else printf '|provider=Root'; fi", null, 8, 4096);
-        if (result.timedOut) return remember(new RootStatus(RootState.TIMEOUT, "Root 授权超时", "未知"));
-        if (result.output.contains("uid=0")) {
-            String provider = valueAfter(result.output, "|provider=");
-            RootStatus status = remember(new RootStatus(RootState.GRANTED, "已授权",
-                    provider.isEmpty() ? "Root" : provider));
-            config.initializeRuntimeMirrorsIfNeeded();
-            refreshTargets();
-            return status;
-        }
-        if (result.exitCode == 127) return remember(new RootStatus(RootState.UNAVAILABLE, "Root 不可用", "无"));
-        return remember(new RootStatus(RootState.DENIED,
-                result.output.isEmpty() ? "Root 授权被拒绝" : result.publicError(), "未知"));
+        ACTION_LOCK.lock();
+        try {
+            // A queued old screen must not recreate selection/recovery files after total reset.
+            if (ResetWriteFence.stale(actionGeneration)) return resetRootStatus();
+            RootShell.Result result = RootShell.run(
+                    "printf 'uid='; id -u; if [ -d /data/adb/ksu ]; then printf '|provider=KernelSU'; "
+                            + "elif [ -d /data/adb/magisk ]; then printf '|provider=Magisk'; "
+                            + "elif [ -d /data/adb/ap ]; then printf '|provider=APatch'; "
+                            + "else printf '|provider=Root'; fi", null, 8, 4096);
+            if (result.timedOut) return remember(new RootStatus(RootState.TIMEOUT, "Root 授权超时", "未知"));
+            if (result.output.contains("uid=0")) {
+                String provider = valueAfter(result.output, "|provider=");
+                RootStatus status = remember(new RootStatus(RootState.GRANTED, "已授权",
+                        provider.isEmpty() ? "Root" : provider));
+                config.initializeRuntimeMirrorsIfNeeded();
+                refreshTargets();
+                return status;
+            }
+            if (result.exitCode == 127) return remember(new RootStatus(RootState.UNAVAILABLE, "Root 不可用", "无"));
+            return remember(new RootStatus(RootState.DENIED,
+                    result.output.isEmpty() ? "Root 授权被拒绝" : result.publicError(), "未知"));
+        } finally { ACTION_LOCK.unlock(); }
+    }
+
+    private static RootStatus resetRootStatus() {
+        return new RootStatus(RootState.UNAVAILABLE, RESET_REQUIRED, "未知");
     }
 
     private RootStatus remember(RootStatus status) {
@@ -140,6 +157,7 @@ final class RootHideManager {
     OperationResult refreshTargets() {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             HideTargetStore.ReadResult read = targetStore.read();
             if (read.status == HideTargetStore.ReadStatus.ABSENT) {
                 HideTargetStore.LegacyResult legacy = targetStore.readLegacyTargets();
@@ -228,6 +246,7 @@ final class RootHideManager {
     OperationResult saveTargets(Set<Target> desired, Map<String, String> settings, long expectedRevision) {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             for (Map.Entry<String, String> entry : settings.entrySet())
                 if (ConfigSchema.normalize(entry.getKey(), entry.getValue()) == null)
                     return OperationResult.failure("配置值无效：" + entry.getKey());
@@ -336,6 +355,7 @@ final class RootHideManager {
     OperationResult runScreenOffAutomation() {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             android.os.PowerManager power = context.getSystemService(android.os.PowerManager.class);
             boolean authorized = RootState.GRANTED.name().equals(context
                     .getSharedPreferences(AppConfig.DIAGNOSTICS, 0)
@@ -359,6 +379,7 @@ final class RootHideManager {
     OperationResult toggleAll() {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             RootStatus root = rootStatus();
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
             // Decide and act under the same queue lock as manual and screen-off actions.
@@ -386,6 +407,7 @@ final class RootHideManager {
             Set<Target> confirmed, java.util.function.Consumer<String> progress) {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             reportProgress(progress, "正在检查应用…");
             RootStatus root = checkedRoot == null ? rootStatus() : checkedRoot;
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
@@ -462,6 +484,7 @@ final class RootHideManager {
     private OperationResult change(Target target, boolean hide, boolean lockHeld) {
         if (!lockHeld) ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             if (!hide) return OperationResult.review("请逐个核对当前应用并手动确认显示");
             if (!lockHeld) {
                 RootStatus root = rootStatus();
@@ -543,6 +566,7 @@ final class RootHideManager {
     }
 
     String currentTargetProblem(Target target) {
+        if (ResetWriteFence.stale(actionGeneration)) return RESET_REQUIRED;
         if (target == null || !target.isBound() || isProtected(target.packageName)) return "目标无效、身份未绑定或属于受保护应用";
         HideUserIdentity.Snapshot identity = matchUser(target);
         if (!identity.success) return identity.message;
@@ -578,6 +602,7 @@ final class RootHideManager {
     OperationResult syncMirrors() {
         ACTION_LOCK.lock();
         try {
+            if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             OperationResult loaded = refreshTargets();
             if (!loaded.success) return loaded;
             if (!selectionStatus().valid) {

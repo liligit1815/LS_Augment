@@ -32,7 +32,7 @@ try:
     open_module(stage + '-module')
     tap(stage + '-plan-off', '随机增加步数')
     time.sleep(.8)
-    tap(stage + '-multiply-off', '真实步数加倍')
+    tap(stage + '-multiply-off', '修改步数倍率')
     time.sleep(2.5)
     assert saved('health_enabled') == saved('health_plan_enabled') == saved('health_multiply_enabled') == '0'
     root = hierarchy(stage + '-both-off')

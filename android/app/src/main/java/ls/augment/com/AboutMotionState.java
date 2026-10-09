@@ -2,8 +2,7 @@ package ls.augment.com;
 
 /** About-page appearance derived only from the current scroll position, in dp. */
 public final class AboutMotionState {
-    public final float versionAlpha, versionScale, brandAlpha, brandScale, backgroundAlpha;
-    public final boolean titleVisible;
+    public final float versionAlpha, versionScale, brandAlpha, brandScale, backgroundAlpha, compactVersionAlpha;
 
     private AboutMotionState(float y) {
         versionAlpha = clamp(1f - y / 190f);
@@ -11,7 +10,7 @@ public final class AboutMotionState {
         float brandProgress = clamp((y - 190f) / 40f);
         brandAlpha = 1f - brandProgress;
         brandScale = 1f - .1f * brandProgress;
-        titleVisible = y >= 230f;
+        compactVersionAlpha = clamp((y - 230f) / 40f);
         backgroundAlpha = 1f - clamp(y / 389f);
     }
 

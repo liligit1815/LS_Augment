@@ -15,7 +15,8 @@ files = {
  'android/util/DisplayMetrics.java': 'package android.util;public class DisplayMetrics {public float density=1;}',
  'android/net/Uri.java': 'package android.net;public class Uri {public static Uri parse(String s){return new Uri();}}',
  'android/os/Looper.java': 'package android.os;public class Looper {public static Looper getMainLooper(){return new Looper();}}',
- 'android/os/Handler.java': 'package android.os;public class Handler {public Handler(Looper l){}public boolean post(Runnable r){return true;}public static java.util.List<Runnable> delayed=new java.util.ArrayList<>();public boolean postDelayed(Runnable r,long d){delayed.add(r);return true;}}',
+ 'android/os/Handler.java': 'package android.os;public class Handler {public Handler(Looper l){}public static java.util.Queue<Runnable> posted=new java.util.concurrent.ConcurrentLinkedQueue<>();public boolean post(Runnable r){posted.add(r);return true;}public static java.util.List<Runnable> delayed=new java.util.ArrayList<>();public boolean postDelayed(Runnable r,long d){delayed.add(r);return true;}public static void drain(){Runnable r;while((r=posted.poll())!=null)r.run();}}',
+ 'android/os/Process.java': 'package android.os;public class Process {public static int myPid(){return 1234;}public static long getStartElapsedRealtime(){return 100;}}',
  'android/os/SystemClock.java': 'package android.os;public class SystemClock {public static long elapsedRealtime(){return 10000;}}',
  'android/graphics/Bitmap.java': '''package android.graphics;public class Bitmap {public enum Config{ARGB_8888} public boolean recycled;
  public boolean isRecycled(){return recycled;}public void recycle(){recycled=true;}public int getWidth(){return 24;}public int getHeight(){return 24;}
@@ -36,10 +37,13 @@ files = {
  public android.content.res.Resources getResources(){return new android.content.res.Resources();}public int getWidth(){return 200;}public int getHeight(){return 400;}}''',
  'io/github/libxposed/api/XposedInterface.java': 'package io.github.libxposed.api;public interface XposedInterface {interface HookHandle {void unhook();}}',
  'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com;import java.util.*;public class ConfigSnapshot {
- public final Map<String,String> values=new HashMap<>();public String get(String k){return values.getOrDefault(k,k.endsWith("asset")?"":k.endsWith("scale_percent")?"100":"0");}public static ConfigSnapshot safeDefaults(){return new ConfigSnapshot();}}''',
+ public long revision=1;public final Map<String,String> values=new HashMap<>();public String get(String k){return values.getOrDefault(k,k.endsWith("asset")?"":k.endsWith("scale_percent")?"100":"0");}public static ConfigSnapshot safeDefaults(){return new ConfigSnapshot();}}''',
+ 'ls/augment/com/ConfigSchema.java': 'package ls.augment.com;public class ConfigSchema{public static final String SYSTEMUI_MASTER="ls_augment_systemui_enabled";}',
+ 'ls/augment/com/BuildConfig.java': 'package ls.augment.com;public class BuildConfig{public static final int VERSION_CODE=20454;}',
  'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;class FeatureSettings {
- static ls.augment.com.ConfigSnapshot snapshot(android.content.Context c){return ls.augment.com.ConfigSnapshot.safeDefaults();}
- static void addSnapshotListener(android.content.Context c,Runnable r){}static void diagnostic(android.content.Context c,String k,String v){}}''',
+ static ls.augment.com.ConfigSnapshot current=ls.augment.com.ConfigSnapshot.safeDefaults();static final java.util.Map<String,String> diagnostics=new java.util.HashMap<>();
+ static ls.augment.com.ConfigSnapshot snapshot(android.content.Context c){return current;}
+ static void addSnapshotListener(android.content.Context c,Runnable r){}static void diagnostic(android.content.Context c,String k,String v){diagnostics.put(k,v);}}''',
  'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.HookHandle;
  public class AugmentModule {public static AugmentModule active;public int failAt=-1,built,removed;final Map<Method,Interceptor> hooks=new HashMap<>();
  interface Interceptor {Object run(Chain c)throws Throwable;}static class Chain {Object target;Method method;Object[] args;
@@ -81,7 +85,44 @@ files = {
  Field images=type.getDeclaredField("images");images.setAccessible(true);GestureArtwork[] a=(GestureArtwork[])images.get(result);a[0]=left==null?null:new GestureArtwork(left);a[1]=right==null?null:new GestureArtwork(right);return result;}
  static void down(SeaWaveView view)throws Throwable{AugmentModule.call(view,SeaWaveView.class,"onActionDown",new Class[]{float.class,float.class,float.class},1f,1f,1f);}
  static void draw(SeaWaveView view)throws Throwable{AugmentModule.call(view,SeaWaveView.class,"drawIcon",new Class[]{Canvas.class},new Canvas());}
+ static Object get(String name)throws Exception{Field f=BackGestureIconHook.class.getDeclaredField(name);f.setAccessible(true);return f.get(null);}
+ static void refresh(ConfigSnapshot s)throws Exception{FeatureSettings.current=s;Method m=BackGestureIconHook.class.getDeclaredMethod("refresh");m.setAccessible(true);m.invoke(null);}
+ static BackGestureRuntimeObservation ack(){return BackGestureRuntimeObservation.parse(FeatureSettings.diagnostics.get(BackGestureRuntimeObservation.KEY));}
+ static ConfigSnapshot snapshot(long revision,boolean enabled){ConfigSnapshot s=new ConfigSnapshot();s.revision=revision;s.values.put(BackGestureIconPolicy.ENABLED,enabled?"1":"0");s.values.put(ConfigSchema.SYSTEMUI_MASTER,"1");return s;}
+ static void workerIdle()throws Exception{((java.util.concurrent.ExecutorService)get("WORKER")).submit(()->{}).get(2,java.util.concurrent.TimeUnit.SECONDS);}
+ static void observations()throws Exception {
+ android.os.Handler.posted.clear();android.os.Handler.delayed.clear();set("signature","");
+ ConfigSnapshot off=snapshot(100,false);refresh(off);BackGestureRuntimeObservation disabled=ack();
+ check(disabled!=null&&disabled.phase.equals("disabled")&&disabled.revision==100&&disabled.loadedMask==0,"disabled publishes a fresh exact runtime observation");
+ check(disabled.pid==1234&&disabled.build==20454&&disabled.elapsed==10000&&disabled.processStarted==100,"observation identifies loaded process/build/elapsed");
+ ConfigSnapshot off2=snapshot(101,false);refresh(off2);check(ack().revision==101&&ack().generation==disabled.generation,"same parameters acknowledge a new revision without resource reload");
+ ConfigSnapshot on=snapshot(102,true);String empty="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+ on.values.put(BackGestureIconPolicy.key(0,"mode"),"1");on.values.put(BackGestureIconPolicy.key(0,"asset"),empty);on.values.put(BackGestureIconPolicy.key(0,"background_asset"),empty);
+ refresh(on);check(ack().phase.equals("loading")&&ack().loadedMask==0,"loading does not reuse disabled readiness");
+ workerIdle();android.os.Handler.drain();BackGestureRuntimeObservation loaded=ack();
+ check(loaded.phase.equals("ready")&&loaded.requiredMask==3&&loaded.loadedMask==3,"ready commits the actual icon and wave mask");
+ ConfigSnapshot geometry=snapshot(103,true);geometry.values.putAll(on.values);geometry.values.put(BackGestureIconPolicy.key(0,"inset_dp"),"31");refresh(geometry);
+ check(ack().phase.equals("loading")&&ack().generation>loaded.generation&&!ack().signature.equals(loaded.signature),"geometry-only edit gets a distinct generation/signature");
+ workerIdle();
+ // A newer FeatureSettings snapshot may precede its queued main-thread refresh callback.
+ ConfigSnapshot future=snapshot(104,false);FeatureSettings.current=future;android.os.Handler.drain();
+ check(ack()!=null&&ack().revision==104&&ack().phase.equals("loading")&&ack().loadedMask==0,"a completed old decode cannot acknowledge new parameters before their listener runs");
+ refresh(future);check(ack().phase.equals("disabled"),"new disabled listener produces disabled ACK");
+ // A completed-but-not-committed old worker must not overwrite a newer disabled generation.
+ on.revision=105;refresh(on);workerIdle();ConfigSnapshot newer=snapshot(106,false);refresh(newer);long generation=ack().generation;android.os.Handler.drain();
+ check(ack().revision==106&&ack().generation==generation&&ack().phase.equals("disabled"),"late worker commit cannot overwrite newer disabled readiness");
+ ConfigSnapshot bad=snapshot(107,true);bad.values.put(BackGestureIconPolicy.key(1,"mode"),"1");bad.values.put(BackGestureIconPolicy.key(1,"asset"),"f".repeat(64));
+ refresh(bad);workerIdle();android.os.Handler.drain();check(ack().phase.equals("fallback")&&ack().requiredMask==4&&ack().loadedMask==0,"decode failure is fallback, not ready");
+ check(!android.os.Handler.delayed.isEmpty(),"resource failure retains its retry");
+ refresh(snapshot(108,false));long disabledGeneration=ack().generation;for(Runnable r:new ArrayList<>(android.os.Handler.delayed))r.run();android.os.Handler.delayed.clear();
+ check(ack().revision==108&&ack().phase.equals("disabled")&&ack().generation==disabledGeneration,"late retry cannot resurrect an old resource request");
+ // Master participates in the full ACK fingerprint without changing the existing resource-reuse contract.
+ ConfigSnapshot master=snapshot(109,false);master.values.put(ConfigSchema.SYSTEMUI_MASTER,"0");String before=ack().signature;refresh(master);
+ check(ack().revision==109&&!ack().signature.equals(before)&&ack().generation==disabledGeneration,"master-only edit has a fresh full signature without unnecessary decoding");
+ ((java.util.concurrent.ExecutorService)get("WORKER")).shutdownNow();
+ }
  public static void main(String[] args)throws Throwable {
+ try {
  AugmentModule bad=new AugmentModule();bad.failAt=3;AugmentModule.active=bad;
  check(BackGestureIconHook.install(bad,TestBackGestureRuntime.class.getClassLoader())==0&&bad.hooks.isEmpty()&&bad.removed==2,"partial install rollback");
  AugmentModule module=new AugmentModule();AugmentModule.active=module;check(BackGestureIconHook.install(module,TestBackGestureRuntime.class.getClassLoader())==6,"all hooks installed");
@@ -112,7 +153,18 @@ files = {
  check(lc.left==0&&rc.right==200&&!lc.mirrored&&rc.mirrored,"background follows native bounds and mirrors only on right");
  check(lc.saves==0&&!lc.clipped&&left.waveCalls==1,"native wave executes once and canvas restored");
  left.mScale=.5f;Canvas fade=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},fade);check(fade.alpha==128,"background follows gesture progress");left.mScale=1;
- left.mIsHover=true;Canvas hover=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},hover);check(hover.bitmapCalls==0&&hover.visiblePaths==2,"hover wave stays native");left.mIsHover=false;
+ // The same gesture must keep its skin when OEM hover opens the shortcut sidebar.
+ left.draw=true;
+ for(SeaWaveView edge:new SeaWaveView[]{left,right}){
+ edge.mIsHover=true;Canvas hover=new Canvas();int hoverBefore=edge.waveCalls;
+ AugmentModule.call(edge,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},hover);draw(edge);
+ check(hover.seen==wave&&hover.visiblePaths==0,"long swipe keeps custom background on both edges");
+ check(edge.seen==GestureIcon.mSide&&edge.seenAlpha==180&&edge.seenLeft==20,"long swipe keeps OEM shortcut affordance");
+ check(edge.mIsHover&&edge.waveCalls==hoverBefore+1&&hover.saves==0&&!hover.clipped,"hover state and native wave execution preserved");
+ check(hover.mirrored==(edge==right),"hover background keeps physical edge mirroring");
+ edge.mIsHover=false;Canvas returned=new Canvas();AugmentModule.call(edge,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},returned);draw(edge);
+ check(returned.seen==wave&&edge.seen==(edge==left?a:b),"retreat from hover resumes custom return icon without losing skin");
+ }
  GestureIcon.gesture=false;Canvas other=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},other);check(other.visiblePaths==2&&other.bitmapCalls==0,"non-return background stays native");GestureIcon.gesture=true;
  Canvas bottomWave=new Canvas();AugmentModule.call(bottom,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},bottomWave);check(bottomWave.visiblePaths==2,"bottom wave unaffected");
  left.waveFail=true;Canvas failed=new Canvas();int waveBefore=left.waveCalls;
@@ -121,6 +173,12 @@ files = {
  Canvas unavailable=new Canvas();unavailable.failBitmap=true;AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},unavailable);
  check(unavailable.visiblePaths==2&&unavailable.saves==0,"bitmap error draws preserved native paths");
  set("requested",state(false,a,b));Canvas off=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},off);check(off.bitmapCalls==0&&off.visiblePaths==2,"master off restores wave too");
+ left.mIsHover=true;Canvas hoverOff=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},hoverOff);draw(left);
+ check(hoverOff.bitmapCalls==0&&hoverOff.visiblePaths==2&&left.seen==GestureIcon.mSide,"disabled hover restores native pixels and shortcut icon");
+ Object unavailableHover=state(true,a,b);set("requested",unavailableHover);set("ready",unavailableHover);down(left);
+ Canvas missingHover=new Canvas();AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},missingHover);draw(left);
+ check(missingHover.bitmapCalls==0&&missingHover.visiblePaths==2&&left.seen==GestureIcon.mSide,"missing hover artwork falls back to OEM shortcut wave");
+ left.mIsHover=false;
  Object backgroundOnly=state(true,null,null);((GestureArtwork[])bg.get(backgroundOnly))[0]=new GestureArtwork(wave);
  set("requested",backgroundOnly);set("ready",backgroundOnly);down(left);Canvas solo=new Canvas();
  AugmentModule.call(left,SeaWaveView.class,"drawWave",new Class[]{Canvas.class},solo);
@@ -133,18 +191,36 @@ files = {
  AugmentModule.call(left,SeaWaveView.class,"onActionUp",new Class[]{float.class,android.animation.Animator.AnimatorListener.class},1f,null);
  for(Runnable callback:new java.util.ArrayList<>(android.os.Handler.delayed))callback.run();android.os.Handler.delayed.clear();
  check(art.stops>afterNew,"current up stops animated resources after exit");
- System.out.println("PASS production back gesture interceptors: "+checks+" checks");
+ observations();
+ System.out.println("PASS production back gesture interceptors and current-generation observations: "+checks+" checks");
+ }finally{((java.util.concurrent.ExecutorService)get("WORKER")).shutdownNow();}
  }
  }''',
 }
-for name in ('BackGestureIconPolicy.java', 'hook/BackGestureIconHook.java'):
-    files['ls/augment/com/' + name] = (SRC / name).read_text(encoding='utf-8')
-with tempfile.TemporaryDirectory(prefix='lsa-gesture-') as temp:
-    sources=[]
-    for name, source in files.items():
-        path=Path(temp)/name
-        path.parent.mkdir(parents=True,exist_ok=True)
-        path.write_text(source,encoding='utf-8')
-        sources.append(str(path))
-    subprocess.run(['javac','-encoding','UTF-8','-d',temp,*sources],check=True)
-    subprocess.run(['java','-cp',temp,'ls.augment.com.hook.TestBackGestureRuntime'],check=True)
+def run(overrides=None, expect_assertion=False):
+    inputs=dict(files)
+    # The drawing regression keeps its original scope. The real diagnostic adapter is
+    # exercised separately by test-back-gesture-probe.py; it must not replace draw hooks here.
+    inputs['ls/augment/com/hook/BackGestureProbeHook.java']='''package ls.augment.com.hook;
+final class BackGestureProbeHook{static void install(AugmentModule m,ClassLoader l){}static void attach(android.content.Context c){}static void iconReturned(boolean custom){}}'''
+    for name in ('BackGestureIconPolicy.java', 'BackGestureRuntimeObservation.java', 'hook/BackGestureIconHook.java'):
+        inputs['ls/augment/com/' + name] = (overrides or {}).get(name, (SRC / name).read_text(encoding='utf-8'))
+    with tempfile.TemporaryDirectory(prefix='lsa-gesture-') as temp:
+        sources=[]
+        for name, source in inputs.items():
+            path=Path(temp)/name
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text(source,encoding='utf-8')
+            sources.append(str(path))
+        subprocess.run(['javac','-encoding','UTF-8','-d',temp,*sources],check=True)
+        result=subprocess.run(['java','-cp',temp,'ls.augment.com.hook.TestBackGestureRuntime'],capture_output=True,text=True,encoding='utf-8',timeout=20)
+        if expect_assertion:
+            assert result.returncode and 'AssertionError' in result.stderr, result.stdout+result.stderr
+            return result.stderr.splitlines()[0]
+        print(result.stdout,end='')
+        if result.returncode:
+            print(result.stderr)
+            result.check_returncode()
+
+if __name__ == '__main__':
+    run()

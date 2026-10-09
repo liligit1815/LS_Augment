@@ -50,6 +50,7 @@ public class PrivacyRenderRegression {
     static boolean enabled(Context context, String key) { return enabled; }
   }
   static final class SystemUiOptions { static final String PRIVACY_HIDE = "privacy"; }
+  static final class StatusBarAssetsHook { static void privacy(View view) { } }
   static final class RedMagicLegacyUiHook {
     static boolean nativeAppearance;
     static boolean positionSizeOnly(Context context) { return nativeAppearance; }

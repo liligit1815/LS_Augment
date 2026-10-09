@@ -6,6 +6,8 @@ import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -200,22 +202,23 @@ final class LauncherRecentsMemoryHook {
             String text = LauncherMemoryPresentation.format(totalBytes, availableBytes, detailed ? 1 : 0, content);
             if (!text.contentEquals(label.getText())) label.setText(text);
             label.setTextColor(color(view));
-            label.setPadding(0, 0, 0, 0);
-            int width = region.width;
+            // Keep complete glyph ink inside the label, then leave a small gap
+            // at the logical safe edge. A measured text advance alone can cut
+            // off the final glyph when a saved left position is clamped.
+            int endInset = Math.max(1, dp(view, 2));
+            int width = region.textWidth(endInset);
             // The selected height is the actual height. If a detailed value
             // wraps, reduce its text size to fit instead of silently overriding
             // the user's minimum with the natural text height.
             int availableHeight = region.height;
             int targetHeight = Math.min(dp(view, height), availableHeight);
-            label.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int neededWidth = measureLabel(text, width, endInset);
             int contentHeight = Math.max(1, targetHeight - label.getPaddingTop() - label.getPaddingBottom());
             if (label.getMeasuredHeight() > targetHeight && label.getMeasuredHeight() > 0) {
                 float fitted = Math.max(6f, size * contentHeight / label.getMeasuredHeight());
                 if (fitted < size) {
                     label.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitted);
-                    label.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
-                            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+                    neededWidth = measureLabel(text, width, endInset);
                 }
             }
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) label.getLayoutParams();
@@ -223,8 +226,7 @@ final class LauncherRecentsMemoryHook {
             // Keep the user's saved distance, but clamp this layout to its actual
             // visible region. Rotation and density changes recalculate the bound.
             int topPixels = Math.min(dp(view, top), Math.max(0, availableHeight - targetHeight));
-            int neededWidth = Math.max(1, Math.min(width, label.getMeasuredWidth()));
-            int leftPixels = Math.min(dp(view, left), Math.max(0, width - neededWidth));
+            int leftPixels = region.textLeft(dp(view, left), neededWidth, endInset);
             // The handler angle is relative to the host. Do not rotate a second
             // time when Android has already rotated the whole launcher window.
             int hostLeft = region.x(leftPixels, topPixels) - host.getPaddingLeft();
@@ -248,6 +250,28 @@ final class LauncherRecentsMemoryHook {
             report("visible");
             main.removeCallbacks(update);
             main.postDelayed(update, 2000);
+        }
+
+        int measureLabel(String text, int maxWidth, int drawingInset) {
+            Paint paint = label.getPaint();
+            Rect ink = new Rect();
+            float advance = 0;
+            int inkLeft = 0, inkRight = 0;
+            for (int start = 0; start < text.length();) {
+                int end = text.indexOf('\n', start);
+                if (end < 0) end = text.length();
+                advance = Math.max(advance, paint.measureText(text, start, end));
+                paint.getTextBounds(text, start, end, ink);
+                inkLeft = Math.min(inkLeft, ink.left);
+                inkRight = Math.max(inkRight, ink.right);
+                start = end + 1;
+            }
+            label.setPadding(Math.max(0, -inkLeft), 0, drawingInset, 0);
+            int measuredWidth = Math.min(maxWidth,
+                    LauncherMemoryLayout.drawingWidth(advance, inkLeft, inkRight, drawingInset));
+            label.measure(View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            return measuredWidth;
         }
 
         int recentsRotation(View view) throws ReflectiveOperationException {

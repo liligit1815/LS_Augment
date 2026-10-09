@@ -64,6 +64,15 @@ final class FrameworkConfigSync {
 
     /** Worker-only. Reload under the publication lock so delayed saves cannot roll back state. */
     private static RootShell.Result publish(Context context) {
+        return publish(context, false);
+    }
+
+    /** Called from the reset worker; no UI thread waits and no stale remote keys survive. */
+    static RootShell.Result publishForReset(Context context, boolean replaceRemote) {
+        return publish(context.getApplicationContext(), replaceRemote);
+    }
+
+    private static RootShell.Result publish(Context context, boolean replaceRemote) {
         synchronized (PUBLICATION) {
             XposedService service = ModuleScopeService.service();
             if (service == null) return new RootShell.Result(1, "等待 LSPosed 框架连接", false);
@@ -73,11 +82,13 @@ final class FrameworkConfigSync {
                 ConfigSnapshot snapshot = new AppConfig(context).configSnapshot();
                 Map<String, ?> runtime = RuntimeStateStore.values(context);
                 Publication previous = published;
-                if (previous != null && service == previous.service && snapshot.serialize().equals(previous.snapshot)
+                if (!replaceRemote && previous != null && service == previous.service && snapshot.serialize().equals(previous.snapshot)
                         && runtime.equals(previous.runtime))
                     return new RootShell.Result(0, "框架配置已同步", false);
                 SharedPreferences remote = service.getRemotePreferences(RemoteConfig.GROUP);
-                boolean saved = remote.edit().putString(RemoteConfig.SNAPSHOT, snapshot.serialize())
+                SharedPreferences.Editor edit = remote.edit();
+                if (replaceRemote) edit.clear();
+                boolean saved = edit.putString(RemoteConfig.SNAPSHOT, snapshot.serialize())
                         .putString(RemoteConfig.HIDDEN, (String) runtime.get(RemoteConfig.HIDDEN))
                         .putString(RemoteConfig.TILE, (String) runtime.get(RemoteConfig.TILE))
                         .putLong(RemoteConfig.RUNTIME_REVISION, (Long) runtime.get(RemoteConfig.RUNTIME_REVISION))

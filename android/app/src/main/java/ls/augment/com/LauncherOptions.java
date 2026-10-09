@@ -13,6 +13,9 @@ public final class LauncherOptions {
     private LauncherOptions() {}
     public static List<EnhancementOption> options() {
         return Arrays.asList(
+            EnhancementOption.toggle(LauncherGridSpec.ENABLED,"launcher","自定义桌面布局","选择桌面页面的行数与列数，支持常用预设和 n×n 方形布局。默认关闭；开启、关闭或修改后，重启系统桌面生效。"),
+            EnhancementOption.integer(LauncherGridSpec.COLUMNS,"launcher","桌面列数","每排可放置的图标格数；与行数独立设置。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_COLUMNS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
+            EnhancementOption.integer(LauncherGridSpec.ROWS,"launcher","桌面行数","每页从上到下的图标排数；小组件可能占用多格。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_ROWS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
             EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","最近任务清理按钮改为爆破核心，可选择影视爆炸或数字晶片解构；清理对象和锁定规则沿用原厂逻辑。"),
             EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎"),
             EnhancementOption.toggle(PAGE_REORDER, "launcher", "整页移动桌面",

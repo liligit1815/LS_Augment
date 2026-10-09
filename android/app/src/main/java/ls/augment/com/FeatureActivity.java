@@ -23,10 +23,21 @@ public final class FeatureActivity extends Activity {
     static final String MODULE_AUTOMATION=FeatureEditorController.MODULE_AUTOMATION;
     static final String MODULE_TILE=FeatureEditorController.MODULE_TILE;
     static final String MODULE_LAUNCHER_ICON=FeatureEditorController.MODULE_LAUNCHER_ICON;
-    static final String MODULE_DIAGNOSTICS=FeatureEditorController.MODULE_DIAGNOSTICS;
-    static final String MODULE_DETAILED_DIAGNOSTICS=FeatureEditorController.MODULE_DETAILED_DIAGNOSTICS;
     private FeatureEditorController editor;
-    @Override protected void onCreate(Bundle state){super.onCreate(state);if("battery".equals(getIntent().getStringExtra(EXTRA_MODULE))){finish();return;}editor=new FeatureEditorController(this,getIntent().getStringExtra(EXTRA_MODULE),false);editor.onCreate(state);}
+    @Override protected void onCreate(Bundle state){
+        super.onCreate(state);
+        String module=getIntent().getStringExtra(EXTRA_MODULE);
+        if("battery".equals(module)){finish();return;}
+        String requested=getIntent().getStringExtra(ModuleNavigation.EXTRA_ROUTE);
+        String destination=ModuleHierarchy.resolve(requested!=null?requested:module==null?"":module);
+        if(destination.startsWith("target-")||ModuleHierarchy.group(destination)!=null||StatusBarPages.editor(destination)||"status_assets".equals(destination)||destination.startsWith("asset/")){
+            ModuleNavigation.open(this,destination);finish();return;
+        }
+        if(MODULE_BEAUTIFY.equals(module)||MODULE_BEAUTIFY.equals(getIntent().getStringExtra(ModuleNavigation.EXTRA_ROUTE))){
+            ModuleNavigation.open(this,"group/theme/theme");finish();return;
+        }
+        editor=new FeatureEditorController(this,module,false);editor.onCreate(state);
+    }
     @Override protected void onResume(){super.onResume();if(editor!=null)editor.onResume();}
     @Override protected void onPause(){if(editor!=null)editor.onPause();super.onPause();}
     @Override protected void onDestroy(){if(editor!=null)editor.onDestroy();super.onDestroy();}

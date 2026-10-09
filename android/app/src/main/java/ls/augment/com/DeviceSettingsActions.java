@@ -9,15 +9,19 @@ import java.util.concurrent.ExecutorService;
 final class DeviceSettingsActions {
     private DeviceSettingsActions() { }
     static void add(Activity a,UiKit ui,LinearLayout card,ExecutorService worker){
-        card.addView(ui.text("以下开关直接修改手机系统设置。",11.5f,ui.muted,false),ui.margins(0,0,0,6));
+        add(a,ui,card,worker,"development_settings_enabled","adb_enabled","adb_install_enabled","lock_refresh_rate");
+    }
+    static void add(Activity a,UiKit ui,LinearLayout card,ExecutorService worker,String... selected){
         // Namespaces and boolean values match the current Settings controllers.
         String[][] keys={{"global","development_settings_enabled","开发者选项"},{"global","adb_enabled","USB 调试"},
                 {"system","adb_install_enabled","USB 安装"},{"system","lock_refresh_rate","锁定刷新率（原厂开关）"}};
-        for(String[] row:keys){Switch toggle=new Switch(a);ui.styleSwitch(toggle);toggle.setChecked(read(a,row));card.addView(ui.featureRow(row[2],FeatureHelp.forDeviceSetting(row[1]),toggle),ui.wrap());boolean[] binding={false};
+        for(String[] row:keys){if(!Arrays.asList(selected).contains(row[1]))continue;
+            if(card.getChildCount()>0)card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+            Switch toggle=new Switch(a);toggle.setTag("device-setting:"+row[1]);ui.styleSwitch(toggle);toggle.setChecked(read(a,row));card.addView(ui.featureRow(row[2],FeatureHelp.forDeviceSetting(row[1]),toggle),ui.wrap());boolean[] binding={false};
             toggle.setOnCheckedChangeListener((v,checked)->{if(binding[0])return;toggle.setEnabled(false);worker.execute(()->{
-                RootShell.Result result=RootShell.run("settings put "+row[0]+" "+row[1]+" "+(checked?"1":"0"));
+                ModuleSystemSettings.WriteResult result=ModuleSystemSettings.put(a,row[0],row[1],checked?"1":"0");
                 a.runOnUiThread(()->{boolean actual=read(a,row);binding[0]=true;toggle.setChecked(actual);binding[0]=false;toggle.setEnabled(true);
-                    String message=result.isSuccess()&&actual==checked?"已应用":result.isSuccess()?"系统未接受此项设置":"未应用："+result.publicError();
+                    String message=result.success&&actual==checked?"已应用":result.success?"系统未接受此项设置":"未应用："+result.message;
                     Toast.makeText(a,message,Toast.LENGTH_LONG).show();});});});
         }
     }

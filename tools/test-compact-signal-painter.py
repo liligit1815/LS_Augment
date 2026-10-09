@@ -37,7 +37,7 @@ public class TestCompactSignal {
    for(int row=0;row<rows;row++)for(int i=0;i<count;i++){
     Canvas.Bar b=c.bars.get(row*count+i);
     check(b.l()>=7&&b.r()<=114.001&&b.t()>=11&&b.b()<=93.001,"all bars in bounds");
-    check(near(b.rx(),0)&&near(b.ry(),0),"rectangular supplied material");
+    check(b.rx()>0&&near(b.rx(),b.ry())&&b.rx()<=(b.r()-b.l())/2+.001,"rounded slim columns");
     if(i==0)check(b.b()-b.t()>0,"shortest bar visible");
     else {Canvas.Bar previous=c.bars.get(row*count+i-1);check(previous.r()<b.l()&&previous.t()>b.t()&&near(previous.b(),b.b()),"separate progressively taller bars share baseline");}
     int lit=row==0?level:count-level;check(b.color()==(i<lit?0xff112233:0x47112233),"independent SIM level and inactive tint");
@@ -48,8 +48,12 @@ public class TestCompactSignal {
    Canvas dual=new Canvas();painter.draw(dual,0,0,107,85,5,2,5,5,2,color,28);
    check(dual.bars.size()==10,"light and dark both retain two SIM rows");
    check(dual.bars.get(0).color()==color&&dual.bars.get(6).color()==color,"active tint follows light/dark");
-   check(near(dual.bars.get(4).b(),40.5f)&&near(dual.bars.get(9).t(),44.5f),"supplied 4 pixel row gap");
+   check(near(dual.bars.get(4).b(),37.5f)&&near(dual.bars.get(9).t(),47.5f),"clear 10 pixel row gutter");
   }
+  Canvas mixed=new Canvas();painter.draw(mixed,0,0,107,85,4,3,4,5,2,0xffffffff,28);
+  check(mixed.bars.size()==9,"each SIM retains its own OEM bar count");
+  check(near(mixed.bars.get(3).r(),107)&&near(mixed.bars.get(8).r(),107),"four/five-bar rows share right edge");
+  check(mixed.bars.get(6).color()==0xffffffff&&mixed.bars.get(7).color()==0x47ffffff,"five-bar row uses its own level");
   Canvas empty=new Canvas();painter.draw(empty,0,0,0,20,4,4,2,-1,28);check(empty.bars.isEmpty(),"unmeasured icon draws nothing");
   if(args.length>0){Canvas preview=new Canvas();painter.draw(preview,40,50,160.5f,123,5,5,5,5,2,0xff202124,28);
    painter.draw(preview,260,50,160.5f,123,4,2,5,5,2,0xff1264eb,28);

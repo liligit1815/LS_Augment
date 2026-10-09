@@ -1,23 +1,30 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { formatClock } from './current-validation';
+import { drawConnectivity } from './current-connectivity-preview';
 export function CurrentStatusPreview({
   values: v,
+  onSelect,
 }: {
   values: Record<string, string>;
+  onSelect?: (id: string) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const hits = useRef<
+    { id: string; x: number; y: number; width: number; height: number }[]
+  >([]);
   useEffect(() => {
     let live = true;
     void document.fonts.ready.then(() => {
       if (!live || !canvas.current) return;
       const c = canvas.current.getContext('2d')!;
       const w = 344,
-        h = 100,
+        h = 62,
         ratio = 3.25;
       canvas.current.width = w * ratio;
       canvas.current.height = h * ratio;
       c.scale(ratio, ratio);
+      hits.current = [];
       c.fillStyle = '#e7f3ff';
       c.beginPath();
       c.roundRect(0, 0, w, h, 12);
@@ -25,11 +32,11 @@ export function CurrentStatusPreview({
       c.strokeStyle = '#c7d9ea';
       c.lineWidth = 0.4;
       c.beginPath();
-      c.moveTo(0, 50);
-      c.lineTo(w, 50);
+      c.moveTo(0, 31);
+      c.lineTo(w, 31);
       for (let i = 1; i < 3; i++) {
         c.moveTo((w * i) / 3, 0);
-        c.lineTo((w * i) / 3, 100);
+        c.lineTo((w * i) / 3, 62);
       }
       c.stroke();
       const n = (key: string, d = 0) => {
@@ -56,10 +63,17 @@ export function CurrentStatusPreview({
             .filter(Boolean)
             .map(format)
             .join('\n')
-        : (on('clock_24h') ? '17:51' : '5:51') +
+        : (on('clock_24h') ? '14:48' : '2:48') +
           (on('clock_seconds') ? ':30' : '') +
           (on('clock_period') ? ' 下午' : '') +
-          (on('clock_week') ? (rows === 2 ? '\n周六' : ' 周六') : '');
+          (on('clock_week') ? (rows === 2 ? '\n周一' : ' 周一') : '');
+      const decimal = (id: string, value: number) =>
+        value.toFixed(
+          Math.max(
+            0,
+            Math.min(3, n(id + '_decimals', id === 'current' ? 0 : 1)),
+          ),
+        );
       const labels: Record<string, string> = {
         clock,
         notifications: on('notification_two_rows', true)
@@ -67,15 +81,13 @@ export function CurrentStatusPreview({
             '\n' +
             '● '.repeat(Math.floor(count / 2)).trim()
           : '● '.repeat(count).trim(),
-        system_icons: on('system_two_rows', true)
-          ? 'Wi-Fi\n静音'
-          : 'Wi-Fi 静音',
+        system_icons: on('system_two_rows', true) ? '◉\n◇' : '◉◇',
         battery: '100%',
-        cpu: 'C:37°',
-        gpu: 'G:36°',
-        battery_temp: 'B:33°',
-        current: 'I:600mA',
-        power: 'P:2.4W',
+        cpu: 'C:' + decimal('cpu', 37) + '°',
+        gpu: 'G:' + decimal('gpu', 36) + '°',
+        battery_temp: 'B:' + decimal('battery_temp', 33.5) + '°',
+        current: 'I:' + decimal('current', 600) + 'mA',
+        power: 'P:' + decimal('power', 2.4) + 'W',
         network: ['', '↑12K', '↓36K', '↑12K ↓36K', '↑12K\n↓36K'][network] || '',
       };
       const ids = Object.keys(labels),
@@ -91,8 +103,11 @@ export function CurrentStatusPreview({
           lines: number;
         }[] = [];
       ids.forEach((id, i) => {
+        if (on('position_size_only') && i >= 4) return;
         if ((v['status:' + id + ':on'] ?? (i < 4 ? '1' : '0')) !== '1') return;
         let size = Number(v['status:' + id + ':size'] ?? (i < 4 ? 13 : 9));
+        if (id === 'battery' && on('connectivity_group'))
+          size = n('connectivity_size_dp', 26);
         if (id === 'clock' && custom && n('clock_size_sp') > 0)
           size = n('clock_size_sp');
         const item = {
@@ -106,7 +121,7 @@ export function CurrentStatusPreview({
           lines: labels[id].split('\n').length,
         };
         if (
-          ['network', 'system_icons', 'notifications'].includes(id) &&
+          ['clock', 'network', 'system_icons', 'notifications'].includes(id) &&
           item.lines === 2
         ) {
           item.text.split('\n').forEach((text, row) =>
@@ -119,7 +134,7 @@ export function CurrentStatusPreview({
           );
         } else nodes.push(item);
       });
-      const barHeight = Math.max(33, n('height_dp')),
+      const barHeight = Math.max(12, 33 + n('height_dp')),
         left = 4 + n('left_margin_dp'),
         right = 4 + n('right_margin_dp'),
         top = n('top_margin_dp'),
@@ -133,8 +148,9 @@ export function CurrentStatusPreview({
       c.translate((w - w * scale) / 2, (h - barHeight * scale) / 2);
       c.scale(scale, scale);
       for (let col = 0; col < 3; col++) {
-        const available = usable / 3,
-          start = left + col * available,
+        const emptyMiddle = !nodes.some(n => Math.floor(n.zone / 3) === 1);
+        const available = emptyMiddle && col !== 1 ? usable / 2 : usable / 3,
+          start = left + (col === 2 ? usable - available : col === 1 ? (usable - available) / 2 : 0),
           cursor = [0, 0],
           items: {
             node: (typeof nodes)[number];
@@ -152,14 +168,18 @@ export function CurrentStatusPreview({
               row = node.zone % 3 === 1 ? 1 : 0;
             const font =
               custom && node.id === 'clock'
-                ? v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
-                : 'CurrentDevice';
+                ? (
+                    v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
+                  ).replace('sans-serif', 'NativeLatin, CurrentDevice')
+                : 'NativeLatin, CurrentDevice';
             c.font = `${node.weight} ${node.size}px ${font}`;
             const lineSpacing =
               node.id === 'clock' && custom ? n('clock_line_spacing_dp') : 0;
             const height =
-              node.size * 1.2 * node.lines +
-              lineSpacing * Math.max(0, node.lines - 1);
+              node.id === 'battery' && on('connectivity_group')
+                ? node.size
+                : node.size * 1.2 * node.lines +
+                  lineSpacing * Math.max(0, node.lines - 1);
             let width = Math.max(
               1,
               ...node.text
@@ -170,6 +190,10 @@ export function CurrentStatusPreview({
                     Math.max(0, t.length - 1) * node.spacing * node.size,
                 ),
             );
+            if (node.id === 'clock' && custom)
+              width = Math.max(width,...clock.split('\n').map(t=>c.measureText(t).width));
+            if (node.id === 'battery' && on('connectivity_group'))
+              width = node.size;
             if (node.id === 'clock' && custom && n('clock_width_dp'))
               width = n('clock_width_dp');
             const fit = Math.min(1, (span ? usableH : rowH) / height),
@@ -205,10 +229,23 @@ export function CurrentStatusPreview({
                   : mid + gap / 2;
           const font =
             custom && node.id === 'clock'
-              ? v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
-              : 'CurrentDevice';
+              ? (
+                  v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
+                ).replace('sans-serif', 'NativeLatin, CurrentDevice')
+              : 'NativeLatin, CurrentDevice';
           c.font = `${node.weight} ${node.size * item.fit * fit}px ${font}`;
           c.fillStyle = '#14233a';
+          hits.current.push({
+            id: node.id,
+            x: (w - w * scale) / 2 + (origin + item.x * fit) * scale,
+            y: (h - barHeight * scale) / 2 + y * scale,
+            width: Math.max(8, item.width * fit * scale),
+            height: Math.max(8, hh * scale),
+          });
+          if (node.id === 'battery' && on('connectivity_group')) {
+            drawConnectivity(c, origin + item.x * fit, y, hh, v);
+            return;
+          }
           node.text.split('\n').forEach((text, i) => {
             let xx = origin + item.x * fit;
             const align =
@@ -246,6 +283,19 @@ export function CurrentStatusPreview({
       aria-label="状态栏实时预览，左中右各分上下两排"
       data-native-path="StatusBarGridPreview"
       data-ui-label="状态栏实时预览"
+      onClick={(e) => {
+        const box = e.currentTarget.getBoundingClientRect(),
+          x = ((e.clientX - box.left) * 344) / box.width,
+          y = ((e.clientY - box.top) * 62) / box.height;
+        const hit = hits.current.find(
+          (r) =>
+            x >= r.x - 3 &&
+            x <= r.x + r.width + 3 &&
+            y >= r.y - 4 &&
+            y <= r.y + r.height + 4,
+        );
+        if (hit) onSelect?.(hit.id);
+      }}
     />
   );
 }

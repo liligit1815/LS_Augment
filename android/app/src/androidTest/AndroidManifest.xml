@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Test APK only. A notification from the target package must be able to open it. -->
+        <activity
+            android:name="ls.augment.com.C17RuntimeFixtureCases$ContentActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="临时通知内容"
+            android:theme="@android:style/Theme.Material.Light" />
+    </application>
+</manifest>

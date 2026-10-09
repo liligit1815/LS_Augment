@@ -1,6 +1,13 @@
 package ls.augment.com.hook;
 
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.provider.Settings;
+import ls.augment.com.AudioGainState;
+import ls.augment.com.BuildConfig;
+import ls.augment.com.ConfigSnapshot;
 import android.database.ContentObserver;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
@@ -19,6 +26,7 @@ final class AudioGainHook {
     private static final ThreadLocal<Boolean> INTERNAL = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Adjustment> PENDING = new ThreadLocal<>();
     private static Controller controller;
+    private static final java.util.concurrent.ExecutorService READ_REGISTRATION=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"LS-audio-state-register");t.setDaemon(true);return t;});
     private static final class Adjustment { int stream, requested; boolean authorized, dndAllowed; String route; }
 
     static synchronized void install(AugmentModule module, ClassLoader loader) {
@@ -125,12 +133,74 @@ final class AudioGainHook {
         final Map<Integer, LoudnessEnhancer> effects = new HashMap<>();
         final Map<Integer, String> publishedScales = new ConcurrentHashMap<>();
         List<?> players = Collections.emptyList(); String lastError = "", lastDiagnostic = "";
+        final Binder readEndpoint=new Binder(){
+            @Override protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException{
+                if(code!=IBinder.FIRST_CALL_TRANSACTION)return super.onTransact(code,data,reply,flags);
+                if(reply==null||(flags&IBinder.FLAG_ONEWAY)!=0)return false;
+                data.enforceInterface(AudioGainState.DESCRIPTOR);
+                int uid=Binder.getCallingUid();String[] packages=context.getPackageManager().getPackagesForUid(uid);
+                boolean actualSystemUi=false;
+                try{actualSystemUi=uid==context.getPackageManager().getApplicationInfo("com.android.systemui",0).uid;}
+                catch(android.content.pm.PackageManager.NameNotFoundException unavailable){}
+                if(!actualSystemUi||uid/100000!=android.os.Process.myUid()/100000||packages==null||!Arrays.asList(packages).contains("com.android.systemui"))throw new SecurityException("SystemUI readback only");
+                int version=data.readInt(),stream=data.readInt();long request=data.readLong();String token=data.readString();data.enforceNoDataAvail();
+                if(version!=BuildConfig.VERSION_CODE||AudioGainPolicy.stream(stream).isEmpty()||request<1)throw new IllegalArgumentException("invalid audio readback request");
+                long identity=Binder.clearCallingIdentity();AudioGainState state;
+                try{state=readState(stream,request,token);}finally{Binder.restoreCallingIdentity(identity);}
+                reply.writeNoException();reply.writeBundle(state==null?null:state.bundle());return true;
+            }
+        };
+        long lastRegistration=-10_000;final Runnable registerAgain=this::registerReadEndpoint;
+        final java.util.concurrent.atomic.AtomicBoolean registrationPending=new java.util.concurrent.atomic.AtomicBoolean();
+        void registerReadEndpoint(){
+            long now=SystemClock.elapsedRealtime();handler.removeCallbacks(registerAgain);if(now-lastRegistration<1000){handler.postDelayed(registerAgain,1000-(now-lastRegistration));return;}lastRegistration=now;
+            if(!registrationPending.compareAndSet(false,true))return;
+            // Provider acquisition must never block the existing DSP/notifyPanel handler.
+            READ_REGISTRATION.execute(()->{Bundle b=new Bundle();b.putBinder("controller",readEndpoint);b.putInt("version",BuildConfig.VERSION_CODE);
+                try{Bundle reply=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),AudioGainState.REGISTER,null,b);
+                    readDiagnostic("register",reply==null?"null_reply":"ok="+reply.getBoolean("ok")+";state="+reply.getString("state","unspecified"));}
+                catch(RuntimeException error){readDiagnostic("register","exception="+error.getClass().getSimpleName());}
+                finally{registrationPending.set(false);}});
+        }
+        void readDiagnostic(String stage,String value){try{FeatureSettings.diagnostic(context,"ls_augment_audio_gain_read_"+stage,value);}catch(RuntimeException ignored){}}
+        AudioGainState rejectState(int stream,String reason){readDiagnostic("server","stream="+stream+";reject="+reason);return null;}
+        AudioGainState readState(int stream,long request,String requestedToken){
+            if(!FeatureSettings.hasVerifiedSnapshot(context))return rejectState(stream,"unverified_snapshot");
+            ConfigSnapshot before=FeatureSettings.snapshot(context);String token=AudioGainState.configuration(before,stream);
+            if(!token.equals(requestedToken))return rejectState(stream,"configuration_changed");
+            try{
+                int boot=Settings.Global.getInt(context.getContentResolver(),Settings.Global.BOOT_COUNT,-1);
+                int device=(Integer)invoke(service,"getDeviceForStream",stream);String route=route(stream);
+                int base=nativeVolume("getStreamMaxVolume",stream),nativeLevel=nativeVolume("getStreamVolume",stream);
+                boolean muted=(Boolean)invoke(service,"isStreamMute",stream),enabled=ls.augment.com.ConfigSchema.truthy(before.get(ConfigSchema.AUDIO_GAIN_ENABLED));
+                int step=AudioGainState.number(before.get(ConfigSchema.AUDIO_GAIN_STEP),5,1,20);
+                int limit=route.isEmpty()?100:AudioGainState.number(before.get(AudioGainPolicy.key(route,stream)),100,100,300);
+                int extraRaw=extras.getOrDefault(id(route,stream),0),extra=enabled&&!route.isEmpty()?Math.min(extraRaw,AudioGainPolicy.extraSteps(limit,step)):0;
+                int total=base+(enabled&&!route.isEmpty()?AudioGainPolicy.extraSteps(limit,step):0);
+                int current=nativeLevel==0?0:nativeLevel+extra;
+                // Bracket the selected raw output device type as well as its gain-policy category.
+                if(nativeLevel!=nativeVolume("getStreamVolume",stream)||base!=nativeVolume("getStreamMaxVolume",stream)
+                        ||muted!=(Boolean)invoke(service,"isStreamMute",stream)||extraRaw!=extras.getOrDefault(id(route,stream),0)
+                        ||device!=(Integer)invoke(service,"getDeviceForStream",stream)||!route.equals(route(stream))
+                        ||!token.equals(AudioGainState.configuration(FeatureSettings.snapshot(context),stream))
+                        ||boot!=Settings.Global.getInt(context.getContentResolver(),Settings.Global.BOOT_COUNT,-1))return rejectState(stream,"source_changed");
+                AudioGainState state=new AudioGainState(BuildConfig.VERSION_CODE,boot,SystemClock.elapsedRealtime(),request,stream,device,route,token,enabled,muted,base,nativeLevel,current,total,step,limit);
+                if(!state.valid(BuildConfig.VERSION_CODE,boot,SystemClock.elapsedRealtime(),stream,token))return rejectState(stream,"packet_contract;boot="+boot+";base="+base+";native="+nativeLevel+";current="+current+";total="+total+";muted="+muted+";route="+route);
+                readDiagnostic("server","stream="+stream+";ready;base="+base+";native="+nativeLevel+";current="+current+";total="+total+";muted="+muted+";route="+route);return state;
+            }catch(ReflectiveOperationException|RuntimeException error){return rejectState(stream,"exception="+error.getClass().getSimpleName());}
+        }
         Controller(Object service, Context context) {
             this.service = service; this.context = context;
             HandlerThread t = new HandlerThread("LS-audio-gain", android.os.Process.THREAD_PRIORITY_BACKGROUND); t.start(); handler = new Handler(t.getLooper());
             handler.post(() -> { try { context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"), true, new ContentObserver(handler) {
                 @Override public void onChange(boolean selfChange) { FeatureSettings.invalidateSnapshot(); if (!enabled()) extras.clear(); apply(); for(int s:new int[]{3,2,4}) notifyPanel(s,0); }
             }); } catch (RuntimeException unavailable) { /* The periodic worker still refreshes. */ } });
+            handler.post(()->{
+                // A wake-only discovery cannot query audio or change it; the provider authenticates registration.
+                try{context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){registerReadEndpoint();}},
+                        new IntentFilter(AudioGainState.REDISCOVER),null,handler,Context.RECEIVER_EXPORTED);}catch(RuntimeException ignored){}
+                registerReadEndpoint();
+            });
             handler.postDelayed(tick, 1000);
         }
         final Runnable tick = new Runnable() { public void run() { apply(); handler.postDelayed(this, 1000); } };

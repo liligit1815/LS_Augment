@@ -37,11 +37,13 @@ import java.util.ArrayList;
 import java.util.List;
 public final class DexClassLoader extends URLClassLoader {
     public static final List<String> moduleLoads = new ArrayList<>();
+    public static final List<DexClassLoader> instances = new ArrayList<>();
     public static String lastPath;
     public DexClassLoader(String path, String optimized, String library, ClassLoader parent) {
         super(url(path), parent);
         if (optimized != null || library != null) throw new AssertionError("Unexpected output/library path");
         lastPath = path;
+        instances.add(this);
     }
     private static URL[] url(String path) {
         try { return new URL[]{ new File(path).toURI().toURL() }; }
@@ -62,6 +64,7 @@ import io.github.libxposed.api.XposedInterface;
 import java.io.File;
 import java.lang.reflect.*;
 import java.net.*;
+import java.nio.file.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class RootWatcherBridgeTest {
@@ -194,6 +197,47 @@ public final class RootWatcherBridgeTest {
                 check(refusal instanceof ReflectiveOperationException || refusal instanceof IllegalStateException,
                         "Unexpected refusal type for malformed bridge");
             }
+        });
+        test("retained bridge survives unlink before its first observer is created", () -> {
+            Path directory = Files.createTempDirectory("watcher-unlink-");
+            Path source = directory.resolve("module.jar");
+            Files.copy(Path.of(bridgePath), source);
+            int loads = DexClassLoader.instances.size();
+            RootWatcherBridgeFactory retained = RootWatcherBridgeFactory.load(
+                    module("ls.augment.com", source.toString()), services, watcher, watchable);
+            // URLClassLoader locks JARs on Windows. Release only its source handle;
+            // the resolved Class/Constructor stays alive, as required by this test.
+            DexClassLoader.instances.get(loads).close();
+            Files.delete(source);
+            AtomicInteger calls = new AtomicInteger();
+            Object observer = retained.create(value -> calls.incrementAndGet(), error -> { throw new AssertionError(error); });
+            signal(observer, null);
+            check(calls.get() == 1 && retained.failure() == null, "Callback after source unlink");
+            check(DexClassLoader.instances.size() == loads + 1, "No second loader for retained factory");
+            Throwable oldFlow = rejects(() -> RootWatcherBridgeFactory.load(
+                    module("ls.augment.com", source.toString()), services, watcher, watchable));
+            check(oldFlow instanceof IllegalStateException
+                    && oldFlow.getMessage().equals("Unreadable framework module source"), "Late-load negative control");
+            Files.delete(directory);
+        });
+        test("retained bridge does not adopt replacement APK class content", () -> {
+            Path directory = Files.createTempDirectory("watcher-replace-");
+            Path source = directory.resolve("module.jar");
+            Files.copy(Path.of(bridgePath), source);
+            int loads = DexClassLoader.instances.size();
+            RootWatcherBridgeFactory retained = RootWatcherBridgeFactory.load(
+                    module("ls.augment.com", source.toString()), services, watcher, watchable);
+            DexClassLoader.instances.get(loads).close();
+            Files.copy(Path.of(args[2]), source, StandardCopyOption.REPLACE_EXISTING);
+            AtomicInteger calls = new AtomicInteger();
+            Object observer = retained.create(value -> calls.incrementAndGet(), error -> { throw new AssertionError(error); });
+            signal(observer, null);
+            check(calls.get() == 1 && retained.failure() == null, "Original verified callback after replacement");
+            check(DexClassLoader.instances.size() == loads + 1, "Retained factory never reads replacement");
+            check(rejects(() -> RootWatcherBridgeFactory.load(module("ls.augment.com", source.toString()), services, watcher, watchable))
+                    instanceof IllegalStateException, "Replacement wrong shape still rejected for a new load");
+            DexClassLoader.instances.get(loads + 1).close();
+            Files.delete(source); Files.delete(directory);
         });
         services.close();
         System.out.println("RESULT " + passed + " passed, " + failed + " failed; " + assertions + " assertions; 0 skipped");

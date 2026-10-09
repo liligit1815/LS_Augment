@@ -107,8 +107,7 @@ final class AppDialogs {
                 button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}},
                         new int[]{ui.muted, primary ? ui.accent : ui.text}));
                 button.setBackgroundTintList(null);
-                button.setBackground(ui.pressable(ui.roundStroke(primary ? (ui.dark ? 0xa535638c : 0xb0b9e1ff)
-                        : (ui.dark ? 0x544c7094 : 0x68ffffff), 18, primary ? ui.accent : ui.outline, 1)));
+                button.setBackground(ui.pressable(ui.controlGlass(button,18,primary?IceGlassControlDrawable.TONAL:IceGlassControlDrawable.NEUTRAL)));
                 button.setStateListAnimator(null);
                 LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1);
                 if (actions.getChildCount() > 0) p.leftMargin = ui.dp(8);

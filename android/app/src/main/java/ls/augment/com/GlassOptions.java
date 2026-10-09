@@ -16,9 +16,9 @@ public final class GlassOptions {
     public static List<EnhancementOption> options() {
         return Collections.unmodifiableList(Arrays.asList(
                 EnhancementOption.toggle(CONTROL_CENTER,"quicksettings","控制中心 Liquid Glass",
-                        "为控制项添加透色玻璃与薄边高光；系统支持时呈现真实背景折射，否则使用半透明材质。首次开启需重启系统界面。"),
+                        "为控制项添加透色玻璃与薄边高光；系统支持时呈现真实背景折射，否则使用半透明材质。开启后重新展开控制中心查看效果。"),
                 EnhancementOption.toggle(DOCK,"launcher","桌面 Dock Liquid Glass",
-                        "在 Dock 图标下显示独立圆角玻璃托盘；系统支持时呈现真实背景折射，否则使用半透明托盘。首次开启需重启桌面。"),
+                        "在 Dock 图标下显示独立圆角玻璃托盘；系统支持时呈现真实背景折射，否则使用半透明托盘。开启后返回桌面查看效果。"),
                 EnhancementOption.toggle(CC_REDUCE_TRANSPARENCY,"quicksettings","控制中心玻璃减少透明度",
                         "控制中心玻璃表面使用清楚的实色，保留文字和图标。"),
                 EnhancementOption.toggle(CC_REDUCE_MOTION,"quicksettings","控制中心玻璃减少动态",
