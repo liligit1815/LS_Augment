@@ -22,13 +22,15 @@ public class TestIslandReview {
  static class android{static class view{interface ViewParent{}}}
  static class View implements android.view.ViewParent{static final int VISIBLE=0;boolean attached=true,shown=true;int visibility;float alpha=1;android.view.ViewParent parent;
   boolean isAttachedToWindow(){return attached;}boolean isShown(){return shown&&(!(parent instanceof View)||((View)parent).isShown());}int getWindowVisibility(){return visibility;}float getAlpha(){return alpha;}android.view.ViewParent getParent(){return parent;}}
- static class Pill{int clicks,longClicks,childDown;boolean shown=true,clickable=true,longClickable=true;boolean isShown(){return shown;}boolean isClickable(){return clickable;}void setClickable(boolean value){clickable=value;}boolean isLongClickable(){return longClickable;}void setLongClickable(boolean value){longClickable=value;}
-  float getX(){return 100;}float getY(){return 0;}int getWidth(){return 144;}int getHeight(){return 30;}void performClick(){clicks++;}void performLongClick(){longClicks++;}
+ static class FrameLayout{static class LayoutParams{int width=144,height=30,topMargin;}}
+ static class Pill{int clicks,longClicks,childDown,layoutUpdates,kind,battery;Object icon;boolean playing,transparent;float translationX;FrameLayout.LayoutParams params=new FrameLayout.LayoutParams();boolean shown=true,clickable=true,longClickable=true;boolean isShown(){return shown;}boolean isClickable(){return clickable;}void setClickable(boolean value){clickable=value;}boolean isLongClickable(){return longClickable;}void setLongClickable(boolean value){longClickable=value;}
+  Object getLayoutParams(){return params;}void setLayoutParams(FrameLayout.LayoutParams value){params=value;layoutUpdates++;}void setTranslationX(float value){translationX=value;}
+  float getX(){return 100+translationX;}float getY(){return params.topMargin;}int getWidth(){return params.width;}int getHeight(){return params.height;}void performClick(){clicks++;}void performLongClick(){longClicks++;}
   boolean hit(MotionEvent e){return shown&&e.x>=getX()&&e.x<getX()+getWidth()&&e.y>=getY()&&e.y<getY()+getHeight();}}
  // Model ViewGroup's normal dispatch after the hook returns PASS. A clickable
  // child that accepts DOWN owns that gesture; merely replaying into the parent
  // does not deliver it to the parent's native notification-shade handler.
- static class Host extends View{State state;int nativeDown,nativeMove,nativeUp;boolean pillTarget,nativeTarget,failNativeDown;
+ static class Host extends View{State state;int nativeDown,nativeMove,nativeUp,width=360,height=64;boolean pillTarget,nativeTarget,failNativeDown;int getWidth(){return width;}int getHeight(){return height;}
   boolean dispatchTouchEvent(MotionEvent e){
    if(e.action==MotionEvent.ACTION_DOWN){pillTarget=false;nativeTarget=false;}
    if(state.touch(e))return true;
@@ -42,7 +44,7 @@ public class TestIslandReview {
   }}
  static class PlaybackState{int value;PlaybackState(int value){this.value=value;}int getState(){return value;}}
  static class MediaSession{static class Token{}}
- static class MediaController{final MediaSession.Token token=new MediaSession.Token();PlaybackState state;boolean bad;MediaController(int value){state=new PlaybackState(value);}PlaybackState getPlaybackState(){if(bad)throw new IllegalStateException();return state;}MediaSession.Token getSessionToken(){return token;}}
+ static class MediaController{final MediaSession.Token token=new MediaSession.Token();final String packageName;PlaybackState state;boolean bad;MediaController(int value){this("media.default",value);}MediaController(String packageName,int value){this.packageName=packageName;state=new PlaybackState(value);}PlaybackState getPlaybackState(){if(bad)throw new IllegalStateException();return state;}MediaSession.Token getSessionToken(){return token;}String getPackageName(){return packageName;}}
  static class Build{static class VERSION{static int SDK_INT=36;}}
  static class SystemClock{static long now=1234;static long elapsedRealtime(){return now;}}
  static class PowerManager{boolean interactive=true;boolean isInteractive(){return interactive;}}
@@ -50,7 +52,8 @@ public class TestIslandReview {
  static class ActivityOptions{static final int MODE_BACKGROUND_ACTIVITY_START_ALLOWED=1,MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS=3;int mode;
   static ActivityOptions makeBasic(){return new ActivityOptions();}void setPendingIntentBackgroundActivityStartMode(int value){mode=value;}Bundle toBundle(){return new Bundle(mode);}}
  static final String P="island_";
- static class FeatureSettings{static String key,value;static void diagnostic(Object context,String k,String v){key=k;value=v;}static int integer(Object c,String k,int fallback,int min,int max){return fallback;}}
+ static class SystemUiOptions{static final String ISLAND_OFFSET_Y=P+"offset_y",ISLAND_TRANSPARENT=P+"transparent";}
+ static class FeatureSettings{static String key,value;static Map<String,Integer> values=new HashMap<>();static void diagnostic(Object context,String k,String v){key=k;value=v;}static int integer(Object c,String k,int fallback,int min,int max){return Math.max(min,Math.min(max,values.getOrDefault(k,fallback)));}static boolean enabled(Object c,String k){return values.getOrDefault(k,0)!=0;}}
  static class PendingIntent{int sends,launches,mode;boolean canceled,bad;static class CanceledException extends Exception{}
   void send(Object context,int code,Object intent,Object callback,Object handler,String permission,Bundle options)throws CanceledException{
    sends++;if(canceled)throw new CanceledException();if(bad)throw new SecurityException("private payload must not enter diagnostics");
@@ -66,7 +69,8 @@ public class TestIslandReview {
  static class NotificationListenerService{static class Ranking{int importance=3,effects;boolean suspended,interruption=true;int getImportance(){return importance;}boolean isSuspended(){return suspended;}boolean matchesInterruptionFilter(){return interruption;}int getSuppressedVisualEffects(){return effects;}}
   static class RankingMap{Ranking value=new Ranking();boolean found=true;boolean getRanking(String key,Ranking result){result.importance=value.importance;result.effects=value.effects;result.suspended=value.suspended;result.interruption=value.interruption;return found;}}}
  static class State{Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=this::performLongPress;
-  StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible;int refreshRequests;
+  StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
+  String foreground="launcher";String foregroundPackage(){return foreground;}
   State(){host.state=this;}boolean locked(){return isLocked;}int currentUser(){return user;}boolean option(String key){return true;}void refresh(){}void dismiss(){}void requestRefresh(){refreshRequests++;}
   // METHODS
  }
@@ -104,6 +108,28 @@ public class TestIslandReview {
   playing.state=new PlaybackState(3);check(s.selectMedia()==playing,"resumed playback appears");playing.state=new PlaybackState(2);check(s.selectMedia()==playing,"new pause gets brief grace");
   SystemClock.now+=4000;check(s.selectMedia()==null,"paused playback disappears exactly at four seconds");SystemClock.now=1234;
   paused.state=new PlaybackState(7);playing.state=new PlaybackState(1);check(s.selectMedia()==null,"stopped/error sessions disappear");
+  State foregroundMedia=new State();MediaController bili=new MediaController("tv.danmaku.bili",3);foregroundMedia.controllers.add(bili);foregroundMedia.foreground=bili.getPackageName();
+  check(foregroundMedia.selectMedia()==null,"Bili playing in foreground never appears on the island");
+  check(foregroundMedia.mediaActivities.containsKey(bili.getSessionToken()),"foreground playback still updates the session lease");
+  bili.state=new PlaybackState(6);check(foregroundMedia.selectMedia()==null,"Bili buffering in foreground never appears on the island");
+  bili.state=new PlaybackState(2);check(foregroundMedia.selectMedia()==null,"Bili pause grace in foreground never appears on the island");
+  bili.state=new PlaybackState(3);check(foregroundMedia.selectMedia()==null,"foreground playback stays hidden when it resumes");
+  foregroundMedia.foreground="launcher";check(foregroundMedia.selectMedia()==bili,"leaving Bili reveals ongoing background playback without a playback callback");foregroundMedia.media=bili;
+  foregroundMedia.foreground=bili.getPackageName();check(foregroundMedia.selectMedia()==null,"returning to Bili hides unchanged playback without a playback callback");
+  MediaController backgroundMusic=new MediaController("com.netease.cloudmusic",3);foregroundMedia.controllers.add(backgroundMusic);
+  check(foregroundMedia.selectMedia()==backgroundMusic,"background music wins even when the previously selected session is foreground Bili");
+  foregroundMedia.foreground=null;check(foregroundMedia.selectMedia()==null,"unknown foreground fails closed for every media session");
+  foregroundMedia.foreground="";check(foregroundMedia.selectMedia()==bili,"known foreground belonging to another user does not hide this user's background media");
+  State suppressedPause=new State();MediaController pausedBili=new MediaController("tv.danmaku.bili",3);suppressedPause.controllers.add(pausedBili);suppressedPause.foreground=pausedBili.getPackageName();
+  suppressedPause.selectMedia();pausedBili.state=new PlaybackState(2);check(suppressedPause.selectMedia()==null,"a pause that starts while foreground stays hidden");
+  long pauseDeadline=suppressedPause.mediaActivities.get(pausedBili.getSessionToken()).expiresAt();check(pauseDeadline==SystemClock.now+IslandActivityPolicy.PAUSE_MILLIS,"foreground pause starts its real grace deadline");
+  SystemClock.now+=1000;check(suppressedPause.selectMedia()==null&&suppressedPause.mediaActivities.get(pausedBili.getSessionToken()).expiresAt()==pauseDeadline,"foreground suppression cannot renew pause grace");
+  SystemClock.now=pauseDeadline;suppressedPause.foreground="launcher";check(suppressedPause.selectMedia()==null,"leaving after foreground pause grace expires cannot revive stale playback");
+  State suppressedTransition=new State();MediaController bufferingBili=new MediaController("tv.danmaku.bili",6);suppressedTransition.controllers.add(bufferingBili);suppressedTransition.foreground=bufferingBili.getPackageName();
+  check(suppressedTransition.selectMedia()==null,"a transition that starts while foreground stays hidden");long transitionDeadline=suppressedTransition.mediaActivities.get(bufferingBili.getSessionToken()).expiresAt();
+  check(transitionDeadline==SystemClock.now+IslandActivityPolicy.TRANSITION_MILLIS,"foreground transition starts its real expiration deadline");
+  SystemClock.now+=1000;check(suppressedTransition.selectMedia()==null&&suppressedTransition.mediaActivities.get(bufferingBili.getSessionToken()).expiresAt()==transitionDeadline,"foreground suppression cannot renew transition grace");
+  SystemClock.now=transitionDeadline;suppressedTransition.foreground="launcher";check(suppressedTransition.selectMedia()==null,"leaving after foreground buffering expires cannot revive stale playback");SystemClock.now=1234;
   NotificationListenerService.RankingMap map=new NotificationListenerService.RankingMap();check(s.allowedRanking("key",map),"normal notification can appear");
   for(int effect:new int[]{1,2,4,7}){map.value.effects=effect;check(!s.allowedRanking("key",map),"DND visual policy honored");}map.value.effects=0;
   map.value.interruption=false;check(!s.allowedRanking("key",map),"DND interruption filter honored");map.value.interruption=true;
@@ -130,11 +156,27 @@ public class TestIslandReview {
   s.openNotice(null);check(FeatureSettings.value.startsWith("blocked;"),"null intent is never sent");
   PendingIntent canceled=new PendingIntent();canceled.canceled=true;s.openNotice(canceled);check(FeatureSettings.value.startsWith("canceled;"),"canceled intent reported without crashing SystemUI");
   PendingIntent bad=new PendingIntent();bad.bad=true;s.openNotice(bad);check(FeatureSettings.value.equals("failed:SecurityException;at=1234"),"exception diagnostic includes type only, no notification or exception payload");
+  State geometry=new State();geometry.layout();
+  check(geometry.pill.params.topMargin==16&&geometry.pill.getHeight()==32,"default capsule remains centered with native height");
+  check(!geometry.pill.transparent,"existing users keep the opaque style");
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,6);geometry.layout();
+  check(geometry.pill.getY()==22,"positive offset moves the actual capsule hit region down");
+  check(!geometry.touch(event(0,110,18))&&geometry.touch(event(0,110,24)),"offset uses the visible hit region without retaining the former tap area");geometry.cancelTouch();
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,-6);geometry.layout();check(geometry.pill.getY()==10,"negative offset moves the capsule up");
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,24);geometry.layout();check(geometry.pill.getY()+geometry.pill.getHeight()==geometry.host.getHeight(),"large downward offset stays inside the status bar");
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,-24);geometry.layout();check(geometry.pill.getY()==0,"large upward offset stays inside the status bar");
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,6);geometry.density=3.25f;geometry.host.width=1170;geometry.host.height=208;geometry.layout();
+  check(geometry.pill.params.topMargin==72&&geometry.pill.getHeight()==104,"offset is converted from dp at real device density");
+  int updates=geometry.pill.layoutUpdates;FeatureSettings.values.put(SystemUiOptions.ISLAND_TRANSPARENT,1);geometry.layout();
+  check(geometry.pill.transparent&&geometry.pill.layoutUpdates==updates,"transparent style hot update preserves geometry and hit targets");
+  FeatureSettings.values.put(SystemUiOptions.ISLAND_TRANSPARENT,0);geometry.layout();check(!geometry.pill.transparent,"style can return to opaque without recreating the host");
+  geometry.host.height=48;geometry.layout();check(geometry.pill.getY()>=0&&geometry.pill.getY()+geometry.pill.getHeight()<=48,"small status bar safely limits both height and offset");
+  geometry.host.height=0;geometry.layout();check(geometry.pill.getY()==0&&geometry.pill.getHeight()==0,"unlaid-out host cannot create a negative capsule bound");FeatureSettings.values.clear();
   System.out.println("PASS island production touch/media/privacy: "+checks+" checks");
  }
 }
 '''
-harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean touch(','void cancelTouch(','void performLongPress(','boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(','void withdrawNotice(','void clearNotice(','boolean allowedRanking(','void openNotice(','void openDiagnostic(']))
+harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean touch(','void cancelTouch(','void performLongPress(','boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(','void withdrawNotice(','void clearNotice(','boolean allowedRanking(','void openNotice(','void openDiagnostic(','void layout(']))
 # Uses the caller's configured JDK, like the other host regression scripts.
 with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  path=Path(tmp)/'TestIslandReview.java';path.write_text(harness,encoding='utf-8')
@@ -170,3 +212,21 @@ with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  if rejected.returncode==0 or 'Android 16 notification click grants sender launch privileges' not in rejected.stderr:
   raise AssertionError('The notification regression must reject missing sender options: '+rejected.stderr)
  print('PASS missing PendingIntent sender opt-in mutant rejected')
+ # Foreground filtering must affect real selection, including an already
+ # selected session, while leases continue to age during suppression.
+ mutant=harness.replace('controller.getPackageName().equals(foreground)','false',1)
+ if mutant==harness:raise AssertionError('Foreground package guard not found in the extracted production selector')
+ path.write_text(mutant,encoding='utf-8')
+ subprocess.run(['javac','-encoding','UTF-8','-cp',tmp,'-d',tmp,str(path)],check=True)
+ rejected=subprocess.run(['java','-cp',tmp,'TestIslandReview'],capture_output=True,text=True)
+ if rejected.returncode==0 or 'Bili playing in foreground never appears on the island' not in rejected.stderr:
+  raise AssertionError('The foreground regression must reject selecting the foreground Bili session: '+rejected.stderr)
+ print('PASS missing foreground-package exclusion mutant rejected')
+ mutant=harness.replace('foreground==null','false',1)
+ if mutant==harness:raise AssertionError('Unknown foreground guard not found in the extracted production selector')
+ path.write_text(mutant,encoding='utf-8')
+ subprocess.run(['javac','-encoding','UTF-8','-cp',tmp,'-d',tmp,str(path)],check=True)
+ rejected=subprocess.run(['java','-cp',tmp,'TestIslandReview'],capture_output=True,text=True)
+ if rejected.returncode==0 or 'unknown foreground fails closed for every media session' not in rejected.stderr:
+  raise AssertionError('The foreground regression must reject selecting media without a known foreground: '+rejected.stderr)
+ print('PASS unknown foreground fails-closed mutant rejected')

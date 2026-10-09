@@ -2,11 +2,13 @@ package ls.augment.com;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.app.UiAutomation;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -33,7 +35,7 @@ import org.json.JSONObject;
 /** Uses production rows and click handlers with seeded in-memory values; never saves a setting. */
 final class IslandSettingsUiCases {
     private static final String P=SystemUiOptions.PREFIX+"island_";
-    private static final String ROUTE="group/systemui/island";
+    private static final String ROUTE="group/notifications/island";
     private final Instrumentation test;
     private final Context context;
     private final JSONArray screenshots=new JSONArray(),measurements=new JSONArray();
@@ -53,7 +55,7 @@ final class IslandSettingsUiCases {
         Map<String,?> memoryBefore=new LinkedHashMap<>(context.getSharedPreferences("native_value_overrides",0).getAll());
         try{
             activity=test.startActivitySync(new Intent(context,EnhancementSettingsActivity.class)
-                    .putExtra("target","systemui").putExtra(ModuleNavigation.EXTRA_ROUTE,ROUTE)
+                    .putExtra("target","notifications").putExtra(ModuleNavigation.EXTRA_ROUTE,ROUTE)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             settle();
             float fontScale=activity.getResources().getConfiguration().fontScale;
@@ -63,19 +65,24 @@ final class IslandSettingsUiCases {
                 draft=(Map<String,String>)get(activity,"draft");pending=(FieldEditQueue)get(activity,"pending");
                 controls=(Map<String,View>)get(activity,"controls");originalDraft=new LinkedHashMap<>(draft);
                 require(ROUTE.equals(ModuleNavigation.route(activity)),"Island opens its single third-level page");
-                for(String route:new String[]{"home","target-systemui",ROUTE})require(tag("breadcrumb:"+route)!=null,"Breadcrumb includes "+route);
+                for(String route:new String[]{"home","target-notifications",ROUTE})require(tag("breadcrumb:"+route)!=null,"Breadcrumb includes "+route);
                 require(countTag(root(),"native-feature:systemui:island_enabled")==1,"Island has one master entry");
                 require(pending.restorableValues().isEmpty(),"Browsing begins without pending writes");return null;
             });
+            require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_OFFSET_Y)),"New vertical offset defaults to centered");
+            require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_TRANSPARENT)),"New transparent style is opt-in");
+            require(ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_OFFSET_Y)
+                    &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_TRANSPARENT),"New island parameters reach the SystemUI configuration snapshot");
             measure("saved");capture("01-saved");unchanged(config,before,rawBefore,memoryBefore);
 
             main(()->{
                 draft.put(SystemUiOptions.ISLAND,"0");
                 for(String suffix:new String[]{"music","notifications","charging"})draft.put(P+suffix,"1");
+                draft.put(SystemUiOptions.ISLAND_TRANSPARENT,"0");
                 render();
                 require(!master().isChecked()&&masterContent().getVisibility()==View.GONE,"Disabled master hides its settings");
                 require(!arrow(master()).isEnabled(),"Disabled master cannot expand");
-                for(String suffix:new String[]{"enabled","music","notifications","charging"}){
+                for(String suffix:new String[]{"enabled","music","notifications","charging","transparent"}){
                     String key=P+suffix;
                     require(countTag(root(),"config:"+key)==1,"One switch owns "+key);
                     require(tag("config:"+key) instanceof Switch,"Boolean uses public switch: "+key);
@@ -88,6 +95,10 @@ final class IslandSettingsUiCases {
                 clickSeeded(SystemUiOptions.ISLAND,true);
                 require(masterContent().getVisibility()==View.VISIBLE,"Enabling master expands configuration");
                 for(String suffix:new String[]{"music","notifications","charging"})require(toggle(P+suffix).isShown(),"Activity source is reachable: "+suffix);
+                require(toggle(SystemUiOptions.ISLAND_TRANSPARENT).isShown(),"Transparent style uses a reachable native switch");
+                clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,true);
+                require(master().isChecked()&&toggle(P+"music").isChecked(),"Enabling transparent style preserves the island and activity source");
+                clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,false);
                 require(text(root(),"有活动时出现 · 轻点打开 · 长按展开")!=null,"Real event and gesture behavior is stated in place");
                 require(!control(P+"width").isShown(),"Geometry is folded by default");
                 require(!control(P+"notice_seconds").isShown(),"Notification duration begins in its own fold");
@@ -118,16 +129,37 @@ final class IslandSettingsUiCases {
                     clickSeeded(P+suffix,true);
                 }
                 View geometry=description(root(),"展开大小与位置");require(geometry!=null&&geometry.performClick(),"Geometry uses a single in-page fold");
-                for(String suffix:new String[]{"width","height","offset_x"})require(control(P+suffix).isShown(),"Geometry control is reachable: "+suffix);
+                for(String suffix:new String[]{"width","height","offset_x","offset_y"})require(control(P+suffix).isShown(),"Geometry control is reachable: "+suffix);
                 noPending();return null;
             });
             settle();capture("05-geometry-top");
-            main(()->{ScrollView scroll=first(root(),ScrollView.class);require(scroll!=null,"Expanded page remains scrollable");scroll.fullScroll(View.FOCUS_DOWN);return null;});
+            main(()->{
+                View field=control(SystemUiOptions.ISLAND_OFFSET_Y);ScrollView scroll=scroll();
+                View parent=field;
+                while(parent!=scroll&&parent.getParent() instanceof View)parent=(View)parent.getParent();
+                require(parent==scroll,"Last island input belongs to the public content scroll, not the adaptive rail");
+                field.requestRectangleOnScreen(new Rect(0,0,field.getWidth(),field.getHeight()),true);return null;
+            });
             settle();
+            main(()->{
+                View field=control(SystemUiOptions.ISLAND_OFFSET_Y);ScrollView scroll=scroll();
+                Rect visible=new Rect(),viewport=new Rect();int[] point=new int[2];field.getLocationOnScreen(point);
+                require(scroll.getGlobalVisibleRect(viewport),"Public island scroll viewport is physically visible");
+                viewport.left+=scroll.getPaddingLeft();viewport.top+=scroll.getPaddingTop();
+                viewport.right-=scroll.getPaddingRight();viewport.bottom-=scroll.getPaddingBottom();
+                require(field.getGlobalVisibleRect(visible)&&visible.width()>=field.getWidth()-1&&visible.height()>=field.getHeight()-1,
+                        "Last island input is fully visible after its own rectangle request");
+                require(point[0]>=viewport.left-1&&point[1]>=viewport.top-1
+                        &&point[0]+field.getWidth()<=viewport.right+1&&point[1]+field.getHeight()<=viewport.bottom+1,
+                        "Vertical-offset input fits entirely inside the real on-screen content viewport");
+                measurements.put(new JSONObject().put("state","geometry-bottom").put("lastInputFullyVisible",true)
+                        .put("scrollY",scroll.getScrollY()).put("fieldTopPx",point[1]).put("fieldBottomPx",point[1]+field.getHeight())
+                        .put("viewportTopPx",viewport.top).put("viewportBottomPx",viewport.bottom));return null;
+            });
             capture("06-geometry-bottom");
             main(()->{
                 float density=activity.getResources().getDisplayMetrics().density;
-                for(String suffix:new String[]{"width","height","offset_x","notice_seconds"}){
+                for(String suffix:new String[]{"width","height","offset_x","offset_y","notice_seconds"}){
                     View field=control(P+suffix);require(field instanceof EditText,"Numeric parameter remains a native input: "+suffix);
                     if(field.isShown()){
                         EditText input=(EditText)field;
@@ -143,12 +175,12 @@ final class IslandSettingsUiCases {
                 }return null;
             });
             main(()->{
-                ScrollView scroll=first(root(),ScrollView.class);scroll.scrollTo(0,0);
+                ScrollView scroll=scroll();scroll.scrollTo(0,0);
                 require(arrow(master()).performClick(),"Master parameters collapse");
                 require(master().isChecked()&&masterContent().getVisibility()==View.GONE,"Collapsing configuration leaves island enabled");
                 require(arrow(master()).performClick(),"Master parameters reopen");
                 Map<String,String> parameters=new LinkedHashMap<>();
-                for(String suffix:new String[]{"width","height","offset_x","notice_seconds","music","notifications","charging"})parameters.put(P+suffix,draft.get(P+suffix));
+                for(String suffix:new String[]{"width","height","offset_x","offset_y","transparent","notice_seconds","music","notifications","charging"})parameters.put(P+suffix,draft.get(P+suffix));
                 clickSeeded(SystemUiOptions.ISLAND,false);
                 require(masterContent().getVisibility()==View.GONE&&!arrow(master()).isEnabled(),"Disabling island collapses all settings");
                 for(Map.Entry<String,String> entry:parameters.entrySet())require(entry.getValue().equals(draft.get(entry.getKey())),"Disabling island preserves "+entry.getKey());
@@ -187,7 +219,7 @@ final class IslandSettingsUiCases {
         require(memoryBefore.equals(context.getSharedPreferences("native_value_overrides",0).getAll()),"Per-feature memory remains unchanged");
     }
     private void measure(String state)throws Exception{main(()->{
-        View path=tag("page-path"),card=tag("application-category:systemui:island");
+        View path=tag("page-path"),card=tag("application-category:notifications:island");
         require(path!=null&&card!=null,"Common breadcrumb and preference card exist");
         float density=activity.getResources().getDisplayMetrics().density;
         float gap=(top(card)-top(path)-path.getHeight())/density;
@@ -196,7 +228,7 @@ final class IslandSettingsUiCases {
     });}
     private void checkSwitchGeometry()throws Exception{main(()->{
         float density=activity.getResources().getDisplayMetrics().density,low=Float.MAX_VALUE,high=-Float.MAX_VALUE;
-        for(String suffix:new String[]{"enabled","music","notifications","charging"}){
+        for(String suffix:new String[]{"enabled","music","notifications","charging","transparent"}){
             Switch control=toggle(P+suffix);ViewGroup row=(ViewGroup)control.getParent();
             require(row.getHeight()/density>=43.5f,"Switch row retains 44dp touch target: "+suffix);
             require(Math.abs(control.getWidth()/density-46)<1,"Switch uses common 46dp width: "+suffix);
@@ -213,16 +245,29 @@ final class IslandSettingsUiCases {
     private Switch master(){return toggle(SystemUiOptions.ISLAND);}
     private View masterContent(){return ((ViewGroup)tag("native-feature:systemui:island_enabled")).getChildAt(1);}
     private View control(String key){View view=controls.get(key);require(view!=null,"Parameter exists: "+key);return view;}
+    private ScrollView scroll(){View view=tag("detail-scroll");require(view instanceof ScrollView,"Public detail content scroll exists");return (ScrollView)view;}
     private ImageButton arrow(Switch control){ViewGroup row=(ViewGroup)control.getParent();View view=row.getChildAt(row.getChildCount()-1);require(view instanceof ImageButton,"Public fold arrow exists");return (ImageButton)view;}
     private static float top(View view){int[] xy=new int[2];view.getLocationInWindow(xy);return xy[1];}
     private static TextView text(View view,String label){if(view instanceof TextView&&label.contentEquals(((TextView)view).getText()))return (TextView)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){TextView found=text(((ViewGroup)view).getChildAt(i),label);if(found!=null)return found;}return null;}
     private static View description(View view,String label){if(label.contentEquals(view.getContentDescription()==null?"":view.getContentDescription()))return view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){View found=description(((ViewGroup)view).getChildAt(i),label);if(found!=null)return found;}return null;}
     private static int countTag(View view,String label){int count=label.equals(view.getTag())?1:0;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)count+=countTag(((ViewGroup)view).getChildAt(i),label);return count;}
     private static <T extends View>List<T> all(View view,Class<T> type){List<T> found=new ArrayList<>();if(type.isInstance(view))found.add(type.cast(view));if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)found.addAll(all(((ViewGroup)view).getChildAt(i),type));return found;}
-    private static <T extends View>T first(View view,Class<T> type){List<T> found=all(view,type);return found.isEmpty()?null:found.get(0);}
     private static Object get(Object object,String name)throws Exception{Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(object);}
-    private void settle()throws Exception{test.waitForIdleSync();CountDownLatch frames=new CountDownLatch(1);main(()->{root().postOnAnimation(()->root().postOnAnimation(frames::countDown));return null;});require(frames.await(3,TimeUnit.SECONDS),"Page laid out");test.waitForIdleSync();}
-    private void capture(String name)throws Exception{settle();Bitmap bitmap=main(()->{View view=root();Bitmap result=Bitmap.createBitmap(view.getWidth(),view.getHeight(),Bitmap.Config.ARGB_8888);view.draw(new Canvas(result));return result;});File output=new File(directory,name+".png");try(FileOutputStream out=new FileOutputStream(output)){require(bitmap.compress(Bitmap.CompressFormat.PNG,100,out),"Screenshot encoded");}finally{bitmap.recycle();}screenshots.put(output.getAbsolutePath());}
+    private void settle()throws Exception{
+        test.waitForIdleSync();long deadline=SystemClock.uptimeMillis()+3000;
+        while(!main(()->activity.hasWindowFocus()&&root().isShown())){
+            require(SystemClock.uptimeMillis()<deadline,"Island window is foreground before measuring");SystemClock.sleep(30);
+        }
+        CountDownLatch frames=new CountDownLatch(1);
+        main(()->{root().postDelayed(()->root().postOnAnimation(()->root().postOnAnimation(frames::countDown)),300);return null;});
+        require(frames.await(3,TimeUnit.SECONDS),"Page transitions and layout settled");test.waitForIdleSync();
+    }
+    private void capture(String name)throws Exception{
+        settle();Bitmap bitmap=test.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
+        require(bitmap!=null,"Physical device screenshot is available");File output=new File(directory,name+".png");
+        try(FileOutputStream out=new FileOutputStream(output)){require(bitmap.compress(Bitmap.CompressFormat.PNG,100,out),"Screenshot encoded");}
+        finally{bitmap.recycle();}screenshots.put(output.getAbsolutePath());
+    }
     private interface Main<T>{T run()throws Exception;}
     private <T>T main(Main<T> action)throws Exception{AtomicReference<T> result=new AtomicReference<>();AtomicReference<Throwable> failure=new AtomicReference<>();test.runOnMainSync(()->{try{result.set(action.run());}catch(Throwable error){failure.set(error);}});if(failure.get()!=null)throw new AssertionError("Island UI action failed",failure.get());return result.get();}
     private void require(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}

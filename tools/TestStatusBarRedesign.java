@@ -30,6 +30,7 @@ public final class TestStatusBarRedesign {
             require("0".equals(draft.get(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)),"editing preset leaves position-only mode disabled");
             if(preset==0){
                 require("0".equals(values.get(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)),"native preset disables Bluetooth artwork override");
+                require("0".equals(values.get(ConfigSchema.STATUSBAR_VPN_STYLE)),"native preset restores VPN artwork");
                 require("0".equals(values.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM)),"native preset disables custom clock");
                 require("0".equals(values.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)),"native preset disables three-in-one icon");
             }

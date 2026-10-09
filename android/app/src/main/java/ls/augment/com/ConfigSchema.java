@@ -58,6 +58,7 @@ public final class ConfigSchema {
     public static final String FREEFORM_EXTERNAL_APPS = "ls_augment_freeform_external_apps";
     public static final String FREEFORM_GAME_APPS = "ls_augment_freeform_game_apps";
     public static final String STATUSBAR_BLUETOOTH_STYLE = "ls_augment_statusbar_bluetooth_style";
+    public static final String STATUSBAR_VPN_STYLE = "ls_augment_statusbar_vpn_style";
     public static final String SUPER_MIRROR_LOW_MODE = "ls_augment_super_mirror_low_mode";
     public static final String SUPER_MIRROR_DIABLO_COEXIST =
             "ls_augment_super_mirror_diablo_coexist";
@@ -308,6 +309,7 @@ public final class ConfigSchema {
         addBoolean(STATUSBAR_POSITION_SIZE_ONLY, false);
         addBoolean(STATUSBAR_CONNECTIVITY_GROUP, false);
         addInteger(STATUSBAR_BLUETOOTH_STYLE, 0, 0, 2);
+        addInteger(STATUSBAR_VPN_STYLE, 0, 0, 1);
         // Preserve native customization on upgrades that have never selected three-in-one.
         addBoolean(STATUSBAR_NATIVE_BATTERY_ENABLED, true);
         addInteger(STATUSBAR_CONNECTIVITY_SIZE, 26, 18, 40);

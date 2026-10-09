@@ -405,8 +405,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             }
             divider(content);
         }
+        EnhancementOption transparent=options.get(SystemUiOptions.ISLAND_TRANSPARENT);
+        Switch transparentControl=new Switch(this);transparentControl.setTag("config:"+transparent.key);
+        transparentControl.setChecked(ConfigSchema.truthy(value(transparent.key)));controls.put(transparent.key,transparentControl);
+        content.addView(ui.featureRow(transparent.title,FeatureHelp.forOption(transparent),transparentControl),ui.wrap());
+        transparentControl.setOnCheckedChangeListener((button,on)->change(transparent.key,on?"1":"0",transparentControl));
+        divider(content);
         LinearLayout geometry=new LinearLayout(this);geometry.setOrientation(LinearLayout.VERTICAL);geometry.setPadding(ui.dp(12),0,0,0);
-        for(String suffix:new String[]{"width","height","offset_x"})geometry.addView(input(options.get(SystemUiOptions.PREFIX+"island_"+suffix)),ui.wrap());
+        for(String suffix:new String[]{"width","height","offset_x","offset_y"})geometry.addView(input(options.get(SystemUiOptions.PREFIX+"island_"+suffix)),ui.wrap());
         content.addView(ui.foldingSection("大小与位置",geometry,false),ui.wrap());
     }
     private void monitorControls(LinearLayout content){
@@ -450,7 +456,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private String value(String key){return draft.getOrDefault(key,config.get(key));}
     private View input(EnhancementOption option){return input(option,false);}
     private View input(EnhancementOption option,boolean parentOwnsTitle){
-        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);row.setPadding(0,ui.dp(3),0,ui.dp(8));
+        LinearLayout row=ui.parameterInputGroup();
         if(!parentOwnsTitle)row.addView(ui.featureTitle(option.title,FeatureHelp.forOption(option)),ui.wrap());
         if(CollabOptions.THEME_VARIANT.equals(option.key))return themeChoice(row,option);
         if(option.kind==EnhancementOption.Kind.CHOICE){

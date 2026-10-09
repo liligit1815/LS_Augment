@@ -74,8 +74,9 @@ final class StatusBarIconSpacingEditor {
             labels[i].setText(titles[i]+" · "+values[i]+" dp"+(verticalEdge&&headerBound&&vertical!=null?" / 当前最多 "+max+" dp":""));
         }};
         for(int i=0;i<titles.length;i++){
-            final int index=i;TextView label=ui.text(titles[i]+" · "+values[i]+" dp",12,ui.muted,false);form.addView(label,ui.margins(0,8,0,0));
-            SeekBar bar=new SeekBar(activity);bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);form.addView(bar,ui.wrap());
+            LinearLayout parameter=ui.parameterInputGroup();form.addView(parameter,ui.wrap());
+            final int index=i;TextView label=ui.text(titles[i]+" · "+values[i]+" dp",12,ui.muted,false);parameter.addView(label,ui.wrap());
+            SeekBar bar=new SeekBar(activity);bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);parameter.addView(bar,ui.wrap());
         }
         sync.run();
         for(int i=0;i<titles.length;i++){

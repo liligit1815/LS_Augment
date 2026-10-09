@@ -47,6 +47,8 @@ final class StatusBarContentBounds {
         Rect wifiAsset=StatusBarWifiAssetSpacingHook.bounds(view);if(wifiAsset!=null)return wifiAsset;
         Rect bluetooth=BluetoothIconHook.contentBounds(view);
         if(bluetooth!=null)return bluetooth;
+        Rect vpn=VpnIconHook.contentBounds(view);
+        if(vpn!=null)return vpn;
         RectF bounds = new RectF();
         Rect stacked = RedMagicSystemUiHook.stackedSignalBounds(view);
         if (stacked != null) bounds.set(stacked);

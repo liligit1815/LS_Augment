@@ -90,5 +90,6 @@ with tempfile.TemporaryDirectory(prefix='dual-signal-') as tmp:
         paths.append(str(path))
     src=ROOT/'android/app/src/main/java/ls/augment/com'
     subprocess.run(['javac','-encoding','UTF-8','-d',tmp,*paths,
-                    *[str(src/name) for name in ['ArtworkLayers.java','CompactSignalPainter.java','DualSignalLayout.java','DualSignalPainter.java']]],check=True)
+                    *[str(src/name) for name in ['ArtworkLayers.java','CompactSignalPainter.java','DualSignalLayout.java','DualSignalPainter.java',
+                                                'StatusBarIconSpacingSpec.java','StatusBarIconCatalog.java','StatusBarSurfaceSpec.java']]],check=True)
     subprocess.run(['java','-Djava.awt.headless=true','-cp',tmp,'TestDual',*sys.argv[1:]],check=True)

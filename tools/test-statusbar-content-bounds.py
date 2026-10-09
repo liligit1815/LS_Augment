@@ -147,6 +147,7 @@ public final class TestStatusBarContentBounds {
 }''',
 }
 SOURCES['ls/augment/com/hook/BluetoothIconHook.java'] = 'package ls.augment.com.hook;class BluetoothIconHook {static android.graphics.Rect contentBounds(android.view.View v){return null;}}'
+SOURCES['ls/augment/com/hook/VpnIconHook.java'] = 'package ls.augment.com.hook;class VpnIconHook {static android.graphics.Rect contentBounds(android.view.View v){return null;}}'
 SOURCES['ls/augment/com/hook/StatusBarWifiAssetSpacingHook.java'] = 'package ls.augment.com.hook;class StatusBarWifiAssetSpacingHook {static final java.util.Map<android.view.View,android.graphics.Rect> reserved=new java.util.IdentityHashMap<>();static android.graphics.Rect bounds(android.view.View view){return reserved.get(view);}}'
 SOURCES['ls/augment/com/hook/StatusBarIconLayoutHook.java'] = '''package ls.augment.com.hook;import android.view.View;import android.graphics.RectF;import java.util.*;class StatusBarIconLayoutHook {static final Map<View,float[]> boundaries=new IdentityHashMap<>();static void includeChildBoundary(View view,RectF bounds){float[] edge=boundaries.get(view);if(edge!=null&&!bounds.isEmpty()){bounds.left-=edge[0];bounds.top-=edge[1];bounds.right+=edge[2];bounds.bottom+=edge[3];}}}'''
 SOURCES['ls/augment/com/hook/StatusBarContentBounds.java'] = (

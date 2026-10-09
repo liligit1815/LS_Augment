@@ -11,6 +11,7 @@ public final class BluetoothIconPainter {
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path=new Path();
     private final RectF oval=new RectF();
+    private final StatusBarRingPainter ring=new StatusBarRingPainter();
     private Typeface typeface;
     public void setTypeface(Typeface value){typeface=value;}
     private ArtworkLayers artwork;
@@ -58,10 +59,7 @@ public final class BluetoothIconPainter {
                 paint.setStyle(Paint.Style.FILL);paint.setTypeface(typeface!=null?typeface:Typeface.create("sans-serif-medium",Typeface.NORMAL));
                 paint.setTextSize(13);paint.setTextAlign(Paint.Align.LEFT);
                 canvas.drawText(battery+"%",0,9-(paint.ascent()+paint.descent())/2,paint);
-                paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.1f);paint.setStrokeCap(Paint.Cap.BUTT);
-                oval.set(36,2,50,16);paint.setAlpha(Math.round(((color>>>24)&255)*.23f));
-                canvas.drawOval(oval,paint);paint.setColor(color);
-                canvas.drawArc(oval,-90,360*battery/100f,false,paint);
+                ring.drawBattery(canvas,34,0,battery,color);
             }else{
                 // Reference: a horizontal battery capsule with a larger open
                 // return arc wrapped around its right end, not concentric pills.

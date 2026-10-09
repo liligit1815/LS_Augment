@@ -53,6 +53,12 @@ public final class TestNativeFeatureGroups {
         EnhancementOption scale=OPTIONS.get("ls_augment_rm_lock_clock_scale");
         require("1.0".equals(ValueOverrideState.restore(scale,"99","1.0")),"invalid remembered scale falls back safely");
         require("1.5".equals(ValueOverrideState.restore(scale,"1.5","1.0")),"valid remembered scale restores exactly");
+        EnhancementOption islandY=OPTIONS.get(SystemUiOptions.ISLAND_OFFSET_Y);
+        require("0".equals(islandY.defaultValue)&&"-24".equals(islandY.normalize("-24"))&&"24".equals(islandY.normalize("24")),"island vertical position defaults to center and accepts both directions");
+        require(islandY.normalize("-25")==null&&islandY.normalize("25")==null,"island vertical position rejects values outside its supported range");
+        EnhancementOption transparent=OPTIONS.get(SystemUiOptions.ISLAND_TRANSPARENT);
+        require(transparent.kind==EnhancementOption.Kind.BOOLEAN&&"0".equals(transparent.defaultValue),"island transparent style is a real opt-in boolean");
+        require(find(SystemUiOptions.ISLAND_TRANSPARENT).toggleKey.equals(SystemUiOptions.ISLAND),"island owns its style and keeps it behind the master switch");
         System.out.println("Native feature grouping and value gates: OK ("+seen.size()+" options)");
     }
     private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(f.allKeys().contains(key))return f;throw new AssertionError("missing feature "+key);}
@@ -64,7 +70,9 @@ public final class TestNativeFeatureGroups {
             // The existing side-gesture editor owns its two mirror switches directly.
             boolean gestureMirror="systemui:back_icon_enabled".equals(f.id)
                     &&(key.equals(BackGestureIconPolicy.key(0,"mirror"))||key.equals(BackGestureIconPolicy.key(1,"mirror")));
-            require(gestureMirror||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
+            // Like the gesture editor, islandControls owns its native style switch.
+            boolean islandStyle="systemui:island_enabled".equals(f.id)&&key.equals(SystemUiOptions.ISLAND_TRANSPARENT);
+            require(gestureMirror||islandStyle||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
             require(seen.add(key),"duplicate parameter "+key);
         }
         for(NativeFeatureGroups.Feature child:f.children)check(child,seen);

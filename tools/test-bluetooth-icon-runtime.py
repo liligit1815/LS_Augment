@@ -31,7 +31,11 @@ FILES = {
 "android/graphics/Canvas.java": """package android.graphics;import java.awt.*;import java.awt.geom.*;import java.awt.image.*;import java.util.*;
  public class Canvas {
  public BufferedImage image=new BufferedImage(700,360,BufferedImage.TYPE_INT_ARGB);public Graphics2D g=image.createGraphics();
- public java.util.List<Graphics2D> stack=new ArrayList<>();public int paths,ovals,rects;public float sweep;public String text="";public int lastColor;
+ public java.util.List<Graphics2D> stack=new ArrayList<>();public int paths,ovals,rects,arcs;public float sweep;public String text="";public int lastColor;
+ public record Ring(boolean arc,float left,float top,float right,float bottom,float stroke,int color,Rectangle2D ink){}
+ public java.util.List<Ring> rings=new ArrayList<>();
+ private void recordRing(RectF r,Paint p,boolean arc){float half=p.stroke/2;Shape ink=new Rectangle2D.Float(r.left-half,r.top-half,r.width()+p.stroke,r.bottom-r.top+p.stroke);
+ rings.add(new Ring(arc,r.left,r.top,r.right,r.bottom,p.stroke,p.color,g.getTransform().createTransformedShape(ink).getBounds2D()));}
  public Canvas(){g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);}
  public int save(){stack.add(g);g=(Graphics2D)g.create();return stack.size();}
  public void restoreToCount(int n){while(stack.size()>=n){g.dispose();g=stack.remove(stack.size()-1);}}
@@ -42,8 +46,8 @@ FILES = {
  if(p.style==Paint.Style.FILL)g.fill(shape);else g.draw(shape);}
  public void drawPath(Path path,Paint p){paths++;paint(path.shape,p);}
  public void drawRoundRect(RectF r,float x,float y,Paint p){paint(new RoundRectangle2D.Float(r.left,r.top,r.width(),r.bottom-r.top,x*2,y*2),p);}
- public void drawOval(RectF r,Paint p){ovals++;paint(new Ellipse2D.Float(r.left,r.top,r.width(),r.bottom-r.top),p);}
- public void drawArc(RectF r,float start,float degrees,boolean center,Paint p){sweep=degrees;paint(new Arc2D.Float(r.left,r.top,r.width(),r.bottom-r.top,-start,-degrees,Arc2D.OPEN),p);}
+ public void drawOval(RectF r,Paint p){ovals++;recordRing(r,p,false);paint(new Ellipse2D.Float(r.left,r.top,r.width(),r.bottom-r.top),p);}
+ public void drawArc(RectF r,float start,float degrees,boolean center,Paint p){arcs++;sweep=degrees;recordRing(r,p,true);paint(new Arc2D.Float(r.left,r.top,r.width(),r.bottom-r.top,-start,-degrees,Arc2D.OPEN),p);}
  public void drawRect(float l,float t,float r,float b,Paint p){rects++;paint(new Rectangle2D.Float(l,t,r-l,b-t),p);}
  public Typeface lastTypeface;public void drawText(String s,float x,float y,Paint p){text=s;lastTypeface=p.typeface;lastColor=p.color;g.setColor(new Color(p.color,true));g.setFont(new Font("SansSerif",Font.PLAIN,1).deriveFont(p.textSize));g.drawString(s,x,y);}
  public void png(String path)throws Exception{javax.imageio.ImageIO.write(image,"png",new java.io.File(path));}}
@@ -56,13 +60,13 @@ FILES = {
 "android/os/Handler.java": "package android.os;public class Handler {public Handler(Looper l){}public void post(Runnable r){r.run();}}",
 "android/view/ViewGroup.java": "package android.view;public class ViewGroup {public static class LayoutParams {public int width=24;}}",
 "android/view/View.java": """package android.view;import android.content.*;import android.content.res.*;public class View {
- public int width=24,height=20,invalidations;public ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();
+ public int width=24,height=20,invalidations,layouts;public ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();
  public Context getContext(){return new Context();}public Resources getResources(){return new Resources();}
  public int getWidth(){return width;}public int getHeight(){return height;}public int getMeasuredHeight(){return height;}
  public Object getParent(){return null;}public int getVisibility(){return 0;}
  public int[] getDrawableState(){return new int[0];}
- public int getPaddingLeft(){return 0;}public int getPaddingRight(){return 0;}public void requestLayout(){}public void invalidate(){invalidations++;}
- public ViewGroup.LayoutParams getLayoutParams(){return params;}public void setLayoutParams(ViewGroup.LayoutParams p){params=p;}
+ public int getPaddingLeft(){return 0;}public int getPaddingRight(){return 0;}public void requestLayout(){layouts++;}public void invalidate(){invalidations++;}
+ public ViewGroup.LayoutParams getLayoutParams(){return params;}public void setLayoutParams(ViewGroup.LayoutParams p){params=p;requestLayout();}
  public void setMeasuredDimension(int w,int h){width=w;height=h;}
  public static class MeasureSpec {public static final int EXACTLY=0x40000000;public static int makeMeasureSpec(int s,int m){return s|m;}public static int getSize(int s){return s&0x3fffffff;}}}
 """,
@@ -70,6 +74,7 @@ FILES = {
 "ls/augment/com/hook/AugmentModule.java": "package ls.augment.com.hook;public class AugmentModule {}",
 "ls/augment/com/hook/StatusBarAssetsHook.java": "package ls.augment.com.hook;public class StatusBarAssetsHook {public static void bluetoothBattery(int n){}public static android.graphics.Typeface typeface(android.view.View v,String role,android.graphics.Typeface fallback){return fallback;}public static boolean drawLayer(android.view.View v,android.graphics.Canvas c,String id,String layer,float l,float t,float r,float b,int color){return false;}}",
 "ls/augment/com/hook/RedMagicLegacyUiHook.java": "package ls.augment.com.hook;public class RedMagicLegacyUiHook {public static boolean positionOnly;public static boolean positionSizeOnly(android.content.Context c){return positionOnly;}}",
+"ls/augment/com/hook/StatusBarGridHook.java": "package ls.augment.com.hook;public class StatusBarGridHook {public static int dirty;public static void invalidateLayout(android.view.View view){dirty++;}}",
 "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;public class FeatureSettings {
  public static void diagnostic(android.content.Context c,String key,String value){}
  public static int style;public static Runnable listener;public static int integer(android.content.Context c,String k,int a,int b,int d){return style;}
@@ -100,6 +105,17 @@ FILES = {
  check(BluetoothIconHook.contentBounds(icon).width()>=47&&BluetoothIconHook.contentBounds(icon).top>0,"grid sizes painted ink, excluding empty viewport margins");
  c=new Canvas();check(SystemUiAdapter.run("onDraw",icon,new Object[]{c})==null,"custom drawn");
  check(c.text.equals("80%")&&c.sweep==288&&c.lastColor==0xff123456,"real percentage, arc and theme tint");
+ int before=icon.invalidations,layouts=icon.layouts,dirty=StatusBarGridHook.dirty;
+ FeatureSettings.listener.run();check(icon.invalidations==before&&icon.layouts==layouts&&StatusBarGridHook.dirty==dirty,"unrelated and duplicate snapshots do not refresh Bluetooth");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{81});
+ check(icon.invalidations==before+1&&icon.layouts==layouts&&StatusBarGridHook.dirty==dirty,"new percentage redraws without native layout or unnecessary repacking");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{81});
+ check(icon.invalidations==before+1&&icon.layouts==layouts,"duplicate battery update is deduplicated");
+ FeatureSettings.style=1;FeatureSettings.listener.run();
+ check(icon.params.width==36&&icon.invalidations==before+2&&icon.layouts==layouts+1&&StatusBarGridHook.dirty==dirty+1,"style updates only the changed native allocation and painted bounds");
+ FeatureSettings.style=2;FeatureSettings.listener.run();
+ check(icon.params.width==48&&icon.invalidations==before+3&&icon.layouts==layouts+2&&StatusBarGridHook.dirty==dirty+2,"ring selection requests one layout for its changed width");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{80});
  icon.mCurrentSetColor=0;
  for(int palette:new int[]{0x99000000,0xd8ffffff}){icon.tint=new android.content.res.ColorStateList(palette);c=new Canvas();SystemUiAdapter.run("onDraw",icon,new Object[]{c});check(c.lastColor==palette,"phone ImageView palette follows light/dark including native opacity");}
  icon.tint=null;icon.mDecorColor=0xff555555;c=new Canvas();SystemUiAdapter.run("onDraw",icon,new Object[]{c});check(c.lastColor==0xff555555,"native decor fallback when no image tint");icon.mCurrentSetColor=0xff123456;
@@ -111,13 +127,40 @@ FILES = {
  FeatureSettings.style=0;FeatureSettings.listener.run();check(icon.params.width==24,"off restores original width");
  check(BluetoothIconHook.contentBounds(icon)==null,"off restores native content bounds");
  FeatureSettings.style=2;RedMagicLegacyUiHook.positionOnly=true;FeatureSettings.listener.run();check(icon.params.width==24,"position-only preserves native");
+ before=icon.invalidations;layouts=icon.layouts;dirty=StatusBarGridHook.dirty;
+ FeatureSettings.style=1;FeatureSettings.listener.run();SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{70});
+ check(icon.invalidations==before&&icon.layouts==layouts&&StatusBarGridHook.dirty==dirty,"native position-only mode ignores custom styles and battery updates");
  RedMagicLegacyUiHook.positionOnly=false;Icon other=new Icon();other.mSlot="alarm_clock";measure(other);check(other.params.width==24,"unrelated slots untouched");
+ Icon wide=new Icon();wide.params.width=64;measure(wide);before=wide.invalidations;layouts=wide.layouts;
+ check(wide.width==64,"known custom battery overrides OEM scaling even when native allocation already fits");
+ FeatureSettings.style=2;FeatureSettings.listener.run();
+ check(wide.params.width==64&&wide.invalidations==before+1&&wide.layouts==layouts,"style change in an already sufficient native allocation only redraws and repacks");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{-1});
+ check(wide.params.width==64&&wide.invalidations==before+2&&wide.layouts==layouts+1,"unknown battery requests one remeasure to restore OEM scaling even when allocation stays unchanged");
+ measure(wide);check(wide.width==32&&wide.layouts==layouts+1,"unknown battery uses the original scaled OEM measurement without duplicate layout requests");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{80});
+ check(wide.params.width==64&&wide.invalidations==before+3&&wide.layouts==layouts+2,"returning battery data requests one remeasure when exact custom measurement becomes active");
+ measure(wide);check(wide.width==64&&wide.layouts==layouts+2,"known battery restores exact custom width without duplicate layout requests");
+ FeatureSettings.style=0;FeatureSettings.listener.run();
+ check(wide.params.width==64&&wide.layouts==layouts+3,"native style requests one remeasure even when original width equals custom allocation");
+ measure(wide);check(wide.width==32&&wide.layouts==layouts+3,"native selection restores scaled OEM measured width");
+ FeatureSettings.style=1;FeatureSettings.listener.run();
+ check(wide.params.width==64&&wide.layouts==layouts+4,"native to known custom style requests one remeasure at unchanged allocated width");
+ measure(wide);check(wide.width==64&&wide.layouts==layouts+4,"native to custom selection restores full measured viewport");
+ SystemUiAdapter.run("updateBluetoothWithLevelInner",null,new Object[]{81});
+ check(wide.layouts==layouts+4,"percentage update within the same measurement mode does not request layout");
+ FeatureSettings.listener.run();check(wide.layouts==layouts+4,"duplicate snapshot does not request remeasure");
  BluetoothIconPainter painter=new BluetoothIconPainter();
  for(int style:new int[]{1,2})for(int level:new int[]{-1,0,1,80,100,101})for(int color:new int[]{0xff222222,0xffffffff}){
  Canvas recording=new Canvas();painter.draw(recording,4,8,104,36,style,level,color);
  check(recording.stack.isEmpty(),"canvas state restored");
  if(level<0||level>100)check(recording.text.isEmpty()&&recording.ovals==0,"no fake battery");
- else if(style==2)check(recording.text.equals(level+"%")&&Math.abs(recording.sweep-level*3.6)<.001,"exact ring level");}
+ else if(style==2){check(recording.text.equals(level+"%")&&Math.abs(recording.sweep-level*3.6)<.001,"exact ring level");
+ check(recording.ovals==1&&recording.arcs==1&&recording.rings.size()==2,"single track and battery arc retained");
+ for(Canvas.Ring ring:recording.rings)check(ring.left()==36&&ring.top()==2&&ring.right()==50&&ring.bottom()==16
+ &&Math.abs(ring.stroke()-2.1f)<.0001,"shared ring preserves original Bluetooth geometry and stroke");
+ check((recording.rings.get(0).color()>>>24)==Math.round((color>>>24)*.23f)
+ &&recording.rings.get(1).color()==color,"shared ring preserves original track opacity and active tint");}}
  Canvas full=new Canvas();painter.draw(full,0,0,42,18,1,100,0xff000000);check(full.rects==1,"reference capsule carries the battery fill");
  Canvas empty=new Canvas();painter.draw(empty,0,0,42,18,1,0,0xff000000);check(empty.rects==0,"zero battery has no active fill");
  android.graphics.Typeface custom=new android.graphics.Typeface();painter.setTypeface(custom);Canvas typography=new Canvas();painter.draw(typography,0,0,52,18,2,80,0xff000000);check(typography.lastTypeface==custom,"imported font reaches the actual percentage Paint");
@@ -143,5 +186,6 @@ with tempfile.TemporaryDirectory(prefix="ls-bluetooth-") as tmp:
     javac = str(Path(java_home) / "bin/javac") if java_home else "javac"
     java = str(Path(java_home) / "bin/java") if java_home else "java"
     subprocess.run([javac, "-encoding", "UTF-8", "-d", str(work), *map(str, work.rglob("*.java")),
-                    str(src / "ArtworkLayers.java"), str(src / "BluetoothIconPainter.java"), str(src / "hook/BluetoothIconHook.java")], check=True)
+                    str(src / "ArtworkLayers.java"), str(src / "StatusBarRingPainter.java"),
+                    str(src / "BluetoothIconPainter.java"), str(src / "hook/BluetoothIconHook.java")], check=True)
     subprocess.run([java, "-Djava.awt.headless=true", "-cp", str(work), "ls.augment.com.hook.TestBluetoothIcon", *sys.argv[1:]], check=True)

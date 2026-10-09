@@ -32,6 +32,8 @@ final class IslandFixtureDeviceCases {
         values.put(SystemUiOptions.NOTIFICATION_MEDIA_HIDE,args.getString("hide","0"));
         values.put("ls_augment_rm_island_music",args.getString("music","1"));values.put("ls_augment_rm_island_notifications","1");
         values.put("ls_augment_rm_island_charging","1");values.put("ls_augment_rm_island_notice_seconds","10");
+        values.put(SystemUiOptions.ISLAND_OFFSET_Y,args.getString("offsetY",config.get(SystemUiOptions.ISLAND_OFFSET_Y)));
+        values.put(SystemUiOptions.ISLAND_TRANSPARENT,args.getString("transparent",config.get(SystemUiOptions.ISLAND_TRANSPARENT)));
         values.put("ls_augment_rm_statusbar_hide",config.get("ls_augment_rm_statusbar_hide"));
         for(String key:values.keySet())before.put(key,config.get(key));
         NotificationManager notifications=context.getSystemService(NotificationManager.class);
@@ -59,7 +61,9 @@ final class IslandFixtureDeviceCases {
             notifications.notify(204430,new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("红魔Duo · 音乐测试")
                     .setContentText("手机端实时活动").setLargeIcon(cover).setContentIntent(open).setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken())).build());
             long start=SystemClock.elapsedRealtime();int seconds=Math.max(20,Math.min(180,Integer.parseInt(args.getString("seconds","90"))));
-            boolean posted=false,removed=false,hidden=false,restored=false,paused=false,resumed=false,stopped=false,statusHidden=false,statusShown=false;
+            boolean posted=false,removed=false,hidden=false,restored=false,paused=false,resumed=false,stopped=false,statusHidden=false,statusShown=false,offsetChanged=false,styleChanged=false;
+            int offsetAfter=Integer.parseInt(args.getString("offsetAfter","-1"));
+            int styleAfter=Integer.parseInt(args.getString("styleAfter","-1"));
             int pauseAfter=Integer.parseInt(args.getString("pauseAfter","-1"));
             int resumeAfter=Integer.parseInt(args.getString("resumeAfter","-1"));
             int stopAfter=Integer.parseInt(args.getString("stopAfter","-1"));
@@ -70,6 +74,10 @@ final class IslandFixtureDeviceCases {
             int noticeAfter=Integer.parseInt(args.getString("noticeAfter","45"));
             int noticeRemoveAfter=Integer.parseInt(args.getString("noticeRemoveAfter","60"));
             while(SystemClock.elapsedRealtime()-start<seconds*1000L){long elapsed=SystemClock.elapsedRealtime()-start;
+                if(offsetAfter>=0&&elapsed>offsetAfter*1000L&&!offsetChanged){offsetChanged=true;
+                    if(!config.save(java.util.Collections.singletonMap(SystemUiOptions.ISLAND_OFFSET_Y,args.getString("offsetTo","0"))).success)throw new AssertionError("Island vertical offset hot update failed");}
+                if(styleAfter>=0&&elapsed>styleAfter*1000L&&!styleChanged){styleChanged=true;
+                    if(!config.save(java.util.Collections.singletonMap(SystemUiOptions.ISLAND_TRANSPARENT,args.getString("transparentTo","0"))).success)throw new AssertionError("Island style hot update failed");}
                 if(statusHideAfter>=0&&elapsed>statusHideAfter*1000L&&!statusHidden){statusHidden=true;if(!config.save(java.util.Collections.singletonMap("ls_augment_rm_statusbar_hide","1")).success)throw new AssertionError("Status hide failed");}
                 if(statusShowAfter>=0&&elapsed>statusShowAfter*1000L&&!statusShown){statusShown=true;if(!config.save(java.util.Collections.singletonMap("ls_augment_rm_statusbar_hide","0")).success)throw new AssertionError("Status show failed");}
                 if(pauseAfter>=0&&elapsed>pauseAfter*1000L&&!paused){paused=true;session.setPlaybackState(new PlaybackState.Builder().setActions(actions).setState(PlaybackState.STATE_PAUSED,12000,0).build());}
@@ -85,7 +93,9 @@ final class IslandFixtureDeviceCases {
                 SystemClock.sleep(100);
             }
             report.put("pauseCallbacks",pauses.get()).put("playCallbacks",plays.get()).put("skipCallbacks",skips.get())
-                    .put("pauseTransition",paused).put("resumeTransition",resumed).put("stopTransition",stopped).put("initialState",initialState);
+                    .put("pauseTransition",paused).put("resumeTransition",resumed).put("stopTransition",stopped).put("initialState",initialState)
+                    .put("initialOffsetY",values.get(SystemUiOptions.ISLAND_OFFSET_Y)).put("initialTransparent",values.get(SystemUiOptions.ISLAND_TRANSPARENT))
+                    .put("offsetHotUpdate",offsetChanged).put("styleHotUpdate",styleChanged);
         }finally{
             session.setActive(false);session.release();notifications.cancel(204430);notifications.cancel(204431);
             if(previous==null)notifications.deleteNotificationChannel(channel);

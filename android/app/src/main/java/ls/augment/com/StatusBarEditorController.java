@@ -54,7 +54,6 @@ final class StatusBarEditorController extends NativeEditorController {
     private final Map<String,UiKit.Fold> componentFolds=new LinkedHashMap<>();
     private final Map<String,Boolean> expandedComponents=new LinkedHashMap<>();
     private final Map<String,View> componentViews=new LinkedHashMap<>();
-    private final Map<String,TextView> componentSummaries=new LinkedHashMap<>();
     private final Map<Integer,Integer> scrollPositions=new LinkedHashMap<>();
     private String selectedComponent="";
     private TextView layoutFeedback;
@@ -84,8 +83,7 @@ final class StatusBarEditorController extends NativeEditorController {
             View view=relatedViews.get(feature.id);
             if(view==null){view=featureFactory.apply(feature);relatedViews.put(feature.id,view);}
             if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);
-            parent.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
-            parent.addView(view,ui.wrap());
+            addFeatureBlock(parent,view);
         }
     }
     private static boolean isIconLayoutFeature(NativeFeatureGroups.Feature feature){for(String key:feature.allKeys())if(StatusBarIconLayoutOptions.ownsKey(key))return true;return false;}
@@ -193,7 +191,7 @@ final class StatusBarEditorController extends NativeEditorController {
         advancedViews.clear();
         for(Map.Entry<String,UiKit.Fold> entry:componentFolds.entrySet())
             expandedComponents.put(entry.getKey(),entry.getValue().content.getVisibility()==View.VISIBLE);
-        componentFolds.clear();componentViews.clear();componentSummaries.clear();
+        componentFolds.clear();componentViews.clear();
         if(connectivityFold!=null)connectivityExpanded=connectivityFold.content.getVisibility()==View.VISIBLE;
         connectivityFold=null;
         if(nativeBatteryFold!=null)nativeBatteryExpanded=nativeBatteryFold.content.getVisibility()==View.VISIBLE;
@@ -229,7 +227,12 @@ final class StatusBarEditorController extends NativeEditorController {
             related("clock",content);
         } else if (tab == 2) {
             component("notifications","通知图标");
-            StatusBarIconSpacingEditor.add(this,ui,content,"all","notifications",()->draft.get(StatusBarIconSpacingSpec.KEY),value->{draft.put(StatusBarIconSpacingSpec.KEY,value);changed();},this::renderKeepingScroll);
+            LinearLayout spacing=new LinearLayout(this);spacing.setOrientation(LinearLayout.VERTICAL);
+            StatusBarIconSpacingEditor.add(this,ui,spacing,"all","notifications",()->draft.get(StatusBarIconSpacingSpec.KEY),value->{draft.put(StatusBarIconSpacingSpec.KEY,value);changed();},this::renderKeepingScroll);
+            if(spacing.getChildCount()>0){
+                LinearLayout editor=(LinearLayout)spacing.getChildAt(0);spacing.removeView(editor);
+                View form=editor.getChildAt(1);form.setPadding(ui.dp(12),0,0,0);addFeatureBlock(content,editor);
+            }
             related("notifications",content);
         } else if (tab == 3) {
             if(positionSizeOnly()){
@@ -240,9 +243,8 @@ final class StatusBarEditorController extends NativeEditorController {
             }
             related("metrics",content);
         } else if(tab==4) {
-            content.addView(ui.text(positionSizeOnly()?"当前保留原生样式，仅调整系统图标组的大小。双排信号可在“网络与信号”独立设置。":"设置系统图标的大小、单双排和显示规则。位置、顺序与间距统一在“排列与间距”设置。", 12, ui.muted, false));
             component("system_icons","系统图标");
-            if(!positionSizeOnly()){hintPrioritySection();bluetoothSection();}
+            if(!positionSizeOnly()){hintPrioritySection();bluetoothSection();vpnSection();}
             related("icons",content);
         } else if(tab==5) {
             if(!positionSizeOnly())connectivitySection();
@@ -364,6 +366,7 @@ final class StatusBarEditorController extends NativeEditorController {
 
     private void hintPrioritySection(){
         LinearLayout card=ui.card(),settings=new LinearLayout(this);settings.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(0,0,0,0);settings.setPadding(ui.dp(12),0,0,0);
         Switch enabled=new Switch(this);enabled.setTag("feature-control:"+StatusBarIconOrderPolicy.ENABLED);enabled.setChecked(ConfigSchema.truthy(draft.get(StatusBarIconOrderPolicy.ENABLED)));
         card.addView(ui.featureRow("系统提示图标优先级","空间不足时按优先级保留；不会显示原厂未允许、已屏蔽或被你隐藏的图标。",enabled),ui.wrap());
         settings.addView(ui.text("数量上限独立于通知；Wi-Fi、移动信号与电池不计入。只决定保留哪些图标，不改变正常显示位置。",12,ui.muted,false),ui.wrap());
@@ -371,7 +374,7 @@ final class StatusBarEditorController extends NativeEditorController {
         Button edit=ui.tonalButton("调整保留优先级");edit.setOnClickListener(v->chooseHintPriority());settings.addView(edit,ui.wrap());
         Button reset=ui.tonalButton("恢复默认优先级与数量");reset.setOnClickListener(v->{draft.put(StatusBarIconOrderPolicy.ORDER,"");draft.put(StatusBarIconOrderPolicy.LIMIT,"0");changed();renderKeepingScroll();});settings.addView(reset,ui.wrap());
         card.addView(settings,ui.wrap());UiKit.Fold fold=ui.fold(enabled,settings);fold.sync();enabled.setOnCheckedChangeListener((button,on)->{fold.sync();if(!loading){draft.put(StatusBarIconOrderPolicy.ENABLED,on?"1":"0");changed();}});
-        content.addView(card,ui.margins(0,8,0,0));
+        addFeatureBlock(content,card);
     }
     private void chooseHintPriority(){
         java.util.List<String> ids=StatusBarIconOrderPolicy.order(draft.get(StatusBarIconOrderPolicy.ORDER));String[] titles=new String[ids.size()];
@@ -383,34 +386,63 @@ final class StatusBarEditorController extends NativeEditorController {
         }).setNegativeButton("完成",null).show();
     }
     private void bluetoothSection(){
-        content.addView(ui.featureTitle("蓝牙图标样式","连接设备电量跟随系统更新；未上报电量时仅显示蓝牙符号。仅调整位置和大小模式下保留原厂样式。"));
-        Spinner styles=ui.choiceSpinner("蓝牙图标样式");
+        LinearLayout style=ui.parameterInputGroup();addFeatureBlock(content,style);
+        style.addView(ui.featureTitle("蓝牙图标样式","连接设备电量跟随系统更新；未上报电量时仅显示蓝牙符号。仅调整位置和大小模式下保留原厂样式。"));
+        Spinner styles=ui.choiceSpinner("蓝牙图标样式",
+                index->index==0?"保留系统蓝牙图标":"样式示例 · 电量 80%",
+                index->iconStylePreview("bluetooth",index));
+        styles.setContentDescription("蓝牙图标样式");
         styles.setAdapter(choiceAdapter(new String[]{"原厂","小米 · 胶囊电量","圆环 · 电量百分比"}));
-        styles.setSelection(number(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE));content.addView(styles);
-        TextView sampleLabel=ui.text("样式示例 · 电量 80%",12,ui.muted,false);
-        content.addView(sampleLabel,ui.margins(0,4,0,0));
-        View sample=new View(this){
-            private final BluetoothIconPainter painter=new BluetoothIconPainter();
-            @Override protected void onDraw(Canvas canvas){
-                super.onDraw(canvas);int style=number(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE);
-                if(style!=0)painter.draw(canvas,ui.dp(16),ui.dp(10),ui.dp(104),ui.dp(32),style,80,ui.text);
-            }
-        };
-        sample.setContentDescription("蓝牙图标示例，设备电量 80%");
-        content.addView(sample,new LinearLayout.LayoutParams(-1,ui.dp(52)));
-        int initialVisibility=number(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)==0?View.GONE:View.VISIBLE;
-        sampleLabel.setVisibility(initialVisibility);sample.setVisibility(initialVisibility);
+        styles.setSelection(number(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE));style.addView(styles);
         styles.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
             public void onNothingSelected(AdapterView<?> parent){}
             public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
-                int visibility=position==0?View.GONE:View.VISIBLE;
-                sampleLabel.setVisibility(visibility);sample.setVisibility(visibility);
-                sample.invalidate();
                 if(!loading&&number(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)!=position){
                     draft.put(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE,String.valueOf(position));changed();
                 }
             }
         });
+    }
+
+    private void vpnSection(){
+        LinearLayout style=ui.parameterInputGroup();addFeatureBlock(content,style);
+        style.addView(ui.featureTitle("VPN图标样式","圆环样式与蓝牙圆环共用矢量绘制，跟随系统状态栏颜色切换；仅在系统显示 VPN 图标时替换。已导入的 VPN 素材优先显示；要使用圆环，请先在素材与字体的 VPN 设置中清除已绑定的素材并应用，素材文件会保留。仅调整位置和大小模式下保留原厂样式。"));
+        Spinner styles=ui.choiceSpinner("VPN图标样式",null,index->iconStylePreview("vpn",index));
+        styles.setContentDescription("VPN图标样式");
+        styles.setAdapter(choiceAdapter(new String[]{"原厂","圆环样式"}));
+        styles.setSelection(number(ConfigSchema.STATUSBAR_VPN_STYLE));style.addView(styles);
+        styles.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(AdapterView<?> parent){}
+            public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
+                if(!loading&&number(ConfigSchema.STATUSBAR_VPN_STYLE)!=position){
+                    draft.put(ConfigSchema.STATUSBAR_VPN_STYLE,String.valueOf(position));changed();
+                }
+            }
+        });
+    }
+
+    private View iconStylePreview(String icon,int selected){
+        View sample=new View(this){
+            private final BluetoothIconPainter bluetooth=new BluetoothIconPainter();
+            private final VpnIconPainter vpn=new VpnIconPainter(StatusBarEditorController.this);
+            private final StatusBarIconSamples nativeSample=new StatusBarIconSamples();
+            @Override protected void onMeasure(int widthSpec,int heightSpec){
+                super.onMeasure(widthSpec,View.MeasureSpec.makeMeasureSpec(ui.dp(36),View.MeasureSpec.EXACTLY));
+            }
+            @Override protected void onDraw(Canvas canvas){
+                super.onDraw(canvas);float height=ui.dp(28),top=(getHeight()-height)/2f;
+                if(selected==0)nativeSample.draw(canvas,icon,"default",new android.graphics.RectF(0,top,height,top+height),ui.text);
+                else if(icon.equals("bluetooth"))bluetooth.draw(canvas,0,top,Math.min(getWidth(),ui.dp(112)),height,selected,80,ui.text);
+                else vpn.draw(canvas,0,top,height,height,ui.dark?Color.WHITE:Color.BLACK);
+            }
+        };
+        String title=icon.equals("bluetooth")?"蓝牙图标样式":"VPN图标样式";
+        sample.setTag("icon-style-preview:"+title+":"+selected);
+        String label=icon.equals("bluetooth")
+                ?new String[]{"原厂","小米 · 胶囊电量","圆环 · 电量百分比"}[selected]
+                :new String[]{"原厂","圆环样式"}[selected];
+        sample.setContentDescription(title+"，"+label+"示例"+(icon.equals("bluetooth")&&selected>0?"，设备电量 80%":""));
+        return sample;
     }
 
     private Map<String,String> snapshot(){Map<String,String> result=new LinkedHashMap<>();for(Map.Entry<String,String> entry:draft.entrySet())result.put(entry.getKey(),entry.getValue());return result;}
@@ -454,16 +486,13 @@ final class StatusBarEditorController extends NativeEditorController {
         },"取消");
     }
     private void advanced(LinearLayout parent,String id,String title,View settings){
-        LinearLayout group=new LinearLayout(this);group.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(ui.text(title,12,ui.text,true),new LinearLayout.LayoutParams(0,-2,1));
-        ImageButton arrow=new ImageButton(this);arrow.setImageResource(R.drawable.ic_expand_more);arrow.setColorFilter(ui.muted);arrow.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        header.addView(arrow,new LinearLayout.LayoutParams(ui.dp(25),ui.dp(44)));
-        group.addView(header,ui.wrap());group.addView(settings,ui.wrap());
-        settings.setVisibility(Boolean.TRUE.equals(advancedExpanded.get(id))?View.VISIBLE:View.GONE);advancedViews.put(id,settings);
-        Runnable update=()->{boolean open=settings.getVisibility()==View.VISIBLE;arrow.setRotation(open?180:0);arrow.setContentDescription((open?"收起":"展开")+title);};
-        View.OnClickListener toggle=v->{boolean open=settings.getVisibility()!=View.VISIBLE;settings.setVisibility(open?View.VISIBLE:View.GONE);advancedExpanded.put(id,open);update.run();};
-        header.setOnClickListener(toggle);arrow.setOnClickListener(toggle);update.run();parent.addView(group,ui.margins(0,8,0,8));
+        settings.setPadding(ui.dp(12),0,0,0);
+        LinearLayout group=ui.foldingSection(title,settings,Boolean.TRUE.equals(advancedExpanded.get(id)));
+        advancedViews.put(id,settings);addFeatureBlock(parent,group);
+    }
+    private void addFeatureBlock(LinearLayout parent,View block){
+        if(parent.getChildCount()>0)parent.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+        parent.addView(block,ui.wrap());
     }
     void selectComponent(String id){
         if(!StatusBarPages.componentRoute(id).equals(route)){openComponent(id);return;}
@@ -480,18 +509,16 @@ final class StatusBarEditorController extends NativeEditorController {
     }
 
     private void connectivitySection(){
-        toggle(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,"三合一图形图标");
+        LinearLayout card=ui.card();card.setPadding(0,0,0,0);
+        toggle(card,ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,"三合一图形图标");
         Switch control=controls.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP);
-        LinearLayout row=(LinearLayout)control.getParent();int index=content.indexOfChild(row);
         LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);
         if(connectivityGroup()){
-            component("battery","三合一图标配置");
-            LinearLayout settings=(LinearLayout)content.getChildAt(index+1);
-            content.removeView(settings);
+            LinearLayout root=content;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout settings=component("battery","三合一图标配置");content.removeView(settings);content=root;
             while(settings.getChildCount()>0){View child=settings.getChildAt(0);settings.removeViewAt(0);body.addView(child);}
         }
-        content.removeView(row);LinearLayout card=ui.card();card.addView(row);card.addView(body);
-        content.addView(card,index,ui.margins(0,8,0,8));
+        card.addView(body,ui.wrap());addFeatureBlock(content,card);
         if(connectivityGroup())componentViews.put("battery",card);
         connectivityFold=ui.fold(control,body);connectivityFold.show(connectivityExpanded);
         control.setOnCheckedChangeListener((button,on)->{if(!loading)setBatteryMode(true,on);});
@@ -499,22 +526,22 @@ final class StatusBarEditorController extends NativeEditorController {
 
     private void nativeBatterySection(){
         LinearLayout card=ui.card(),body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(0,0,0,0);
         boolean active=positionSizeOnly()||nativeBatteryEnabled();
         Switch control=new Switch(this);control.setChecked(active);
         String description=positionSizeOnly()
                 ?"仅调整位置和大小模式下使用原生外观，三合一暂时停止显示，已选功能及其配置保留。关闭此模式后可继续切换电池功能。"
                 :"开启时自动关闭三合一，可展开设置电池的位置、大小、样式、百分号、固定宽度和不透明度。关闭时不会开启三合一。两项都关闭时恢复默认电池外观与布局，并跟随状态栏整体布局；两边配置均保留。";
-        card.addView(ui.featureRow("原生电池图标",description,control),ui.margins(0,4,0,4));card.addView(body);
+        card.addView(ui.featureRow("原生电池图标",description,control),ui.wrap());card.addView(body,ui.wrap());
         if(active){
-            LinearLayout root=content;content=body;
-            component("battery","显示电池图标");
+            LinearLayout root=content;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout settings=component("battery","显示电池图标");content.removeView(settings);content=root;
             // Keep the existing visibility and layout controls inside one outer card.
-            LinearLayout settings=(LinearLayout)body.getChildAt(0);body.removeView(settings);
             while(settings.getChildCount()>0){View child=settings.getChildAt(0);settings.removeViewAt(0);body.addView(child);}
-            related("battery",body);content=root;
+            related("battery",body);
             componentViews.put("battery",card);
         }
-        content.addView(card,ui.margins(0,8,0,8));
+        addFeatureBlock(content,card);
         nativeBatteryFold=ui.fold(control,body);nativeBatteryFold.show(nativeBatteryExpanded);
         if(positionSizeOnly()){
             // This mode temporarily forces native icons without overwriting the saved choice.
@@ -538,19 +565,23 @@ final class StatusBarEditorController extends NativeEditorController {
         if(active!=null)active.show(enabled);
     }
 
-    private void component(String id, String title) {
-        LinearLayout card = ui.card(); content.addView(card, ui.margins(0, 8, 0, 8));componentViews.put(id,card);
+    private LinearLayout component(String id, String title) {
+        LinearLayout card = ui.card();
+        card.setPadding(0,0,0,0);addFeatureBlock(content,card);componentViews.put(id,card);
+        LinearLayout outer=card;
         StatusBarGridSpec.Item item = grid.get(id);
         boolean circle=id.equals("battery")&&connectivityGroup();
         if(circle){
-            card.addView(ui.featureTitle(title,"调整三合一图标的整体大小和内部样式。组件位置与顺序统一在“排列与间距”设置。"));
+            LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(ui.dp(12),0,0,0);
+            card.addView(body,ui.wrap());card=body;
         }
         else if(positionSizeOnly())card.addView(ui.featureTitle(title,"保留原生显示状态、行数、字体和图标样式，仅调整整组的位置、大小和顺序。"));
         else{
             String description=id.equals("battery")&&connectivityGroup()?FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,title):FeatureDescriptions.statusComponent(id,title);
             Switch visible = new Switch(this);visible.setChecked(itemVisible(id,item));card.addView(ui.featureRow(title,description,visible));
-            TextView summary=ui.text(componentSummary(id),11,ui.muted,false);card.addView(summary,ui.margins(0,0,0,6));componentSummaries.put(id,summary);
-            LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);card.addView(body);UiKit.Fold fold=ui.fold(visible,body);
+            LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);
+            body.setPadding(ui.dp(12),0,0,0);
+            card.addView(body);UiKit.Fold fold=ui.fold(visible,body);
             componentFolds.put(id,fold);fold.show(Boolean.TRUE.equals(expandedComponents.get(id)));
             card=body;
             visible.setOnCheckedChangeListener((button, checked) -> {fold.sync();updateItem(id,null,-1,-1,checked);});
@@ -565,10 +596,11 @@ final class StatusBarEditorController extends NativeEditorController {
         if(!positionSizeOnly()&&id.equals("system_icons"))toggle(card,ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS,"系统图标分两排");
         if(!positionSizeOnly()&&id.equals("network")){
             nativeNetworkSize(card);
-            card.addView(ui.featureTitle("显示方式", "选择网速显示的上下行组合和排数。上下行同时显示为双排时，会共用该区域的上下两排。"));
+            LinearLayout display=parameterInputGroup(card);
+            display.addView(ui.featureTitle("显示方式", "选择网速显示的上下行组合和排数。上下行同时显示为双排时，会共用该区域的上下两排。"));
             Spinner mode=ui.choiceSpinner("网速显示方式");
             mode.setAdapter(choiceAdapter(StatusBarNetworkDisplay.LABELS));
-            mode.setSelection(networkMode()-1);card.addView(mode);
+            mode.setSelection(networkMode()-1);display.addView(mode,ui.wrap());
             mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
                 public void onNothingSelected(AdapterView<?> parent){}
                 public void onItemSelected(AdapterView<?> parent,View view,int position,long rowId){
@@ -582,8 +614,9 @@ final class StatusBarEditorController extends NativeEditorController {
             edit(card,ConfigSchema.STATUSBAR_NETWORK_DOWNLOAD_MARK,"下行标志（留空不显示）",false);
         }
         if(!positionSizeOnly()&&id.equals("clock")){
-            card.addView(ui.featureTitle("显示排数", "选择时钟使用一排还是上下两排。双排文字需要同时设置第二行格式。"));Spinner rows=ui.choiceSpinner("选择选项");rows.setContentDescription("时钟显示排数");
-            rows.setAdapter(choiceAdapter(new String[]{"单排","双排"}));rows.setSelection(number(ConfigSchema.STATUSBAR_CLOCK_ROWS)-1);card.addView(rows);
+            LinearLayout display=parameterInputGroup(card);
+            display.addView(ui.featureTitle("显示排数", "选择时钟使用一排还是上下两排。双排文字需要同时设置第二行格式。"));Spinner rows=ui.choiceSpinner("选择选项");rows.setContentDescription("时钟显示排数");
+            rows.setAdapter(choiceAdapter(new String[]{"单排","双排"}));rows.setSelection(number(ConfigSchema.STATUSBAR_CLOCK_ROWS)-1);display.addView(rows);
             rows.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int pos,long rowId){if(!loading&&number(ConfigSchema.STATUSBAR_CLOCK_ROWS)!=pos+1){draft.put(ConfigSchema.STATUSBAR_CLOCK_ROWS,""+(pos+1));changed();renderKeepingScroll();}}});
         }
         if(circle)slider(card,"圆形组件大小（dp）",number(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE),18,40,value->{draft.put(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE,""+value);changed();});
@@ -591,19 +624,7 @@ final class StatusBarEditorController extends NativeEditorController {
         if(circle){LinearLayout internal=new LinearLayout(this);internal.setOrientation(LinearLayout.VERTICAL);connectivityControls(internal);advanced(card,"connectivity-internal","高级设置：三合一图标",internal);}
         if(!positionSizeOnly()&&precisionKey(id)!=null){LinearLayout detail=new LinearLayout(this);detail.setOrientation(LinearLayout.VERTICAL);precision(detail,id);advanced(card,"precision-"+id,"高级：小数精度",detail);}
         if(!positionSizeOnly()&&id.equals("clock"))clockConfiguration(card);
-    }
-    private String componentSummary(String id){
-        StatusBarGridSpec.Item item=grid.get(id);
-        int zone=java.util.Arrays.asList(StatusBarGridSpec.ZONES).indexOf(item.zone);
-        if(id.equals("notifications")||id.equals("system_icons")){
-            String region=StatusBarGridSpec.ZONE_LABELS[zone];
-            if(item.zone.equals("LS"))region="左侧上下通用";
-            else if(item.zone.equals("CS"))region="中间上下通用";
-            else if(item.zone.equals("RS"))region="右侧上下通用";
-            String rows=positionSizeOnly()?"图标行数跟随系统":isTwoRows(id)?"图标双排":"图标单排";
-            return (itemVisible(id,item)?"组件已开启":"组件未开启")+" · 区域："+region+" · "+rows+" · "+item.size+" dp";
-        }
-        return (itemVisible(id,item)?"已开启":"未开启")+" · "+StatusBarGridSpec.ZONE_LABELS[zone]+" · "+item.size+" dp";
+        return outer;
     }
     private java.util.List<String> regionItems(String id){
         java.util.List<String> ids=new java.util.ArrayList<>();
@@ -665,6 +686,9 @@ final class StatusBarEditorController extends NativeEditorController {
         slider(parent,"原生网速字号（0 跟随系统图标）",number(ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP),0,32,
                 value->{draft.put(ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,String.valueOf(value));changed();});
     }
+    private LinearLayout parameterInputGroup(LinearLayout parent){
+        LinearLayout group=ui.parameterInputGroup();parent.addView(group,ui.wrap());return group;
+    }
     private void updateItem(String id, String zone, int order, int size, Boolean visible) {
         if (loading) return;
         if (id.equals("notifications") && visible != null)
@@ -688,16 +712,19 @@ final class StatusBarEditorController extends NativeEditorController {
         toggle(content,key,label);
     }
     private void renderKeepingScroll(){int y=configScroll.getScrollY();render(true);configScroll.post(()->configScroll.scrollTo(0,y));}
-    private void toggle(LinearLayout parent,String key, String label) {
-        Switch s = new Switch(this);s.setChecked(ConfigSchema.truthy(draft.get(key)));controls.put(key,s);parent.addView(ui.featureRow(label,FeatureDescriptions.forKey(key,label),s),ui.margins(0,4,0,4));
+    private LinearLayout toggle(LinearLayout parent,String key, String label) {
+        Switch s = new Switch(this);s.setChecked(ConfigSchema.truthy(draft.get(key)));controls.put(key,s);
+        LinearLayout row=ui.featureRow(label,FeatureDescriptions.forKey(key,label),s);addFeatureBlock(parent,row);
         s.setOnCheckedChangeListener((b, checked) -> { if (!loading) { draft.put(key, checked ? "1" : "0"); changed();
             if(key.equals(ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)||key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))renderKeepingScroll();
         } });
+        return row;
     }
     private void edit(String key, String label) {
         edit(content,key,label,false);
     }
     private EditText edit(LinearLayout parent,String key,String label,boolean numeric) {
+        parent=parameterInputGroup(parent);
         parent.addView(ui.featureTitle(label, FeatureDescriptions.forKey(key,label)));
         EditText e = new EditText(this);ui.styleInput(e); e.setSingleLine(true);e.setContentDescription(label);
         if(numeric)e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
@@ -730,7 +757,8 @@ final class StatusBarEditorController extends NativeEditorController {
         edit(font,ConfigSchema.STATUSBAR_CLOCK_LETTER_SPACING,"字间距（-0.20 至 1.00）",true);
         font.addView(ui.text("双排时钟与硬件信息使用同一排对齐；两排间距统一在布局分类中调整。",11,ui.muted,false));
         edit(font,ConfigSchema.STATUSBAR_CLOCK_WIDTH_DP,"固定宽度 dp（0 自动）",true);
-        font.addView(ui.featureTitle("文字对齐",FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN,"文字对齐")));
+        LinearLayout alignment=parameterInputGroup(font);
+        alignment.addView(ui.featureTitle("文字对齐",FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN,"文字对齐")));
         Spinner align=ui.choiceSpinner("选择选项");align.setContentDescription("文字对齐");
         String[] values={"left","center","right"};
         align.setAdapter(choiceAdapter(new String[]{"靠左","居中","靠右"}));
@@ -741,7 +769,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 if(!loading&&!values[position].equals(draft.get(ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN))){draft.put(ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN,values[position]);changed();}
             }
         });
-        font.addView(align);
+        alignment.addView(align);
         advanced(parent,"clock-typography","高级：字体与排版",font);
     }
     private static String precisionKey(String id){
@@ -755,6 +783,7 @@ final class StatusBarEditorController extends NativeEditorController {
         }
     }
     private void precision(LinearLayout parent,String id){
+        parent=parameterInputGroup(parent);
         String key=precisionKey(id);if(key==null)return;
         parent.addView(ui.featureTitle("保留小数位数",FeatureDescriptions.forKey(key,"保留小数位数")));
         Spinner digits=ui.choiceSpinner("选择选项");digits.setContentDescription("保留小数位数");
@@ -785,6 +814,7 @@ final class StatusBarEditorController extends NativeEditorController {
         slider(content, label, value, min, max, v -> { draft.put(key, String.valueOf(v)); changed(); });
     }
     private void slider(LinearLayout parent, String label, int value, int min, int max, ValueChanged changed) {
+        parent=parameterInputGroup(parent);
         parent.addView(ui.featureTitle(label,FeatureDescriptions.layoutValue(label)+" 可选范围："+min+"–"+max+"。"));
         TextView text = ui.text("当前：" + value, 12, ui.muted, false); parent.addView(text);
         SeekBar bar = new SeekBar(this); bar.setContentDescription(label); bar.setMax(max - min); bar.setProgress(value - min); parent.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(48)));
@@ -812,7 +842,6 @@ final class StatusBarEditorController extends NativeEditorController {
         if(connectivityFold!=null)connectivityFold.sync();
         if(nativeBatteryFold!=null)nativeBatteryFold.sync();
         draft.put(ConfigSchema.STATUSBAR_GRID, grid.serialize());
-        for(Map.Entry<String,TextView> entry:componentSummaries.entrySet())entry.getValue().setText(componentSummary(entry.getKey()));
         if (preview != null) preview.invalidate();
         refreshRuntimeFeedback();
         if(!loading&&previewBackup==null){dirty=draft.hasPending();main.removeCallbacks(autoSave);main.postDelayed(autoSave,450);}
@@ -913,16 +942,17 @@ final class StatusBarEditorController extends NativeEditorController {
                 exampleCharging=position==1;exampleBypass=position==2;if(preview!=null)preview.invalidate();
             }
         });
-        card.addView(powerPreview);
+        parameterInputGroup(card).addView(powerPreview,ui.wrap());
         String[] titles={"内部上方","内部","内部下方"};
         for(int i=0;i<3;i++){
             final int region=i;String key=ConfigSchema.CONNECTIVITY_CONTENT_KEYS[i];
             LinearLayout settings=new LinearLayout(this);settings.setOrientation(LinearLayout.VERTICAL);
-            settings.addView(ui.featureTitle("显示内容","选择此区域的内容，再调整位置和大小。设为“不显示”时保留位置和大小，方便以后重新启用。"));
+            LinearLayout display=parameterInputGroup(settings);
+            display.addView(ui.featureTitle("显示内容","选择此区域的内容，再调整位置和大小。设为“不显示”时保留位置和大小，方便以后重新启用。"));
             Spinner content=ui.choiceSpinner("选择选项");content.setContentDescription(titles[i]+"显示内容");
             content.setAdapter(choiceAdapter(ConfigSchema.CONNECTIVITY_CONTENT_LABELS));
             content.setSelection(Math.max(0,java.util.Arrays.asList(ConfigSchema.CONNECTIVITY_CONTENT_VALUES).indexOf(draft.get(key))));
-            settings.addView(content);
+            display.addView(content);
             content.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
                 public void onNothingSelected(AdapterView<?> parent){}
                 public void onItemSelected(AdapterView<?> parent,View view,int position,long id){

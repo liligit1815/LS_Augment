@@ -13,14 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java'
 
 
-def extract_refresh(source):
-    start = source.index('void refresh(){')
+def extract_method(source, marker):
+    start = source.index(marker)
     end = source.index('{', start) + 1
     depth = 1
     while depth:
         depth += (source[end] == '{') - (source[end] == '}')
         end += 1
     return source[start:end]
+
+
+def extract_refresh(source):
+    return extract_method(source, 'void refresh(){')
 
 
 SNAPSHOT = '''package ls.augment.com;
@@ -42,8 +46,12 @@ public class TestStatusBarSnapshotRefresh {
     static final String STATUSBAR_GRID = "ls_augment_statusbar_grid";
     static final String STATUSBAR_HEIGHT_DP = "ls_augment_statusbar_height_dp";
     static final String STATUSBAR_POSITION_SIZE_ONLY = "ls_augment_statusbar_position_size_only";
+    static final String STATUSBAR_BLUETOOTH_STYLE = "ls_augment_statusbar_bluetooth_style";
+    static final String STATUSBAR_VPN_STYLE = "ls_augment_statusbar_vpn_style";
+    static final String STATUSBAR_CONNECTIVITY_COLORS = "ls_augment_statusbar_connectivity_colors";
+    static final String STATUSBAR_CONNECTIVITY_PLUG_COLOR = "ls_augment_statusbar_connectivity_plug_color";
     static boolean truthy(String value) { return "1".equals(value); }
-    static List<String> keys() { return List.of(SYSTEMUI_MASTER, STATUSBAR_GRID, STATUSBAR_HEIGHT_DP, STATUSBAR_POSITION_SIZE_ONLY, "ls_augment_rm_battery_width_dp", "ls_augment_statusbar_layout_mode", "ls_augment_statusbar_sheet"); }
+    static List<String> keys() { return List.of(SYSTEMUI_MASTER, STATUSBAR_GRID, STATUSBAR_HEIGHT_DP, STATUSBAR_POSITION_SIZE_ONLY, STATUSBAR_BLUETOOTH_STYLE, STATUSBAR_VPN_STYLE, STATUSBAR_CONNECTIVITY_COLORS, STATUSBAR_CONNECTIVITY_PLUG_COLOR, "ls_augment_rm_battery_width_dp", "ls_augment_statusbar_layout_mode", "ls_augment_statusbar_sheet"); }
   }
   static final class FeatureSettings {
     static volatile ConfigSnapshot current;
@@ -65,7 +73,7 @@ public class TestStatusBarSnapshotRefresh {
       return new StatusBarGridSpec(value);
     }
   }
-  static final class Root { int iconLayoutRefreshes; void requestLayout() { } void invalidate() { } }
+  static final class Root { int iconLayoutRefreshes,layouts,redraws,resources; void requestLayout() {layouts++;} void invalidate() {redraws++;} }
   static final class StatusBarIconLayoutHook { static void gridModeChanged(Root root) { root.iconLayoutRefreshes++; } }
   static final String GRID_CLOCK_TAG="generated_clock";
   static final class Clock {final boolean generated;Clock(boolean generated){this.generated=generated;}Object getTag(){return generated?GRID_CLOCK_TAG:null;}}
@@ -75,17 +83,19 @@ public class TestStatusBarSnapshotRefresh {
   static boolean assetsEnabled(){ConfigSnapshot snapshot=FeatureSettings.current;
     // PRODUCTION_ASSET_GATE
     return on;}
-  static final class SystemUiHook { static void refreshGridClock(Root root) { } }
-  static final class TargetReflection { static void call(Root root, String method) { } }
+  static final class SystemUiHook {static int clocks; static void refreshGridClock(Root root) {clocks++;} }
+  static final class TargetReflection { static void call(Root root, String method) {root.resources++;} }
   static final class State {
     final Object context = new Object(); final Root root = new Root();
     boolean attached = true, active,layoutDirty;
-    String lastConfig = "", lastRaw = "", lastLayoutConfig="";
+    String lastConfig = "", lastRaw = "", lastLayoutConfig="",lastStructureConfig="";
     static class Icon {Object source=new Object();void invalidate(){}} Icon connectivityIcon;
     boolean isKeyguard(Root r){return false;}
-    boolean colorOnlySetting(String key){return key.endsWith("_colors");}
+    // PRODUCTION_COLOR_SETTING
+    // PRODUCTION_ICON_STYLE_SETTING
     StatusBarGridSpec spec;
-    int applications, appliedHeight, metricsStarted, metricsStopped;
+    int applications, appliedHeight, metricsStarted, metricsStopped,rejectedCleared;
+    void clearRejectedCapacity(){rejectedCleared++;}
     void restore() { applications++; }
     void applyHeight(int height) { appliedHeight = height; }
     void startMetrics() { metricsStarted++; }
@@ -98,6 +108,12 @@ public class TestStatusBarSnapshotRefresh {
   static ConfigSnapshot config(boolean enabled, String layout, int height) {
     return new ConfigSnapshot(Map.of(ConfigSchema.SYSTEMUI_MASTER, enabled ? "1" : "0",
         ConfigSchema.STATUSBAR_GRID, layout, ConfigSchema.STATUSBAR_HEIGHT_DP, Integer.toString(height)));
+  }
+  static ConfigSnapshot styles(boolean enabled,int bluetooth,int vpn,String colors){
+    return new ConfigSnapshot(Map.of(ConfigSchema.SYSTEMUI_MASTER,enabled?"1":"0",
+        ConfigSchema.STATUSBAR_GRID,"style_layout",ConfigSchema.STATUSBAR_HEIGHT_DP,"36",
+        ConfigSchema.STATUSBAR_BLUETOOTH_STYLE,Integer.toString(bluetooth),
+        ConfigSchema.STATUSBAR_VPN_STYLE,Integer.toString(vpn),ConfigSchema.STATUSBAR_CONNECTIVITY_COLORS,colors));
   }
   public static void main(String[] args) throws Exception {
     State state = new State();
@@ -168,6 +184,39 @@ public class TestStatusBarSnapshotRefresh {
       check(clockEnabled(true)==(master&&!position),"generated component clock follows master and native preset only");
       check(assetsEnabled()==(master&&!position),"legacy mode cannot secretly activate icon/font replacements");
     }
+    for(boolean master:new boolean[]{true,false}){
+      State icons=new State();FeatureSettings.current=styles(master,0,0,"first_palette");icons.refresh();
+      icons.connectivityIcon=new State.Icon();State.Icon icon=icons.connectivityIcon;Object source=icon.source;
+      StatusBarGridSpec spec=icons.spec;
+      int restores=icons.applications,layouts=icons.root.layouts,resources=icons.root.resources,
+          workers=icons.metricsStarted,stops=icons.metricsStopped,clockRefreshes=SystemUiHook.clocks;
+      for(int[] selection:new int[][]{{0,1},{1,1},{2,1},{2,0},{0,0}}){
+        icons.layoutDirty=false;int cleared=icons.rejectedCleared,redraws=icons.root.redraws;
+        FeatureSettings.current=styles(master,selection[0],selection[1],"second_palette");icons.refresh();
+        check(icons.applications==restores&&icons.root.resources==resources,"icon styles must never restore the whole bar or reload native resources, including with master disabled");
+        check(icons.connectivityIcon==icon&&icon.source==source&&icons.metricsStarted==workers&&icons.metricsStopped==stops,"style changes retain existing connectivity icon/source and metrics worker");
+        check(icons.spec==spec&&icons.active==master&&SystemUiHook.clocks==clockRefreshes,"style changes preserve component layout and custom clock");
+        check(icons.root.layouts==layouts,"style refresh itself does not request whole-bar measure/layout");
+        check(icons.layoutDirty==master&&icons.rejectedCleared==cleared+(master?1:0)&&icons.root.redraws==redraws+(master?1:0),"only an active grid invalidates rejected bounds and repacks in pre-draw");
+        check(icons.lastLayoutConfig.contains(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE+"="+selection[0])
+            &&icons.lastLayoutConfig.contains(ConfigSchema.STATUSBAR_VPN_STYLE+"="+selection[1]),"capacity signature records the current painted style");
+        icons.layoutDirty=false;cleared=icons.rejectedCleared;redraws=icons.root.redraws;icons.refresh();
+        check(!icons.layoutDirty&&icons.rejectedCleared==cleared&&icons.root.redraws==redraws,"unchanged style snapshot remains deduplicated");
+      }
+      icons.layoutDirty=false;FeatureSettings.current=styles(master,0,0,"third_palette");icons.refresh();
+      check(icons.applications==restores&&icons.root.layouts==layouts&&!icons.layoutDirty,"palette-only refresh preserves both active and disabled bar layouts");
+      FeatureSettings.current=styles(!master,0,0,"third_palette");icons.refresh();
+      check(icons.applications==restores+1&&icons.active!=master,"master change still restores/rebuilds the appropriate native or custom layout");
+    }
+    State styleRace=new State();FeatureSettings.current=styles(true,0,0,"palette");styleRace.refresh();
+    int styleRestores=styleRace.applications;ConfigSnapshot firstStyle=styles(true,0,1,"palette"),secondStyle=styles(true,2,0,"palette");
+    FeatureSettings.current=firstStyle;StatusBarGridSpec.afterParse=()->FeatureSettings.current=secondStyle;
+    styleRace.refresh();check(styleRace.lastLayoutConfig.contains(ConfigSchema.STATUSBAR_VPN_STYLE+"=1"),"in-progress style refresh uses its immutable snapshot");
+    styleRace.refresh();check(styleRace.applications==styleRestores
+        &&styleRace.lastLayoutConfig.contains(ConfigSchema.STATUSBAR_VPN_STYLE+"=0")
+        &&styleRace.lastLayoutConfig.contains(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE+"=2"),"queued style publication converges without restoring the bar");
+    styleRace.active=false;FeatureSettings.current=styles(true,0,1,"palette");styleRace.refresh();
+    check(styleRace.active&&styleRace.applications==styleRestores+1,"an inactive grid after a runtime failure still gets full recovery on new style input");
     int before = state.applications; state.attached = false;
     FeatureSettings.current = config(true, "layout_E", 60); state.refresh();
     check(state.applications == before, "detached root received layout mutations");
@@ -197,6 +246,8 @@ def main():
         assets_start = assets_source.index('boolean on = ConfigSchema.truthy(snapshot.get(ConfigSchema.SYSTEMUI_MASTER))')
         asset_gate = assets_source[assets_start:assets_source.index(';', assets_start)+1]
         test.write_text(HARNESS.replace('// PRODUCTION_REFRESH', method).replace('// PRODUCTION_POSITION_ONLY', position)
+                        .replace('// PRODUCTION_COLOR_SETTING', extract_method(source, 'private static boolean colorOnlySetting('))
+                        .replace('// PRODUCTION_ICON_STYLE_SETTING', extract_method(source, 'private static boolean iconStyleSetting('))
                         .replace('// PRODUCTION_CLOCK_GATE', clock_gate).replace('// PRODUCTION_ASSET_GATE', asset_gate), encoding='utf-8')
         subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', directory, str(snapshot), str(build), str(test)], check=True)
         subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestStatusBarSnapshotRefresh'], check=True, timeout=15)

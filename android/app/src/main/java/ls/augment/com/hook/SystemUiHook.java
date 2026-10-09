@@ -27,6 +27,7 @@ final class SystemUiHook {
         installed += StatusBarRecentsHook.install(module, loader);
         installed += NotificationStackHook.install(module, loader);
         installed += BluetoothIconHook.install(module, loader);
+        installed += VpnIconHook.install(module, loader);
         installed += installClock(module, loader, compatibility);
         installed += StatusBarWindowSizingHook.install(module, loader);
         module.logFeatureInfo("SYSTEMUI_GRID_READY hooks=" + installed + " compat=" + compatibility);

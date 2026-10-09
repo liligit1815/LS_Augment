@@ -9,12 +9,14 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -82,6 +84,35 @@ final class UiKit {
         if (Build.VERSION.SDK_INT >= 29) {
             window.setStatusBarContrastEnforced(false);
             window.setNavigationBarContrastEnforced(false);
+        }
+    }
+
+    /** Floating windows keep the host's icon colors when they take and return focus. */
+    private void inheritSystemBarAppearance(Window window) {
+        Window host = activity.getWindow();
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
+                | android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
+        window.setStatusBarColor(host.getStatusBarColor());
+        window.setNavigationBarColor(host.getNavigationBarColor());
+        if (Build.VERSION.SDK_INT >= 26) window.setNavigationBarDividerColor(host.getNavigationBarDividerColor());
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.setStatusBarContrastEnforced(host.isStatusBarContrastEnforced());
+            window.setNavigationBarContrastEnforced(host.isNavigationBarContrastEnforced());
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            int lightBars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            View decor = window.getDecorView();
+            decor.setSystemUiVisibility((decor.getSystemUiVisibility() & ~lightBars)
+                    | (host.getDecorView().getSystemUiVisibility() & lightBars));
+        }
+        if (Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null
+                && host.getInsetsController() != null) {
+            int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            window.getInsetsController().setSystemBarsAppearance(
+                    host.getInsetsController().getSystemBarsAppearance() & lightBars, lightBars);
         }
     }
 
@@ -167,6 +198,10 @@ final class UiKit {
     }
 
     LinearLayout preferenceCard(){LinearLayout value=card();value.setPadding(dp(14),0,dp(14),0);value.setTag("preference-card");return value;}
+    LinearLayout parameterInputGroup(){
+        LinearLayout group=new LinearLayout(activity);group.setOrientation(LinearLayout.VERTICAL);
+        group.setPadding(0,dp(3),0,dp(8));return group;
+    }
     LinearLayout preferenceRow(String id,String title,String summary,Runnable action){
         LinearLayout row=groupRow();row.setTag("navigation:"+id);row.setPadding(0,dp(4),0,dp(4));
         ImageView icon=new ImageView(activity);icon.setImageResource(navigationIcon(id));icon.setColorFilter(accent);icon.setPadding(dp(8),dp(8),dp(8),dp(8));icon.setBackground(round(dark?0x402b82c8:0x407dbcf2,12));icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -258,6 +293,10 @@ final class UiKit {
 
     void applyGestureInset(View view, int extraBottomDp, boolean includeKeyboard) {
         if(embedded())return;
+        installGestureInset(view,extraBottomDp,includeKeyboard);
+    }
+
+    private void installGestureInset(View view, int extraBottomDp, boolean includeKeyboard) {
         if (Build.VERSION.SDK_INT < 20) return;
         final int originalBottom = view.getPaddingBottom(), originalTop = view.getPaddingTop();
         final int originalLeft = view.getPaddingLeft(), originalRight = view.getPaddingRight();
@@ -435,7 +474,9 @@ final class UiKit {
         };
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(content);
-        body.addView(scroll, margins(0, 16, 0, 22));
+        LinearLayout.LayoutParams scrollParams=margins(0,16,0,22);
+        scrollParams.weight=1;
+        body.addView(scroll, scrollParams);
         LinearLayout actions = new LinearLayout(activity);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         if (negative != null) {
@@ -457,22 +498,70 @@ final class UiKit {
         actions.addView(confirm, new LinearLayout.LayoutParams(0, -2, 1));
         }
         body.addView(actions, wrap());
-        dialog.setContentView(body);
+        // The native dim policy forces white status icons outside a small dialog's frame.
+        // Keep its visible panel compact, but let the transparent window include the bars.
+        FrameLayout shell=new FrameLayout(activity){
+            private boolean outsideGesture;
+            @Override protected void onMeasure(int widthSpec,int heightSpec){
+                FrameLayout.LayoutParams panel=(FrameLayout.LayoutParams)body.getLayoutParams();
+                panel.width=Math.min(dp(420),Math.max(0,View.MeasureSpec.getSize(widthSpec)
+                        -getPaddingLeft()-getPaddingRight()-dp(36)));
+                super.onMeasure(widthSpec,heightSpec);
+            }
+            @Override public boolean dispatchTouchEvent(MotionEvent event){
+                boolean outside=event.getX()<body.getLeft()||event.getX()>body.getRight()
+                        ||event.getY()<body.getTop()||event.getY()>body.getBottom();
+                if(event.getActionMasked()==MotionEvent.ACTION_DOWN)outsideGesture=outside;
+                // Consume DOWN so the parent keeps routing this outside gesture to the shell.
+                if(outsideGesture){
+                    if(event.getActionMasked()==MotionEvent.ACTION_UP){
+                        outsideGesture=false;
+                        if(outside){
+                            MotionEvent touch=MotionEvent.obtain(event);touch.setAction(MotionEvent.ACTION_OUTSIDE);
+                            int edge=-android.view.ViewConfiguration.get(dialog.getContext()).getScaledWindowTouchSlop()-1;
+                            touch.setLocation(edge,edge);
+                            try{dialog.onTouchEvent(touch);}finally{touch.recycle();}
+                        }
+                    }else if(event.getActionMasked()==MotionEvent.ACTION_CANCEL)outsideGesture=false;
+                    return true;
+                }
+                return super.dispatchTouchEvent(event);
+            }
+        };
+        shell.setTag("glass-dialog-window");
+        shell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        shell.addView(body,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
+        installGestureInset(shell,0,true);
+        dialog.setContentView(shell);
+        dialog.setCanceledOnTouchOutside(true);
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setDimAmount(dark ? .28f : .12f);
+            if(Build.VERSION.SDK_INT>=30){
+                window.setDecorFitsSystemWindows(false);
+                android.view.WindowManager.LayoutParams attributes=window.getAttributes();
+                attributes.setFitInsetsTypes(0);
+                window.setAttributes(attributes);
+            }
+            window.setSoftInputMode((window.getAttributes().softInputMode
+                    & ~android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+                    | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            window.setLayout(-1,-1);
+            inheritSystemBarAppearance(window);
         }
         dialog.show();
-        if (window != null) window.setLayout(Math.min(dp(420),
-                activity.getResources().getDisplayMetrics().widthPixels - dp(36)), -2);
         body.refreshBackdrop();
         return dialog;
     }
 
     android.app.Dialog choiceDialog(String title, String[] names, String[] descriptions,
             java.util.function.IntConsumer selected) {
+        return choiceDialog(title,names,descriptions,null,selected);
+    }
+    android.app.Dialog choiceDialog(String title, String[] names, String[] descriptions,
+            java.util.function.IntFunction<View> preview,java.util.function.IntConsumer selected) {
         LinearLayout choices = new LinearLayout(activity);
         choices.setOrientation(LinearLayout.VERTICAL);
         final android.app.Dialog[] current = new android.app.Dialog[1];
@@ -482,12 +571,17 @@ final class UiKit {
             row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(dp(14), dp(12), dp(14), dp(12));
             row.setMinimumHeight(dp(48));
+            row.setTag("choice-option:"+index);
             row.setBackground(pressable(roundStroke(dark ? 0x544c7094 : 0x68ffffff, 12, outline, 1)));
             row.addView(text(names[i], 14, text, true));
             if (descriptions != null && i < descriptions.length) {
                 TextView detail = text(descriptions[i], 12, muted, false);
                 detail.setLineSpacing(dp(2), 1.05f);
                 row.addView(detail, margins(0, 6, 0, 0));
+            }
+            if(preview!=null){
+                View sample=preview.apply(index);
+                if(sample!=null)row.addView(sample,margins(0,6,0,0));
             }
             row.setFocusable(true);
             row.setOnClickListener(v -> { current[0].dismiss(); selected.accept(index); });
@@ -502,7 +596,12 @@ final class UiKit {
         return choiceSpinner(title,null);
     }
     android.widget.Spinner choiceSpinner(String title,java.util.function.IntFunction<String> description) {
+        return choiceSpinner(title,description,null);
+    }
+    android.widget.Spinner choiceSpinner(String title,java.util.function.IntFunction<String> description,
+            java.util.function.IntFunction<View> preview) {
         android.widget.Spinner spinner = new android.widget.Spinner(activity) {
+            private android.app.Dialog selectionDialog;
             @Override public boolean performClick() {
                 if (!isEnabled() || getAdapter() == null || getAdapter().getCount() == 0) return true;
                 String[] names = new String[getAdapter().getCount()];
@@ -511,7 +610,7 @@ final class UiKit {
                 CharSequence label = getContentDescription();
                 String[] descriptions=description==null?null:new String[names.length];
                 if(descriptions!=null)for(int i=0;i<descriptions.length;i++)descriptions[i]=description.apply(i);
-                choiceDialog(label == null || label.length() == 0 ? title : label.toString(), names, descriptions, this::setSelection);
+                selectionDialog=choiceDialog(label == null || label.length() == 0 ? title : label.toString(), names, descriptions, preview, this::setSelection);
                 return true;
             }
         };

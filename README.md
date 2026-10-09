@@ -2,7 +2,7 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20497`，内部版本号 `20497`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。安装包和更新内容见 [test20497 GitHub Release](https://github.com/liligit1815/LS_Augment/releases/tag/v2.0.0-alpha1-test20497)。本版本为 Alpha 预发布版本。
+**当前源码版本：`2.0.0-alpha1-test20505`，内部版本号 `20505`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。安装包和更新内容见 [test20505 GitHub Release](https://github.com/liligit1815/LS_Augment/releases/tag/v2.0.0-alpha1-test20505)。本版本为 Alpha 预发布版本。
 
 ## 文档导航
 
@@ -16,6 +16,14 @@
 
 ## 当前版本要点
 
+- “默认桌面”页新增独立开关“禁用第三方桌面最近任务遮罩”，开启后去掉纯白或纯黑遮罩，显示壁纸；关闭恢复原厂行为。
+
+- “系统图标与隐私”的 VPN 圆环样式与蓝牙圆环共用清晰的单圆环矢量绘制，随系统状态栏颜色切换；蓝牙图标样式示例位于各选择项。
+
+- VPN、蓝牙样式切换改为原位刷新，避免状态栏恢复原厂布局后再重建；选择弹窗继承页面的系统栏明暗颜色。
+
+- 灵动岛媒体来源处于前台时自动收起，切到后台且仍在播放时恢复；新增上下偏移和透明胶囊样式。
+
 - **日志与运行诊断**：区分模块和原调用链异常，按版本、进程及开机记录归因；完善息屏自动化结果确认、状态栏清单重试、连招缓存校验与连点决策记录。
 - **下拉与状态栏性能**：减少通知中心、控制中心下拉时的重复扫描、测量和反射查找，稳定画面复用布局。
 - **统一功能导航**：主页整理为 13 个分类，搜索显示完整路径，旧入口与已有配置保持兼容。
@@ -24,7 +32,7 @@
 - **桌面、风扇与游戏**：桌面 3～12 行列；风扇固定五档、磁贴增强与息屏延续；游戏性能监测项目及背景透明度自定义。
 - **系统与维护**：蓝牙电量图标、跨应用小窗、验证码剪贴板、极暗与亮度扩展；完善全部重置，修复音量百分比、电源菜单和长侧滑背景。
 
-本次更新见 [test20497 发布说明](docs/releases/v2.0.0-alpha1-test20497.md)，此前累计更新见 [test20496 发布说明](docs/releases/v2.0.0-alpha1-test20496.md)。
+本次按现行 UI 规范统一时钟、通知图标、实时指标、电池三合一及系统图标与隐私页的功能行、分割线和参数间距，删除冗余状态摘要与系统图标小字说明。完整更新见 [test20505 发布说明](docs/releases/v2.0.0-alpha1-test20505.md)，此前更新见 [test20497 发布说明](docs/releases/v2.0.0-alpha1-test20497.md)，此前累计更新见 [test20496 发布说明](docs/releases/v2.0.0-alpha1-test20496.md)。
 
 ## 功能概览
 
@@ -95,7 +103,7 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 本次 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20497-release.apk` |
+| 本次 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20505-release.apk` |
 | 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
 | 源码包 | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |

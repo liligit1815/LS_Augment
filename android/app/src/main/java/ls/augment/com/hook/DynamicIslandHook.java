@@ -6,6 +6,7 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -31,6 +32,7 @@ import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -60,8 +62,31 @@ final class DynamicIslandHook {
     private static final String USER_SWITCHED="android.intent.action.USER_SWITCHED";
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final Map<View,State> STATES=new WeakHashMap<>();
+    private static final Runnable TASK_CHANGED=()->{
+        for(State state:new ArrayList<>(STATES.values()))if(state.enabled&&!state.closed)state.requestRefresh();
+    };
+
+    private static void taskChanged(){
+        // Both native listeners can report the same switch from Binder threads.
+        // Coalesce on the UI thread; task changes do not depend on media callbacks.
+        MAIN.removeCallbacks(TASK_CHANGED);MAIN.post(TASK_CHANGED);
+    }
 
     static int install(AugmentModule module,ClassLoader loader) {
+        int taskHooks=0;
+        for(String listener:new String[]{"com.android.systemui.shared.system.TaskStackChangeListeners$Impl",
+                "com.android.wm.shell.common.TaskStackListenerImpl"}){
+            for(String method:new String[]{"onTaskStackChanged","onTaskMovedToFront","onTaskDisplayChanged",
+                    "onActivityPinned","onActivityUnpinned"})
+                taskHooks+=hookNamed(module,loader,"island",listener,method,-1,null,(owner,args,result)->{
+                    taskChanged();return PASS;
+                });
+        }
+        // Focus changes inside split-screen may have no stack/front callback.
+        // The native listeners inherit this method from the framework class.
+        taskHooks+=hookNamed(module,loader,"island","android.app.TaskStackListener","onTaskFocusChanged",2,null,(owner,args,result)->{
+            taskChanged();return PASS;
+        });
         int count=hookNamed(module,loader,"island",PHONE,"onAttachedToWindow",0,null,(owner,args,result)->{
             if(owner instanceof FrameLayout && !STATES.containsKey(owner)){
                 State state=new State((FrameLayout)owner);STATES.put((View)owner,state);state.start();
@@ -99,8 +124,8 @@ final class DynamicIslandHook {
                 }});
             }return PASS;
         });
-        module.logFeatureInfo("DYNAMIC_ISLAND_READY hooks="+count);
-        return count;
+        module.logFeatureInfo("DYNAMIC_ISLAND_READY hooks="+count+",taskHooks="+taskHooks);
+        return count+taskHooks;
     }
 
     private static final class State {
@@ -240,18 +265,39 @@ final class DynamicIslandHook {
             refresh();
         }
         MediaController selectMedia(){
+            if(controllers.isEmpty())return null;
+            String foreground=foregroundPackage();
             MediaController active=null,fallback=null;long now=SystemClock.elapsedRealtime();
             for(MediaController controller:controllers)try{
                 PlaybackState state=controller.getPlaybackState();
                 IslandActivityPolicy.MediaActivity lease=mediaActivities.get(controller.getSessionToken());
                 if(lease==null){lease=new IslandActivityPolicy.MediaActivity();mediaActivities.put(controller.getSessionToken(),lease);}
                 boolean showing=lease.update(state==null?0:state.getState(),now);
-                if(!showing)continue;
+                // Videos also publish MediaSessions. Keep the lease up to date
+                // while its own app is foreground, but only offer background
+                // media on the island. Unknown foreground state fails closed.
+                if(!showing||foreground==null||controller.getPackageName().equals(foreground))continue;
                 if(state!=null&&IslandActivityPolicy.mediaPlaying(state.getState())){
                     if(active==null||sameSession(controller,media))active=controller;
                 }else if(fallback==null||sameSession(controller,media))fallback=controller;
             }catch(RuntimeException ignored){}
             return active!=null?active:fallback;
+        }
+        String foregroundPackage(){
+            Display display=host.getDisplay();if(display==null)return null;
+            try{
+                Object service=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
+                // Request the focused leaf task on this status bar's display;
+                // a focused root task can be a split-screen container.
+                Object tasks=call(service,"getTasks",1,false,false,display.getDisplayId());
+                if(!(tasks instanceof List)||((List<?>)tasks).isEmpty())return null;
+                Object task=((List<?>)tasks).get(0);
+                Object component=field(task,"topActivity"),taskDisplay=field(task,"displayId"),taskUser=field(task,"userId");
+                if(!(component instanceof ComponentName)||!(taskDisplay instanceof Integer)||!(taskUser instanceof Integer)
+                        ||(Integer)taskDisplay!=display.getDisplayId())return null;
+                // A profile/clone with the same package is a different source.
+                return (Integer)taskUser==ownerUser?((ComponentName)component).getPackageName():"";
+            }catch(ReflectiveOperationException|RuntimeException unavailable){return null;}
         }
         boolean sameSession(MediaController first,MediaController second){return first!=null&&second!=null&&first.getSessionToken().equals(second.getSessionToken());}
         void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map){
@@ -362,9 +408,12 @@ final class DynamicIslandHook {
             int x=dp(FeatureSettings.integer(context,P+"offset_x",0,-120,120)),limit=Math.max(0,(host.getWidth()-w)/2-dp(8));
             x=Math.max(-limit,Math.min(limit,x));
             FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)pill.getLayoutParams();
-            int top=Math.max(0,(host.getHeight()-h)/2);
+            int y=dp(FeatureSettings.integer(context,SystemUiOptions.ISLAND_OFFSET_Y,0,-24,24));
+            int available=Math.max(0,host.getHeight()-h);
+            int top=Math.max(0,Math.min(available,available/2+y));
             if(lp.width!=w||lp.height!=h||lp.topMargin!=top){lp.width=w;lp.height=h;lp.topMargin=top;pill.setLayoutParams(lp);}
             pill.setTranslationX(x);pill.icon=icon;pill.playing=playing;pill.kind=activity;pill.battery=battery;
+            pill.transparent=FeatureSettings.enabled(context,SystemUiOptions.ISLAND_TRANSPARENT);
         }
         void showPill(){
             if(popup!=null)return;
@@ -548,7 +597,7 @@ final class DynamicIslandHook {
     private static final class Capsule extends View {
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final RectF rect=new RectF();
         final android.graphics.Path shape=new android.graphics.Path();
-        Drawable icon;boolean playing;int kind,battery;Runnable visibilityChanged;
+        Drawable icon;boolean playing,transparent;int kind,battery;Runnable visibilityChanged;
         Capsule(Context context){super(context);setClickable(true);setFocusable(true);}
         @Override protected void onVisibilityChanged(View changedView,int visibility){
             super.onVisibilityChanged(changedView,visibility);
@@ -560,7 +609,11 @@ final class DynamicIslandHook {
         float dp(float value){return value*getResources().getDisplayMetrics().density;}
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);float h=getHeight(),w=getWidth();if(h<=0||w<=0)return;
-            paint.setColor(Color.BLACK);rect.set(0,0,w,h);canvas.drawRoundRect(rect,h/2,h/2,paint);
+            paint.clearShadowLayer();
+            if(!transparent){paint.setColor(Color.BLACK);rect.set(0,0,w,h);canvas.drawRoundRect(rect,h/2,h/2,paint);}
+            // Keep light foreground marks legible over light app backgrounds
+            // without making the capsule itself translucent or fading its cover.
+            if(transparent)paint.setShadowLayer(dp(1.5f),0,0,0x99000000);
             float size=Math.min(dp(22),h-dp(8)),left=dp(9),top=(h-size)/2;
             if(icon!=null){canvas.save();android.graphics.Path clip=new android.graphics.Path();clip.addRoundRect(left,top,left+size,top+size,dp(5),dp(5),android.graphics.Path.Direction.CW);canvas.clipPath(clip);
                 icon.setBounds((int)left,(int)top,(int)(left+size),(int)(top+size));icon.draw(canvas);canvas.restore();

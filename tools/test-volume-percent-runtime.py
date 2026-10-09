@@ -6,7 +6,9 @@ tree=ast.parse((ROOT/'tools/test-back-gesture-runtime.py').read_text(encoding='u
 base=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='files' for t in n.targets))
 files={k:v for k,v in base.items() if k.startswith('android/') or k.startswith('io/') or k.endswith('/AugmentModule.java')}
 files.update({
-'android/media/AudioManager.java':'package android.media;public class AudioManager{public static final int STREAM_VOICE_CALL=0,STREAM_RING=2,STREAM_MUSIC=3,STREAM_ALARM=4,STREAM_NOTIFICATION=5;}',
+'android/media/AudioManager.java':'package android.media;public class AudioManager{public static final int STREAM_VOICE_CALL=0,STREAM_RING=2,STREAM_MUSIC=3,STREAM_ALARM=4,STREAM_NOTIFICATION=5;public int getStreamMaxVolume(int stream){return 15;}}',
+'android/widget/SeekBar.java':'package android.widget;public class SeekBar extends android.view.View{public int getMax(){return 15;}}',
+'android/os/Bundle.java':'''package android.os;public class Bundle{private final java.util.Map<String,Object> values=new java.util.HashMap<>();public int size(){return values.size();}public void putInt(String k,int v){values.put(k,v);}public void putLong(String k,long v){values.put(k,v);}public void putString(String k,String v){values.put(k,v);}public void putBoolean(String k,boolean v){values.put(k,v);}public int getInt(String k,int d){Object v=values.get(k);return v instanceof Integer?(Integer)v:d;}public long getLong(String k,long d){Object v=values.get(k);return v instanceof Long?(Long)v:d;}public String getString(String k,String d){Object v=values.get(k);return v instanceof String?(String)v:d;}public boolean getBoolean(String k){return Boolean.TRUE.equals(values.get(k));}}''',
 'android/util/DisplayMetrics.java':'package android.util;public class DisplayMetrics{public float density=1,scaledDensity=1;}',
 'android/content/res/Resources.java':'package android.content.res;public class Resources{public static final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();public android.util.DisplayMetrics getDisplayMetrics(){return metrics;}}',
 'android/view/ViewParent.java':'package android.view;public interface ViewParent{}',
@@ -20,9 +22,22 @@ files.update({
 'android/graphics/Rect.java':'''package android.graphics;public class Rect{public int left,top,right,bottom;public void set(int a,int b,int c,int d){left=a;top=b;right=c;bottom=d;}public void offset(int x,int y){left+=x;right+=x;top+=y;bottom+=y;}public boolean intersect(int l,int t,int r,int b){left=Math.max(l,left);top=Math.max(t,top);right=Math.min(r,right);bottom=Math.min(b,bottom);return left<right&&top<bottom;}public int width(){return right-left;}public int height(){return bottom-top;}public float exactCenterX(){return (left+right)/2f;}}''',
 'android/graphics/Canvas.java':'package android.graphics;public class Canvas{public String text;public float x,y,size;public void drawText(String s,float x,float y,Paint p){text=s;this.x=x;this.y=y;size=p.getTextSize();}}',
 'android/graphics/drawable/Drawable.java':'''package android.graphics.drawable;import android.graphics.*;public abstract class Drawable{public int invalidations;public void setBounds(int a,int b,int c,int d){}public void invalidateSelf(){invalidations++;}public abstract void draw(Canvas c);public abstract void setAlpha(int a);public abstract void setColorFilter(ColorFilter f);public abstract int getOpacity();}''',
-'ls/augment/com/ConfigSchema.java':'package ls.augment.com;public class ConfigSchema{public static final String AUDIO_GAIN_ENABLED="gain";}',
+'ls/augment/com/ConfigSchema.java':'package ls.augment.com;public class ConfigSchema{public static final String AUDIO_GAIN_ENABLED="gain",AUDIO_GAIN_STEP="step";public static boolean truthy(String value){return "1".equals(value);}}',
+'ls/augment/com/ConfigSnapshot.java':'''package ls.augment.com;public class ConfigSnapshot{public final java.util.Map<String,String> values=new java.util.HashMap<>();public String get(String key){return values.getOrDefault(key,"0");}}''',
 'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static final String QS_VOLUME_PERCENT="percent";}',
-'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;public class FeatureSettings{static java.util.Set<String> enabled=new java.util.HashSet<>();static String scale="";static boolean enabled(android.content.Context c,String k){return enabled.contains(k);}static android.content.Context from(Object o){return new android.content.Context();}static String diagnosticValue(android.content.Context c,String k){return scale;}}''',
+'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;import ls.augment.com.*;public class FeatureSettings{
+static java.util.Set<String> enabled=new java.util.HashSet<>();static final ConfigSnapshot options=new ConfigSnapshot();static AudioGainState live;
+static boolean enabled(android.content.Context c,String k){return enabled.contains(k);}static android.content.Context from(Object o){return new android.content.Context();}
+static ConfigSnapshot snapshot(android.content.Context context){options.values.put(ConfigSchema.AUDIO_GAIN_ENABLED,enabled.contains("gain")?"1":"0");return options;}
+static void diagnostic(android.content.Context c,String key,String value){}
+static void gain(int base,int step,int limit,int current,boolean muted){enabled.add("gain");options.values.put(ConfigSchema.AUDIO_GAIN_STEP,Integer.toString(step));
+ for(String route:new String[]{"speaker","wired","bluetooth"})options.values.put(AudioGainPolicy.key(route,3),route.equals("speaker")?Integer.toString(limit):"100");
+ String configuration=AudioGainState.configuration(snapshot(new android.content.Context()),3);
+ live=new AudioGainState(1,1,1000,1,3,2,"speaker",configuration,true,muted,base,muted?0:Math.min(base,current),current,base+AudioGainPolicy.extraSteps(limit,step),step,limit);}
+}''',
+# The presentation test controls live readback delivery; validate the supplied
+# packet with the production AudioGainState before making it available to UI.
+'ls/augment/com/hook/AudioGainStateClient.java':'''package ls.augment.com.hook;import ls.augment.com.*;public class AudioGainStateClient{static class Watch{final android.view.View view;int stream;boolean closed;Watch(android.view.View view,Runnable changed){this.view=view;}void bind(int stream){this.stream=stream;}AudioGainState state(){AudioGainState state=FeatureSettings.live;return !closed&&state!=null&&state.valid(1,1,1000,stream,AudioGainState.configuration(FeatureSettings.snapshot(view.getContext()),stream))?state:null;}void close(){closed=true;}}}''',
 'com/android/systemui/volume/VolumeDialogImpl.java':'''package com.android.systemui.volume;import ls.augment.com.hook.TestVolumePercent.Row;public class VolumeDialogImpl{public android.content.Context mContext=new android.content.Context();public java.util.List<Row> mRows=new java.util.ArrayList<>();public void updateVolumeRowH(Row row){if(row.number!=null)row.number.setText(Integer.toString(row.ss.level));}public void showH(int reason,boolean locked,int flags){}public void updateRowsH(Row active){}}''',
 'com/zte/feature/volume/MfvVolumeDialogImpl.java':'''package com.zte.feature.volume;import ls.augment.com.hook.TestVolumePercent.Row;public class MfvVolumeDialogImpl extends com.android.systemui.volume.VolumeDialogImpl{public void updateRowsH(Row active){active.number.shown=false;}public void updateExpandedH(boolean expanded){}}''',
 'ls/augment/com/hook/TestVolumePercent.java':'''package ls.augment.com.hook;import android.view.*;import android.widget.*;import android.graphics.*;import java.lang.reflect.*;public class TestVolumePercent{
@@ -48,12 +63,12 @@ files.update({
  View oldSlider=narrow.slider;narrow.slider=new View();narrow.slider.left=28;narrow.slider.right=48;narrowRoot.width=76;show(narrow,narrowRoot,3);trackCanvas=new Canvas();narrowRoot.overlay.items.get(0).draw(trackCanvas);check(trackCanvas.x==38&&narrowRoot.overlay.items.size()==1,"replacement route slider updates anchor without duplicate overlay");
  narrowRoot.detach();check(narrowRoot.tree.listeners.isEmpty()&&narrowRoot.overlay.items.isEmpty(),"dismiss releases old view tree observer and overlay");narrowRoot.attach();narrowRoot.tree.draw();check(narrowRoot.tree.listeners.size()==1&&narrowRoot.overlay.items.size()==1,"reshow rebinds a single observer and fallback");
  row.ss.muted=true;show(row,root,3);check(row.number.getText().toString().equals("0%"),"muted media reports zero");row.ss.muted=false;
- FeatureSettings.enabled.add("gain");FeatureSettings.scale="15,5,200";row.ss.levelMax=35;row.ss.level=26;show(row,root,3);check(row.number.getText().toString().equals("155%"),"validated gain may exceed 100%");
+ FeatureSettings.gain(15,5,200,26,false);row.ss.levelMax=35;row.ss.level=26;show(row,root,3);check(row.number.getText().toString().equals("155%"),"validated live gain may exceed 100%");
  FeatureSettings.enabled.add("ls_augment_rm_audio_steps_media_enabled");show(row,root,3);check(row.number.getText().toString().equals("155%")&&row.header.getText().toString().contains("26 / 35"),"steps do not replace percentage");
  row.number.visibility=View.GONE;show(row,root,3);check(root.overlay.items.size()==1,"hidden OEM number gets one fallback");show(row,root,3);check(root.overlay.items.size()==1,"updates reuse fallback");Canvas canvas=new Canvas();root.overlay.items.get(0).draw(canvas);check("155%".equals(canvas.text)&&canvas.x==60&&canvas.y>=10&&canvas.y<=350,"fallback inside slider bounds, away from speaker");
  row.number.visibility=View.VISIBLE;show(row,root,3);check(root.overlay.items.isEmpty(),"visible OEM label removes old overlay");
- FeatureSettings.scale="15,5,300";show(row,root,3);check(row.number.getText().toString().equals("74%"),"stale gain range not trusted");
- row.number.visibility=View.GONE;row.ss.muted=true;show(row,root,3);canvas=new Canvas();root.overlay.items.get(0).draw(canvas);check("0%".equals(canvas.text),"muted overlay stays zero");
+ FeatureSettings.gain(15,5,300,26,false);show(row,root,3);check(row.number.getText().toString().equals("26 / 35")&&root.overlay.items.isEmpty(),"mismatched live range preserves step count and suppresses an invented percentage");
+ FeatureSettings.gain(15,5,200,0,true);row.number.visibility=View.GONE;row.ss.muted=true;show(row,root,3);canvas=new Canvas();root.overlay.items.get(0).draw(canvas);check("0%".equals(canvas.text),"muted live readback overlay stays zero");
  FeatureSettings.enabled.clear();show(row,root,3);check(root.overlay.items.isEmpty()&&row.header.getText().toString().equals("媒体"),"off removes decorations and step suffix");
  show(narrow,narrowRoot,3);check(narrowRoot.tree.listeners.isEmpty()&&narrowRoot.attaches.isEmpty()&&narrowRoot.overlay.items.isEmpty(),"off releases all cached row presentation listeners");
  row.ss.levelMax=0;show(row,root,3);check(root.overlay.items.isEmpty(),"invalid max never divides");
@@ -71,7 +86,6 @@ files['android/view/View.java']=files['android/view/View.java'].replace('public 
 files['android/view/View.java']=files['android/view/View.java'].replace('public boolean shown=true,','public int globalX,globalY,windowX,windowY;public boolean shown=true,').replace('p[0]=0;p[1]=0;','p[0]=globalX+windowX;p[1]=globalY+windowY;').replace('public boolean getGlobalVisibleRect(android.graphics.Rect r){','public boolean getGlobalVisibleRect(android.graphics.Rect r,android.graphics.Point offset){offset.x=globalX;offset.y=globalY;return getGlobalVisibleRect(r);}public boolean getGlobalVisibleRect(android.graphics.Rect r){')
 files['android/graphics/Point.java']='package android.graphics;public class Point{public int x,y;}'
 files['android/graphics/Rect.java']=files['android/graphics/Rect.java'].replace('public int width(){','public String toShortString(){return "["+left+","+top+","+right+","+bottom+"]";}public int width(){')
-files['ls/augment/com/hook/FeatureSettings.java']=files['ls/augment/com/hook/FeatureSettings.java'].replace('static String scale="";','static String scale="";static void diagnostic(android.content.Context c,String key,String value){}')
 files['ls/augment/com/hook/TestVolumePercent.java']=files['ls/augment/com/hook/TestVolumePercent.java'].replace('slider=new View(),icon=new View();','slider=new View(),icon;')
 files['ls/augment/com/hook/TestVolumePercent.java']=files['ls/augment/com/hook/TestVolumePercent.java'].replace(' android.graphics.drawable.Drawable cached=', ''' // Captured OEM floating window: screen row [968,954], root-view origin [890,140].
  // getGlobalVisibleRect deliberately excludes the window's [78,814] screen offset.
@@ -110,11 +124,11 @@ files['ls/augment/com/hook/TestVolumePercent.java']=files['ls/augment/com/hook/T
    check((Math.round(volume*100f/150)+"%").equals(gapCanvas.text)&&gapCanvas.y-gapCanvas.size>=518.24f&&gapCanvas.y+gapCanvas.size*.2f<=552.76f,
      "percentage glyphs must fit the OEM footer gap without touching thumb or icon at every tested volume and font scale");
   }
-  FeatureSettings.enabled.add("gain");FeatureSettings.scale="15,5,300";footerRow.ss.levelMax=55;footerRow.ss.level=55;show(footerRow,footerRoot,3);
+  FeatureSettings.gain(15,5,300,55,false);footerRow.ss.levelMax=55;footerRow.ss.level=55;show(footerRow,footerRoot,3);
   Canvas maxGain=new Canvas();footerRoot.overlay.items.get(0).draw(maxGain);
   check("300%".equals(maxGain.text)&&maxGain.y-maxGain.size>=518.24f&&maxGain.y+maxGain.size*.2f<=552.76f
      &&maxGain.size*4*.55f<=155f,"maximum gain label must fit both footer gap and row width at every tested font scale");
-  FeatureSettings.enabled.remove("gain");FeatureSettings.scale="";footerRow.ss.levelMax=150;footerRow.ss.level=150;show(footerRow,footerRoot,3);
+  FeatureSettings.enabled.remove("gain");FeatureSettings.live=null;footerRow.ss.levelMax=150;footerRow.ss.level=150;show(footerRow,footerRoot,3);
   android.graphics.drawable.Drawable footerBadge=footerRoot.overlay.items.get(0);int beforeFooterMove=footerBadge.invalidations;
   footerRow.icon.top+=10;footerRoot.tree.draw();
   check(footerBadge.invalidations==beforeFooterMove+1,"footer icon geometry change must refresh the gap placement once");
@@ -131,7 +145,7 @@ files['ls/augment/com/hook/TestVolumePercent.java']=files['ls/augment/com/hook/T
  }
  android.content.res.Resources.metrics.density=1;android.content.res.Resources.metrics.scaledDensity=1;
  android.graphics.drawable.Drawable cached=''')
-for name in ('AudioGainPolicy.java','hook/AudioGainUiHook.java'):files['ls/augment/com/'+name]=(SRC/name).read_text(encoding='utf-8')
+for name in ('AudioGainPolicy.java','AudioGainState.java','hook/AudioGainUiHook.java'):files['ls/augment/com/'+name]=(SRC/name).read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='lsa-volume-label-') as temp:
  sources=[]
  for name,source in files.items():

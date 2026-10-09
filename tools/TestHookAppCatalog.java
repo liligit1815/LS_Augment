@@ -94,6 +94,11 @@ public final class TestHookAppCatalog {
         owner("nfc_screen_off", HookAppCatalog.NFC);
         owner("mtp_name", HookAppCatalog.FILES);
         owner("third_party_launcher", HookAppCatalog.PERMISSIONS);
+        owner("third_party_recents_no_scrim", HookAppCatalog.LAUNCHER);
+        check(HookAppCatalog.affectedPackages("ls_augment_rm_third_party_launcher").equals(
+                List.of("com.android.permissioncontroller")), "HOME candidates retain their original scope");
+        check(HookAppCatalog.affectedPackages("ls_augment_rm_third_party_recents_no_scrim").equals(
+                List.of("com.zte.mifavor.launcher")), "fallback overview belongs to the system launcher");
         owner("desktop_clock_pattern", HookAppCatalog.LAUNCHER);
         owner("launcher_grid_enabled", HookAppCatalog.LAUNCHER);
         owner("launcher_grid_rows", HookAppCatalog.LAUNCHER);

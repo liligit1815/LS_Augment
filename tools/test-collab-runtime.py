@@ -52,6 +52,7 @@ public class AugmentModule {public static AugmentModule active;public static fin
 import java.util.*;import android.content.Context;
 class FeatureSettings {static Context current=new Context();static final Map<String,String> values=new HashMap<>(),diagnostics=new HashMap<>();
  static boolean verified=true;static boolean hasVerifiedSnapshot(Context c){return verified;}
+ static boolean verifiedDisabled(String key){return verified&&!"1".equals(values.get(key));}
  static final Map<String,Integer> writes=new HashMap<>();
  static boolean enabled(Context c,String key){return "1".equals(values.get(key));}
  static int integer(Context c,String key,int fallback,int min,int max){return Math.max(min,Math.min(max,Integer.parseInt(values.getOrDefault(key,""+fallback))));}

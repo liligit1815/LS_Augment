@@ -48,6 +48,7 @@ public final class SystemOptions {
             {"ota_spoof_enabled","update","自定义更新应用读取的设备信息","仅对系统更新应用生效；空白字段保持原值。"},
             {"theme_no_login","theme","主题下载免登录","取消原厂主题、壁纸与息屏资源下载入口的登录要求。"},
             {"third_party_launcher","launcher","允许设置第三方默认桌面","放宽原厂默认桌面的选择限制。"},
+            {"third_party_recents_no_scrim","launcher","禁用第三方桌面最近任务遮罩","使用第三方桌面时，去掉系统最近任务的背景遮罩，显示壁纸；关闭后恢复原厂遮罩，下次进入最近任务生效。独立于默认桌面候选开关，需启用系统桌面作用域。"},
             {"settings_long_timeout","system","扩展自动息屏时间选项","恢复原厂较长等待时间与从不选项。"},
             {"settings_hide_battery_percent","system","隐藏系统电量百分比设置项","仅隐藏系统设置中的入口，电池显示继续由 LS 配置。"},
             {"settings_time_period","system","系统时间选择器显示中文时段","在时间选择与摘要中显示凌晨、早上等时段。"},

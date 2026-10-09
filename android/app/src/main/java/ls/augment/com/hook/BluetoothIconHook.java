@@ -22,6 +22,7 @@ final class BluetoothIconHook {
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final Set<View> VIEWS=Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<View,Integer> NATIVE_WIDTHS=new WeakHashMap<>();
+    private static final Map<View,Integer> REFRESH_KEYS=new WeakHashMap<>();
     private static final BluetoothIconPainter PAINTER=new BluetoothIconPainter();
     private static volatile int battery=-1;
     private static int renderedStyle=-1,renderedBattery=-2,renderedColor;
@@ -119,20 +120,37 @@ final class BluetoothIconHook {
     }
     private static void remember(Object owner){
         if(!(owner instanceof View)||!isBluetooth(owner))return;
-        View view=(View)owner;VIEWS.add(view);
+        View view=(View)owner;
+        if(VIEWS.add(view))REFRESH_KEYS.put(view,refreshKey(view));
         if(!observing)observing=FeatureSettings.addSnapshotListener(view.getContext(),()->MAIN.post(BluetoothIconHook::refresh));
     }
     private static void refresh(){
-        for(View view:VIEWS){updateWidth(view);view.requestLayout();view.invalidate();}
+        for(View view:VIEWS){
+            int key=refreshKey(view);Integer previous=REFRESH_KEYS.put(view,key);
+            if(previous!=null&&previous==key)continue;
+            boolean widthChanged=updateWidth(view);
+            // OEM bitmap scaling is bypassed only while a known battery uses
+            // our custom viewport. A sufficient native allocation can keep the
+            // same LayoutParams width while this measurement mode changes.
+            if(!widthChanged&&previous!=null&&customMeasure(previous)!=customMeasure(key))view.requestLayout();
+            // Percentage updates redraw the same viewport. Only a style or
+            // battery availability change affects the grid's painted bounds.
+            if(previous==null||(previous>>8)!=(key>>8)
+                    ||((previous&255)>0)!=((key&255)>0))StatusBarGridHook.invalidateLayout(view);
+            view.invalidate();
+        }
     }
-    private static void updateWidth(View view){
-        android.view.ViewGroup.LayoutParams params=view.getLayoutParams();if(params==null)return;
+    private static int refreshKey(View view){int selected=style(view);return (selected<<8)|(selected==0?0:battery+1);}
+    private static boolean customMeasure(int key){return (key>>8)!=0&&(key&255)>0;}
+    private static boolean updateWidth(View view){
+        android.view.ViewGroup.LayoutParams params=view.getLayoutParams();if(params==null)return false;
         int style=style(view);Integer original=NATIVE_WIDTHS.get(view);
         if(style==0||battery<0){
-            if(original!=null){params.width=original;NATIVE_WIDTHS.remove(view);view.setLayoutParams(params);}return;
+            if(original!=null){NATIVE_WIDTHS.remove(view);if(params.width!=original){params.width=original;view.setLayoutParams(params);return true;}}return false;
         }
         if(original==null){original=params.width;NATIVE_WIDTHS.put(view,original);}
         int desired=Math.max(original,Math.round((style==2?48:36)*view.getResources().getDisplayMetrics().density));
-        if(params.width!=desired){params.width=desired;view.setLayoutParams(params);}
+        if(params.width!=desired){params.width=desired;view.setLayoutParams(params);return true;}
+        return false;
     }
 }

@@ -1,6 +1,7 @@
 # Release signing
 
-Current release: `2.0.0-alpha1-test20496` / versionCode `20496`.
+Current distributed Release package: `2.0.0-alpha1-test20505` / versionCode `20505`.
+Previous distributed release: `2.0.0-alpha1-test20497` / versionCode `20497`.
 
 The current upgrade signing certificate has SHA-256
 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`.

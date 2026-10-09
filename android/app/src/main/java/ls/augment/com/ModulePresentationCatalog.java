@@ -18,7 +18,7 @@ public final class ModulePresentationCatalog {
     }
     private static final List<Category> CATEGORIES=Collections.unmodifiableList(Arrays.asList(
         new Category("notifications","通知与控制中心","状态栏、灵动岛、通知提醒与控制中心布局","systemui","systemui",84),
-        new Category("desktop","桌面与最近任务","默认桌面、布局、图标、组件与最近任务","launcher",null,12),
+        new Category("desktop","桌面与最近任务","默认桌面、布局、图标、组件与最近任务","launcher",null,13),
         new Category("lockscreen","主题与锁屏","主题下载、联名主题、锁屏与息屏显示","theme","device",23),
         new Category("audio","声音与音量","铃声素材、音量面板、增益与档数","system",null,11),
         new Category("interaction","操作与手势","返回、电源、助理、单手模式与剪贴板","systemui",null,8),

@@ -31,7 +31,12 @@ assert props.get('staticScope') == 'true'
 assert set(props) == {'minApiVersion', 'targetApiVersion', 'staticScope'}, props
 
 g = gradle.read_text(encoding='utf-8')
-assert "compileOnly 'io.github.libxposed:api:102.0.0'" in g
+# The production dependency and instrumentation fixture share one pinned version.
+# Resolve that declaration instead of requiring the former inline dependency.
+api_version = re.search(r"def\s+libxposedApiVersion\s*=\s*['\"]([^'\"]+)['\"]", g)
+assert api_version and api_version[1] == '102.0.0', 'libxposed API must stay pinned to 102.0.0'
+assert re.search(r'compileOnly\s+"io\.github\.libxposed:api:\$\{libxposedApiVersion\}"', g), \
+    'production libxposed API must remain compile-only'
 assert 'de.robv.android.xposed' not in g
 # versionCode/versionName are derived from android/version.properties at
 # configuration time; the source-side diagnostic version must follow the APK.

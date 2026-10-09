@@ -33,6 +33,7 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "rapid-certification".equals(operation)
                     || "legal-scroll".equals(operation)
                     || "surface-flicker".equals(operation)
+                    || "screenrecord-frames".equals(operation)
                     || "total-reset-read-only".equals(operation)
                     || "config-transfer-actions".equals(operation)
                     || "total-reset-inspect".equals(operation)
@@ -49,6 +50,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "connectivity-icon-cases".equals(operation)
                     || "carrier-text-layout".equals(operation)
                     || "statusbar-customization-ui".equals(operation)
+                    || "statusbar-network-ui".equals(operation)
+                    || "statusbar-icon-style-ui".equals(operation)
                     || "island-settings-ui".equals(operation)
                     || "launcher-grid-ui".equals(operation)
                     || "fan-settings-ui".equals(operation)
@@ -214,6 +217,14 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("statusbarCustomizationUi",StatusBarCustomizationUiCases.run(this));
                     result.putString("statusbarCustomizationUi",report.getJSONObject("statusbarCustomizationUi").toString());
                     break;
+                case "statusbar-network-ui":
+                    report.put("statusbarNetworkUi",StatusBarNetworkUiCases.run(this,arguments));
+                    result.putString("statusbarNetworkUi",report.getJSONObject("statusbarNetworkUi").toString());
+                    break;
+                case "statusbar-icon-style-ui":
+                    report.put("statusbarIconStyleUi",StatusBarIconStyleUiCases.run(this,arguments));
+                    result.putString("statusbarIconStyleUi",report.getJSONObject("statusbarIconStyleUi").toString());
+                    break;
                 case "island-settings-ui":
                     report.put("islandSettingsUi",IslandSettingsUiCases.run(this));
                     result.putString("islandSettingsUi",report.getJSONObject("islandSettingsUi").toString());
@@ -249,6 +260,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 case "surface-flicker":
                     report.put("surfaceFlicker",SurfaceFlickerDeviceCases.run(this));
                     result.putString("surfaceFlicker",report.getJSONObject("surfaceFlicker").toString());
+                    break;
+                case "screenrecord-frames":
+                    report.put("screenrecordFrames",ScreenRecordingFrameCases.run(this,arguments));
+                    result.putString("screenrecordFrames",report.getJSONObject("screenrecordFrames").toString());
                     break;
                 case "hide-performance":
                     report.put("performance", HidePerformanceDeviceCases.run(context, arguments));

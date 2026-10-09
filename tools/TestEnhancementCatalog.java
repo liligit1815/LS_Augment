@@ -14,6 +14,15 @@ public final class TestEnhancementCatalog {
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);
         check(upgraded!=null&&"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))&&"2".equals(upgraded.get(ConfigSchema.STATUSBAR_CLOCK_ROWS)),"upgrade preserves existing settings");
         check("0".equals(upgraded.get(GameOptions.QUICK_SWITCH))&&"0".equals(upgraded.get(LauncherOptions.KEEP_EMPTY)),"upgrade appends disabled features");
+        check("0".equals(upgraded.get(SystemUiOptions.ISLAND_OFFSET_Y))&&"0".equals(upgraded.get(SystemUiOptions.ISLAND_TRANSPARENT)),"island upgrade preserves centered opaque appearance");
+        for(String offset:new String[]{"-24","0","24"}){
+            Map<String,String> island=new LinkedHashMap<>(previous);
+            island.put(SystemUiOptions.ISLAND_OFFSET_Y,offset);island.put(SystemUiOptions.ISLAND_TRANSPARENT,"1");
+            ConfigSnapshot configured=ConfigSnapshot.create(4,12346,island);
+            ConfigSnapshot restored=configured==null?null:ConfigSnapshot.parse(configured.serialize());
+            check(restored!=null&&offset.equals(restored.get(SystemUiOptions.ISLAND_OFFSET_Y))&&"1".equals(restored.get(SystemUiOptions.ISLAND_TRANSPARENT)),"island signed runtime snapshot preserves vertical offset and transparent style: "+offset);
+            check("1".equals(restored.get(ConfigSchema.AI_TRIGGER_ENABLED)),"island parameters preserve unrelated active features");
+        }
         String retiredThermal=SystemOptions.key("thermal_notifications");
         check(EnhancementCatalog.options().stream().noneMatch(option->retiredThermal.equals(option.key)),"retired thermal setting is removed");
         check(!ConfigSchema.isRuntimeKey(retiredThermal)&&!ConfigSchema.isRuntimeKey(ConfigSchema.BATTERY_DISABLE_AGE_REDUCTION),"retired features are not published to hooks");

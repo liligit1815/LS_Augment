@@ -175,6 +175,10 @@ final class StatusBarGridHook {
                 ||key.startsWith("ls_augment_rm_battery_text_color_")
                 ||key.equals("ls_augment_rm_battery_text_charging_color");
     }
+    private static boolean iconStyleSetting(String key) {
+        return key.equals(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)
+                ||key.equals(ConfigSchema.STATUSBAR_VPN_STYLE);
+    }
     private static View findView(View root,String... names) {
         if(Arrays.asList(names).contains(name(root)))return root;
         if(root instanceof ViewGroup) for(int i=0;i<((ViewGroup)root).getChildCount();i++) {
@@ -320,7 +324,7 @@ final class StatusBarGridHook {
         String packingIssue="";
         StatusBarGridSpec spec=StatusBarGridSpec.defaults(); int nativeHeight=Integer.MIN_VALUE;
         long previousRx=-1,previousTx=-1,previousTime,lastWitness,layoutFrames,positionWrites;
-        String lastRaw="",lastConfig="",lastLayoutConfig="";
+        String lastRaw="",lastConfig="",lastLayoutConfig="",lastStructureConfig="";
         State(ViewGroup root){this.root=root;context=root.getContext();}
         boolean beforeDraw(){
             // The status-bar window keeps drawing during shade transitions, including
@@ -489,11 +493,15 @@ final class StatusBarGridHook {
             StatusBarGridSpec parsed=StatusBarGridSpec.parse(raw);if(parsed==null)return;
             StringBuilder config=new StringBuilder().append(enabled);
             StringBuilder layoutConfig=new StringBuilder().append(enabled);
+            StringBuilder structureConfig=new StringBuilder().append(enabled);
             for(String key:ConfigSchema.keys())if(key.startsWith("ls_augment_statusbar_")
                     ||key.startsWith("ls_augment_rm_battery_")){
                 String value=snapshot.get(key);
                 config.append('|').append(key).append('=').append(value);
-                if(!colorOnlySetting(key))layoutConfig.append('|').append(key).append('=').append(value);
+                if(!colorOnlySetting(key)){
+                    layoutConfig.append('|').append(key).append('=').append(value);
+                    if(!iconStyleSetting(key))structureConfig.append('|').append(key).append('=').append(value);
+                }
             }
             if(lastConfig.equals(config.toString()))return;
             lastConfig=config.toString();
@@ -510,6 +518,26 @@ final class StatusBarGridHook {
                         +";source="+(connectivityIcon==null?"native":System.identityHashCode(connectivityIcon.source)));
                 return;
             }
+            if(lastStructureConfig.equals(structureConfig.toString())&&(!enabled||active)){
+                // Styles can change painted bounds and Bluetooth's width, but do
+                // not replace the bar or its live connectivity source. Repack
+                // existing views at pre-draw, without exposing the native layout.
+                boolean changedBounds=!lastLayoutConfig.equals(layoutConfig.toString());
+                lastLayoutConfig=layoutConfig.toString();
+                if(!changedBounds)return;
+                if(enabled&&active){
+                    clearRejectedCapacity();layoutDirty=true;root.invalidate();
+                }
+                String surface=isKeyguard(root)?"keyguard":"phone";
+                FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_icon_style_refresh",
+                        "build="+ls.augment.com.BuildConfig.VERSION_CODE+";mode="+(enabled&&active?"repack":"native")
+                        +";icon="+(connectivityIcon==null?"native":System.identityHashCode(connectivityIcon))
+                        +";source="+(connectivityIcon==null?"native":System.identityHashCode(connectivityIcon.source))
+                        +";bluetooth="+snapshot.get(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)
+                        +";vpn="+snapshot.get(ConfigSchema.STATUSBAR_VPN_STYLE));
+                return;
+            }
+            lastStructureConfig=structureConfig.toString();
             lastLayoutConfig=layoutConfig.toString();
             layoutDirty=true;
             restore(); spec=parsed;lastRaw=raw;active=enabled;

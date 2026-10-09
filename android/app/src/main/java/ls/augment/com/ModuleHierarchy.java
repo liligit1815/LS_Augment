@@ -34,7 +34,7 @@ public final class ModuleHierarchy {
         Section tiles=section("notifications","brightness_tiles","亮度条与通用磁贴");add(tiles,"systemui:qs_brightness_percent");entry(tiles,"extra_dim");
         add(section("notifications","panel_carrier_search","面板运营商与搜索"),"systemui:qs_carrier","systemui:carrier_notification","systemui:carrier_control","systemui:qs_search","systemui:qs_browser");
         add(section("notifications","notification_alerts","通知提醒"),"ls_augment_rm_notification_quiet_unlocked");
-        add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher");
+        add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim");
         add(section("desktop","desktop_clock","桌面时钟与天气组件"),"ls_augment_rm_desktop_clock_enabled","ls_augment_rm_desktop_clock_period","ls_augment_rm_weather_time_period");
         add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty");
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
@@ -163,7 +163,7 @@ public final class ModuleHierarchy {
             if(key.contains("network_"))return "status_network";
             if(key.contains("connectivity_")||key.equals(ConfigSchema.STATUSBAR_NATIVE_BATTERY_ENABLED))return "status_battery";
             if(key.endsWith("_decimals")||key.equals(ConfigSchema.STATUSBAR_THERMAL)||key.equals(ConfigSchema.STATUSBAR_BATTERY_POWER))return "status_metrics";
-            if(key.equals(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS))return "status_icons";
+            if(key.equals(ConfigSchema.STATUSBAR_BLUETOOTH_STYLE)||key.equals(ConfigSchema.STATUSBAR_VPN_STYLE)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS))return "status_icons";
             return "status_arrangement";
         }
         return null;

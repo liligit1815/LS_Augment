@@ -13,6 +13,8 @@ public final class SystemUiOptions {
     public static final String SIGNAL_DUAL = PREFIX + "signal_dual";
     public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
     public static final String ISLAND = PREFIX + "island_enabled";
+    public static final String ISLAND_OFFSET_Y = PREFIX + "island_offset_y";
+    public static final String ISLAND_TRANSPARENT = PREFIX + "island_transparent";
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
     public static final String QS_BRIGHTNESS_PERCENT = PREFIX + "qs_brightness_percent";
     public static final String QS_VOLUME_PERCENT = PREFIX + "qs_volume_percent";
@@ -27,6 +29,8 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX+"island_width","system","胶囊宽度（dp）","紧凑状态的宽度。可配合状态栏图标位置调整，避免遮挡。",120,96,240));
         out.add(EnhancementOption.integer(PREFIX+"island_height","system","胶囊高度（dp）","实际高度不超过当前状态栏。",32,20,48));
         out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));
+        out.add(EnhancementOption.integer(ISLAND_OFFSET_Y,"system","上下偏移（dp）","正数向下，负数向上；以居中位置为基准，实际偏移受状态栏可用高度限制，不会超出状态栏。",0,-24,24));
+        out.add(EnhancementOption.toggle(ISLAND_TRANSPARENT,"system","透明样式","去掉紧凑胶囊的黑色背景，保留活动图标、文字与律动。长按展开的详情保持原有背景。"));
         out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
         out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","整个通知列表堆叠","通知列表保留指定数量的完整卡片，其余在底部堆叠，滚动时依原生顺序展开。保留应用内分组、清除、展开和通知操作；锁屏使用原厂列表。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
