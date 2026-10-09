@@ -61,10 +61,6 @@ final class ComboMotionFileScaler {
                     + Math.round(request.rate)).getBytes(StandardCharsets.UTF_8));
             File destination = new File(directory, CACHE_FILE_PREFIX + identity + ".json");
             cleanupWorkerSide(directory, destination);
-            if (isUsableCache(destination)) {
-                return Result.cacheHit(destination.getAbsolutePath(), identity);
-            }
-
             JSONObject root = new JSONObject(new String(sourceBytes, StandardCharsets.UTF_8));
             JSONArray events = root.optJSONArray("events");
             if (events == null || events.length() == 0) {
@@ -86,6 +82,13 @@ final class ComboMotionFileScaler {
                 origin = Math.min(origin, Math.min(sampleTime, downTime));
                 sourceLastSample = Math.max(sourceLastSample, sampleTime);
             }
+
+            // Inspect old caches on this worker too. Their filenames contain the
+            // source identity, but a valid JSON schema alone does not prove the
+            // timestamps were scaled once from that source.
+            Result cached = inspectCache(destination, identity, root, events, origin,
+                    Math.max(0L, sourceLastSample - origin), request.rate);
+            if (cached != null) return cached;
 
             long outputLastSample = Long.MIN_VALUE;
             for (int index = 0; index < events.length(); index++) {
@@ -172,25 +175,69 @@ final class ComboMotionFileScaler {
         }
     }
 
-    private static boolean isUsableCache(File file) {
+    private static Result inspectCache(File file, String identity, JSONObject sourceRoot, JSONArray sourceEvents,
+            long origin, long sourceSpan, float rate) {
         if (!file.isFile() || file.length() <= 0L
-                || file.length() > MAX_FILE_BYTES * 2L) return false;
+                || file.length() > MAX_FILE_BYTES * 2L) return null;
         try {
             JSONObject root = new JSONObject(new String(
                     readBytes(file, MAX_FILE_BYTES * 2L), StandardCharsets.UTF_8));
             JSONArray events = root.optJSONArray("events");
-            if (events == null || events.length() == 0) return false;
+            if (events == null || events.length() != sourceEvents.length()) return null;
+            if (!matchingPayload(sourceRoot, root, "events", "")) return null;
+            long outputLastSample = origin;
             for (int index = 0; index < events.length(); index++) {
                 JSONObject event = events.optJSONObject(index);
                 if (event == null || !event.has("sampleEventTime")
                         || !event.has("downTime")
                         || event.getLong("sampleEventTime") < 0L
-                        || event.getLong("downTime") < 0L) return false;
+                        || event.getLong("downTime") < 0L) return null;
+                JSONObject source = sourceEvents.getJSONObject(index);
+                if (!matchingPayload(source, event, "sampleEventTime", "downTime")) return null;
+                long expectedSample = ComboSpeedPolicy.scaleTimestamp(
+                        source.getLong("sampleEventTime"), origin, rate);
+                long expectedDown = ComboSpeedPolicy.scaleTimestamp(
+                        source.getLong("downTime"), origin, rate);
+                if (event.getLong("sampleEventTime") != expectedSample
+                        || event.getLong("downTime") != expectedDown) return null;
+                outputLastSample = Math.max(outputLastSample, expectedSample);
             }
-            return true;
+            return Result.cacheHit(file.getAbsolutePath(), identity, events.length(),
+                    sourceSpan, Math.max(0L, outputLastSample - origin));
         } catch (Throwable ignored) {
-            return false;
+            return null;
         }
+    }
+
+    /** A valid cache also preserves release actions, coordinates and OEM metadata. */
+    private static boolean matchingPayload(JSONObject source, JSONObject cached,
+            String ignoreFirst, String ignoreSecond) throws Exception {
+        if (source.length() != cached.length()) return false;
+        java.util.Iterator<String> keys = source.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!cached.has(key)) return false;
+            if (!key.equals(ignoreFirst) && !key.equals(ignoreSecond)
+                    && !sameJsonValue(source.get(key), cached.get(key))) return false;
+        }
+        return true;
+    }
+
+    private static boolean sameJsonValue(Object source, Object cached) throws Exception {
+        if (source == cached) return true;
+        if (source instanceof JSONObject && cached instanceof JSONObject)
+            return matchingPayload((JSONObject) source, (JSONObject) cached, "", "");
+        if (source instanceof JSONArray && cached instanceof JSONArray) {
+            JSONArray a = (JSONArray) source, b = (JSONArray) cached;
+            if (a.length() != b.length()) return false;
+            for (int index = 0; index < a.length(); index++)
+                if (!sameJsonValue(a.get(index), b.get(index))) return false;
+            return true;
+        }
+        if (source instanceof Number && cached instanceof Number)
+            return new java.math.BigDecimal(source.toString())
+                    .compareTo(new java.math.BigDecimal(cached.toString())) == 0;
+        return source != null && source.equals(cached);
     }
 
     /** Cache cleanup is intentionally worker-only and never runs in a playback Hook. */
@@ -237,11 +284,12 @@ final class ComboMotionFileScaler {
         final int eventCount;
         final long sourceSpanMs;
         final long outputSpanMs;
+        final String evidenceSource;
         final String error;
 
         private Result(boolean success, boolean cacheHit, String outputPath,
                 String cacheIdentity, int eventCount, long sourceSpanMs,
-                long outputSpanMs, String error) {
+                long outputSpanMs, String evidenceSource, String error) {
             this.success = success;
             this.cacheHit = cacheHit;
             this.outputPath = outputPath;
@@ -249,26 +297,29 @@ final class ComboMotionFileScaler {
             this.eventCount = eventCount;
             this.sourceSpanMs = sourceSpanMs;
             this.outputSpanMs = outputSpanMs;
+            this.evidenceSource = evidenceSource;
             this.error = error;
         }
 
         Result asPublishedHit() {
             return success ? new Result(true, true, outputPath, cacheIdentity,
-                    eventCount, sourceSpanMs, outputSpanMs, "") : this;
+                    eventCount, sourceSpanMs, outputSpanMs, "MEMORY_CACHE", "") : this;
         }
 
         static Result generated(String outputPath, String cacheIdentity, int eventCount,
                 long sourceSpanMs, long outputSpanMs) {
             return new Result(true, false, outputPath, cacheIdentity, eventCount,
-                    sourceSpanMs, outputSpanMs, "");
+                    sourceSpanMs, outputSpanMs, "GENERATED", "");
         }
 
-        static Result cacheHit(String outputPath, String cacheIdentity) {
-            return new Result(true, true, outputPath, cacheIdentity, 0, 0L, 0L, "");
+        static Result cacheHit(String outputPath, String cacheIdentity, int eventCount,
+                long sourceSpanMs, long outputSpanMs) {
+            return new Result(true, true, outputPath, cacheIdentity, eventCount,
+                    sourceSpanMs, outputSpanMs, "DISK_CACHE_VERIFIED", "");
         }
 
         static Result failure(String error) {
-            return new Result(false, false, "", "", 0, 0L, 0L, error);
+            return new Result(false, false, "", "", 0, 0L, 0L, "UNKNOWN", error);
         }
     }
 }

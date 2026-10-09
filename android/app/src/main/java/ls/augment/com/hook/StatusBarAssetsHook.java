@@ -938,20 +938,64 @@ final class StatusBarAssetsHook {
             }
             JSONObject runtime=runtime();
             final long observed=System.currentTimeMillis();
+            final long capturedElapsed=SystemClock.elapsedRealtime();
             Context context=application;
+            synchronized(INVENTORY_SUBMISSION) {
+            final long generation=++inventoryGeneration;
             REPORTER.execute(()->{try{
+                if(generation!=inventoryGeneration)return;
                 for(String surface:observedSurfaces){JSONArray current=new JSONArray();for(InventoryRow row:rows)if(row.surface.equals(surface))current.put(row.json());storeSurfaceSnapshot(surface,current,observed);}
                 JSONObject surfaces=new JSONObject().put("main",mainSnapshot).put("lock",lockSnapshot).put("notification",notificationSnapshot).put("control",controlSnapshot);
                 String payload=new JSONObject().put("version",1).put("session",SESSION).put("observedAt",observed)
                         .put("surfaceObservedAt",new JSONObject().put("main",mainObservedAt).put("lock",lockObservedAt).put("notification",notificationObservedAt).put("control",controlObservedAt))
                         .put("observedSurfaces",new JSONArray(new ArrayList<>(observedSurfaces)))
                         .put("surfaces",surfaces).put("runtime",runtime).toString();
-                Bundle extras=new Bundle();extras.putString("payload",payload);
-                Bundle response=context.getContentResolver().call(PROVIDER,"statusbar_inventory_publish",null,extras);
-                FeatureSettings.diagnostic(context,"ls_augment_statusbar_inventory_error",
-                        response!=null&&response.getBoolean("ok",false)?"":"Provider rejected inventory");
+                pendingInventory=new InventoryPublication(context,payload,capturedElapsed,generation);
+                publishInventory(pendingInventory);
             }catch(Exception failure){FeatureSettings.diagnostic(context,"ls_augment_statusbar_inventory_error",failure.toString());}});
+            }
         } catch(Exception failure) { FeatureSettings.diagnostic(application,"ls_augment_statusbar_inventory_error",failure.toString()); }
+    }
+    // Confined to REPORTER. Retry the latest captured payload without rescanning UI or
+    // resending an obsolete surface observation after a new publication replaces it.
+    private static InventoryPublication pendingInventory;
+    private static final Object INVENTORY_SUBMISSION=new Object();
+    private static volatile long inventoryGeneration;
+    private static final java.util.concurrent.ScheduledExecutorService INVENTORY_RETRY=
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"LSA-InventoryRetry");t.setDaemon(true);return t;});
+    private static final class InventoryPublication {
+        final Context context;final String payload;final long started,generation;int failures;
+        InventoryPublication(Context context,String payload,long capturedElapsed,long generation){this.context=context;this.payload=payload;this.started=capturedElapsed;this.generation=generation;}
+    }
+    private static void publishInventory(InventoryPublication item) {
+        if(pendingInventory!=item||item.generation!=inventoryGeneration)return;
+        if(SystemClock.elapsedRealtime()-item.started>=60_000L){pendingInventory=null;return;}
+        String error="";
+        try {
+            Bundle extras=new Bundle();extras.putString("payload",item.payload);
+            Bundle response=item.context.getContentResolver().call(PROVIDER,"statusbar_inventory_publish",null,extras);
+            if(response==null||!response.getBoolean("ok",false))error="Provider rejected inventory";
+        }catch(Exception failure){error=failure.toString();}
+        if(item.generation!=inventoryGeneration)return;
+        FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_error",error);
+        if(error.isEmpty()) {
+            pendingInventory=null;
+            FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_bridge_state","ready;time="+System.currentTimeMillis());
+            return;
+        }
+        long delay=ls.augment.com.InventoryRetryPolicy.delay(++item.failures,SystemClock.elapsedRealtime()-item.started);
+        FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_bridge_state",
+                "waiting;attempt="+item.failures+";retryMs="+delay+";time="+System.currentTimeMillis());
+        if(delay>=0)INVENTORY_RETRY.schedule(()->{
+            // The submission lock prevents an old retry from evicting a queued fresh
+            // capture in REPORTER's bounded discard-oldest queue.
+            synchronized(INVENTORY_SUBMISSION){
+                if(item.generation==inventoryGeneration)REPORTER.execute(()->{
+                    if(pendingInventory==item&&item.generation==inventoryGeneration)publishInventory(item);
+                });
+            }
+        },delay,TimeUnit.MILLISECONDS);
+        else if(pendingInventory==item)pendingInventory=null;
     }
     private static final class InventoryRow{
         final String id,instance,state,reason,capability,surface,application,applicationReason,matchedState,matchedAsset,coveredBy,stateSource,activeDataRole;final String[] states;

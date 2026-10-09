@@ -13,11 +13,13 @@ final class DiagnosticExport {
     static String build(Context context){
         long start=System.currentTimeMillis();StringBuilder out=new StringBuilder();AppConfig config=new AppConfig(context);
         boolean ai=config.getBoolean(ConfigSchema.AI_TRIGGER_DIAGNOSTICS),shoulder=config.getBoolean(ConfigSchema.SHOULDER_DIAGNOSTICS);
-        out.append("红魔Duo device diagnostic export v1\nmodule=").append(BuildConfig.VERSION_NAME)
+        out.append("红魔Duo device diagnostic export v2\nmodule=").append(BuildConfig.VERSION_NAME)
+            .append("\ninstallationId=").append(DiagnosticInstallIdentity.get(context))
             .append("\ncollectionStarted=").append(start).append("\ndevice=").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
             .append("\nandroid=").append(Build.VERSION.RELEASE).append(" SDK=").append(Build.VERSION.SDK_INT).append("\nROM=").append(Build.FINGERPRINT)
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
+            .append("callbackThrows 为传播异常总数；moduleCallbackThrows 是模块处理异常，proceedChainThrows 是继续调用链传回的异常。最后回调时间不等于错误发生时间，须查看 lastErrorAt 和来源。\n")
             .append("详细记录仅包含开启后的有界窗口。队列丢弃、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
@@ -44,13 +46,17 @@ final class DiagnosticExport {
         Map<Integer,String> live=new HashMap<>();if(processes.isSuccess())for(String line:processes.output.split("\\r?\\n")){String[] p=line.trim().split("\\s+",2);try{live.put(Integer.parseInt(p[0]),p[1]);}catch(Exception ignored){}}
         out.append("\n===== PER-PROCESS HOOK EVIDENCE =====\n");Set<String> observed=new HashSet<>();
         Map<String,?> snapshots=context.getSharedPreferences("hook-processes",0).getAll();
+        long snapshotsWall=System.currentTimeMillis(),snapshotsElapsed=android.os.SystemClock.elapsedRealtime();
+        int snapshotsBoot=RuntimeEnvironment.bootCount(context);
         if(snapshots.isEmpty())out.append("NOT_COLLECTED: 没有进程快照，请重启相关作用域并复现；也可能模块未加载或进程无法访问诊断接口。\n");
         for(Object value:snapshots.values())try{
             JSONObject snapshot=new JSONObject(value.toString());int pid=snapshot.getInt("pid");String name=snapshot.optString("process");
             boolean systemServer=name.equals("system")&&"system_server".equals(live.get(pid))&&snapshot.optInt("sourceUid")==1000;
             if(systemServer)snapshot.put("hostedPackage",snapshot.optString("package")).put("package","system");
-            boolean current=BuildConfig.VERSION_NAME.equals(snapshot.optString("moduleVersion"))&&(name.equals(live.get(pid))||systemServer)
-                &&snapshot.optLong("moduleLoadedElapsed")<=android.os.SystemClock.elapsedRealtime()&&start-snapshot.optLong("receivedAt")<60000;
+            boolean current=DiagnosticEvidencePolicy.currentProcessSnapshot(snapshot.optString("moduleVersion"),
+                BuildConfig.VERSION_NAME,pid,name.equals(live.get(pid))||systemServer,snapshot.optBoolean("moduleLoaded"),
+                snapshot.optLong("moduleLoadedElapsed"),snapshotsElapsed,snapshot.optLong("receivedAt"),snapshotsWall,
+                snapshot.optInt("receivedBoot",-1),snapshotsBoot);
             snapshot.put("currentEvidence",current).put("evidenceStatus",current?"CURRENT_PROCESS_SNAPSHOT":"STALE_OR_STOPPED_OR_UNVERIFIED");
             if(current)observed.add(snapshot.optString("package"));
             compactHooks(snapshot,current);
@@ -60,6 +66,11 @@ final class DiagnosticExport {
         out.append("\n===== FEATURE LATEST VALUES (same keys replace previous values; may be stale) =====\n");
         Map<String,?> diagnostic=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getAll();
         for(String key:new TreeSet<>(diagnostic.keySet()))appendDiagnosticValue(out,key,String.valueOf(diagnostic.get(key)));
+        out.append("\n===== FEATURE VALUE ATTRIBUTION (older observations are not current results) =====\n");
+        for(String key:new TreeSet<>(diagnostic.keySet())) {
+            if(diagnosticValue(key,String.valueOf(diagnostic.get(key)))==null)continue;
+            out.append(DiagnosticEvidenceStore.describe(context,key,String.valueOf(diagnostic.get(key)),live)).append('\n');
+        }
         out.append("\n===== PRIVATE VERIFIED RUNTIME =====\n");
         for(Map.Entry<String,?> entry:RuntimeStateStore.values(context).entrySet())
             out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');

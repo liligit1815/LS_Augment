@@ -792,7 +792,6 @@ final class UiKit {
         if("液态玻璃控制中心".equals(title))return R.drawable.ice_layout_grid;
         if("通知堆叠".equals(title))return R.drawable.ice_bell;
         if("面板日期、天气与时钟".equals(title))return R.drawable.ice_clock;
-        if("亮度与音量".equals(title))return R.drawable.ice_sun;
         if("电源菜单高级重启".equals(title))return R.drawable.ice_power;
         if("自定义侧滑返回图标".equals(title))return R.drawable.ice_undo2;
         return 0;

@@ -412,12 +412,16 @@ final class TgkRapidFireSystemHook {
         RapidFireCompatibility.Session session = RapidFireCompatibility.Session.parse(
                 FeatureSettings.text(context,
                         FeatureSettings.TGK_RAPID_FIRE_TEST_SESSION, ""));
-        writeDiagnostic(context, "ls_augment_tgk_rapid_fire_snapshot_seen",
-                "module=" + BuildConfig.VERSION_NAME + "|state="
-                        + (session == null ? "none" : session.state.name())
-                        + "|time=" + now);
+        String identity = fingerprint(context);
+        String tokenText = FeatureSettings.text(context,
+                FeatureSettings.TGK_RAPID_FIRE_COMPAT_TOKEN, "");
+        RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(tokenText);
+        boolean tokenValid = token != null && token.validFor(identity);
+        String tokenStatus = RapidFireDecisionEvidence.tokenStatus(!tokenText.isEmpty(),
+                token != null, !identity.isEmpty(), tokenValid,
+                token != null && token.fingerprint.equals(identity));
         boolean validSession = session != null && session.active(now)
-                && session.validFor(fingerprint(context));
+                && session.validFor(identity);
         if (validSession) scheduleSessionCleanup(context, session);
         else cancelSessionCleanup();
         if (validSession && (session.state == RapidFireCompatibility.State.WAIT_LEFT
@@ -428,11 +432,15 @@ final class TgkRapidFireSystemHook {
                 writeDiagnostic(context, FeatureSettings.TGK_RAPID_FIRE_NATIVE_LAST_ERROR,
                         "test_install_unavailable|state="
                                 + safe(TgkRapidFireNative.state(context)));
+                reportSnapshotDecision(context, session, identity, tokenStatus, false,
+                        "TEST_INSTALL_UNAVAILABLE", now);
                 return;
             }
             if (session.state == RapidFireCompatibility.State.WAIT_LEFT
                     || session.state == RapidFireCompatibility.State.WAIT_RIGHT) {
                 beginNativeObservation(context, session);
+                reportSnapshotDecision(context, session, identity, tokenStatus, false,
+                        "TEST_OBSERVING", now);
                 return;
             }
         }
@@ -451,29 +459,44 @@ final class TgkRapidFireSystemHook {
             TgkRapidFireNative.setTarget(context, session.systemRight,
                     RapidFireCompatibility.TEST_CPS);
             scheduleStabilityWitness(context, session);
+            reportSnapshotDecision(context, session, identity, tokenStatus, false,
+                    "TEST_VERIFYING", now);
             return;
         }
 
-        RapidFireCompatibility.Token token = RapidFireCompatibility.Token.parse(
-                FeatureSettings.text(context,
-                        FeatureSettings.TGK_RAPID_FIRE_COMPAT_TOKEN, ""));
-        boolean enabled = FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER, false)
-                && FeatureSettings.enabled(context,
-                        FeatureSettings.TGK_RAPID_FIRE_ENABLED, false)
-                && token != null
-                && token.validFor(fingerprint(context))
-                && !RapidFireCrashFuse.isFused(context);
+        boolean master = FeatureSettings.enabled(context, FeatureSettings.GAME_MASTER, false);
+        boolean requested = FeatureSettings.enabled(context,
+                FeatureSettings.TGK_RAPID_FIRE_ENABLED, false);
+        boolean fused = master && requested && tokenValid && RapidFireCrashFuse.isFused(context);
+        boolean enabled = master && requested && tokenValid && !fused;
         if (!enabled) {
             resetNativeObservation();
+            reportSnapshotDecision(context, session, identity, tokenStatus, false,
+                    RapidFireDecisionEvidence.disabledReason(master, requested, tokenStatus, fused), now);
             return;
         }
         AugmentModule module = moduleReference;
-        if (module == null || !TgkRapidFireNative.ensureInstalled(module, context)) return;
+        if (module == null || !TgkRapidFireNative.ensureInstalled(module, context)) {
+            reportSnapshotDecision(context, session, identity, tokenStatus, false,
+                    "NATIVE_UNAVAILABLE", now);
+            return;
+        }
         TgkRapidFireNative.configureKeys(context, token.systemLeft, token.systemRight);
         int count = FeatureSettings.integer(context,
                 FeatureSettings.TGK_RAPID_FIRE_COUNT, 20, 1, MAX_CPS);
         TgkRapidFireNative.setTarget(context, token.systemLeft, count);
         TgkRapidFireNative.setTarget(context, token.systemRight, count);
+        reportSnapshotDecision(context, session, identity, tokenStatus, true, "ACTIVE", now);
+    }
+
+    private static void reportSnapshotDecision(Context context, RapidFireCompatibility.Session session,
+            String identity, String tokenStatus, boolean effective, String reason, long now) {
+        writeDiagnostic(context, "ls_augment_tgk_rapid_fire_snapshot_seen",
+                RapidFireDecisionEvidence.describe(BuildConfig.VERSION_NAME, Process.myPid(), now,
+                        session == null ? "none" : session.state.name(),
+                        session != null && session.active(now),
+                        session != null && session.validFor(identity), tokenStatus, effective, reason,
+                        TgkRapidFireNative.state(context)));
     }
 
     private static synchronized void beginNativeObservation(Context context,

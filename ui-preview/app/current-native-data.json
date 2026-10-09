@@ -9841,7 +9841,7 @@
                 "comparison": "boolean"
               },
               "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
+              "objectGroup": "",
               "destination": "layout"
             },
             {
@@ -9855,21 +9855,7 @@
                 "comparison": "boolean"
               },
               "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
-              "destination": "layout"
-            },
-            {
-              "id": "systemui:qs_volume_percent",
-              "title": "音量显示百分比",
-              "toggleKey": "ls_augment_rm_qs_volume_percent",
-              "parameterKeys": [],
-              "features": [],
-              "activation": {
-                "noOpValue": "0",
-                "comparison": "boolean"
-              },
-              "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
+              "objectGroup": "",
               "destination": "layout"
             },
             {
@@ -10262,6 +10248,20 @@
               "id": "systemui:audio_no_long_press_vibrate",
               "title": "取消长按音量键振动",
               "toggleKey": "ls_augment_rm_audio_no_long_press_vibrate",
+              "parameterKeys": [],
+              "features": [],
+              "activation": {
+                "noOpValue": "0",
+                "comparison": "boolean"
+              },
+              "hasConfiguration": false,
+              "objectGroup": "",
+              "destination": "layout"
+            },
+            {
+              "id": "systemui:qs_volume_percent",
+              "title": "音量显示百分比",
+              "toggleKey": "ls_augment_rm_qs_volume_percent",
               "parameterKeys": [],
               "features": [],
               "activation": {

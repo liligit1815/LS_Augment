@@ -176,8 +176,9 @@ export function applicationSections(
             'systemui:liquid_glass',
             'systemui:notification_stack',
             'systemui:full_brightness',
+            'systemui:qs_brightness_percent',
           ].includes(f.id) &&
-          !['面板日期、天气与时钟', '亮度与音量'].includes(f.objectGroup || ''),
+          f.objectGroup !== '面板日期、天气与时钟',
       );
       center.features = center.features.filter((f) => !more.includes(f));
       sections.push({

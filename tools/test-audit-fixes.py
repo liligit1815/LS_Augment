@@ -14,10 +14,17 @@ sources = {
 final class AuditLog {static final java.util.List<String> events=new java.util.ArrayList<>();
 static void write(android.content.Context c,String category,String message){events.add(category+":"+message);}}''',
     'android/os/SystemClock.java': 'package android.os; public class SystemClock { public static long now;public static long elapsedRealtime(){return now;} }',
+    'android/os/Process.java': 'package android.os; public class Process {public static int myUid(){return 101;}public static int myPid(){return 321;}}',
+    'android/app/Application.java': 'package android.app; public class Application {public static String getProcessName(){return "ls.augment.com";}}',
+    'ls/augment/com/BuildConfig.java': 'package ls.augment.com; final class BuildConfig {static final String VERSION_NAME="host-test";}',
+    'ls/augment/com/DiagnosticEvidenceStore.java': '''package ls.augment.com;
+final class DiagnosticEvidenceStore {static void record(android.content.Context c,int uid,int pid,
+String key,String value,android.os.Bundle extras){}}''',
     'android/os/Bundle.java': '''package android.os;import java.util.*;
 public class Bundle {public Map<String,Object> data=new HashMap<>();
 public void putBundle(String k,Bundle v){data.put(k,v);}public void putString(String k,String v){data.put(k,v);}
 public void putInt(String k,int v){data.put(k,v);}public void putBoolean(String k,boolean v){data.put(k,v);}
+public void putLong(String k,long v){data.put(k,v);}
 public Bundle getBundle(String k){return (Bundle)data.get(k);}}''',
     'android/content/Context.java': '''package android.content;public abstract class Context {
 public abstract SharedPreferences getSharedPreferences(String name,int mode);}''',

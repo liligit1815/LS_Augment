@@ -1255,7 +1255,7 @@
                 "comparison": "boolean"
               },
               "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
+              "objectGroup": "",
               "destination": "layout",
               "optionKeys": [
                 "ls_augment_rm_qs_brightness_percent"
@@ -1272,27 +1272,10 @@
                 "comparison": "boolean"
               },
               "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
+              "objectGroup": "",
               "destination": "layout",
               "optionKeys": [
                 "ls_augment_rm_full_brightness"
-              ]
-            },
-            {
-              "id": "systemui:qs_volume_percent",
-              "title": "音量显示百分比",
-              "toggleKey": "ls_augment_rm_qs_volume_percent",
-              "parameterKeys": [],
-              "features": [],
-              "activation": {
-                "noOpValue": "0",
-                "comparison": "boolean"
-              },
-              "hasConfiguration": false,
-              "objectGroup": "亮度与音量",
-              "destination": "layout",
-              "optionKeys": [
-                "ls_augment_rm_qs_volume_percent"
               ]
             },
             {
@@ -1780,6 +1763,23 @@
               "destination": "layout",
               "optionKeys": [
                 "ls_augment_rm_audio_no_long_press_vibrate"
+              ]
+            },
+            {
+              "id": "systemui:qs_volume_percent",
+              "title": "音量显示百分比",
+              "toggleKey": "ls_augment_rm_qs_volume_percent",
+              "parameterKeys": [],
+              "features": [],
+              "activation": {
+                "noOpValue": "0",
+                "comparison": "boolean"
+              },
+              "hasConfiguration": false,
+              "objectGroup": "",
+              "destination": "layout",
+              "optionKeys": [
+                "ls_augment_rm_qs_volume_percent"
               ]
             }
           ]

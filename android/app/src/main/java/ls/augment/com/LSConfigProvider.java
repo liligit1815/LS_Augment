@@ -19,7 +19,6 @@ public final class LSConfigProvider extends ContentProvider {
     private static final int FAN_NOTIFICATION_ID = 2044;
     private static final Object RAPID_ROUTE_LOCK = new Object();
     private static final Object AUTOMATION_LOCK = new Object();
-    private static String lastAutomationRequest = "";
     private static volatile android.os.IBinder captureSurfaceController;
     private static volatile android.os.IBinder audioGainReadController;
     private static long audioGainDiscoveryAt=-1000;
@@ -193,30 +192,48 @@ public final class LSConfigProvider extends ContentProvider {
                 return result;
             } finally { Binder.restoreCallingIdentity(identity); }
         }
-        if ("automation_execute".equals(method)) {
+        if ("automation_execute".equals(method)||"automation_query".equals(method)) {
             // A scoped app is not allowed to trigger hidden-app operations.
             if (Binder.getCallingUid() != Process.SYSTEM_UID || extras == null) return result;
             String request = extras.getString("requestId", "");
-            if (!request.matches("[0-9]+:[0-9]+") || request.length() > 80) return result;
+            String screenEpoch=extras.getString("screenEpoch",request);
+            if (!request.matches("[0-9]+:[0-9]+") || request.length() > 80
+                    ||!request.startsWith(Binder.getCallingPid()+":")||!screenEpoch.matches("[0-9]+:[0-9]+")
+                    ||screenEpoch.length()>80||!screenEpoch.startsWith(Binder.getCallingPid()+":")) return result;
             synchronized (AUTOMATION_LOCK) {
-                if (request.equals(lastAutomationRequest)) {
-                    result.putBoolean("ok", true);
-                    result.putString("message", "本次熄屏事件已处理");
-                    return result;
+                AutomationDiagnosticState.State state=automationState();
+                if("automation_query".equals(method)||state.containsRequest(request))
+                    return automationReply(request,state.outcomeFor(request),state.messageFor(request));
+                String unresolved=state.pendingRequestForEpoch(screenEpoch);
+                if(unresolved!=null) {
+                    Bundle unknown=automationReply(request,"UNKNOWN","本次息屏已有结果未确认的请求，仅允许查询原请求");
+                    unknown.putString("pendingRequestId",unresolved);return unknown;
                 }
+                String previousSuccess=state.successForEpoch(screenEpoch);
+                if(previousSuccess!=null)return automationReply(request,"SUCCEEDED",previousSuccess);
                 long identity = Binder.clearCallingIdentity();
                 try {
-                    RootHideManager.OperationResult operation =
-                            new RootHideManager(getContext()).runScreenOffAutomation();
-                    if(operation.success)lastAutomationRequest = request;
-                    String key = operation.success ? AppConfig.AUTOMATION_LAST_EVENT
-                            : AppConfig.AUTOMATION_LAST_ERROR;
-                    getContext().getSharedPreferences(AppConfig.DIAGNOSTICS, 0).edit()
-                            .putString(key, "screen_off;result=" + operation.message
-                                    + ";ts=" + System.currentTimeMillis()).apply();
-                    result.putBoolean("ok", operation.success);
-                    result.putString("message", operation.message);
-                    return result;
+                    if(!state.reserve(request,screenEpoch,System.currentTimeMillis()))
+                        return automationReply(request,"NOT_STARTED","请求状态未能持久保存，未执行隐藏操作");
+                    if(!saveAutomationState(state,true,null,Process.myUid(),Process.myPid())) {
+                        state.notStarted(request,"请求状态持久保存失败，未执行隐藏操作",System.currentTimeMillis());
+                        saveAutomationState(state,false,null,Process.myUid(),Process.myPid());
+                        return automationReply(request,"NOT_STARTED",state.executionMessage);
+                    }
+                    try {
+                        RootHideManager.OperationResult operation=new RootHideManager(getContext()).runScreenOffAutomation();
+                        state.complete(request,operation.success,operation.message,System.currentTimeMillis());
+                        boolean saved=saveAutomationState(state,true,null,Process.myUid(),Process.myPid());
+                        if(operation.success)getContext().getSharedPreferences(AppConfig.DIAGNOSTICS,0).edit()
+                                .putString(AppConfig.AUTOMATION_LAST_EVENT,"screen_off;result="+operation.message
+                                        +";ts="+System.currentTimeMillis()).apply();
+                        return automationReply(request,saved?state.outcome:"UNKNOWN",
+                                saved?operation.message:"执行结果持久记录未确认，仅允许查询本次请求");
+                    }catch(RuntimeException|Error failure) {
+                        state.uncertain(request,"execution_interrupted:"+failure,System.currentTimeMillis());
+                        saveAutomationState(state,true,null,Process.myUid(),Process.myPid());
+                        throw failure;
+                    }
                 } finally { Binder.restoreCallingIdentity(identity); }
             }
         }
@@ -264,8 +281,19 @@ public final class LSConfigProvider extends ContentProvider {
             return result;
         }
         if ("diagnostic".equals(method)) {
-            ProviderDiagnostics.Result recorded = ProviderDiagnostics.record(getContext(), Binder.getCallingUid(),
-                    arg, extras == null ? "" : extras.getString("value", ""));
+            if(AutomationDiagnosticState.OWNER_KEY.equals(arg)) {
+                if(Binder.getCallingUid()!=Process.SYSTEM_UID||extras==null)return result;
+                AutomationDiagnosticState.Update update=AutomationDiagnosticState.Update.parse(extras.getString("value",""));
+                if(update==null||!update.session.startsWith(Binder.getCallingPid()+":"))return result;
+                synchronized(AUTOMATION_LOCK) {
+                    AutomationDiagnosticState.State state=automationState();
+                    if(!state.apply(update,RuntimeEnvironment.bootCount(getContext()))) {result.putBoolean("ok",true);return result;}
+                    result.putBoolean("ok",saveAutomationState(state,false,extras,Binder.getCallingUid(),Binder.getCallingPid()));
+                }
+                return result;
+            }
+            ProviderDiagnostics.Result recorded = ProviderDiagnostics.record(getContext(), Binder.getCallingUid(), Binder.getCallingPid(),
+                    arg, extras == null ? "" : extras.getString("value", ""),extras);
             result.putBoolean("ok", recorded == ProviderDiagnostics.Result.ACCEPTED);
             if(recorded == ProviderDiagnostics.Result.THROTTLED)
                 result.putLong("retryAfterMs", DiagnosticWritePolicy.WINDOW_MS);
@@ -276,6 +304,47 @@ public final class LSConfigProvider extends ContentProvider {
                     .getString(arg, ""));
         }
         return result;
+    }
+
+    private AutomationDiagnosticState.State automationState() {
+        return AutomationDiagnosticState.State.read(getContext().getSharedPreferences(AppConfig.DIAGNOSTICS,0).getAll());
+    }
+    private static Bundle automationReply(String request,String outcome,String message) {
+        Bundle result=new Bundle();result.putInt("protocol",AutomationDiagnosticState.PROTOCOL);
+        result.putString("requestId",request);result.putString("outcome",outcome);
+        result.putBoolean("ok","SUCCEEDED".equals(outcome));result.putString("message",message);return result;
+    }
+    /** One atomic projection; only execution results generated here can clear execution failures. */
+    private boolean saveAutomationState(AutomationDiagnosticState.State state,boolean durable,Bundle ownerEvidence,int uid,int pid) {
+        android.content.SharedPreferences prefs=getContext().getSharedPreferences(AppConfig.DIAGNOSTICS,0);
+        java.util.Map<String,?> previous=prefs.getAll();
+        java.util.Map<String,String> values=state.values();values.put(AutomationDiagnosticState.LAST_ERROR,state.error());
+        android.content.SharedPreferences.Editor edit=prefs.edit();
+        for(java.util.Map.Entry<String,String> entry:values.entrySet())edit.putString(entry.getKey(),entry.getValue());
+        if(durable) {if(!edit.commit())return false;} else edit.apply();
+        Bundle local=new Bundle();local.putString("moduleVersion",BuildConfig.VERSION_NAME);
+        local.putString("process",android.app.Application.getProcessName());
+        local.putLong("observedAt",System.currentTimeMillis());local.putLong("observedElapsed",android.os.SystemClock.elapsedRealtime());
+        for(java.util.Map.Entry<String,String> entry:values.entrySet()) {
+            String key=entry.getKey(),value=entry.getValue();
+            if(key.endsWith("legacy_unknown_error")||key.endsWith("request_ledger"))continue;
+            boolean changed=!value.equals(previous.get(key));
+            boolean ownerField=key.contains("bridge_")||key.endsWith("runtime_state")||key.contains("owner_");
+            if(key.equals(AutomationDiagnosticState.LAST_ERROR))ownerField="CONFIG_BRIDGE".equals(state.errorSource())
+                    ||"EXECUTION_TRANSPORT".equals(state.errorSource());
+            if(changed||(ownerField&&ownerEvidence!=null)) {
+                if(!(key.equals(AutomationDiagnosticState.LAST_ERROR)&&"LEGACY_UNKNOWN".equals(state.errorSource())))
+                    DiagnosticEvidenceStore.record(getContext(),ownerField&&ownerEvidence!=null?uid:Process.myUid(),
+                            ownerField&&ownerEvidence!=null?pid:Process.myPid(),key,value,
+                            ownerField&&ownerEvidence!=null?ownerEvidence:local);
+                if(changed&&key.endsWith("_error")) {
+                    if(!value.isEmpty())AuditLog.write(getContext(),"DIAGNOSTIC_ERROR",key+"="+value);
+                    else if(previous.get(key) instanceof String&&!((String)previous.get(key)).isEmpty())
+                        AuditLog.write(getContext(),"DIAGNOSTIC_RECOVERED",key);
+                }
+            }
+        }
+        return true;
     }
 
     private Bundle setShoulderCandidate(String arg, Bundle extras) {

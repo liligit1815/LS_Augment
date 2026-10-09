@@ -219,6 +219,7 @@ public final class AugmentModule extends RootEarlyModule {
         FeatureSettings.attachFramework(this);
         processName = param.getProcessName();
         HookTelemetry.loaded(processName,getFrameworkName()+"/"+getFrameworkVersion());
+        FeatureSettings.rememberDiagnosticProcess(processName);
         systemServerProcess = param.isSystemServer();
         if (systemServerProcess) {
             readyPackageName = SYSTEM_SERVER_PACKAGE;
@@ -1282,10 +1283,14 @@ public final class AugmentModule extends RootEarlyModule {
                                             managerOwner, "mCurrentPackageName"));
                                     comboSpeedMotionFileHookInstalled = true;
                                     String cacheState = scaled.cacheHit ? "hit" : "miss";
-                                    String timing = scaled.cacheHit ? ""
-                                            : "|events=" + scaled.eventCount
+                                    String timing = "|events=" + scaled.eventCount
                                             + "|span=" + scaled.sourceSpanMs
-                                            + "->" + scaled.outputSpanMs;
+                                            + "->" + scaled.outputSpanMs
+                                            + "|evidence=file_timestamps"
+                                            + "|source=" + scaled.evidenceSource
+                                            + "|module=" + VERSION
+                                            + "|pid=" + Process.myPid()
+                                            + "|time=" + System.currentTimeMillis();
                                     String diagnostic = "file|pkg="
                                             + safePart(packageName)
                                             + "|rate=" + Math.round(targetRate)

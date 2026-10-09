@@ -38,6 +38,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "total-reset-inspect".equals(operation)
                     || "total-reset-root-paths".equals(operation)
                     || "owned-file-cleaner-fixture".equals(operation)
+                    || "log-repair-fixture".equals(operation)
+                    || "log-repair-export".equals(operation)
                     || "root-transaction-fixture".equals(operation)
                     || "owned-restore-fixture".equals(operation)
                     || "recovery-navigation-fixture".equals(operation)
@@ -58,6 +60,21 @@ public final class DeviceRegressionRunner extends Instrumentation {
             report.put("operation", operation).put("moduleVersion", BuildConfig.VERSION_CODE)
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "log-repair-fixture":
+                    report.put("logRepairFixture",LogRepairDeviceCases.run(context));
+                    result.putString("logRepairFixture",report.getJSONObject("logRepairFixture").toString());
+                    break;
+                case "log-repair-export": {
+                    byte[] export=DiagnosticExport.build(context).getBytes(StandardCharsets.UTF_8);
+                    File exportFolder=new File(context.getFilesDir(),"device-regression-results");
+                    if(!exportFolder.isDirectory()&&!exportFolder.mkdirs())throw new java.io.IOException("Cannot create diagnostic export folder");
+                    File exportFile=new File(exportFolder,"log-repair-export.txt");
+                    Files.write(exportFile.toPath(),export);
+                    JSONObject summary=new JSONObject().put("path",exportFile.getAbsolutePath())
+                            .put("bytes",export.length).put("moduleVersion",BuildConfig.VERSION_NAME);
+                    report.put("logRepairExport",summary);result.putString("logRepairExport",summary.toString());
+                    break;
+                }
                 case "carrier-text-layout":
                     report.put("carrierTextLayout",CarrierTextLayoutDeviceCases.run(this));
                     break;

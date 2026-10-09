@@ -54,6 +54,7 @@ final class FeatureSettings {
     private static volatile boolean observersInstalled;
     private static final AtomicBoolean handshakeSent = new AtomicBoolean();
     private static volatile XposedInterface framework;
+    private static volatile String diagnosticProcessName = "";
     private static SharedPreferences remotePreferences;
     private static final CountDownLatch BOOTSTRAP_READY = new CountDownLatch(1);
     private static final AtomicBoolean bootWaited = new AtomicBoolean();
@@ -304,6 +305,25 @@ final class FeatureSettings {
     static boolean hasVerifiedSnapshot(Context context) {
         snapshot(context);
         return verifiedSnapshot;
+    }
+
+    /** Only an already verified off state can skip owner reflection; startup still binds context. */
+    static boolean verifiedDisabled(String key) {
+        if (!verifiedSnapshot) return false;
+        if (SystemClock.elapsedRealtime()-cachedAt>=CACHE_MS) requestRefresh();
+        return !ConfigSchema.truthy(cachedSnapshot.get(key));
+    }
+
+    static void rememberDiagnosticProcess(String name) {
+        diagnosticProcessName = "system".equals(name) ? "system_server" : name == null ? "" : name;
+    }
+
+    private static String diagnosticProcess() {
+        String current = null;
+        try { current = android.app.Application.getProcessName(); } catch (Throwable ignored) { }
+        if (current != null && !current.isEmpty()) return "system".equals(current) ? "system_server" : current;
+        String loaded = diagnosticProcessName;
+        return loaded.isEmpty() ? "unknown" : loaded;
     }
 
     /** Start framework I/O at module initialization, outside every intercepted call. */
@@ -667,6 +687,9 @@ final class FeatureSettings {
     private static boolean writeDiagnostic(String key, PendingDiagnostic pending) {
         try {
             Bundle extras = new Bundle(); extras.putString("value", pending.value);
+            extras.putString("moduleVersion",ls.augment.com.BuildConfig.VERSION_NAME);
+            extras.putString("process",diagnosticProcess());
+            extras.putLong("observedAt",pending.observedAt);extras.putLong("observedElapsed",pending.observedElapsed);
             Bundle result = pending.context.getContentResolver().call(PROVIDER, "diagnostic", key, extras);
             if (result != null && result.getBoolean("ok", false)) return true;
             long retry=result==null?0:result.getLong("retryAfterMs",0);
@@ -679,6 +702,7 @@ final class FeatureSettings {
 
     private static final class PendingDiagnostic {
         final Context context; final String value; int failures;
+        final long observedAt=System.currentTimeMillis(),observedElapsed=SystemClock.elapsedRealtime();
         volatile long retryAt;
         PendingDiagnostic(Context context, String value) { this.context = context; this.value = value; }
     }

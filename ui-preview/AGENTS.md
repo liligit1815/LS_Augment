@@ -10,7 +10,7 @@
 
 ## 当前代码与目录边界
 
-Android 源码版本为 test20496。网页入口为 `app/current-prototype.tsx`，已同步当前 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
+Android 源码版本为 test20497。网页入口为 `app/current-prototype.tsx`，已同步当前 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
 
 `scripts/ExportCurrent.java` 和 `scripts/sync-current.mjs` 维护目录数据。后续改版继续在现有原型迭代，不重新导入旧目录覆盖确认的修改。`native-pages.json` 和 `layout-overrides.ts` 保存历史实测控件与覆盖，保留作设计上下文。截图、逐次标注及过程记录留在本地，不作为源码仓库必需文件。
 
@@ -25,4 +25,4 @@ Android 源码版本为 test20496。网页入口为 `app/current-prototype.tsx`�
 - 修改后比较同页面、同设备、同字号、同状态和同尺度的真机与网页截图，并核对实际边界。浏览器截图按嵌入的 ICC 色彩描述转换为 sRGB 后再比较颜色；JPEG 预览不能替代带 ICC 的 PNG。
 - 本地原型交付时保留服务和右侧浏览器页面，后续直接在该原型上迭代。
 
-历史对照视口曾使用 1000×883，手机逻辑视口为 374.15×827.08 CSS 像素、截图为 1216×2688；新对照应按当前设备与逻辑尺度核对。`scripts/compare-current.py` 先转换 sRGB，再同尺度裁剪，所需输入单独准备。
+历史对照视口曾使用 1000×883，手机逻辑视口为 374.15×827.08 CSS 像素、截图为 1216×2688；新对照应按当前设备与逻辑尺度核对。截图对照应先转换 sRGB，再同尺度裁剪；逐次对照脚本与输入保留在本地。

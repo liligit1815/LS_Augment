@@ -39,7 +39,6 @@ final class NativeFeatureGroups {
         return "layout";
     }
     static String objectGroup(Feature f){
-        if(f.id.equals("systemui:qs_brightness_percent")||f.id.equals("systemui:qs_volume_percent")||f.id.equals("systemui:full_brightness"))return "亮度与音量";
         if(f.id.equals("systemui:qs_search")||f.id.equals("systemui:qs_browser"))return "搜索按钮";
         if(f.id.equals("systemui:notification_weather")||f.id.equals("systemui:qs_calendar")||f.id.startsWith("systemui:qs_clock_"))return "面板日期、天气与时钟";
         if(f.id.startsWith("systemui:lock_clock_"))return "锁屏时钟";

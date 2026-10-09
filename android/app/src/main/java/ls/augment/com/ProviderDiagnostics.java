@@ -3,6 +3,8 @@ package ls.augment.com;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
+import android.os.Bundle;
+import android.os.Process;
 import java.util.Map;
 
 /** Atomic quota check and in-memory publication; existing diagnostic readers keep their keys. */
@@ -13,6 +15,15 @@ final class ProviderDiagnostics {
     private ProviderDiagnostics() { }
 
     static Result record(Context context, int callerUid, String key, String value) {
+        return record(context, callerUid, -1, key, value, null);
+    }
+    static Result recordLocal(Context context,String key,String value) {
+        Bundle evidence=new Bundle();evidence.putString("moduleVersion",BuildConfig.VERSION_NAME);
+        evidence.putString("process",android.app.Application.getProcessName());
+        evidence.putLong("observedAt",System.currentTimeMillis());evidence.putLong("observedElapsed",SystemClock.elapsedRealtime());
+        return record(context,Process.myUid(),Process.myPid(),key,value,evidence);
+    }
+    static Result record(Context context, int callerUid, int callerPid, String key, String value, Bundle extras) {
         if (key == null || !key.matches("ls_augment_[a-zA-Z0-9_]{1,140}")
                 || ConfigSchema.contains(key) || key.startsWith("ls_augment_tgk_fuse_")) return Result.INVALID;
         // Bound expensive normalization, preference snapshots and disk requests at the boundary.
@@ -25,8 +36,9 @@ final class ProviderDiagnostics {
         synchronized (LOCK) {
             SharedPreferences prefs = context.getSharedPreferences(AppConfig.DIAGNOSTICS, 0);
             Map<String, ?> stored = prefs.getAll();
-            if (normalized.equals(stored.get(key))) return Result.ACCEPTED;
             if (!DiagnosticWritePolicy.fits(stored, key, normalized)) return Result.FULL;
+            DiagnosticEvidenceStore.record(context,callerUid,callerPid,key,normalized,extras);
+            if (normalized.equals(stored.get(key))) return Result.ACCEPTED;
             prefs.edit().putString(key, normalized).apply();
             // Latest-value metrics stay out of the event log. Only error transitions
             // need a durable timestamp; successful recovery must not erase history.

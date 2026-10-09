@@ -206,11 +206,50 @@ def observerStubsJar = tasks.register('observerStubsJar', Jar) {
     from compileObserverStubs.flatMap { it.destinationDirectory }
 }
 
+def libxposedApiVersion = '102.0.0'
+// Test fixtures only need Chain's bytecode. Resolving the AAR as an Android test
+// dependency also imports API 102's minCompileSdk 37 metadata, although the
+// exercised Java signatures compile against this project's Android 36 SDK.
+def instrumentationXposedApiAar = configurations.create('instrumentationXposedApiAar') {
+    canBeResolved = true
+    canBeConsumed = false
+    transitive = false
+    attributes {
+        attribute(org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE,
+                objects.named(org.gradle.api.attributes.Category, org.gradle.api.attributes.Category.LIBRARY))
+        attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+                objects.named(org.gradle.api.attributes.Usage, org.gradle.api.attributes.Usage.JAVA_API))
+        attribute(org.gradle.api.attributes.LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+                objects.named(org.gradle.api.attributes.LibraryElements, 'aar'))
+    }
+}
+def instrumentationXposedApiJar = layout.buildDirectory.file('instrumentation-api/libxposed-api-' + libxposedApiVersion + '.jar')
+def extractInstrumentationXposedApiJar = tasks.register('extractInstrumentationXposedApiJar') {
+    inputs.property('apiVersion', libxposedApiVersion)
+    inputs.files(instrumentationXposedApiAar).withPropertyName('apiAar').withPathSensitivity(PathSensitivity.NONE)
+    outputs.file(instrumentationXposedApiJar)
+    doLast {
+        new java.util.zip.ZipFile(instrumentationXposedApiAar.singleFile).withCloseable { archive ->
+            def entry = archive.getEntry('classes.jar')
+            if (entry == null) throw new GradleException('The pinned libxposed API AAR does not contain classes.jar')
+            def target = instrumentationXposedApiJar.get().asFile
+            target.parentFile.mkdirs()
+            archive.getInputStream(entry).withCloseable { input ->
+                java.nio.file.Files.copy(input, target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+}
+def instrumentationXposedApiClasses = files(instrumentationXposedApiJar).builtBy(extractInstrumentationXposedApiJar)
+
 dependencies {
     compileOnly files(observerStubsJar)
     // Modern libxposed API 102 is supplied by LSPosed/Vector at runtime.
     // Never package it into the LS_Augment APK.
-    compileOnly 'io.github.libxposed:api:102.0.0'
+    compileOnly "io.github.libxposed:api:${libxposedApiVersion}"
+    // Instrumentation exercises the real Chain API; production still relies on the framework.
+    add(instrumentationXposedApiAar.name, "io.github.libxposed:api:${libxposedApiVersion}")
+    androidTestImplementation instrumentationXposedApiClasses
     // Scope APIs are available in service 101 and compatible with the API 102 framework.
     // Service 102 adds hot reload but requires compileSdk 37; keep this Android 36 build.
     implementation 'io.github.libxposed:service:101.0.0'

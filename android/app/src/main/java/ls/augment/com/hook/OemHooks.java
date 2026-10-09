@@ -38,6 +38,7 @@ final class OemHooks {
                         // arguments before doing any context lookup during system bootstrap.
                         Context context=null;
                         if(!key.isEmpty()) {
+                            if(FeatureSettings.verifiedDisabled(key))return chain.proceed();
                             context=context(chain.getThisObject(),chain.getArgs());
                             if(!FeatureSettings.enabled(context,key)) return chain.proceed();
                         }

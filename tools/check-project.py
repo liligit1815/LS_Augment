@@ -145,7 +145,7 @@ checks = {
     'combo motion timestamp scaler': (src / 'hook/ComboMotionFileScaler.java',
                                       'event.put("sampleEventTime", scaledSample)'),
     'combo on-demand cache hit': (src / 'hook/ComboMotionFileScaler.java',
-                                  'Result.cacheHit(destination.getAbsolutePath(), identity)'),
+                                  'Result.cacheHit(file.getAbsolutePath(), identity, events.length(),'),
     'combo integer rate range': (src / 'FeatureEditorController.java',
                                  'AppConfig.COMBO_SPEED_RATE,"播放倍率（×）",1,10,false'),
     'AI trigger speed hook': (src / 'hook/AiTriggerSpeedHook.java',

@@ -7,7 +7,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 FEATURE = ROOT / 'android/app/src/main/java/ls/augment/com/hook/FeatureSettings.java'
 source = FEATURE.read_text(encoding='utf-8')
-assert 'Settings.Global.' not in source and 'BootConfigMirror' not in source, 'legacy transport returned'
+assert 'Settings.Global.' not in source, 'Global settings configuration transport returned'
+# The boot mirror is an existing, one-shot server installation fallback. Normal
+# readers must continue through cached remote preferences and verified Provider data.
+boot_fallback = re.search(r'static void awaitBootSnapshot\(\).*?\n    }\n', source, re.S)
+assert boot_fallback and source.count('BootConfigMirror.read()') == 1
+assert 'BootConfigMirror.read()' in boot_fallback.group(0), 'boot mirror entered a normal reader'
+assert 'getRemotePreferences(RemoteConfig.GROUP)' in source
+assert 'publishSnapshot(providerSnapshot(context), true)' in source
 constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', source)))
 
 SOURCES = {
@@ -15,24 +22,30 @@ SOURCES = {
     'android/os/SystemClock.java': '''package android.os; public final class SystemClock { public static volatile long offset; public static long elapsedRealtime(){return System.nanoTime()/1000000+offset;} }''',
     'android/os/UserHandle.java': '''package android.os;public final class UserHandle {public final int id;private UserHandle(int id){this.id=id;}public static UserHandle getUserHandleForUid(int uid){return new UserHandle(uid/100000);}public boolean equals(Object o){return o instanceof UserHandle&&((UserHandle)o).id==id;}public int hashCode(){return id;}}''',
     'android/os/UserManager.java': '''package android.os;import java.util.concurrent.*;import java.util.concurrent.atomic.*;public final class UserManager {public static final ConcurrentHashMap<Integer,Long> serials=new ConcurrentHashMap<>();public static final AtomicInteger calls=new AtomicInteger(),wrongThread=new AtomicInteger();public static volatile boolean unavailable;public static volatile CountDownLatch gate=new CountDownLatch(0),entered=new CountDownLatch(1);private void io(){calls.incrementAndGet();if(!Thread.currentThread().getName().equals("LSA-ConfigReader"))wrongThread.incrementAndGet();entered.countDown();try{if(!gate.await(5,TimeUnit.SECONDS))throw new AssertionError("identity double timeout");}catch(InterruptedException e){throw new AssertionError(e);}if(unavailable)throw new IllegalStateException("identity unavailable");}public long getSerialNumberForUser(UserHandle user){io();return serials.getOrDefault(user.id,-1L);}public UserHandle getUserForSerialNumber(long serial){io();for(java.util.Map.Entry<Integer,Long> e:serials.entrySet())if(e.getValue()==serial)return UserHandle.getUserHandleForUid(Math.multiplyExact(e.getKey(),100000));return null;}}''',
-    'android/os/Process.java': '''package android.os; public final class Process {public static final int SYSTEM_UID=1000;public static int uid=20000;public static int myUid(){return uid;}}''',
+    'android/os/Process.java': '''package android.os; public final class Process {public static final int SYSTEM_UID=1000;public static int uid=20000;public static int myUid(){return uid;}public static int myPid(){return 12345;}}''',
     'android/app/ActivityThread.java': '''package android.app;public final class ActivityThread {private static final ActivityThread THREAD=new ActivityThread();public static Application application;public static int systemContextReads;public static Application currentApplication(){return application;}public static ActivityThread currentActivityThread(){return THREAD;}public android.content.Context getSystemContext(){systemContextReads++;return new android.content.Context();}}''',
     'android/os/Looper.java': '''package android.os; public final class Looper { private static final Looper MAIN=new Looper(); public static Looper getMainLooper(){return MAIN;} }''',
-    'android/os/Handler.java': '''package android.os; import java.util.concurrent.*; public final class Handler { private static final ExecutorService MAIN=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"TestMain");t.setDaemon(true);return t;}); public Handler(Looper l){} public boolean post(Runnable r){MAIN.execute(r);return true;} }''',
+    'android/os/Handler.java': '''package android.os; import java.util.concurrent.*; public final class Handler { private static final ScheduledExecutorService MAIN=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"TestMain");t.setDaemon(true);return t;}); public Handler(Looper l){} public boolean post(Runnable r){MAIN.execute(r);return true;}public boolean postDelayed(Runnable r,long delay){MAIN.schedule(r,delay,TimeUnit.MILLISECONDS);return true;} }''',
     'android/os/Bundle.java': '''package android.os; import java.util.*; public final class Bundle { private final Map<String,Object> m=new HashMap<>(); public void putString(String k,String v){m.put(k,v);} public void putInt(String k,int v){m.put(k,v);} public void putLong(String k,long v){m.put(k,v);} public void putBoolean(String k,boolean v){m.put(k,v);} public String getString(String k){return getString(k,null);} public String getString(String k,String f){Object v=m.get(k);return v instanceof String?(String)v:f;} public int getInt(String k,int f){Object v=m.get(k);return v instanceof Integer?(Integer)v:f;} public long getLong(String k,long f){Object v=m.get(k);return v instanceof Long?(Long)v:f;} public boolean getBoolean(String k,boolean f){Object v=m.get(k);return v instanceof Boolean?(Boolean)v:f;} }''',
     'android/database/ContentObserver.java': '''package android.database; import android.os.Handler; public class ContentObserver { public ContentObserver(Handler h){} public void onChange(boolean self){} }''',
     'android/content/ContentResolver.java': '''package android.content; import android.net.Uri;import android.os.Bundle;import android.database.ContentObserver;public abstract class ContentResolver { public abstract Bundle call(Uri u,String method,String key,Bundle extras);public abstract String getGlobal(String key);public abstract boolean putGlobal(String key,String value);public abstract void registerContentObserver(Uri u,boolean descendants,ContentObserver o);public void unregisterContentObserver(ContentObserver o){} }''',
     'android/content/Context.java': '''package android.content;public class Context {private ContentResolver resolver;private String packageName="test.other";public Context(){}public Context(ContentResolver r){resolver=r;}public Context(ContentResolver r,String pkg){resolver=r;packageName=pkg;}public Context getApplicationContext(){return this;}public ContentResolver getContentResolver(){return resolver;}public String getPackageName(){return packageName;}public <T>T getSystemService(Class<T> type){return type.cast(new android.os.UserManager());} }''',
-    'android/app/Application.java': '''package android.app; public class Application extends android.content.Context {}''',
+    'android/app/Application.java': '''package android.app; public class Application extends android.content.Context {public static String getProcessName(){return "test.fixture";}}''',
+    'android/util/Log.java': '''package android.util;public final class Log {public static String getStackTraceString(Throwable error){return error.toString();}}''',
+    'org/json/JSONObject.java': '''package org.json;public final class JSONObject {private final java.util.Map<?,?> values;public JSONObject(java.util.Map<?,?> values){this.values=values;}public String toString(){return values.toString();}}''',
     'android/content/SharedPreferences.java': '''package android.content;public interface SharedPreferences {java.util.Map<String,?> getAll();void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l);interface OnSharedPreferenceChangeListener {void onSharedPreferenceChanged(SharedPreferences p,String key);}}''',
-    'io/github/libxposed/api/XposedInterface.java': '''package io.github.libxposed.api;public interface XposedInterface {long PROP_CAP_REMOTE=1L;long getFrameworkProperties();android.content.SharedPreferences getRemotePreferences(String name);}''',
+    'io/github/libxposed/api/XposedInterface.java': '''package io.github.libxposed.api;public interface XposedInterface {long PROP_CAP_REMOTE=1L;long getFrameworkProperties();android.content.SharedPreferences getRemotePreferences(String name);interface Hooker {Object intercept(Chain chain)throws Throwable;}interface Chain {Object proceed()throws Throwable;Object getThisObject();java.util.List<Object> getArgs();}interface HookHandle {}interface HookBuilder {HookHandle intercept(Hooker hooker);}}''',
+    'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.*;final class AugmentModule {final Map<Method,Hooker> hooks=new HashMap<>();HookBuilder prepareFeatureHook(Method target,String id,boolean protect){return h->{hooks.put(target,h);return new HookHandle(){};};}void registerFeatureHook(HookHandle handle){}void logFeatureError(String message,Throwable error){throw new AssertionError(message,error);}}''',
+    'ls/augment/com/hook/OemHooks.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/OemHooks.java').read_text(encoding='utf-8'),
+    'ls/augment/com/BuildConfig.java': '''package ls.augment.com;public final class BuildConfig {public static final int VERSION_CODE=20497;public static final String VERSION_NAME="fixture-test20497";}''',
+    'ls/augment/com/BootConfigMirror.java': '''package ls.augment.com;public final class BootConfigMirror {public static int reads;public static ConfigSnapshot value;public static ConfigSnapshot read(){reads++;return value;}}''',
     'ls/augment/com/RemoteConfig.java': (ROOT / 'android/app/src/main/java/ls/augment/com/RemoteConfig.java').read_text(encoding='utf-8'),
     'ls/augment/com/HideTargetCodec.java': (ROOT / 'android/app/src/main/java/ls/augment/com/HideTargetCodec.java').read_text(encoding='utf-8'),
     'ls/augment/com/HideUserIdentity.java': (ROOT / 'android/app/src/main/java/ls/augment/com/HideUserIdentity.java').read_text(encoding='utf-8'),
     'ls/augment/com/hook/SettingsTargetMatcher.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/SettingsTargetMatcher.java').read_text(encoding='utf-8'),
     'ls/augment/com/hook/SettingsEntryBindings.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/SettingsEntryBindings.java').read_text(encoding='utf-8'),
     'ls/augment/com/hook/TestSettingsTargetMatcher.java': (ROOT / 'tools/TestSettingsTargetMatcher.java').read_text(encoding='utf-8'),
-    'ls/augment/com/ConfigSchema.java': 'package ls.augment.com; public final class ConfigSchema {' + ''.join(f'public static final String {key}="{key}";' for key in constants) + 'public static boolean isRuntimeKey(String key){return "flag".equals(key);} }',
+    'ls/augment/com/ConfigSchema.java': 'package ls.augment.com; public final class ConfigSchema {' + ''.join(f'public static final String {key}="{key}";' for key in constants) + 'public static boolean isRuntimeKey(String key){return "flag".equals(key);}public static boolean truthy(String value){return "1".equals(value)||"true".equalsIgnoreCase(value)||"yes".equalsIgnoreCase(value)||"on".equalsIgnoreCase(value);} }',
     'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com; public final class ConfigSnapshot {public final int schemaVersion=1;public final String scope="device",checksum;public final long revision,updatedAt;private final String flag;private ConfigSnapshot(long r,String f,long t){revision=r;updatedAt=t;flag=f;checksum=r+":"+f+(t==r?"":":"+t);}public static ConfigSnapshot parse(String raw){if(raw==null)return null;String[] p=raw.split(":");long r=Long.parseLong(p[0]);return new ConfigSnapshot(r,p[1],p.length>2?Long.parseLong(p[2]):r);}public static ConfigSnapshot safeDefaults(){return parse("1:0");}public String get(String key){return flag;} }''',
     'ls/augment/com/hook/HookTelemetry.java': '''package ls.augment.com.hook;final class HookTelemetry {static void event(String message){} }''',
     'ls/augment/com/hook/FeatureSettings.java': source,
@@ -57,6 +70,7 @@ public final class TestFeatureSettingsAsync {
     static final AtomicInteger diagnosticFailures=new AtomicInteger();
     static final List<String> observed=Collections.synchronizedList(new ArrayList<>());
     static final AtomicInteger wrongThread=new AtomicInteger();
+    static final AtomicInteger providerSnapshotCalls=new AtomicInteger();
     static void io(){String n=Thread.currentThread().getName();if(!n.equals("LSA-ConfigReader")&&!n.equals("LSA-ConfigWriter"))wrongThread.incrementAndGet();}
     static void await(CountDownLatch gate){try{if(!gate.await(5,TimeUnit.SECONDS))throw new AssertionError("blocked test double timed out");}catch(InterruptedException e){throw new AssertionError(e);}}
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
@@ -75,7 +89,7 @@ public final class TestFeatureSettingsAsync {
     }
     static final class Resolver extends ContentResolver {
         public Bundle call(Uri uri,String method,String key,Bundle extras){io();
-            if(method.equals("snapshot")){providerEntered.countDown();await(providerGate);ConfigSnapshot s=ConfigSnapshot.parse(providerValue);Bundle out=new Bundle();out.putBoolean("ok",true);out.putString("snapshot",providerValue);out.putInt("schemaVersion",1);out.putLong("revision",s.revision);out.putLong("updatedAt",s.updatedAt);out.putString("scope","device");out.putString("checksum",badMetadata?"invalid":s.checksum);return out;}
+            if(method.equals("snapshot")){providerSnapshotCalls.incrementAndGet();providerEntered.countDown();await(providerGate);ConfigSnapshot s=ConfigSnapshot.parse(providerValue);Bundle out=new Bundle();out.putBoolean("ok",true);out.putString("snapshot",providerValue);out.putInt("schemaVersion",1);out.putLong("revision",s.revision);out.putLong("updatedAt",s.updatedAt);out.putString("scope","device");out.putString("checksum",badMetadata?"invalid":s.checksum);return out;}
             if(method.equals("runtime_snapshot")){Bundle out=new Bundle();out.putBoolean("ok",!runtimeUnavailable);out.putString(RemoteConfig.HIDDEN,providerHidden);return out;}
             if(method.equals("diagnostic")){
                 await(WRITE_GATE);diagnosticCalls.computeIfAbsent(key,k->new AtomicInteger()).incrementAndGet();
@@ -231,7 +245,81 @@ public final class TestFeatureSettingsAsync {
         check(wrongThread.get()==0,"retry performed Provider I/O on the caller thread");
         System.out.println("FeatureSettings: failed boot witness retries, deduplication, in-flight replacement and Provider rate-limit backoff passed");
     }
-    public static void main(String[] args)throws Exception {
+    public static final class GuardOwner {
+        private final Context held;
+        static final AtomicInteger ownerReads=new AtomicInteger();
+        GuardOwner(Context held){this.held=held;}
+        public Context getContext(){ownerReads.incrementAndGet();return held;}
+        public Object entry(){throw new AssertionError("fixture original should be delegated through Chain");}
+    }
+    static final Object ORIGINAL=new Object(),CHANGED=new Object();
+    static final class GuardChain implements io.github.libxposed.api.XposedInterface.Chain {
+        final GuardOwner owner;int proceeded;
+        static final AtomicInteger receiverReads=new AtomicInteger();
+        GuardChain(GuardOwner owner){this.owner=owner;}
+        public Object proceed(){proceeded++;return ORIGINAL;}
+        public Object getThisObject(){receiverReads.incrementAndGet();return owner;}
+        public List<Object> getArgs(){return Collections.emptyList();}
+    }
+    static void guardedReads(io.github.libxposed.api.XposedInterface.Hooker hook,GuardOwner owner)throws Exception {
+        ExecutorService readers=Executors.newFixedThreadPool(4);
+        try{
+            List<Future<?>> results=new ArrayList<>();
+            for(int n=0;n<4;n++)results.add(readers.submit(()->{
+                GuardChain chain=new GuardChain(owner);
+                try{for(int i=0;i<1000;i++)check(hook.intercept(chain)==ORIGINAL,"disabled guard changed original result");}
+                catch(Throwable error){throw new AssertionError(error);}
+                check(chain.proceeded==1000,"disabled guard did not delegate exactly once");
+            }));
+            for(Future<?> result:results)result.get(2,TimeUnit.SECONDS);
+        }finally{readers.shutdownNow();}
+    }
+    static void verifiedOffGuard()throws Throwable {
+        // Execute the real OemHooks.methods wrapper, rather than a copied guard.
+        WRITE_GATE.countDown();Context context=new Context(new Resolver());GuardOwner owner=new GuardOwner(context);
+        AugmentModule module=new AugmentModule();AtomicInteger businessCalls=new AtomicInteger();
+        check(OemHooks.methods(module,TestFeatureSettingsAsync.class.getClassLoader(),GuardOwner.class.getName(),
+                "entry",Object.class,0,"flag",c->{businessCalls.incrementAndGet();return CHANGED;})==1,"real OEM guard not installed");
+        java.lang.reflect.Method entry=GuardOwner.class.getDeclaredMethod("entry");
+        io.github.libxposed.api.XposedInterface.Hooker hook=module.hooks.get(entry);
+        check(!FeatureSettings.verifiedDisabled("flag"),"unverified startup defaults authorized off shortcut");
+        long start=System.nanoTime();GuardChain startup=new GuardChain(owner);
+        check(hook.intercept(startup)==ORIGINAL,"unverified startup enabled feature");
+        check(System.nanoTime()-start<TimeUnit.SECONDS.toNanos(1),"unverified callback blocked on Provider");
+        await(providerEntered);
+        check(GuardOwner.ownerReads.get()>0&&GuardChain.receiverReads.get()>0,"unverified startup skipped context binding");
+        check(providerSnapshotCalls.get()>0,"unverified startup did not request refresh");
+        providerGate.countDown();readerIdle();
+        check(FeatureSettings.verifiedDisabled("flag"),"saved off state not recognized");
+        GuardOwner.ownerReads.set(0);GuardChain.receiverReads.set(0);
+        int before=providerSnapshotCalls.get();guardedReads(hook,owner);
+        check(providerSnapshotCalls.get()==before,"fresh saved-off callbacks performed Provider IPC");
+        check(GuardOwner.ownerReads.get()==0&&GuardChain.receiverReads.get()==0,"saved-off guard looked up owner before return");
+        check(businessCalls.get()==0,"saved-off guard executed feature body");
+        // Expiration still schedules refresh. The existing verified off state
+        // keeps callbacks immediate while the new Provider call is blocked.
+        providerGate=new CountDownLatch(1);providerEntered=new CountDownLatch(1);
+        android.os.SystemClock.offset+=1001;guardedReads(hook,owner);await(providerEntered);
+        check(GuardOwner.ownerReads.get()==0&&GuardChain.receiverReads.get()==0,"expired verified-off guard performed owner lookup");
+        check(providerSnapshotCalls.get()>before,"expired verified-off state stopped refreshing");
+        providerValue="4:1";FeatureSettings.invalidateSnapshot();providerGate.countDown();readerIdle();
+        check(!FeatureSettings.verifiedDisabled("flag"),"configuration enable retained off shortcut");
+        GuardChain enabled=new GuardChain(owner);check(hook.intercept(enabled)==CHANGED,"enabled guard failed to execute body");
+        check(businessCalls.get()==1&&GuardOwner.ownerReads.get()>0&&GuardChain.receiverReads.get()>0,"enabled guard skipped normal context/body path");
+        providerValue="5:0";refresh();GuardOwner.ownerReads.set(0);GuardChain.receiverReads.set(0);guardedReads(hook,owner);
+        check(GuardOwner.ownerReads.get()==0&&GuardChain.receiverReads.get()==0&&businessCalls.get()==1,"off-after-enable did not restore early return");
+        check(BootConfigMirror.reads==0,"hot configuration or hook guard invoked boot mirror");
+        check(wrongThread.get()==0,"guard moved IPC onto a callback reader thread");
+        System.out.println("FeatureSettings/OemHooks actual guard: unverified refresh, 4000 fresh off callbacks without IPC/owner lookup, 4000 expired off callbacks with blocked worker refresh, enable/disable changes passed");
+    }
+    public static void main(String[] args)throws Throwable {
+        if(args.length>0&&args[0].equals("verified_off_guard")){verifiedOffGuard();return;}
+        if(args.length>0&&args[0].equals("boot_startup")){
+            BootConfigMirror.value=ConfigSnapshot.parse("7:1");FeatureSettings.awaitBootSnapshot();FeatureSettings.awaitBootSnapshot();
+            check(BootConfigMirror.reads==1&&FeatureSettings.hasVerifiedSnapshot(null),"boot mirror was not a one-shot verified fallback");
+            check(providerSnapshotCalls.get()==0&&wrongThread.get()==0,"one-shot boot mirror performed Provider IPC");
+            System.out.println("FeatureSettings one-shot boot installation mirror fallback passed");return;
+        }
         if(args.length>0&&args[0].equals("diagnostic_retry")){diagnosticRetry();return;}
         if(args.length>0&&args[0].equals("hidden_binding")){hiddenBindings();return;}
         if(args.length>0&&args[0].equals("provider_only")) {
@@ -340,5 +428,5 @@ with tempfile.TemporaryDirectory(prefix='ls-feature-settings-async-') as directo
     classes = temporary / 'classes'
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes), *files], check=True)
     subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestSettingsTargetMatcher'], check=True, timeout=20)
-    for case in ('remote', 'provider_only', 'hidden_binding', 'diagnostic_retry'):
+    for case in ('remote', 'provider_only', 'hidden_binding', 'diagnostic_retry', 'verified_off_guard', 'boot_startup'):
         subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestFeatureSettingsAsync', case], check=True, timeout=20)

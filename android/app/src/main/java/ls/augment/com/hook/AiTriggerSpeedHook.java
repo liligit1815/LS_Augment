@@ -105,7 +105,7 @@ final class AiTriggerSpeedHook {
     static int install(AugmentModule module, ClassLoader classLoader, String packageName) {
         if (module == null || classLoader == null) return 0;
         int installed = 0;
-        try {
+        if (AiHandlerScope.scheduling(packageName)) try {
             Class<?> handler = Class.forName("android.os.Handler", false, classLoader);
             Method empty = handler.getDeclaredMethod(
                     "sendEmptyMessageDelayed", int.class, long.class);
@@ -125,13 +125,15 @@ final class AiTriggerSpeedHook {
             module.registerFeatureHook(messageHandle);
             installed++;
 
-            Method dispatch = handler.getDeclaredMethod("dispatchMessage", Message.class);
-            dispatch.setAccessible(true);
-            HookHandle dispatchHandle = module.prepareFeatureHook(
-                    dispatch, "ai.handler.dispatch." + safeId(packageName), true)
-                    .intercept(chain -> interceptDispatch(module, chain, packageName));
-            module.registerFeatureHook(dispatchHandle);
-            installed++;
+            if (AiHandlerScope.dispatch(packageName)) {
+                Method dispatch = handler.getDeclaredMethod("dispatchMessage", Message.class);
+                dispatch.setAccessible(true);
+                HookHandle dispatchHandle = module.prepareFeatureHook(
+                        dispatch, "ai.handler.dispatch." + safeId(packageName), true)
+                        .intercept(chain -> interceptDispatch(module, chain, packageName));
+                module.registerFeatureHook(dispatchHandle);
+                installed++;
+            }
             module.logFeatureInfo("AI_HANDLER_INSTALLED package=" + packageName);
         } catch (Throwable error) {
             module.logFeatureError("AI_HANDLER_FAILED package=" + packageName, error);
@@ -405,10 +407,12 @@ final class AiTriggerSpeedHook {
 
     private static Object interceptEmpty(AugmentModule module, Chain chain, String packageName)
             throws Throwable {
+        Config config = config(module, chain.getThisObject());
+        if (!config.enabled) return chain.proceed();
         int what = intArg(chain.getArg(0));
         long originalDelay = longArg(chain.getArg(1));
         Long replacement = replacementFor(module, chain.getThisObject(),
-                what, originalDelay, packageName);
+                what, originalDelay, packageName, config);
         traceTouchSchedule(chain.getThisObject(), packageName, what, originalDelay, replacement);
         if (replacement != null && alreadyQueued(chain.getThisObject(), what)) {
             return Boolean.TRUE;
@@ -419,12 +423,14 @@ final class AiTriggerSpeedHook {
 
     private static Object interceptMessage(AugmentModule module, Chain chain, String packageName)
             throws Throwable {
+        Config config = config(module, chain.getThisObject());
+        if (!config.enabled) return chain.proceed();
         Message message = chain.getArg(0) instanceof Message
                 ? (Message) chain.getArg(0) : null;
         int what = message == null ? Integer.MIN_VALUE : message.what;
         long originalDelay = longArg(chain.getArg(1));
         Long replacement = replacementFor(module, chain.getThisObject(), what,
-                originalDelay, packageName);
+                originalDelay, packageName, config);
         traceTouchSchedule(chain.getThisObject(), packageName, what, originalDelay, replacement);
         if (replacement != null && alreadyQueued(chain.getThisObject(), what)) {
             return Boolean.TRUE;
@@ -439,6 +445,8 @@ final class AiTriggerSpeedHook {
      */
     private static Object interceptDispatch(AugmentModule module, Chain chain,
             String packageName) throws Throwable {
+        Config config = config(module, chain.getThisObject());
+        if (!config.enabled || !config.diagnostics) return chain.proceed();
         Object owner = chain.getThisObject();
         Message message = chain.getArg(0) instanceof Message
                 ? (Message) chain.getArg(0) : null;
@@ -662,9 +670,8 @@ final class AiTriggerSpeedHook {
     }
 
     private static Long replacementFor(AugmentModule module, Object owner, int what,
-            long delay, String packageName) {
+            long delay, String packageName, Config config) {
         if (delay <= 0) return null;
-        Config config = config(module, owner);
         if (!config.enabled) return null;
         String handler = handlerDescription(owner);
         long target = -1L;

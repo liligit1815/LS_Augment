@@ -23,7 +23,6 @@ import {
   RotateCw,
   Bell,
   Clock,
-  Sun,
   Power,
   Undo2,
   LayoutGrid,
@@ -124,7 +123,6 @@ export function IceIcon({ title }: { title: string }) {
     液态玻璃控制中心: LayoutGrid,
     通知堆叠: Bell,
     '面板日期、天气与时钟': Clock,
-    亮度与音量: Sun,
     电源菜单高级重启: Power,
     自定义侧滑返回图标: Undo2,
   };

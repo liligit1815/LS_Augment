@@ -10,16 +10,27 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.json.*;
 import ls.augment.com.BuildConfig;
+import ls.augment.com.hook.HookTelemetryObserver.Counter;
+import ls.augment.com.hook.HookTelemetryObserver.ErrorRecord;
+import ls.augment.com.hook.HookTelemetryObserver.Failures;
 
 /** Counters never decide hook behavior; bounded export work runs off the hooked thread. */
 final class HookTelemetry {
     private static final ConcurrentHashMap<String,Counter> counters=new ConcurrentHashMap<>();
     private static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);
     private static final AtomicLong dropped=new AtomicLong(),sequence=new AtomicLong();
-    private static final AtomicInteger capturedErrorStacks=new AtomicInteger();
+    private static final HookTelemetryObserver.StackBudget errorStacks=new HookTelemetryObserver.StackBudget(8,4096);
     private static final long startedWall=System.currentTimeMillis(),startedElapsed=SystemClock.elapsedRealtime();
     private static volatile String process="unknown",pkg="unknown",framework="unknown";
     private static volatile boolean shoulder,ai;
+    private static final HookTelemetryObserver.ErrorRecorder errorRecorder=new HookTelemetryObserver.ErrorRecorder(){
+        public HookTelemetryObserver.StackResult capture(Throwable error){return errorStacks.capture(error);}
+        public void firstFailure(Counter counter,ErrorRecord error){
+            String kind=error.source==HookTelemetryObserver.ErrorSource.PROCEED_CHAIN?"HOOK_PROCEED_CHAIN_FAILURE":"HOOK_MODULE_CALLBACK_FAILURE";
+            android.util.Log.e("LS_Augment",kind+" process="+process+" target="+counter.target+" at="+error.at
+                +" error="+error.summary+" stackState="+error.stackState+(error.stack.isEmpty()?"":"\n"+error.stack));
+        }
+    };
     private static long lastPublished;
     private static final AtomicInteger publishWarnings=new AtomicInteger();
     private static final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"LSA-DiagnosticWriter");t.setDaemon(true);return t;});
@@ -33,17 +44,9 @@ final class HookTelemetry {
         public HookBuilder setId(String value){id=value;delegate.setId(value);return this;}
         public HookHandle intercept(Hooker hooker){
             Counter counter=new Counter(target.toGenericString());counters.put(id,counter);
-            try{HookHandle handle=delegate.intercept(chain->{
-                counter.hits.incrementAndGet();counter.lastHit=System.currentTimeMillis();
-                try {Object value=hooker.intercept(chain);counter.returned.incrementAndGet();return value;}
-                catch(Throwable error){long errors=counter.errors.incrementAndGet();counter.lastError=error.getClass().getName()+":"+String.valueOf(error.getMessage());
-                    if(errors==1){
-                        if(capturedErrorStacks.getAndIncrement()<8){String stack=android.util.Log.getStackTraceString(error);counter.lastErrorStack=stack.length()>4096?stack.substring(0,4096)+" [TRUNCATED]":stack;}
-                        android.util.Log.e("LS_Augment","HOOK_CALLBACK_FAILURE process="+process+" id="+id,error);
-                    }
-                    throw error;}
-            });counter.state="REGISTERED";return handle;}
-            catch(Throwable error){counter.state="REGISTRATION_FAILED";counter.lastError=error.toString();if(error instanceof Error)throw (Error)error;throw new IllegalStateException(error);}
+            try{HookHandle handle=delegate.intercept(HookTelemetryObserver.observe(hooker,counter,System::currentTimeMillis,errorRecorder));
+                counter.state="REGISTERED";return handle;}
+            catch(Throwable error){counter.registrationFailed(error,System.currentTimeMillis(),errorRecorder);if(error instanceof Error)throw (Error)error;throw new IllegalStateException(error);}
         }
     };}
     static void detail(String feature,String value){
@@ -68,9 +71,19 @@ final class HookTelemetry {
             .put("droppedDetailEvents",dropped.get()).put("shoulderDetailed",shoulder).put("aiDetailed",ai);
         JSONArray targets=new JSONArray();
         for(Map.Entry<String,Counter> entry:counters.entrySet()){
-            Counter c=entry.getValue();targets.put(new JSONObject().put("id",entry.getKey()).put("target",c.target).put("registration",c.state)
-                .put("callbackCalls",c.hits.get()).put("callbackReturns",c.returned.get()).put("callbackThrows",c.errors.get())
-                .put("lastCallbackAt",c.lastHit).put("lastError",c.lastError).put("lastErrorStack",c.lastErrorStack).put("businessResult","UNKNOWN: see feature witnesses; callback return is not functional success"));
+            Counter c=entry.getValue();Failures errors=c.failures();ErrorRecord registrationError=c.registrationError();
+            ErrorRecord last=errors.last==null?registrationError:errors.last;
+            JSONObject target=new JSONObject().put("id",entry.getKey()).put("target",c.target).put("registration",c.state)
+                .put("callbackCalls",c.hits.get()).put("callbackReturns",c.returned.get()).put("callbackThrows",errors.total)
+                .put("moduleCallbackThrows",errors.module).put("proceedChainThrows",errors.proceed)
+                .put("lastCallbackAt",c.lastHit).put("lastErrorAt",last==null?0:last.at)
+                .put("lastError",last==null?"":last.summary).put("lastErrorStack",last==null?"":last.stack)
+                .put("lastErrorSource",last==null?"":last.source.name()).put("lastErrorStackState",last==null?"NONE":last.stackState)
+                .put("businessResult","UNKNOWN: see feature witnesses; callback return is not functional success");
+            if(errors.first!=null)target.put("firstCallbackError",errorJson(errors.first));
+            if(errors.last!=null)target.put("lastCallbackError",errorJson(errors.last));
+            if(registrationError!=null)target.put("registrationError",errorJson(registrationError));
+            targets.put(target);
         }
         if("com.android.systemui".equals(pkg))out.put("qsClockDebug",ControlCenterHeaderHook.clockDebug);
         out.put("hooks",targets);Bundle extras=new Bundle();extras.putString("snapshot",out.toString());
@@ -84,9 +97,8 @@ final class HookTelemetry {
         if(publishWarnings.getAndIncrement()>=3)return;
         android.util.Log.w("LS_Augment","TELEMETRY_PUBLISH "+reason+" process="+process+" package="+pkg,error);
     }
-    private static final class Counter {
-        final String target;final AtomicLong hits=new AtomicLong(),returned=new AtomicLong(),errors=new AtomicLong();
-        volatile long lastHit;volatile String state="PENDING",lastError="",lastErrorStack="";
-        Counter(String target){this.target=target;}
+    private static JSONObject errorJson(ErrorRecord error)throws JSONException{
+        return new JSONObject().put("source",error.source.name()).put("at",error.at).put("sequence",error.sequence)
+            .put("error",error.summary).put("stack",error.stack).put("stackState",error.stackState);
     }
 }
