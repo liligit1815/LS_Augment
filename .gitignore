@@ -141,3 +141,4 @@ design-qa.md
 /ui-preview/scripts/compare-current.py
 /tools/install-fan-regression-build.py
 /tools/install-game-regression-build.py
+/tools/restore-fan-device-baseline.py
