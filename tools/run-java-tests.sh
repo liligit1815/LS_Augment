@@ -114,6 +114,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestFanTilePolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/hook/FanLevelCommand.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/hook/FanNativeSettle.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/hook/FanRpmStartup.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ScreenAutomationPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ModuleRuntimeStatus.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ModuleEnvironmentState.java" \
@@ -183,6 +184,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestFanCalibrationOutcome.java" \
   "$ROOT/tools/TestFanLevelCommand.java" \
   "$ROOT/tools/TestFanNativeSettle.java" \
+  "$ROOT/tools/TestFanRpmStartup.java" \
   "$ROOT/tools/TestHiddenEntrySession.java" \
   "$ROOT/tools/TestConfigSnapshot.java" \
   "$ROOT/tools/TestHookTargetRegistry.java" \
@@ -231,6 +233,7 @@ java -cp "$TMP" TestFanTilePolicy
 java -cp "$TMP" TestFanCalibrationOutcome
 java -cp "$TMP" ls.augment.com.hook.TestFanLevelCommand
 java -cp "$TMP" ls.augment.com.hook.TestFanNativeSettle
+java -cp "$TMP" ls.augment.com.hook.TestFanRpmStartup
 java -cp "$TMP" ls.augment.com.TestHiddenEntrySession
 java -cp "$TMP" ls.augment.com.TestHideBatchExecutor
 java -cp "$TMP" ls.augment.com.TestHidePackageSnapshot

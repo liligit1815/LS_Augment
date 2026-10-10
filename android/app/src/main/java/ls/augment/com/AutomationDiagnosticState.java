@@ -36,16 +36,20 @@ public final class AutomationDiagnosticState {
                 if(value==null||value.length()>2000)return null;
                 String[] p=value.split("\\|",-1);
                 if(p.length!=11||!"ADU1".equals(p[0])||!p[1].matches("[0-9]+:[0-9]+")
-                        || !p[4].matches("READY|FAILED|LISTENER_FAILED")
+                        || !p[4].matches("READY|FAILED|LISTENER_FAILED|WAITING_FOR_UNLOCK")
                         || !p[8].matches("disabled|waiting_screen_off|ready|dispatched|unknown|handled")
                         || (!p[9].isEmpty()&&!p[9].matches("[0-9]+:[0-9]+")))return null;
                 Update u=new Update(p[1],Long.parseLong(p[2]),Long.parseLong(p[3]),p[4],decodeText(p[5]),
                         decodeText(p[6]),Long.parseLong(p[7]),p[8],p[9],decodeText(p[10]));
                 return u.sequence>0&&u.observedAt>0&&u.lastBridgeErrorAt>=0
-                        && (("READY".equals(u.bridge)&&u.bridgeError.isEmpty())
-                            ||(!"READY".equals(u.bridge)&&!u.bridgeError.isEmpty()))?u:null;
+                        && ((bridgeWithoutError(u.bridge)&&u.bridgeError.isEmpty())
+                            ||(!bridgeWithoutError(u.bridge)&&!u.bridgeError.isEmpty()))?u:null;
             }catch(RuntimeException invalid){return null;}
         }
+    }
+
+    private static boolean bridgeWithoutError(String state) {
+        return "READY".equals(state)||"WAITING_FOR_UNLOCK".equals(state);
     }
 
     public static final class State {

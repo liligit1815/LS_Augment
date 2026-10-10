@@ -22,6 +22,7 @@ final class HookTelemetry {
     private static final HookTelemetryObserver.StackBudget errorStacks=new HookTelemetryObserver.StackBudget(8,4096);
     private static final long startedWall=System.currentTimeMillis(),startedElapsed=SystemClock.elapsedRealtime();
     private static volatile String process="unknown",pkg="unknown",framework="unknown";
+    private static final Set<String> packages=ConcurrentHashMap.newKeySet();
     private static volatile boolean shoulder,ai;
     private static final HookTelemetryObserver.ErrorRecorder errorRecorder=new HookTelemetryObserver.ErrorRecorder(){
         public HookTelemetryObserver.StackResult capture(Throwable error){return errorStacks.capture(error);}
@@ -36,7 +37,15 @@ final class HookTelemetry {
     private static final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"LSA-DiagnosticWriter");t.setDaemon(true);return t;});
     static { worker.scheduleWithFixedDelay(HookTelemetry::publish,1,3,TimeUnit.SECONDS); }
     static void loaded(String name,String engine){process=name;framework=engine;}
-    static void ready(String name){pkg="system".equals(process)?"system":name;}
+    static void ready(String name){
+        String target="system".equals(process)?"system":name;
+        if(!ls.augment.com.HookTargetRegistry.contains(target))return;
+        packages.add(target);
+        // Shared OEM processes can ready several scoped packages. Keep the
+        // process's own package as the legacy label and retain every target.
+        if("unknown".equals(pkg)||target.equals(process)||"system".equals(target))pkg=target;
+    }
+    private static JSONArray packageNames(){return new JSONArray(new TreeSet<>(packages));}
     static HookBuilder observe(HookBuilder delegate,Executable target){return new HookBuilder(){
         String id=target.toGenericString();
         public HookBuilder setPriority(int p){delegate.setPriority(p);return this;}
@@ -65,7 +74,7 @@ final class HookTelemetry {
         shoulder=FeatureSettings.enabled(context,FeatureSettings.SHOULDER_DIAGNOSTICS);
         ai=FeatureSettings.enabled(context,FeatureSettings.AI_TRIGGER_DIAGNOSTICS);
         long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&now-lastPublished<15000)return;lastPublished=now;
-        JSONObject out=new JSONObject().put("package",pkg).put("process",process).put("pid",android.os.Process.myPid())
+        JSONObject out=new JSONObject().put("package",pkg).put("packages",packageNames()).put("process",process).put("pid",android.os.Process.myPid())
             .put("moduleVersion",BuildConfig.VERSION_NAME).put("framework",framework).put("moduleLoadedAt",startedWall)
             .put("processStartedElapsed",android.os.Process.getStartElapsedRealtime()).put("moduleLoadedElapsed",startedElapsed).put("snapshotAt",System.currentTimeMillis()).put("moduleLoaded",true)
             .put("droppedDetailEvents",dropped.get()).put("shoulderDetailed",shoulder).put("aiDetailed",ai);

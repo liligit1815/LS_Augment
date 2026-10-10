@@ -36,6 +36,7 @@ final class ModuleAbout {
             child.setClickable(false); child.setFocusable(false);
         }
         row(ui, hardware, "Android 版本", device.androidVersion, "android");
+        row(ui, hardware, "红魔Duo版本", BuildConfig.VERSION_NAME, "module");
 
         LinearLayout community=ui.card();community.setPadding(ui.dp(12),0,ui.dp(12),0);
         community.setTag("about-developer-profile");

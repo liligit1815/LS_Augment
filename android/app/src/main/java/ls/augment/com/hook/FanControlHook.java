@@ -153,7 +153,7 @@ final class FanControlHook {
         private boolean diagnosticsInitialized;
         private boolean lastOemEnabled;
         private boolean sessionLocked;
-        private int validRpmSamples;
+        private final FanRpmStartup rpmStartup = new FanRpmStartup();
         private int actualRpm;
         private final FanLevelCommand levelCommand = new FanLevelCommand();
         private final FanNativeSettle nativeSettle = new FanNativeSettle();
@@ -309,7 +309,7 @@ final class FanControlHook {
                     if (!fixed || (controlKind != ControlKind.NONE && !oemStateStillCaptured()))
                         safeRelease("fixed_selection", true);
                     sessionLocked = false;
-                    validRpmSamples = 0;
+                    rpmStartup.reset();
                     if (controlKind == ControlKind.NONE)
                         nativeSettle.nativeEvent(android.os.SystemClock.elapsedRealtime());
                     lastDiagnosticAt = 0L;
@@ -363,7 +363,7 @@ final class FanControlHook {
                     safeRelease("oem_off", true);
                     lastOemEnabled = false;
                     sessionLocked = false;
-                    validRpmSamples = 0;
+                    rpmStartup.reset();
                     resetCapture();
                     status(requested ? "armed;waiting_for_oem_fan"
                             : "idle;reason=feature_off", requested ? 3_000L : 0L);
@@ -383,7 +383,7 @@ final class FanControlHook {
                 if (!lastOemEnabled) {
                     lastOemEnabled = true;
                     sessionLocked = false;
-                    validRpmSamples = 0;
+                    rpmStartup.reset();
                     resetCapture();
                     FeatureSettings.diagnostic(current,
                             FeatureSettings.FAN_CONTROL_LAST_ERROR, "");
@@ -408,7 +408,7 @@ final class FanControlHook {
                     // its new state with the values captured by this module.
                     safeRelease("vendor_state_changed", false);
                     sessionLocked = profile.allowsLevelWrites();
-                    validRpmSamples = 0;
+                    rpmStartup.reset();
                     FeatureSettings.diagnostic(current,
                             FeatureSettings.FAN_CONTROL_LAST_ERROR,
                             sessionLocked ? "vendor_state_changed" : "");
@@ -422,15 +422,19 @@ final class FanControlHook {
                 }
 
                 ReadResult rpm = readInt(FAN_RPM);
-                if (!rpm.valid || !FanControlPolicy.isReasonableRpm(rpm.value)) {
+                boolean validRpm = rpm.valid && FanControlPolicy.isReasonableRpm(rpm.value);
+                FanRpmStartup.Action rpmAction = rpmStartup.observe(
+                        controlKind != ControlKind.NONE, validRpm,
+                        android.os.SystemClock.elapsedRealtime());
+                if (rpmAction == FanRpmStartup.Action.FAIL) {
                     failSession("rpm_invalid");
                     return;
                 }
-                actualRpm = rpm.value;
-                validRpmSamples++;
-                if (validRpmSamples < 2) {
-                    status("armed;rpm_check=" + validRpmSamples + "/2;actual=" + actualRpm,
-                            0L);
+                if (validRpm) actualRpm = rpm.value;
+                if (rpmAction == FanRpmStartup.Action.WAIT) {
+                    status(validRpm ? "armed;rpm_check=" + rpmStartup.validSamples()
+                            + "/2;actual=" + actualRpm
+                            : "armed;waiting_for_rpm;rpm_check=0/2", 0L);
                     return;
                 }
 
@@ -602,7 +606,7 @@ final class FanControlHook {
         private void failSession(String reason, boolean restoreIfRunning) {
             safeRelease(reason, restoreIfRunning);
             sessionLocked = true;
-            validRpmSamples = 0;
+            rpmStartup.reset();
             Context current = context;
             if (current != null) {
                 FeatureSettings.diagnostic(current,

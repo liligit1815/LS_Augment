@@ -169,7 +169,7 @@ final class DynamicIslandHook {
                 refresh();
             }
         };
-        boolean enabled,listening,receiving,closed,charging,touching,replaying,screenOff,longPressed,observedHostVisible;
+        boolean enabled,listening,receiving,closed,charging,touching,replaying,screenOff,longPressed,observedHostVisible,circularAppStyle;
         int battery,activity,ownerUser=-1;float downX,downY;
         MotionEvent downEvent;
         long noticeUntil;String lastState="";
@@ -209,6 +209,7 @@ final class DynamicIslandHook {
         boolean locked(){return keyguard!=null&&keyguard.isKeyguardLocked();}
         void configure(){
             if(closed)return;boolean next=FeatureSettings.enabled(context,SystemUiOptions.ISLAND);
+            circularAppStyle=FeatureSettings.integer(context,SystemUiOptions.ISLAND_APP_STYLE,0,0,1)==1;
             if(next!=enabled){enabled=next;if(enabled)listen();else stopListening();}
             if(!option("notifications"))clearNotice();
             if(!option("charging"))chargeActivity.clear();
@@ -414,6 +415,7 @@ final class DynamicIslandHook {
             if(lp.width!=w||lp.height!=h||lp.topMargin!=top){lp.width=w;lp.height=h;lp.topMargin=top;pill.setLayoutParams(lp);}
             pill.setTranslationX(x);pill.icon=icon;pill.playing=playing;pill.kind=activity;pill.battery=battery;
             pill.transparent=FeatureSettings.enabled(context,SystemUiOptions.ISLAND_TRANSPARENT);
+            pill.circularIcon=circularAppStyle;
         }
         void showPill(){
             if(popup!=null)return;
@@ -481,7 +483,9 @@ final class DynamicIslandHook {
             LinearLayout header=new LinearLayout(context);header.setGravity(Gravity.CENTER_VERTICAL);
             if(icon!=null){
                 ImageView cover=new ImageView(context);cover.setImageDrawable(icon);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                GradientDrawable mask=new GradientDrawable();mask.setColor(Color.BLACK);mask.setCornerRadius(dp(10));cover.setBackground(mask);cover.setClipToOutline(true);
+                GradientDrawable mask=new GradientDrawable();mask.setColor(Color.BLACK);
+                if(circularAppStyle)mask.setShape(GradientDrawable.OVAL);else mask.setCornerRadius(dp(10));
+                cover.setBackground(mask);cover.setClipToOutline(true);
                 LinearLayout.LayoutParams art=new LinearLayout.LayoutParams(dp(44),dp(44));art.rightMargin=dp(12);header.addView(cover,art);
             }
             LinearLayout copy=new LinearLayout(context);copy.setOrientation(LinearLayout.VERTICAL);
@@ -596,8 +600,8 @@ final class DynamicIslandHook {
 
     private static final class Capsule extends View {
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final RectF rect=new RectF();
-        final android.graphics.Path shape=new android.graphics.Path();
-        Drawable icon;boolean playing,transparent;int kind,battery;Runnable visibilityChanged;
+        final android.graphics.Path shape=new android.graphics.Path(),iconClip=new android.graphics.Path();
+        Drawable icon;boolean playing,transparent,circularIcon;int kind,battery;Runnable visibilityChanged;
         Capsule(Context context){super(context);setClickable(true);setFocusable(true);}
         @Override protected void onVisibilityChanged(View changedView,int visibility){
             super.onVisibilityChanged(changedView,visibility);
@@ -615,7 +619,10 @@ final class DynamicIslandHook {
             // without making the capsule itself translucent or fading its cover.
             if(transparent)paint.setShadowLayer(dp(1.5f),0,0,0x99000000);
             float size=Math.min(dp(22),h-dp(8)),left=dp(9),top=(h-size)/2;
-            if(icon!=null){canvas.save();android.graphics.Path clip=new android.graphics.Path();clip.addRoundRect(left,top,left+size,top+size,dp(5),dp(5),android.graphics.Path.Direction.CW);canvas.clipPath(clip);
+            if(icon!=null){canvas.save();iconClip.reset();
+                if(circularIcon)iconClip.addCircle(left+size/2,top+size/2,size/2,android.graphics.Path.Direction.CW);
+                else iconClip.addRoundRect(left,top,left+size,top+size,dp(5),dp(5),android.graphics.Path.Direction.CW);
+                canvas.clipPath(iconClip);
                 icon.setBounds((int)left,(int)top,(int)(left+size),(int)(top+size));icon.draw(canvas);canvas.restore();
             }else if(kind==IslandActivityPolicy.CHARGING){
                 paint.setColor(0xff91edb2);float cx=left+size/2,cy=h/2;

@@ -6,6 +6,7 @@ import java.util.Map;
 
 /** Provider-side quota, shared across Binder threads and measured with a monotonic clock. */
 final class DiagnosticWritePolicy {
+    static final String TRUNCATION_MARKER = " [TRUNCATED]";
     static final int MAX_KEYS = 512;
     static final long MAX_UTF8_BYTES = 512 * 1024;
     static final long WINDOW_MS = 10_000;
@@ -44,8 +45,9 @@ final class DiagnosticWritePolicy {
         if (value == null) value = "";
         int limit = key.startsWith("ls_augment_rm_support_") ? 32768 : 2000;
         if (value.length() > limit) {
-            if (Character.isHighSurrogate(value.charAt(limit - 1))) limit--;
-            value = value.substring(0, limit);
+            int kept = limit - TRUNCATION_MARKER.length();
+            if (Character.isHighSurrogate(value.charAt(kept - 1))) kept--;
+            value = value.substring(0, kept) + TRUNCATION_MARKER;
         }
         return value.replace('\r', ' ').replace('\n', ' ');
     }

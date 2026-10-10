@@ -131,15 +131,19 @@ android {
         configuredStore = rootProject.file('../.signing/' + localSigning.keystore.toString().replace('\\', '/').tokenize('/').last())
     }
     def injectedStore = System.getenv('LS_AUGMENT_KEYSTORE') ?: (configuredStore?.isFile() ? configuredStore.absolutePath : null)
+    def injectedStorePassword = System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: localSigning.storePassword?.toString()
+    def injectedKeyPassword = System.getenv('LS_AUGMENT_KEY_PASSWORD') ?: localSigning.keyPassword?.toString() ?: injectedStorePassword
     if (injectedStore != null && file(injectedStore).isFile()) {
+        if (!injectedStorePassword || !injectedKeyPassword) {
+            throw new GradleException('Signing passwords must be supplied through environment variables or the ignored local signing configuration.')
+        }
         signingConfigs {
             lsAugmentDev {
                 storeFile file(injectedStore)
                 storeType 'PKCS12'
-                storePassword System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: localSigning.storePassword ?: 'lsaugment'
+                storePassword injectedStorePassword
                 keyAlias System.getenv('LS_AUGMENT_KEY_ALIAS') ?: localSigning.keyAlias ?: 'ls_augment'
-                keyPassword System.getenv('LS_AUGMENT_KEY_PASSWORD') ?:
-                        (localSigning.keyPassword ?: System.getenv('LS_AUGMENT_STORE_PASSWORD') ?: localSigning.storePassword ?: 'lsaugment')
+                keyPassword injectedKeyPassword
             }
         }
     }

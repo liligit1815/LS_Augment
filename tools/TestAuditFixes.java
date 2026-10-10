@@ -85,7 +85,10 @@ public final class TestAuditFixes {
         check(DiagnosticWritePolicy.fits(stored,"a","small"),"old oversized store cannot shrink");
         check(!DiagnosticWritePolicy.fits(stored,"a","中".repeat(180001)),"old oversized store can grow");
         check(DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(2001)).length()==2000,"per-value limit changed");
-        check(DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1999)+"😀").length()==1999,"truncation broke surrogate pair");
+        String truncated=DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1999)+"😀");
+        check(truncated.endsWith(DiagnosticWritePolicy.TRUNCATION_MARKER)&&truncated.length()<=2000,"truncation missing marker or exceeded value budget");
+        String boundary=DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1987)+"😀"+"x".repeat(20));
+        check(!Character.isHighSurrogate(boundary.charAt(boundary.length()-DiagnosticWritePolicy.TRUNCATION_MARKER.length()-1)),"truncation broke surrogate pair");
     }
     private static void provider() {
         FakeContext context=new FakeContext();

@@ -29,6 +29,14 @@ public final class TestStatusBarCustomization {
         check(r.valid,"large row gap fits with sufficient height");
         check(Math.abs(r.boxes.get("down").y-r.boxes.get("up").y-r.boxes.get("up").height-28)<.03,"row gap above one-quarter height is honored");
         check(!StatusBarAdaptiveLayout.pack(spaced,240,30,4,4,0,0,28,0,0).valid,"unfittable row gap is reported, not silently clamped");
+        // Representative measured rows exercise the negative-height path; these
+        // dimensions are test inputs, not a claim about one device's font metrics.
+        List<StatusBarGridLayout.Node> reducedRows=Arrays.asList(n("clock","L1",0,80,40),n("cpu","L2",0,80,40));
+        int reducedHeight=ConfigSchema.statusBarHeightPx(107,-13,3.25f);
+        r=pack(reducedRows,240,reducedHeight,0,0);
+        check(reducedHeight==65&&!r.valid&&r.boxes.isEmpty(),"negative height plus tall measured rows rejects the whole layout without partial placement");
+        check(r.reason.contains("高度不足"),"unfittable negative-height rows report the actual height limit");
+        check(pack(reducedRows,240,ConfigSchema.statusBarHeightPx(107,0,3.25f),0,0).valid,"an explicit height reset lets the same rows recover without changing their saved sizes or row assignments");
         Random random=new Random(20441);int accepted=0,rejected=0;
         for(int trial=0;trial<1000;trial++){
             List<StatusBarGridLayout.Node> nodes=new ArrayList<>();

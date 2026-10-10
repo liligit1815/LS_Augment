@@ -13,6 +13,7 @@ import android.os.HandlerThread;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.SystemClock;
+import android.os.UserManager;
 
 import ls.augment.com.BuildConfig;
 import ls.augment.com.ConfigSchema;
@@ -39,7 +40,7 @@ final class ScreenOffAutomationHook {
         final HandlerThread thread = new HandlerThread("LSA-ScreenAutomation");
         final Handler handler;
         final ScreenAutomationPolicy.Epoch epoch = new ScreenAutomationPolicy.Epoch();
-        int startAttempts,runAttempts,queryAttempts;
+        int startAttempts,runAttempts,queryAttempts,bridgeAttempts;
         long stateSequence,lastBridgeErrorAt;
         final String ownerSession=Process.myPid()+":"+Process.getStartElapsedRealtime();
         String bridge="FAILED",bridgeError="configuration_not_read",lastBridgeError="",runtime="unknown";
@@ -52,7 +53,8 @@ final class ScreenOffAutomationHook {
                     epoch.screenOn();
                     handler.removeCallbacks(retry);runAttempts=0;queryAttempts=0;
                     requestId="";screenEpoch="";pendingQuery=false;transportError="";
-                } else refreshAndRun(intent.getAction());
+                }
+                refreshAndRun(intent.getAction());
             }
         };
         final ContentObserver observer;
@@ -95,17 +97,25 @@ final class ScreenOffAutomationHook {
         void refreshAndRun(String event) {
             boolean dispatched=false;
             try {
+                UserManager users=context.getSystemService(UserManager.class);
+                if(users!=null&&!users.isUserUnlocked()) {
+                    // The credential-protected Provider is deliberately unavailable
+                    // before unlock. Wait without inventing an execution failure.
+                    bridge="WAITING_FOR_UNLOCK";bridgeError="";runtime="unknown";
+                    publishOwnerState();scheduleBridgeRetry();return;
+                }
                 // Read the authoritative snapshot here; never block SystemUI or the
                 // system main thread on provider access, Root commands or PackageManager.
                 Bundle reply = context.getContentResolver().call(
                         PROVIDER, "snapshot", null, null);
                 ConfigSnapshot snapshot=verifiedSnapshot(reply);
                 if(snapshot==null)throw new IllegalArgumentException("invalid_or_incomplete_configuration_snapshot");
-                bridge="READY";bridgeError="";
+                bridge="READY";bridgeError="";bridgeAttempts=0;handler.removeCallbacks(retry);
                 boolean enabled = ConfigSchema.truthy(snapshot.get(ConfigSchema.HIDE_MASTER))
                         && ConfigSchema.truthy(snapshot.get(ConfigSchema.AUTOMATION_ENABLED));
                 PowerManager power = context.getSystemService(PowerManager.class);
-                boolean off = power != null && !power.isInteractive();
+                boolean off = power != null && !power.isInteractive()
+                        && !Intent.ACTION_SCREEN_ON.equals(event);
                 runtime=!enabled?"disabled":!off?"waiting_screen_off":pendingQuery?"unknown":"ready";
                 publishOwnerState(); // A valid disabled snapshot recovers only the bridge.
                 if(!enabled||!off){handler.removeCallbacks(retry);runAttempts=0;
@@ -133,8 +143,16 @@ final class ScreenOffAutomationHook {
             } catch (Throwable error) {
                 if(dispatched)executionUncertain("execution_reply_unavailable:"+error);
                 else {bridgeFailed("FAILED","snapshot_read_failed:"+error);
-                    if(runAttempts++<6){handler.removeCallbacks(retry);handler.postDelayed(retry,5000L);}}
+                    // Configuration reads are idempotent. Keep a bounded backoff
+                    // across long boot/update windows, separate from operation retries.
+                    scheduleBridgeRetry();}
             }
+        }
+
+        void scheduleBridgeRetry() {
+            long delay=Math.min(30_000L,1000L<<Math.min(5,bridgeAttempts));
+            if(bridgeAttempts<Integer.MAX_VALUE)bridgeAttempts++;
+            handler.removeCallbacks(retry);handler.postDelayed(retry,delay);
         }
 
         static ConfigSnapshot verifiedSnapshot(Bundle reply) {

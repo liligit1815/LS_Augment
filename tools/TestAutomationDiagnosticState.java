@@ -78,6 +78,8 @@ public final class TestAutomationDiagnosticState {
         check(sessions.apply(new AutomationDiagnosticState.Update("44:1",1,3002,"READY","","",0,"disabled","",""),2),"new boot monotonic origin may restart");
         check(AutomationDiagnosticState.Update.parse(update(1,"READY","","disabled","","").encode())!=null,"wire round trip");
         check(AutomationDiagnosticState.Update.parse(update(1,"READY","contradiction","disabled","","").encode())==null,"ready envelope cannot contain active bridge failure");
+        check(AutomationDiagnosticState.Update.parse(update(1,"WAITING_FOR_UNLOCK","","unknown","","").encode())!=null,"credential lock wait is a valid non-error bridge state");
+        check(AutomationDiagnosticState.Update.parse(update(1,"WAITING_FOR_UNLOCK","contradiction","unknown","","").encode())==null,"unlock wait cannot contain an active bridge failure");
         check(AutomationDiagnosticState.Update.parse("ADU1|malformed")==null,"incomplete owner envelope rejected");
         check(AutomationDiagnosticState.Update.parse(new AutomationDiagnosticState.Update("42:100",1,1,"FAILED","错".repeat(140),"错".repeat(140),1,"unknown","42:3","错".repeat(140)).encode())!=null,"worst bounded multilingual publication fits existing queue");
         System.out.println("PASS AutomationDiagnosticState "+checks+" checks");

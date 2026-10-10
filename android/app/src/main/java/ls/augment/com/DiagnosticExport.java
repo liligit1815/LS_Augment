@@ -23,9 +23,16 @@ final class DiagnosticExport {
             .append("详细记录仅包含开启后的有界窗口。队列丢弃、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
+        RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
+        source(out,"PROCESS_LIST",processes,256*1024);
+        Map<Integer,String> live=processNames(processes);
+        boolean lifecycleReceipt=RuntimeEnvironment.injected(context);
+        String telemetryVersion=RuntimeEnvironment.telemetryVersion(context,systemPid(live));
+        boolean currentTelemetry=BuildConfig.VERSION_NAME.equals(telemetryVersion);
         out.append("systemVersion=").append(new DeviceInfo(context).systemVersion).append('\n')
                 .append("buildType=").append(BuildConfig.BUILD_TYPE).append('\n')
-                .append("currentVersionInjection=").append(RuntimeEnvironment.injected(context)?"VERIFIED_THIS_BOOT":"UNCONFIRMED").append('\n');
+                .append("currentVersionInjection=").append(lifecycleReceipt||currentTelemetry?"VERIFIED_THIS_BOOT":"UNCONFIRMED").append('\n')
+                .append("injectionEvidenceSource=").append(lifecycleReceipt?"LIFECYCLE_RECEIPT":currentTelemetry?"CURRENT_SYSTEM_PROCESS_TELEMETRY":"NO_CURRENT_PROOF").append('\n');
         out.append("\n===== ENABLED FEATURE SWITCHES (configuration, not proof of execution) =====\n");
         Map<String,String> values=config.snapshot();
         Set<String> labelled=new HashSet<>();
@@ -42,8 +49,6 @@ final class DiagnosticExport {
         out.append("\n===== CONFIGURATION AT EXPORT =====\n");
         out.append(MigrationCompatibility.describe(context)).append('\n');
         for(Map.Entry<String,String> e:config.snapshot().entrySet())appendDiagnosticValue(out,e.getKey(),e.getValue());
-        RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
-        Map<Integer,String> live=new HashMap<>();if(processes.isSuccess())for(String line:processes.output.split("\\r?\\n")){String[] p=line.trim().split("\\s+",2);try{live.put(Integer.parseInt(p[0]),p[1]);}catch(Exception ignored){}}
         out.append("\n===== PER-PROCESS HOOK EVIDENCE =====\n");Set<String> observed=new HashSet<>();
         Map<String,?> snapshots=context.getSharedPreferences("hook-processes",0).getAll();
         long snapshotsWall=System.currentTimeMillis(),snapshotsElapsed=android.os.SystemClock.elapsedRealtime();
@@ -58,7 +63,7 @@ final class DiagnosticExport {
                 snapshot.optLong("moduleLoadedElapsed"),snapshotsElapsed,snapshot.optLong("receivedAt"),snapshotsWall,
                 snapshot.optInt("receivedBoot",-1),snapshotsBoot);
             snapshot.put("currentEvidence",current).put("evidenceStatus",current?"CURRENT_PROCESS_SNAPSHOT":"STALE_OR_STOPPED_OR_UNVERIFIED");
-            if(current)observed.add(snapshot.optString("package"));
+            if(current)observed.addAll(currentPackages(snapshot));
             compactHooks(snapshot,current);
             out.append(snapshot.toString(2)).append('\n');
         }catch(Exception e){out.append("snapshot_parse_error=").append(e.getClass().getSimpleName()).append('\n');}
@@ -93,16 +98,39 @@ final class DiagnosticExport {
             String since=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(start-30*60*1000));
             String tags="LS_Augment:I "+(ai?"LS_Augment_AI:I ":"")+(shoulder?"LS_Augment_TGK:I LS_AugmentNative:I ":"")+"*:S";
             RootShell.Result logs=RootShell.run("logcat -d -v epoch -T "+RootShell.quote(since)+" "+tags,null,12,1024*1024);
-            source(out,"LOGCAT module tags; requested last 30 minutes; unavailable historical buffer cannot be reconstructed",filter(logs,ai,shoulder),1024*1024);
+            filteredSource(out,"LOGCAT module tags; requested last 30 minutes; unavailable historical buffer cannot be reconstructed",logs,1024*1024,ai,shoulder,false);
             RootShell.Result listing=RootShell.run("ls -1 /data/adb/lspd/log",null,5,8192);
             if(!listing.isSuccess())source(out,"LSPOSED_CURRENT_LOG_DIRECTORY",listing,8192);
             else {int files=0;for(String name:listing.output.split("\\r?\\n")){
                 name=name.trim();if(!name.matches("[A-Za-z0-9_.-]+")||files++>=6)continue;
-                RootShell.Result log=RootShell.run("tail -c 524288 "+RootShell.quote("/data/adb/lspd/log/"+name)+" | grep 'LS_Augment'",null,8,512*1024);
-                source(out,"LSPOSED "+name+"; module-only lines in latest 512 KiB; historical window may precede this reproduction",filter(log,ai,shoulder),512*1024);
+                RootShell.Result log=RootShell.run("tail -c 524288 "+RootShell.quote("/data/adb/lspd/log/"+name),null,8,512*1024);
+                filteredSource(out,"LSPOSED "+name+"; module-only lines in latest 512 KiB; historical window may precede this reproduction",log,512*1024,ai,shoulder,true);
             }if(files==0)out.append("LSPOSED: NO_FILES; framework log is not collected\n");}
         }
         out.append("\ncollectionFinished=").append(System.currentTimeMillis()).append("\n");return out.toString();
+    }
+    static Map<Integer,String> processNames(RootShell.Result processes){
+        Map<Integer,String> live=new HashMap<>();
+        if(processes.isSuccess())for(String line:processes.output.split("\\r?\\n")){
+            String[] fields=line.trim().split("\\s+",2);
+            if(fields.length!=2)continue;
+            try{int pid=Integer.parseInt(fields[0]);if(pid>0)live.put(pid,fields[1]);}catch(NumberFormatException ignored){}
+        }
+        return live;
+    }
+    static String systemPid(Map<Integer,String> live){
+        for(Map.Entry<Integer,String> entry:live.entrySet())if("system_server".equals(entry.getValue()))return String.valueOf(entry.getKey());
+        return "";
+    }
+    static Set<String> currentPackages(JSONObject snapshot){
+        Set<String> packages=new LinkedHashSet<>();
+        for(String legacy:new String[]{snapshot.optString("package"),snapshot.optString("process")})
+            if(HookTargetRegistry.contains(legacy))packages.add(legacy);
+        JSONArray targets=snapshot.optJSONArray("packages");
+        if(targets!=null)for(int i=0;i<targets.length();i++){
+            String target=targets.optString(i);if(HookTargetRegistry.contains(target))packages.add(target);
+        }
+        return packages;
     }
     /** Old successful registration lists add noise; retain their identity and all failures. */
     static void compactHooks(JSONObject snapshot,boolean current)throws JSONException {
@@ -120,11 +148,19 @@ final class DiagnosticExport {
         }
         snapshot.put("hooks",kept).put("omittedHistoricalSuccessfulHooks",omitted);
     }
-    private static RootShell.Result filter(RootShell.Result source,boolean ai,boolean shoulder){StringBuilder out=new StringBuilder();
-        for(String line:source.output.split("\\r?\\n")){String u=line.toUpperCase(Locale.ROOT);if(!ai&&(u.contains("AI_STAGE")||u.contains("AI_TRIGGER")||u.contains("FEATURE_AI")))continue;
-            if(!shoulder&&(u.contains("TGK")||u.contains("SHOULDER")||u.contains("RAPID")))continue;out.append(line).append('\n');}
-        out.insert(0,"upstreamCapturedBytes="+source.output.getBytes(StandardCharsets.UTF_8).length+"; feature filtering follows collection; upstream buffer may already be bounded\n");
-        return new RootShell.Result(source.exitCode,out.toString(),source.timedOut);
+    private static RootShell.Result filter(RootShell.Result source,boolean ai,boolean shoulder,boolean moduleOnly){StringBuilder out=new StringBuilder();
+        if(!source.isSuccess())return source;
+        for(String line:source.output.split("\\r?\\n")){
+            if(moduleOnly&&!line.contains("LS_Augment"))continue;
+            String u=line.toUpperCase(Locale.ROOT);if(!ai&&(u.contains("AI_STAGE")||u.contains("AI_TRIGGER")||u.contains("FEATURE_AI")))continue;
+            if(!shoulder&&(u.contains("TGK")||u.contains("SHOULDER")||u.contains("RAPID")))continue;
+            if(!line.isEmpty())out.append(line).append('\n');
+        }
+        return new RootShell.Result(source.exitCode,out.toString(),source.timedOut,source.capture);
+    }
+    private static void filteredSource(StringBuilder out,String name,RootShell.Result raw,int limit,
+            boolean ai,boolean shoulder,boolean moduleOnly){
+        source(out,name,filter(raw,ai,shoulder,moduleOnly),limit,false,true);
     }
     // Apply one policy to preferences and feature values. In
     // particular, a serialized snapshot contains protected values in Base64.
@@ -151,16 +187,27 @@ final class DiagnosticExport {
         }
         return out.toString();
     }
-    private static void source(StringBuilder out,String name,RootShell.Result result,int limit){source(out,name,result,limit,false);}
-    private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values){
+    private static void source(StringBuilder out,String name,RootShell.Result result,int limit){source(out,name,result,limit,false,false);}
+    private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values){source(out,name,result,limit,values,false);}
+    private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered){
         String output=values?diagnosticValues(result.output):result.output;
-        out.append("\n===== SOURCE ").append(name).append(" =====\ncollectedAt=").append(System.currentTimeMillis()).append(" status=").append(result.isSuccess()?"READ":"UNAVAILABLE_OR_NO_MATCHES")
+        RootShell.CapturedOutput capture=result.capture;
+        int upstreamBytes=capture==null?result.output.getBytes(StandardCharsets.UTF_8).length:capture.bytes().length;
+        String captureState=capture==null?"UNVERIFIED":capture.failed?"FAILED":!capture.complete?"INCOMPLETE":capture.truncated?"TRUNCATED":"COMPLETE";
+        String filterState=!filtered?"NOT_APPLIED":!result.isSuccess()?"NOT_RUN_READ_FAILED":lineCount(output)>0?"MATCHES":upstreamBytes==0?"EMPTY_INPUT":"NO_MATCHES";
+        out.append("\n===== SOURCE ").append(name).append(" =====\ncollectedAt=").append(System.currentTimeMillis()).append(" status=").append(result.isSuccess()?"READ":"READ_FAILED")
             .append(" exit=").append(result.exitCode).append(" timeout=").append(result.timedOut).append(" bytesLimit=").append(limit)
-            .append(" limitReachedOrPossiblyTruncated=").append(result.output.getBytes(StandardCharsets.UTF_8).length>=limit-512)
-            .append(" lines=").append(output.isEmpty()?0:output.split("\\r?\\n").length).append('\n').append(output).append('\n');
+            .append(" captureState=").append(captureState).append(" upstreamCapturedBytes=").append(upstreamBytes)
+            .append(" upstreamComplete=").append(capture==null?"UNKNOWN":String.valueOf(capture.complete))
+            .append(" upstreamReadFailed=").append(capture==null?"UNKNOWN":String.valueOf(capture.failed))
+            .append(" upstreamTruncated=").append(capture==null?"UNKNOWN":String.valueOf(capture.truncated))
+            .append(" limitReachedOrPossiblyTruncated=").append((capture!=null&&capture.truncated)||upstreamBytes>=limit-512)
+            .append(" filterState=").append(filterState).append(" lines=").append(lineCount(output)).append('\n').append(output).append('\n');
     }
+    private static int lineCount(String value){return value==null||value.trim().isEmpty()?0:value.trim().split("\\r?\\n").length;}
     private static void file(StringBuilder out,Context context,String label,String name,int limit,String stat){try{
         File file=new File(context.getFilesDir(),name);out.append("\n===== SOURCE ").append(label).append(" ").append(name).append(" =====\n");
+        if("basic".equals(stat))out.append("basicWriteState=").append(AuditLog.failureStatus(context)).append('\n');
         if(!file.isFile()){out.append("NOT_COLLECTED: 文件不存在；未复现、未开启或未接入。\n");return;}
         String data=new String(BoundedLog.tail(file,limit),StandardCharsets.UTF_8);String[] lines=data.split("\\r?\\n");
         out.append("collectedAt=").append(System.currentTimeMillis()).append(" bytes=").append(file.length()).append(" lines=").append(lines.length)

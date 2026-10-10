@@ -1,21 +1,25 @@
 # Release signing
 
-Current distributed Release package: `2.0.0-alpha1-test20505` / versionCode `20505`.
-Previous distributed release: `2.0.0-alpha1-test20497` / versionCode `20497`.
+Current package version: `2.0.0-alpha1-test20509` / versionCode `20509`.
+The version source is `android/version.properties`.
 
 The current upgrade signing certificate has SHA-256
 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`.
-Its private material is supplied locally through the ignored `.signing/` configuration
+Its private material is supplied locally through the ignored `.signing/signing.local.json` configuration
 or the `LS_AUGMENT_KEYSTORE`, `LS_AUGMENT_STORE_PASSWORD`,
 `LS_AUGMENT_KEY_ALIAS`, and `LS_AUGMENT_KEY_PASSWORD` environment variables.
+The store password must be explicitly supplied. The key password may use the explicitly
+supplied store password when omitted; there is no password default in source.
+The public default key alias remains `ls_augment`.
 Always compare the final APK certificate with the package being upgraded.
 
 Update `android/version.properties` explicitly before packaging; builds never mutate it.
-Run `python tools/build-release.py --previous <previous-release.apk>` with the preceding
-local build after incrementing versionCode by exactly one and matching the test suffix
+Run `python tools/build-release.py --previous <preceding-version.apk>` with the preceding
+versionCode's APK, including a local build, after incrementing versionCode by exactly one and matching the test suffix
 in versionName. The helper checks the previous certificate, builds Release, and verifies
 the final certificate, version, and alignment. APKs and local verification receipts are
-written to `out/` and are excluded from the source repository.
+written to `out/` and are excluded from the source repository. The current Release APK
+is `out/RedMagicDuo-v2.0.0-alpha1-test20509-release.apk`.
 
 The public `dev41-test-cert.pem` identifies the historical dev4.2 test signing lineage:
 `c51c7eed43c2118e98a62072b8ca2b30596c83b388f39ae536c8067612ad2f6a`.

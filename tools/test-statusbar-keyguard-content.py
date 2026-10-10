@@ -50,7 +50,8 @@ public class TestKeyguardContent {
   static class PhoneStatusBarView extends ViewGroup {}
   static class StatusBarClipping {void restore(){}}
   static class TextView extends View {}
-  static class ConnectivityIconView extends View {void close(){}}
+  static class ConnectivityIconView extends View {void close(){}void publish(String reason,int width,int height){}}
+  static class SystemUiHook {static void resetGridClock(View root){}}
   static class StatusBarGridLayout {static class Node {}}
   static final String KEYGUARD=KeyguardStatusBarView.class.getName();
   static final Map<ViewGroup,State> STATES=new IdentityHashMap<>();
@@ -67,6 +68,9 @@ public class TestKeyguardContent {
     final Map<String,Object> groups=new HashMap<>();
     final List<String> companions=new ArrayList<>();
     boolean onlyPosition; TextView keyguardClock; ConnectivityIconView connectivityIcon;
+    Object batteryInk;View batteryInkView;String batteryInkInputs="",trialClockCapacity;
+    boolean circleTrial;final List<View> circleNative=new ArrayList<>();
+    void clearRejectedCapacity(){}
     boolean packingSuspended;String packingIssue="";long lastWitness;
     State(ViewGroup root){this.root=root;STATES.put(root,this);}
     boolean positionOnly(){return onlyPosition;}

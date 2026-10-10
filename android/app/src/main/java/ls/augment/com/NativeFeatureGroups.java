@@ -190,7 +190,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:notification_media_hide","取消通知中心的音乐卡片",SystemUiOptions.NOTIFICATION_MEDIA_HIDE,new String[]{},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
-            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{})
+            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
             new Feature("systemui:notification_stack","整个通知列表堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{NotificationAppearanceOptions.STACK_COUNT,NotificationAppearanceOptions.STACK_STEP,NotificationAppearanceOptions.STACK_INSET},"boolean","0",new Feature[]{

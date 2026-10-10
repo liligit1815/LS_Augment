@@ -23,7 +23,7 @@ public class TestIslandReview {
  static class View implements android.view.ViewParent{static final int VISIBLE=0;boolean attached=true,shown=true;int visibility;float alpha=1;android.view.ViewParent parent;
   boolean isAttachedToWindow(){return attached;}boolean isShown(){return shown&&(!(parent instanceof View)||((View)parent).isShown());}int getWindowVisibility(){return visibility;}float getAlpha(){return alpha;}android.view.ViewParent getParent(){return parent;}}
  static class FrameLayout{static class LayoutParams{int width=144,height=30,topMargin;}}
- static class Pill{int clicks,longClicks,childDown,layoutUpdates,kind,battery;Object icon;boolean playing,transparent;float translationX;FrameLayout.LayoutParams params=new FrameLayout.LayoutParams();boolean shown=true,clickable=true,longClickable=true;boolean isShown(){return shown;}boolean isClickable(){return clickable;}void setClickable(boolean value){clickable=value;}boolean isLongClickable(){return longClickable;}void setLongClickable(boolean value){longClickable=value;}
+ static class Pill{int clicks,longClicks,childDown,layoutUpdates,kind,battery;Object icon;boolean playing,transparent,circularIcon;float translationX;FrameLayout.LayoutParams params=new FrameLayout.LayoutParams();boolean shown=true,clickable=true,longClickable=true;boolean isShown(){return shown;}boolean isClickable(){return clickable;}void setClickable(boolean value){clickable=value;}boolean isLongClickable(){return longClickable;}void setLongClickable(boolean value){longClickable=value;}
   Object getLayoutParams(){return params;}void setLayoutParams(FrameLayout.LayoutParams value){params=value;layoutUpdates++;}void setTranslationX(float value){translationX=value;}
   float getX(){return 100+translationX;}float getY(){return params.topMargin;}int getWidth(){return params.width;}int getHeight(){return params.height;}void performClick(){clicks++;}void performLongClick(){longClicks++;}
   boolean hit(MotionEvent e){return shown&&e.x>=getX()&&e.x<getX()+getWidth()&&e.y>=getY()&&e.y<getY()+getHeight();}}
@@ -69,7 +69,7 @@ public class TestIslandReview {
  static class NotificationListenerService{static class Ranking{int importance=3,effects;boolean suspended,interruption=true;int getImportance(){return importance;}boolean isSuspended(){return suspended;}boolean matchesInterruptionFilter(){return interruption;}int getSuppressedVisualEffects(){return effects;}}
   static class RankingMap{Ranking value=new Ranking();boolean found=true;boolean getRanking(String key,Ranking result){result.importance=value.importance;result.effects=value.effects;result.suspended=value.suspended;result.interruption=value.interruption;return found;}}}
  static class State{Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=this::performLongPress;
-  StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
+  StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing,circularAppStyle;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
   String foreground="launcher";String foregroundPackage(){return foreground;}
   State(){host.state=this;}boolean locked(){return isLocked;}int currentUser(){return user;}boolean option(String key){return true;}void refresh(){}void dismiss(){}void requestRefresh(){refreshRequests++;}
   // METHODS
@@ -159,6 +159,10 @@ public class TestIslandReview {
   State geometry=new State();geometry.layout();
   check(geometry.pill.params.topMargin==16&&geometry.pill.getHeight()==32,"default capsule remains centered with native height");
   check(!geometry.pill.transparent,"existing users keep the opaque style");
+  check(!geometry.pill.circularIcon,"existing users retain rounded-square app icons");
+  int styleUpdates=geometry.pill.layoutUpdates;geometry.circularAppStyle=true;geometry.layout();
+  check(geometry.pill.circularIcon&&geometry.pill.layoutUpdates==styleUpdates,"circular app style reaches the capsule without changing its geometry");
+  geometry.circularAppStyle=false;geometry.layout();check(!geometry.pill.circularIcon,"app icon style returns to rounded square without recreating the capsule");
   FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,6);geometry.layout();
   check(geometry.pill.getY()==22,"positive offset moves the actual capsule hit region down");
   check(!geometry.touch(event(0,110,18))&&geometry.touch(event(0,110,24)),"offset uses the visible hit region without retaining the former tap area");geometry.cancelTouch();

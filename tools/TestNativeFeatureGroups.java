@@ -59,6 +59,13 @@ public final class TestNativeFeatureGroups {
         EnhancementOption transparent=OPTIONS.get(SystemUiOptions.ISLAND_TRANSPARENT);
         require(transparent.kind==EnhancementOption.Kind.BOOLEAN&&"0".equals(transparent.defaultValue),"island transparent style is a real opt-in boolean");
         require(find(SystemUiOptions.ISLAND_TRANSPARENT).toggleKey.equals(SystemUiOptions.ISLAND),"island owns its style and keeps it behind the master switch");
+        EnhancementOption appStyle=OPTIONS.get(SystemUiOptions.ISLAND_APP_STYLE);
+        require(appStyle.kind==EnhancementOption.Kind.CHOICE&&"0".equals(appStyle.defaultValue),"island app style defaults to rounded square");
+        require("灵动岛app显示样式".equals(appStyle.title)&&Arrays.equals(appStyle.choices,new String[]{"圆角方形","圆形"}),"island app style exposes exactly the requested display choices");
+        require("0".equals(appStyle.normalize("0"))&&"1".equals(appStyle.normalize("1")),"both island app display styles are valid");
+        for(String invalid:new String[]{"-1","2","circle","true",""})require(appStyle.normalize(invalid)==null,"island app style rejects invalid value: "+invalid);
+        NativeFeatureGroups.Feature island=find(SystemUiOptions.ISLAND_APP_STYLE);
+        require("systemui:island_enabled".equals(island.id)&&SystemUiOptions.ISLAND.equals(island.toggleKey),"app display style belongs to the island feature and its master switch");
         System.out.println("Native feature grouping and value gates: OK ("+seen.size()+" options)");
     }
     private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(f.allKeys().contains(key))return f;throw new AssertionError("missing feature "+key);}

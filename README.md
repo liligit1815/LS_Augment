@@ -2,19 +2,21 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20505`，内部版本号 `20505`。** 以 [android/version.properties](android/version.properties) 为准。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。安装包和更新内容见 [test20505 GitHub Release](https://github.com/liligit1815/LS_Augment/releases/tag/v2.0.0-alpha1-test20505)。本版本为 Alpha 预发布版本。
+**当前版本：`2.0.0-alpha1-test20509`，内部版本号 `20509`。** 以 [android/version.properties](android/version.properties) 为准。更新内容见 [本版发布说明](docs/releases/v2.0.0-alpha1-test20509.md)；安装包与源码包见 [GitHub Release](https://github.com/liligit1815/LS_Augment/releases/tag/v2.0.0-alpha1-test20509)。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
 | [最新版功能说明](docs/最新版功能说明.md) | 当前入口、操作、参数和适用限制 |
-| [项目结构与文件说明](docs/项目结构与文件说明.md) | 目录职责、运行关系与历史逐文件索引 |
-| [配置项参考](docs/配置项参考-test20354.md) | test20354 通用配置字段参考；新增配置以当前源码为准 |
+| [项目结构与文件说明](docs/项目结构与文件说明.md) | 当前目录职责、运行关系与维护入口 |
+| [配置定义](android/app/src/main/java/ls/augment/com/ConfigSchema.java) | 当前配置字段、默认值与取值范围 |
 | [网页原型说明](ui-preview/README.md) | 当前预览运行方式、样例数据和手机功能边界 |
 | [跨设备开发说明](docs/跨设备开发说明.md) | 拉取、环境准备、构建和签名 |
 
 ## 当前版本要点
+
+- “通知与控制中心 → 灵动岛”新增“灵动岛app显示样式”，可选择圆角方形或圆形；紧凑态和展开详情的应用图标、音乐封面同步生效，默认圆角方形，关闭后保留选择。
 
 - “默认桌面”页新增独立开关“禁用第三方桌面最近任务遮罩”，开启后去掉纯白或纯黑遮罩，显示壁纸；关闭恢复原厂行为。
 
@@ -32,7 +34,7 @@
 - **桌面、风扇与游戏**：桌面 3～12 行列；风扇固定五档、磁贴增强与息屏延续；游戏性能监测项目及背景透明度自定义。
 - **系统与维护**：蓝牙电量图标、跨应用小窗、验证码剪贴板、极暗与亮度扩展；完善全部重置，修复音量百分比、电源菜单和长侧滑背景。
 
-本次按现行 UI 规范统一时钟、通知图标、实时指标、电池三合一及系统图标与隐私页的功能行、分割线和参数间距，删除冗余状态摘要与系统图标小字说明。完整更新见 [test20505 发布说明](docs/releases/v2.0.0-alpha1-test20505.md)，此前更新见 [test20497 发布说明](docs/releases/v2.0.0-alpha1-test20497.md)，此前累计更新见 [test20496 发布说明](docs/releases/v2.0.0-alpha1-test20496.md)。
+本次同时统一灵动岛样式选择界面，在“关于 → 当前设备”卡片的第四行增加“红魔Duo版本”，并修复状态栏布局恢复、风扇启动转速等待、息屏自动化配置重试与日志归因等问题。完整更新和生效方式见[本版发布说明](docs/releases/v2.0.0-alpha1-test20509.md)。
 
 ## 功能概览
 
@@ -70,7 +72,7 @@
 ```text
 LS_Augment/
 ├── android/          应用、Hook、原生库、资源、设备测试与构建配置
-├── docs/             当前功能、结构、UI规范、配置及公开发布说明
+├── docs/             当前功能、结构、UI规范、开发及公开发布说明
 ├── tools/            检查、回归、设备测试、构建辅助和签名工具
 ├── ui-preview/       独立网页界面原型与浏览器样例状态
 ├── contributors-site/ 贡献名单静态网页源码
@@ -103,7 +105,7 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 本次 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20505-release.apk` |
+| 本次 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20509-release.apk` |
 | 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
 | 源码包 | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |

@@ -848,7 +848,7 @@ final class UiKit {
         LinearLayout head=(LinearLayout)outer.getChildAt(0);
         // Keep the help column aligned with neighboring Boolean feature rows.
         head.addView(switchSlot(),head.getChildCount()-1,new LinearLayout.LayoutParams(dp(46),dp(44)));
-        outer.addView(summary,1,margins(12,3,0,8));return outer;
+        if(summary!=null)outer.addView(summary,1,margins(12,3,0,8));return outer;
     }
 
     private LinearLayout foldingGroup(String title, View content, boolean initiallyExpanded,boolean ownCard) {

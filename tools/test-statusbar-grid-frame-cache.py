@@ -88,6 +88,8 @@ public class TestGridFrameCache {
   before=state.layouts;state.root.windowVisibility=View.GONE;state.beforeDraw();check(state.layouts==before,"hidden status-bar window performs no packing");state.root.windowVisibility=0;state.beforeDraw();
   state.active=false;before=state.layouts;state.beforeDraw();check(state.layouts==before,"disabled grid does not pack or suppress native content");state.active=true;state.beforeDraw();check(state.layouts==before+1,"reenabling invalidates the old stable frame");
   state.packingSuspended=true;before=state.layouts;state.beforeDraw();state.beforeDraw();check(state.layouts==before+2,"temporary capacity rejection retains live retry/recovery checks");
+  check(state.overlay.alpha==0&&state.connectivityIcon.alpha==0,"pre-draw must keep retained custom content hidden during native fallback");
+  for(float alpha:new float[]{1,.25f,0,1}){area.alpha=alpha;state.beforeDraw();check(state.overlay.alpha==0&&state.connectivityIcon.alpha==0,"native fades cannot reveal stale fallback labels or replacements");}
   System.out.println("Grid production frame reuse: "+checks+" assertions passed; unchanged/hidden 120 Hz workloads bounded (facade, not device evidence)");
  }
 }'''

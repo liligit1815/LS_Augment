@@ -36,6 +36,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final Map<String,TextView> aodParameterStates=new LinkedHashMap<>();
     private final Map<String,Button> aodParameterRestores=new LinkedHashMap<>();
     private final Runnable autoSave=this::flush;
+    private Dialog islandAppStyleDialog;
     private UiKit ui;private AppConfig config;private LinearLayout body;private SharedPreferences gateMemory;
     private String group,targetId,query="",fontKey,pendingEditor;
     private static final String AOD_FONT_KEY=SystemUiOptions.PREFIX+"aod_clock_font";
@@ -411,6 +412,23 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         content.addView(ui.featureRow(transparent.title,FeatureHelp.forOption(transparent),transparentControl),ui.wrap());
         transparentControl.setOnCheckedChangeListener((button,on)->change(transparent.key,on?"1":"0",transparentControl));
         divider(content);
+        EnhancementOption appStyle=options.get(SystemUiOptions.ISLAND_APP_STYLE);
+        LinearLayout styleContent=new LinearLayout(this);styleContent.setOrientation(LinearLayout.VERTICAL);
+        styleContent.setPadding(ui.dp(12),0,0,ui.dp(8));
+        Button styleChoice=ui.tonalButton(appStyle.choices[Integer.parseInt(value(appStyle.key))]);
+        styleChoice.setMinHeight(ui.dp(48));styleChoice.setMinimumHeight(ui.dp(48));
+        styleChoice.setContentDescription(appStyle.title+"，当前："+styleChoice.getText());
+        styleChoice.setTag("config:"+appStyle.key);
+        controls.put(appStyle.key,styleChoice);styleContent.addView(styleChoice,ui.wrap());
+        styleChoice.setOnClickListener(view->{
+            String[] labels=appStyle.choices.clone();labels[Integer.parseInt(value(appStyle.key))]+=" · 当前";
+            islandAppStyleDialog=ui.choiceDialog(appStyle.title,labels,null,selected->{
+                String next=String.valueOf(selected);change(appStyle.key,next,styleChoice);refreshInput(appStyle.key,next);
+            });
+        });
+        LinearLayout styleSection=ui.parameterSection(appStyle.title,FeatureHelp.forOption(appStyle),null,styleContent,false);
+        styleSection.setTag("island-app-style-section");styleContent.setTag("island-app-style-options");
+        content.addView(styleSection,ui.wrap());divider(content);
         LinearLayout geometry=new LinearLayout(this);geometry.setOrientation(LinearLayout.VERTICAL);geometry.setPadding(ui.dp(12),0,0,0);
         for(String suffix:new String[]{"width","height","offset_x","offset_y"})geometry.addView(input(options.get(SystemUiOptions.PREFIX+"island_"+suffix)),ui.wrap());
         content.addView(ui.foldingSection("大小与位置",geometry,false),ui.wrap());
@@ -534,7 +552,13 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             if(spinner.getTag() instanceof int[]){int[] variants=(int[])spinner.getTag();int position=0;for(int i=0;i<variants.length;i++)if(variants[i]==selected)position=i;spinner.setSelection(position);}
             else spinner.setSelection(selected);
         }
-        else if(view instanceof Button)((Button)view).setText(NotificationSummaryOptions.ASSET.equals(key)?(next.isEmpty()?"选择图片":"更换图片"):(next.isEmpty()?"选择字体文件":"更换字体"));
+        else if(view instanceof Button){
+            if(SystemUiOptions.ISLAND_APP_STYLE.equals(key)){
+                ((Button)view).setText(options.get(key).choices[Integer.parseInt(next)]);
+                view.setContentDescription(options.get(key).title+"，当前："+((Button)view).getText());
+            }
+            else ((Button)view).setText(NotificationSummaryOptions.ASSET.equals(key)?(next.isEmpty()?"选择图片":"更换图片"):(next.isEmpty()?"选择字体文件":"更换字体"));
+        }
         else if(view instanceof LinearLayout){LinearLayout checks=(LinearLayout)view;Set<String> selected=tokens(next);for(int i=0;i<checks.getChildCount();i++){CheckBox box=(CheckBox)checks.getChildAt(i);box.setChecked(selected.contains(box.getTag()));}}
         refreshAodParameterState(key);
     }
@@ -696,7 +720,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

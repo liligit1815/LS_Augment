@@ -228,6 +228,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 case "island-settings-ui":
                     report.put("islandSettingsUi",IslandSettingsUiCases.run(this));
                     result.putString("islandSettingsUi",report.getJSONObject("islandSettingsUi").toString());
+                    report.put("islandAppStyle",ls.augment.com.hook.IslandAppStyleRegressionCases.run(this));
+                    result.putString("islandAppStyle",report.getJSONObject("islandAppStyle").toString());
                     break;
                 case "statusbar-assets-runtime":
                     report.put("statusbarRuntime",StatusBarAssetsUiCases.runtime(context,arguments.getString("stage","observe")));

@@ -85,6 +85,8 @@ Thumbs.db
 *.tmp
 *.swp
 *.swo
+/.tmp/
+/ui-preview/.openai/
 
 # 本地文档（不上传 GitHub）
 PROJECT_REQUIREMENTS.md
@@ -102,16 +104,12 @@ design-qa.md
 /docs/*
 !/docs/最新版功能说明.md
 !/docs/项目结构与文件说明.md
-!/docs/配置项参考-test20354.md
 !/docs/跨设备开发说明.md
 !/docs/红魔Duo-UI规范.md
 !/docs/statusbar-assets.md
 !/docs/releases/
 /docs/releases/*
-!/docs/releases/v2.0.0-alpha1-test20378.md
-!/docs/releases/v2.0.0-alpha1-test20496.md
-!/docs/releases/v2.0.0-alpha1-test20497.md
-!/docs/releases/v2.0.0-alpha1-test20505.md
+!/docs/releases/v2.0.0-alpha1-test20509.md
 
 # 本地统计与设计过程记录
 /*.xlsx

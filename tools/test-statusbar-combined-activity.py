@@ -26,7 +26,11 @@ public class TestCombinedActivity {
   return new boolean[]{hide,managed};}
  static String wifiId(View view){return view.family;}static String mobileId(View view){return view.family;}
  static boolean enabled=true,visibilityActive=true;static StatusBarVisibilitySpec visibility=StatusBarVisibilitySpec.empty();
- static boolean activeRole(String id){return id.startsWith("mobile2.");}
+ static ConnectivityIconState radioState(int slot){return new ConnectivityIconState(50,false,false,0,false,slot<0?-1:41+slot,
+  Arrays.asList(new ConnectivityIconState.Sim(41,0,3),new ConnectivityIconState.Sim(42,1,4)));}
+ static class ConnectivityIconSource{ConnectivityIconState state=radioState(1);}
+ static class ConnectivityIconView extends View{final ConnectivityIconState state;ConnectivityIconView(int activeSlot){state=radioState(activeSlot);}ConnectivityIconState sourceState(){return state;}}
+ static ConnectivityIconSource connectivity=new ConnectivityIconSource();
  static class JSONObject {Map<String,Object> values=new HashMap<>();JSONObject put(String key,Object value){values.put(key,value);return this;}
   String optString(String key){Object value=values.get(key);return value instanceof String?(String)value:"";}
   JSONObject optJSONObject(String key){return (JSONObject)values.get(key);}JSONArray optJSONArray(String key){return (JSONArray)values.get(key);}}
@@ -55,6 +59,16 @@ public class TestCombinedActivity {
   check(!scopedHidden(view,"wifi.activity_inout","notification"),"control hiding cannot bleed into notification header");
   visibility=StatusBarVisibilitySpec.empty().with("control","mobile_data",true);
   check(scopedHidden(view,"mobile2.activity_inout","control")&&!scopedHidden(view,"mobile1.activity_inout","control"),"active-data parent hide follows actual card role");
+  connectivity.state=radioState(0);
+  check(scopedHidden(view,"mobile1.activity_inout","control")&&!scopedHidden(view,"mobile2.activity_inout","control"),"native view follows changed active physical card");
+  View owner=new ConnectivityIconView(1);
+  check(scopedHidden(owner,"mobile2.activity_inout","control")&&!scopedHidden(owner,"mobile1.activity_inout","control"),"connectivity owner uses its source state instead of unrelated global radio state");
+  View unknownOwner=new ConnectivityIconView(-1);
+  check(!scopedHidden(unknownOwner,"mobile1.activity_inout","control")&&!scopedHidden(unknownOwner,"mobile2.activity_inout","control"),"unknown owner active subscription does not guess a card role");
+  connectivity=null;
+  check(!scopedHidden(view,"mobile1.activity_inout","control")&&!scopedHidden(view,"mobile2.activity_inout","control"),"missing global radio state leaves native card roles unchanged");
+  check(!scopedHidden(owner,"mobile2.activity_inout","notification"),"owner-specific active card hiding still respects surface scope");
+  connectivity=new ConnectivityIconSource();
   String asset="a".repeat(64);
   for(String id:new String[]{"wifi.activity_inout","secondary_wifi.activity_inout","mobile1.activity_inout","mobile2.activity_inout","mobile_data.activity_inout"}){
    check(StatusBarIconCatalog.find(id)!=null,"combined indicator is an honest catalogue entry: "+id);
@@ -79,6 +93,8 @@ public class TestCombinedActivity {
 }'''
 members = '\n'.join((method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static String semantic('),
                      method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static boolean scopedHidden('),
+                     method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static int mobileSlot('),
+                     method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static boolean activeRole(String id,View owner)'),
                      method(JAVA / 'StatusBarAssetsActivity.java', 'private void indexInventory(')))
 with tempfile.TemporaryDirectory(prefix='statusbar-combined-activity-') as tmp:
     work = Path(tmp)
@@ -88,5 +104,5 @@ with tempfile.TemporaryDirectory(prefix='statusbar-combined-activity-') as tmp:
     jdk = Path(os.environ['JAVA_HOME']) / 'bin' if os.environ.get('JAVA_HOME') else Path('')
     subprocess.run([str(jdk / 'javac'), '-encoding', 'UTF-8', '-d', tmp, str(source),
                     *(str(JAVA / name) for name in ('StatusBarIconCatalog.java', 'StatusBarSurfaceSpec.java', 'StatusBarThemeSpec.java',
-                                                   'StatusBarAssetPolicy.java', 'StatusBarVisibilitySpec.java'))], check=True)
+                                                   'StatusBarAssetPolicy.java', 'StatusBarVisibilitySpec.java', 'ConnectivityIconState.java'))], check=True)
     subprocess.run([str(jdk / 'java'), '-cp', tmp, 'TestCombinedActivity'], check=True)

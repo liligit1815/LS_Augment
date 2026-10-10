@@ -81,6 +81,8 @@ final class ScopeRestartDialog {
     }
 
     private static void restart(Activity activity, String scope) {
+        String request=java.util.UUID.randomUUID().toString();
+        AuditLog.write(activity,"SCOPE_RESTART_REQUEST","request="+request+";scope="+scope+";source=manual;version="+BuildConfig.VERSION_NAME);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             try {
@@ -93,15 +95,22 @@ final class ScopeRestartDialog {
                     synced=config.mirrorAll();
                 }
                 if(!synced.isSuccess()){
+                    AuditLog.write(activity,"SCOPE_RESTART_BLOCKED","request="+request+";scope="+scope+";reason=configuration_not_synced;exit="+synced.exitCode+";timeout="+synced.timedOut);
                     activity.runOnUiThread(()->Toast.makeText(activity,
                             "启动配置仍在等待 LSPosed 框架同步，请稍后再重启作用域。",
                             Toast.LENGTH_LONG).show());
                     return;
                 }
+                AuditLog.writeDurable(activity,"SCOPE_RESTART_COMMAND","request="+request+";scope="+scope+";source=manual;version="+BuildConfig.VERSION_NAME);
                 RootShell.Result result = RootShell.run(command(scope), null, 15, 16 * 1024);
+                AuditLog.write(activity,"SCOPE_RESTART_COMMAND_RESULT","request="+request+";scope="+scope
+                        +";exit="+result.exitCode+";timeout="+result.timedOut+";meaning=command_return_not_process_restart_proof");
                 activity.runOnUiThread(() -> Toast.makeText(activity,
                         result.isSuccess() ? "作用域已重启" : "重启失败：" + result.publicError(),
                         Toast.LENGTH_LONG).show());
+            } catch(RuntimeException error){
+                AuditLog.write(activity,"SCOPE_RESTART_ERROR","request="+request+";scope="+scope+";error="+error.getClass().getSimpleName());
+                activity.runOnUiThread(()->Toast.makeText(activity,"重启失败，请重新尝试。",Toast.LENGTH_LONG).show());
             } finally { executor.shutdown(); }
         });
     }

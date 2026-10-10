@@ -1,6 +1,7 @@
 package ls.augment.com;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.Instrumentation;
 import android.app.UiAutomation;
 import android.content.Context;
@@ -9,8 +10,10 @@ import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ScrollView;
@@ -71,14 +74,17 @@ final class IslandSettingsUiCases {
             });
             require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_OFFSET_Y)),"New vertical offset defaults to centered");
             require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_TRANSPARENT)),"New transparent style is opt-in");
+            require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_APP_STYLE)),"App display style preserves the rounded-square default");
             require(ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_OFFSET_Y)
-                    &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_TRANSPARENT),"New island parameters reach the SystemUI configuration snapshot");
+                    &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_TRANSPARENT)
+                    &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_APP_STYLE),"New island parameters reach the SystemUI configuration snapshot");
             measure("saved");capture("01-saved");unchanged(config,before,rawBefore,memoryBefore);
 
             main(()->{
                 draft.put(SystemUiOptions.ISLAND,"0");
                 for(String suffix:new String[]{"music","notifications","charging"})draft.put(P+suffix,"1");
                 draft.put(SystemUiOptions.ISLAND_TRANSPARENT,"0");
+                draft.put(SystemUiOptions.ISLAND_APP_STYLE,"0");
                 render();
                 require(!master().isChecked()&&masterContent().getVisibility()==View.GONE,"Disabled master hides its settings");
                 require(!arrow(master()).isEnabled(),"Disabled master cannot expand");
@@ -87,7 +93,10 @@ final class IslandSettingsUiCases {
                     require(countTag(root(),"config:"+key)==1,"One switch owns "+key);
                     require(tag("config:"+key) instanceof Switch,"Boolean uses public switch: "+key);
                 }
-                require(all(root(),Spinner.class).isEmpty(),"Activity choices have no competing dropdown controls");
+                require(all(root(),Spinner.class).isEmpty(),"Island uses public action buttons and switches, without a Spinner");
+                require(countTag(root(),"config:"+SystemUiOptions.ISLAND_APP_STYLE)==1,"App style has one tagged public control");
+                require(all(appStyleSection(),Switch.class).isEmpty(),"App style has no pseudo feature switch");
+                require(!appStyle().isShown(),"Disabled master hides app display style");
                 noPending();return null;
             });
             settle();measure("disabled");capture("02-disabled");
@@ -96,6 +105,9 @@ final class IslandSettingsUiCases {
                 require(masterContent().getVisibility()==View.VISIBLE,"Enabling master expands configuration");
                 for(String suffix:new String[]{"music","notifications","charging"})require(toggle(P+suffix).isShown(),"Activity source is reachable: "+suffix);
                 require(toggle(SystemUiOptions.ISLAND_TRANSPARENT).isShown(),"Transparent style uses a reachable native switch");
+                require(appStyleSection().isShown()&&text(appStyleSection(),"灵动岛app显示样式")!=null,"App display style is a function row on the island page");
+                require(appStyleContent().getVisibility()==View.GONE&&!appStyle().isShown(),"App display style options are folded by default");
+                require("圆角方形".contentEquals(appStyle().getText()),"Folded app style retains the rounded-square default");
                 clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,true);
                 require(master().isChecked()&&toggle(P+"music").isChecked(),"Enabling transparent style preserves the island and activity source");
                 clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,false);
@@ -105,6 +117,14 @@ final class IslandSettingsUiCases {
                 noPending();return null;
             });
             settle();measure("enabled");checkSwitchGeometry();capture("03-active-sources");
+
+            checkAppStyleFold(false,0);capture("03a-app-style-collapsed");
+            setAppStyleExpanded(true);checkAppStyleFold(true,0);checkAppStyle(0);capture("03b-app-style-expanded");
+            selectAppStyleSeeded(1,"03c-app-style-choice-dialog");checkAppStyle(1);capture("03d-app-circle");
+            setAppStyleExpanded(false);checkAppStyleFold(false,1);capture("03e-app-circle-collapsed");
+            setAppStyleExpanded(true);checkAppStyleFold(true,1);
+            selectAppStyleSeeded(0,null);checkAppStyle(0);
+            selectAppStyleSeeded(1,null);checkAppStyle(1);
 
             main(()->{
                 Switch notifications=toggle(P+"notifications");
@@ -180,13 +200,15 @@ final class IslandSettingsUiCases {
                 require(master().isChecked()&&masterContent().getVisibility()==View.GONE,"Collapsing configuration leaves island enabled");
                 require(arrow(master()).performClick(),"Master parameters reopen");
                 Map<String,String> parameters=new LinkedHashMap<>();
-                for(String suffix:new String[]{"width","height","offset_x","offset_y","transparent","notice_seconds","music","notifications","charging"})parameters.put(P+suffix,draft.get(P+suffix));
+                for(String suffix:new String[]{"width","height","offset_x","offset_y","transparent","app_style","notice_seconds","music","notifications","charging"})parameters.put(P+suffix,draft.get(P+suffix));
                 clickSeeded(SystemUiOptions.ISLAND,false);
                 require(masterContent().getVisibility()==View.GONE&&!arrow(master()).isEnabled(),"Disabling island collapses all settings");
                 for(Map.Entry<String,String> entry:parameters.entrySet())require(entry.getValue().equals(draft.get(entry.getKey())),"Disabling island preserves "+entry.getKey());
                 noPending();return null;
             });
             settle();measure("disabled-after-use");capture("07-disabled-preserves-values");
+            main(()->{clickSeeded(SystemUiOptions.ISLAND,true);return null;});
+            settle();measure("enabled-restored");checkAppStyle(1);capture("08-app-circle-restored");
             unchanged(config,before,rawBefore,memoryBefore);
             return new JSONObject().put("success",true).put("checks",checks).put("route",ROUTE)
                     .put("fontScale",fontScale).put("density",activity.getResources().getDisplayMetrics().density)
@@ -213,6 +235,84 @@ final class IslandSettingsUiCases {
         noPending();
     }
     private void noPending(){require(pending.restorableValues().isEmpty(),"In-memory interaction queues no configuration write");}
+    private void setAppStyleExpanded(boolean expanded)throws Exception{
+        main(()->{
+            String value=draft.get(SystemUiOptions.ISLAND_APP_STYLE);
+            require((appStyleContent().getVisibility()==View.VISIBLE)!=expanded,"App style exercises a real fold transition");
+            require(appStyleArrow().performClick(),"App style uses the public fold arrow");
+            require(value.equals(draft.get(SystemUiOptions.ISLAND_APP_STYLE)),"Folding app style preserves its selected value");
+            noPending();return null;
+        });
+        settle();
+    }
+    private void checkAppStyleFold(boolean expanded,int selection)throws Exception{main(()->{
+        require((appStyleContent().getVisibility()==View.VISIBLE)==expanded,"App style options have the requested fold state");
+        require(appStyle().isShown()==expanded,"Only expanding app style reveals its value action");
+        require(String.valueOf(selection).equals(draft.get(SystemUiOptions.ISLAND_APP_STYLE)),"Expanding or collapsing app style does not change its value");
+        String action=(expanded?"收起":"展开")+"灵动岛app显示样式";
+        require(action.contentEquals(appStyleArrow().getContentDescription()),"App style arrow describes its fold action");
+        require(appStyleArrow().getRotation()==(expanded?180f:0f),"App style arrow tracks its expanded state");
+        noPending();return null;
+    });}
+    private void selectAppStyleSeeded(int selection,String screenshotName)throws Exception{
+        main(()->{Button choice=appStyle();require(choice.isShown(),"App style action is reachable before selection");
+            choice.requestRectangleOnScreen(new Rect(0,0,choice.getWidth(),choice.getHeight()),true);return null;});
+        settle();
+        Dialog dialog=main(()->{
+            Button choice=appStyle();int current=Integer.parseInt(draft.get(SystemUiOptions.ISLAND_APP_STYLE));
+            require(current!=selection,"App style exercises a real transition");
+            require(choice.performClick(),"App style opens the public choice dialog");
+            Dialog shown=(Dialog)get(activity,"islandAppStyleDialog");require(shown!=null&&shown.isShowing(),"App style uses the common glass choice dialog");
+            View body=shown.getWindow().getDecorView();
+            require(text(body,"灵动岛app显示样式")!=null,"Choice dialog has the requested feature name");
+            for(int index=0;index<2;index++){
+                View row=body.findViewWithTag("choice-option:"+index);require(row!=null,"Choice dialog has option "+index);
+                String label=index==0?"圆角方形":"圆形";
+                if(index==current)label+=" · 当前";
+                require(text(row,label)!=null,"Choice dialog labels its current app style: "+label);
+            }
+            require(body.findViewWithTag("choice-option:2")==null,"Choice dialog does not invent additional styles");
+            require(all(body,Spinner.class).isEmpty()&&all(body,Switch.class).isEmpty(),"Choice dialog contains two public option rows without extra switches or selectors");
+            noPending();return shown;
+        });
+        try{
+            settleDialog(dialog);
+            if(screenshotName!=null)capturePhysical(screenshotName);
+            main(()->{
+                // Seed the target before invoking the production click handler, so
+                // its callback refreshes the value without queuing a configuration write.
+                draft.put(SystemUiOptions.ISLAND_APP_STYLE,String.valueOf(selection));
+                View row=dialog.getWindow().getDecorView().findViewWithTag("choice-option:"+selection);
+                require(row.performClick(),"Requested app style can be selected in the public dialog");
+                require(!dialog.isShowing(),"Selecting app style closes the dialog");return null;
+            });
+        }finally{main(()->{if(dialog.isShowing())dialog.dismiss();return null;});}
+        settle();
+    }
+    private void checkAppStyle(int selection)throws Exception{
+        main(()->{Button choice=appStyle();choice.requestRectangleOnScreen(new Rect(0,0,choice.getWidth(),choice.getHeight()),true);return null;});
+        settle();main(()->{
+        Button choice=appStyle();String label=selection==0?"圆角方形":"圆形";
+        require(choice.isShown(),"App style exposes its value only inside the expanded function");
+        require(String.valueOf(selection).equals(draft.get(SystemUiOptions.ISLAND_APP_STYLE)),"App style retains its in-memory configuration value");
+        require(label.contentEquals(choice.getText()),"App style action displays its current choice: "+label);
+        float density=activity.getResources().getDisplayMetrics().density;
+        float expectedTextPx=TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,UiKit.compactTextSize(14f),activity.getResources().getDisplayMetrics());
+        UiKit ui=(UiKit)get(activity,"ui");TextView title=text(appStyleSection(),"灵动岛app显示样式");
+        require(Math.abs(choice.getTextSize()-expectedTextPx)<.5f,"App style value uses the public compact 14sp button typography");
+        require(title!=null&&choice.getTextSize()<=title.getTextSize(),"App style value is no larger than its feature title");
+        require(choice.getCurrentTextColor()==ui.accent,"App style value uses the public accent color");
+        require(choice.getHeight()/density>=47.5f,"App style retains the common 48dp selection touch target");
+        require(Math.abs(appStyleContent().getPaddingLeft()/density-12f)<1,"App style value uses the common 12dp expanded-content indent");
+        List<Button> actions=all(appStyleContent(),Button.class);
+        require(actions.size()==1&&actions.get(0)==choice,"Expanded app style contains only its current-value action");
+        Rect visible=new Rect();require(choice.getGlobalVisibleRect(visible)&&visible.height()>=choice.getHeight()-1,"App style value is fully visible in its screenshot");
+        measurements.put(new JSONObject().put("state","app-style-"+selection).put("label",label)
+                .put("buttonHeightDp",choice.getHeight()/density).put("contentIndentDp",appStyleContent().getPaddingLeft()/density)
+                .put("textSizePx",choice.getTextSize()).put("expectedTextSizePx",expectedTextPx)
+                .put("titleTextSizePx",title.getTextSize()).put("textUsesAccent",true));
+        noPending();return null;
+    });}
     private void unchanged(AppConfig config,Map<String,String> before,Map<String,?> rawBefore,Map<String,?> memoryBefore){
         require(before.equals(config.snapshot()),"All saved settings remain unchanged");
         require(rawBefore.equals(context.getSharedPreferences(AppConfig.PREFS,0).getAll()),"Raw configuration storage remains unchanged");
@@ -228,13 +328,22 @@ final class IslandSettingsUiCases {
     });}
     private void checkSwitchGeometry()throws Exception{main(()->{
         float density=activity.getResources().getDisplayMetrics().density,low=Float.MAX_VALUE,high=-Float.MAX_VALUE;
+        View styleArrow=appStyleArrow(),styleHelp=description(appStyleSection(),"查看灵动岛app显示样式说明");
+        require(styleHelp instanceof ImageButton,"App style uses the public feature-help action");
+        ViewGroup styleHead=(ViewGroup)appStyleSection().getChildAt(0);
+        require(styleHead.getHeight()/density>=43.5f,"App style header retains the public 44dp function-row touch target");
+        require(Math.abs(styleArrow.getWidth()/density-25)<1&&Math.abs(styleArrow.getHeight()/density-44)<1,"App style has the common 25 by 44dp fold column");
+        require(Math.abs(styleHelp.getWidth()/density-25)<1&&Math.abs(styleHelp.getHeight()/density-44)<1,"App style has the common 25 by 44dp help column");
         for(String suffix:new String[]{"enabled","music","notifications","charging","transparent"}){
             Switch control=toggle(P+suffix);ViewGroup row=(ViewGroup)control.getParent();
             require(row.getHeight()/density>=43.5f,"Switch row retains 44dp touch target: "+suffix);
             require(Math.abs(control.getWidth()/density-46)<1,"Switch uses common 46dp width: "+suffix);
-            int[] position=new int[2];control.getLocationInWindow(position);float right=(position[0]+control.getWidth())/density;
-            low=Math.min(low,right);high=Math.max(high,right);
+            int[] position=new int[2];control.getLocationInWindow(position);float switchRight=(position[0]+control.getWidth())/density;
+            low=Math.min(low,switchRight);high=Math.max(high,switchRight);
             View tail=row.getChildAt(row.getChildCount()-1);require(Math.abs(tail.getWidth()/density-25)<1,"Action column retains common 25dp width: "+suffix);
+            View help=description(row,"查看"+control.getContentDescription()+"说明");
+            require(help!=null&&Math.abs(right(help)-right(styleHelp))/density<=1,"App style help aligns with the public feature-help column: "+suffix);
+            require(Math.abs(right(tail)-right(styleArrow))/density<=1,"App style fold arrow aligns with the public trailing column: "+suffix);
         }
         require(high-low<=1,"Master and source switches share a trailing column: "+(high-low));return null;
     });}
@@ -243,11 +352,22 @@ final class IslandSettingsUiCases {
     private View tag(String key){return root().findViewWithTag(key);}
     private Switch toggle(String key){View view=tag("config:"+key);require(view instanceof Switch,"Switch exists: "+key);return (Switch)view;}
     private Switch master(){return toggle(SystemUiOptions.ISLAND);}
+    private Button appStyle(){View view=control(SystemUiOptions.ISLAND_APP_STYLE);require(view instanceof Button,"App display style uses the public current-value action");return (Button)view;}
+    private ViewGroup appStyleSection(){View view=tag("island-app-style-section");require(view instanceof ViewGroup,"App style uses the public parameter section");return (ViewGroup)view;}
+    private ViewGroup appStyleContent(){View view=tag("island-app-style-options");require(view instanceof ViewGroup,"App style options belong to its fold content");return (ViewGroup)view;}
+    private ImageButton appStyleArrow(){ViewGroup row=(ViewGroup)appStyleSection().getChildAt(0);View view=row.getChildAt(row.getChildCount()-1);require(view instanceof ImageButton,"App style uses the public fold arrow");return (ImageButton)view;}
     private View masterContent(){return ((ViewGroup)tag("native-feature:systemui:island_enabled")).getChildAt(1);}
     private View control(String key){View view=controls.get(key);require(view!=null,"Parameter exists: "+key);return view;}
     private ScrollView scroll(){View view=tag("detail-scroll");require(view instanceof ScrollView,"Public detail content scroll exists");return (ScrollView)view;}
     private ImageButton arrow(Switch control){ViewGroup row=(ViewGroup)control.getParent();View view=row.getChildAt(row.getChildCount()-1);require(view instanceof ImageButton,"Public fold arrow exists");return (ImageButton)view;}
     private static float top(View view){int[] xy=new int[2];view.getLocationInWindow(xy);return xy[1];}
+    private float right(View view){
+        Rect visible=new Rect();require(view.getGlobalVisibleRect(visible),"Aligned feature action is physically visible");
+        // Window positions map the local origin through the view's transform.
+        // An expanded arrow rotates 180 degrees, so origin + width is not its
+        // actual right edge. Measure the transformed visible rectangle instead.
+        return visible.right;
+    }
     private static TextView text(View view,String label){if(view instanceof TextView&&label.contentEquals(((TextView)view).getText()))return (TextView)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){TextView found=text(((ViewGroup)view).getChildAt(i),label);if(found!=null)return found;}return null;}
     private static View description(View view,String label){if(label.contentEquals(view.getContentDescription()==null?"":view.getContentDescription()))return view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){View found=description(((ViewGroup)view).getChildAt(i),label);if(found!=null)return found;}return null;}
     private static int countTag(View view,String label){int count=label.equals(view.getTag())?1:0;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)count+=countTag(((ViewGroup)view).getChildAt(i),label);return count;}
@@ -263,7 +383,19 @@ final class IslandSettingsUiCases {
         require(frames.await(3,TimeUnit.SECONDS),"Page transitions and layout settled");test.waitForIdleSync();
     }
     private void capture(String name)throws Exception{
-        settle();Bitmap bitmap=test.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
+        settle();capturePhysical(name);
+    }
+    private void settleDialog(Dialog dialog)throws Exception{
+        test.waitForIdleSync();long deadline=SystemClock.uptimeMillis()+3000;
+        while(!main(()->dialog.isShowing()&&dialog.getWindow().getDecorView().hasWindowFocus())){
+            require(SystemClock.uptimeMillis()<deadline,"App style choice dialog is foreground before capture");SystemClock.sleep(30);
+        }
+        CountDownLatch frames=new CountDownLatch(1);
+        main(()->{View decor=dialog.getWindow().getDecorView();decor.postDelayed(()->decor.postOnAnimation(()->decor.postOnAnimation(frames::countDown)),300);return null;});
+        require(frames.await(3,TimeUnit.SECONDS),"App style choice-dialog layout settled");test.waitForIdleSync();
+    }
+    private void capturePhysical(String name)throws Exception{
+        Bitmap bitmap=test.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
         require(bitmap!=null,"Physical device screenshot is available");File output=new File(directory,name+".png");
         try(FileOutputStream out=new FileOutputStream(output)){require(bitmap.compress(Bitmap.CompressFormat.PNG,100,out),"Screenshot encoded");}
         finally{bitmap.recycle();}screenshots.put(output.getAbsolutePath());

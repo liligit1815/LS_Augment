@@ -351,7 +351,9 @@ final class StatusBarGridHook {
             if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)captureFrame(((ViewGroup)view).getChildAt(i));
         }
         void syncOverlayAlpha(){
-            float regionAlpha=overlayAlpha(root,alphaAnchor);
+            // Rejected packing retains these views for a later retry. Ancestor
+            // fades must never reveal their restored/old positions meanwhile.
+            float regionAlpha=active&&!packingSuspended?overlayAlpha(root,alphaAnchor):0;
             if(connectivityIcon!=null)connectivityIcon.setAlpha(connectivityPlaced()?regionAlpha:0);
             if(overlay!=null)overlay.setAlpha(regionAlpha);
         }
@@ -692,7 +694,7 @@ final class StatusBarGridHook {
                 resumePacking();
                 StatusBarTintHook.refresh(root);
                 long now=SystemClock.elapsedRealtime();
-                if(now-lastWitness>5000){lastWitness=now;
+                if(lastWitness==0||now-lastWitness>5000){lastWitness=now;
                     layoutFailed=false;
                     String errorKey="ls_augment_statusbar_"+(isKeyguard(root)?"keyguard":"phone")+"_last_error";
                     FeatureSettings.diagnostic(context,errorKey,"");
@@ -795,7 +797,10 @@ final class StatusBarGridHook {
                 FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"0");
             }
         }
-        void resumePacking(){trialClockCapacity=null;clearRejectedCapacity();if(packingSuspended){packingSuspended=false;packingIssue="";lastWitness=0;}}
+        void resumePacking(){trialClockCapacity=null;clearRejectedCapacity();if(packingSuspended){packingSuspended=false;packingIssue="";lastWitness=0;}
+            // beforeDraw synchronized alpha while this candidate was still
+            // suspended; expose it only after every placement has committed.
+            syncOverlayAlpha();}
         Geometry own(View view){Geometry g=geometry.get(view);if(g==null){
             // OEM reparents icons between keyguard and the unlocked bar. Transfer
             // ownership before capturing, otherwise the previous grid becomes the baseline.

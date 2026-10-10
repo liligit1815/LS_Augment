@@ -23,10 +23,13 @@ public class TestStatusFonts {
  static class Typeface {static final int NORMAL=0;static final Typeface DEFAULT=new Typeface("native",400,false),DEFAULT_BOLD=new Typeface("native",700,false);String family;int weight;boolean italic;Typeface(String n,int w,boolean i){family=n;weight=w;italic=i;}int getWeight(){return weight;}boolean isItalic(){return italic;}static Typeface create(Typeface t,int w,boolean i){return new Typeface(t.family,w,i);}static Typeface create(String n,int ignored){return new Typeface(n,500,false);}public boolean equals(Object o){return o instanceof Typeface t&&t.family.equals(family)&&t.weight==weight&&t.italic==italic;}public int hashCode(){return Objects.hash(family,weight,italic);}}
  static class View {boolean inBar=true;int invalidations,layouts;Object tag;Object getContext(){return this;}Object getTag(){return tag;}void invalidate(){invalidations++;}void requestLayout(){layouts++;}}
  static class TextView extends View {Typeface current=Typeface.DEFAULT;Typeface getTypeface(){return current;}void setTypeface(Typeface t){current=t;}}
+ static class ConnectivityIconView extends View {int artworkChanges;void artworkChanged(){artworkChanges++;}}
+ static class Entry {}
+ static final Map<View,Entry> ENTRIES=new WeakHashMap<>();
  static class StatusBarGridHook {static int scopeCalls;static boolean inBar(View view){scopeCalls++;return view.inBar;}}
  static boolean inAssetSurface(View view){return StatusBarGridHook.inBar(view);}static String surfaceFor(View view){return "main";}
  static class ConfigSchema {static final String STATUSBAR_CLOCK_CUSTOM="custom",STATUSBAR_CLOCK_WEIGHT="weight";}
- static class SystemUiHook {static final String GRID_CLOCK_TAG="grid-clock";}
+ static class SystemUiHook {static final String GRID_CLOCK_TAG="grid-clock";static final Set<TextView> nativeHeld=Collections.newSetFromMap(new WeakHashMap<>());static boolean holdsNativeClock(TextView view){return nativeHeld.contains(view);}}
  static class FeatureSettings {static boolean custom=true;static int weight=800;static boolean enabled(Object c,String k){return custom;}static int integer(Object c,String k,int d,int min,int max){return weight;}}
  static class FontSpec {String selected="font:"+"a".repeat(64);String resolve(String role,String surface){return selected;}}
  static class ManagedFont {static Typeface loaded;static Runnable pending;static Typeface loadAsync(Object c,String v,Runnable r){pending=r;return loaded;}}
@@ -50,6 +53,15 @@ public class TestStatusFonts {
   TextView importedFirst=new TextView();fonts.selected="font:"+"a".repeat(64);applyFont(importedFirst,"clock");Typeface lateClockOriginal=nativeTypeface(importedFirst,importedFirst.current);check(lateClockOriginal.equals(Typeface.DEFAULT),"enabling custom clock after import does not capture imported family as original");
   fonts.selected="original";Typeface restored=typeface(importedFirst,"clock",importedFirst.current,lateClockOriginal);applyFont(importedFirst,"clock");check(restored.equals(importedFirst.current)&&restored.equals(Typeface.DEFAULT),"both enable orders restore identical OEM typography");
   fonts.selected="font:"+"a".repeat(64);ManagedFont.loaded=null;TextView waiting=new TextView();applyFont(waiting,"clock");check(waiting.current.equals(Typeface.DEFAULT),"pending font keeps native family");ManagedFont.loaded=new Typeface("arrived",400,false);ManagedFont.pending.run();check(waiting.current.family.equals("arrived")&&refreshes==0,"production font callback applies asynchronously loaded text without root scanning");
+  ConnectivityIconView circle=new ConnectivityIconView();ENTRIES.put(circle,new Entry());ManagedFont.pending.run();
+  check(circle.artworkChanges==1&&refreshes==0,"font arrival notifies registered connectivity owner without rescanning roots");
+  typeface(circle,"battery",null,null);int changes=circle.artworkChanges;invalidatePaintFonts();
+  check(circle.invalidations==1&&circle.artworkChanges==changes+1,"connectivity paint font invalidation refreshes its composite artwork");
+  TextView held=new TextView();typeface(held,"clock",Typeface.DEFAULT,Typeface.DEFAULT);SystemUiHook.nativeHeld.add(held);int heldLayouts=held.layouts;
+  applyFont(held,"clock");ManagedFont.pending.run();
+  check(held.current.equals(Typeface.DEFAULT)&&held.layouts==heldLayouts&&held.invalidations>0,"native clock fallback retains its family through scan and asynchronous font arrival");
+  SystemUiHook.nativeHeld.remove(held);applyFont(held,"clock");
+  check(held.current.family.equals("arrived"),"releasing native clock fallback lets the existing font selection apply");
   typographyActive=false;int scopes=StatusBarGridHook.scopeCalls;TextView empty=new TextView();for(int i=0;i<72000;i++){typeface(empty,"clock",Typeface.DEFAULT,Typeface.DEFAULT);applyFont(empty,"clock");ownsFont(empty);}check(StatusBarGridHook.scopeCalls==scopes,"empty typography performs zero hierarchy lookups across 216,000 production font calls");
   check(weighted(Typeface.DEFAULT,new Typeface("vendor-zero",0,false)).weight==1,"vendor zero weight is bounded for Typeface.create");
   System.out.println("Status-bar fonts: "+checks+" assertions passed");
@@ -61,6 +73,7 @@ members = '\n'.join(extract(marker) for marker in [
     'private static Typeface weighted(', 'private static Typeface weightBase(', 'private static void invalidatePaintFonts(',
     'static Typeface nativeTypeface(',
     'static boolean ownsFont(',
+    'private static void circleChanged(',
 ]) + '\n' + extract('private static final Runnable FONT_READY =') + ';'
 with tempfile.TemporaryDirectory(prefix='statusbar-fonts-') as tmp:
     path = Path(tmp) / 'TestStatusFonts.java'

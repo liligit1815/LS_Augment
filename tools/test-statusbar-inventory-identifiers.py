@@ -23,12 +23,13 @@ harness = r'''import java.util.*;import java.lang.ref.WeakReference;import ls.au
 public class TestInventoryIdentifiers {
  static class JSONObject {Map<String,Object> values=new HashMap<>();JSONObject put(String k,Object v){values.put(k,v);return this;}}
  static class JSONArray {JSONArray(Object values){}}
- static class View {}static class ViewGroup extends View {}
+ static class View {}static class ViewGroup extends View {}static class ImageView extends View {}
+ static final Map<View,String> PRIVACY_IDS=new WeakHashMap<>();
  static class StatusBarIconLayoutHook {static int observations;static View lastObserved;static void observeIcon(View view){observations++;lastObserved=view;}}
  static boolean enabled=true;static String coveringId(View view,String id,boolean virtual){return "";}
  static boolean activeRole(String id){return false;}
  static class Binding {String state="default",asset="a".repeat(64);}
- static class Resource {String error="";boolean loading,drawn;Object art;Binding binding=new Binding();}
+ static class Resource {String error="";boolean loading,drawn,disposed;Object art;Binding binding=new Binding();}
  static class Entry {String id,unsupportedReason,instance="",stateProvenance="unknown",applicationCode="native",applicationReason="原厂";String[] states={"default"};boolean capable,virtual;WeakReference<ViewGroup> root;WeakReference<View> view;int updates,disposed;Map<String,Resource> resources=new HashMap<>();
   Entry(View view,ViewGroup parent,String id,boolean capable,String reason){this.view=new WeakReference<>(view);this.id=id;this.capable=capable;this.unsupportedReason=reason;root=new WeakReference<>(parent);}
   String surface(){return "main";}boolean suppressed(){return false;}void update(){updates++;}void dispose(){disposed++;}}
@@ -55,6 +56,10 @@ public class TestInventoryIdentifiers {
   JSONObject a=valid.json(),b=invalid.json();check(a.values.get("id").equals("wifi")&&a.values.get("capability").equals("whole_layers"),"publication preserves valid supported rows");
   check(StatusBarIconCatalog.validId((String)b.values.get("id"))&&((String)b.values.get("instance")).length()<=128&&b.values.get("state").equals("unsupported")&&b.values.get("capability").equals("observe_only"),"publication fallback bounds malformed IDs and instances without dropping unknown row");
   List<InventoryRow> rows=Arrays.asList(valid,invalid);for(InventoryRow row:rows)check(StatusBarIconCatalog.validId((String)row.json().values.get("id")),"mixed known and malformed unknown rows all satisfy provider identifier validation");
+  ImageView privacy=new ImageView();observe(privacy,root,"privacy.camera",true,"");
+  check("privacy.camera".equals(PRIVACY_IDS.get(privacy)),"native privacy image retains its discovered semantic identity");
+  ImageView dot=new ImageView();observe(dot,root,"privacy.dot",true,"");
+  check(!PRIVACY_IDS.containsKey(dot),"privacy dot does not acquire a camera or microphone identity");
   System.out.println("Status-bar inventory identifiers: "+checks+" assertions passed");
  }
 }'''

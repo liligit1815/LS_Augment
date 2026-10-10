@@ -33,7 +33,7 @@ public void putBoolean(String key,boolean value){put(key,value);}public void put
 public boolean getBoolean(String key){return Boolean.TRUE.equals(get(key));}}
 ''',
     "android/os/SystemClock.java": 'package android.os;public class SystemClock {public static long now;public static long elapsedRealtime(){return now;}}',
-    "android/os/PowerManager.java": 'package android.os;public class PowerManager {public static final int THERMAL_STATUS_SEVERE=3;public int getCurrentThermalStatus(){return 0;}}',
+    "android/os/PowerManager.java": 'package android.os;public class PowerManager {public static final int THERMAL_STATUS_SEVERE=3;public static int thermal;public int getCurrentThermalStatus(){return thermal;}}',
     "android/os/Looper.java": 'package android.os;public class Looper {public static final Looper WORKER=new Looper();public static Looper myLooper(){return WORKER;}}',
     "android/os/HandlerThread.java": 'package android.os;public class HandlerThread {public HandlerThread(String name){}public void start(){}public Looper getLooper(){return Looper.WORKER;}public void quitSafely(){}}',
     "android/os/Handler.java": 'package android.os;public class Handler {private final Looper looper;public Handler(Looper l){looper=l;}public Looper getLooper(){return looper;}public void post(Runnable r){}public void postDelayed(Runnable r,long delay){}public void removeCallbacks(Runnable r){}}',
@@ -66,9 +66,14 @@ import java.lang.reflect.*;import java.util.*;import android.provider.Settings;i
 public class TestFanFixedRuntime {
 static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
 public static class Nodes {
- static int enabled=1,level=2,writes;static final int[] RPM={0,4200,8360,13300,16400,19600};
- public static String read(String path){return String.valueOf(path.endsWith("fan_enable")?enabled:path.endsWith("fan_speed_level")?level:enabled==1?RPM[level]:0);}
- public static void write(String path,String value){check(path.endsWith("fan_speed_level"),"never write fan enable or RPM");level=Integer.parseInt(value);writes++;}
+ static int enabled=1,level=2,writes,pendingLevel=-1;static long delayMs,applyAt;static boolean dropWrites,rpmOverride;static String rpm;
+ static final int[] RPM={0,4200,8360,13300,16400,19600};
+ public static String read(String path){
+  if(pendingLevel>=0&&android.os.SystemClock.now>=applyAt){level=pendingLevel;pendingLevel=-1;}
+  if(path.endsWith("fan_speed_count")&&rpmOverride)return rpm;
+  return String.valueOf(path.endsWith("fan_enable")?enabled:path.endsWith("fan_speed_level")?level:enabled==1?RPM[level]:0);}
+ public static void write(String path,String value){check(path.endsWith("fan_speed_level"),"never write fan enable or RPM");writes++;
+  if(dropWrites)return;int next=Integer.parseInt(value);if(delayMs==0)level=next;else{pendingLevel=next;applyAt=android.os.SystemClock.now+delayMs;}}
 }
 public static class Owner {
  int maximum,cancel,notify;void fanMaxSpeed(){maximum++;}void fanFullSpeed(){throw new AssertionError("retired OEM full-speed feature");}
@@ -83,6 +88,7 @@ static void tick(){android.os.SystemClock.now+=900;
  ((Runnable)controller).run();}
 static void create(boolean verified)throws Exception {
  FeatureSettings.diagnostics.clear();Settings.System.mode=1;Settings.System.manual=2;Nodes.enabled=1;Nodes.level=2;Nodes.writes=0;
+ Nodes.pendingLevel=-1;Nodes.delayMs=0;Nodes.dropWrites=false;Nodes.rpmOverride=false;Nodes.rpm=null;android.os.PowerManager.thermal=0;
  owner=new Owner();FanCompatibilityProfile profile=FanCompatibilityProfile.resolve(verified?"NX809J":"NX769J","","",true,true,true,true,p->true);
  Class<?> type=Class.forName("ls.augment.com.hook.FanControlHook$Controller");Constructor<?> ctor=type.getDeclaredConstructors()[0];ctor.setAccessible(true);
  controller=ctor.newInstance(new AugmentModule(),Nodes.class.getMethod("write",String.class,String.class),Nodes.class.getMethod("read",String.class),profile);
@@ -126,6 +132,43 @@ public static void main(String[] args)throws Exception {
   &&field("activeCalibrationRequest").equals(measurement),"same-level token during measurement preserves measurement and restore ownership");
  FeatureSettings.values.put(ConfigSchema.FAN_CALIBRATION_REQUEST,"");Nodes.enabled=0;tick();
  check(Nodes.enabled==0&&Nodes.level==2,"cancelled measurement keeps OEM fan off and restores its remembered level");
+
+ // F03: the production controller must observe an asynchronous acknowledgement,
+ // then fail a genuinely unacknowledged command without repeated writes.
+ FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"3");create(true);Nodes.delayMs=1800;
+ for(int n=0;n<12&&Nodes.writes==0;n++)tick();
+ check(Nodes.writes==1&&Nodes.level==2&&FeatureSettings.diagnostics.get("active").startsWith("applying;"),"queued OEM level does not report immediate failure");
+ tick();check(Nodes.writes==1&&Nodes.level==2&&FeatureSettings.diagnostics.get("error").isEmpty(),"unacknowledged in-window write waits without resubmission");
+ tick();check(Nodes.level==3&&FeatureSettings.diagnostics.get("active").startsWith("controlled;"),"delayed acknowledgement enters controlled state");
+ create(true);Nodes.dropWrites=true;
+ for(int n=0;n<12&&Nodes.writes==0;n++)tick();int pendingWrites=Nodes.writes;
+ tick();tick();tick();check(field("sessionLocked").equals(false),"pending command stays unlocked before the three-second deadline");
+ tick();check(field("sessionLocked").equals(true)&&FeatureSettings.diagnostics.get("error").contains("fan_level_not_applied"),"unacknowledged command still fails after bounded timeout");
+ check(Nodes.writes==pendingWrites+1,"timeout attempts only one owned restore, without retrying the failed target");
+
+ // F04: startup feedback may be briefly absent, but cannot grant a level write.
+ create(true);Nodes.rpmOverride=true;Nodes.rpm="0";tick();long started=android.os.SystemClock.now;
+ android.os.SystemClock.now=started+FanRpmStartup.STARTUP_TIMEOUT_MS-900-1;tick();
+ check(Nodes.writes==0&&field("sessionLocked").equals(false)&&FeatureSettings.diagnostics.get("active").contains("waiting_for_rpm"),"invalid startup RPM waits without taking hardware ownership");
+ android.os.SystemClock.now=started+FanRpmStartup.STARTUP_TIMEOUT_MS-900;tick();
+ check(Nodes.writes==0&&field("sessionLocked").equals(true)&&"rpm_invalid".equals(FeatureSettings.diagnostics.get("error")),"startup invalid RPM locks at the six-second boundary without a write");
+ create(true);Nodes.rpmOverride=true;Nodes.rpm=null;tick();Nodes.rpm="8360";tick();
+ check(Nodes.writes==0&&field("controlKind").toString().equals("NONE"),"one valid RPM cannot take over startup");
+ Nodes.rpm="bad";tick();check(Nodes.writes==0&&field("controlKind").toString().equals("NONE"),"intermittent invalid RPM resets consecutive startup samples");
+ Nodes.rpm="8360";tick();check(Nodes.writes==0,"first valid sample after interruption still cannot take over");
+ awaitLevel(3);check(Nodes.level==3,"consecutive valid RPM permits takeover after native settling");
+ int activeWrites=Nodes.writes;Nodes.rpm=null;tick();
+ check(field("sessionLocked").equals(true)&&"rpm_invalid".equals(FeatureSettings.diagnostics.get("error"))&&Nodes.level==2&&Nodes.writes==activeWrites+1,"active-control invalid RPM immediately releases and restores its owned OEM level");
+ create(true);Nodes.rpmOverride=true;Nodes.rpm="0";android.os.PowerManager.thermal=3;tick();
+ check(Nodes.writes==0&&"thermal_unsafe".equals(FeatureSettings.diagnostics.get("error")),"startup grace never bypasses thermal protection");
+ create(true);Nodes.rpmOverride=true;Nodes.rpm="0";Nodes.enabled=0;tick();
+ check(Nodes.enabled==0&&Nodes.writes==0&&field("controlKind").toString().equals("NONE"),"startup observation cannot enable an OEM-disabled fan");
+
+ // F05: an OEM mode handoff retains the new mode, including maximum-power release.
+ create(true);select(5);int handoffWrites=Nodes.writes;Settings.System.mode=0;Nodes.level=4;tick();
+ check(field("sessionLocked").equals(true)&&"vendor_state_changed".equals(FeatureSettings.diagnostics.get("error")),"OEM mode takeover suspends the prior module request");
+ check(Nodes.level==4&&Nodes.writes==handoffWrites&&owner.cancel==1&&owner.notify==1,"OEM handoff releases maximum power without writing the captured stale level");
+ tick();check(Nodes.writes==handoffWrites&&Nodes.level==4,"an unchanged old request cannot reacquire an OEM handoff");
  FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"0");create(false);tick();
  check(owner.maximum==0&&Nodes.writes==0,"old OEM-only maximum feature remains inactive");
  System.out.println("PASS production FanControlHook fixed runtime: "+checks+" checks (facade; physical RPM/timing unverified)");
@@ -139,7 +182,7 @@ constants = sorted(set(re.findall(r"ConfigSchema\.([A-Z][A-Z0-9_]+)", hook + FIL
 schema_constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)";', schema))
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{schema_constants[name]}";' for name in constants) + "}"
-for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanPowerLease.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java"]:
+for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanPowerLease.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java", "hook/FanRpmStartup.java"]:
     FILES["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
 

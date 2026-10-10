@@ -6,6 +6,7 @@ This harness executes production cleanup, temporary fallback/recovery, ownership
 and adaptive packing bodies. It requires a JDK and never accesses a device.
 """
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 
@@ -29,7 +30,16 @@ import java.util.*;
 import ls.augment.com.StatusBarGridLayout;
 import ls.augment.com.StatusBarAdaptiveLayout;
 public final class TestStatusBarFailureCleanup {
+ static class ViewTreeObserver {
+  interface OnGlobalLayoutListener {void onGlobalLayout();}
+  final List<OnGlobalLayoutListener> listeners=new ArrayList<>();
+  void addOnGlobalLayoutListener(OnGlobalLayoutListener listener){listeners.add(listener);}
+  void removeOnGlobalLayoutListener(OnGlobalLayoutListener listener){listeners.remove(listener);}
+  boolean isAlive(){return true;}
+  void dispatch(){for(OnGlobalLayoutListener listener:List.copyOf(listeners))listener.onGlobalLayout();}
+ }
  static class View {
+  static final int VISIBLE=0;int visibility;float transitionAlpha=1;
   String slot; ViewGroup parent;
   int left,top,right,bottom,measuredWidth,measuredHeight;
   static class MeasureSpec {static final int EXACTLY=0x40000000;static int makeMeasureSpec(int size,int mode){return size|mode;}}
@@ -39,8 +49,10 @@ public final class TestStatusBarFailureCleanup {
   void layout(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}
   float x,y,sx=1,sy=1,alpha=1;
   ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();
+  final ViewTreeObserver observer=new ViewTreeObserver();ViewTreeObserver getViewTreeObserver(){return observer;}
   float getTranslationX(){return x;} float getTranslationY(){return y;}
   float getScaleX(){return sx;} float getScaleY(){return sy;} float getAlpha(){return alpha;}
+  int getVisibility(){return visibility;}float getTransitionAlpha(){return transitionAlpha;}
   void setTranslationX(float v){x=v;} void setTranslationY(float v){y=v;}
   void setScaleX(float v){sx=v;} void setScaleY(float v){sy=v;} void setAlpha(float v){alpha=v;}
   ViewGroup.LayoutParams getLayoutParams(){return params;}
@@ -81,6 +93,7 @@ public final class TestStatusBarFailureCleanup {
   static final String SYSTEMUI_LAST_ERROR="error",SYSTEMUI_ACTIVE="active",SYSTEMUI_LAYOUT_STATE="layout";
   static final Map<String,String> diagnostics=new LinkedHashMap<>();
   static void diagnostic(Context context,String key,String value){diagnostics.put(key,value);}
+  static String diagnosticValue(Context context,String key){return diagnostics.getOrDefault(key,"");}
   // DIAGNOSTIC_ERROR
   static boolean enabled(Context context,String key){return false;}
   static int integer(Context context,String key,int fallback,int min,int max){return fallback;}
@@ -93,6 +106,7 @@ public final class TestStatusBarFailureCleanup {
   static void releaseGridClock(TextView clock){released.add(clock);}
  }
  static boolean isKeyguard(ViewGroup root){return root.keyguard;}
+ // OVERLAY_ALPHA
  static final Map<ViewGroup,State> STATES=new IdentityHashMap<>();
  static State stateFor(View view){for(View at=view;at!=null;at=at.parent){State state=STATES.get(at);if(state!=null)return state;}return null;}
  // OWNERSHIP
@@ -106,10 +120,13 @@ public final class TestStatusBarFailureCleanup {
   final Map<String,List<View>> groups=new HashMap<>();
   final Map<String,TextView> metrics=new LinkedHashMap<>();
   final TextView[] clockLines=new TextView[2];
-  FrameLayout overlay;TextView keyguardClock;ConnectivityIconView connectivityIcon;
+  FrameLayout overlay;TextView keyguardClock;ConnectivityIconView connectivityIcon;View alphaAnchor;
   Handler worker;HandlerThread thread;long metricsGeneration,lastWitness;boolean active=true,layoutFailed;
   Object batteryInk;View batteryInkView;String batteryInkInputs="",trialClockCapacity;boolean circleTrial;final List<View> circleNative=new ArrayList<>();
-  static class PackingCapacityBlock{}PackingCapacityBlock packingCapacityBlock;void clearRejectedCapacity(){packingCapacityBlock=null;}
+  PackingCapacityBlock packingCapacityBlock;String capacityInputs="configured",capacityShape="native";boolean nativePending;
+  String nativeCapacityInputs(){return capacityInputs;}String nativeCapacityInputs(String trial){return capacityInputs;}
+  String nativeCapacityShape(){return capacityShape;}boolean nativeLayoutPending(View view){return nativePending;}
+  // CAPACITY_BLOCK
   boolean packingSuspended,positionOnly;String packingIssue="";
   boolean positionOnly(){return positionOnly;}boolean connectivityGroup(){return !positionOnly;}
   State(){STATES.put(root,this);}
@@ -117,6 +134,9 @@ public final class TestStatusBarFailureCleanup {
   void prepareReplacement(View view){Geometry original=own(view);view.setAlpha(0);original.mark(view);}
   int px(float value){return Math.round(value);}
   // METHODS
+  void publishSuccessfulLayout(long now){
+   // SUCCESS_WITNESS
+  }
   Runnable pendingSample(Map<String,String> values,long generation){return () -> // SAMPLE_BODY
   ;}
  }
@@ -216,8 +236,9 @@ public final class TestStatusBarFailureCleanup {
  }
  static void recovery(){
   State state=new State();View battery=new View(),wifi=new View();battery.alpha=.7f;wifi.alpha=.8f;
-  state.root.addView(battery);state.root.addView(wifi);
+  ViewGroup nativeRegion=new ViewGroup();state.root.addView(nativeRegion);nativeRegion.addView(battery);nativeRegion.addView(wifi);state.alphaAnchor=battery;
   state.overlay=new FrameLayout();state.root.addView(state.overlay);
+  TextView metric=new TextView();state.overlay.addView(metric);state.metrics.put("cpu",metric);
   state.connectivityIcon=new ConnectivityIconView();state.root.addView(state.connectivityIcon);
   state.worker=new Handler();state.thread=new HandlerThread();state.metricsGeneration=9;
   check(!ownsConnectivityReplacement(battery),"ready data alone cannot claim a replacement without placement");
@@ -230,11 +251,13 @@ public final class TestStatusBarFailureCleanup {
    StatusBarAdaptiveLayout.Result result=StatusBarAdaptiveLayout.pack(nodes,state.root.width,32,4,4,0,0,2,0,0);
    check(result.valid==fits,"actual adaptive layout decides overflow/recovery at the new width");
    if(result.valid){
+    nativeRegion.alpha=.5f;
     Geometry original=state.own(state.connectivityIcon);state.connectivityIcon.x=result.boxes.get("battery").x;original.mark(state.connectivityIcon);
     state.connectivityIcon.commit();
     state.resumePacking();
     check(ownsIconLayout(battery)&&ownsConnectivityReplacement(battery),"successful placement regains native/icon ownership");
-    close(0,battery.alpha,"successful replacement hides native battery");close(1,state.connectivityIcon.alpha,"successful replacement becomes visible");
+    close(0,battery.alpha,"successful replacement hides native battery");close(.5f,state.connectivityIcon.alpha,"successful replacement follows native fade on its first frame");
+    close(.5f,state.overlay.alpha,"successful recovery immediately shows the newly placed overlay");
     check(state.packingIssue.isEmpty(),"recovery clears transient reason");
    }else{
     state.suspendPacking(result.reason);
@@ -242,6 +265,13 @@ public final class TestStatusBarFailureCleanup {
     check(!ownsIconLayout(battery)&&!ownsConnectivityReplacement(battery)&&!hasGridTransform(battery),"fallback yields all native ownership");
     close(.7f,battery.alpha,"fallback restores native battery opacity");close(.8f,wifi.alpha,"fallback restores native Wi-Fi opacity");
     close(0,state.connectivityIcon.alpha,"fallback never displays stale replacement");close(0,state.overlay.alpha,"fallback hides retained metric/clock overlay");
+    for(float fade:new float[]{1,.4f,0,1}){
+     nativeRegion.alpha=fade;state.syncOverlayAlpha();
+     close(0,state.overlay.alpha,"later native fade updates cannot expose the retained fallback overlay");
+     close(0,state.connectivityIcon.alpha,"later native fade updates cannot expose the uncommitted replacement");
+     close(.7f,battery.alpha,"native battery keeps its restored opacity while the fallback persists");
+     close(.8f,wifi.alpha,"native Wi-Fi keeps its restored opacity while the fallback persists");
+    }
     check(state.geometry.isEmpty(),"fallback releases transform baselines before the next candidate");
    }
    check(state.worker!=null&&state.thread!=null&&state.metricsGeneration==9,"transient fallback retains listeners and metrics lifecycle");
@@ -252,8 +282,44 @@ public final class TestStatusBarFailureCleanup {
   state.restore();check(!state.packingSuspended&&state.packingIssue.isEmpty(),"config restore discards old packing suspension");
   close(.7f,battery.alpha,"mode switch preserves the recovered native battery");
  }
+ static void successfulWitness(){
+  STATES.clear();FeatureSettings.diagnostics.clear();
+  State state=new State();state.suspendPacking("height insufficient");state.layoutFailed=true;
+  FeatureSettings.diagnostics.put(FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_layout:old failure");
+  state.resumePacking();state.publishSuccessfulLayout(200);
+  check(!state.layoutFailed,"successful placement clears the runtime failure flag immediately");
+  check("".equals(FeatureSettings.diagnostics.get("ls_augment_statusbar_phone_last_error")),"first recovered frame clears the capacity error even in the first five seconds");
+  check("".equals(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_LAST_ERROR)),"recovery clears the global grid error when no surface remains failed");
+  check("1".equals(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_ACTIVE)),"first recovered frame publishes actual active state");
+  State other=new State();other.root.keyguard=true;other.layoutFailed=true;
+  FeatureSettings.diagnostics.put(FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_layout:keyguard failure");
+  state.lastWitness=0;state.publishSuccessfulLayout(300);
+  check("grid_layout:keyguard failure".equals(FeatureSettings.diagnostics.get(FeatureSettings.SYSTEMUI_LAST_ERROR)),"phone recovery cannot erase another surface's outstanding failure");
+ }
+ static void rejectedCapacity(){
+  State state=new State();state.overlay=new FrameLayout();state.root.addView(state.overlay);
+  View anchor=new View();state.root.addView(anchor);state.alphaAnchor=anchor;
+  state.suspendPacking("height insufficient");
+  check(state.holdRejectedCapacity(),"rejected input waits for a native traversal");
+  state.root.observer.dispatch();state.nativePending=true;
+  check(state.holdRejectedCapacity(),"a pending native traversal cannot replace the rejection signature");
+  state.nativePending=false;state.capacityShape="restored native";
+  check(state.holdRejectedCapacity(),"the first restored native shape is still a rejected candidate");
+  check(state.root.observer.listeners.isEmpty(),"capturing the native shape releases the temporary layout listener");
+  for(int frame=0;frame<120;frame++){
+   check(state.holdRejectedCapacity(),"the same rejected native shape cannot be retried as a smaller successful grid");
+   state.syncOverlayAlpha();close(0,state.overlay.alpha,"cached rejection keeps old custom labels hidden");
+  }
+  state.capacityShape="new native content";
+  check(!state.holdRejectedCapacity()&&state.packingCapacityBlock==null,"a real native shape change releases the rejected capacity");
+  state.suspendPacking("height insufficient");state.capacityInputs="changed saved height or rows";
+  check(!state.holdRejectedCapacity()&&state.packingCapacityBlock==null,"a configuration change releases the rejection and allows an actual retry");
+  check(state.root.observer.listeners.isEmpty(),"changed configuration removes the old rejection listener");
+  close(0,state.overlay.alpha,"a retry request alone cannot expose unplaced custom content");
+  state.resumePacking();close(1,state.overlay.alpha,"a committed successful retry restores the overlay immediately");
+ }
  public static void main(String[] args){
-  identification();cleanup(false);cleanup(true);recovery();
+  identification();cleanup(false);cleanup(true);recovery();successfulWitness();rejectedCapacity();
   System.out.println("Status bar failure cleanup: "+checks+" actual-method cleanup, adaptive recovery and ownership assertions passed");
  }
 }
@@ -261,19 +327,39 @@ public final class TestStatusBarFailureCleanup {
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mutation', choices=('expose-retained-overlay', 'omit-recovery-alpha', 'throttle-first-witness'))
+    args = parser.parse_args()
     source = SOURCE.read_text(encoding='utf-8')
+    if args.mutation:
+        before, after = {
+            'expose-retained-overlay': ('active&&!packingSuspended?overlayAlpha(root,alphaAnchor):0', 'overlayAlpha(root,alphaAnchor)'),
+            'omit-recovery-alpha': ('syncOverlayAlpha();}', '}'),
+            'throttle-first-witness': ('if(lastWitness==0||now-lastWitness>5000)', 'if(now-lastWitness>5000)'),
+        }[args.mutation]
+        if before not in source:
+            raise AssertionError(f'mutation target missing: {args.mutation}')
+        source = source.replace(before, after, 1)
     methods = '\n'.join(extract(source, marker) for marker in (
         'boolean isConnectivity(View view)', 'void stopMetrics()',
         'void restore()', 'void failLayout(Throwable error)',
         'void suspendPacking(String reason)', 'void resumePacking()',
         'void restorePlacement()',
         'boolean usingConnectivityIcon()', 'boolean connectivityPlaced()',
+        'void syncOverlayAlpha()',
+        'void clearRejectedCapacity()', 'boolean holdRejectedCapacity()',
     ))
+    witness_start = source.rindex('if(', 0, source.index('lastWitness=now;'))
+    witness_end = source.index('FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"1");', witness_start)
+    witness_end += len('FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"1");')
+    success_witness = source[witness_start:witness_end] + '\n}'
     sample = extract(source, 'main.post(()->{if(!active||metricsGeneration!=generation)return;')
     sample = sample[sample.index('{'):]
     harness = (HARNESS
                .replace('// DIAGNOSTIC_ERROR', extract((SOURCE.parent / 'FeatureSettings.java').read_text(encoding='utf-8'), 'static void diagnosticError('))
                .replace('// GEOMETRY', extract(source, 'private static final class Geometry {'))
+               .replace('// OVERLAY_ALPHA', extract(source, 'private static float overlayAlpha('))
+               .replace('// CAPACITY_BLOCK', extract(source, 'final class PackingCapacityBlock {'))
                .replace('// BASE_ID', extract(source, 'private static String baseId(String id)'))
                .replace('// OWNERSHIP', '\n'.join(extract(source, marker) for marker in (
                    'static boolean ownsIconLayout(',
@@ -281,6 +367,7 @@ def main():
                    'static boolean hasGridTransform(',
                )))
                .replace('// METHODS', methods)
+               .replace('// SUCCESS_WITNESS', success_witness)
                .replace('// SAMPLE_BODY', sample))
     with tempfile.TemporaryDirectory(prefix='lsa-statusbar-failure-') as directory:
         temporary = Path(directory)

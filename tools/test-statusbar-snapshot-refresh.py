@@ -165,6 +165,14 @@ public class TestStatusBarSnapshotRefresh {
     check(state.appliedHeight==-4,"negative height survives snapshot refresh");
     FeatureSettings.current=config(false,"negative_height",-4);state.refresh();
     check(state.appliedHeight==0,"master off restores native after negative height");
+    State failedHeight=new State();ConfigSnapshot rejected=config(true,"two_rows",-13);
+    FeatureSettings.current=rejected;failedHeight.refresh();failedHeight.active=false;
+    check(failedHeight.appliedHeight==-13&&"-13".equals(FeatureSettings.current.get(ConfigSchema.STATUSBAR_HEIGHT_DP)),"a runtime failure retains the user's negative height instead of silently changing it");
+    ConfigSnapshot recovered=config(true,"two_rows",0);FeatureSettings.current=recovered;failedHeight.refresh();
+    check(failedHeight.active&&failedHeight.appliedHeight==0&&failedHeight.metricsStarted==2,"changing height after failure rebuilds the active controller and its metrics lifecycle");
+    check("two_rows".equals(failedHeight.spec.layout)&&FeatureSettings.current==recovered,"recovery keeps the requested rows and published user configuration");
+    FeatureSettings.current=config(false,"two_rows",-13);failedHeight.refresh();
+    check(failedHeight.appliedHeight==0&&"-13".equals(FeatureSettings.current.get(ConfigSchema.STATUSBAR_HEIGHT_DP)),"master off restores the native height while preserving the saved negative parameter");
     for(String archived:new String[]{"", "obsolete invalid table", "SS2;old_table_with_image"}){
       FeatureSettings.current=new ConfigSnapshot(Map.of(ConfigSchema.SYSTEMUI_MASTER,"1",
           ConfigSchema.STATUSBAR_GRID,"component_layout",ConfigSchema.STATUSBAR_HEIGHT_DP,"36",

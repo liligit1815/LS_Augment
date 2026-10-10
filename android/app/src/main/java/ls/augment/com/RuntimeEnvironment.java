@@ -29,9 +29,14 @@ final class RuntimeEnvironment {
             String process=snapshot.optString("process"),pkg=snapshot.optString("package");
             if(!("system".equals(process)||"system_server".equals(process))||!("system".equals(pkg)||"android".equals(pkg)))return "";
             String version=snapshot.optString("moduleVersion");
-            return ModuleRuntimeStatus.matchesTelemetry(version,version,snapshot.optInt("pid",-1),liveSystemPid,
+            boolean authenticated=ModuleRuntimeStatus.matchesTelemetry(version,version,snapshot.optInt("pid",-1),liveSystemPid,
                     snapshot.optInt("sourceUid",-1),snapshot.optBoolean("moduleLoaded"),
-                    snapshot.optInt("receivedBoot",-1),bootCount(context))?version:"";
+                    snapshot.optInt("receivedBoot",-1),bootCount(context));
+            boolean fresh=DiagnosticEvidencePolicy.currentProcessSnapshot(version,version,snapshot.optInt("pid",-1),
+                    true,snapshot.optBoolean("moduleLoaded"),snapshot.optLong("moduleLoadedElapsed"),
+                    android.os.SystemClock.elapsedRealtime(),snapshot.optLong("receivedAt"),System.currentTimeMillis(),
+                    snapshot.optInt("receivedBoot",-1),bootCount(context));
+            return authenticated&&fresh?version:"";
         } catch(org.json.JSONException invalid) { return ""; }
     }
     static int bootCount(Context context) {
