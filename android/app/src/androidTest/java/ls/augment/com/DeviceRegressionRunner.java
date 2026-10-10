@@ -58,11 +58,26 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "game-settings-ui".equals(operation)
                     || "game-performance-monitor-ui".equals(operation)
                     || "integrated-settings-ui".equals(operation)
+                    || "liftarc-settings-ui".equals(operation)
+                    || "liftarc-log-fixture".equals(operation)
+                    || "contributors-references-ui".equals(operation)
                     || "launcher-grid-drag".equals(operation)
                     ? null : new AppConfig(context);
             report.put("operation", operation).put("moduleVersion", BuildConfig.VERSION_CODE)
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "liftarc-log-fixture":
+                    report.put("liftArcLog",LiftArcLogDeviceCases.run(context));
+                    result.putString("liftArcLog",report.getJSONObject("liftArcLog").toString());
+                    break;
+                case "contributors-references-ui":
+                    report.put("contributorsReferencesUi",ContributorsReferencesUiCases.run(this,arguments));
+                    result.putString("contributorsReferencesUi",report.getJSONObject("contributorsReferencesUi").toString());
+                    break;
+                case "liftarc-settings-ui":
+                    report.put("liftArcSettingsUi",LiftArcUiCases.run(this,arguments));
+                    result.putString("liftArcSettingsUi",report.getJSONObject("liftArcSettingsUi").toString());
+                    break;
                 case "log-repair-fixture":
                     report.put("logRepairFixture",LogRepairDeviceCases.run(context));
                     result.putString("logRepairFixture",report.getJSONObject("logRepairFixture").toString());

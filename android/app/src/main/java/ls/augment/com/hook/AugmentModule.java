@@ -424,10 +424,12 @@ public final class AugmentModule extends RootEarlyModule {
     }
 
     void logFeatureInfo(String message) {
+        LiftArcLog.stageInfo(message);
         logInfo("FEATURE_" + message);
     }
 
     void logFeatureError(String message, Throwable error) {
+        LiftArcLog.stageError(message,error);
         logError("FEATURE_" + message, error);
     }
 
@@ -436,6 +438,7 @@ public final class AugmentModule extends RootEarlyModule {
         // One optional adapter must never prevent the other SystemUI features loading.
         installSystemUiStage("power", () -> PowerMenuModesHook.install(this, classLoader));
         installSystemUiStage("core", () -> SystemUiHook.install(this, classLoader));
+        installSystemUiStage("liftarc", () -> LiftArcHooks.install(this, classLoader));
         installSystemUiStage("tile_icon", () -> OwnTileIconHook.install(this, classLoader));
         installSystemUiStage("fan_tile", () -> FanTileHook.install(this, classLoader));
         installSystemUiStage("extra_dim_tile", () -> ExtraDimTileHook.install(this, classLoader));

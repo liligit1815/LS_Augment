@@ -25,7 +25,10 @@ public final class EnhancementOption {
         try { return validator.apply(value.trim()); } catch(RuntimeException ignored) { return null; }
     }
     public static EnhancementOption toggle(String key,String group,String title,String summary) {
-        return new EnhancementOption(key,group,title,summary,Kind.BOOLEAN,"0",0,1,null,
+        return toggle(key,group,title,summary,false);
+    }
+    public static EnhancementOption toggle(String key,String group,String title,String summary,boolean value) {
+        return new EnhancementOption(key,group,title,summary,Kind.BOOLEAN,value?"1":"0",0,1,null,
             v->"1".equals(v)||"true".equalsIgnoreCase(v)?"1":
                 "0".equals(v)||"false".equalsIgnoreCase(v)?"0":null);
     }

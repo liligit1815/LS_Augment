@@ -20,7 +20,7 @@ final class DiagnosticExport {
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
             .append("callbackThrows 为传播异常总数；moduleCallbackThrows 是模块处理异常，proceedChainThrows 是继续调用链传回的异常。最后回调时间不等于错误发生时间，须查看 lastErrorAt 和来源。\n")
-            .append("详细记录仅包含开启后的有界窗口。队列丢弃、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据。\n");
+            .append("AI/肩键详细记录仅包含开启后的有界窗口；锁屏上滑运行日志始终纳入采集。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、自定义锁屏提示文字全文或壁纸内容。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
@@ -81,6 +81,7 @@ final class DiagnosticExport {
             out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
         out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
+        appendLiftArcLog(out,context);
         // Cleanup failures need process death and graphics evidence even when AI /
         // shoulder detail switches are off. Read buffers without clearing them.
         source(out,"LAUNCHER_EXIT_INFO; historical entries must be matched to reproduction time",
@@ -169,6 +170,7 @@ final class DiagnosticExport {
         boolean flag="0".equals(value)||"1".equals(value)||"true".equals(value)||"false".equals(value);
         boolean publicFlag=flag&&(key.equals("ls_augment_health_plan_enabled")||key.equals("ls_augment_rm_usb_install_no_account"));
         boolean protectedValue=key.equals("ls_augment_health_account")||key.equals("ls_augment_health_plan")
+                ||key.equals(LiftArcOptions.key("hint_text"))
                 ||key.equals("ls_augment_tgk_rapid_fire_test_session")
                 ||key.contains("token")||((key.contains("account")||key.contains("health_plan"))&&!publicFlag)
                 ||(key.startsWith("ls_augment_rm_ota_")&&!flag);
@@ -205,12 +207,16 @@ final class DiagnosticExport {
             .append(" filterState=").append(filterState).append(" lines=").append(lineCount(output)).append('\n').append(output).append('\n');
     }
     private static int lineCount(String value){return value==null||value.trim().isEmpty()?0:value.trim().split("\\r?\\n").length;}
+    /** The unified export always includes this section, even when optional detailed logs are off. */
+    static void appendLiftArcLog(StringBuilder out,Context context){
+        file(out,context,"LIFTARC_RUNTIME INFO/WARN/ERROR",DiagnosticStore.LIFTARC_FILE,DiagnosticStore.DETAIL_MAX_BYTES,"LIFTARC");
+    }
     private static void file(StringBuilder out,Context context,String label,String name,int limit,String stat){try{
         File file=new File(context.getFilesDir(),name);out.append("\n===== SOURCE ").append(label).append(" ").append(name).append(" =====\n");
         if("basic".equals(stat))out.append("basicWriteState=").append(AuditLog.failureStatus(context)).append('\n');
         if(!file.isFile()){out.append("NOT_COLLECTED: 文件不存在；未复现、未开启或未接入。\n");return;}
-        String data=new String(BoundedLog.tail(file,limit),StandardCharsets.UTF_8);String[] lines=data.split("\\r?\\n");
-        out.append("collectedAt=").append(System.currentTimeMillis()).append(" bytes=").append(file.length()).append(" lines=").append(lines.length)
+        String data=new String(BoundedLog.tail(file,limit),StandardCharsets.UTF_8);
+        out.append("collectedAt=").append(System.currentTimeMillis()).append(" bytes=").append(file.length()).append(" lines=").append(lineCount(data))
             .append(" rotations=").append(context.getSharedPreferences("diagnostic-retention",0).getLong(stat+"_rotations",0)).append(" lastWrite=").append(file.lastModified())
             .append(" retention=latest complete lines; first/last record timestamps delimit the actual window\n").append(data).append('\n');
     }catch(Exception e){out.append("READ_FAILED:").append(e.getClass().getSimpleName()).append('\n');}}

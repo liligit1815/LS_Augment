@@ -136,7 +136,17 @@ public final class TestConfigSnapshot {
                 || ConfigSnapshot.parse(withLegacyFan(snapshot, "12000", "true", false)) != null
                 || ConfigSnapshot.parse(withLegacyFan(snapshot, "12000", "1", true)) != null)
             throw new AssertionError("fan migration accepted malformed or duplicate legacy fields");
-        System.out.println("PASS TestConfigSnapshot (including legacy brand snapshot compatibility)");
+        String beforeLiftArc=withoutKeys(snapshot,"ls_augment_liftarc_");
+        ConfigSnapshot upgrade=ConfigSnapshot.parse(beforeLiftArc);
+        if(upgrade==null||!"1".equals(upgrade.get(ConfigSchema.AI_TRIGGER_ENABLED))
+                ||!"0".equals(upgrade.get("ls_augment_liftarc_enabled"))
+                ||!"1".equals(upgrade.get("ls_augment_liftarc_show_handle"))
+                ||!beforeLiftArc.equals(upgrade.serialize()))
+            throw new AssertionError("LiftArc addition reset existing settings or enabled a new feature");
+        if(ConfigSnapshot.parse(withoutKeys(snapshot,"ls_augment_liftarc_hint_size"))!=null
+                ||ConfigSnapshot.parse(withoutKeys(snapshot,ConfigSchema.AI_TRIGGER_ENABLED))!=null)
+            throw new AssertionError("migration repaired a truncated current/old snapshot");
+        System.out.println("PASS TestConfigSnapshot (including legacy and LiftArc upgrade compatibility)");
     }
     private static String withLabel(ConfigSnapshot snapshot,String label) throws Exception {
         return withValue(snapshot,ConfigSchema.TILE_LABEL,label);
@@ -164,5 +174,13 @@ public final class TestConfigSnapshot {
         var encoder=java.util.Base64.getUrlEncoder().withoutPadding();
         byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(body.getBytes(utf));
         return "LSA1."+java.util.HexFormat.of().formatHex(digest)+"."+encoder.encodeToString(body.getBytes(utf));
+    }
+    private static String withoutKeys(ConfigSnapshot snapshot,String prefix) throws Exception {
+        String body=new String(java.util.Base64.getUrlDecoder().decode(snapshot.serialize().split("\\.",3)[2]),
+                java.nio.charset.StandardCharsets.UTF_8);
+        StringBuilder kept=new StringBuilder();
+        for(String line:body.split("\n"))if(!line.startsWith(prefix+"=")&&!line.startsWith(prefix)&&!line.isEmpty())
+            kept.append(line).append('\n');
+        return signBody(kept.toString());
     }
 }

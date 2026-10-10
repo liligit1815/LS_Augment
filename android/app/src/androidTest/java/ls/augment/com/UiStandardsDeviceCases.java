@@ -166,17 +166,26 @@ final class UiStandardsDeviceCases implements Application.ActivityLifecycleCallb
         AtomicReference<String> measured=new AtomicReference<>();
         boolean scriptEnabled=main(()->web.getSettings().getJavaScriptEnabled());
         try{
-            main(()->{web.getSettings().setJavaScriptEnabled(true);web.evaluateJavascript("(()=>{const t=document.querySelector('.section-heading'),h=document.querySelector('main>header');return t?{top:t.getBoundingClientRect().top,width:window.innerWidth,headerVisible:!!(h&&h.getBoundingClientRect().height)}:null})()",measured::set);return null;});
+            main(()->{web.getSettings().setJavaScriptEnabled(true);web.evaluateJavascript("(()=>{const t=document.querySelector('.section-heading'),h=document.querySelector('main>header'),m=document.querySelector('main');if(!t||!m)return null;const s=getComputedStyle(m);return {top:t.getBoundingClientRect().top,width:window.innerWidth,mainLeft:m.getBoundingClientRect().left,mainRight:m.getBoundingClientRect().right,paddingLeft:parseFloat(s.paddingLeft)||0,paddingRight:parseFloat(s.paddingRight)||0,headerVisible:!!(h&&h.getBoundingClientRect().height)}})()",measured::set);return null;});
             long deadline=SystemClock.uptimeMillis()+5000;
             while(measured.get()==null&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(50);
         }finally{main(()->{web.getSettings().setJavaScriptEnabled(scriptEnabled);return null;});}
         String raw=measured.get();
         if(raw==null||"null".equals(raw)){entry.put("webContentMeasured",false).put("webMeasurementLimit","WebView did not expose document bounds");return;}
         JSONObject rect=new JSONObject(raw);
-        double gap=entry.getDouble("contentGapDp")+rect.getDouble("top")*web.getWidth()/rect.getDouble("width")/activity.getResources().getDisplayMetrics().density;
-        boolean valid=gap>=7.5&&gap<=12.5&&!rect.getBoolean("headerVisible");compliant&=valid;
+        double density=activity.getResources().getDisplayMetrics().density;
+        double documentScale=main(()->web.getWidth())/rect.getDouble("width")/density;
+        double gap=entry.getDouble("contentGapDp")+rect.getDouble("top")*documentScale;
+        boolean duplicateBrand=rect.getBoolean("headerVisible");
+        boolean hostAligned=Math.abs(rect.getDouble("mainLeft"))*documentScale<=1
+                &&Math.abs(rect.getDouble("width")-rect.getDouble("mainRight"))*documentScale<=1;
+        boolean sideInsets=Math.abs(rect.getDouble("paddingLeft")*documentScale-16)<=1
+                &&Math.abs(rect.getDouble("paddingRight")*documentScale-16)<=1;
+        boolean valid=entry.getBoolean("compliant")&&gap>=7.5&&gap<=12.5
+                &&!duplicateBrand&&hostAligned&&sideInsets;compliant&=valid;
         entry.put("webContentMeasured",true).put("firstSectionGapDp",gap)
-                .put("duplicateBrandVisible",rect.getBoolean("headerVisible")).put("compliant",valid);
+                .put("webHostAligned",hostAligned).put("webSideInsets16Dp",sideInsets)
+                .put("duplicateBrandVisible",duplicateBrand).put("compliant",valid);
     }
     private void checkDimFolds(JSONObject entry)throws Exception{
         java.lang.reflect.Field foldField;

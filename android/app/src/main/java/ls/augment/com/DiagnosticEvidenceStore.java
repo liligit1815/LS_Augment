@@ -43,6 +43,21 @@ final class DiagnosticEvidenceStore {
                     .put("meaning","last observation; not proof of execution or recovery");
         } catch(Exception ignored) {return new JSONObject();}
     }
+    /** A recent Binder-attributed observation, without claiming a separate PID liveness check. */
+    static boolean matchesRecentSource(Context context,String key,String value,String process,int uid,int expectedPid,long maxAge) {
+        try {
+            JSONObject record=new JSONObject(context.getSharedPreferences(STORE,0).getString(key,"{}"));
+            long now=SystemClock.elapsedRealtime(),wall=System.currentTimeMillis();
+            long observed=record.optLong("observedElapsed"),received=record.optLong("receivedElapsed"),receivedAt=record.optLong("receivedAt");
+            int boot=RuntimeEnvironment.bootCount(context);
+            return digest(value).equals(record.optString("valueDigest"))
+                    &&BuildConfig.VERSION_NAME.equals(record.optString("moduleVersion"))
+                    &&process.equals(record.optString("process"))&&record.optInt("sourceUid",-1)==uid
+                    &&expectedPid>0&&record.optInt("pid",-1)==expectedPid&&boot>=0&&record.optInt("boot",-1)==boot
+                    &&observed>0&&observed<=received&&received<=now&&now-observed<=maxAge
+                    &&receivedAt>0&&receivedAt<=wall&&wall-receivedAt<=maxAge;
+        } catch(Exception unavailable) {return false;}
+    }
     private static String digest(String value)throws Exception {
         byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
         StringBuilder out=new StringBuilder(64);for(byte b:bytes){out.append(Character.forDigit((b>>>4)&15,16));out.append(Character.forDigit(b&15,16));}

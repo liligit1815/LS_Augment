@@ -23,7 +23,8 @@ final class ModuleFeatureSearch {
             add(results,needle,unlocked,new Result(category.title,"target-"+category.id,unlocked?category.summary:category.summary.replace("与应用隐藏","").replace("应用隐藏","")));
         for(ModuleHierarchy.Section section:ModuleHierarchy.allSections()){
             if(section.restricted&&!unlocked)continue;
-            add(results,needle,unlocked,new Result(section.title,section.route(),ModuleHierarchy.summary(section)));
+            String sectionAliases="liftarc".equals(section.id)?" LiftArc 小白条 指示条 上甩解锁 弧形 锁屏玻璃 提示文字":"";
+            add(results,needle,unlocked,new Result(section.title,section.route(),ModuleHierarchy.summary(section)+sectionAliases));
             for(NativeFeatureGroups.Feature feature:section.features)feature(results,needle,unlocked,feature,section.route(),options);
             for(String entry:section.entries){
                 String title=ModuleHierarchy.title(entry);

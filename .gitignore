@@ -109,7 +109,11 @@ design-qa.md
 !/docs/statusbar-assets.md
 !/docs/releases/
 /docs/releases/*
-!/docs/releases/v2.0.0-alpha1-test20509.md
+!/docs/releases/v2.0.0-alpha1-test20510.md
+
+# 图标提取原件留在本地，仓库保留实际使用的图标及来源记录
+/contributors-site/icons/liftarc-original-vector.xml
+/contributors-site/icons/redmagic-helper-original-icon.axml
 
 # 本地统计与设计过程记录
 /*.xlsx

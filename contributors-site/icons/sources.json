@@ -1,0 +1,26 @@
+[
+  {
+    "project": "HyperCeiler",
+    "file": "hyperceiler.webp",
+    "source": "https://raw.githubusercontent.com/ReChronoRain/HyperCeiler/main/imgs/icon.webp",
+    "note": "Original upstream README icon bytes.",
+    "bytes": 8844,
+    "sha256": "0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8"
+  },
+  {
+    "project": "LiftArc",
+    "file": "liftarc.svg",
+    "source": "https://github.com/miyupyxh/LiftArc/blob/13245bbdc1c5431b14d8016512463f8d336c6306/app/src/main/res/drawable/ic_app_icon.xml",
+    "note": "Original Android vector paths, colors, viewport and stroke preserved as SVG.",
+    "bytes": 469,
+    "sha256": "6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157"
+  },
+  {
+    "project": "红魔助手",
+    "file": "redmagic-helper.svg",
+    "source": "红魔助手.apk!res/i5.xml (manifest application icon)",
+    "note": "Original manifest application icon. Decoded Android vector paths, colors and viewport preserved as SVG.",
+    "bytes": 28687,
+    "sha256": "DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457"
+  }
+]

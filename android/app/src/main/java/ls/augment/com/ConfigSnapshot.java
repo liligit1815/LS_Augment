@@ -113,7 +113,20 @@ public final class ConfigSnapshot {
                 if (normalized == null || (!normalized.equals(value) && !legacyLabel && !legacyFanLevel && !retiredSheetMode)) return null;
                 values.put(key, legacyFanLevel || retiredSheetMode ? normalized : value);
             }
-            if (!values.keySet().equals(ConfigSchema.runtimeKeys())) return null;
+            // Before LiftArc existed, a complete signed snapshot had none of this
+            // family. Preserve its bytes/checksum and existing settings while
+            // supplying the new, disabled-by-default feature. A partially missing
+            // new family remains invalid; this is not a general missing-key repair.
+            if (!values.keySet().equals(ConfigSchema.runtimeKeys())) {
+                boolean hasLiftArc = false;
+                for (String key : values.keySet())
+                    if (key.startsWith("ls_augment_liftarc_")) { hasLiftArc = true; break; }
+                if (hasLiftArc) return null;
+                for (Map.Entry<String, String> entry : ConfigSchema.runtimeDefaults().entrySet())
+                    if (entry.getKey().startsWith("ls_augment_liftarc_"))
+                        values.put(entry.getKey(), entry.getValue());
+                if (!values.keySet().equals(ConfigSchema.runtimeKeys())) return null;
+            }
             return new ConfigSnapshot(version, revision, updatedAt, scope, values,
                     parts[1], serialized);
         } catch (Throwable ignored) {

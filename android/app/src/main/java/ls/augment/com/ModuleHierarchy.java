@@ -45,6 +45,7 @@ public final class ModuleHierarchy {
         source(section("lockscreen","fingerprint","指纹样式"),"theme","collab_fingerprint");
         add(section("lockscreen","charging","充电动画与详情"),"collab:charging","systemui:charging_animation","systemui:lock_charge_details");
         add(section("lockscreen","lock_display","锁屏显示"),"systemui:keyguard_statusbar_hide","systemui:carrier_lock");
+        add(section("lockscreen","liftarc","锁屏上滑效果"),"liftarc:enabled");
         add(section("lockscreen","lock_clock","锁屏时钟"),"systemui:lock_clock_seconds","systemui:lock_clock_period","systemui:lock_clock_font","systemui:lock_clock_scale");
         source(section("lockscreen","aod","息屏时钟"),"systemui","aod");
         add(section("lockscreen","lock_timeout","锁屏超时与解锁验证"),"ls_augment_rm_strong_auth_timeout","ls_augment_rm_lock_timeout_enabled");
@@ -188,7 +189,7 @@ public final class ModuleHierarchy {
         if(route.startsWith("target-")){ModulePresentationCatalog.Category category=ModulePresentationCatalog.find(route.substring(7));if(category!=null)return category.title;}Section s=group(route);if(s!=null)return s.title;
         for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if(entry.route.equals(route))return entry.title;String resolved=resolve(route);return resolved.equals(route)?"":title(resolved);
     }
-    public static String summary(Section s){if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
+    public static String summary(Section s){if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
     /** Actual scopes of the page, preserving multiple cooperating process groups. */
     public static List<String> restartScopes(Section s){Set<String> scopes=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForKey(key));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);}for(String entry:s.entries){Section child=group(entry);if(child!=null){scopes.addAll(restartScopes(child));continue;}HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForRoute(entry));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);else if(entry.startsWith("freeform_"))scopes.add("device");}if("collab_audio".equals(s.id))return Collections.emptyList();return new ArrayList<>(scopes);}
     public static String restartScope(Section s){List<String> scopes=restartScopes(s);return scopes.size()==1?scopes.get(0):scopes.isEmpty()?null:"device";}

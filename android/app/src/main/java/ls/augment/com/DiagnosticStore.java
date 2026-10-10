@@ -6,6 +6,8 @@ import org.json.*;
 import java.io.File;
 
 final class DiagnosticStore {
+    static final String LIFTARC_FILE="detail-LIFTARC.log";
+    static final int DETAIL_MAX_BYTES=512*1024,DETAIL_KEEP_BYTES=256*1024;
     static synchronized Bundle record(Context context,Bundle extras) {
         Bundle result=new Bundle();if(extras==null||ResetWriteFence.blocked())return result;
         try{
@@ -19,14 +21,21 @@ final class DiagnosticStore {
             if(prefs.getAll().size()>64){String oldest=null;long time=Long.MAX_VALUE;for(java.util.Map.Entry<String,?> e:prefs.getAll().entrySet())try{long at=new JSONObject(e.getValue().toString()).optLong("receivedAt");if(at<time){time=at;oldest=e.getKey();}}catch(Exception ignored){}if(oldest!=null)editor.remove(oldest);}
             editor.putString("pid_"+pid,snapshot.toString()).apply();
             String eventsRaw=extras.getString("events","[]");if(eventsRaw.length()>512*1024)return result;
-            JSONArray events=new JSONArray(eventsRaw);AppConfig config=new AppConfig(context);
+            JSONArray events=new JSONArray(eventsRaw);AppConfig config=null;
             for(int i=0;i<Math.min(128,events.length());i++){
                 JSONObject event=events.getJSONObject(i);String feature=event.optString("feature");
-                if(!feature.equals("AI")&&!feature.equals("SHOULDER"))continue;
-                if(!config.getBoolean(feature.equals("AI")?ConfigSchema.AI_TRIGGER_DIAGNOSTICS:ConfigSchema.SHOULDER_DIAGNOSTICS))continue;
+                if(feature.equals("LIFTARC")){
+                    String level=event.optString("level");
+                    if(!level.equals("INFO")&&!level.equals("WARN")&&!level.equals("ERROR"))continue;
+                    // No configuration flag gates LiftArc's ordinary runtime log.
+                }else{
+                    if(!feature.equals("AI")&&!feature.equals("SHOULDER"))continue;
+                    if(config==null)config=new AppConfig(context);
+                    if(!config.getBoolean(feature.equals("AI")?ConfigSchema.AI_TRIGGER_DIAGNOSTICS:ConfigSchema.SHOULDER_DIAGNOSTICS))continue;
+                }
                 event.put("pid",pid).put("uid",uid).put("process",snapshot.optString("process")).put("moduleVersion",snapshot.optString("moduleVersion"));
                 String line=event.toString();if(line.length()>4000)continue;
-                boolean rotated=BoundedLog.append(new File(context.getFilesDir(),"detail-"+feature+".log"),line,512*1024,256*1024);
+                boolean rotated=BoundedLog.append(new File(context.getFilesDir(),"detail-"+feature+".log"),line,DETAIL_MAX_BYTES,DETAIL_KEEP_BYTES);
                 if(rotated){android.content.SharedPreferences stats=context.getSharedPreferences("diagnostic-retention",0);stats.edit().putLong(feature+"_rotations",stats.getLong(feature+"_rotations",0)+1).apply();}
             }
             result.putBoolean("ok",true);

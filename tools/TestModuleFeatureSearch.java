@@ -71,6 +71,9 @@ public final class TestModuleFeatureSearch {
         exactFeature("录屏隐藏状态栏","group/capture/capture","capture");
         exactFeature("双击状态栏锁屏","group/interaction/status_gestures","interaction");
         exactFeature("隐藏锁屏顶部状态栏","group/lockscreen/lock_display","lockscreen");
+        exactFeature("锁屏上滑效果","group/lockscreen/liftarc","lockscreen");
+        for(String query:Arrays.asList("LiftArc","小白条","锁屏玻璃","上甩解锁","提示文字"))
+            destination(query,"group/lockscreen/liftarc","lockscreen");
         destination("AI 触发器","ai_trigger","gaming");destination("ai触发器","ai_trigger","gaming");
         destination("游戏助手","ai_trigger","gaming");destination("点击冷却","ai_trigger","gaming");
         destination("单双排","status_arrangement","notifications");destination("双排","status_arrangement","notifications");

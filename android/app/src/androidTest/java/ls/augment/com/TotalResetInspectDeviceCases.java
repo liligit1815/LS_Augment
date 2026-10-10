@@ -172,7 +172,7 @@ final class TotalResetInspectDeviceCases {
             File[] children=entry.listFiles();if(children==null)throw new java.io.IOException("Resource directory unreadable");
             for(File child:children)scan(context,root,child,label,files,count,after,resetStartedAt,failures);return;
         }
-        count[0]++;boolean log=relative.equals("ls_augment.log")||relative.matches("detail-(AI|SHOULDER)\\.log");
+        count[0]++;boolean log=relative.equals("ls_augment.log")||relative.matches("detail-(AI|SHOULDER|LIFTARC)\\.log");
         boolean fresh=resetStartedAt>0&&entry.lastModified()>=resetStartedAt;
         boolean art=verifiedFreshArt(context,root,entry,relative,resetStartedAt);
         files.put(new JSONObject().put("root",label).put("relativePath",relative).put("bytes",entry.length())

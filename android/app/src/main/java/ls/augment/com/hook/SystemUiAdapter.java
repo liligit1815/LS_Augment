@@ -64,7 +64,8 @@ final class SystemUiAdapter {
                                 Object replacement = before.apply(chain.getThisObject(), args, null);
                                 if (replacement != PASS) return replacement;
                             } catch (Throwable error) {
-                                module.logFeatureError("RM_UI_BEFORE_" + methodName, error);
+                                if("liftarc".equals(namespace))LiftArcLog.e("原厂接口 before "+className+"."+methodName,error);
+                                else module.logFeatureError("RM_UI_BEFORE_" + methodName, error);
                                 args = chain.getArgs().toArray();
                             }
                             Object result = chain.proceed(args);
@@ -72,17 +73,28 @@ final class SystemUiAdapter {
                                 Object replacement = after.apply(chain.getThisObject(), args, result);
                                 if (replacement != PASS) return replacement;
                             } catch (Throwable error) {
-                                module.logFeatureError("RM_UI_AFTER_" + methodName, error);
-                                FeatureSettings.diagnostic(context(chain.getThisObject()),"ls_augment_rm_ui_callback_error",
+                                boolean recordDiagnostic=true;
+                                if("liftarc".equals(namespace))recordDiagnostic=LiftArcLog.e("原厂接口 after "+className+"."+methodName,error);
+                                else module.logFeatureError("RM_UI_AFTER_" + methodName, error);
+                                if(recordDiagnostic)FeatureSettings.diagnostic(context(chain.getThisObject()),"ls_augment_rm_ui_callback_error",
                                         className+"."+methodName+": "+android.util.Log.getStackTraceString(error));
                             }
                             return result;
                         }));
                 count++;
             }
-            if (count == 0) module.logFeatureInfo("RM_UI_UNAVAILABLE " + className + "." + methodName);
-        } catch (ClassNotFoundException absent) { module.logFeatureInfo("RM_UI_UNAVAILABLE " + className); }
-        catch (Throwable error) { module.logFeatureError("RM_UI_INSTALL_" + className + "." + methodName, error); }
+            if (count == 0) {
+                if("liftarc".equals(namespace))LiftArcLog.w("原厂接口 unavailable "+className+"."+methodName,null);
+                module.logFeatureInfo("RM_UI_UNAVAILABLE " + className + "." + methodName);
+            }
+        } catch (ClassNotFoundException absent) {
+            if("liftarc".equals(namespace))LiftArcLog.w("原厂接口 unavailable "+className,absent);
+            module.logFeatureInfo("RM_UI_UNAVAILABLE " + className);
+        }
+        catch (Throwable error) {
+            if("liftarc".equals(namespace))LiftArcLog.e("原厂接口 install "+className+"."+methodName,error);
+            module.logFeatureError("RM_UI_INSTALL_" + className + "." + methodName, error);
+        }
         return count;
     }
     static Object field(Object owner, String... names) {

@@ -64,6 +64,17 @@ final class HookTelemetry {
         if(text.length()>1900)text=text.substring(0,1900)+" [TRUNCATED]";
         if(!trace.offer(new String[]{feature,text}))dropped.incrementAndGet();
     }
+    /** LiftArc runtime records are always collected, independent of optional detailed traces. */
+    static void liftArc(String level,String value){
+        if(!"INFO".equals(level)&&!"WARN".equals(level)&&!"ERROR".equals(level))return;
+        String text="seq="+sequence.incrementAndGet()+" wall="+System.currentTimeMillis()+" elapsed="+SystemClock.elapsedRealtime()+" thread="+Thread.currentThread().getName()+" "+value;
+        if(text.length()>1900)text=text.substring(0,1900)+" [TRUNCATED]";
+        if(!trace.offer(new String[]{"LIFTARC",text,level}))dropped.incrementAndGet();
+    }
+    private static boolean hasLiftArcEvents(){
+        for(String[] event:trace)if("LIFTARC".equals(event[0]))return true;
+        return false;
+    }
     static void event(String message){
         String upper=message.toUpperCase(Locale.ROOT);
         if(upper.contains("TGK")||upper.contains("SHOULDER")||upper.contains("RAPID"))detail("SHOULDER",message);
@@ -73,11 +84,12 @@ final class HookTelemetry {
         Context context=FeatureSettings.from(null);if(context==null)return;
         shoulder=FeatureSettings.enabled(context,FeatureSettings.SHOULDER_DIAGNOSTICS);
         ai=FeatureSettings.enabled(context,FeatureSettings.AI_TRIGGER_DIAGNOSTICS);
-        long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&now-lastPublished<15000)return;lastPublished=now;
+        long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&!hasLiftArcEvents()&&now-lastPublished<15000)return;lastPublished=now;
         JSONObject out=new JSONObject().put("package",pkg).put("packages",packageNames()).put("process",process).put("pid",android.os.Process.myPid())
             .put("moduleVersion",BuildConfig.VERSION_NAME).put("framework",framework).put("moduleLoadedAt",startedWall)
             .put("processStartedElapsed",android.os.Process.getStartElapsedRealtime()).put("moduleLoadedElapsed",startedElapsed).put("snapshotAt",System.currentTimeMillis()).put("moduleLoaded",true)
-            .put("droppedDetailEvents",dropped.get()).put("shoulderDetailed",shoulder).put("aiDetailed",ai);
+            .put("droppedDetailEvents",dropped.get()).put("shoulderDetailed",shoulder).put("aiDetailed",ai)
+            .put("liftArcSuppressedEvents",LiftArcLog.suppressedEvents());
         JSONArray targets=new JSONArray();
         for(Map.Entry<String,Counter> entry:counters.entrySet()){
             Counter c=entry.getValue();Failures errors=c.failures();ErrorRecord registrationError=c.registrationError();
@@ -96,7 +108,15 @@ final class HookTelemetry {
         }
         if("com.android.systemui".equals(pkg))out.put("qsClockDebug",ControlCenterHeaderHook.clockDebug);
         out.put("hooks",targets);Bundle extras=new Bundle();extras.putString("snapshot",out.toString());
-        JSONArray events=new JSONArray();for(int i=0;i<128;i++){String[] e=trace.poll();if(e==null)break;events.put(new JSONObject().put("feature",e[0]).put("value",e[1]));}
+        JSONArray events=new JSONArray();for(int i=0;i<128;i++){String[] e=trace.poll();if(e==null)break;
+            JSONObject event=new JSONObject().put("feature",e[0]).put("value",e[1]);
+            if(e.length>2){
+                event.put("level",e[2]);
+                android.util.Log.println("ERROR".equals(e[2])?android.util.Log.ERROR:"WARN".equals(e[2])?android.util.Log.WARN:android.util.Log.INFO,
+                        "LS_Augment","LIFTARC "+e[2]+" "+e[1]);
+            }
+            events.put(event);
+        }
         extras.putString("events",events.toString());pendingEvents=events.length();
         Bundle result=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"telemetry",null,extras);
         if(result==null||!result.getBoolean("ok")){dropped.addAndGet(events.length());publishWarning("provider_rejected",null);}

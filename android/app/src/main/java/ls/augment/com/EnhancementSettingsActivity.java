@@ -57,6 +57,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     };
     private BackGestureIconEditor backGestureIcons;
     private ExtraDimTilePreference extraDimTile;
+    private LiftArcSettingsEditor liftArcEditor;
     private final Map<String,ModuleHierarchy.Section> sectionStates=new LinkedHashMap<>();
     private SharedPreferences sectionPreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener sectionListener=(prefs,key)->runOnUiThread(this::refreshSectionCounts);
@@ -103,13 +104,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             editor.setRelatedFeatures(ModuleHierarchy.statusBarFeatures(),this::feature);
             editors.put(editor.route,editor);
             editor.onCreate(editorStates==null?null:editorStates.getBundle(editor.route));
-        }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);}
+        }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);if(liftArcEditor!=null)liftArcEditor.restoreState(state,()->body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,state.getInt("scrollY"));}));}
         if(!sectionStates.isEmpty()){sectionPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);sectionPreferences.registerOnSharedPreferenceChangeListener(sectionListener);refreshSectionCounts();}
         if(!pending.isEmpty())main.post(autoSave);
         // Old-save failure remains visible after a configuration recreation.
         worker.execute(()->main.post(this::showSaveFailure));
     }
     private void render(int previousY){
+        if(liftArcEditor!=null){liftArcEditor.onDestroy();liftArcEditor=null;}
         String route=ModuleNavigation.route(this);
         ModulePresentationCatalog.Category target=ModulePresentationCatalog.find(targetId);
         ModuleHierarchy.Section selected=ModuleHierarchy.group(route);
@@ -126,6 +128,15 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 card.addView(ui.preferenceRow(section.route(),label,label.equals(summary)?"":summary,()->ModuleNavigation.open(this,section.route())),ui.wrap());
                 sectionStates.put(section.route(),section);
             }
+        }else if(selected!=null&&"liftarc".equals(selected.id)){
+            liftArcEditor=new LiftArcSettingsEditor(this,ui,new LiftArcSettingsEditor.Host(){
+                public String value(String key){return EnhancementSettingsActivity.this.value(key);}
+                public View input(EnhancementOption option){return EnhancementSettingsActivity.this.input(option);}
+                public void change(String key,String value,View control){EnhancementSettingsActivity.this.change(key,value,control);}
+                public void changeAll(Map<String,String> values){changeLiftArcSettings(values);}
+                public void refresh(String key,String value){refreshInput(key,value);}
+            },config,worker);
+            body.addView(liftArcEditor.view(),ui.wrap());
         }else if(selected!=null&&ModuleHierarchy.hasInlineEditors(selected)){
             renderInlineSection(selected);
         }else{
@@ -509,6 +520,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             field.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){
                 String normalized=option.normalize(s.toString());
                 if(normalized==null){invalidInput(option);return;}
+                if(option.kind==EnhancementOption.Kind.COLOR&&option.key.startsWith(LiftArcOptions.PREFIX)&&normalized.length()==7){
+                    try{Integer argb=ColorEditorDialog.parse(normalized,android.graphics.Color.parseColor(value(option.key)));if(argb!=null)normalized=String.format(Locale.ROOT,"#%08X",argb);}catch(IllegalArgumentException ignored){}
+                }
                 error.setText("");error.setVisibility(View.GONE);change(option.key,normalized,field);
             }public void afterTextChanged(Editable e){}});
             // Invalid raw text is UI state only; it must never become a restorable save intent.
@@ -565,6 +579,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private String invalidMessage(EnhancementOption option){
         if(option.kind==EnhancementOption.Kind.INTEGER)return "请输入 "+(long)option.minimum+"～"+(long)option.maximum+" 之间的整数";
         if(option.kind==EnhancementOption.Kind.DECIMAL)return "请输入 "+option.minimum+"～"+option.maximum+" 之间的有效数值";
+        if(option.kind==EnhancementOption.Kind.COLOR)return "请输入 #RRGGBB 或 #AARRGGBB 颜色";
         return "请输入有效内容";
     }
     private void invalidFeedback(EnhancementOption option,String saved){
@@ -595,6 +610,17 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();
         if("ls_augment_rm_recents_memory_color_mode".equals(key))syncMemoryColorsVisibility();
         syncConditionalInputs();
+        if(liftArcEditor!=null)liftArcEditor.changed(key);
+    }
+    private void changeLiftArcSettings(Map<String,String> values){
+        LinkedHashMap<String,String> normalized=new LinkedHashMap<>();
+        for(Map.Entry<String,String> entry:values.entrySet()){
+            if(!entry.getKey().startsWith(LiftArcOptions.PREFIX)){toast("默认参数未填入，请重新打开此页。");return;}
+            String next=ConfigSchema.normalize(entry.getKey(),entry.getValue());if(next==null){toast("默认参数未填入，请重新打开此页。");return;}normalized.put(entry.getKey(),next);
+        }
+        draft.putAll(normalized);pending.putAll(normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        for(Map.Entry<String,String> entry:normalized.entrySet())refreshInput(entry.getKey(),entry.getValue());
+        if(liftArcEditor!=null)liftArcEditor.changed(LiftArcOptions.ENABLED);
     }
     private void syncConditionalInputs(){
         String mode=value(NotificationSummaryOptions.MODE);
@@ -645,6 +671,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     }
     @Override public void prepareScopeRestart(Runnable restart){
         if(isFinishing()||isDestroyed()||worker.isShutdown())return;
+        if(liftArcEditor!=null)for(Map.Entry<String,View> entry:controls.entrySet())if(entry.getKey().startsWith(LiftArcOptions.PREFIX)&&pending.isInvalid(entry.getKey())){
+            entry.getValue().requestFocus();toast("锁屏上滑参数有无效输入，请修正或恢复默认值后再重启。");return;
+        }
         flush();
         worker.execute(()->main.post(()->{
             if(isFinishing()||isDestroyed())return;
@@ -710,8 +739,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();for(NativeEditorController editor:editors.values())editor.onResume();}
-    @Override protected void onPause(){for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onPause(){if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
         // A pending picker can return to the recreated page; an old Activity import is not resumed.
         state.putLong("aodFontGeneration",aodFontGeneration);state.putLong("aodFontPickerGeneration",aodFontPickerGeneration);
@@ -720,7 +749,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

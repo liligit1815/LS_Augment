@@ -16,6 +16,7 @@ public final class EnhancementCatalog {
         all.addAll(StatusBarIconLayoutOptions.options());
         all.addAll(NotificationSummaryOptions.options());
         all.addAll(CarrierTextOptions.options());
+        all.addAll(LiftArcOptions.options());
         return Collections.unmodifiableList(all);
     }
     public static String title(String group) {
@@ -26,7 +27,7 @@ public final class EnhancementCatalog {
             case "connections":return "连接与 USB";case "installer":return "安装器增强";
             case "update":return "系统更新";case "theme":return "主题下载";
             case "launcher":return "桌面增强";case "game":return "肩键方案与游戏补充";
-            case "appearance":return "界面外观";default:return "增强设置";
+            case "appearance":return "界面外观";case "liftarc":return "锁屏上滑效果";default:return "增强设置";
         }
     }
     public static List<EnhancementOption> group(String group) {

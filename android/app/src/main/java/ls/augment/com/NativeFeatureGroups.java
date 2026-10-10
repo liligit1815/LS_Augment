@@ -57,6 +57,10 @@ final class NativeFeatureGroups {
         return new Feature(id,title,toggle,parameters.toArray(new String[0]),"boolean","0",new Feature[0]);
     }
     static final Section[] SECTIONS={
+        new Section("systemui","liftarc","锁屏上滑效果",new Feature[]{
+            new Feature("liftarc:enabled","锁屏上滑效果",LiftArcOptions.ENABLED,
+                    LiftArcOptions.parameterKeys(),"boolean","0",new Feature[0])
+        }),
         new Section("systemui","notification_clock","通知页大时钟",new Feature[]{
             configured("systemui:notification_clock_portrait","竖屏通知页大时钟",NotificationAppearanceOptions.CLOCK_PORTRAIT,NotificationAppearanceOptions.options(),NotificationAppearanceOptions.clock(false,"")),
             configured("systemui:notification_clock_landscape","横屏通知页大时钟",NotificationAppearanceOptions.CLOCK_LANDSCAPE,NotificationAppearanceOptions.options(),NotificationAppearanceOptions.clock(true,""))

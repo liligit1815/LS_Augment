@@ -8,7 +8,7 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,13,23,11,8,5,3,18,4,16,15,11,4};
+        int[] counts={84,13,24,11,8,5,3,18,4,16,15,11,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
         require(HookAppCatalog.targets().size()==18,"Runtime targets remain independent of the 13 display categories");
@@ -17,7 +17,7 @@ public final class TestModuleHierarchy {
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==215,"Presentation includes 215 capabilities in 13 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==216,"Presentation includes 216 capabilities in 13 ordered categories");
         require(ModulePresentationCatalog.find("statusbar")==null&&ModulePresentationCatalog.find("themes")==null,"Empty old categories are absent from Home");
         require("主题与锁屏".equals(ModulePresentationCatalog.find("lockscreen").title),"Theme and lock screen use the requested shared title");
         require("systemui".equals(ModulePresentationCatalog.find("notifications").restartScope),"Merged notification directory retains the former status-bar restart shortcut and default");
@@ -28,6 +28,13 @@ public final class TestModuleHierarchy {
         require("systemui".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/lockscreen/lock_clock"))),"Theme directory shortcut never overrides a lock-clock page's SystemUI scope");
         require(ModuleHierarchy.sections("notifications").stream().map(s->s.id).toList().subList(0,2).equals(Arrays.asList("statusbar","island")),"Status customization and island enter the notification/control-center directory");
         require(ModuleHierarchy.sections("lockscreen").stream().map(s->s.id).toList().subList(0,2).equals(Arrays.asList("theme_download","collab_theme")),"Theme download and collaboration enter the theme/lock-screen directory");
+        List<String> lockscreenIds=ModuleHierarchy.sections("lockscreen").stream().map(s->s.id).toList();
+        require(lockscreenIds.indexOf("liftarc")==lockscreenIds.indexOf("lock_display")+1
+                &&lockscreenIds.indexOf("lock_clock")==lockscreenIds.indexOf("liftarc")+1,"Lock swipe stays between display and clock");
+        ModuleHierarchy.Section liftarc=ModuleHierarchy.group("group/lockscreen/liftarc");
+        require(keys(liftarc).size()==39&&"systemui".equals(ModuleHierarchy.restartScope(liftarc)),"39 lock-swipe controls have one SystemUI home");
+        require(ModuleHierarchy.path(liftarc.route()).equals(Arrays.asList("home","target-lockscreen",liftarc.route())),"Lock swipe retains the requested breadcrumb");
+        require(ModuleHierarchy.activeCount(liftarc,key->ConfigSchema.defaultValue(key))==0,"Default child settings cannot activate the disabled master");
         for(ModuleHierarchy.Section s:ModuleHierarchy.allSections()){
             require(groupRoutes.add(s.route()),"No duplicate group route: "+s.route());routes.add(s.route());require(!s.title.isEmpty(),"Readable group title");
             require(ModulePresentationCatalog.find(s.target)!=null,"A section belongs to a display category");
@@ -95,6 +102,6 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==3,"Shoulder count includes two embedded controls and one generic control");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 215 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 216 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

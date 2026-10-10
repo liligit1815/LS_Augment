@@ -79,7 +79,9 @@ public final class TestNativeFeatureGroups {
                     &&(key.equals(BackGestureIconPolicy.key(0,"mirror"))||key.equals(BackGestureIconPolicy.key(1,"mirror")));
             // Like the gesture editor, islandControls owns its native style switch.
             boolean islandStyle="systemui:island_enabled".equals(f.id)&&key.equals(SystemUiOptions.ISLAND_TRANSPARENT);
-            require(gestureMirror||islandStyle||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
+            // The lock-swipe editor owns all subordinate switches under one master.
+            boolean lockSwipe="liftarc:enabled".equals(f.id)&&key.startsWith("ls_augment_liftarc_");
+            require(gestureMirror||islandStyle||lockSwipe||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
             require(seen.add(key),"duplicate parameter "+key);
         }
         for(NativeFeatureGroups.Feature child:f.children)check(child,seen);

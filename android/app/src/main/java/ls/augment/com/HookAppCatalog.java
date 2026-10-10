@@ -258,7 +258,7 @@ public final class HookAppCatalog {
                 || suffix.equals("clipboard_overlay") || suffix.startsWith("onehand_")
                 || suffix.equals("assist_gesture")) return SYSTEM_UI;
         switch (option.group) {
-            case "statusbar": case "lockscreen": case "aod": case "quicksettings":
+            case "statusbar": case "lockscreen": case "liftarc": case "aod": case "quicksettings":
             case "notification_clock": case "notification_stack": case "notification_clear": return SYSTEM_UI;
             case "launcher": return LAUNCHER;
             case "installer": return INSTALLER;
