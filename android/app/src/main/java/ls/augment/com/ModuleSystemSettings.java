@@ -27,9 +27,11 @@ final class ModuleSystemSettings {
         if (strength < 0 || strength > 100) return new WriteResult(false, "极暗强度无效");
         int user = android.os.Process.myUid() / 100000;
         LinkedHashMap<Address, String> updates = new LinkedHashMap<>();
+        // Observers may run on the first setting change; establish ownership
+        // before level/active, after all recovery records have been persisted.
+        updates.put(new Address(user, "secure", "ls_augment_extra_dim_owned"), "1");
         updates.put(new Address(user, "secure", ExtraDimControl.LEVEL), String.valueOf(strength));
         updates.put(new Address(user, "secure", ExtraDimControl.ACTIVE), active ? "1" : "0");
-        updates.put(new Address(user, "secure", "ls_augment_extra_dim_owned"), "1");
         return engine(context).put(updates);
     }
 
@@ -151,8 +153,16 @@ final class ModuleSystemSettings {
             ArrayList<String> issues = new ArrayList<>();
             try {
                 Map<String, String> records = validatedRecords();
-                for (String id : new ArrayList<>(records.keySet())) {
+                ArrayList<String> order=new ArrayList<>(records.keySet());
+                // Retain compatibility ownership until both original native
+                // dim settings are restored, independent of preference order.
+                order.sort(java.util.Comparator.comparing(id -> Record.parse(records.get(id)).address.key.equals("ls_augment_extra_dim_owned")));
+                for (String id : order) {
                     Record record = Record.parse(records.get(id));
+                    if(record.address.key.equals("ls_augment_extra_dim_owned")
+                            && records.values().stream().map(Record::parse).anyMatch(r -> r.address.dim())) {
+                        review=true;issues.add("极暗原设置尚未恢复，归属标记已保留");continue;
+                    }
                     if (!record.originalKnown) { review = true; issues.add("旧版极暗设置缺少修改前的记录"); continue; }
                     Read actual = io.read(record.address);
                     if (!actual.success) { failed = true; issues.add("无法读取 " + record.address.key); continue; }

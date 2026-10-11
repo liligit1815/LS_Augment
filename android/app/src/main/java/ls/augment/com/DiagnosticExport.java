@@ -5,7 +5,6 @@ import android.os.Build;
 import org.json.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 /** A real, fresh, bounded collection. Missing evidence is never interpreted as success. */
@@ -88,18 +87,13 @@ final class DiagnosticExport {
                 RootShell.run("dumpsys activity exit-info com.zte.mifavor.launcher",null,6,128*1024),128*1024);
         source(out,"SYSTEMUI_EXIT_INFO; historical entries must be matched to reproduction time",
                 RootShell.run("dumpsys activity exit-info com.android.systemui",null,6,128*1024),128*1024);
-        String cleanupSince=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(start-10*60*1000));
-        source(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT; requested last 10 minutes; buffer may have rotated",
-                RootShell.run("logcat -b main -b system -b crash -d -v epoch -T "+RootShell.quote(cleanupSince)
-                        +" LS_Augment:I AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",
-                        null,12,768*1024),768*1024);
+        appendLogcat(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT",DiagnosticLogcat.cleanup(start,
+                (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
         if(ai)file(out,context,"AI_DETAIL","detail-AI.log",512*1024,"AI");
         {
-            String since=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(start-30*60*1000));
-            String tags="LS_Augment:I "+(ai?"LS_Augment_AI:I ":"")+(shoulder?"LS_Augment_TGK:I LS_AugmentNative:I ":"")+"*:S";
-            RootShell.Result logs=RootShell.run("logcat -d -v epoch -T "+RootShell.quote(since)+" "+tags,null,12,1024*1024);
-            filteredSource(out,"LOGCAT module tags; requested last 30 minutes; unavailable historical buffer cannot be reconstructed",logs,1024*1024,ai,shoulder,false);
+            appendLogcat(out,"LOGCAT module tags",DiagnosticLogcat.module(start,ai,shoulder,
+                    (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
             RootShell.Result listing=RootShell.run("ls -1 /data/adb/lspd/log",null,5,8192);
             if(!listing.isSuccess())source(out,"LSPOSED_CURRENT_LOG_DIRECTORY",listing,8192);
             else {int files=0;for(String name:listing.output.split("\\r?\\n")){
@@ -135,6 +129,8 @@ final class DiagnosticExport {
     }
     /** Old successful registration lists add noise; retain their identity and all failures. */
     static void compactHooks(JSONObject snapshot,boolean current)throws JSONException {
+        if(!snapshot.has("detailDelivery"))snapshot.put("detailDeliveryEvidence",snapshot.optLong("droppedDetailEvents")>0
+                ?"LOSS_REPORTED_REASON_UNAVAILABLE":"LEGACY_TOTAL_ONLY");
         JSONArray hooks=snapshot.optJSONArray("hooks");if(hooks==null)return;
         JSONArray kept=new JSONArray();int omitted=0;
         for(int i=0;i<hooks.length();i++){
@@ -163,6 +159,21 @@ final class DiagnosticExport {
             boolean ai,boolean shoulder,boolean moduleOnly){
         source(out,name,filter(raw,ai,shoulder,moduleOnly),limit,false,true);
     }
+    private static void appendLogcat(StringBuilder out,String name,DiagnosticLogcat.Collection collection,boolean ai,boolean shoulder){
+        filteredSource(out,name+"; queryMode=TIME_WINDOW; requestedSinceWall="+collection.sinceWall
+                +"; buffer may have rotated",collection.primary,collection.bytesLimit,ai,shoulder,false);
+        out.append("logcatFallbackReason=").append(collection.fallbackReason.isEmpty()?"NOT_NEEDED":collection.fallbackReason)
+                .append(';').append(DiagnosticLogcat.recordWindow(filter(collection.primary,ai,shoulder,false)))
+                .append("; empty output is not proof of no errors\n");
+        if(collection.fallback==null)return;
+        source(out,name+" BUFFER_METADATA; contents not collected",collection.buffers,DiagnosticLogcat.BUFFER_BYTES);
+        RootShell.Result retained=filter(collection.fallback,ai,shoulder,false);
+        source(out,name+" FALLBACK; queryMode=RECENT_TAIL; maximumRecords="+DiagnosticLogcat.TAIL_RECORDS
+                +"; coverage=AVAILABLE_BUFFER_TAIL_MAY_PRECEDE_REQUESTED_WINDOW",retained,collection.bytesLimit,false,true);
+        out.append("logcatFallbackHasRecords=").append(DiagnosticLogcat.hasRecords(collection.fallback))
+                .append(";fallbackRetainedLines=").append(lineCount(retained.output)).append(';').append(DiagnosticLogcat.recordWindow(retained))
+                .append("; retained historical buffer cannot be reconstructed; read and capture status remain authoritative\n");
+    }
     // Apply one policy to preferences and feature values. In
     // particular, a serialized snapshot contains protected values in Base64.
     static String diagnosticValue(String key,String value){
@@ -178,6 +189,10 @@ final class DiagnosticExport {
     }
     static void appendDiagnosticValue(StringBuilder out,String key,String value){
         String safe=diagnosticValue(key,value);if(safe!=null)out.append(key).append('=').append(safe).append('\n');
+        if(safe!=null&&safe.contains("[TRUNCATED"))out.append("diagnosticValueState key=").append(key)
+                .append(" state=TRUNCATED; retainedChars=").append(safe.length())
+                .append("; budgetChars=").append(DiagnosticWritePolicy.valueLimit(key))
+                .append("; missing suffix is not evidence of missing views or a crash\n");
     }
     static String diagnosticValues(String raw){
         StringBuilder out=new StringBuilder();

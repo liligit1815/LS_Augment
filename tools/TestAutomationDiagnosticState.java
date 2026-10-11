@@ -11,6 +11,12 @@ public final class TestAutomationDiagnosticState {
     private static void check(boolean condition,String message){checks++;if(!condition)throw new AssertionError(message);}
     private static AutomationDiagnosticState.State restore(AutomationDiagnosticState.State state){return AutomationDiagnosticState.State.read(state.values());}
     public static void main(String[] args) {
+        for(String waiting:new String[]{"WAITING_FOR_UNLOCK","WAITING_FOR_SERVICE","WAITING_FOR_PROVIDER","WAITING_FOR_USER_SERVICE"}){
+            AutomationDiagnosticState.Update u=update(1,waiting,"","unknown","","");
+            check(AutomationDiagnosticState.Update.parse(u.encode())!=null,"waiting wire accepted: "+waiting);
+            AutomationDiagnosticState.State waitingState=AutomationDiagnosticState.State.read(new LinkedHashMap<>());
+            check(waitingState.apply(u,1)&&waitingState.error().isEmpty()&&waitingState.runtime.equals("unknown"),"waiting never invents success or failure: "+waiting);
+        }
         AutomationDiagnosticState.State s=AutomationDiagnosticState.State.read(new LinkedHashMap<>());
         check(s.apply(update(1,"FAILED","Unknown authority","unknown","",""),1),"bridge failure accepted");
         check("CONFIG_BRIDGE".equals(s.errorSource()),"bridge source explicit");

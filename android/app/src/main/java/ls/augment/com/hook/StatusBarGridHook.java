@@ -207,6 +207,8 @@ final class StatusBarGridHook {
         final boolean ownAlpha;
         final boolean zeroOpacity;
         final boolean visibleHierarchy;
+        final Rect clipBounds;final Rect clipProbe=new Rect();
+        final boolean clipToOutline,clipChildren,clipToPadding;
         final String text;final android.graphics.Typeface typeface;final float textSize,letterSpacing;final int textColor;
         final android.graphics.drawable.Drawable image;final int imageWidth,imageHeight,imageLevel,imageLeft,imageTop,imageRight,imageBottom;
         final Matrix imageMatrix;final ImageView.ScaleType imageScaleType;
@@ -226,6 +228,10 @@ final class StatusBarGridHook {
             for(View at=view;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null)
                 if(at.getVisibility()!=View.VISIBLE){visible=false;break;}
             visibleHierarchy=visible;
+            clipBounds=view.getClipBounds(clipProbe)?new Rect(clipProbe):null;
+            clipToOutline=view.getClipToOutline();
+            clipChildren=view instanceof ViewGroup&&((ViewGroup)view).getClipChildren();
+            clipToPadding=view instanceof ViewGroup&&((ViewGroup)view).getClipToPadding();
             nativeBattery=view.getClass().getSimpleName().equals("MFVBatteryViewLayout");
             batteryLevel=nativeBattery?SystemUiAdapter.field(view,"mBateryLevel"):null;batteryCharging=nativeBattery?SystemUiAdapter.field(view,"mIsCharing"):null;
             batteryMode=nativeBattery?SystemUiAdapter.field(view,"mShowMode"):null;batteryHollow=nativeBattery?SystemUiAdapter.field(view,"mTextHollowEffectAvailable"):null;
@@ -245,6 +251,14 @@ final class StatusBarGridHook {
             // Every ancestor is also witnessed, so becoming visible repacks with
             // the latest geometry/content before this shortcut is considered again.
             if(!visibleHierarchy)return true;
+            // App/launcher transitions can change RenderNode clipping without a
+            // layout request. Repack before drawing to release the new native
+            // clip; witnesses are captured after release, so stable frames reuse
+            // their geometry. Reuse the probe instead of allocating per frame.
+            if((view.getClipBounds(clipProbe)?clipBounds==null||!clipBounds.equals(clipProbe):clipBounds!=null)
+                    ||view.getClipToOutline()!=clipToOutline
+                    ||view instanceof ViewGroup&&(((ViewGroup)view).getClipChildren()!=clipChildren
+                    ||((ViewGroup)view).getClipToPadding()!=clipToPadding))return false;
             if(view.isLayoutRequested()||view.getLeft()!=left||view.getTop()!=top||view.getRight()!=right||view.getBottom()!=bottom
                     ||view.getMeasuredWidth()!=measuredWidth||view.getMeasuredHeight()!=measuredHeight||view.getLayoutDirection()!=direction
                     ||view.getPaddingLeft()!=paddingLeft||view.getPaddingTop()!=paddingTop||view.getPaddingRight()!=paddingRight||view.getPaddingBottom()!=paddingBottom
@@ -564,7 +578,18 @@ final class StatusBarGridHook {
                 original=resource!=0?context.getResources().getDimensionPixelSize(resource):nativeHeight>0?nativeHeight:original;
             }
             int target=ConfigSchema.statusBarHeightPx(original>0?original:nativeHeight,dp,context.getResources().getDisplayMetrics().density);
-            if(target!=Integer.MIN_VALUE&&p.height!=target){p.height=target;root.setLayoutParams(p);}}
+            if(target!=Integer.MIN_VALUE){
+                if(!isKeyguard(root))try{
+                    // OEM call/ongoing indicators also read this cached height.
+                    // Changing only LayoutParams leaves their native geometry
+                    // at the pre-adjustment status-bar height.
+                    java.lang.reflect.Field height=root.getClass().getDeclaredField("mStatusBarHeight");
+                    height.setAccessible(true);height.setInt(root,target);
+                }catch(NoSuchFieldException ignored){}catch(IllegalAccessException error){
+                    FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_height_cache:"+error.getClass().getSimpleName());
+                }
+                if(p.height!=target){p.height=target;root.setLayoutParams(p);}
+            }}
         int px(float dp){return Math.round(dp*context.getResources().getDisplayMetrics().density);}
         boolean positionOnly(){return FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY);}
         boolean connectivityGroup(){return !positionOnly()&&FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP);}
@@ -633,6 +658,10 @@ final class StatusBarGridHook {
                 addCompanion(nodes,views,"clock.operator","clock",findView(root,"operator_name_frame"),-10,false);
                 addCompanion(nodes,views,"notifications.ongoing_primary","notifications",findView(root,"ongoing_activity_chip_primary"),-9,false);
                 addCompanion(nodes,views,"notifications.ongoing_secondary","notifications",findView(root,"ongoing_activity_chip_secondary"),-8,false);
+                View legacyCall=findView(root,"ongoing_call_chip");
+                if(legacyCall!=null&&!isDescendant(legacyCall,views.get("notifications.ongoing_primary"))
+                        &&!isDescendant(legacyCall,views.get("notifications.ongoing_secondary")))
+                    addCompanion(nodes,views,"notifications.ongoing_call","notifications",legacyCall,-6,false);
                 addCompanion(nodes,views,"notifications.heads_up","notifications",findView(root,"heads_up_status_bar_view"),-7,false);
                 addCompanion(nodes,views,"notifications.join","notifications",findView(root,"ll_notification_icon_join"),-1,true);
                 View userSwitcher=findView(root,"user_switcher_container"),avatar=findView(root,"multi_user_avatar");
@@ -755,7 +784,11 @@ final class StatusBarGridHook {
                         appendVisibility(visibility,"cooling#"+i,((ViewGroup)vendor).getChildAt(i));
                     FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_visibility_state",
                             "build="+ls.augment.com.BuildConfig.VERSION_CODE+";time="+System.currentTimeMillis()
-                                    +";clipFix="+explicitClips.summary()+";"+visibility);}
+                                    +";clipFix="+explicitClips.summary()+";"+visibility);
+                    StringBuilder notificationVisibility=new StringBuilder("build=").append(ls.augment.com.BuildConfig.VERSION_CODE)
+                            .append(";time=").append(System.currentTimeMillis()).append(";clipFix=").append(explicitClips.summary()).append(';');
+                    appendNotificationVisibility(notificationVisibility,notifications);
+                    FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_notifications_visibility_state",notificationVisibility.toString());}
             }catch(Throwable e){failLayout(e);}
             finally{applying=false;}
         }
@@ -816,10 +849,29 @@ final class StatusBarGridHook {
                         .append(",v=").append(current.getVisibility()).append(",a=").append(current.getAlpha())
                         .append(",ta=").append(current.getTransitionAlpha()).append(",layer=").append(current.getLayerType())
                         .append(",clip=").append(current.getClipBounds()).append(",outline=").append(current.getClipToOutline());
+                if(current instanceof ViewGroup)out.append(",childrenClip=").append(((ViewGroup)current).getClipChildren())
+                        .append(",paddingClip=").append(((ViewGroup)current).getClipToPadding());
                 if(current==root)break;
                 current=current.getParent() instanceof View?(View)current.getParent():null;
             }
             out.append(';');
+        }
+        void appendNotificationVisibility(StringBuilder out,View view){
+            appendVisibility(out,"notifications",view);
+            if(!(view instanceof ViewGroup))return;
+            ViewGroup container=(ViewGroup)view;
+            Object states=SystemUiAdapter.field(container,"mIconStates");
+            out.append("children=").append(container.getChildCount()).append(";sampled=").append(Math.min(6,container.getChildCount())).append(';');
+            for(int i=0;i<Math.min(6,container.getChildCount());i++){
+                View child=container.getChildAt(i);appendVisibility(out,"notification#"+i,child);
+                Object nativeState=states instanceof Map?((Map<?,?>)states).get(child):null;
+                out.append("native#").append(i).append("/hidden=").append(SystemUiAdapter.field(nativeState,"hidden"));
+                try{out.append("/visibleState=").append(SystemUiAdapter.callIfPresent(child,"getVisibleState"))
+                        .append("/iconVisible=").append(SystemUiAdapter.callIfPresent(child,"isIconVisible"))
+                        .append("/blocked=").append(SystemUiAdapter.callIfPresent(child,"isIconBlocked"));
+                }catch(ReflectiveOperationException unavailable){out.append("/read=unavailable");}
+                out.append(';');
+            }
         }
         boolean replaceKeyguardCarrier(){return isKeyguard(root)&&!positionOnly()&&keyguardClock!=null&&!FeatureSettings.enabled(context,ls.augment.com.CarrierTextOptions.key("lock","enabled"));}
         void updateKeyguardCarrier(View carrier){

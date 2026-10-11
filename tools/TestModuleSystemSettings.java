@@ -16,12 +16,14 @@ public final class TestModuleSystemSettings {
     private static final class Fixture implements ModuleSystemSettings.Store, ModuleSystemSettings.Io {
         Map<String, String> disk = new LinkedHashMap<>();
         final Map<ModuleSystemSettings.Address, String> settings = new LinkedHashMap<>();
+        final java.util.List<ModuleSystemSettings.Address> sequence=new java.util.ArrayList<>();
         int writes, failWrite = -1; boolean failCommit, failRead;
         final ModuleSystemSettings.Engine engine = new ModuleSystemSettings.Engine(this, this, 0);
         public Map<String, String> load() { return new LinkedHashMap<>(disk); }
         public boolean commit(Map<String, String> values) { if (failCommit) return false; disk = new LinkedHashMap<>(values); return true; }
         public ModuleSystemSettings.Read read(ModuleSystemSettings.Address address) { return new ModuleSystemSettings.Read(!failRead, settings.get(address)); }
         public boolean write(ModuleSystemSettings.Address address, String value) {
+            sequence.add(address);
             // Retiring the module's own inactive marker does not alter a native setting.
             boolean ownMetadata=address.equals(OWNED)&&value==null&&"0".equals(settings.get(ACTIVE));
             check(ownMetadata||!disk.isEmpty(), "recovery intent precedes native platform write");
@@ -34,7 +36,7 @@ public final class TestModuleSystemSettings {
         }
         ModuleSystemSettings.WriteResult dim(String level) {
             LinkedHashMap<ModuleSystemSettings.Address, String> updates = new LinkedHashMap<>();
-            updates.put(LEVEL, level); updates.put(ACTIVE, "1"); updates.put(OWNED, "1");
+            updates.put(OWNED, "1"); updates.put(LEVEL, level); updates.put(ACTIVE, "1");
             return engine.put(updates);
         }
     }
@@ -62,8 +64,10 @@ public final class TestModuleSystemSettings {
 
         Fixture dim = new Fixture(); dim.settings.put(LEVEL, "27"); dim.settings.put(ACTIVE, "0");
         check(dim.dim("80").success, "new dim setting");
+        check(dim.sequence.get(0).equals(OWNED),"ownership precedes native setting notifications after durable backup");dim.sequence.clear();
         check(dim.engine.restore().success && dim.settings.get(LEVEL).equals("27") && dim.settings.get(ACTIVE).equals("0")
                 && !dim.settings.containsKey(OWNED) && dim.disk.isEmpty(), "dim restores both originals and removes marker");
+        check(dim.sequence.get(dim.sequence.size()-1).equals(OWNED),"native strength and activation restore before removing compatibility ownership");
 
         Fixture commit = new Fixture(); commit.failCommit = true;
         check(!commit.put(ADB, "1").success && commit.writes == 0 && commit.settings.isEmpty(), "failed backup causes no platform write");

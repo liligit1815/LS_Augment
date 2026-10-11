@@ -1,6 +1,8 @@
 package ls.augment.com;
 
 import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -29,6 +31,7 @@ public class HeaderClockHooksAndroidTest {
     }
     static Object call(Object object,String name)throws Exception{return call(object,name,new Class<?>[]{});}
     static void init()throws Exception{
+        org.robolectric.RuntimeEnvironment.getApplication().getResources().getConfiguration().orientation=Configuration.ORIENTATION_PORTRAIT;
         FeatureSettings.clear();appearance=Class.forName("ls.augment.com.hook.NotificationAppearanceHook");format=Class.forName("ls.augment.com.hook.ControlCenterHeaderHook");
         for(Class<?> c:new Class<?>[]{appearance,format})for(String name:new String[]{"HEADERS","STACKS","FOOTERS","STATES"})try{Field f=c.getDeclaredField(name);f.setAccessible(true);((java.util.Map<?,?>)f.get(null)).clear();}catch(NoSuchFieldException ignored){}
         Field module=appearance.getDeclaredField("module");module.setAccessible(true);module.set(null,new ls.augment.com.hook.AugmentModule());
@@ -39,6 +42,141 @@ public class HeaderClockHooksAndroidTest {
     }
     static void frame(HeaderClockAndroidTest.Model m,Object[] state)throws Exception{
         call(state[1],"refresh");call(state[1],"renderClock");call(state[0],"refresh");m.layout();
+    }
+    static int pixels(HeaderClockAndroidTest.Model m,float dp){return Math.round(dp*m.header.getResources().getDisplayMetrics().density);}
+    static void orientation(HeaderClockAndroidTest.Model m,int value){
+        m.context.getResources().getConfiguration().orientation=value;
+        m.header.getResources().getConfiguration().orientation=value;
+    }
+    /** NX809J primitive landscape + data usage, from CCHeaderView.updateHeaderResources:
+     * date END_OF/ALIGN_BOTTOM(time_group), a 30dp time top, 28dp clock and 33dp
+     * clock height. The larger-font variant supplies a new native font baseline.
+     * The outer height is a primitive host allocation, not the hidden QS 33dp header. */
+    static void landscapeResources(HeaderClockAndroidTest.Model m,float font){
+        orientation(m,Configuration.ORIENTATION_LANDSCAPE);m.header.panelType=0;
+        m.header.getLayoutParams().height=pixels(m,100);
+        m.header.getLayoutParams().width=m.width;
+        RelativeLayout.LayoutParams time=new RelativeLayout.LayoutParams(-2,-2);
+        time.topMargin=pixels(m,30);time.addRule(RelativeLayout.ALIGN_PARENT_START);
+        m.timeGroup.setLayoutParams(time);m.timeGroup.setVisibility(View.VISIBLE);
+        m.clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,pixels(m,28)*font);
+        RelativeLayout.LayoutParams clock=new RelativeLayout.LayoutParams(-2,Math.round(pixels(m,33)*font));
+        clock.addRule(RelativeLayout.ALIGN_PARENT_START);clock.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        m.clock.setLayoutParams(clock);m.clock.setSingleLine(true);m.clock.setHorizontallyScrolling(true);
+        m.date.setTextSize(TypedValue.COMPLEX_UNIT_PX,pixels(m,14)*font);
+        m.date.setLayoutParams(new RelativeLayout.LayoutParams(-2,Math.round(pixels(m,23)*font)));
+        RelativeLayout.LayoutParams date=new RelativeLayout.LayoutParams(-2,-2);
+        date.addRule(RelativeLayout.END_OF,HeaderClockAndroidTest.GROUP);date.addRule(RelativeLayout.ALIGN_BOTTOM,HeaderClockAndroidTest.GROUP);
+        date.leftMargin=pixels(m,5);date.setMarginStart(pixels(m,5));date.bottomMargin=-pixels(m,2);
+        m.dateGroup.setLayoutParams(date);m.dateGroup.setVisibility(View.VISIBLE);
+        RelativeLayout.LayoutParams right=new RelativeLayout.LayoutParams(-2,-1);
+        right.addRule(RelativeLayout.RIGHT_OF,HeaderClockAndroidTest.GROUP);right.addRule(RelativeLayout.ALIGN_PARENT_END);
+        m.right.setLayoutParams(right);
+        RelativeLayout.LayoutParams icons=new RelativeLayout.LayoutParams(-1,42);
+        icons.topMargin=pixels(m,9);icons.addRule(RelativeLayout.ALIGN_PARENT_TOP);m.icons.setLayoutParams(icons);
+        RelativeLayout.LayoutParams footer=new RelativeLayout.LayoutParams(-2,98);
+        footer.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);footer.addRule(RelativeLayout.ALIGN_PARENT_END);m.footer.setLayoutParams(footer);m.footer.setVisibility(View.VISIBLE);
+        RelativeLayout.LayoutParams usage=new RelativeLayout.LayoutParams(-2,50);
+        usage.addRule(RelativeLayout.BELOW,HeaderClockAndroidTest.DATE_GROUP);usage.addRule(RelativeLayout.ALIGN_PARENT_START);
+        m.usage.setLayoutParams(usage);m.usage.setVisibility(View.VISIBLE);
+        RelativeLayout.LayoutParams am=new RelativeLayout.LayoutParams(-2,50);
+        am.addRule(RelativeLayout.END_OF,m.clock.getId());am.addRule(RelativeLayout.ALIGN_PARENT_TOP);am.topMargin=pixels(m,11);
+        m.amPm.setLayoutParams(am);m.amPm.setVisibility(View.VISIBLE);m.layout();
+    }
+    static HeaderClockAndroidTest.Model landscape(boolean rtl,float font){
+        HeaderClockAndroidTest.Model m=new HeaderClockAndroidTest.Model(2093,1216,rtl,font);landscapeResources(m,font);return m;
+    }
+    /** Captures native rules after Android resolves logical anchors, including RTL. */
+    static final class NativeLandscape {
+        final int height,width;final View[] children;final RelativeLayout.LayoutParams[] layouts;
+        final Rect actions;final int usageTop,dateTop;final float clockSize;
+        NativeLandscape(HeaderClockAndroidTest.Model m){
+            height=m.header.getLayoutParams().height;width=m.header.getLayoutParams().width;clockSize=m.clock.getTextSize();
+            children=new View[]{m.clock,m.timeGroup,m.date,m.dateGroup,m.right,m.icons,m.footer,m.usage,m.amPm};layouts=new RelativeLayout.LayoutParams[children.length];
+            for(int i=0;i<children.length;i++)layouts[i]=new RelativeLayout.LayoutParams((RelativeLayout.LayoutParams)children[i].getLayoutParams());
+            actions=m.rect(m.footer);usageTop=m.usage.getTop();dateTop=m.dateGroup.getTop();
+        }
+        void unchanged(HeaderClockAndroidTest.Model m,boolean visible)throws Exception{
+            assertEquals("format preserves primitive host height",height,m.header.getLayoutParams().height);
+            assertEquals("format preserves host width",width,m.header.getLayoutParams().width);
+            assertEquals("format preserves native clock font",clockSize,m.clock.getTextSize(),0);
+            for(int i=0;i<children.length;i++){
+                RelativeLayout.LayoutParams expected=layouts[i],actual=(RelativeLayout.LayoutParams)children[i].getLayoutParams();
+                assertEquals("native child width "+i,expected.width,actual.width);assertEquals("native child height "+i,expected.height,actual.height);
+                assertEquals("native child top "+i,expected.topMargin,actual.topMargin);assertEquals("native child bottom "+i,expected.bottomMargin,actual.bottomMargin);
+                assertEquals("native child start "+i,expected.getMarginStart(),actual.getMarginStart());assertEquals("native child end "+i,expected.getMarginEnd(),actual.getMarginEnd());
+                assertArrayEquals("native relative anchors "+i,expected.getRules(),actual.getRules());
+            }
+            assertEquals("plain landscape format does not own notification clock",false,call(appearance,"ownsClock",new Class<?>[]{android.widget.TextView.class},m.clock));
+            assertEquals("plain landscape format does not own icon spacing",-1,(Float)call(appearance,"iconSpacingBottom",new Class<?>[]{View.class},m.header),0);
+            if(!visible)return;
+            assertEquals("footer stays at native action position",actions,m.rect(m.footer));
+            assertEquals("date keeps its native row",dateTop,m.dateGroup.getTop());assertEquals("usage keeps its native row",usageTop,m.usage.getTop());
+            Rect time=m.rect(m.clock),date=m.rect(m.date),flow=m.rect(m.usage),buttons=m.rect(m.footer);
+            assertTrue("date and time remain on one horizontal band",date.top<time.bottom&&date.bottom>time.top);
+            assertFalse("native date is outside time glyph box",Rect.intersects(time,date));
+            int nativeDateBottom=m.rect(m.dateGroup).bottom+((RelativeLayout.LayoutParams)m.dateGroup.getLayoutParams()).bottomMargin;
+            assertTrue("usage follows native date anchor including OEM negative margin",flow.top>=nativeDateBottom);
+            assertTrue("flow remains above following content",flow.bottom<=m.body.getTop());assertTrue("buttons remain above following content",buttons.bottom<=m.body.getTop());
+            for(View child:new View[]{m.clock,m.date,m.usage,m.button,m.nfc}){
+                Rect actual=new Rect();assertTrue("native child has real visible bounds",child.getGlobalVisibleRect(actual));
+                assertEquals("native child is not horizontally cropped",child.getWidth(),actual.width());assertEquals("native child is not vertically cropped",child.getHeight(),actual.height());
+            }
+            assertTrue("native clock remains single line",m.clock.isSingleLine());assertEquals("actual text stays on one line",1,m.clock.getLineCount());
+            assertTrue("complete formatted line fits native wrap width",m.clock.getLayout().getLineWidth(0)<=m.clock.getWidth()+1);
+            m.button.performClick();assertEquals("native action listener remains usable",1,m.clicks);m.clicks=0;
+        }
+    }
+    static void clockOptions(int mode){FeatureSettings.put("ls_augment_rm_qs_clock_seconds",(mode&1)!=0?"1":"0");FeatureSettings.put("ls_augment_rm_qs_clock_period",(mode&2)!=0?"1":"0");}
+    static void formatted(HeaderClockAndroidTest.Model m,int mode){
+        String text=m.clock.getText().toString();assertFalse("landscape has no inherited semantic newline",text.contains("\n"));
+        assertEquals("seconds toggle really changes time format",(mode&1)!=0?2:1,text.chars().filter(c->c==':').count());
+        assertEquals("period toggle really displays Chinese period",(mode&2)!=0,text.matches(".*[\\p{IsHan}].*"));
+        assertEquals("accessibility describes complete formatted time",text,m.clock.getContentDescription().toString());
+        assertEquals("seconds remains enabled in native clock",(mode&1)!=0,m.clock.mShowSeconds);
+    }
+    @Test public void trueLandscapeFormatPreservesNativeDateFlowAndActions()throws Exception{
+        for(boolean rtl:new boolean[]{false,true})for(float font:new float[]{1,1.3f}){
+            init();HeaderClockAndroidTest.Model m=landscape(rtl,font);NativeLandscape nativeLayout=new NativeLandscape(m);Object[] state=attach(m);
+            assertEquals(Configuration.ORIENTATION_LANDSCAPE,m.header.getResources().getConfiguration().orientation);
+            for(int mode:new int[]{1,2,3}){
+                clockOptions(mode);frame(m,state);formatted(m,mode);nativeLayout.unchanged(m,true);
+                assertEquals("only Chinese period suppresses native AM",(mode&2)!=0?View.GONE:View.VISIBLE,m.amPm.getVisibility());
+                int wanted=m.clock.getText().toString().lastIndexOf(':');m.clock.setText(new android.text.SpannableStringBuilder(m.clock.getText()).insert(wanted,"\n"));
+                call(state[1],"renderClock");m.layout();formatted(m,mode);nativeLayout.unchanged(m,true);
+                for(int i=0;i<8;i++)frame(m,state);nativeLayout.unchanged(m,true);
+                clockOptions(0);frame(m,state);nativeLayout.unchanged(m,true);assertEquals(View.VISIBLE,m.amPm.getVisibility());assertFalse(m.clock.mShowSeconds);
+            }
+            clockOptions(3);frame(m,state);call(state[0],"close");call(state[1],"detach");m.layout();assertEquals("detach restores native period",View.VISIBLE,m.amPm.getVisibility());nativeLayout.unchanged(m,true);
+        }
+    }
+    @Test public void landscapeNativeCallbacksAndRotationRestoreLatestBaseline()throws Exception{
+        for(boolean rtl:new boolean[]{false,true})for(float font:new float[]{1,1.3f}){
+            init();HeaderClockAndroidTest.Model m=landscape(rtl,font);Object[] state=attach(m);clockOptions(3);frame(m,state);
+            call(state[0],"beginNative");assertEquals("native callback first receives its period",View.VISIBLE,m.amPm.getVisibility());
+            m.header.getLayoutParams().height=pixels(m,110);m.clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,pixels(m,26)*font);m.amPm.setVisibility(View.INVISIBLE);m.layout();
+            NativeLandscape latest=new NativeLandscape(m);call(state[1],"resources");call(state[0],"endNative");frame(m,state);latest.unchanged(m,true);formatted(m,3);
+            clockOptions(0);frame(m,state);assertEquals("off restores latest native INVISIBLE period",View.INVISIBLE,m.amPm.getVisibility());latest.unchanged(m,true);
+            clockOptions(3);frame(m,state);call(state[0],"beginNative");orientation(m,Configuration.ORIENTATION_PORTRAIT);m.header.panelType=0;
+            m.header.getLayoutParams().height=369;m.clock.setTextSize(TypedValue.COMPLEX_UNIT_PX,156*font);m.clock.setLayoutParams(new RelativeLayout.LayoutParams(-2,Math.round(185*font)));
+            RelativeLayout.LayoutParams time=new RelativeLayout.LayoutParams(-2,-2);time.topMargin=103;time.addRule(RelativeLayout.ALIGN_PARENT_START);m.timeGroup.setLayoutParams(time);
+            RelativeLayout.LayoutParams date=new RelativeLayout.LayoutParams(-2,-2);date.addRule(RelativeLayout.BELOW,HeaderClockAndroidTest.GROUP);date.addRule(RelativeLayout.ALIGN_PARENT_START);m.dateGroup.setLayoutParams(date);
+            m.usage.setVisibility(View.GONE);m.amPm.setVisibility(View.VISIBLE);m.layout();call(state[1],"resources");call(state[0],"endNative");frame(m,state);
+            assertEquals("portrait still uses deliberate full-size layout",true,call(appearance,"ownsClock",new Class<?>[]{android.widget.TextView.class},m.clock));
+            assertTrue("portrait date remains below time",m.rect(m.date).top>=m.rect(m.clock).bottom);
+            call(state[0],"beginNative");landscapeResources(m,font);NativeLandscape rotated=new NativeLandscape(m);call(state[1],"resources");call(state[0],"endNative");frame(m,state);
+            formatted(m,3);rotated.unchanged(m,true);clockOptions(0);frame(m,state);rotated.unchanged(m,true);assertEquals(View.VISIBLE,m.amPm.getVisibility());
+            call(state[0],"close");call(state[1],"detach");
+        }
+    }
+    @Test public void hiddenNativeLandscapeQsHeaderIsNotResurrected()throws Exception{
+        init();HeaderClockAndroidTest.Model m=landscape(false,1);m.header.panelType=1;
+        m.timeGroup.setVisibility(View.GONE);m.dateGroup.setVisibility(View.GONE);m.usage.setVisibility(View.GONE);m.amPm.setVisibility(View.GONE);m.footer.setVisibility(View.GONE);
+        m.header.getLayoutParams().height=pixels(m,33);m.right.getLayoutParams().height=pixels(m,33);m.layout();NativeLandscape nativeLayout=new NativeLandscape(m);Object[] state=attach(m);
+        for(int mode:new int[]{1,2,3,0}){
+            clockOptions(mode);frame(m,state);nativeLayout.unchanged(m,false);assertEquals(View.GONE,m.timeGroup.getVisibility());assertEquals(View.GONE,m.dateGroup.getVisibility());assertEquals(View.GONE,m.amPm.getVisibility());
+        }
+        call(state[0],"close");call(state[1],"detach");assertEquals(View.GONE,m.amPm.getVisibility());
     }
     @Test public void actualHooksOffOnOffAndLatestResourceRestore()throws Exception{
         init();HeaderClockAndroidTest.Model m=new HeaderClockAndroidTest.Model(988,2688,false,1);Object[] state=attach(m);

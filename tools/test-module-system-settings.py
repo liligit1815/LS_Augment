@@ -11,7 +11,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 SOURCE = ROOT / 'android/app/src/main/java/ls/augment/com'
 subprocess.run([str(JAVA_HOME / 'bin/javac.exe'), '-encoding', 'UTF-8', '-cp', str(ANDROID_JAR), '-d', str(OUT),
                 *[str(SOURCE / name) for name in ('RootShell.java', 'DurablePreferences.java', 'ResetWriteFence.java',
-                                                'ExtraDimControl.java', 'ModuleSystemSettings.java')],
+                                                'ExtraDimControl.java', 'ExtraDimRuntime.java', 'ModuleSystemSettings.java')],
                 str(ROOT / 'tools/TestModuleSystemSettings.java')], check=True)
 result = subprocess.run([str(JAVA_HOME / 'bin/java.exe'), '-cp', str(OUT) + os.pathsep + str(ANDROID_JAR),
                          'ls.augment.com.TestModuleSystemSettings'], capture_output=True, text=True, check=True)

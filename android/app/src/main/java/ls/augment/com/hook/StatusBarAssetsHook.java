@@ -192,6 +192,7 @@ final class StatusBarAssetsHook {
             nativeStates=new StatusBarNativeStateTable(context);
             IntentFilter events = new IntentFilter(); events.addAction(Intent.ACTION_SCREEN_ON);
             events.addAction(Intent.ACTION_SCREEN_OFF); events.addAction(Intent.ACTION_USER_PRESENT);
+            events.addAction(Intent.ACTION_USER_UNLOCKED);
             events.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
             try { application.registerReceiver(new BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent intent) {
@@ -959,19 +960,34 @@ final class StatusBarAssetsHook {
     // Confined to REPORTER. Retry the latest captured payload without rescanning UI or
     // resending an obsolete surface observation after a new publication replaces it.
     private static InventoryPublication pendingInventory;
+    private static final ConfigBridgeReadiness INVENTORY_BRIDGE=new ConfigBridgeReadiness();
     private static final Object INVENTORY_SUBMISSION=new Object();
     private static volatile long inventoryGeneration;
     private static final java.util.concurrent.ScheduledExecutorService INVENTORY_RETRY=
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"LSA-InventoryRetry");t.setDaemon(true);return t;});
     private static final class InventoryPublication {
-        final Context context;final String payload;final long started,generation;int failures;
+        final Context context;final String payload;final long started,generation;int failures,waits;
         InventoryPublication(Context context,String payload,long capturedElapsed,long generation){this.context=context;this.payload=payload;this.started=capturedElapsed;this.generation=generation;}
     }
     private static void publishInventory(InventoryPublication item) {
         if(pendingInventory!=item||item.generation!=inventoryGeneration)return;
-        if(SystemClock.elapsedRealtime()-item.started>=60_000L){pendingInventory=null;return;}
         String error="";
         try {
+            ConfigBridgeReadiness.Result status=INVENTORY_BRIDGE.check(item.context);
+            FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_bridge_probe_error",status.probeError);
+            if(status.waiting()){
+                // Keep the latest captured payload and its original timestamp.
+                // Startup waiting neither invents a failure nor clears history.
+                long delay=Math.min(30_000L,1000L<<Math.min(5,item.waits++));
+                scheduleInventoryRetry(item,delay,status.state);return;
+            }
+            if(!status.ready())throw new IllegalStateException(status.error);
+            if(SystemClock.elapsedRealtime()-item.started>=60_000L){
+                pendingInventory=null;
+                // Readiness may take longer than an observation's validity.
+                // Capture current UI state instead of publishing stale pixels.
+                MAIN.post(()->{reportedAt=0;publish();});return;
+            }
             Bundle extras=new Bundle();extras.putString("payload",item.payload);
             Bundle response=item.context.getContentResolver().call(PROVIDER,"statusbar_inventory_publish",null,extras);
             if(response==null||!response.getBoolean("ok",false))error="Provider rejected inventory";
@@ -984,8 +1000,11 @@ final class StatusBarAssetsHook {
             return;
         }
         long delay=ls.augment.com.InventoryRetryPolicy.delay(++item.failures,SystemClock.elapsedRealtime()-item.started);
+        scheduleInventoryRetry(item,delay,"failed");
+    }
+    private static void scheduleInventoryRetry(InventoryPublication item,long delay,String state){
         FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_bridge_state",
-                "waiting;attempt="+item.failures+";retryMs="+delay+";time="+System.currentTimeMillis());
+                state+";attempt="+item.failures+";retryMs="+delay+";time="+System.currentTimeMillis());
         if(delay>=0)INVENTORY_RETRY.schedule(()->{
             // The submission lock prevents an old retry from evicting a queued fresh
             // capture in REPORTER's bounded discard-oldest queue.

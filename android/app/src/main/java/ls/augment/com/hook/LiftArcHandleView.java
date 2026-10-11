@@ -305,14 +305,14 @@ final class LiftArcHandleView extends FrameLayout {
                 if (getContext().getTheme().resolveAttribute(attr, tv, true)) {
                     if (tv.type >= TypedValue.TYPE_FIRST_COLOR_INT
                             && tv.type <= TypedValue.TYPE_LAST_COLOR_INT) {
-                        return tv.data;
+                        if ((tv.data >>> 24) >= 8) return tv.data;
                     }
                     if (tv.resourceId != 0) {
                         TypedValue value = new TypedValue();
                         getResources().getValue(tv.resourceId, value, true);
                         if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT
                                 && value.type <= TypedValue.TYPE_LAST_COLOR_INT) {
-                            return value.data;
+                            if ((value.data >>> 24) >= 8) return value.data;
                         }
                     }
                 }

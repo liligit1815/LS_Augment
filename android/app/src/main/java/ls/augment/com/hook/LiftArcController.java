@@ -846,15 +846,10 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
             log("setDarkIntensity failed", t);
         }
         try {
-            Object color = cls.getMethod("getHandleColor").invoke(nav);
-            if (color instanceof Integer && ((Integer) color) >>> 24 < 8) {
-                // 系统主题里没解析到 homeHandleColor（会是全透明），换成我们自己解析到的系统色
-                Object paint = cls.getField("mPaint").get(nav);
-                if (paint instanceof android.graphics.Paint) {
-                    ((android.graphics.Paint) paint).setColor(handle.systemHandleColor());
-                    note = "ok(paint-override)";
-                }
-            }
+            String colorNote = LiftArcHandleColor.ensureVisible(nav, handle.systemHandleColor());
+            // Keep a genuine setDarkIntensity failure visible when the color
+            // itself is already valid; the missing optional getter is normal.
+            if ("ok".equals(note) || !colorNote.startsWith("ok")) note = colorNote;
         } catch (Throwable t) {
             note = "color:" + brief(t);
             log("handle color failed", t);

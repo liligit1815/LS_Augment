@@ -19,6 +19,9 @@ final class HookTelemetry {
     private static final ConcurrentHashMap<String,Counter> counters=new ConcurrentHashMap<>();
     private static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);
     private static final AtomicLong dropped=new AtomicLong(),sequence=new AtomicLong();
+    private static final ConcurrentHashMap<String,AtomicLong> dropReasons=new ConcurrentHashMap<>();
+    private static volatile long lastDropAt,lastPublishAttemptAt,lastPublishAcceptedAt,lastPublishFailureAt;
+    private static volatile String lastDropReason="",lastPublishFailureReason="";
     private static final HookTelemetryObserver.StackBudget errorStacks=new HookTelemetryObserver.StackBudget(8,4096);
     private static final long startedWall=System.currentTimeMillis(),startedElapsed=SystemClock.elapsedRealtime();
     private static volatile String process="unknown",pkg="unknown",framework="unknown";
@@ -62,14 +65,14 @@ final class HookTelemetry {
         if((feature.equals("AI")&&!ai)||(feature.equals("SHOULDER")&&!shoulder))return;
         String text="seq="+sequence.incrementAndGet()+" wall="+System.currentTimeMillis()+" elapsed="+SystemClock.elapsedRealtime()+" thread="+Thread.currentThread().getName()+" "+value;
         if(text.length()>1900)text=text.substring(0,1900)+" [TRUNCATED]";
-        if(!trace.offer(new String[]{feature,text}))dropped.incrementAndGet();
+        if(!trace.offer(new String[]{feature,text}))recordDrop("queue_full",1);
     }
     /** LiftArc runtime records are always collected, independent of optional detailed traces. */
     static void liftArc(String level,String value){
         if(!"INFO".equals(level)&&!"WARN".equals(level)&&!"ERROR".equals(level))return;
         String text="seq="+sequence.incrementAndGet()+" wall="+System.currentTimeMillis()+" elapsed="+SystemClock.elapsedRealtime()+" thread="+Thread.currentThread().getName()+" "+value;
         if(text.length()>1900)text=text.substring(0,1900)+" [TRUNCATED]";
-        if(!trace.offer(new String[]{"LIFTARC",text,level}))dropped.incrementAndGet();
+        if(!trace.offer(new String[]{"LIFTARC",text,level}))recordDrop("queue_full",1);
     }
     private static boolean hasLiftArcEvents(){
         for(String[] event:trace)if("LIFTARC".equals(event[0]))return true;
@@ -84,11 +87,12 @@ final class HookTelemetry {
         Context context=FeatureSettings.from(null);if(context==null)return;
         shoulder=FeatureSettings.enabled(context,FeatureSettings.SHOULDER_DIAGNOSTICS);
         ai=FeatureSettings.enabled(context,FeatureSettings.AI_TRIGGER_DIAGNOSTICS);
-        long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&!hasLiftArcEvents()&&now-lastPublished<15000)return;lastPublished=now;
+        long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&!hasLiftArcEvents()&&now-lastPublished<15000)return;lastPublished=now;lastPublishAttemptAt=System.currentTimeMillis();
         JSONObject out=new JSONObject().put("package",pkg).put("packages",packageNames()).put("process",process).put("pid",android.os.Process.myPid())
             .put("moduleVersion",BuildConfig.VERSION_NAME).put("framework",framework).put("moduleLoadedAt",startedWall)
             .put("processStartedElapsed",android.os.Process.getStartElapsedRealtime()).put("moduleLoadedElapsed",startedElapsed).put("snapshotAt",System.currentTimeMillis()).put("moduleLoaded",true)
             .put("droppedDetailEvents",dropped.get()).put("shoulderDetailed",shoulder).put("aiDetailed",ai)
+            .put("detailDelivery",deliveryJson())
             .put("liftArcSuppressedEvents",LiftArcLog.suppressedEvents());
         JSONArray targets=new JSONArray();
         for(Map.Entry<String,Counter> entry:counters.entrySet()){
@@ -108,7 +112,7 @@ final class HookTelemetry {
         }
         if("com.android.systemui".equals(pkg))out.put("qsClockDebug",ControlCenterHeaderHook.clockDebug);
         out.put("hooks",targets);Bundle extras=new Bundle();extras.putString("snapshot",out.toString());
-        JSONArray events=new JSONArray();for(int i=0;i<128;i++){String[] e=trace.poll();if(e==null)break;
+        JSONArray events=new JSONArray();for(int i=0;i<128;i++){String[] e=trace.poll();if(e==null)break;pendingEvents++;
             JSONObject event=new JSONObject().put("feature",e[0]).put("value",e[1]);
             if(e.length>2){
                 event.put("level",e[2]);
@@ -119,8 +123,28 @@ final class HookTelemetry {
         }
         extras.putString("events",events.toString());pendingEvents=events.length();
         Bundle result=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"telemetry",null,extras);
-        if(result==null||!result.getBoolean("ok")){dropped.addAndGet(events.length());publishWarning("provider_rejected",null);}
-    }catch(Throwable error){dropped.addAndGet(pendingEvents);publishWarning("publish_failed",error);}}
+        if(result==null||!result.getBoolean("ok")){recordDrop("provider_rejected",events.length());publishFailure("provider_rejected",null);}
+        else {lastPublishAcceptedAt=System.currentTimeMillis();lastPublishFailureReason="";}
+    }catch(Throwable error){recordDrop("publish_failed",pendingEvents);publishFailure("publish_failed",error);}}
+    private static void recordDrop(String reason,int count){
+        if(count<=0)return;
+        dropped.addAndGet(count);dropReasons.computeIfAbsent(reason,key->new AtomicLong()).addAndGet(count);
+        lastDropAt=System.currentTimeMillis();lastDropReason=reason;
+    }
+    private static JSONObject deliveryJson()throws JSONException{
+        JSONObject reasons=new JSONObject();
+        for(String reason:new String[]{"queue_full","provider_rejected","publish_failed"}){
+            AtomicLong count=dropReasons.get(reason);reasons.put(reason,count==null?0:count.get());
+        }
+        return new JSONObject().put("queueCapacity",256).put("batchLimit",128).put("pendingEvents",trace.size())
+                .put("droppedByReason",reasons).put("lastDropAt",lastDropAt).put("lastDropReason",lastDropReason)
+                .put("lastPublishAttemptAt",lastPublishAttemptAt).put("lastPublishAcceptedAt",lastPublishAcceptedAt)
+                .put("lastPublishFailureAt",lastPublishFailureAt).put("lastPublishFailureReason",lastPublishFailureReason)
+                .put("meaning","bounded detail delivery; dropped events do not increment hook exception counters; provider acceptance is not file durability");
+    }
+    private static void publishFailure(String reason,Throwable error){
+        lastPublishFailureAt=System.currentTimeMillis();lastPublishFailureReason=reason;publishWarning(reason,error);
+    }
     private static void publishWarning(String reason,Throwable error){
         if(!BuildConfig.DEBUG||!android.util.Log.isLoggable("LS_Augment",android.util.Log.INFO))return;
         if(publishWarnings.getAndIncrement()>=3)return;

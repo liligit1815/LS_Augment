@@ -27,5 +27,5 @@ def main():
     dependencies(args.bootstrap)
     suite=runpy.run_path(str(ROOT/'tools/test-header-clock-android.py'))
     run=suite['run'];run.__globals__['BASE']=OUT/'android-runtime'
-    return run(args.source_root,[DEPS/'R.java',ROOT/'tools/tests/com/android/systemui/shade/NotificationsQuickSettingsContainer.java',ROOT/'tools/tests/com/android/systemui/statusbar/notification/stack/NotificationStackScrollLayout.java',ROOT/'tools/tests/NotificationViewportAndroidTest.java'],list(DEPS.glob('*.jar')),['ls.augment.com.hook.NotificationViewportAndroidTest'])
+    return run(args.source_root,[DEPS/'R.java',ROOT/'tools/tests/com/android/systemui/shade/NotificationsQuickSettingsContainer.java',ROOT/'tools/tests/com/android/systemui/statusbar/notification/stack/NotificationStackScrollLayout.java',ROOT/'tools/tests/NotificationViewportAndroidTest.java',ROOT/'tools/tests/NotificationHeaderSpacingAndroidTest.java'],list(DEPS.glob('*.jar')),['ls.augment.com.hook.NotificationViewportAndroidTest','ls.augment.com.NotificationHeaderSpacingAndroidTest'])
 if __name__=='__main__':raise SystemExit(main())

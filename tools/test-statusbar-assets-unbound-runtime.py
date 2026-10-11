@@ -39,7 +39,7 @@ public class TestAssetsUnbound {
  static String semantic(View v,String name,String slot){return v.id;}static String name(View v){return v.id;}static String slotOf(View v){return "";}
  static boolean prepareDrawing(Entry e,View v){if(e.wrapper==null){ImageView image=(ImageView)v;e.wrapper=new StatusBarAssetDrawable(image.getDrawable());image.setImageDrawable(e.wrapper);}return true;}
  static StateEvidence readState(View v,String id){return new StateEvidence();}static boolean observingSurface(String s){return true;}static boolean nativeIcon(View v){return true;}static int tint(View v){return 0xff333333;}
- static String themeId(String id,String layer,String s){return id;}static boolean displayed(View v){return v.shown;}static boolean virtualCovered(View v,String id){return false;}static boolean parentReplaced(View v){return false;}
+ static String themeId(String id,String layer,String s,View view){return id;}static void circleChanged(View view){}static boolean displayed(View v){return v.shown;}static boolean virtualCovered(View v,String id){return false;}static boolean parentReplaced(View v){return false;}
  static boolean privacyWindow(View v){return true;}static boolean below(View v,View root){for(View a=v;a!=null;a=a.parent)if(a==root)return true;return false;}
  static String bindingKey(Resource r){return r.binding.id+":"+r.binding.asset;}static String inventoryId(String id){return id;}static boolean activeRole(String id){return false;}static String cover="";static String coveringId(View v,String id,boolean virtual){return cover;}
  static class JSONObject {JSONObject put(String k,Object v)throws org.json.JSONException{return this;}}static class JSONArray{JSONArray(Object v){}}

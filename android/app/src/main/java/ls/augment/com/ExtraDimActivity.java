@@ -75,9 +75,9 @@ public final class ExtraDimActivity extends Activity {
             main.post(() -> {
                 if(isDestroyed())return;
                 rendering=true;enabled.setChecked(ExtraDimControl.active(this));slider.setProgress(ExtraDimControl.strength(this));rendering=false;
-                enabled.setEnabled(ok);slider.setEnabled(ok);
+                enabled.setEnabled(ok||enabled.isChecked());slider.setEnabled(ok);
                 intensityFold.sync();
-                status.setText(ok?"强度越高，画面越暗":"无法读取设置，请授权 Root 后重新打开");
+                status.setText(ok&&ExtraDimControl.message().isEmpty()?"强度越高，画面越暗":ExtraDimControl.message());
             });
         });
     }
@@ -87,15 +87,16 @@ public final class ExtraDimActivity extends Activity {
         worker.execute(() -> {
             if (expected != revision) return;
             boolean ok = ExtraDimControl.set(this,active,level);
+            String feedback=ExtraDimControl.message();
             boolean readBack=ok||ExtraDimControl.read(this);
             main.post(() -> {
                 if (isDestroyed() || expected != revision) return;
                 if(!ok){
                     rendering=true;
                     if(readBack){enabled.setChecked(ExtraDimControl.active(this));slider.setProgress(ExtraDimControl.strength(this));}
-                    enabled.setEnabled(readBack);slider.setEnabled(readBack);rendering=false;intensityFold.sync();
+                    enabled.setEnabled(readBack||enabled.isChecked());slider.setEnabled(readBack);rendering=false;intensityFold.sync();
                 }
-                status.setText(ok ? "已应用 · 强度越高，画面越暗" : "设置未生效，请检查 Root 授权");
+                status.setText(ok ? "系统色彩变换已应用 · 强度越高，画面越暗" : feedback);
             });
         });
     }

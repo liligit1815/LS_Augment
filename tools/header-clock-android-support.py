@@ -1,5 +1,6 @@
 """Only Xposed registration/configuration ports are doubled. Android UI classes are real."""
 SOURCES={
+'ls/augment/com/hook/LiftArcLog.java':'''package ls.augment.com.hook;final class LiftArcLog{static void w(String text,Throwable error){}static boolean e(String text,Throwable error){return true;}}''',
 'ls/augment/com/ConfigSnapshot.java':'''package ls.augment.com;public final class ConfigSnapshot {public long revision=1;final java.util.Map<String,String> values;public ConfigSnapshot(java.util.Map<String,String> map){values=new java.util.HashMap<>(map);}public String get(String key){return values.getOrDefault(key,"");}}''',
 'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;
 public final class FeatureSettings {public static final java.util.Map<String,String> values=new java.util.HashMap<>(),diagnostics=new java.util.HashMap<>();static ls.augment.com.ConfigSnapshot cached;

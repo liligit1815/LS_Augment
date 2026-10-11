@@ -4,30 +4,35 @@ No ADB, account database, personal preferences or health installation is accesse
 Module ledger double counts opens/locks/writes; native DAO double counts pass-through.
 """
 from pathlib import Path
+import argparse
 import json
 import re
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--background-source', type=Path, help='Compile a background-hook regression mutant without changing the workspace source')
+parser.add_argument('--output-dir', type=Path, help='Keep regression-mutant evidence separate from the passing production result')
+args = parser.parse_args()
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
-OUT = ROOT / 'audit-output/health-runtime-gate'
+OUT = args.output_dir or ROOT / 'audit-output/health-runtime-gate'
 OUT.mkdir(parents=True, exist_ok=True)
 JDK = Path(r'C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 runner = (ROOT / 'tools/run-java-tests.sh').read_text(encoding='utf-8')
 production = [ROOT / p for p in re.findall(r'"\$ROOT/([^\"]+\.java)"', runner)
               if p.startswith('android/app/src/main/')]
 production += [SRC / 'HealthIdentityProbe.java', SRC / 'hook/MiHealthHook.java',
-               SRC / 'hook/HealthBackgroundHook.java', SRC / 'hook/TargetReflection.java']
+               args.background_source or SRC / 'hook/HealthBackgroundHook.java', SRC / 'hook/TargetReflection.java']
 sources = {
  'android/content/Context.java': '''package android.content;public class Context {
- public static int bindings,unbindings;public static boolean missing;
+ public static int bindings,unbindings,packageFlags;public static boolean missing,bindAccepted=true;
  public static final int BIND_AUTO_CREATE=1,BIND_NOT_FOREGROUND=2;
  public String getPackageName(){return "com.mi.health";}
  public Context getApplicationContext(){return this;}
  public Context createContextAsUser(android.os.UserHandle user,int flags){return this;}
  public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}
- public boolean bindService(Intent i,ServiceConnection c,int flags){bindings++;return true;}
+ public boolean bindService(Intent i,ServiceConnection c,int flags){bindings++;return bindAccepted;}
  public void unbindService(ServiceConnection c){unbindings++;}}
 ''',
  'android/content/Intent.java': '''package android.content;import java.util.*;public class Intent {
@@ -43,7 +48,7 @@ sources = {
 ''',
  'android/content/pm/ApplicationInfo.java': 'package android.content.pm;public class ApplicationInfo {public static final int FLAG_STOPPED=1;public int flags;}',
  'android/content/pm/PackageManager.java': '''package android.content.pm;public class PackageManager {
- public ApplicationInfo getApplicationInfo(String p,int flags){if(android.content.Context.missing)throw new IllegalStateException("fixture missing");return new ApplicationInfo();}}
+ public ApplicationInfo getApplicationInfo(String p,int flags){if(android.content.Context.missing)throw new IllegalStateException("fixture missing");ApplicationInfo app=new ApplicationInfo();app.flags=android.content.Context.packageFlags;return app;}}
 ''',
  'android/app/Activity.java': '''package android.app;public class Activity extends android.content.Context {
  public android.content.Intent intent=new android.content.Intent();public android.content.Intent getIntent(){return intent;}
@@ -146,7 +151,7 @@ sources = {
  static ConfigSnapshot config(String...pairs){Map<String,String> m=new LinkedHashMap<>(ConfigSchema.runtimeDefaults());for(int i=0;i<pairs.length;i+=2)m.put(pairs[i],pairs[i+1]);
  ConfigSnapshot s=ConfigSnapshot.create(++revision,System.currentTimeMillis(),m);check(s!=null,"fixture valid configuration");return s;}
  static void reset(){Handler.queue.clear();FeatureSettings.listeners.clear();FeatureSettings.diagnostics.clear();FeatureSettings.verified=true;
- StepLedger.reset();AccountManager.id="1234567890";AccountManager.reads=0;android.content.Context.bindings=android.content.Context.unbindings=0;android.content.Context.missing=false;}
+ StepLedger.reset();AccountManager.id="1234567890";AccountManager.reads=0;android.content.Context.bindings=android.content.Context.unbindings=android.content.Context.packageFlags=0;android.content.Context.missing=false;android.content.Context.bindAccepted=true;}
  static MiHealthHook.Controller controller(){MiHealthHook.Controller c=new MiHealthHook.Controller(new AugmentModule(),new android.content.Context(),LOADER);c.compatible=true;c.gap=60;return c;}
  static String account()throws Exception{return MiHealthHook.hash("0|1234567890|fitness-fixture-only.db");}
  static ConfigSnapshot on(String id){return config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_MULTIPLY_ENABLED,"1",ConfigSchema.HEALTH_ACCOUNT,id,ConfigSchema.HEALTH_BACKGROUND,"1");}
@@ -188,6 +193,37 @@ sources = {
  reset();FeatureSettings.current=config();HealthBackgroundHook bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();check(android.content.Context.bindings==0&&FeatureSettings.diagnostics.isEmpty()&&Handler.queue.isEmpty(),"default background loop/binding");
  FeatureSettings.current=on(id);FeatureSettings.changed();Handler.drain();check(bg.bound&&android.content.Context.bindings==1&&!Handler.queue.isEmpty(),"enabled service not resumed");FeatureSettings.current=config();FeatureSettings.changed();Handler.drain();check(!bg.bound&&android.content.Context.unbindings==1&&Handler.queue.isEmpty(),"default service/task survived");FeatureSettings.diagnostics.clear();bg.connection.onServiceConnected(null,null);bg.connection.onServiceDisconnected(null);check(FeatureSettings.diagnostics.isEmpty(),"late disabled callback wrote state");done("background-default-enable-disable-late-callback");
  reset();FeatureSettings.current=config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_MULTIPLY_ENABLED,"1",ConfigSchema.HEALTH_BACKGROUND,"1");bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();check(android.content.Context.bindings==0&&FeatureSettings.diagnostics.isEmpty()&&Handler.queue.isEmpty(),"unbound background bound");done("background-unbound-no-service");
+ reset();FeatureSettings.current=on(id);android.content.Context.packageFlags=android.content.pm.ApplicationInfo.FLAG_STOPPED;
+ bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();
+ check(!bg.bound&&android.content.Context.bindings==0&&FeatureSettings.diagnostics.containsKey("ls_augment_health_background_state")&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=WAITING_FOR_APP;target_user=0;stopped=true;bound=false;connected=false;checked_at="),"stopped app was launched or current stop observation missing");
+ check(FeatureSettings.diagnostics.get("ls_augment_health_background_runtime").contains("已被停止"),"stopped prerequisite reason missing");
+ String stoppedObservation=FeatureSettings.diagnostics.get("ls_augment_health_background_state");Thread.sleep(3);Handler.drain();
+ check(!stoppedObservation.equals(FeatureSettings.diagnostics.get("ls_augment_health_background_state"))&&android.content.Context.bindings==0,"same stopped state retained stale observation time or launched app");
+ android.content.Context.packageFlags=0;Handler.drain();
+ check(bg.bound&&!bg.connected&&android.content.Context.bindings==1&&FeatureSettings.diagnostics.get("ls_augment_health_background_runtime").equals("原生数据服务等待连接"),"manual reopening did not attempt connection or retained stale stop message");
+ bg.connection.onServiceConnected(null,null);Handler.drain();
+ check(bg.connected&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=CONNECTED")&&FeatureSettings.diagnostics.get("ls_augment_health_background_runtime").equals("原生数据服务已连接"),"native connection not read back");
+ done("background-stopped-prerequisite-and-manual-reopen-recovery");
+ android.content.ServiceConnection oldConnection=bg.connection;android.content.Context.packageFlags=android.content.pm.ApplicationInfo.FLAG_STOPPED;Handler.drain();
+ check(!bg.bound&&!bg.connected&&android.content.Context.unbindings==1&&android.content.Context.bindings==1&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=WAITING_FOR_APP"),"stop after binding retained service or restarted stopped app");
+ oldConnection.onServiceConnected(null,null);Handler.drain();check(!bg.connected&&android.content.Context.bindings==1&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=WAITING_FOR_APP"),"late stale connected callback overrode stop");
+ done("background-force-stop-after-binding-respected");
+ FeatureSettings.current=config();FeatureSettings.changed();Handler.drain();
+ check(FeatureSettings.diagnostics.get("ls_augment_health_background_runtime").equals("后台执行已关闭")&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=DISABLED")&&Handler.queue.isEmpty(),"disable retained stale stopped state or retry");
+ done("background-disable-clears-waiting-state");
+ reset();FeatureSettings.current=on(id);bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();oldConnection=bg.connection;
+ oldConnection.onServiceConnected(null,null);Handler.drain();oldConnection.onServiceDisconnected(null);Handler.drain();
+ check(bg.bound&&!bg.connected&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=WAITING_FOR_SERVICE")&&android.content.Context.bindings==1,"disconnect treated binding as connected or duplicated binding");
+ oldConnection.onBindingDied(null);Handler.drain();check(!bg.bound&&!bg.connected&&android.content.Context.unbindings==1&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("next_check_ms=5000"),"dead binding not released or retry incorrectly reported");
+ Handler.drain();check(bg.bound&&android.content.Context.bindings==2,"dead binding not retried");
+ FeatureSettings.diagnostics.clear();oldConnection.onServiceConnected(null,null);oldConnection.onBindingDied(null);Handler.drain();
+ check(bg.bound&&!bg.connected&&android.content.Context.bindings==2&&android.content.Context.unbindings==1&&!FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=CONNECTED"),"obsolete service callbacks affected new binding");
+ done("background-disconnect-death-retry-and-stale-generation");
+ reset();FeatureSettings.current=on(id);android.content.Context.bindAccepted=false;bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();
+ check(!bg.bound&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=BIND_REJECTED"),"real binding rejection masked as startup wait");
+ android.content.Context.bindAccepted=true;android.content.Context.missing=true;Handler.drain();
+ check(!bg.bound&&FeatureSettings.diagnostics.get("ls_augment_health_background_state").contains("state=FAILED")&&FeatureSettings.diagnostics.get("ls_augment_health_background_runtime").contains("IllegalStateException"),"real package/service failure hidden");
+ done("background-rejection-and-real-error-remain-diagnostic");
  System.out.println("RESULT "+cases+" "+assertions);
  }}
 ''',

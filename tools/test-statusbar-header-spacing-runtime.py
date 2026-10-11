@@ -3,11 +3,28 @@ These are offline Android-shaped fixtures, not evidence from a running phone.
 """
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
+
+
+def java_executable(name):
+    executable = name + ('.exe' if os.name == 'nt' else '')
+    candidates = []
+    if os.environ.get('JAVA_HOME'):
+        candidates.append(Path(os.environ['JAVA_HOME']) / 'bin' / executable)
+    if os.name == 'nt':
+        candidates.append(Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin') / executable)
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    resolved = shutil.which(executable)
+    if resolved:
+        return resolved
+    raise RuntimeError('Java executable unavailable: ' + executable + '; set JAVA_HOME to a JDK')
 
 
 def extract(path, marker):
@@ -110,7 +127,6 @@ HARNESS = HARNESS.replace('// BEFORE_DRAW', extract(path, 'private boolean befor
 with tempfile.TemporaryDirectory(prefix='duo-header-spacing-') as tmp:
     java = Path(tmp) / 'TestHeaderSpacingRuntime.java'
     java.write_text(HARNESS, encoding='utf-8')
-    jdk = Path(os.environ['JAVA_HOME']) / 'bin' if os.environ.get('JAVA_HOME') else Path('')
-    subprocess.run([str(jdk / 'javac'), '-encoding', 'UTF-8', '--release', '17', '-d', tmp, str(java),
+    subprocess.run([java_executable('javac'), '-encoding', 'UTF-8', '--release', '17', '-d', tmp, str(java),
                     *(str(JAVA / name) for name in ['StatusBarHeaderSpacingObservation.java', 'StatusBarIconSpacingSpec.java', 'StatusBarSurfaceSpec.java', 'StatusBarIconCatalog.java'])], check=True)
-    subprocess.run([str(jdk / 'java'), '-cp', tmp, 'TestHeaderSpacingRuntime'], check=True, timeout=15)
+    subprocess.run([java_executable('java'), '-cp', tmp, 'TestHeaderSpacingRuntime'], check=True, timeout=15)

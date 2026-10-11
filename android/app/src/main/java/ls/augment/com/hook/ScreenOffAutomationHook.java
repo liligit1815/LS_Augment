@@ -13,7 +13,6 @@ import android.os.HandlerThread;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.SystemClock;
-import android.os.UserManager;
 
 import ls.augment.com.BuildConfig;
 import ls.augment.com.ConfigSchema;
@@ -40,13 +39,15 @@ final class ScreenOffAutomationHook {
         final HandlerThread thread = new HandlerThread("LSA-ScreenAutomation");
         final Handler handler;
         final ScreenAutomationPolicy.Epoch epoch = new ScreenAutomationPolicy.Epoch();
-        int startAttempts,runAttempts,queryAttempts,bridgeAttempts;
+        int runAttempts,queryAttempts,bridgeAttempts;
+        boolean receiverRegistered,observerRegistered,listening;
+        final ConfigBridgeReadiness readiness=new ConfigBridgeReadiness();
         long stateSequence,lastBridgeErrorAt;
         final String ownerSession=Process.myPid()+":"+Process.getStartElapsedRealtime();
         String bridge="FAILED",bridgeError="configuration_not_read",lastBridgeError="",runtime="unknown";
         String requestId="",screenEpoch="",transportError="";
         boolean pendingQuery;
-        final Runnable retry=()->refreshAndRun("retry");
+        final Runnable retry=()->{if(listening)refreshAndRun("retry");else start();};
         final BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override public void onReceive(Context ignored, Intent intent) {
                 if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
@@ -71,6 +72,9 @@ final class ScreenOffAutomationHook {
         }
 
         void start() {
+            if(listening){refreshAndRun("system_attached");return;}
+            if(!bridgeReady())return;
+            if((receiverRegistered||observerRegistered)&&!cleanupListeners()){scheduleBridgeRetry();return;}
             try {
                 IntentFilter filter = new IntentFilter();
                 filter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -81,29 +85,45 @@ final class ScreenOffAutomationHook {
                     context.registerReceiver(receiver, filter, null, handler,
                             Context.RECEIVER_NOT_EXPORTED);
                 } else context.registerReceiver(receiver, filter, null, handler);
+                receiverRegistered=true;
+                // If registration throws after touching its transport, cleanup
+                // must still unregister this exact observer before another try.
+                observerRegistered=true;
                 context.getContentResolver().registerContentObserver(
                         Uri.parse(PROVIDER + "/config"), false, observer);
-                startAttempts=0;
+                listening=true;
                 refreshAndRun("system_attached");
             } catch (Throwable error) {
                 bridgeFailed("LISTENER_FAILED","listener_failed:"+error);
-                try { context.unregisterReceiver(receiver); } catch (Throwable ignored) { }
-                try { context.getContentResolver().unregisterContentObserver(observer); }
-                catch (Throwable ignored) { }
-                handler.postDelayed(this::start,Math.min(30000L,1000L<<Math.min(5,startAttempts++)));
+                cleanupListeners();scheduleBridgeRetry();
             }
         }
 
+        boolean cleanupListeners(){
+            listening=false;
+            String failure="";
+            if(receiverRegistered){try{context.unregisterReceiver(receiver);receiverRegistered=false;}catch(Throwable error){failure="receiver:"+error;}}
+            if(observerRegistered){try{context.getContentResolver().unregisterContentObserver(observer);observerRegistered=false;}
+                catch(Throwable error){failure+=(failure.isEmpty()?"":";")+"observer:"+error;}}
+            if(!failure.isEmpty()){bridgeFailed("LISTENER_FAILED","listener_cleanup_failed:"+failure);return false;}
+            return true;
+        }
+
+        boolean bridgeReady(){
+            ConfigBridgeReadiness.Result status=readiness.check(context);
+            report("ls_augment_automation_bridge_probe_error",status.probeError);
+            if(status.ready())return true;
+            if(status.waiting()){
+                bridge=status.state;bridgeError="";runtime="unknown";publishOwnerState();
+            }else bridgeFailed("FAILED",status.error);
+            scheduleBridgeRetry();return false;
+        }
+
         void refreshAndRun(String event) {
+            if(!listening){start();return;}
             boolean dispatched=false;
             try {
-                UserManager users=context.getSystemService(UserManager.class);
-                if(users!=null&&!users.isUserUnlocked()) {
-                    // The credential-protected Provider is deliberately unavailable
-                    // before unlock. Wait without inventing an execution failure.
-                    bridge="WAITING_FOR_UNLOCK";bridgeError="";runtime="unknown";
-                    publishOwnerState();scheduleBridgeRetry();return;
-                }
+                if(!bridgeReady())return;
                 // Read the authoritative snapshot here; never block SystemUI or the
                 // system main thread on provider access, Root commands or PackageManager.
                 Bundle reply = context.getContentResolver().call(

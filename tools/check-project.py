@@ -440,8 +440,10 @@ def check_manifest():
         'android.permission.QUERY_ALL_PACKAGES',
         'android.permission.RECEIVE_BOOT_COMPLETED',
         'android.permission.INTERNET',
+        'android.permission.REQUEST_INSTALL_PACKAGES',
     }, f'unexpected application permission set: {permissions}'
-    # INTERNET supports the read-only contributors page. Its WebView must keep
+    # INTERNET supports contributors, update manifests and confirmed APK downloads.
+    # The contributors WebView must keep
     # scripts and remote subresources disabled when displaying fetched HTML.
     contributors = (src / 'ContributorsActivity.java').read_text(encoding='utf-8')
     assert 'HttpURLConnection' in contributors

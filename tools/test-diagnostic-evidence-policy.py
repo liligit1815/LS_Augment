@@ -64,6 +64,17 @@ public final class TestInventoryRetryQueue {
         void reset() { tasks.clear(); scheduled = new CountDownLatch(1); }
     }
     private static final ManualTimer INVENTORY_RETRY = new ManualTimer();
+    // Admission itself executes against real production code in
+    // test-config-bridge-readiness-runtime.py; this suite isolates queue ordering.
+    static class ConfigBridgeReadiness {
+        static class Result {String state="READY",error="",probeError="";boolean ready(){return true;}boolean waiting(){return false;}}
+        Result check(Context context){return new Result();}
+    }
+    private static final ConfigBridgeReadiness INVENTORY_BRIDGE=new ConfigBridgeReadiness();
+    static long reportedAt;static int freshCaptures;
+    static class Main {void post(Runnable task){task.run();}}
+    private static final Main MAIN=new Main();
+    static void publish(){freshCaptures++;}
     private static InventoryPublication pendingInventory;
     private static final Object INVENTORY_SUBMISSION = new Object();
     private static volatile long inventoryGeneration;
@@ -117,6 +128,7 @@ public final class TestInventoryRetryQueue {
             }).get(5,TimeUnit.SECONDS);
             yes(stale.calls.get() == 0, "initial send counts queue age in 60s budget");
             yes(pendingInventory == null, "expired publication released");
+            yes(freshCaptures == 1, "expired ready publication requests a fresh UI observation");
             System.out.println("PASS production inventory latest-generation queue: " + checks + " checks");
         } finally { REPORTER.shutdownNow(); }
     }
@@ -131,10 +143,11 @@ def inventory_harness():
     reporter = source[start:end]
     publication = member(source, "private static final class InventoryPublication")
     publish = member(source, "private static void publishInventory")
+    schedule = member(source, "private static void scheduleInventoryRetry")
     start = source.index("synchronized(INVENTORY_SUBMISSION)", source.index("private static void publish()"))
     end = source.index("for(String surface:observedSurfaces)", start)
     submission = source[start:end]
-    return (INVENTORY_HARNESS.replace("// PRODUCTION_MEMBERS", reporter + publication + "\n" + publish)
+    return (INVENTORY_HARNESS.replace("// PRODUCTION_MEMBERS", reporter + publication + "\n" + publish + "\n" + schedule)
             .replace("// PRODUCTION_SUBMISSION", submission))
 
 

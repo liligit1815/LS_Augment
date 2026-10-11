@@ -38,6 +38,7 @@ public static final String BOOT_COUNT="boot";public static int boot=7;public sta
     "android/util/Log.java": """package android.util;public class Log {public static int failures;
 public static int e(String tag,String message){failures++;return 0;}}""",
     "ls/augment/com/BuildConfig.java": """package ls.augment.com;final class BuildConfig {static final String VERSION_NAME="test20507";}""",
+    "ls/augment/com/LiftArcOptions.java": """package ls.augment.com;final class LiftArcOptions {static String key(String value){return "ls_augment_liftarc_"+value;}}""",
     "ls/augment/com/ResetWriteFence.java": """package ls.augment.com;final class ResetWriteFence {static boolean blocked(){return false;}}""",
     "ls/augment/com/AppConfig.java": """package ls.augment.com;final class AppConfig {static boolean synced=true,throwsOnMirror;static int attempts;
 AppConfig(Object c){}RootShell.Result mirrorAll(){attempts++;if(throwsOnMirror)throw new IllegalStateException("test");return new RootShell.Result(synced?0:1,"",false);}}""",
@@ -91,6 +92,11 @@ public final class TestDiagnosticReliability {
   RootShell.Result ps=raw(0,"PID NAME\n321 system_server\n4670 com.android.settings\nbad\n-1 fake",true,false,false);
   yes(DiagnosticExportHarness.processNames(ps).size()==2,"only valid process lines parsed");yes("321".equals(DiagnosticExportHarness.systemPid(DiagnosticExportHarness.processNames(ps))),"system server PID derived from observed process list");
   yes(DiagnosticExportHarness.processNames(raw(1,"321 system_server",true,false,false)).isEmpty(),"failed ps cannot supply live identity");
+  JSONObject oldDelivery=new JSONObject().put("droppedDetailEvents",1).put("hooks",new JSONArray());DiagnosticExportHarness.compactHooks(oldDelivery,true);
+  yes(oldDelivery.getString("detailDeliveryEvidence").equals("LOSS_REPORTED_REASON_UNAVAILABLE"),"old one-event loss remains unknown, not labeled a queue overflow or crash");
+  yes(oldDelivery.getLong("droppedDetailEvents")==1,"export does not change recorded loss count");
+  JSONObject freshDelivery=new JSONObject().put("detailDelivery",new JSONObject().put("pendingEvents",0)).put("hooks",new JSONArray());DiagnosticExportHarness.compactHooks(freshDelivery,true);
+  yes(!freshDelivery.has("detailDeliveryEvidence")&&freshDelivery.getJSONObject("detailDelivery").getInt("pendingEvents")==0,"current structured delivery metadata is preserved");
  }
  static void captures(){
   String empty=DiagnosticExportHarness.describe(raw(0,"",true,false,false),true,true);yes(empty.contains("status=READ")&&empty.contains("filterState=EMPTY_INPUT")&&empty.contains("lines=0"),"empty input is readable, not one metadata event");
@@ -109,6 +115,54 @@ public final class TestDiagnosticReliability {
   String large=DiagnosticWritePolicy.normalize("ls_augment_rm_support_test","x".repeat(32769));yes(large.length()==32768&&large.endsWith(" [TRUNCATED]"),"support budget marked");
   String pair=DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1987)+"😀"+"x".repeat(20));yes(pair.endsWith(" [TRUNCATED]")&&pair.length()==1999,"surrogate boundary kept whole");
   yes("a b c".equals(DiagnosticWritePolicy.normalize("ls_augment_test","a\rb\nc")),"single line normalization retained");
+  String visibility="view/ancestor;".repeat(320);
+  yes(DiagnosticWritePolicy.normalize("ls_augment_statusbar_phone_visibility_state",visibility).equals(visibility),"full native visibility chain survives the former 2000-character cut");
+  String visibilityCut=DiagnosticWritePolicy.normalize("ls_augment_statusbar_phone_visibility_state","x".repeat(9000));
+  yes(visibilityCut.length()==8192&&visibilityCut.contains("TRUNCATED originalChars=9000 budgetChars=8192"),"oversized visibility remains bounded with original length");
+  Map<String,String> full=new HashMap<>();for(int i=0;i<512;i++)full.put("k"+i,"v");
+  yes(!DiagnosticWritePolicy.fits(full,"new_visibility_state",visibility),"visibility allowance cannot bypass the key quota");
+  full.clear();full.put("large","x".repeat(512*1024));
+  yes(!DiagnosticWritePolicy.fits(full,"ls_augment_statusbar_phone_visibility_state",visibility),"visibility allowance cannot bypass aggregate byte quota");
+  String described=DiagnosticExportHarness.value("ls_augment_statusbar_phone_visibility_state",visibilityCut);
+  yes(described.contains("diagnosticValueState")&&described.contains("state=TRUNCATED")&&described.contains("budgetChars=8192"),"export distinguishes a bounded value cut from absent native views");
+  described=DiagnosticExportHarness.value("ls_augment_health_account","secret [TRUNCATED]");
+  yes(described.contains("REDACTED / present:true")&&!described.contains("secret")&&!described.contains("retainedChars"),"private values do not leak contents or length metadata");
+  yes(DiagnosticExportHarness.value("ls_augment_config_snapshot","encoded-private-values").isEmpty(),"protected snapshot excluded from metadata and values");
+ }
+ static final class LogcatReader implements DiagnosticLogcat.Reader {
+  final Queue<RootShell.Result> replies=new ArrayDeque<>();final List<String> commands=new ArrayList<>();
+  public RootShell.Result read(String command,long timeout,int bytes){commands.add(command);yes(timeout<=12&&bytes<=1024*1024,"bounded phone capture");yes(!command.contains(" -c")&&!command.contains("*:V"),"no clearing or unfiltered content");return replies.remove();}
+ }
+ static void logcat(){
+  long now=1791706889508L;LogcatReader reader=new LogcatReader();
+  reader.replies.add(raw(0,"1791706885.000 4595 4595 I LS_Augment: current",true,false,false));
+  DiagnosticLogcat.Collection current=DiagnosticLogcat.module(now,false,false,reader);
+  yes(reader.commands.size()==1&&current.fallback==null,"matching time window does not broaden collection");
+  yes(current.sinceWall==now-30*60*1000&&reader.commands.get(0).contains(" -T "),"actual time window preserved");
+  reader=new LogcatReader();reader.replies.add(raw(0,"--------- beginning of main",true,false,false));
+  reader.replies.add(raw(0,"main: ring buffer is 256 KiB",true,false,false));reader.replies.add(raw(0,"1791697000.000 4595 4595 W LS_Augment: older",true,false,false));
+  DiagnosticLogcat.Collection fallback=DiagnosticLogcat.module(now,false,false,reader);
+  yes(reader.commands.size()==3&&fallback.fallbackReason.equals("PRIMARY_NO_MATCHING_RECORDS"),"empty/banner-only source gets one bounded fallback plus buffer metadata");
+  yes(reader.commands.get(1).endsWith(" -g")&&reader.commands.get(2).contains(" -t 300 "),"buffer metadata and limited tail are actually collected");
+  yes(!reader.commands.get(2).contains("LS_Augment_AI")&&!reader.commands.get(2).contains("LS_Augment_TGK"),"disabled detailed channels stay excluded in fallback");
+  String described=DiagnosticExportHarness.logcat(fallback,false,false);
+  yes(described.contains("TIME_WINDOW")&&described.contains("RECENT_TAIL")&&described.contains("MAY_PRECEDE_REQUESTED_WINDOW"),"tail is never represented as current-window proof");
+  yes(described.contains("BUFFER_METADATA")&&described.contains("logcatFallbackHasRecords=true"),"buffer and fallback have separate evidence");
+  yes(described.contains("oldestRetainedRecordWall=1791697000000")&&described.contains("newestRetainedRecordWall=1791697000000"),"actual retained tail time range distinguishes older observations");
+  reader=new LogcatReader();reader.replies.add(raw(1,"logcat: Permission denied",true,false,false));reader.replies.add(raw(0,"main: ring buffer",true,false,false));reader.replies.add(raw(0,"",true,false,false));
+  DiagnosticLogcat.Collection denied=DiagnosticLogcat.cleanup(now,reader);described=DiagnosticExportHarness.logcat(denied,false,false);
+  yes(denied.fallbackReason.equals("PRIMARY_READ_FAILED_OR_INCOMPLETE")&&described.contains("READ_FAILED")&&described.contains("Permission denied"),"primary read failure survives successful empty fallback");
+  yes(described.contains("logcatFallbackHasRecords=false")&&described.contains("not proof of no errors"),"empty fallback is uncertainty, not no-crash evidence");
+  reader=new LogcatReader();reader.replies.add(raw(0,"1791706885.000 4595 I LS_Augment: incomplete",false,true,false));reader.replies.add(raw(0,"",true,false,false));reader.replies.add(raw(0,"1791706885.100 4595 I LS_Augment: FEATURE_AI secret\n1791706885.200 4595 I LS_Augment: SHOULDER secret",true,false,false));
+  DiagnosticLogcat.Collection partial=DiagnosticLogcat.module(now,false,false,reader);described=DiagnosticExportHarness.logcat(partial,false,false);
+  yes(described.contains("upstreamReadFailed=true")&&!described.contains("secret"),"incomplete capture remains marked and fallback respects optional-detail privacy filters");
+  yes(described.contains("fallbackRetainedLines=0")&&described.contains("newestRetainedRecordWall=UNKNOWN"),"filtered fallback does not claim useful records or invent a time range");
+  reader=new LogcatReader();reader.replies.add(raw(0,"1791700000.000 4595 I LS_Augment: prefix",true,false,true));reader.replies.add(raw(0,"main: ring buffer",true,false,false));reader.replies.add(raw(0,"1791706885.000 4595 I LS_Augment: latest",true,false,false));
+  DiagnosticLogcat.Collection limited=DiagnosticLogcat.module(now,false,false,reader);described=DiagnosticExportHarness.logcat(limited,false,false);
+  yes(limited.fallbackReason.equals("PRIMARY_CAPTURE_LIMIT_REACHED")&&described.contains("upstreamTruncated=true"),"bounded prefix capture can supplement the tail without labeling its limit a read failure");
+  yes(described.contains("newestRetainedRecordWall=1791706885000"),"bounded tail retains actual current reproduction timestamp");
+  yes(DiagnosticLogcat.recordWindow(raw(0,"1791706885.138999 4595 I LS_Augment: sample",true,false,false)).contains("newestRetainedRecordWall=1791706885138"),"epoch fractions remain precise to milliseconds");
+  yes(DiagnosticLogcat.recordWindow(raw(0,"999999999999999999999999.000 4595 I LS_Augment: invalid",true,false,false)).contains("newestRetainedRecordWall=UNKNOWN"),"invalid timestamps cannot invent a coverage range");
  }
  static void audit(Path dir)throws Exception{
   FakeContext c=new FakeContext(dir.toFile());yes(AuditLog.writeDurable(c,"TEST_DURABLE","before restart"),"durable log write");yes(AuditLog.read(c).contains("before restart"),"durable event present");
@@ -125,7 +179,7 @@ public final class TestDiagnosticReliability {
   AppConfig.synced=false;AppConfig.attempts=0;RootShell.calls=0;android.app.Activity blocked=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(blocked,"systemui");yes(blocked.finished.await(5,TimeUnit.SECONDS),"blocked restart completed");yes(RootShell.calls==0&&AppConfig.attempts==25&&AuditLog.read(blocked).contains("[SCOPE_RESTART_BLOCKED]"),"unsynced configuration cannot issue restart");
   AppConfig.throwsOnMirror=true;android.app.Activity thrown=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(thrown,"settings");yes(thrown.finished.await(5,TimeUnit.SECONDS),"restart exception reported");yes(AuditLog.read(thrown).contains("[SCOPE_RESTART_ERROR]"),"restart exception has audit evidence");
  }
- public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();limits();audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
+ public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();limits();logcat();audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
 }
 '''
 
@@ -159,13 +213,18 @@ def main():
     sources = dict(STUBS)
     sources["ls/augment/com/RootShell.java"] = """package ls.augment.com;import java.nio.charset.StandardCharsets;
 final class RootShell {static int calls;static Runnable inspection;static Result run(String c,String i,long t,int m){calls++;if(inspection!=null)inspection.run();return new Result(0,"",false);}
-""" + member(root_shell, "static final class CapturedOutput") + member(root_shell, "static final class Result") + "}"
+""" + member(root_shell, "static String quote") + member(root_shell, "static final class CapturedOutput") + member(root_shell, "static final class Result") + "}"
     signatures = ("static Map<Integer,String> processNames", "static String systemPid", "static Set<String> currentPackages",
-                  "private static RootShell.Result filter", "private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered)", "private static int lineCount")
+                  "private static RootShell.Result filter", "private static void filteredSource", "private static void appendLogcat",
+                  "static String diagnosticValue", "static void appendDiagnosticValue", "static void compactHooks",
+                  "private static void source(StringBuilder out,String name,RootShell.Result result,int limit)",
+                  "private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered)", "private static int lineCount")
     sources["ls/augment/com/DiagnosticExportHarness.java"] = """package ls.augment.com;import java.util.*;import java.nio.charset.StandardCharsets;import org.json.*;
 final class DiagnosticExportHarness {private static String diagnosticValues(String raw){return raw;}
 static String describe(RootShell.Result raw,boolean filtered,boolean moduleOnly){StringBuilder out=new StringBuilder();source(out,"TEST",filtered?filter(raw,false,false,moduleOnly):raw,1024,false,filtered);return out.toString();}
 static RootShell.CapturedOutput filterIdentity(RootShell.Result raw){return filter(raw,false,false,true).capture;}
+static String logcat(DiagnosticLogcat.Collection collection,boolean ai,boolean shoulder){StringBuilder out=new StringBuilder();appendLogcat(out,"TEST_LOGCAT",collection,ai,shoulder);return out.toString();}
+static String value(String key,String value){StringBuilder out=new StringBuilder();appendDiagnosticValue(out,key,value);return out.toString();}
 """ + "\n".join(member(export, s) for s in signatures) + "}"
     sources["ls/augment/com/HookPackagesHarness.java"] = """package ls.augment.com;import java.util.*;import java.util.concurrent.*;import org.json.*;
 final class HookPackagesHarness {static String process="unknown",pkg="unknown";private static final Set<String> packages=ConcurrentHashMap.newKeySet();static JSONArray names(){return packageNames();}
@@ -182,7 +241,7 @@ final class ScopeRestartHarness {""" + constants + "static void run(Activity a,S
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             files.append(path)
-        files += [SRC / (name + ".java") for name in ("RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
+        files += [SRC / (name + ".java") for name in ("RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
         subprocess.run([javac, "-encoding", "UTF-8", "--release", "17", "-cp", str(json_jar), "-d", str(directory), *map(str, files)], check=True)
         subprocess.run([java, "-cp", str(directory) + os.pathsep + str(json_jar), "ls.augment.com.TestDiagnosticReliability"], check=True, timeout=30)
 

@@ -43,13 +43,22 @@ final class DiagnosticWritePolicy {
 
     static String normalize(String key, String value) {
         if (value == null) value = "";
-        int limit = key.startsWith("ls_augment_rm_support_") ? 32768 : 2000;
+        int limit = valueLimit(key);
         if (value.length() > limit) {
-            int kept = limit - TRUNCATION_MARKER.length();
+            String marker=TRUNCATION_MARKER;
+            if(key.endsWith("_visibility_state"))marker=" [TRUNCATED originalChars="+value.length()+" budgetChars="+limit+"]";
+            int kept = limit - marker.length();
             if (Character.isHighSurrogate(value.charAt(kept - 1))) kept--;
-            value = value.substring(0, kept) + TRUNCATION_MARKER;
+            value = value.substring(0, kept) + marker;
         }
         return value.replace('\r', ' ').replace('\n', ' ');
+    }
+
+    static int valueLimit(String key){
+        if(key.startsWith("ls_augment_rm_support_"))return 32768;
+        // Full native view ancestor chains need more space than short status
+        // values. The aggregate 512 KiB/512-key quota remains authoritative.
+        return key.endsWith("_visibility_state")?8192:2000;
     }
 
     private static int bytes(String value) { return value.getBytes(StandardCharsets.UTF_8).length; }

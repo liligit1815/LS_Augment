@@ -46,6 +46,12 @@ final class SystemUiCompatibility {
                 || matches(method, "applyHeight", "void", method.getDeclaringClass().getName() + "$State");
     }
 
+    static boolean windowSizingCaller(Method method) {
+        return matches(method, "attach", "void")
+                || matches(method, "getBarLayoutParams", "android.view.WindowManager$LayoutParams", "int")
+                || matches(method, "apply", "void", method.getDeclaringClass().getName() + "$State");
+    }
+
     static boolean privacyMethod(Method method) {
         return matches(method, "initialize", "void", "android.view.View", "android.view.View", "android.view.View", "android.view.View")
                 || matches(method, "showDotView", "void", "android.view.View", "boolean")

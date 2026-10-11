@@ -117,9 +117,11 @@ final class NotificationStackHook {
         if(!allowed(host,ambient)){
             owner.range(0);owner.report(host,"native",0);return;
         }
-        // Native expand/dismiss animation owns row geometry for its duration. Keep the last valid
-        // scroll extent during that gesture; shrinking it here would jump the list under the finger.
-        if(yes(ambient,"mClearAllInProgress")||yes(ambient,"mExpansionChanging")||yes(host,"mExpandingNotification")){
+        // mExpansionChanging belongs to the whole shade/QS transition, not a row gesture. Keep
+        // projecting its fresh native geometry; yielding here unfolds every tail then refolds it.
+        // Single-row expansion and dismissal still own geometry. Retain the last valid scroll
+        // extent during those interactions so the list cannot jump under the finger.
+        if(yes(ambient,"mClearAllInProgress")||yes(host,"mExpandingNotification")){
             owner.report(host,"native-interaction",0);return;
         }
         Object algorithmState=access.algorithmState.get(algorithm);

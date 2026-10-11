@@ -11,52 +11,126 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/StatusBarGridHook.java').read_text(encoding='utf-8')
 
 
-def extract(marker):
-    start = SOURCE.index(marker)
-    end = SOURCE.index('{', start) + 1
+def extract(marker, source=SOURCE):
+    start = source.index(marker)
+    end = source.index('{', start) + 1
     depth = 1
     while depth:
-        depth += (SOURCE[end] == '{') - (SOURCE[end] == '}')
+        depth += (source[end] == '{') - (source[end] == '}')
         end += 1
-    return SOURCE[start:end]
+    return source[start:end]
 
 
 HARNESS = r'''import java.util.*;
 public class TestGridFrameCache {
  static int checks;static void check(boolean ok,String why){checks++;if(!ok)throw new AssertionError(why);}
  interface ViewParent{}
- static class Rect {int left,top,right=16,bottom=16;}
+ static class Rect {
+  static int allocations;int left,top,right=16,bottom=16;
+  Rect(){allocations++;}Rect(Rect from){this();set(from);}Rect(int l,int t,int r,int b){this();set(l,t,r,b);}
+  void set(Rect from){set(from.left,from.top,from.right,from.bottom);}void set(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}
+  public boolean equals(Object value){if(!(value instanceof Rect))return false;Rect other=(Rect)value;return left==other.left&&top==other.top&&right==other.right&&bottom==other.bottom;}
+  public int hashCode(){return Objects.hash(left,top,right,bottom);}
+ }
  static class Matrix {float x,y,sx=1,sy=1;Matrix(){}Matrix(Matrix from){x=from.x;y=from.y;sx=from.sx;sy=from.sy;}public boolean equals(Object o){return o instanceof Matrix&&x==((Matrix)o).x&&y==((Matrix)o).y&&sx==((Matrix)o).sx&&sy==((Matrix)o).sy;}}
  static class Typeface{}
  static class Drawable {Rect box=new Rect();int w=16,h=16,level;int getIntrinsicWidth(){return w;}int getIntrinsicHeight(){return h;}int getLevel(){return level;}Rect getBounds(){return box;}}
  static class SystemClock {static long now;static long elapsedRealtime(){return now;}}
  static class View {
   static final int VISIBLE=0,GONE=8;ViewGroup parent;ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();boolean attached=true,requested;int visibility,windowVisibility,direction,l,t,r=16,b=16,mw=16,mh=16,pl,pt,pr,pb,scrollX,scrollY;
-  float alpha=1,transitionAlpha=1,x,y,sx=1,sy=1,pivotX,pivotY,rotation,rotationX,rotationY;
+  float alpha=1,transitionAlpha=1,x,y,sx=1,sy=1,pivotX,pivotY,rotation,rotationX,rotationY;Rect clip;boolean clipOutline;
   ViewParent getParent(){return parent;}ViewGroup.LayoutParams getLayoutParams(){return params;}boolean isAttachedToWindow(){return attached;}int getWindowVisibility(){return windowVisibility;}int getVisibility(){return visibility;}boolean isLayoutRequested(){return requested;}
   int getLeft(){return l;}int getTop(){return t;}int getRight(){return r;}int getBottom(){return b;}int getMeasuredWidth(){return mw;}int getMeasuredHeight(){return mh;}int getLayoutDirection(){return direction;}
   int getPaddingLeft(){return pl;}int getPaddingTop(){return pt;}int getPaddingRight(){return pr;}int getPaddingBottom(){return pb;}int getScrollX(){return scrollX;}int getScrollY(){return scrollY;}
   float getAlpha(){return alpha;}float getTransitionAlpha(){return transitionAlpha;}float getTranslationX(){return x;}float getTranslationY(){return y;}float getScaleX(){return sx;}float getScaleY(){return sy;}
   float getPivotX(){return pivotX;}float getPivotY(){return pivotY;}float getRotation(){return rotation;}float getRotationX(){return rotationX;}float getRotationY(){return rotationY;}void setAlpha(float value){alpha=value;}
+  // A shared mutable return is intentional: the witness must keep a value snapshot.
+  Rect getClipBounds(){return clip;}boolean getClipBounds(Rect out){if(clip==null){out.set(0,0,0,0);return false;}out.set(clip);return true;}
+  void setClipBounds(Rect value){clip=value;}boolean getClipToOutline(){return clipOutline;}void setClipToOutline(boolean value){clipOutline=value;}
  }
- static class ViewGroup extends View implements ViewParent {List<View> children=new ArrayList<>();static class LayoutParams{int width=16,height=16;}void add(View v){children.add(v);v.parent=this;}int getChildCount(){return children.size();}View getChildAt(int index){return children.get(index);}}
+ static class ViewGroup extends View implements ViewParent {List<View> children=new ArrayList<>();boolean clipChildren=true,clipPadding=true;static class LayoutParams{int width=16,height=16;}void add(View v){children.add(v);v.parent=this;}int getChildCount(){return children.size();}View getChildAt(int index){return children.get(index);}boolean getClipChildren(){return clipChildren;}void setClipChildren(boolean value){clipChildren=value;}boolean getClipToPadding(){return clipPadding;}void setClipToPadding(boolean value){clipPadding=value;}}
  static class TextView extends View {CharSequence text="00:00";Typeface font=new Typeface();float size=14,letters;int color=-1;CharSequence getText(){return text;}Typeface getTypeface(){return font;}float getTextSize(){return size;}float getLetterSpacing(){return letters;}int getCurrentTextColor(){return color;}}
  static class ImageView extends View {enum ScaleType{FIT_XY,CENTER}ScaleType scaleType=ScaleType.FIT_XY;Drawable image=new Drawable();Matrix imageMatrix=new Matrix();Drawable getDrawable(){return image;}Matrix getImageMatrix(){return imageMatrix;}ScaleType getScaleType(){return scaleType;}}
  static class MFVBatteryViewLayout extends ViewGroup {public int mBateryLevel=80,mShowMode;public boolean mIsCharing,mTextHollowEffectAvailable;}
  static class SystemUiAdapter {static Object field(Object owner,String name){try{return owner.getClass().getField(name).get(owner);}catch(Exception ignored){return null;}}}
  static class ConnectivityIconView extends View{}
+ // CLIPPING
  // WITNESS
  // VISIBLE
  // OVERLAY_ALPHA
  static class State {
   final ViewGroup root=new ViewGroup();final List<FrameWitness> frameWitnesses=new ArrayList<>();final Map<View,Object> geometry=new IdentityHashMap<>();boolean active=true,layoutDirty=true,packingSuspended,ready=true;Object packingCapacityBlock;
+  final List<View> placedViews=new ArrayList<>();final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();final StatusBarClipping explicitClips=new StatusBarClipping();
   View alphaAnchor;ViewGroup overlay;ConnectivityIconView connectivityIcon;Rect batteryInk;long batteryInkAt;int layouts,capacityChecks;
-  void layout(){layouts++;clearRequested(root);if(batteryInk!=null)batteryInkAt=SystemClock.now;}
+  void layout(){layouts++;clearRequested(root);for(View view:placedViews)releasePlacedClips(view);if(batteryInk!=null)batteryInkAt=SystemClock.now;}
   void clearRequested(View view){if(view.visibility!=View.VISIBLE)return;view.requested=false;if(view instanceof ViewGroup)for(View child:((ViewGroup)view).children)clearRequested(child);}
   boolean syncNativeIconCapacity(){capacityChecks++;return ready;}boolean connectivityPlaced(){return true;}
+  void releasePlacedClips(View v){
+   // RELEASE_CLIPS
+  }
+  void restorePlacedClips(){
+   // RESTORE_CLIPS
+  }
   // METHODS
  }
  static void repack(State state,Runnable mutation,String reason){int before=state.layouts;mutation.run();state.beforeDraw();check(state.layouts==before+1,reason);state.beforeDraw();check(state.layouts==before+1,"fresh witnesses settle after "+reason);}
+ static void stableAfterClipRelease(State state,String reason){
+  int layouts=state.layouts,capacity=state.capacityChecks,rects=Rect.allocations;
+  for(int i=0;i<1200;i++)state.beforeDraw();
+  check(state.layouts==layouts&&state.capacityChecks==capacity,"1200 released frames reuse the cache after "+reason);
+  check(Rect.allocations==rects,"steady clipping probes allocate no Rects after "+reason);
+ }
+ static void clipRepack(State state,Runnable mutation,String reason){repack(state,mutation,reason);stableAfterClipRelease(state,reason);}
+ static void clippingCacheLifecycle(){
+  State state=new State();ViewGroup area=new ViewGroup();TextView clock=new TextView();
+  state.root.add(area);area.add(clock);state.placedViews.add(clock);state.geometry.put(clock,new Object());
+  Rect initialClock=new Rect(12,2,108,32),initialArea=new Rect(6,0,130,36);
+  clock.setClipBounds(initialClock);clock.setClipToOutline(true);area.setClipBounds(initialArea);area.setClipToOutline(true);
+  state.beforeDraw();
+  check(clock.getClipBounds()==null&&!clock.getClipToOutline(),"first placement releases the real clock clip and outline before taking witnesses");
+  check(area.getClipBounds()==null&&!area.getClipToOutline()&&!area.getClipChildren()&&!area.getClipToPadding(),"first placement releases ancestor clips before taking witnesses");
+  stableAfterClipRelease(state,"initial placement");
+  Rect latestClock=new Rect(40,1,111,31),latestArea=new Rect(18,0,132,35);
+  clipRepack(state,()->clock.setClipBounds(latestClock),"OEM clock clipBounds write without text/geometry/requestLayout changes repacks once");
+  check(clock.getClipBounds()==null,"repack releases the new hour-clipping rectangle");
+  clipRepack(state,()->area.setClipBounds(latestArea),"OEM ancestor clipBounds write without native layout repacks once");
+  check(area.getClipBounds()==null,"repack releases the new ancestor rectangle");
+  clipRepack(state,()->clock.setClipToOutline(true),"OEM clock clipToOutline write repacks once");
+  check(!clock.getClipToOutline(),"repack releases the new clock outline");
+  clipRepack(state,()->area.setClipToOutline(true),"OEM ancestor clipToOutline write repacks once");
+  check(!area.getClipToOutline(),"repack releases the new ancestor outline");
+  clipRepack(state,()->area.setClipChildren(true),"OEM ancestor clipChildren write repacks once");
+  check(!area.getClipChildren(),"repack releases ancestor child clipping");
+  clipRepack(state,()->area.setClipToPadding(true),"OEM ancestor clipToPadding write repacks once");
+  check(!area.getClipToPadding(),"repack releases ancestor padding clipping");
+  clipRepack(state,()->state.root.setClipChildren(true),"OEM status-bar root clipChildren write repacks once");
+  clipRepack(state,()->state.root.setClipToPadding(true),"OEM status-bar root clipToPadding write repacks once");
+  state.active=false;state.restorePlacedClips();state.beforeDraw();
+  check(latestClock.equals(clock.getClipBounds())&&latestArea.equals(area.getClipBounds()),"disable restores the latest native explicit rectangles rather than the initial ones");
+  check(clock.getClipToOutline()&&area.getClipToOutline(),"disable restores native outlines");
+  check(area.getClipChildren()&&area.getClipToPadding()&&state.root.getClipChildren()&&state.root.getClipToPadding(),"disable restores original native ancestor clipping flags");
+  int disabledLayouts=state.layouts;for(int i=0;i<1200;i++)state.beforeDraw();
+  check(state.layouts==disabledLayouts&&latestClock.equals(clock.getClipBounds()),"disabled frames preserve restored native clips without packing");
+  state.active=true;state.beforeDraw();check(state.layouts==disabledLayouts+1,"reenabling releases restored native clips with one pack");
+  stableAfterClipRelease(state,"reenabling");
+  state.active=false;state.restorePlacedClips();state.beforeDraw();
+  check(latestClock.equals(clock.getClipBounds())&&area.getClipChildren(),"second lifecycle restores native clipping again");
+
+  // Snapshot semantics matter even for a native view the grid does not place.
+  View nativeView=new View();Rect shared=new Rect(7,1,83,29);nativeView.setClipBounds(shared);
+  FrameWitness snapshot=new FrameWitness(nativeView,false);
+  nativeView.setClipBounds(new Rect(shared));check(snapshot.matches(),"equal-valued clip replacement does not invalidate by identity");
+  nativeView.setClipBounds(shared);check(snapshot.matches(),"the original equal-valued clip still matches");
+  shared.left=27;check(!snapshot.matches(),"in-place shared Rect mutation invalidates the copied clipBounds witness");
+  nativeView.setClipBounds(null);check(!snapshot.matches(),"native clip removal invalidates a nonempty snapshot");
+
+  State mixed=new State();ViewGroup mixedArea=new ViewGroup();TextView mixedClock=new TextView();
+  mixed.root.add(mixedArea);mixedArea.add(mixedClock);mixed.placedViews.add(mixedClock);
+  mixed.root.setClipToPadding(false);mixedArea.setClipChildren(false);mixed.beforeDraw();
+  stableAfterClipRelease(mixed,"mixed native clipping baseline");
+  mixed.active=false;mixed.restorePlacedClips();
+  check(mixed.root.getClipChildren()&&!mixed.root.getClipToPadding()&&!mixedArea.getClipChildren()&&mixedArea.getClipToPadding(),"restore retains each ancestor's independent original clipping flags");
+ }
  public static void main(String[] args){
   State state=new State();ViewGroup area=new ViewGroup();TextView clock=new TextView();ImageView signal=new ImageView();MFVBatteryViewLayout battery=new MFVBatteryViewLayout();
   state.root.add(area);area.add(clock);area.add(signal);area.add(battery);state.alphaAnchor=battery;state.overlay=new ViewGroup();state.connectivityIcon=new ConnectivityIconView();state.root.add(state.overlay);state.root.add(state.connectivityIcon);
@@ -90,13 +164,20 @@ public class TestGridFrameCache {
   state.packingSuspended=true;before=state.layouts;state.beforeDraw();state.beforeDraw();check(state.layouts==before+2,"temporary capacity rejection retains live retry/recovery checks");
   check(state.overlay.alpha==0&&state.connectivityIcon.alpha==0,"pre-draw must keep retained custom content hidden during native fallback");
   for(float alpha:new float[]{1,.25f,0,1}){area.alpha=alpha;state.beforeDraw();check(state.overlay.alpha==0&&state.connectivityIcon.alpha==0,"native fades cannot reveal stale fallback labels or replacements");}
+  clippingCacheLifecycle();
   System.out.println("Grid production frame reuse: "+checks+" assertions passed; unchanged/hidden 120 Hz workloads bounded (facade, not device evidence)");
  }
 }'''
 
 members = '\n'.join(extract(marker) for marker in ('boolean beforeDraw()', 'boolean unchangedFrame()', 'void captureFrame(', 'void syncOverlayAlpha('))
 witness = extract('private static final class FrameWitness').replace('android.graphics.Typeface', 'Typeface').replace('android.graphics.drawable.Drawable', 'Drawable')
-generated = HARNESS.replace('// WITNESS', witness).replace('// VISIBLE', extract('private static boolean visibleFrame(')).replace('// OVERLAY_ALPHA', extract('private static float overlayAlpha(')).replace('// METHODS', members)
+clipping_source = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/StatusBarClipping.java').read_text(encoding='utf-8')
+clipping = extract('final class StatusBarClipping', clipping_source).replace('final class StatusBarClipping', 'static final class StatusBarClipping', 1)
+release_clips = extract('explicitClips.release(v);ViewParent parent=v.getParent();while(parent instanceof ViewGroup)')
+restore_start = SOURCE.index('explicitClips.restore();for(Map.Entry<ViewGroup,boolean[]>')
+restore_end = SOURCE.index('clips.clear();', restore_start) + len('clips.clear();')
+restore_clips = SOURCE[restore_start:restore_end]
+generated = HARNESS.replace('// WITNESS', witness).replace('// CLIPPING', clipping).replace('// RELEASE_CLIPS', release_clips).replace('// RESTORE_CLIPS', restore_clips).replace('// VISIBLE', extract('private static boolean visibleFrame(')).replace('// OVERLAY_ALPHA', extract('private static float overlayAlpha(')).replace('// METHODS', members)
 with tempfile.TemporaryDirectory(prefix='duo-grid-frame-') as tmp:
     path = Path(tmp) / 'TestGridFrameCache.java'
     path.write_text(generated, encoding='utf-8')

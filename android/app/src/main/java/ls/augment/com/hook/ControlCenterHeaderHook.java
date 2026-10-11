@@ -188,6 +188,10 @@ final class ControlCenterHeaderHook {
             // Layout may break only semantic boundaries. A steady pre-draw must not
             // remove those breaks and restart measurement on every frame.
             String current=clock.getText().toString().replace("\n:",":").replace('\n',' ');
+            // Native landscape rows use WRAP_CONTENT and must not inherit the
+            // vertical adapter's line breaks after a rotation or mode change.
+            if(clock.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    &&!NotificationAppearanceHook.ownsClock(clock))current=clock.getText().toString();
             if(!text.toString().equals(current)){clock.setText(text);clockGeometryDirty=true;}
             if(!android.text.TextUtils.equals(clock.getContentDescription(),text))clock.setContentDescription(text.toString());
             clockDebug="rendered;text="+text+";time="+now;

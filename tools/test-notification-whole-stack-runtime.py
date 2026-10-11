@@ -18,6 +18,7 @@ files = {name: base[name] for name in ['android/content/Context.java', 'android/
     'io/github/libxposed/api/XposedInterface.java', 'ls/augment/com/hook/AugmentModule.java']}
 files.update({
 'android/util/Log.java': 'package android.util;public class Log{public static String getStackTraceString(Throwable e){return e.toString();}}',
+'ls/augment/com/hook/LiftArcLog.java': 'package ls.augment.com.hook;final class LiftArcLog{static boolean e(String message,Throwable error){return true;}static void w(String message,Throwable error){}}',
 'android/util/DisplayMetrics.java': 'package android.util;public class DisplayMetrics{public float density=1;}',
 'android/content/res/Configuration.java': 'package android.content.res;public class Configuration{public static final int ORIENTATION_LANDSCAPE=2;public int orientation=1;}',
 'android/content/res/Resources.java': '''package android.content.res;public class Resources{
@@ -88,7 +89,7 @@ files.update({
  import com.android.systemui.statusbar.notification.row.ExpandableNotificationRow;import ls.augment.com.hook.AugmentModule;
  public class NotificationStackScrollLayout extends android.view.ViewGroup{
  public final AmbientState ambient=new AmbientState(),mAmbientState=ambient;public final StackScrollAlgorithm algorithm=new StackScrollAlgorithm(this);
- public int nativePasses,footerHeight,nativeMinimumRange,scrollabilityUpdates,clamps;public boolean mScrollable;
+ public int nativePasses,footerHeight,nativeMinimumRange,scrollabilityUpdates,clamps;public boolean mScrollable,mExpandingNotification;
  public NotificationStackScrollLayout(){height=1000;}
  public void onLayout(boolean changed,int l,int t,int r,int b){AugmentModule.invoke(this,"onLayout",new Class<?>[]{boolean.class,int.class,int.class,int.class,int.class},changed,l,t,r,b);}
  public void native_onLayout(boolean changed,int l,int t,int r,int b){}
@@ -108,8 +109,8 @@ files.update({
  public class TestNotificationWholeStack{
  static int checks;static void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
  static NotificationStackScrollLayout fresh(int count){NotificationStackScrollLayout host=new NotificationStackScrollLayout();for(int i=0;i<count;i++)host.algorithm.mTempAlgorithmState.visibleChildren.add(new ExpandableNotificationRow("review"+i));host.requestChildrenUpdate();android.os.Handler.drain();return host;}
- static void nativeRows(NotificationStackScrollLayout host,String message){float y=100-host.ambient.mScrollY;for(ExpandableNotificationRow row:host.algorithm.mTempAlgorithmState.visibleChildren){check(Math.abs(row.state.y-y)<.01f&&Math.abs(row.getScaleX()-1)<.01f&&row.state.hidden==(y+row.height<100),message);check(row.appliedClipBottom==row.state.clipBottomAmount&&(row.nextNativeBottom==null||row.appliedClipBottom==row.nextNativeBottom),message+" restores native bottom in actual view");y+=row.height+8;}}
- public static void main(String[] args){AugmentModule module=new AugmentModule();AugmentModule.active=module;
+ static void nativeRows(NotificationStackScrollLayout host,String message){float y=host.ambient.mStackY-host.ambient.mScrollY;for(ExpandableNotificationRow row:host.algorithm.mTempAlgorithmState.visibleChildren){check(Math.abs(row.state.y-y)<.01f&&Math.abs(row.getScaleX()-1)<.01f&&row.state.hidden==(row.nativeHidden||y+row.height<host.ambient.mStackY),message);check(row.appliedClipBottom==row.state.clipBottomAmount&&(row.nextNativeBottom==null||row.appliedClipBottom==row.nextNativeBottom),message+" restores native bottom in actual view");y+=row.height+8;}}
+ public static void main(String[] args)throws Exception{AugmentModule module=new AugmentModule();AugmentModule.active=module;
  check(NotificationStackHook.install(module,TestNotificationWholeStack.class.getClassLoader())==3,"real signatures resolve and install");
  NotificationStackScrollLayout host=new NotificationStackScrollLayout();for(int i=0;i<8;i++)host.algorithm.mTempAlgorithmState.visibleChildren.add(new ExpandableNotificationRow("id"+i));
  host.requestChildrenUpdate();nativeRows(host,"disabled keeps native state");int passes=host.nativePasses;
@@ -139,7 +140,8 @@ files.update({
  FeatureSettings.change(SystemUiOptions.NOTIFICATION_STACK,"1");host.ambient.mStatusBarState=1;host.requestChildrenUpdate();nativeRows(host,"keyguard native");
  host.ambient.mStatusBarState=0;host.ambient.mDozing=true;host.requestChildrenUpdate();nativeRows(host,"dozing native");host.ambient.mDozing=false;
  host.ambient.mClearAllInProgress=true;host.requestChildrenUpdate();nativeRows(host,"clear-all native animation targets");host.ambient.mClearAllInProgress=false;
- host.ambient.mExpansionChanging=true;host.requestChildrenUpdate();nativeRows(host,"shade expansion native");host.ambient.mExpansionChanging=false;
+ host.ambient.mExpansionChanging=true;host.requestChildrenUpdate();check(host.algorithm.mTempAlgorithmState.visibleChildren.get(2).appliedClipBottom>0,"panel expansion keeps tail stacked");host.ambient.mExpansionChanging=false;
+ host.mExpandingNotification=true;host.requestChildrenUpdate();nativeRows(host,"individual notification expansion native");host.mExpandingNotification=false;
  first.userLocked=true;host.requestChildrenUpdate();nativeRows(host,"row expand gesture native");first.userLocked=false;
  first.x=30;host.requestChildrenUpdate();nativeRows(host,"side-swipe native");first.x=0;
  host.getResources().configuration.orientation=2;host.requestChildrenUpdate();nativeRows(host,"landscape default retains native");
@@ -263,6 +265,49 @@ files.update({
  NotificationStackScrollLayout pendingExternal=fresh(6);ExpandableNotificationRow pendingRow=pendingExternal.algorithm.mTempAlgorithmState.visibleChildren.get(1);
  int ownedLive=pendingRow.appliedClipBottom;check(ownedLive>0,"pending external target case begins with an actually owned live clip");pendingRow.state.clipBottomAmount=23;pendingExternal.detach();
  check(pendingRow.state.clipBottomAmount==23&&pendingRow.appliedClipBottom==23,"external target pending application receives still-owned live clip at detach, not stale native baseline");
+ // Video 1111: three complete cards, no inset; a shade/QS drag must not unfold the entire tail.
+ // Run the real registered hook on every native update, allowing the native anchor and scroll to move.
+ FeatureSettings.values.put(NotificationAppearanceOptions.STACK_COUNT,"3");
+ for(int orientation:new int[]{1,2})for(int step:new int[]{8,20})for(int inset:new int[]{0,6}){
+  FeatureSettings.values.put(NotificationAppearanceOptions.STACK_STEP,String.valueOf(step));
+  FeatureSettings.values.put(NotificationAppearanceOptions.STACK_INSET,String.valueOf(inset));
+  NotificationStackScrollLayout drag=fresh(7);drag.getResources().configuration.orientation=orientation;drag.requestChildrenUpdate();android.os.Handler.drain();
+  ExpandableNotificationRow tail=drag.algorithm.mTempAlgorithmState.visibleChildren.get(3);
+  float tailOffset=tail.state.y-drag.ambient.mStackY,tailScale=tail.getScaleX();int tailClip=tail.appliedClipBottom,dragRange=drag.getScrollRange();
+  check(tailClip==tail.height-step,"three full cards begin with only one tail step exposed");
+  boolean[] phases={false,true,true,false,true,true,false,true,true,false};
+  for(int frame=0;frame<phases.length;frame++){
+   drag.ambient.mExpansionChanging=phases[frame];drag.ambient.mStackY=100+frame*3;drag.requestChildrenUpdate();android.os.Handler.drain();
+   check(tail.appliedClipBottom==tailClip&&Math.abs(tail.getScaleX()-tailScale)<.01f&&!tail.state.hidden,"panel drag does not expose full tail or reset its scale");
+   check(Math.abs(tail.state.y-drag.ambient.mStackY-tailOffset)<.01f&&drag.algorithm.mTempAlgorithmState.visibleChildren.get(0).state.y==drag.ambient.mStackY,"projection follows fresh native anchor instead of freezing row positions");
+   check(drag.getScrollRange()==dragRange&&drag.mScrollable&&tail.nativeBottomBeforeReset==0&&drag.ambient.mExpansionChanging==phases[frame],"drag keeps scroll range, restores clips before recomputing and leaves OEM flags intact");
+  }
+  drag.ambient.mExpansionChanging=true;drag.nativeScrollTo(216);
+  check(tail.appliedClipBottom==0&&!tail.state.hidden&&drag.ambient.mScrollY==216,"native scrolling during panel expansion still unfolds the next readable card");
+  check(drag.algorithm.mTempAlgorithmState.visibleChildren.get(5).appliedClipBottom>0&&drag.getScrollRange()==dragRange,"scroll unfolds by position while deeper notifications stay stacked");
+  drag.ambient.mClearAllInProgress=true;drag.requestChildrenUpdate();nativeRows(drag,"clear-all still owns geometry during a panel drag");
+  check(drag.getScrollRange()==dragRange&&drag.ambient.mScrollY==216,"clear-all does not prematurely shrink compact scroll range");drag.ambient.mClearAllInProgress=false;
+  drag.mExpandingNotification=true;drag.requestChildrenUpdate();nativeRows(drag,"single-card launch expansion still owns geometry during panel drag");drag.mExpandingNotification=false;
+  ExpandableNotificationRow dragProtectedRow=drag.algorithm.mTempAlgorithmState.visibleChildren.get(2);
+  for(String flag:new String[]{"userLocked","guts","animating","groupChanging","pinned","away","removed"}){
+   java.lang.reflect.Field nativeFlag=ExpandableNotificationRow.class.getField(flag);nativeFlag.setBoolean(dragProtectedRow,true);drag.requestChildrenUpdate();
+   nativeRows(drag,"native "+flag+" remains protected during panel drag");nativeFlag.setBoolean(dragProtectedRow,false);
+  }
+  dragProtectedRow.x=30;drag.requestChildrenUpdate();nativeRows(drag,"native side-swipe remains protected during panel drag");dragProtectedRow.x=0;
+  drag.requestChildrenUpdate();check(drag.algorithm.mTempAlgorithmState.visibleChildren.get(5).appliedClipBottom>0,"stack resumes after individual native interactions, even while panel is moving");
+  dragProtectedRow.userExpanded=true;dragProtectedRow.height=180;drag.requestChildrenUpdate();android.os.Handler.drain();
+  check(dragProtectedRow.appliedClipTop==0&&dragProtectedRow.appliedClipBottom==0&&dragProtectedRow.state.y==drag.ambient.mStackY&&drag.ambient.mScrollY==216,"finished single-card expansion remains readable while the panel still moves");
+  dragProtectedRow.userExpanded=false;dragProtectedRow.height=100;drag.requestChildrenUpdate();android.os.Handler.drain();
+  check(drag.getScrollRange()==dragRange&&drag.algorithm.mTempAlgorithmState.visibleChildren.get(5).appliedClipBottom>0,"single-card collapse restores compact scrolling during panel drag");
+  drag.ambient.mStatusBarState=1;drag.requestChildrenUpdate();nativeRows(drag,"panel flag cannot enable stacking on keyguard");
+  drag.ambient.mStatusBarState=0;drag.ambient.mDozing=true;drag.requestChildrenUpdate();nativeRows(drag,"panel flag cannot enable stacking while dozing");drag.ambient.mDozing=false;
+  drag.ambient.mShadeExpanded=false;drag.requestChildrenUpdate();nativeRows(drag,"collapsed shade remains native even with changing flag");drag.ambient.mShadeExpanded=true;
+  com.android.systemui.scene.shared.flag.SceneContainerFlag.enabled=true;drag.requestChildrenUpdate();nativeRows(drag,"scene layout remains native even with changing flag");
+  check(drag.getScrollRange()==0,"scene layout cannot expose compact range");com.android.systemui.scene.shared.flag.SceneContainerFlag.enabled=false;
+  FeatureSettings.change(SystemUiOptions.NOTIFICATION_STACK,"0");nativeRows(drag,"hot disable during panel drag restores native clips and scale");
+  check(drag.getScrollRange()==0&&!drag.mScrollable&&drag.ambient.mScrollY==0,"hot disable during drag restores native scrolling");
+  drag.detach();FeatureSettings.change(SystemUiOptions.NOTIFICATION_STACK,"1");
+ }
  check(module.errors==0,"no reflection or callback failures");System.out.println("Actual NotificationStackHook: "+checks+" checks passed; no device interaction");
  }}
 '''

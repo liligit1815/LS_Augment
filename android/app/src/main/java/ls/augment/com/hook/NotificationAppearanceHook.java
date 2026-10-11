@@ -56,14 +56,39 @@ final class NotificationAppearanceHook {
             count+=hookNamed(owner,loader,"notification.appearance","com.zte.controlcenter.view.ControlCenterPanelView",name,0,
                     (target,args,result)->{Object h=field(target,"ccHeaderView");HeaderState s=HEADERS.get(h);if(s!=null)s.beginNative();return PASS;},
                     (target,args,result)->{Object h=field(target,"ccHeaderView");if(h instanceof View)header((View)h).endNative();return PASS;});
-        for(String name:new String[]{"onLayout","updateChildren","setStatusBarState","setIsExpanded"}){
+        for(String name:new String[]{"onLayout","setStatusBarState","setIsExpanded"}){
             count+=hookNamed(owner,loader,"notification.appearance",STACK,name,-1,null,(target,args,result)->{
                 StackState state=stack((View)target);state.refresh();return PASS;
             });
         }
+        // The OEM pre-draw updater clears its requested flag only AFTER
+        // updateChildren returns. A padding write in an after-hook is too late
+        // for this frame and its request for another update is swallowed.
+        count+=hookNamed(owner,loader,"notification.appearance",STACK,"updateChildren",0,(target,args,result)->{
+            stack((View)target).refresh();return PASS;
+        },null);
         count+=hookNamed(owner,loader,"notification.appearance",STACK,"updateTopPadding",2,(target,args,result)->{
             StackState state=stack((View)target);
-            if(!state.adjusting){state.nativePadding=((Number)args[0]).floatValue();args[0]=state.desiredPadding(state.nativePadding);}
+            if(!state.adjusting){state.beforeNativePadding(((Number)args[0]).floatValue());args[0]=state.desiredPadding(state.nativePadding);}
+            if(state.ownsHeader()){
+                args[1]=false;
+                // Also guard the caller: ART can inline the final internal
+                // onTopPaddingChanged callback. Consume its pending flag only
+                // for an actual integer padding change, just as the ROM does.
+                if(((Number)args[0]).intValue()!=integer(field(field(target,"mAmbientState"),"mTopPadding"),Integer.MIN_VALUE))
+                    set(target,"mAnimateNextTopPaddingChange",false);
+            }
+            return PASS;
+        },null);
+        count+=hookNamed(owner,loader,"notification.appearance",STACK,"onTopPaddingChanged",1,(target,args,result)->{
+            StackState state=STACKS.get(target);
+            if(state!=null&&state.ownsHeader()){
+                // This allocation already follows the current header/scroll
+                // geometry. Animating it again retargets the notification rows.
+                // The native callback also merges a pending animation flag,
+                // even when updateTopPadding was called with animate=false.
+                args[0]=false;set(target,"mAnimateNextTopPaddingChange",false);
+            }
             return PASS;
         },null);
         count+=hookNamed(owner,loader,"notification.appearance",NotificationViewportInset.CONTAINER,"setNotificationsMarginBottom",1,
@@ -184,10 +209,12 @@ final class NotificationAppearanceHook {
         HeaderClockLayout.Below[] belowItems=new HeaderClockLayout.Below[0];
         String lastReport="",rejectedSpace;
         TextView weather;
+        Original nativePeriod;
         HeaderState(View view){header=new WeakReference<>(view);view.getViewTreeObserver().addOnGlobalLayoutListener(this);}
         void beginNative(){if(nativeDepth++==0){rejectedSpace=null;restore();}}
         void endNative(){nativeDepth=Math.max(0,nativeDepth-1);if(nativeDepth==0)refresh();}
-        void restore(){if(!applied)return;for(Original original:originals)original.restore();originals.clear();belowItems=new HeaderClockLayout.Below[0];weather=null;applied=false;}
+        void restoreNativePeriod(){if(nativePeriod!=null){nativePeriod.restore();nativePeriod=null;}}
+        void restore(){restoreNativePeriod();if(!applied)return;for(Original original:originals)original.restore();originals.clear();belowItems=new HeaderClockLayout.Below[0];weather=null;applied=false;}
         void close(){restore();View view=header.get();if(view!=null&&view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnGlobalLayoutListener(this);}
         @Override public void onGlobalLayout(){refresh();}
         boolean requested(View view){return FeatureSettings.enabled(view.getContext(),
@@ -216,6 +243,26 @@ final class NotificationAppearanceHook {
                 Object rawClock=field(view,"mClockView"),rawDate=field(view,"mDateView"),rawGroup=field(view,"mTimeGroup"),rawDateGroup=field(view,"mDateViewContainer");
                 if(!(rawClock instanceof TextView)||!(rawDate instanceof TextView)||!(rawGroup instanceof View)||!(rawDateGroup instanceof View))return;
                 TextView time=(TextView)rawClock,date=(TextView)rawDate;View group=(View)rawGroup,dateGroup=(View)rawDateGroup;
+                if(format&&!expanded&&landscape(view)){
+                    // Landscape primitive mode anchors date END_OF(time), while
+                    // the separate QS panel can hide both groups entirely. Their
+                    // WRAP_CONTENT clocks already measure the formatted string.
+                    // Replacing those rules/outer height with vertical rows moves
+                    // content into fixed native tiles and reserves phantom space.
+                    if(applied)restore();
+                    ControlCenterHeaderHook.spaceBlocked(time,false);
+                    ControlCenterHeaderHook.renderClock(time);
+                    View period=nativeChild(view,"am_pm_view");
+                    if(period!=null&&FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_period")){
+                        if(nativePeriod!=null&&nativePeriod.view.get()!=period)restoreNativePeriod();
+                        if(nativePeriod==null)nativePeriod=new Original(period);
+                        if(period.getVisibility()!=View.GONE)period.setVisibility(View.GONE);
+                    }else restoreNativePeriod();
+                    if(nativeStack!=null)stack(nativeStack).updatePadding();
+                    report(view,"clock;mode=native;size="+time.getTextSize()+";orientation=landscape");
+                    return;
+                }
+                restoreNativePeriod();
                 TextView nextWeather=HeaderClockLayout.weather(dateGroup);
                 if(applied&&weather!=nextWeather)restore();
                 ControlCenterHeaderHook.spaceBlocked(time,false);
@@ -320,14 +367,34 @@ final class NotificationAppearanceHook {
         return Math.max(0,height-(a[1]-b[1])-reserve);
     }
     private static final class StackState {
-        final WeakReference<View> view;final NotificationViewportInset viewport;float nativePadding=Float.NaN;boolean adjusting,paddingOwned,refreshing;
+        final WeakReference<View> view;final NotificationViewportInset viewport;float nativePadding=Float.NaN,ownedPadding=Float.NaN;boolean adjusting,paddingOwned,refreshing;
         StackState(View source){view=new WeakReference<>(source);nativePadding=decimal(field(field(source,"mAmbientState"),"mTopPadding"),0);viewport=new NotificationViewportInset(source,this::ownsHeader,this::refresh);}
-        boolean ownsHeader(){View source=view.get();if(source==null||!headerWork(source)||Boolean.TRUE.equals(field(source,"mLaunchingNotification")))return false;for(HeaderState state:new ArrayList<>(HEADERS.values())){View h=state.header.get();if(h!=null&&findStack(h)==source&&state.bottomInStack(source)>=0)return true;}return false;}
+        boolean headerUpdating(){
+            View source=view.get();if(source==null||!headerWork(source)||!shade(source))return false;
+            for(HeaderState state:new ArrayList<>(HEADERS.values())){View h=state.header.get();
+                if(h!=null&&findStack(h)==source&&state.nativeDepth>0&&state.contentBottom>0
+                        &&integer(field(h,"panelType"),-1)==2&&(state.formatted||state.requested(h)))return true;
+            }return false;
+        }
+        void beforeNativePadding(float value){
+            // A resource callback can feed the current allocated padding back
+            // while its header is temporarily restored. That is our value,
+            // not a new native baseline to retain after the feature is disabled.
+            if(!headerUpdating()||!Float.isFinite(ownedPadding)||Math.abs(value-ownedPadding)>=1f)nativePadding=value;
+        }
+        boolean ownsHeader(){View source=view.get();if(source==null||!headerWork(source)||Boolean.TRUE.equals(field(source,"mLaunchingNotification")))return false;if(headerUpdating()&&Float.isFinite(ownedPadding))return true;for(HeaderState state:new ArrayList<>(HEADERS.values())){View h=state.header.get();if(h!=null&&findStack(h)==source&&state.bottomInStack(source)>=0)return true;}return false;}
         float desiredPadding(float original){
-            View source=view.get();if(source==null)return original;float result=original;
-            if(!headerWork(source)){paddingOwned=false;return original;}
-            for(HeaderState header:new ArrayList<>(HEADERS.values())){View h=header.header.get();if(h!=null&&findStack(h)==source)result=Math.max(result,header.bottomInStack(source));}
-            paddingOwned=result>original+.5f;return result;
+            View source=view.get();if(source==null)return original;float bottom=-1;
+            if(headerWork(source)){
+                for(HeaderState header:new ArrayList<>(HEADERS.values())){View h=header.header.get();if(h!=null&&findStack(h)==source)bottom=Math.max(bottom,header.bottomInStack(source));}
+                // Keep the committed allocation through a synchronous native
+                // header transaction, until its new rows have been committed.
+                if(bottom<0&&headerUpdating()&&Float.isFinite(ownedPadding))bottom=ownedPadding;
+            }
+            // The owned header already includes the requested list gap. A late
+            // OEM expansion padding must not add another gap underneath it.
+            float result=bottom>=0?bottom:original;ownedPadding=bottom>=0?result:Float.NaN;
+            paddingOwned=Math.abs(result-original)>.5f;return result;
         }
         void updatePadding(){View source=view.get();if(source==null||adjusting||!headerWork(source)&&!paddingOwned&&!viewport.hasOwnedState())return;viewport.refresh();float wanted=desiredPadding(nativePadding);
             float current=decimal(field(field(source,"mAmbientState"),"mTopPadding"),wanted);

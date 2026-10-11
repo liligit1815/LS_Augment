@@ -4,12 +4,25 @@ public final class TestEnhancementCatalog {
     private static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     public static void main(String[] args) {
         Set<String> keys=new HashSet<>();
+        // LiftArc's published parameter defaults are dormant until its disabled master is enabled.
+        Set<String> enabledLiftArcParameters=Set.of(
+                LiftArcOptions.key("show_handle"),LiftArcOptions.key("haptic"),
+                LiftArcOptions.key("parallax"),LiftArcOptions.key("release_return"),
+                LiftArcOptions.key("flick_unlock"),LiftArcOptions.key("arc_enabled"),
+                LiftArcOptions.key("arc_dim"));
+        Set<String> booleanDefaults=new HashSet<>();
         for(EnhancementOption option:EnhancementCatalog.options()) {
             check(keys.add(option.key),"duplicate option "+option.key);
             check(option.defaultValue.equals(option.normalize(option.defaultValue)),"invalid default "+option.key);
             check(ConfigSchema.contains(option.key),"missing schema "+option.key);
-            if(option.kind==EnhancementOption.Kind.BOOLEAN)check("0".equals(option.defaultValue),"new toggle must default off "+option.key);
+            if(option.kind==EnhancementOption.Kind.BOOLEAN){
+                booleanDefaults.add(option.key);
+                String expected=enabledLiftArcParameters.contains(option.key)?"1":"0";
+                check(expected.equals(option.defaultValue),"unexpected toggle default "+option.key);
+            }
         }
+        check(booleanDefaults.containsAll(enabledLiftArcParameters),"LiftArc parameter defaults remain in the catalog");
+        check("0".equals(LiftArcOptions.option("enabled").defaultValue),"LiftArc master must default off");
         Map<String,String> previous=new LinkedHashMap<>();previous.put(ConfigSchema.AI_TRIGGER_ENABLED,"1");previous.put(ConfigSchema.STATUSBAR_CLOCK_ROWS,"2");
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);
         check(upgraded!=null&&"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))&&"2".equals(upgraded.get(ConfigSchema.STATUSBAR_CLOCK_ROWS)),"upgrade preserves existing settings");

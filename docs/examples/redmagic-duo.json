@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "appId": "redmagic-duo",
+  "packageName": "ls.augment.com",
+  "release": {
+    "versionCode": 20518,
+    "versionName": "2.0.0-alpha1-test20518",
+    "minSdk": 35,
+    "publishedAt": "2026-10-11T12:12:57Z",
+    "notes": "新增红魔 Duo 软件内在线更新。\n\n- 打开配置应用后每天自动检查一次，也可在“关于”页手动检查。\n- 发现新版后显示版本与更新说明，由用户确认下载。\n- 下载完成后校验安装包，再打开系统安装界面。\n- 同步联网说明，检查失败不影响日常使用。\n\n延续原发行签名。首次使用在线更新需要先手动安装此版本。本版继承项目当前开发版本的其他改动；设备上的更新界面与安装流程仍待真机验证。",
+    "apk": {
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20518/redmagic-duo-20518.apk",
+      "size": 8182772,
+      "sha256": "a4dec8f3a19150ac140353e35963bdb53106870b74e9ef4c5ca09f6e9f8820a8",
+      "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
+    }
+  }
+}

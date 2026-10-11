@@ -1,6 +1,6 @@
 # Release signing
 
-Current package version: `2.0.0-alpha1-test20509` / versionCode `20509`.
+Current package version: `2.0.0-alpha1-test20518` / versionCode `20518`.
 The version source is `android/version.properties`.
 
 The current upgrade signing certificate has SHA-256
@@ -19,7 +19,7 @@ versionCode's APK, including a local build, after incrementing versionCode by ex
 in versionName. The helper checks the previous certificate, builds Release, and verifies
 the final certificate, version, and alignment. APKs and local verification receipts are
 written to `out/` and are excluded from the source repository. The current Release APK
-is `out/RedMagicDuo-v2.0.0-alpha1-test20509-release.apk`.
+is `out/RedMagicDuo-v2.0.0-alpha1-test20518-release.apk`.
 
 The public `dev41-test-cert.pem` identifies the historical dev4.2 test signing lineage:
 `c51c7eed43c2118e98a62072b8ca2b30596c83b388f39ae536c8067612ad2f6a`.

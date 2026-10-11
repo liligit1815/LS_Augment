@@ -19,7 +19,7 @@ final class ModuleAbout {
     private ModuleAbout() { }
 
     static View appendCards(Activity activity, UiKit ui, LinearLayout parent,
-            View.OnClickListener onSystemVersionTap) {
+            View.OnClickListener onSystemVersionTap, Runnable checkUpdate) {
         DeviceInfo device = new DeviceInfo(activity);
         LinearLayout hardware = group(ui, parent, "当前设备");
         hardware.setTag("about-device-card");
@@ -37,6 +37,9 @@ final class ModuleAbout {
         }
         row(ui, hardware, "Android 版本", device.androidVersion, "android");
         row(ui, hardware, "红魔Duo版本", BuildConfig.VERSION_NAME, "module");
+        android.widget.Button update=ui.tonalButton("检查更新");
+        update.setTag("about-check-update");update.setOnClickListener(v->checkUpdate.run());
+        hardware.addView(update,ui.margins(0,8,0,2));
 
         LinearLayout community=ui.card();community.setPadding(ui.dp(12),0,ui.dp(12),0);
         community.setTag("about-developer-profile");

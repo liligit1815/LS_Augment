@@ -25,14 +25,14 @@ final class GamePerformanceMonitorHook {
     };
 
     private GamePerformanceMonitorHook(AugmentModule module,ClassLoader loader)throws ReflectiveOperationException{
-        this.module=module;access=new Access(loader);
+        this.module=module;access=Access.resolve(loader);
     }
 
     static void install(AugmentModule module,ClassLoader loader){
         try{
             GamePerformanceMonitorHook hooks=new GamePerformanceMonitorHook(module,loader);
             hooks.install();
-            module.logFeatureInfo("GAME_MONITOR_REGISTERED route=GameAssist17;items=5;background_only=true");
+            module.logFeatureInfo("GAME_MONITOR_REGISTERED route="+hooks.access.route+";items=5;background_only=true");
         }catch(Throwable error){module.logFeatureError("GAME_MONITOR_ROUTE_UNAVAILABLE",error);}
     }
 
@@ -208,22 +208,34 @@ final class GamePerformanceMonitorHook {
 
     /** Validate the whole known OEM route before registering any interception. */
     private static final class Access{
+        final String route;
         final Field context,content,background,shortBackground,fullWidth,currentWidth,shortWidth,layoutParams,shortened,selectedIndex,added,activeRoot,windowManager,pointX;
         final Method init,dimensions,params,showMode,add,backgroundAlpha,hitIndex,click,rectangle,clamp,updateWindow,saveX,fade;
-        Access(ClassLoader loader)throws ReflectiveOperationException{
-            Class<?> type=Class.forName(TYPE,false,loader);
-            context=field(type,"j",Context.class);content=field(type,"m",android.widget.LinearLayout.class);
-            background=field(type,"n",Class.forName(TYPE.replace("PerformanceMonitorFloatingWindow","CornerRectangle"),false,loader));
-            shortBackground=field(type,"o",background.getType());fullWidth=field(type,"J",int.class);currentWidth=field(type,"L",int.class);shortWidth=field(type,"R",int.class);
-            layoutParams=field(type,"v",WindowManager.LayoutParams.class);shortened=field(type,"U",boolean.class);selectedIndex=field(type,"V",int.class);added=field(type,"h",boolean.class);
-            activeRoot=field(type,"k",ViewGroup.class);windowManager=field(type,"w",Class.forName("cn.nubia.gameassist.utils.WindowManagerUtil",false,loader));pointX=field(type,"S",int.class);
-            init=method(type,"I",void.class);dimensions=method(type,"H",void.class);params=method(type,"G",WindowManager.LayoutParams.class);
-            showMode=method(type,"v",void.class,boolean.class);add=method(type,"addFloatView",void.class,String.class);
-            backgroundAlpha=method(type,"R",void.class,float.class);hitIndex=method(type,"A",int.class,float.class);click=method(type,"N",void.class,float.class);
-            rectangle=method(background.getType(),"setRectanglePara",void.class,float.class,float.class);clamp=method(type,"w",void.class);
-            updateWindow=method(windowManager.getType(),"c",void.class,View.class,ViewGroup.LayoutParams.class);
-            saveX=method(type,"Q",void.class,int.class);fade=method(type,"y",void.class,boolean.class);
+        static Access resolve(ClassLoader loader)throws ReflectiveOperationException{
+            // Keep the established 17 route first. Resolve a complete contract before
+            // trying 16, so an unfamiliar APK can never combine members from both.
+            try{return new Access(loader,false);}
+            catch(ReflectiveOperationException modern){
+                try{return new Access(loader,true);}
+                catch(ReflectiveOperationException legacy){legacy.addSuppressed(modern);throw legacy;}
+            }
         }
+        private Access(ClassLoader loader,boolean legacy)throws ReflectiveOperationException{
+            route=legacy?"GameAssist16":"GameAssist17";
+            Class<?> type=Class.forName(TYPE,false,loader);
+            context=field(type,name(legacy,"j","mContext"),Context.class);content=field(type,name(legacy,"m","mContentLayout"),android.widget.LinearLayout.class);
+            background=field(type,name(legacy,"n","mMonitorBackgroundView"),Class.forName(TYPE.replace("PerformanceMonitorFloatingWindow","CornerRectangle"),false,loader));
+            shortBackground=field(type,name(legacy,"o","mShortenMonitorBackgroundView"),background.getType());fullWidth=field(type,name(legacy,"J","mFixedWidth"),int.class);currentWidth=field(type,name(legacy,"L","mWindowWidth"),int.class);shortWidth=field(type,name(legacy,"R","mShortenViewWidth"),int.class);
+            layoutParams=field(type,name(legacy,"v","mLayoutParams"),WindowManager.LayoutParams.class);shortened=field(type,name(legacy,"U","mIsViewGroupShorten"),boolean.class);selectedIndex=field(type,name(legacy,"V","mLastClickIndex"),int.class);added=field(type,name(legacy,"h","mWindowAdd"),boolean.class);
+            activeRoot=field(type,name(legacy,"k","mFloatLayout"),ViewGroup.class);windowManager=field(type,name(legacy,"w","mWindowManager"),Class.forName("cn.nubia.gameassist.utils.WindowManagerUtil",false,loader));pointX=field(type,name(legacy,"S","mPointX"),int.class);
+            init=method(type,name(legacy,"I","initView"),void.class);dimensions=method(type,name(legacy,"H","initSize"),void.class);params=method(type,name(legacy,"G","initLayoutParams"),WindowManager.LayoutParams.class);
+            showMode=method(type,name(legacy,"v","addOpenOrShortenWindow"),void.class,boolean.class);add=method(type,"addFloatView",void.class,String.class);
+            backgroundAlpha=method(type,name(legacy,"R","setAlpha"),void.class,float.class);hitIndex=method(type,name(legacy,"A","getItemIndex"),int.class,float.class);click=method(type,name(legacy,"N","onItemClick"),void.class,float.class);
+            rectangle=method(background.getType(),"setRectanglePara",void.class,float.class,float.class);clamp=method(type,name(legacy,"w","checkLayoutParams"),void.class);
+            updateWindow=method(windowManager.getType(),name(legacy,"c","updateViewLayout"),void.class,View.class,ViewGroup.LayoutParams.class);
+            saveX=method(type,name(legacy,"Q","saveFloatingX"),void.class,int.class);fade=method(type,name(legacy,"y","fadeLayout"),void.class,boolean.class);
+        }
+        private static String name(boolean legacy,String modern,String older){return legacy?older:modern;}
         private static Field field(Class<?> type,String name,Class<?> expected)throws ReflectiveOperationException{
             Field field=type.getDeclaredField(name);if(field.getType()!=expected)throw new NoSuchFieldException(name+":type");field.setAccessible(true);return field;
         }

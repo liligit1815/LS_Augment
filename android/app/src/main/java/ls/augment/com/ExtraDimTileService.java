@@ -36,10 +36,11 @@ public final class ExtraDimTileService extends TileService {
         if (busy) return;
         busy = true;
         new Thread(() -> {
-            boolean ok = ExtraDimControl.read(this) && ExtraDimControl.set(this, !ExtraDimControl.active(this), ExtraDimControl.strength(this));
+            boolean readable=ExtraDimControl.read(this),on=ExtraDimControl.active(this);
+            boolean ok=(readable||on)&&ExtraDimControl.set(this,!on,ExtraDimControl.strength(this));
             main.post(() -> {
                 busy = false; refresh();
-                if (!ok) Toast.makeText(this, "极暗设置未生效，请检查红魔Duo的 Root 授权", Toast.LENGTH_LONG).show();
+                if (!ok) Toast.makeText(this, ExtraDimControl.message(), Toast.LENGTH_LONG).show();
             });
         }, "LSA-ExtraDimTile").start();
     }
@@ -51,9 +52,10 @@ public final class ExtraDimTileService extends TileService {
     private void refresh() {
         Tile tile = getQsTile(); if (tile == null) return;
         boolean enabled = ExtraDimControl.active(this);
-        tile.setLabel("极暗"); tile.setSubtitle("强度 " + ExtraDimControl.strength(this) + "%");
-        tile.setState(!ExtraDimControl.ready() ? Tile.STATE_UNAVAILABLE : enabled ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setContentDescription("极暗，" + (enabled ? "已开启" : "已关闭") + "，长按调节强度");
+        tile.setLabel("极暗"); tile.setSubtitle(!ExtraDimControl.ready()?"暂不可用":ExtraDimControl.verified()?"强度 " + ExtraDimControl.strength(this) + "%":"未确认生效");
+        tile.setState(enabled&&ExtraDimControl.verified() ? Tile.STATE_ACTIVE : ExtraDimControl.ready()||enabled ? Tile.STATE_INACTIVE : Tile.STATE_UNAVAILABLE);
+        tile.setContentDescription(!ExtraDimControl.ready()?ExtraDimControl.message()+(enabled?"，点击关闭已保存的开启请求":"")
+                :"极暗，" + (enabled ? "已开启" : "已关闭") + "，长按调节强度");
         tile.updateTile();
     }
 }

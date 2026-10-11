@@ -45,6 +45,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestStatusBarAssetPolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/EnhancementOption.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/EnhancementCatalog.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/LiftArcOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/NotificationAppearanceOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ControlCenterAppearanceOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarIconLayoutOptions.java" \

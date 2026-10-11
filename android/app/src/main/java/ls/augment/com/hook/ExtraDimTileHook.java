@@ -88,6 +88,7 @@ final class ExtraDimTileHook {
         Panel panel;
         boolean active,ready,sending;
         int strength=50;
+        String message="";
         Detail(Object tile,Class<?> type,Method toggle) {
             this.tile=new WeakReference<>(tile);this.toggle=toggle;
             adapter=Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},(proxy,method,args)->{
@@ -95,7 +96,7 @@ final class ExtraDimTileHook {
                     case "getTitle":return "极暗";
                     case "getMetricsCategory":return 2038401;
                     case "getToggleState":return Boolean.valueOf(active);
-                    case "getToggleEnabled":return ready;
+                    case "getToggleEnabled":return ready||active;
                     case "getSettingsIntent":return null;
                     case "getSettingsText":return 0;
                     case "shouldAnimate":return true;
@@ -103,7 +104,7 @@ final class ExtraDimTileHook {
                     case "createDetailView":
                         panel=new Panel((Context)args[0],this);return panel;
                     case "setToggleState":
-                        if(panel!=null && ready)panel.select((Boolean)args[0],strength);return null;
+                        if(panel!=null && (ready||active&&!((Boolean)args[0])))panel.select((Boolean)args[0],strength);return null;
                     case "toString":return "ExtraDimDetailAdapter";
                     case "hashCode":return System.identityHashCode(proxy);
                     case "equals":return proxy==args[0];
@@ -166,8 +167,8 @@ final class ExtraDimTileHook {
         void render(){
             slider.setEnabled(detail.ready);
             if(!dragging && pendingLevel<0)slider.setProgress(detail.strength);
-            status.setText(detail.ready?"":"正在读取…");
-            status.setVisibility(detail.ready ? View.GONE : View.VISIBLE);
+            status.setText(detail.message.isEmpty()?(detail.ready?"":"正在读取…"):detail.message);
+            status.setVisibility(detail.ready&&detail.message.isEmpty() ? View.GONE : View.VISIBLE);
             detail.refreshToggle();
         }
         public void onViewAttachedToWindow(View v){attached=true;MAIN.post(poll);}
@@ -186,7 +187,7 @@ final class ExtraDimTileHook {
                 Bundle result=call("extra_dim_select",args);
                 MAIN.post(()->{
                     detail.sending=false;
-                    if(current==revision){accept(result);if(result==null||!result.getBoolean("ok"))status.setText("未能应用，请检查 Root 授权");}
+                    if(current==revision){accept(result);if(result==null){status.setText("无法读取极暗执行反馈");status.setVisibility(View.VISIBLE);}}
                     if(pendingLevel>=0)send();
                 });
             });
@@ -197,13 +198,14 @@ final class ExtraDimTileHook {
             reading=true;final int current=revision;
             IO.execute(()->{Bundle result=call("extra_dim_read",null);MAIN.post(()->{
                 reading=false;if(!attached)return;
-                if(current==revision){accept(result);if(!detail.ready)status.setText("暂时无法读取极暗设置");}
+                if(current==revision){accept(result);}
                 schedule();
             });});
         }
         void accept(Bundle result){
-            detail.ready=result!=null&&result.getBoolean("ok");
-            if(detail.ready){detail.active=result.getBoolean("active");detail.strength=result.getInt("strength",50);}
+            detail.ready=result!=null&&result.getBoolean("ready",result.getBoolean("ok"));
+            detail.message=result==null?"无法读取极暗执行反馈":result.getString("message","");
+            if(result!=null){detail.active=result.getBoolean("active");detail.strength=result.getInt("strength",50);}
             render();
         }
         void schedule(){MAIN.removeCallbacks(poll);if(attached)MAIN.postDelayed(poll,1200);}
