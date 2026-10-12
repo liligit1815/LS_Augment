@@ -89,6 +89,7 @@ final class RedMagicSystemUiHook {
         count += hook(loader, "com.android.systemui.util.NoRemeasureMotionLayout",new String[]{"onMeasure"},
                 (target,args,result)->{if(target instanceof ViewGroup)watch((ViewGroup)target);});
         count += RedMagicLegacyUiHook.install(owner, loader);
+        count += DualSignalTint.install(owner, loader);
         count += ControlCenterGridHook.install(owner, loader);
         count += RedMagicAdvancedUiHook.install(owner, loader);
         count += ControlCenterHeaderHook.install(owner, loader);
@@ -258,6 +259,9 @@ final class RedMagicSystemUiHook {
                         if(failed.stopReason.equals("capacity"))capacityBlock=new CapacityBlock(view,failed);
                     }
                 }
+                // Re-evaluate native local contrast after the composite's final
+                // allocation, including the native preset without a grid transform.
+                StatusBarTintHook.refresh(view);
             } catch (Throwable error) {
                 if (pair != null) { pair.restore(); pair = null; }
                 module.logFeatureError("RM_SIGNAL_LAYOUT", error);
@@ -301,6 +305,16 @@ final class RedMagicSystemUiHook {
     static boolean isCollapsedSignal(View view) {
         for (RootState state : ROOTS.values()) if (state.pair != null && state.pair.drawable.readyToDraw && state.pair.collapsed == view) return true;
         return false;
+    }
+
+    /** Native foreground palette changes repaint the independent overlay immediately. */
+    static void signalTintChanged(View mobile) {
+        for(RootState state:new ArrayList<>(ROOTS.values())){
+            SignalPair pair=state.pair;
+            if(pair!=null&&(pair.one==mobile||pair.two==mobile)){
+                pair.drawable.invalidateSelf();pair.anchor.invalidate();
+            }
+        }
     }
 
     static Rect stackedSignalBounds(View view) {
@@ -403,7 +417,6 @@ final class RedMagicSystemUiHook {
         final ImageView first, second;
         final View anchor, collapsed;
         final ImageView anchorSignal;
-        final int dataSubscription;
         float firstTransitionAlpha, secondTransitionAlpha;
         int secondWidth, secondMinimum;
         boolean widthCollapsed;
@@ -420,15 +433,15 @@ final class RedMagicSystemUiHook {
         final SignalDrawable drawable;
         SignalPair(View one, View two, ImageView first, ImageView second,ConnectivityIconSource source) {
             this.one = one; this.two = two; this.first = first; this.second = second;
-            dataSubscription=source.state.activeDataSubscription;
-            Object secondId=subscription(two);
-            boolean secondIsData=secondId instanceof Integer&&(Integer)secondId==dataSubscription;
-            anchor=secondIsData?two:one;collapsed=secondIsData?one:two;anchorSignal=secondIsData?second:first;
+            // RootState selects one/two by physical slot, independently of the
+            // currently active data subscription. Only activity moves between rows.
+            anchor=one;collapsed=two;anchorSignal=first;
+            DualSignalTint.watch(one,first);if(two!=null)DualSignalTint.watch(two,second);
             firstTransitionAlpha = anchorSignal.getTransitionAlpha(); secondTransitionAlpha = collapsed==null?1:collapsed.getTransitionAlpha();
             secondWidth = collapsed==null?0:collapsed.getLayoutParams().width; secondMinimum = collapsed==null?0:collapsed.getMinimumWidth();
             drawable = new SignalDrawable(anchor, collapsed,anchorSignal, first, second,source);
             drawable.invalidIdentity=()->{
-                for(RootState state:ROOTS.values())if(state.pair==this){restore("slot_unknown");state.pair=null;return;}
+                for(RootState state:ROOTS.values())if(state.pair==this){restore(drawable.fallbackReason);state.pair=null;return;}
             };
             anchorWidth=anchor.getLayoutParams().width;
             nativeWidthBudget=anchor.getMeasuredWidth()+(collapsed==null?0:collapsed.getMeasuredWidth());
@@ -440,19 +453,18 @@ final class RedMagicSystemUiHook {
                     || one.getLayoutParams() == null || two!=null&&two.getLayoutParams() == null
                     || ((ImageView) first).getDrawable() == null || second!=null&&((ImageView) second).getDrawable() == null) return null;
             SignalPair pair = new SignalPair(one, two, (ImageView) first, (ImageView) second,source);
-            if (!pair.canDraw()){pair.restore();return null;}
+            if (!pair.canDraw()){pair.restore(DualSignalTint.color(one,(ImageView)first)==null?"tint_unknown":"slot_unknown");return null;}
             pair.anchor.getOverlay().add(pair.drawable);
             return pair;
         }
         boolean matches(View one, View two,ConnectivityIconSource source) {
             return this.one == one && this.two == two && find(one, "mobile_signal") == first
-                    && (two==null||find(two, "mobile_signal") == second)
-                    && dataSubscription == source.state.activeDataSubscription;
+                    && (two==null||find(two, "mobile_signal") == second);
         }
         boolean canDraw() {
             return first.getDrawable() != null && (second==null||second.getDrawable() != null)
                     && visibleWithin(first, one) && (second==null||visibleWithin(second, two))
-                    && drawable.geometry() != null;
+                    && drawable.geometry() != null && DualSignalTint.color(anchor,anchorSignal)!=null;
         }
         private static boolean visibleWithin(View child, View owner) {
             for (View current = child; current != null; current = current.getParent() instanceof View
@@ -485,7 +497,7 @@ final class RedMagicSystemUiHook {
             if(drawable.readyToDraw&&!nativeSignature.equals(drawable.inputs())){
                 beginNativeLayout(layoutEpoch);return true;
             }
-            if(!canDraw())return false;
+            if(!canDraw()){if(DualSignalTint.color(anchor,anchorSignal)==null)stopReason="tint_unknown";return false;}
             if(compactNativeWidth)drawable.gridScale=1;
             drawable.refresh();
             Rect planned=drawable.contentBounds();
@@ -614,6 +626,7 @@ final class RedMagicSystemUiHook {
         void restore(){restore(stopReason);}
         void restore(String reason) {
             if(closed)return;publish(reason);closed=true;
+            DualSignalTint.unwatch(one);if(two!=null)DualSignalTint.unwatch(two);
             if(observer.isAlive())observer.removeOnGlobalLayoutListener(nativeLayout);
             showNative();anchor.getOverlay().remove(drawable);restoreAnchorWidth();
             restoreWidth();
@@ -651,7 +664,7 @@ final class RedMagicSystemUiHook {
         boolean activity,readyToDraw;
         float gridScale=1;
         SignalStackLayout.Geometry reference;
-        Runnable invalidIdentity;boolean fallbackQueued;
+        Runnable invalidIdentity;boolean fallbackQueued;String fallbackReason="slot_unknown";
         void refresh(){
             activity=!FeatureSettings.enabled(owner.getContext(),SystemUiOptions.PREFIX+"hide_mobile_activity");
             showTypes=!FeatureSettings.enabled(owner.getContext(),SystemUiOptions.PREFIX+"hide_mobile_type");
@@ -699,7 +712,9 @@ final class RedMagicSystemUiHook {
                     (slot,part)->enabled&&parsed!=null&&ls.augment.com.StatusBarSurfaceSpec.valid(surface)?parsed.resolve(surface,"mobile"+(slot+1)+"."+part):ls.augment.com.StatusBarIconSpacingSpec.ZERO,
                     owner.getResources().getDisplayMetrics().density/gridScale,owner.getLayoutDirection()==View.LAYOUT_DIRECTION_RTL);
         }
-        void refuseIdentity(){
+        void refuseIdentity(){refuse("slot_unknown");}
+        void refuse(String reason){
+            fallbackReason=reason;
             readyToDraw=false;
             if(!fallbackQueued&&invalidIdentity!=null){fallbackQueued=true;MAIN.post(invalidIdentity);}
         }
@@ -728,7 +743,8 @@ final class RedMagicSystemUiHook {
         }
         String planInputs(){return FeatureSettings.snapshot(owner.getContext()).get(ls.augment.com.StatusBarIconSpacingSpec.KEY)
                 +":"+FeatureSettings.enabled(owner.getContext(),ConfigSchema.SYSTEMUI_MASTER)+":"+RedMagicLegacyUiHook.positionSizeOnly(owner.getContext())
-                +":"+gridScale+":"+StatusBarAssetsHook.surfaceFor(owner)+":"+StatusBarAssetsHook.virtualWholeReady(owner,"dual_signal");}
+                +":"+gridScale+":"+StatusBarAssetsHook.surfaceFor(owner)+":"+StatusBarAssetsHook.virtualWholeReady(owner,"dual_signal")
+                +":"+source.state.activeDataSubscription+":"+SignalPair.subscription(owner)+":"+SignalPair.subscription(otherOwner);}
         SignalStackLayout.Geometry nativeGeometry() {
             if (!(owner instanceof ViewGroup) || position.getDrawable() == null
                     || position.getWidth() <= 0 || position.getHeight() <= 0) return null;
@@ -751,10 +767,13 @@ final class RedMagicSystemUiHook {
             SignalStackLayout.Geometry geometry = geometry();
             if (geometry == null) return;
             ls.augment.com.DualSignalLayout measured=layout(geometry);if(measured==null)return;
+            Integer nativeColor=DualSignalTint.color(owner,position);
+            if(nativeColor==null){refuse("tint_unknown");return;}
+            int foreground=nativeColor;
             ls.augment.com.DualSignalLayout legacyCanvas=new ls.augment.com.DualSignalLayout(geometry.height(),activity,Math.max(badgeAspect(false),badgeAspect(true)));
             float artworkRight=geometry.left+legacyCanvas.width,artworkBottom=geometry.top+legacyCanvas.height;
-            if(StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","whole",geometry.left,geometry.top,artworkRight,artworkBottom,tint()))return;
-            StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","background",geometry.left,geometry.top,artworkRight,artworkBottom,tint());
+            if(StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","whole",geometry.left,geometry.top,artworkRight,artworkBottom,foreground))return;
+            StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","background",geometry.left,geometry.top,artworkRight,artworkBottom,foreground);
             ls.augment.com.ConnectivityIconState state=source.state;
             Object firstId=SignalPair.subscription(owner),secondId=SignalPair.subscription(otherOwner);
             final ls.augment.com.ConnectivityIconState.Sim rowOne=firstId instanceof Integer?state.simForSubscription((Integer)firstId):null;
@@ -774,12 +793,12 @@ final class RedMagicSystemUiHook {
             });
             painter.drawSpaced(canvas,geometry.left,geometry.top,measured,
                     state.airplane?0:rowOne.level,rowTwo==null||state.airplane?0:rowTwo.level,rowOne.bars,rowTwo==null?4:rowTwo.bars,
-                    tint(),state.dataActivity(state.activeDataSubscription),activityRow,
+                    foreground,state.dataActivity(state.activeDataSubscription),activityRow,
                     (target,index,badge,box,color)->{
                         ls.augment.com.ConnectivityIconState.Sim sim=index==0?rowOne:rowTwo;
                         if(sim!=null)drawBadge(target,index==1?otherOwner:owner,sim,index==1,badge,box,color);
                     });
-            StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","foreground",geometry.left,geometry.top,artworkRight,artworkBottom,tint());
+            StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","foreground",geometry.left,geometry.top,artworkRight,artworkBottom,foreground);
         }
         void drawBadge(Canvas target,View nativeOwner,ls.augment.com.ConnectivityIconState.Sim sim,
                 boolean lower,int index,ls.augment.com.DualSignalLayout.Box box,int color){
@@ -794,16 +813,6 @@ final class RedMagicSystemUiHook {
                 badges[index].draw(target,l,t,box.width,box.height,color);
                 StatusBarAssetsHook.drawLayer(owner,nativeSource,target,semantic,"foreground",l,t,r,b,color);
             }
-        }
-        private int tint(){
-            if(position.getImageTintList()!=null)return position.getImageTintList().getColorForState(position.getDrawableState(),0xffffffff);
-            ColorFilter filter=position.getColorFilter();
-            if(filter==null)filter=position.getDrawable().getColorFilter();
-            if(filter instanceof android.graphics.PorterDuffColorFilter)try{return (Integer)filter.getClass().getMethod("getColor").invoke(filter);}catch(ReflectiveOperationException ignored){}
-            if(filter instanceof android.graphics.BlendModeColorFilter)return ((android.graphics.BlendModeColorFilter)filter).getColor();
-            View root=owner;while(root.getParent() instanceof View&&!StatusBarGridHook.isBarRoot(root))root=(View)root.getParent();
-            View label=find(root,"clock");if(!(label instanceof android.widget.TextView))label=find(root,"keyguard_carrier_text");
-            return label instanceof android.widget.TextView?((android.widget.TextView)label).getCurrentTextColor():0xffffffff;
         }
         @Override public void setAlpha(int alpha) { }
         @Override public void setColorFilter(ColorFilter filter) { }

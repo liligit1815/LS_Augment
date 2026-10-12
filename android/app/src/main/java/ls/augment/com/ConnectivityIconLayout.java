@@ -19,12 +19,17 @@ public final class ConnectivityIconLayout {
         float w=region==1?(battery?62:56):40,h=region==1?(battery?36:24):(battery?26:18);
         return Math.min(w/(battery?52:content.equals("wifi")?44:42),h/(content.equals("wifi")?30:battery?32:18))*(scale/1.5f);
     }
-    public static float signalRadius(int region,int row,int sim,int rows){
-        return region==2?(sim==0?43:35.5f):rows==1?34:region==0?(row==0?34:26.5f):(row==0?26.5f:34);
+    public static float signalRadius(int region,int row,int role,int rows){
+        return region==2?(role==0?43:35.5f):rows==1?34:region==0?(row==0?34:26.5f):(row==0?26.5f:34);
+    }
+    /** Physical list order stays fixed; the circle retains its existing data/other arcs. */
+    public static float signalRadius(ConnectivityIconState state,int region,int row,int sim,int rows){
+        int active=state.activeDataRow(),role=active<0?sim:sim==active?0:1;
+        return signalRadius(region,rows>1?role:row,role,rows);
     }
     /** Original vector and artwork canvas before region offset, in 100-unit circle space. */
     public static float[] signalBox(ConnectivityIconState state,int region,int row,int sim,int rows,float scale){
-        float centerY=region==1?19:50,radius=signalRadius(region,row,sim,rows),dot=2.15f*scale;
+        float centerY=region==1?19:50,radius=signalRadius(state,region,row,sim,rows),dot=2.15f*scale;
         float half=(state.barCount(sim)-1)*(6.96f*scale)/2/radius;
         float l=50-radius*(float)Math.sin(half)-dot,inner=radius*(float)Math.cos(half);
         return new float[]{l,region==0?centerY-radius-dot:centerY+inner-dot,100-l,region==0?centerY-inner+dot:centerY+radius+dot};
@@ -32,9 +37,14 @@ public final class ConnectivityIconLayout {
     public static float signalGap(ConnectivityIconState state,String[] contents,int[] scales,float stroke,ConnectivityIconLayout layout){
         String lower=content(contents,2);float scale=contentScale(scales,2),ringStroke=Math.max(3,Math.min(10,stroke));
         boolean enabled=layout.x[2]==0&&layout.y[2]==0&&!state.sims.isEmpty()&&(lower.equals("dual")||lower.equals("data")&&state.activeDataRow()>=0);
-        float gap=enabled?(float)Math.toDegrees((state.barCount(0)-1)*(6.96f*scale)/2/43f+Math.asin((2.15f*scale+ringStroke/2+1.1f)/43f)):0;
-        if(enabled&&lower.equals("dual")&&state.sims.size()>1){
-            float inner=(float)Math.toDegrees((state.barCount(1)-1)*(6.96f*scale)/2/35.5f+Math.asin((2.15f*scale+ringStroke/2+1.1f)/35.5f));gap=Math.max(gap,inner);
+        float gap=0;
+        if(enabled){
+            int first=lower.equals("data")?state.activeDataRow():0,rows=lower.equals("dual")?state.sims.size():1;
+            for(int row=0;row<rows;row++){
+                int sim=first+row;float radius=signalRadius(state,2,row,sim,rows);
+                float angle=(float)Math.toDegrees((state.barCount(sim)-1)*(6.96f*scale)/2/radius+Math.asin((2.15f*scale+ringStroke/2+1.1f)/radius));
+                gap=Math.max(gap,angle);
+            }
         }
         return gap;
     }

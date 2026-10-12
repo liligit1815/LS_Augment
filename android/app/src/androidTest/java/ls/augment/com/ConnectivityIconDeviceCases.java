@@ -44,7 +44,7 @@ final class ConnectivityIconDeviceCases {
         check(ConnectivityIconState.powerState(true,true,2)==charge,"Unknown separation value is not bypass");
         check(state(50,bypass).description().contains("旁路充电")&&!state(50,bypass).charging,"Accessible bypass description");
         check(state(50,charge).description().contains("正在充电"),"Accessible charging description");
-        check(state(50,none).sims.get(0).subscriptionId==20,"Data SIM remains first");
+        check(state(50,none).sims.get(0).subscriptionId==10&&state(50,none).activeDataRow()==1,"Physical SIM1 remains first while data role resolves SIM2");
         for(String key:ConfigSchema.CONNECTIVITY_SCALE_KEYS){
             check("300".equals(ConfigSchema.normalize(key,"300")),"Persist expanded scale");
             check(ConfigSchema.normalize(key,"301")==null&&ConfigSchema.normalize(key,"49")==null,"Reject out of range scale");
@@ -92,8 +92,22 @@ final class ConnectivityIconDeviceCases {
             label.setColor(fg);canvas.drawText(powers[row]+" / "+scale+"%",left+78,top+242,label);
         }
         save(context,"connectivity-painter-cases.png",sheet);
-        return new JSONObject().put("success",true).put("powerCases",8).put("symbolChecks",symbolChecks)
+        return new JSONObject().put("success",true).put("powerCases",8).put("symbolChecks",symbolChecks).put("circleRoleChecks",circleRoleCases(painter))
                 .put("scaleChecks",scaleChecks).put("layoutChecks",layoutCases(context,painter)).put("ringChecks",ringCases(context,painter)).put("renderCases",12).put("image",new File(context.getFilesDir(),"connectivity-painter-cases.png").getAbsolutePath());
+    }
+    private static int circleRoleCases(ConnectivityIconPainter painter){
+        ConnectivityIconState sim1=new ConnectivityIconState(73,ConnectivityIconState.PowerState.NONE,true,true,3,false,2,1,
+                Arrays.asList(new ConnectivityIconState.Sim(2,0,3,5),new ConnectivityIconState.Sim(1,1,4,4)));
+        ConnectivityIconState sim2=new ConnectivityIconState(73,ConnectivityIconState.PowerState.NONE,true,true,3,false,1,2,
+                Arrays.asList(new ConnectivityIconState.Sim(1,1,3,5),new ConnectivityIconState.Sim(2,0,4,4)));
+        int checks=0;
+        for(int region=0;region<3;region++)for(String content:new String[]{"data","other","dual"}){
+            String[] contents={"none","none","none"};contents[region]=content;
+            Bitmap first=render(painter,sim1,contents,new int[]{100,100,100}),second=render(painter,sim2,contents,new int[]{100,100,100});
+            check(first.sameAs(second),"Circle role geometry and mixed four/five bars survive physical data-card switch: "+region+"/"+content);
+            first.recycle();second.recycle();checks++;
+        }
+        return checks;
     }
     private static int ringCases(Context context,ConnectivityIconPainter painter)throws Exception{
         int checks=0;int[] sizes={100,100,100};

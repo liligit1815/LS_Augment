@@ -78,6 +78,13 @@ public final class TestNotificationLayoutPolicy {
         }
         check(keys.contains(NotificationAppearanceOptions.CLOCK_PORTRAIT)&&keys.contains(NotificationAppearanceOptions.CLOCK_LANDSCAPE),"independent orientation master switches");
         check(!NotificationAppearanceOptions.clock(false,"size").equals(NotificationAppearanceOptions.clock(true,"size")),"orientation settings cannot overwrite each other");
-        System.out.println("Notification policy "+checks+" checks: native scene exclusions, clock collapse, real-row clips/hit regions, hidden deep rows and "+keys.size()+" valid independent options passed");
+        check(keys.contains(NotificationAppearanceOptions.STACK_BIG)&&keys.contains(NotificationAppearanceOptions.STACK_SMALL),"big and same-app stack controls are both exposed");
+        check(!NotificationAppearanceOptions.STACK_BIG.equals(NotificationAppearanceOptions.STACK_SMALL),"big and small stacks must not share a persisted setting");
+        check(!keys.contains(NotificationAppearanceOptions.STACK_COUNT)&&!keys.contains(NotificationAppearanceOptions.STACK_STEP)
+                &&!keys.contains(NotificationAppearanceOptions.STACK_INSET),"obsolete whole-list geometry is absent from user-facing settings");
+        for(EnhancementOption option:NotificationAppearanceOptions.options())
+            if(option.key.equals(NotificationAppearanceOptions.STACK_BIG)||option.key.equals(NotificationAppearanceOptions.STACK_SMALL))
+                check(option.kind==EnhancementOption.Kind.BOOLEAN&&"0".equals(option.defaultValue),"new stack modes are independent switches and default disabled");
+        System.out.println("Notification policy "+checks+" checks: native scene exclusions, clock collapse, retained clip geometry primitives and "+keys.size()+" valid independent options passed; grouped stack behavior tested separately");
     }
 }

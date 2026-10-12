@@ -1,25 +1,32 @@
-"""Run the production pair's apply/restore methods against OEM view state changes."""
+"""Run production pair construction, identity matching and ownership against fake OEM views.
+Actual Android tint delivery and GPU rendering belong to their separate device/framework tests.
+"""
 from pathlib import Path
 import subprocess
 import tempfile
 import re
+import argparse
 
 ROOT=Path(__file__).resolve().parents[1]
-source=(ROOT/'android/app/src/main/java/ls/augment/com/hook/RedMagicSystemUiHook.java').read_text(encoding='utf-8')
+JAVA=Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
+parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source-root',type=Path,default=ROOT);args=parser.parse_args()
+source=(args.source_root/'android/app/src/main/java/ls/augment/com/hook/RedMagicSystemUiHook.java').read_text(encoding='utf-8')
+full_source=source
 circle=re.search(r'boolean circle\s*=\s*(.*?);',source,re.S)[1].replace('FeatureSettings.enabled(view.getContext(),ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)','group').replace('StatusBarGridHook.ownsConnectivityReplacement(view)','ownsReplacement')
 stack=re.search(r'boolean stack = (.*);',source)[1].replace('FeatureSettings.enabled(view.getContext(), SystemUiOptions.SIGNAL_DUAL)','enabled')
 compact=re.search(r'!pair.apply\((.*?)\)\)',source)[1]
 source=source[source.index('private static final class SignalPair'):source.index('/** Compact bars')]
-def method(marker):
-    start=source.index(marker)
-    end=source.index('{',start)+1
+def method(marker,text=source):
+    start=text.index(marker)
+    end=text.index('{',start)+1
     depth=1
     while depth:
-        depth+=(source[end]=='{')-(source[end]=='}')
+        depth+=(text[end]=='{')-(text[end]=='}')
         end+=1
-    return source[start:end]
+    return text[start:end]
 harness=r'''
 import java.util.*;
+import ls.augment.com.ConnectivityIconState;
 public class TestDualLifecycle {
  static int checks;static void check(boolean value,String why){checks++;if(!value)throw new AssertionError(why);}
  static boolean[] decision(boolean bar,boolean grid,boolean positionOnly,boolean group,boolean enabled){
@@ -29,7 +36,8 @@ public class TestDualLifecycle {
   boolean circle=/* CIRCLE */;boolean stack=/* STACK */;return new boolean[]{stack,/* COMPACT */};
  }
  static class Rect{int left=0,top=0,right=112,bottom=42;}
- static class View {float transition=1;int minimum=65,visibility=0,measuredWidth=65;boolean layoutRequested;View parent;ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();Map<String,View> children=new HashMap<>();
+ public static class View {float transition=1;int minimum=65,visibility=0,measuredWidth=65,subId=-1;boolean layoutRequested;View parent;ViewGroup.LayoutParams params=new ViewGroup.LayoutParams();Map<String,View> children=new HashMap<>();
+  public int getSubId(){return subId;}ViewTreeObserver observer=new ViewTreeObserver();ViewTreeObserver getViewTreeObserver(){return observer;}
   float getTransitionAlpha(){return transition;}void setTransitionAlpha(float x){transition=x;}
   int getMinimumWidth(){return minimum;}void setMinimumWidth(int x){minimum=x;}
   ViewGroup.LayoutParams getLayoutParams(){return params;}void setLayoutParams(ViewGroup.LayoutParams p){params=p;requestLayout();}
@@ -38,27 +46,47 @@ public class TestDualLifecycle {
   void requestLayout(){layoutRequested=true;}void finishLayout(){measuredWidth=params.width<0?65:params.width;layoutRequested=false;for(View child:children.values())child.finishLayout();}
   void invalidate(){}Overlay overlay=new Overlay();Overlay getOverlay(){return overlay;}}
  static class ViewGroup extends View{static class LayoutParams{int width=65;}}
- static class ViewTreeObserver{interface OnGlobalLayoutListener{void onGlobalLayout();}boolean removed;boolean isAlive(){return true;}void removeOnGlobalLayoutListener(OnGlobalLayoutListener l){removed=true;}}
+ static class ViewTreeObserver{interface OnGlobalLayoutListener{void onGlobalLayout();}boolean removed;boolean isAlive(){return true;}void addOnGlobalLayoutListener(OnGlobalLayoutListener l){}void removeOnGlobalLayoutListener(OnGlobalLayoutListener l){removed=true;}}
  static class Overlay{boolean removed;void remove(Object d){removed=true;}}
  static class Geometry{float left,top;float height(){return 42;}}
  static class Plan{boolean hasSpacing;}
  static class Layout{Plan plan=new Plan();}
- static class Drawing{boolean refreshed,readyToDraw;float gridScale=1;int inputVersion;Geometry reference=new Geometry();Layout currentLayout=new Layout();
+ static class Drawing{boolean refreshed,readyToDraw;float gridScale=1;int inputVersion;Geometry reference=new Geometry();Layout currentLayout=new Layout();Runnable invalidIdentity;
+  final View owner,otherOwner;final ConnectivityIconSource source;String fallbackReason="slot_unknown";
+  Drawing(View owner,View otherOwner,View position,View first,View second,ConnectivityIconSource source){this.owner=owner;this.otherOwner=otherOwner;this.source=source;}
   void refresh(){refreshed=true;}Rect contentBounds(){return reference==null?null:new Rect();}
   Geometry nativeGeometry(){return new Geometry();}Geometry geometry(){return reference;}Layout layout(Geometry g){return g==null?null:currentLayout;}
-  String inputs(){return "native:"+inputVersion;}String planInputs(){return "plan";}
+  String inputs(){return "native:"+inputVersion;}
+  // PLAN_INPUTS
   void setBounds(int a,int b,int c,int d){}void invalidateSelf(){}}
  static class StatusBarIconLayoutHook{static View releaseNext;static boolean releaseStackedChildBoundaries(View v){if(v!=releaseNext)return false;releaseNext=null;v.requestLayout();return true;}static void refreshComposite(View v){}}
- static class FeatureSettings{static String lastDiagnostic;static void diagnostic(Object context,String key,String value){lastDiagnostic=value;}}
- static View find(View v,String id){return v.children.get(id);}
+ static class FeatureSettings{static String lastDiagnostic;static void diagnostic(Object context,String key,String value){lastDiagnostic=value;}static Snapshot snapshot(Object c){return new Snapshot();}static boolean enabled(Object c,String key){return true;}}
+ static class Snapshot{String get(String key){return "saved-spacing";}}
+ static class ConfigSchema{static String SYSTEMUI_MASTER="master";}
+ static class RedMagicLegacyUiHook{static boolean positionSizeOnly(Object c){return false;}}
+ static class StatusBarAssetsHook{static String surfaceFor(View v){return "main";}static boolean virtualWholeReady(View v,String key){return false;}}
+ static class DualSignalTint{static void watch(View owner,View signal){}static void unwatch(View owner){}static Integer color(View owner,View signal){return 0xff112233;}}
+ static class ConnectivityIconSource{ConnectivityIconState state;ConnectivityIconSource(int active,boolean single){state=radioState(active,single);}}
+ static ConnectivityIconState radioState(int active,boolean single){return new ConnectivityIconState(50,false,false,0,false,active,
+   single?List.of(new ConnectivityIconState.Sim(2,0,4)):List.of(new ConnectivityIconState.Sim(1,1,2),new ConnectivityIconState.Sim(2,0,4)));}
+ static class RootState{Pair pair;}static Map<View,RootState> ROOTS=new HashMap<>();
+ static View find(View v,String id){return v==null?null:v.children.get(id);}
+ static Object field(Object owner,String name){return owner instanceof View?((View)owner).subId:null;}
+ static class Fixture{
+  final View one=new View(),two,first=new View(),second;final ConnectivityIconSource source;
+  Fixture(boolean single,int active){two=single?null:new View();second=single?null:new View();source=new ConnectivityIconSource(active,single);
+   one.subId=2;one.params.width=-2;first.transition=.7f;first.parent=one;one.children.put("mobile_signal",first);
+   ViewGroup root=new ViewGroup();one.parent=root;
+   if(two!=null){two.subId=1;two.transition=.6f;two.parent=root;second.parent=two;two.children.put("mobile_signal",second);}
+  }
+ }
  static class Pair{
   // FIELDS
   boolean ready=true;
   Pair(){this(false);}
-  Pair(boolean single){one=new View();two=single?null:new View();first=new View();second=single?null:new View();anchor=one;collapsed=two;anchorSignal=first;dataSubscription=1;
-   anchor.params.width=-2;anchorSignal.transition=.7f;if(collapsed!=null)collapsed.transition=.6f;firstTransitionAlpha=.7f;secondTransitionAlpha=single?1:.6f;
-   secondWidth=single?0:65;secondMinimum=single?0:65;anchorWidth=-2;nativeWidthBudget=single?65:130;drawable=new Drawing();observer=new ViewTreeObserver();
-   ViewGroup root=new ViewGroup();anchor.parent=root;if(collapsed!=null)collapsed.parent=root;first.parent=one;if(second!=null)second.parent=two;}
+  Pair(boolean single){this(new Fixture(single,2));}
+  Pair(Fixture fixture){this(fixture.one,fixture.two,fixture.first,fixture.second,fixture.source);}
+  // CONSTRUCTOR
   boolean canDraw(){return ready&&drawable.geometry()!=null;}
   void publish(String reason){published=reason;}
   void finishLayout(){anchor.finishLayout();if(collapsed!=null)collapsed.finishLayout();first.finishLayout();if(second!=null)second.finishLayout();nativeLayout.onGlobalLayout();}
@@ -66,6 +94,18 @@ public class TestDualLifecycle {
  }
  static boolean settle(Pair pair,boolean compact){for(int i=0;i<6;i++){if(!pair.apply(compact))return false;if(pair.drawable.readyToDraw)return true;pair.finishLayout();}throw new AssertionError("layout never settled");}
  public static void main(String[] args){
+  for(int initial:new int[]{2,1}){
+   Pair physical=new Pair(new Fixture(false,initial));
+   check(physical.anchor==physical.one&&physical.collapsed==physical.two&&physical.anchorSignal==physical.first,"real constructor keeps SIM1/SIM2 owners independent of initial active data");
+   for(int active:new int[]{2,1,2}){
+    int previous=physical.drawable.source.state.activeDataSubscription;String before=physical.drawable.planInputs();physical.drawable.source.state=radioState(active,false);
+    check(physical.matches(physical.one,physical.two,physical.drawable.source),"a data switch retains the existing physical native pair");
+    if(active!=previous)check(!before.equals(physical.drawable.planInputs()),"production plan inputs track changed active subscription");
+    check(settle(physical,false),"same pair refreshes after a data switch");
+    check(physical.anchor==physical.one&&physical.collapsed==physical.two,"render ownership does not swap after refresh");
+   }
+   physical.restore();
+  }
   for(boolean grid:new boolean[]{false,true})for(boolean position:new boolean[]{false,true})for(boolean group:new boolean[]{false,true})for(boolean replacement:new boolean[]{false,true}){
    boolean[] enabled=decision(true,grid,position,group,true,replacement);
    check(enabled[0]==!replacement,"dual signal yields only to a placed replacement, not its saved configuration");
@@ -135,11 +175,14 @@ harness=harness.replace('/* CIRCLE */',circle).replace('/* STACK */',stack).repl
 # fake views model asynchronous measure/layout rather than assuming apply is synchronous.
 fields=source[source.index('final View one, two;'):source.index('SignalPair(View one,')]
 fields=fields.replace('ImageView','View').replace('SignalDrawable','Drawing')
-markers=['boolean apply(', 'boolean layoutSettled()', 'void showNative()', 'void restoreAnchorWidth()',
+markers=['boolean matches(', 'private static Object subscription(', 'boolean apply(', 'boolean layoutSettled()', 'void showNative()', 'void restoreAnchorWidth()',
          'void beginNativeLayout(', 'boolean nativeSpace(', 'void restore()', 'void restore(String reason)', 'void restoreWidth()']
-harness=harness.replace('// FIELDS',fields).replace('// METHODS','\n'.join(method(marker) for marker in markers))
+def adapt(code):return code.replace('ImageView','View').replace('SignalDrawable','Drawing').replace('SignalPair','Pair')
+harness=harness.replace('// FIELDS',fields).replace('// CONSTRUCTOR',adapt(method('SignalPair(View one,'))).replace('// METHODS',adapt('\n'.join(method(marker) for marker in markers)))
+harness=harness.replace('// PLAN_INPUTS',method('String planInputs()',full_source).replace('SignalPair','Pair'))
 with tempfile.TemporaryDirectory(prefix='dual-signal-lifecycle-') as tmp:
     path=Path(tmp)/'TestDualLifecycle.java'
     path.write_text(harness,encoding='utf-8')
-    subprocess.run(['javac','-encoding','UTF-8','-d',tmp,str(path)],check=True)
-    subprocess.run(['java','-cp',tmp,'TestDualLifecycle'],check=True)
+    subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',tmp,str(path),str(args.source_root/'android/app/src/main/java/ls/augment/com/ConnectivityIconState.java'),str(args.source_root/'android/app/src/main/java/ls/augment/com/StatusBarIconSpacingSpec.java'),
+                    '-sourcepath',str(args.source_root/'android/app/src/main/java')],check=True)
+    subprocess.run([str(JAVA/'java.exe'),'-cp',tmp,'TestDualLifecycle'],check=True)

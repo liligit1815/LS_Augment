@@ -34,7 +34,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.toggle(ISLAND_TRANSPARENT,"system","透明样式","去掉紧凑胶囊的黑色背景，保留活动图标、文字与律动。长按展开的详情保持原有背景。"));
         out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛app显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
         out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
-        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","整个通知列表堆叠","通知列表保留指定数量的完整卡片，其余在底部堆叠，滚动时依原生顺序展开。保留应用内分组、清除、展开和通知操作；锁屏使用原厂列表。"));
+        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","总开关只启用本功能；大、小堆叠都关闭时保持原厂列表。仅小堆叠按同应用收起，通知与静默分类分别处理；仅大堆叠合并两类，展开后逐条显示。两项同时开启时，大堆叠展开后显示同应用小堆叠。点击收起的首卡一次展开一层，展开后保留原生操作；关闭通知栏后收起，锁屏使用原厂列表。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
         out.add(EnhancementOption.toggle(BackGestureIconPolicy.ENABLED,"system","自定义侧滑返回图标","系统界面作用域。两侧独立选择图标和遮罩，支持 GIF、动态 WebP 及初音未来预设；大小最高 10 倍。保留原厂返回判定和悬停动作，更新后需重启系统界面。"));
         for(int side=0;side<2;side++) {

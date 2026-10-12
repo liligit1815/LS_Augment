@@ -9,7 +9,8 @@ SRC=ROOT/'android/app/src/main/java/ls/augment/com'
 helper=ROOT/'tools/test-notification-whole-stack-runtime.py'
 scope={'__file__':str(helper)}
 exec(compile(helper.read_text(encoding='utf-8').split("java = Path(",1)[0],str(helper),'exec'),scope)
-files={k:v for k,v in scope['files'].items() if not k.startswith('com/android/systemui/') and not k.endswith('TestNotificationWholeStack.java')}
+files={k:v for k,v in scope['files'].items() if not k.startswith('com/android/systemui/')
+       and not k.endswith(('TestNotificationWholeStack.java','NotificationStackDecor.java'))}
 files.update({
 'ls/augment/com/hook/LiftArcLog.java':'package ls.augment.com.hook;final class LiftArcLog{static void w(String text,Throwable error){}static boolean e(String text,Throwable error){return true;}}',
 'ls/augment/com/hook/OemNotificationClearHook.java':'package ls.augment.com.hook;final class OemNotificationClearHook{static int install(AugmentModule m,ClassLoader l){return 0;}}',

@@ -75,7 +75,7 @@ public final class DualSignalSpacingObservation {
     public static DualSignalSpacingObservation parse(String raw){
         if(raw==null||raw.length()>1000)return null;String[] v=raw.split(";",-1);
         if(v.length!=16||!v[0].equals("DSS1")||!StatusBarSurfaceSpec.valid(v[1])||!v[2].matches("[a-f0-9]{64}")
-                ||!Arrays.asList("ok","capacity","whole_covered","awaiting_layout","slot_unknown","disabled","native_hidden","grid_pending").contains(v[3]))return null;
+                ||!Arrays.asList("ok","capacity","whole_covered","awaiting_layout","slot_unknown","tint_unknown","disabled","native_hidden","grid_pending").contains(v[3]))return null;
         try{
             StatusBarHeaderSpacingObservation profile=StatusBarHeaderSpacingObservation.parse(v[15]);if(profile==null)return null;
             String[] rows=v[5].isEmpty()?new String[0]:v[5].split("/",-1);if(rows.length>2)return null;

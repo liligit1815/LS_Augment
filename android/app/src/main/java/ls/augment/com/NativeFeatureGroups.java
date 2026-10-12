@@ -197,8 +197,10 @@ final class NativeFeatureGroups {
             new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
-            new Feature("systemui:notification_stack","整个通知列表堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{NotificationAppearanceOptions.STACK_COUNT,NotificationAppearanceOptions.STACK_STEP,NotificationAppearanceOptions.STACK_INSET},"boolean","0",new Feature[]{
-                new Feature("systemui:notification_stack_landscape","横屏使用列表堆叠",NotificationAppearanceOptions.STACK_LANDSCAPE,new String[]{},"boolean","0",new Feature[]{})
+            new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{},"boolean","0",new Feature[]{
+                new Feature("systemui:notification_stack_big","启用大堆叠",NotificationAppearanceOptions.STACK_BIG,new String[]{},"boolean","0",new Feature[]{}),
+                new Feature("systemui:notification_stack_small","启用小堆叠（同应用）",NotificationAppearanceOptions.STACK_SMALL,new String[]{},"boolean","0",new Feature[]{}),
+                new Feature("systemui:notification_stack_landscape","横屏使用通知堆叠",NotificationAppearanceOptions.STACK_LANDSCAPE,new String[]{},"boolean","0",new Feature[]{})
             }),
             new Feature("systemui:notification_weather","通知中心显示当日天气","ls_augment_rm_notification_weather",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_brightness_percent","亮度显示百分比","ls_augment_rm_qs_brightness_percent",new String[]{},"boolean","0", new Feature[]{}),

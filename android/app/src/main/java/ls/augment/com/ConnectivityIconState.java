@@ -66,8 +66,9 @@ public final class ConnectivityIconState {
         Map<Integer,Sim> unique=new LinkedHashMap<>();
         if(input!=null)for(Sim sim:input)if(sim!=null&&sim.subscriptionId>=0&&sim.slot>=0)unique.put(sim.subscriptionId,sim);
         ArrayList<Sim> sorted=new ArrayList<>(unique.values());
-        sorted.sort(Comparator.<Sim>comparingInt(s->s.subscriptionId==activeDataSubscription?0:1)
-                .thenComparingInt(s->s.slot).thenComparingInt(s->s.subscriptionId));
+        // Subscription identifiers can be assigned in either physical-slot order.
+        // A data subscription switch changes its role, not the two SIM rows.
+        sorted.sort(Comparator.<Sim>comparingInt(s->s.slot).thenComparingInt(s->s.subscriptionId));
         sims=Collections.unmodifiableList(new ArrayList<>(sorted.subList(0,Math.min(2,sorted.size()))));
     }
     public static ConnectivityIconState unknown(){return new ConnectivityIconState(-1,PowerState.NONE,false,false,0,false,-1,-1,Collections.emptyList());}

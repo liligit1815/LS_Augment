@@ -390,6 +390,12 @@ public final class ConfigSchema {
         add(AUTOMATION_SCOPE, "current", true,
                 value -> "all".equals(value) ? "all" : "current");
 
+        // Preserve old exports and signed snapshots after retiring tail projection.
+        // These values have no UI or rendering consumer in the grouped stack.
+        addInteger(NotificationAppearanceOptions.STACK_COUNT, 2, 1, 6);
+        addInteger(NotificationAppearanceOptions.STACK_STEP, 8, 4, 20);
+        addInteger(NotificationAppearanceOptions.STACK_INSET, 6, 0, 16);
+
         for (EnhancementOption option : EnhancementCatalog.options()) {
             add(option.key, option.defaultValue, true, option::normalize);
             if (option.kind == EnhancementOption.Kind.BOOLEAN) BOOLEAN_KEYS.add(option.key);

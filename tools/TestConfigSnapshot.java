@@ -146,7 +146,44 @@ public final class TestConfigSnapshot {
         if(ConfigSnapshot.parse(withoutKeys(snapshot,"ls_augment_liftarc_hint_size"))!=null
                 ||ConfigSnapshot.parse(withoutKeys(snapshot,ConfigSchema.AI_TRIGGER_ENABLED))!=null)
             throw new AssertionError("migration repaired a truncated current/old snapshot");
-        System.out.println("PASS TestConfigSnapshot (including legacy and LiftArc upgrade compatibility)");
+        Map<String,String> stackValues=new LinkedHashMap<>(values);
+        stackValues.put(SystemUiOptions.NOTIFICATION_STACK,"1");
+        stackValues.put(NotificationAppearanceOptions.STACK_BIG,"1");
+        stackValues.put(NotificationAppearanceOptions.STACK_SMALL,"1");
+        stackValues.put(NotificationAppearanceOptions.STACK_COUNT,"3");
+        stackValues.put(NotificationAppearanceOptions.STACK_STEP,"12");
+        stackValues.put(NotificationAppearanceOptions.STACK_INSET,"0");
+        ConfigSnapshot grouped=ConfigSnapshot.create(46,123460,stackValues);
+        if(grouped==null)throw new AssertionError("notification stack settings could not synchronize");
+        ConfigSnapshot groupedRoundTrip=ConfigSnapshot.parse(grouped.serialize());
+        if(groupedRoundTrip==null||!"1".equals(groupedRoundTrip.get(NotificationAppearanceOptions.STACK_BIG))
+                ||!"1".equals(groupedRoundTrip.get(NotificationAppearanceOptions.STACK_SMALL)))
+            throw new AssertionError("big and small modes lost independent enabled values");
+        String beforeGroupedStack=withoutExactKeys(grouped,
+                NotificationAppearanceOptions.STACK_BIG,NotificationAppearanceOptions.STACK_SMALL);
+        ConfigSnapshot stackUpgrade=ConfigSnapshot.parse(beforeGroupedStack);
+        if(stackUpgrade==null||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_BIG))
+                ||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_SMALL))
+                ||!"1".equals(stackUpgrade.get(SystemUiOptions.NOTIFICATION_STACK))
+                ||!"3".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_COUNT))
+                ||!"12".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_STEP))
+                ||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_INSET))
+                ||!"1".equals(stackUpgrade.get(ConfigSchema.AI_TRIGGER_ENABLED))
+                ||stackUpgrade.revision!=46||stackUpgrade.updatedAt!=123460
+                ||!beforeGroupedStack.equals(stackUpgrade.serialize())
+                ||!stackUpgrade.values().keySet().equals(ConfigSchema.runtimeKeys()))
+            throw new AssertionError("stack upgrade reset old settings or changed signed snapshot bytes");
+        for(String mode:new String[]{NotificationAppearanceOptions.STACK_BIG,NotificationAppearanceOptions.STACK_SMALL}){
+            if(ConfigSnapshot.parse(withoutExactKeys(grouped,mode))!=null)
+                throw new AssertionError("partially missing stack family accepted: "+mode);
+            for(String noncanonical:new String[]{"true","false"," 1 ","01","2",""})
+                if(ConfigSnapshot.parse(withValue(grouped,mode,noncanonical))!=null)
+                    throw new AssertionError("noncanonical signed stack boolean accepted: "+mode+"="+noncanonical);
+        }
+        if(!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_BIG))
+                ||!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_SMALL)))
+            throw new AssertionError("new stack modes must default disabled");
+        System.out.println("PASS TestConfigSnapshot (including legacy, LiftArc and notification stack upgrade compatibility)");
     }
     private static String withLabel(ConfigSnapshot snapshot,String label) throws Exception {
         return withValue(snapshot,ConfigSchema.TILE_LABEL,label);
@@ -181,6 +218,18 @@ public final class TestConfigSnapshot {
         StringBuilder kept=new StringBuilder();
         for(String line:body.split("\n"))if(!line.startsWith(prefix+"=")&&!line.startsWith(prefix)&&!line.isEmpty())
             kept.append(line).append('\n');
+        return signBody(kept.toString());
+    }
+    private static String withoutExactKeys(ConfigSnapshot snapshot,String... removed) throws Exception {
+        String body=new String(java.util.Base64.getUrlDecoder().decode(snapshot.serialize().split("\\.",3)[2]),
+                java.nio.charset.StandardCharsets.UTF_8);
+        java.util.Set<String> keys=new java.util.HashSet<>(java.util.Arrays.asList(removed));
+        StringBuilder kept=new StringBuilder();
+        for(String line:body.split("\n")){
+            int separator=line.indexOf('=');
+            if(!line.isEmpty()&&(separator<0||!keys.contains(line.substring(0,separator))))
+                kept.append(line).append('\n');
+        }
         return signBody(kept.toString());
     }
 }

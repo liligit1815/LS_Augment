@@ -172,7 +172,7 @@ public final class ConnectivityIconPainter {
         paint.setStyle(Paint.Style.FILL);
         for(int row=0;row<rows;row++){
             int sim=first+row,levels=state.barCount(sim),lit=state.litDots(sim);
-            float radius=ConnectivityIconLayout.signalRadius(region,row,sim,rows);
+            float radius=ConnectivityIconLayout.signalRadius(state,region,row,sim,rows);
             String semantic="mobile"+(state.sims.get(sim).slot+1)+".signal";
             float[] bounds=ConnectivityIconLayout.signalBox(state,region,row,sim,rows,scale);
             float l=bounds[0],t=bounds[1],r=bounds[2],b=bounds[3];

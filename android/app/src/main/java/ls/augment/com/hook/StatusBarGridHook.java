@@ -346,7 +346,9 @@ final class StatusBarGridHook {
             if(!active||!visibleFrame(root)){layoutDirty=true;return true;}
             syncOverlayAlpha();
             boolean batteryDue=batteryInk!=null&&SystemClock.elapsedRealtime()-batteryInkAt>=1000;
-            if(!layoutDirty&&!packingSuspended&&packingCapacityBlock==null&&!batteryDue&&unchangedFrame())return true;
+            if(!layoutDirty&&!packingSuspended&&packingCapacityBlock==null&&!batteryDue&&unchangedFrame()){
+                StatusBarTintHook.refreshDirty(root);return true;
+            }
             layoutDirty=false;
             layout();
             boolean ready=syncNativeIconCapacity();

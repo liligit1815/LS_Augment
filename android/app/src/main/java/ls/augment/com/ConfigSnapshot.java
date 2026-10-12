@@ -113,6 +113,14 @@ public final class ConfigSnapshot {
                 if (normalized == null || (!normalized.equals(value) && !legacyLabel && !legacyFanLevel && !retiredSheetMode)) return null;
                 values.put(key, legacyFanLevel || retiredSheetMode ? normalized : value);
             }
+            // A snapshot predating the two stack modes keeps its original checksum
+            // and settings. Only an entirely absent pair receives disabled defaults;
+            // a partially present family remains invalid.
+            if (!values.containsKey(NotificationAppearanceOptions.STACK_BIG)
+                    && !values.containsKey(NotificationAppearanceOptions.STACK_SMALL)) {
+                values.put(NotificationAppearanceOptions.STACK_BIG, "0");
+                values.put(NotificationAppearanceOptions.STACK_SMALL, "0");
+            }
             // Before LiftArc existed, a complete signed snapshot had none of this
             // family. Preserve its bytes/checksum and existing settings while
             // supplying the new, disabled-by-default feature. A partially missing

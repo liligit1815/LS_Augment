@@ -69,7 +69,10 @@ final class NotificationAppearanceHook {
         },null);
         count+=hookNamed(owner,loader,"notification.appearance",STACK,"updateTopPadding",2,(target,args,result)->{
             StackState state=stack((View)target);
-            if(!state.adjusting){state.beforeNativePadding(((Number)args[0]).floatValue());args[0]=state.desiredPadding(state.nativePadding);}
+            if(!state.adjusting)state.beforeNativePadding(((Number)args[0]).floatValue());
+            // A reentrant viewport/header refresh may finish a newer allocation after
+            // updatePadding computed its argument. Revalidate our own write as well.
+            args[0]=state.desiredPadding(state.nativePadding);
             if(state.ownsHeader()){
                 args[1]=false;
                 // Also guard the caller: ART can inline the final internal
@@ -204,7 +207,7 @@ final class NotificationAppearanceHook {
     private static final class HeaderState implements ViewTreeObserver.OnGlobalLayoutListener {
         final WeakReference<View> header;
         final ArrayList<Original> originals=new ArrayList<>();
-        int nativeDepth;boolean applied,refreshing,failed,inactive;
+        int nativeDepth;boolean applied,refreshing,allocating,failed,inactive;
         float originalGroupTop,contentBottom,listGap,iconLimit;int nativeClockHeight,nativeDateHeight,formatMode;boolean formatted,expandedMode;
         HeaderClockLayout.Below[] belowItems=new HeaderClockLayout.Below[0];
         String lastReport="",rejectedSpace;
@@ -223,6 +226,9 @@ final class NotificationAppearanceHook {
             View view=header.get();if(view==null||refreshing||nativeDepth>0)return;refreshing=true;
             try{
                 int nextFormat=(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_seconds")?1:0)|(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_period")?2:0);
+                // Protect only a mode that actually owns vertical header layout. Format-only
+                // landscape and disabled/native modes must release the previous allocation.
+                allocating=requested(view)||nextFormat!=0&&!landscape(view);
                 if(nextFormat==0&&!requested(view)){
                     // Both shade headers share the window's pre-draw callbacks.
                     // Leave native geometry alone without scanning that window on
@@ -314,12 +320,12 @@ final class NotificationAppearanceHook {
                 if(nativeStack!=null)stack(nativeStack).updatePadding();
                 report(view,"clock;mode="+(plan.stacked?"rows":"inline")+";size="+time.getTextSize()+";orientation="+(wide?"landscape":"portrait"));
             }catch(RuntimeException error){if(!failed){failed=true;module.logFeatureError("NOTIFICATION_CLOCK_APPLY",error);}restore();}
-            finally{refreshing=false;}
+            finally{allocating=false;refreshing=false;}
         }
         void report(View view,String stage){if(!stage.equals(lastReport)){lastReport=stage;String value="adapter=CCHeaderView;panel="+integer(field(view,"panelType"),-1)+";"+stage;FeatureSettings.diagnostic(view.getContext(),"ls_augment_notification_clock_runtime",value);FeatureSettings.diagnostic(view.getContext(),"ls_augment_header_clock_runtime_"+integer(field(view,"panelType"),-1)+"_"+(landscape(view)?"landscape":"portrait"),value);}}
         String spaceSignature(View view,View nativeStack){
-            boolean wide=landscape(view);int[] a=new int[2],b=new int[2];view.getLocationOnScreen(a);if(nativeStack!=null)nativeStack.getLocationOnScreen(b);
-            StringBuilder value=new StringBuilder().append(wide).append('|').append(view.getWidth()).append('|').append(nativeStack==null?view.getRootView().getHeight():stack(nativeStack).viewport.heightForHeader()).append('|').append(a[1]-b[1]).append('|').append(view.getResources().getDisplayMetrics().scaledDensity).append('|').append(integer(field(nativeStack,"mOwnScrollY"),0)).append('|').append(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_seconds")).append('|').append(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_period"));
+            boolean wide=landscape(view);
+            StringBuilder value=new StringBuilder().append(wide).append('|').append(view.getWidth()).append('|').append(nativeStack==null?view.getRootView().getHeight():stack(nativeStack).viewport.heightForHeader()).append('|').append(headerLayoutTop(view,nativeStack)).append('|').append(view.getResources().getDisplayMetrics().scaledDensity).append('|').append(integer(field(nativeStack,"mOwnScrollY"),0)).append('|').append(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_seconds")).append('|').append(FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_period"));
             for(String key:new String[]{"size","compact_size","collapse_distance","align","x","y","date_size","date_gap","list_gap"})value.append('|').append(clock(view,wide,key,Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MAX_VALUE));
             View icons=nativeChild(view,"status_icons_group"),right=nativeChild(view,"status_icons_group_container");
             if(icons!=null&&right!=null)value.append('|').append(iconBandHeight(right,icons)).append('|').append(HeaderClockLayout.naturalWidth(icons));
@@ -328,9 +334,8 @@ final class NotificationAppearanceHook {
             return value.toString();
         }
         float bottomInStack(View nativeStack){
-            View view=header.get();if(!applied||view==null||integer(field(view,"panelType"),-1)!=2||(!requested(view)&&!formatted)||!shade(nativeStack))return -1;
-            int[] a=new int[2],b=new int[2];view.getLocationOnScreen(a);nativeStack.getLocationOnScreen(b);
-            return a[1]+contentBottom-b[1]+listGap;
+            View view=header.get();if(!applied||contentBottom<=0||view==null||integer(field(view,"panelType"),-1)!=2||(!requested(view)&&!formatted)||!shade(nativeStack))return -1;
+            return headerLayoutTop(view,nativeStack)+contentBottom+listGap;
         }
     }
     private static boolean visibleContent(View view){
@@ -359,12 +364,33 @@ final class NotificationAppearanceHook {
             bottom=Math.max(bottom,Math.max(0,lp.topMargin)+naturalHeight(child)+Math.max(0,child.getTranslationY()));
         }return bottom;
     }
+    /** The OEM QS root's drawing motion is shared with notification row motion. */
+    private static float headerLayoutTop(View header,View stack){
+        int[] a=new int[2],b=new int[2];header.getLocationOnScreen(a);if(stack!=null)stack.getLocationOnScreen(b);
+        float top=a[1]-b[1];
+        for(View ancestor=header;ancestor!=null;ancestor=ancestor.getParent() instanceof View?(View)ancestor.getParent():null){
+            boolean qs=false;
+            for(Class<?> type=ancestor.getClass();type!=null;type=type.getSuperclass())
+                if("com.zte.mifavor.qs.MfvQSContainerImpl".equals(type.getName())){qs=true;break;}
+            if(!qs)continue;
+            // MfvQSFragment translates this root during shade entry and springback. The
+            // native stack applies that motion independently (StackY/SpringYOffset).
+            // Feeding it into topPadding adds the motion twice, then snaps on return.
+            boolean shared=false;
+            for(View parent=stack;parent!=null;parent=parent.getParent() instanceof View?(View)parent.getParent():null)
+                if(parent==ancestor){shared=true;break;}
+            if(!shared)top-=Math.round(ancestor.getTranslationY());
+            break;
+        }
+        // Screen locations and the removed root motion use the same pixel rounding,
+        // including half-pixel frames, rather than feeding a fractional remainder back.
+        return Math.round(top);
+    }
     private static float headerBudget(View header,View stack){
         int height=stack==null?header.getRootView().getHeight():stack(stack).viewport.heightForHeader();if(height<=0)return stack==null?Float.MAX_VALUE:0;
-        int[] a=new int[2],b=new int[2];header.getLocationOnScreen(a);if(stack!=null)stack.getLocationOnScreen(b);
         // Always leave a useful notification viewport, especially in landscape/large font.
         float reserve=Math.min(dp(header,160),height*.45f);
-        return Math.max(0,height-(a[1]-b[1])-reserve);
+        return Math.max(0,height-headerLayoutTop(header,stack)-reserve);
     }
     private static final class StackState {
         final WeakReference<View> view;final NotificationViewportInset viewport;float nativePadding=Float.NaN,ownedPadding=Float.NaN;boolean adjusting,paddingOwned,refreshing;
@@ -372,7 +398,7 @@ final class NotificationAppearanceHook {
         boolean headerUpdating(){
             View source=view.get();if(source==null||!headerWork(source)||!shade(source))return false;
             for(HeaderState state:new ArrayList<>(HEADERS.values())){View h=state.header.get();
-                if(h!=null&&findStack(h)==source&&state.nativeDepth>0&&state.contentBottom>0
+                if(h!=null&&findStack(h)==source&&(state.nativeDepth>0||state.allocating&&state.rejectedSpace==null)&&state.contentBottom>0
                         &&integer(field(h,"panelType"),-1)==2&&(state.formatted||state.requested(h)))return true;
             }return false;
         }
@@ -387,7 +413,7 @@ final class NotificationAppearanceHook {
             View source=view.get();if(source==null)return original;float bottom=-1;
             if(headerWork(source)){
                 for(HeaderState header:new ArrayList<>(HEADERS.values())){View h=header.header.get();if(h!=null&&findStack(h)==source)bottom=Math.max(bottom,header.bottomInStack(source));}
-                // Keep the committed allocation through a synchronous native
+                // Keep the committed allocation through a synchronous header
                 // header transaction, until its new rows have been committed.
                 if(bottom<0&&headerUpdating()&&Float.isFinite(ownedPadding))bottom=ownedPadding;
             }

@@ -1,4 +1,9 @@
-"""Offline regression/mutation runner. Copies inputs to a temporary tree; no device tools."""
+"""Compatibility entry point for grouped-stack regressions and behavioral mutations.
+
+The former screen-overflow prefix-tail model is retired. This runner now validates
+the production logical grouping policy. It copies sources to a temporary tree and
+never connects to a phone; runtime facade/physical rendering are separate checks.
+"""
 from pathlib import Path
 import argparse
 import hashlib
@@ -8,38 +13,36 @@ import subprocess
 import sys
 import tempfile
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'android/app/src/main/java/ls/augment/com/'
-HOOK = SOURCE + 'hook/NotificationStackHook.java'
-POLICY = SOURCE + 'NotificationLayoutPolicy.java'
-JAVA = Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
-INPUTS = [HOOK, POLICY, SOURCE + 'EnhancementOption.java', SOURCE + 'NotificationAppearanceOptions.java',
-          SOURCE + 'hook/SystemUiAdapter.java', 'tools/test-notification-whole-stack-runtime.py',
-          'tools/test-notification-media-card-runtime.py', 'tools/TestNotificationLayoutPolicy.java']
+POLICY = SOURCE + 'NotificationStackPolicy.java'
+INPUTS = [POLICY, 'tools/TestNotificationStackPolicy.java', 'tools/TestNotificationLayoutPolicy.java',
+          'tools/TestConfigSnapshot.java', 'tools/test-notification-grouping-policy.py']
 MUTATIONS = [
-    ('old-suffix-reveal', POLICY, 'return new Row(bottom-height+revealOffset,scale,nativeAlpha*shown,\n                nativeClipTop,nativeClipBottom+revealOffset,d>=4f);',
-     'return new Row(bottom-height,scale,nativeAlpha*shown,clip,nativeClipBottom,d>=4f);'),
-    ('missing-row-offset', POLICY, 'bottom-height+revealOffset,scale', 'bottom-height,scale'),
-    ('missing-bottom-offset', POLICY, 'nativeClipTop,nativeClipBottom+revealOffset,d>=4f)', 'nativeClipTop,nativeClipBottom,d>=4f)'),
-    ('discard-native-bottom', HOOK, 'nativeClip,nativeBottom,((Number)access.alpha', 'nativeClip,0,((Number)access.alpha'),
-    ('skip-real-bottom-write', HOOK, 'access.clipBottom.setInt(state,projected.clipBottom);', '/* lost actual ViewState bottom write */'),
-    ('skip-bottom-restore', HOOK, 'access.clipBottom.setInt(clip.state,finalBottom);', '/* lost restore before native reset */'),
-    ('overwrite-newer-bottom-state', HOOK, 'if(finalBottom==clip.appliedBottom)', 'if(true)'),
-    ('skip-detach-live-restore', HOOK, 'access.setClipBottom.invoke(row,finalBottom);', 'access.getClipBottom.invoke(row);'),
-    ('overwrite-newer-live-bottom', HOOK, 'detached&&((Number)access.getClipBottom.invoke(row)).intValue()==clip.appliedBottom', 'detached'),
-    ('stale-live-restore-after-external-target', HOOK, 'access.setClipBottom.invoke(row,finalBottom);', 'access.setClipBottom.invoke(row,clip.nativeBottom);'),
-    ('leave-owned-live-after-external-target', HOOK, 'if(detached&&((Number)access.getClipBottom.invoke(row))', 'if(detached&&finalBottom==clip.nativeBottom&&((Number)access.getClipBottom.invoke(row))'),
-    ('ignore-native-clip-disabled', HOOK, '!access.clipEnabled.getBoolean(row)||', ''),
-    ('ignore-row-clip-exemption', HOOK, '!Boolean.TRUE.equals(access.shouldClip.invoke(row))\n                    ||', ''),
-    ('ignore-native-minimum-height', HOOK, 'Math.max(projected.clipTop,access.minimumClipHeight.getInt(row))', 'projected.clipTop'),
-    ('write-before-full-pass-validation', HOOK, 'if(!projected.hidden&&(', 'access.sy.invoke(state,projected.y);\n            if(!projected.hidden&&('),
+    ('silent-replaces-alert-front', 'newest(alert.isEmpty()?silent:alert)', 'newest(items)'),
+    ('oldest-instead-of-latest', 'item.postTime>winner.postTime', 'item.postTime<winner.postTime'),
+    ('never-fold-big', 'if(!open) {', 'if(false) {'),
+    ('native-no-mode-recategorizes', 'if(!big&&!small) {', 'if(false) {'),
+    ('small-only-creates-merged-stack', 'if(big&&!items.isEmpty()) {', 'if((big||small)&&!items.isEmpty()) {'),
+    ('static-category-folded', 'new Node<>(null,key,label,true,items.size())', 'new Node<>(null,key,label,false,items.size())'),
+    ('merge-different-apps', 'apps.computeIfAbsent(item.appUserKey,', 'apps.computeIfAbsent("all-apps",'),
+    ('remove-section-from-app-key', 'String appKey=key+":app:"+app.getKey();', 'String appKey="app:"+app.getKey();'),
+    ('small-always-expanded', 'if(appOpen)for(Item<T> item:members)', 'if(true)for(Item<T> item:members)'),
+    ('lose-silent-section-label', 'new Node<>(null,key,label,true,items.size())', 'new Node<>(null,key,"",true,items.size())'),
+    ('lose-folded-notifications', 'result.hiddenKeys.add(item.key);', '; /* notification identity lost */'),
+    ('single-app-becomes-module-stack', 'if(members.size()==1) {', 'if(members.size()==0) {'),
+    ('small-off-still-groups-apps', 'if(!small) {', 'if(false) {'),
+    ('small-enabled-remains-flat', 'if(!small) {', 'if(true) {'),
 ]
 
 
 def run(command, cwd):
-    result = subprocess.run(list(map(str, command)), cwd=cwd, encoding='utf-8', errors='replace',
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
-    return {'returncode': result.returncode, 'output': result.stdout}
+    value = subprocess.run(list(map(str, command)), cwd=cwd, encoding='utf-8', errors='replace',
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
+    return {'returncode': value.returncode, 'output': value.stdout}
 
 
 def main():
@@ -47,52 +50,48 @@ def main():
     parser.add_argument('--mutations', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    report = {'scope': 'offline Java facade and geometry; no Android device execution',
+    report = {'scope': 'offline production grouping, geometry primitive and signed config; no Android rendering or phone execution',
               'sourceHashes': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in INPUTS}}
-    with tempfile.TemporaryDirectory(prefix='duo-prefix-tail-') as folder:
+    with tempfile.TemporaryDirectory(prefix='duo-grouped-stack-') as folder:
         work = Path(folder)
-        for p in INPUTS:
-            target = work / p
+        shutil.copytree(ROOT / 'android/app/src/main/java', work / 'android/app/src/main/java')
+        for relative in INPUTS:
+            if relative.startswith('android/'):
+                continue
+            target = work / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ROOT / p, target)
-        runtime_command = [sys.executable, work / 'tools/test-notification-whole-stack-runtime.py']
-        report['runtime'] = run(runtime_command, work)
-        report['policyCompile'] = run([JAVA / 'javac.exe', '-encoding', 'UTF-8', '--release', '17',
-                                      '-d', work / 'policy-classes', work / (SOURCE + 'EnhancementOption.java'),
-                                      work / (SOURCE + 'NotificationAppearanceOptions.java'), work / POLICY,
-                                      work / 'tools/TestNotificationLayoutPolicy.java'], work)
-        report['policy'] = run([JAVA / 'java.exe', '-cp', work / 'policy-classes',
-                               'ls.augment.com.TestNotificationLayoutPolicy'], work)
-        if any(report[k]['returncode'] for k in ['runtime', 'policyCompile', 'policy']):
+            shutil.copy2(ROOT / relative, target)
+        command = [sys.executable, work / 'tools/test-notification-grouping-policy.py']
+        report['baseline'] = run(command, work)
+        if report['baseline']['returncode']:
             raise RuntimeError(json.dumps(report, ensure_ascii=False, indent=2))
-        print(report['runtime']['output'].strip(), flush=True)
-        print(report['policy']['output'].strip(), flush=True)
+        print(report['baseline']['output'].strip(), flush=True)
         results = []
         if args.mutations:
-            for name, relative, before, after in MUTATIONS:
-                target = work / relative
-                original = target.read_text(encoding='utf-8')
-                if original.count(before) != 1:
-                    raise AssertionError(f'{name}: expected one exact mutation site')
+            target = work / POLICY
+            original = target.read_text(encoding='utf-8')
+            for name, before, after in MUTATIONS:
+                matches = original.count(before)
+                if matches != (2 if name == 'lose-folded-notifications' else 1):
+                    raise AssertionError(f'{name}: mutation contract changed ({matches} sites)')
                 try:
                     target.write_text(original.replace(before, after), encoding='utf-8')
-                    result = run(runtime_command, work)
-                    # Compile/import errors do not count as meaningful mutation rejection.
-                    result.update(name=name, rejectedByAssertion=result['returncode'] != 0
-                                  and 'java.lang.AssertionError:' in result['output']
-                                  and 'error:' not in result['output'])
-                    results.append(result)
-                    print(f"{name}: {'rejected' if result['rejectedByAssertion'] else 'NOT REJECTED'}", flush=True)
+                    value = run(command, work)
+                    value.update(name=name, rejectedByAssertion=value['returncode'] != 0
+                                 and 'java.lang.AssertionError:' in value['output']
+                                 and 'error:' not in value['output'])
+                    results.append(value)
+                    print(f"{name}: {'rejected' if value['rejectedByAssertion'] else 'NOT REJECTED'}", flush=True)
                 finally:
                     target.write_text(original, encoding='utf-8')
         report['mutations'] = results
-        report['passed'] = all(x['rejectedByAssertion'] for x in results)
+        report['passed'] = all(value['rejectedByAssertion'] for value in results)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         if not report['passed']:
-            raise AssertionError('At least one mutation survived or did not reach a real assertion')
-        print(f"All {len(results)} mutations rejected by behavioral assertions; phone operations: 0")
+            raise AssertionError('A behavior mutation survived or failed before reaching an assertion')
+        print(f"All {len(results)} grouped behavior mutations rejected; phone operations: 0")
 
 
 if __name__ == '__main__':
