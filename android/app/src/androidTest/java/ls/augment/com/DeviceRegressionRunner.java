@@ -38,6 +38,7 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "config-transfer-actions".equals(operation)
                     || "total-reset-inspect".equals(operation)
                     || "total-reset-root-paths".equals(operation)
+                    || "private-storage-verify".equals(operation)
                     || "owned-file-cleaner-fixture".equals(operation)
                     || "log-repair-fixture".equals(operation)
                     || "log-repair-export".equals(operation)
@@ -430,6 +431,9 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("islandFixture",IslandFixtureDeviceCases.run(this,arguments));
                     result.putString("islandFixture",report.getJSONObject("islandFixture").toString());
                     break;
+                case "private-storage-verify":
+                    report.put("privateStorage",PrivateStorageDeviceCases.run(context));
+                    break;
                 case "assert-defaults":
                     JSONArray mismatches = new JSONArray();
                     for (Map.Entry<String, String> expected : ConfigSchema.defaults().entrySet())
@@ -440,13 +444,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                             context.getPackageName() + ".LauncherAlias"));
                     if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) throw new AssertionError("Launcher entry is disabled");
                     ConfigSnapshot snapshot = config.configSnapshot();
-                    RootShell.Result mirror = RootShell.run("settings get global " + ConfigSchema.GLOBAL_SNAPSHOT, null, 8, 512 * 1024);
-                    ConfigSnapshot mirrored = ConfigSnapshot.parse(mirror.output);
-                    if (mirrored == null || !snapshot.checksum.equals(mirrored.checksum)) throw new AssertionError("Runtime mirror mismatch");
-                    RootShell.Result boot = RootShell.run("cat " + BootConfigMirror.PATH, null, 8, 512 * 1024);
-                    ConfigSnapshot bootSnapshot = ConfigSnapshot.parse(boot.output);
-                    if (bootSnapshot == null || !snapshot.checksum.equals(bootSnapshot.checksum)) throw new AssertionError("Boot mirror mismatch");
-                    report.put("runtimeMirror", "matched").put("bootMirror", "matched");
+                    if (!FrameworkConfigSync.isPublished(snapshot)) throw new AssertionError("Private framework publication mismatch");
+                    report.put("privateFrameworkPublication", "matched");
                     break;
                 case "seed-reset":
                     Map<String, String> seed = new LinkedHashMap<>();

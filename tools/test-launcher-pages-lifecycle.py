@@ -22,6 +22,12 @@ def append_members(name, members):
 
 
 SOURCES.update({
+    'ls/augment/com/hook/LauncherOwnedStateClient.java': '''package ls.augment.com.hook;import android.content.*;class LauncherOwnedStateClient {
+        static boolean available=true;static int blockingCalls,readyCalls;
+        static void reset(){available=true;blockingCalls=0;readyCalls=0;}
+        static boolean needsSave(SharedPreferences p){return false;}
+        static SharedPreferences preferences(Context c,String kind){blockingCalls++;if(!available)throw new IllegalStateException("private state unavailable");return c.getSharedPreferences("ls_augment_launcher_pages",0);}
+        static SharedPreferences readyPreferences(Context c,String kind){readyCalls++;return available?c.getSharedPreferences("ls_augment_launcher_pages",0):null;}}''',
     'android/animation/LayoutTransition.java': 'package android.animation;public class LayoutTransition {}',
     'android/util/TypedValue.java': 'package android.util;public class TypedValue {public static final int COMPLEX_UNIT_PX=0,COMPLEX_UNIT_SP=2;public int data;}',
     'android/util/SparseArray.java': '''package android.util;
@@ -37,7 +43,9 @@ public class SharedPreferences {
     'android/content/ClipData.java': 'package android.content;public class ClipData {public static ClipData newPlainText(String label,String text){return new ClipData();}}',
     'android/R.java': 'package android;public class R {public static class attr {public static final int textColorPrimary=1,colorControlHighlight=2;}}',
     'android/graphics/Canvas.java': 'package android.graphics;public class Canvas {public void drawRoundRect(RectF r,float a,float b,Paint p){}public int save(){return 0;}public void restoreToCount(int n){}public void translate(float x,float y){}public void scale(float x,float y){}}',
-    'android/graphics/Paint.java': 'package android.graphics;public class Paint {public static final int ANTI_ALIAS_FLAG=1;public Paint(int flags){}public void setColor(int v){}}',
+    'android/graphics/Paint.java': 'package android.graphics;public class Paint {public float size=12;public static final int ANTI_ALIAS_FLAG=1;public Paint(){}public Paint(int flags){}public void setColor(int v){}public float measureText(String text,int start,int end){return (end-start)*size*.5f;}}',
+    'ls/augment/com/ConfigSnapshot.java':'package ls.augment.com;public class ConfigSnapshot {public final long revision;public ConfigSnapshot(long r){revision=r;}}',
+    'ls/augment/com/hook/LauncherResetHook.java':'package ls.augment.com.hook;class LauncherResetHook {static void attach(android.content.Context c){}}',
     'android/graphics/RectF.java': 'package android.graphics;public class RectF {public RectF(float l,float t,float r,float b){}}',
     'android/view/DragEvent.java': 'package android.view;public class DragEvent {public static final int ACTION_DRAG_ENTERED=5,ACTION_DRAG_EXITED=6,ACTION_DRAG_ENDED=4,ACTION_DROP=3,ACTION_DRAG_LOCATION=2;public int getAction(){return 0;}public Object getLocalState(){return null;}public float getY(){return 0;}}',
     'android/view/ViewGroup.java': '''package android.view;
@@ -63,7 +71,7 @@ public class AlertDialog {public interface DismissListener {void dismissed(Alert
     'ls/augment/com/LauncherOptions.java': 'package ls.augment.com;public class LauncherOptions {public static final String KEEP_EMPTY="keep_empty",PAGE_REORDER="page_reorder";}',
     'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;
 import java.util.*;import android.content.Context;
-final class FeatureSettings {static final Map<String,Boolean> values=new HashMap<>();static final List<Runnable> listeners=new ArrayList<>();static boolean verified=true;static boolean enabled(Context c,String k){return values.getOrDefault(k,false);}static boolean hasVerifiedSnapshot(Context c){return verified;}static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}static void change(String k,boolean v){values.put(k,v);for(Runnable listener:new ArrayList<>(listeners))listener.run();}}
+final class FeatureSettings {static long resetRevision=77;static ls.augment.com.ConfigSnapshot snapshot(Context c){return new ls.augment.com.ConfigSnapshot(resetRevision);}static final Map<String,Boolean> values=new HashMap<>();static final List<Runnable> listeners=new ArrayList<>();static boolean verified=true;static boolean enabled(Context c,String k){return values.getOrDefault(k,false);}static boolean hasVerifiedSnapshot(Context c){return verified;}static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}static void change(String k,boolean v){values.put(k,v);for(Runnable listener:new ArrayList<>(listeners))listener.run();}}
 ''',
     'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;
 import java.lang.reflect.*;import java.util.*;
@@ -115,7 +123,7 @@ import android.content.*;import android.os.Handler;import android.view.*;import 
 public class TestLauncherPagesLifecycle {
     static int checks;static AugmentModule module;static Context context;static C2 launcher;static Workspace ws;
     static void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
-    static void setup()throws Exception {FeatureSettings.values.clear();FeatureSettings.listeners.clear();FeatureSettings.verified=true;Handler.clear();ModelQueue.reset();z1.k2.reset();LauncherPagesEditor.reset();android.widget.Toast.messages.clear();x1.Z.failOnce=false;Field installed=LauncherPagesHook.class.getDeclaredField("installed");installed.setAccessible(true);installed.setBoolean(null,false);module=new AugmentModule();context=new Context();launcher=new C2(context);ws=launcher.workspace;LauncherPagesHook.install(module,TestLauncherPagesLifecycle.class.getClassLoader());if(!module.errors.isEmpty())throw new AssertionError("installation failed",module.errors.get(0));check(module.hooks.size()==5,"all page lifecycle hooks installed");}
+    static void setup()throws Exception {LauncherOwnedStateClient.reset();FeatureSettings.values.clear();FeatureSettings.listeners.clear();FeatureSettings.verified=true;Handler.clear();ModelQueue.reset();z1.k2.reset();LauncherPagesEditor.reset();android.widget.Toast.messages.clear();x1.Z.failOnce=false;Field installed=LauncherPagesHook.class.getDeclaredField("installed");installed.setAccessible(true);installed.setBoolean(null,false);module=new AugmentModule();context=new Context();launcher=new C2(context);ws=launcher.workspace;LauncherPagesHook.install(module,TestLauncherPagesLifecycle.class.getClassLoader());if(!module.errors.isEmpty())throw new AssertionError("installation failed",module.errors.get(0));check(module.hooks.size()==5,"all page lifecycle hooks installed");}
     static Object controller()throws Exception {Field field=LauncherPagesHook.class.getDeclaredField("controller");field.setAccessible(true);return field.get(null);}
     static void action(String name,Object...args)throws Throwable {Object c=controller();Class<?>[] types=new Class<?>[args.length];Arrays.fill(types,int.class);Method method=c.getClass().getDeclaredMethod(name,types);method.setAccessible(true);try{method.invoke(c,args);}catch(InvocationTargetException error){throw error.getCause();}}
     static void bind(int...ids)throws Throwable {module.call("f",launcher,new x0(ids));module.call("h",launcher,new z0());Handler.drain();}
@@ -148,7 +156,7 @@ public class TestLauncherPagesLifecycle {
         x1.Z.failOnce=true;try{action("add",1000);throw new AssertionError("injected add failure not propagated");}catch(Exception expected){checks++;}check(ws.children.equals(beforeChildren)&&ws.order.values.equals(beforeOrder)&&ws.n.size()==beforeOrder.size(),"failed insert removes only new empty page and restores native map");
         x1.Z.failOnce=true;try{action("delete",20);throw new AssertionError("injected delete failure not propagated");}catch(Exception expected){checks++;}check(ws.children.equals(beforeChildren)&&ws.order.values.equals(beforeOrder)&&ws.n(20)==beforeChildren.get(0),"failed delete restores original empty page object");check(nativePrefs().values.equals(beforePrefs)&&ws.currentPage==beforeCurrent,"add/delete rollback restore home/current state");
         action("move",10,20);order(10,20,30);check(ws.n(10)==first,"editing works after one-shot failure recovery");
-        testMenuEntry();testEditorEntry();testMoveTargets();testPendingMutations();testAsyncAdd();
+        testMenuEntry();testEditorEntry();testMoveTargets();testPendingMutations();testAsyncAdd();testPrivateStateRecovery();
         System.out.println("PASS LauncherPages lifecycle "+checks+" safety checks; Android/OEM/Xposed boundary doubles, no device");
     }
 }''',
@@ -201,6 +209,25 @@ SOURCES['com/android/launcher3/Workspace.java'] = SOURCES['com/android/launcher3
 
 append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', '''
     static LauncherPagesHook.Controller c()throws Exception {return (LauncherPagesHook.Controller)controller();}
+    static void testPrivateStateRecovery()throws Throwable {
+        setup();enable();own().edit().putString("order","20,10").putBoolean("keep_empty",true).apply();
+        LauncherOwnedStateClient.available=false;bind(10,20);order(10,20);
+        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==1,"initial unavailable private state preserves native binding");
+        int writes=own().writes;View first=ws.n(10),second=ws.n(20);int strips=ws.stripCalls;
+        c().attach(ws);c().configurationChanged();
+        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==1&&LauncherOwnedStateClient.readyCalls>0,"later unavailable lifecycles never repeat blocking startup wait");
+        check(own().writes==writes&&ws.stripCalls==strips,"unavailable retry cannot write saved order or strip pages");
+        LauncherOwnedStateClient.available=true;c().configurationChanged();
+        check(c().prefs==own(),"normal configuration lifecycle receives the recovered private record");
+        order(10,20);check(ws.n(10)==first&&ws.n(20)==second,"record recovery preserves existing page views and item positions");
+        check(own().writes==writes&&own().getString("order","").equals("20,10")&&ws.stripCalls==strips,"recovery notification preserves migrated order without applying a layout change");
+        bind(10,20);order(20,10);check(LauncherOwnedStateClient.blockingCalls==1,"next normal native binding uses recovered order without another blocking read");
+
+        setup();enable();LauncherOwnedStateClient.available=false;bind(10,20);
+        LauncherOwnedStateClient.available=true;com.android.launcher3.menu.MenuContainer menu=new com.android.launcher3.menu.MenuContainer(context);menu.g=launcher;
+        module.call("G",menu);check(c().prefs==own()&&menu.m.findViewWithTag("ls_augment.pages.entry")!=null,"normal edit menu attach also acquires a now-ready record");
+        check(LauncherOwnedStateClient.blockingCalls==1,"menu recovery remains nonblocking");order(10,20);
+    }
     static class Result {int successes;final List<String> errors=new ArrayList<>();final Runnable done=()->successes++;final java.util.function.Consumer<String> error=errors::add;}
     static void ticks(int count){for(int i=0;i<count;i++){android.os.SystemClock.now+=80;Handler.drain();}}
     static void finishModel()throws Exception {ModelQueue.drain();Handler.drain();}

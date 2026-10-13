@@ -8,7 +8,7 @@ and exact-fingerprint cleanup on the phone.
 
 Examples:
   python tools/usb_auth_host_probe.py preflight
-  python tools/usb_auth_host_probe.py observe --expected unauthorized \
+  python tools/usb_auth_host_probe.py observe --serial DEVICE_SERIAL --expected unauthorized \
       --server-pid PID_FROM_PREFLIGHT --server-exe OBSERVED_SERVER_PATH \
       --exclusive-use-confirmed --output out/ROUND
   python tools/usb_auth_host_probe.py restore --journal out/ROUND/journal.json
@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import socket
@@ -35,7 +36,6 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ADB = Path.home() / 'AppData/Local/Android/Sdk/platform-tools/adb.exe'
-SERIAL = '9125258103D6'
 TEST_PORT = 5049
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
@@ -580,11 +580,14 @@ def main():
     observation.add_argument('--server-exe', required=True,
                              help='Exact observed original server path to preserve and restore.')
     observation.add_argument('--exclusive-use-confirmed', action='store_true')
-    observation.add_argument('--serial', default=SERIAL)
+    observation.add_argument('--serial', default=os.environ.get('LS_AUGMENT_DEVICE'),
+                             help='Explicit target device serial, or set LS_AUGMENT_DEVICE.')
     observation.add_argument('--output', required=True)
     for command in ('restore', '_watchdog'):
         sub.add_parser(command).add_argument('--journal', required=True)
     args = parser.parse_args()
+    if args.command == 'observe' and (not args.serial or not re.fullmatch(r'[A-Za-z0-9_.:-]+', args.serial)):
+        parser.error('observe requires a valid --serial or LS_AUGMENT_DEVICE before host/device access')
     if args.command == 'preflight':
         snapshot = host_snapshot()
         snapshot['listener_identities'] = [process_identity(pid) for pid in sorted({

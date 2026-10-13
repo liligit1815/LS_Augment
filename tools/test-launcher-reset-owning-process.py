@@ -12,6 +12,7 @@ OUT = ROOT / 'audit-output/launcher-reset-owning-process-tests'
 OUT.mkdir(parents=True, exist_ok=True)
 
 STUBS = {
+    'ls/augment/com/LauncherOwnedStateStore.java':'package ls.augment.com;final class LauncherOwnedStateStore {static int clears;static boolean fail;static boolean clearPagesForReset(android.content.Context c){clears++;return !fail;}}',
     'android/net/Uri.java': '''package android.net; public final class Uri { public final String value; private Uri(String s){value=s;} public static Uri parse(String s){return new Uri(s);} }''',
     'android/os/SystemClock.java': '''package android.os; public final class SystemClock { public static volatile long now=1000; public static long elapsedRealtime(){return now;} }''',
     'android/os/Bundle.java': '''package android.os; import java.util.*; public final class Bundle {
@@ -132,6 +133,17 @@ public final class TestLauncherResetRuntime {
    LauncherResetPolicy.Session s=open(c);rejects(()->LauncherResetRuntime.begin(c,10376,0,4),"Concurrent request cannot replace nonce");
    try{unauthorizedBeforeClaim(c,s);exactAck(c,s);}finally{LauncherResetRuntime.end(c,s);}
    failedCommit(c);expiryAndReplacement(c);notifyFailure(c);
+   LauncherResetPolicy.Session clearing=open(c);try{
+    check(read(c,123).getBoolean("ok",false),"Private page-clear fixture claimed by exact PID");
+    Bundle payload=new Bundle();payload.putString("nonce","wrong");
+    rejected(LauncherResetRuntime.call(c,"launcher_reset_pages_clear",10376,123,PACKAGE,new String[]{PACKAGE},payload),"Wrong nonce cannot clear private pages");
+    payload.putString("nonce",clearing.request.nonce);
+    rejected(LauncherResetRuntime.call(c,"launcher_reset_pages_clear",10376,124,PACKAGE,new String[]{PACKAGE},payload),"Different PID cannot clear predecessor pages");
+    check(LauncherOwnedStateStore.clears==0,"Rejected clear never reaches private storage");
+    LauncherOwnedStateStore.fail=true;rejected(LauncherResetRuntime.call(c,"launcher_reset_pages_clear",10376,123,PACKAGE,new String[]{PACKAGE},payload),"Private commit failure cannot ACK cleanup");
+    LauncherOwnedStateStore.fail=false;check(LauncherResetRuntime.call(c,"launcher_reset_pages_clear",10376,123,PACKAGE,new String[]{PACKAGE},payload).getBoolean("ok",false),"Nonce-bound private page clear succeeds");
+    check(clearing.receipt()==null,"Private clear does not forge owning-process final ACK");
+   }finally{LauncherResetRuntime.end(c,clearing);}
    LauncherResetPolicy.Session ended=open(c);check(read(c,123).getBoolean("ok",false),"Fence ending fixture claimed");
    check(ack(c,123,ackPayload(ended.request,true,"pages_empty")).getBoolean("ok",false),"Fence ending fixture receipt");
    ResetWriteFence.end();rejected(ack(c,123,ackPayload(ended.request,true,"pages_empty")),"Ended fence rejects old ACK");
@@ -199,11 +211,6 @@ def run_pages_reset():
         public boolean commit(){apply();return !failCommit;}}
     }'''
     sources['android/content/SharedPreferences.java'] = prefs
-    feature = sources['ls/augment/com/hook/FeatureSettings.java']
-    cut = feature.rfind('}')
-    sources['ls/augment/com/hook/FeatureSettings.java'] = feature[:cut] + '''
-      static long resetRevision=77;static ls.augment.com.ConfigSnapshot snapshot(android.content.Context c){return new ls.augment.com.ConfigSnapshot(resetRevision);}
-    ''' + feature[cut:]
     sources['ls/augment/com/ConfigSnapshot.java'] = '''package ls.augment.com;public final class ConfigSnapshot {public final long revision;public ConfigSnapshot(long r){revision=r;}}'''
     sources['ls/augment/com/hook/LauncherResetHook.java'] = '''package ls.augment.com.hook;final class LauncherResetHook {static void attach(android.content.Context c){}}'''
     sources['ls/augment/com/hook/TestLauncherPagesTotalReset.java'] = PAGES_RESET_TEST

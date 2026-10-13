@@ -31,6 +31,7 @@ public final class CollabUnlockHook {
     private static final Set<Boolean> FP_RETRY_SCHEDULED=Collections.synchronizedSet(new HashSet<>());
     private static final Set<String> LOGGED=Collections.synchronizedSet(new HashSet<>());
     private static final ConcurrentHashMap<String,String> DIAGNOSTIC_STATE=new ConcurrentHashMap<>();
+    private static final CollabChargingFrame.Reporter CHARGING_REPORTER=new CollabChargingFrame.Reporter();
     private CollabUnlockHook() { }
 
     public static int install(AugmentModule module,ClassLoader loader,String pkg){
@@ -253,19 +254,32 @@ public final class CollabUnlockHook {
             if(filename==null)return chain.proceed();
             File file=new File(CollabPolicy.CHARGE_DIRECTORY,filename);
             BitmapFactory.Options options=args.get(4) instanceof BitmapFactory.Options?(BitmapFactory.Options)args.get(4):null;
-            Bitmap bitmap=decodeFrame(file,options);
-            if(bitmap==null){report(module,c,"charging","missing_or_invalid_frame:"+filename);return chain.proceed();}
-            report(module,c,"charging","device_frames_ready");return bitmap;
+            // A bounds-only request deliberately returns no bitmap; it is not a broken frame.
+            if(options!=null&&options.inJustDecodeBounds)return chain.proceed();
+            CollabChargingFrame.Result<Bitmap> result=decodeFrame(file,options);
+            reportCharging(module,c,result,style,(Boolean)args.get(5),(Integer)args.get(6));
+            return result.bitmap==null?chain.proceed():result.bitmap;
         });
         return count;
     }
-    private static Bitmap decodeFrame(File file,BitmapFactory.Options options){
-        try{
-            if(!file.isFile()||file.length()<=0||file.length()>8L*1024*1024||!file.getCanonicalPath().equals(file.getAbsolutePath()))return null;
-            BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(file.getPath(),bounds);
-            if(bounds.outWidth<=0||bounds.outHeight<=0||(long)bounds.outWidth*bounds.outHeight>16_000_000)return null;
-            return BitmapFactory.decodeFile(file.getPath(),options);
-        }catch(RuntimeException|java.io.IOException invalid){return null;}
+    private static CollabChargingFrame.Result<Bitmap> decodeFrame(File file,BitmapFactory.Options options){
+        return CollabChargingFrame.load(file,new CollabChargingFrame.Decoder<Bitmap>(){
+            public CollabChargingFrame.Bounds bounds(java.io.InputStream input){
+                BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;
+                BitmapFactory.decodeStream(input,null,bounds);
+                return new CollabChargingFrame.Bounds(bounds.outWidth,bounds.outHeight);
+            }
+            public Bitmap decode(java.io.InputStream input){return BitmapFactory.decodeStream(input,null,options);}
+        });
+    }
+    private static void reportCharging(AugmentModule module,Context context,CollabChargingFrame.Result<Bitmap> result,int style,boolean fast,int plug){
+        if(context==null||!CHARGING_REPORTER.publish(result.reason,android.os.SystemClock.elapsedRealtime()))return;
+        String value=result.diagnostic(style,fast,plug);
+        FeatureSettings.diagnostic(context,"ls_augment_collab_charging_runtime",value);
+        // A later good frame must not erase the representative failure in a partial sequence.
+        if(result.reason!=CollabChargingFrame.Reason.READY)
+            FeatureSettings.diagnostic(context,"ls_augment_collab_charging_last_failure",value);
+        module.logFeatureInfo("COLLAB charging "+value);
     }
     private static void report(AugmentModule module,Context context,String feature,String value){
         // Persist state changes independently of one-time log deduplication. Missing

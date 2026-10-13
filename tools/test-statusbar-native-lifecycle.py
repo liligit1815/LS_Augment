@@ -50,6 +50,7 @@ public class TestNativeLifecycle {
  static class State {boolean active=true,layoutDirty;Map<View,Geometry> geometry=new IdentityHashMap<>();}
  static State state=new State();static State stateFor(View v){return state;}
  static class StatusBarGridHook {static boolean owned=true;static void invalidateLayout(View v){state.layoutDirty=true;}static boolean ownsIconLayout(View v){return owned;}static boolean hasGridTransform(View v){return owned;}}
+ static class DualSignalTint {static final Set<View> watched=Collections.newSetFromMap(new IdentityHashMap<>());static boolean managed(View v){return watched.contains(v);}}
  static class StatusBarContentBounds {static Rect of(View v){return v.ink;}}
  static class FeatureSettings {static int style=1;static int integer(Object c,Object k,int d,int min,int max){return style;}static void diagnosticError(Object c,String k,String p,Throwable e){}}
  static class ConfigSchema {static String STATUSBAR_BLUETOOTH_STYLE="style";}
@@ -62,11 +63,15 @@ public class TestNativeLifecycle {
  static Object capacity(Chain chain,Field underflow,Field restrict)throws Throwable /* CAPACITY */
  static Object area(Chain chain)throws Throwable /* AREA */
  static Map<View,Registration> RECEIVERS=new WeakHashMap<>();static Method applyDark;static boolean replaying;
+ static long paletteGeneration;static final Map<View,Long> REFRESHED=new WeakHashMap<>();
  // REGISTRATION
  // SCREEN
- // REFRESH
+ // MANAGED
+ // REFRESH_ENTRY
+ // REFRESH_DIRTY
+ // REFRESH_BODY
  // UNDER
- public static class Dispatcher {int calls;boolean fail;public void applyDark(View v){calls++;if(!replaying)for(Registration r:RECEIVERS.values())r.dirty=true;if(fail)throw new IllegalStateException("mock callback");}}
+ public static class Dispatcher {int calls;boolean fail;public void applyDark(View v){calls++;if(!replaying){paletteGeneration++;for(Registration r:RECEIVERS.values())if(r.dispatcher.get()==this)r.dirty=true;}if(fail)throw new IllegalStateException("mock callback");}}
  public static void main(String[] args)throws Throwable {
   ViewGroup root=new ViewGroup();View icon=new View();root.add(icon);icon.x=12;icon.y=3;icon.sx=.8f;icon.sy=.8f;
   Geometry g=new Geometry(icon);state.geometry.put(icon,g);
@@ -96,11 +101,31 @@ public class TestNativeLifecycle {
   check((Boolean)area(new Chain(null,List.of(dark,icon),()->false)),"tint uses transformed 10px width, not native 20px allocation");
   icon.x=105;check(!(Boolean)area(new Chain(null,List.of(dark,icon),()->true)),"moved icon outside dark area gets native light tint");
   check((Boolean)area(new Chain(null,List.of(new Rect(0,0,0,0),icon),()->false)),"empty region covers entire bar");
+  StatusBarGridHook.owned=false;
+  check((Boolean)area(new Chain(null,List.of(dark,icon),()->true)),"unmanaged icon delegates to native tint region");
+  DualSignalTint.watched.add(icon);icon.x=95;
+  check((Boolean)area(new Chain(null,List.of(dark,icon),()->false)),"dual-signal owner uses transformed tint region without grid");
+  DualSignalTint.watched.remove(icon);StatusBarGridHook.owned=true;
   Dispatcher dispatcher=new Dispatcher();applyDark=Dispatcher.class.getMethod("applyDark",View.class);View second=new View();root.add(second);
   RECEIVERS.put(icon,new Registration(dispatcher));RECEIVERS.put(second,new Registration(dispatcher));refresh(root);check(dispatcher.calls==2,"both palette/contrast callbacks replay after placement");
   for(int i=0;i<20;i++)refresh(root);check(dispatcher.calls==2,"replays cannot dirty each other or loop every frame");
   icon.x+=2;refresh(root);check(dispatcher.calls==3,"moving one icon refreshes only its tint");
   for(Registration r:RECEIVERS.values())r.dirty=true;refresh(root);check(dispatcher.calls==5,"theme change refreshes even at unchanged final coordinates");
+  icon.x++;refreshDirty(root);check(dispatcher.calls==5,"unchanged palette does not replay geometry-only movement");
+  paletteGeneration++;RECEIVERS.get(second).dirty=true;refreshDirty(root);
+  check(dispatcher.calls==6,"palette-only refresh delivers only dirty receivers");
+  for(int i=0;i<20;i++)refreshDirty(root);check(dispatcher.calls==6,"palette-only frames do not replay the same generation");
+  refresh(root);check(dispatcher.calls==7,"geometry refresh still delivers movement skipped by palette-only refresh");
+  StatusBarGridHook.owned=false;DualSignalTint.watched.add(icon);
+  paletteGeneration++;for(Registration r:RECEIVERS.values())r.dirty=true;refreshDirty(root);
+  check(dispatcher.calls==8&&!RECEIVERS.get(icon).dirty&&RECEIVERS.get(second).dirty,"only managed dual-signal owner replays outside grid");
+  DualSignalTint.watched.remove(icon);StatusBarGridHook.owned=true;
+  refresh(root);check(dispatcher.calls==9,"restoring grid ownership delivers retained dirty receiver");
+  Dispatcher otherDispatcher=new Dispatcher();View foreign=new View();root.add(foreign);
+  Registration otherRegistration=new Registration(otherDispatcher);otherRegistration.dirty=false;RECEIVERS.put(foreign,otherRegistration);
+  long generation=paletteGeneration;dispatcher.applyDark(icon);
+  check(paletteGeneration==generation+1&&!otherRegistration.dirty,"native palette delivery advances its generation without dirtying another dispatcher");
+  refreshDirty(root);check(dispatcher.calls==12&&otherDispatcher.calls==0,"native palette delivery replays only its managed receivers");
   dispatcher.fail=true;icon.x++;refresh(root);check(!replaying,"failed native callback releases guard");
   System.out.println("Status bar lifecycle/tint: "+checks+" production-body assertions passed");
  }
@@ -114,7 +139,10 @@ replacements = {
     '/* AREA */': extract(tint, '"systemui.grid.tint_area"', True),
     '// REGISTRATION': extract(tint, 'private static final class Registration'),
     '// SCREEN': extract(tint, 'static RectF screenBounds('),
-    '// REFRESH': extract(tint, 'static void refresh('),
+    '// MANAGED': extract(tint, 'private static boolean managed(View view)'),
+    '// REFRESH_ENTRY': extract(tint, 'static void refresh(View root)'),
+    '// REFRESH_DIRTY': extract(tint, 'static void refreshDirty(View root)'),
+    '// REFRESH_BODY': extract(tint, 'private static void refresh(View root,boolean geometryChanged)'),
     '// UNDER': extract(tint, 'private static boolean under('),
 }
 for key, value in replacements.items():

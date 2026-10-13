@@ -27,6 +27,17 @@ public final class TestEnhancementCatalog {
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);
         check(upgraded!=null&&"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))&&"2".equals(upgraded.get(ConfigSchema.STATUSBAR_CLOCK_ROWS)),"upgrade preserves existing settings");
         check("0".equals(upgraded.get(GameOptions.QUICK_SWITCH))&&"0".equals(upgraded.get(LauncherOptions.KEEP_EMPTY)),"upgrade appends disabled features");
+        check("0".equals(upgraded.get(RecentsCardRadiusOptions.ENABLED))&&"0".equals(upgraded.get(RecentsCardRadiusOptions.OFFSET)),"upgrade preserves the factory recent-task card radius");
+        for(String offset:new String[]{"-2000","-100","-24","0","24","100","2000"})for(String enabled:new String[]{"0","1"}){
+            Map<String,String> radius=new LinkedHashMap<>(previous);
+            radius.put(RecentsCardRadiusOptions.ENABLED,enabled);radius.put(RecentsCardRadiusOptions.OFFSET,offset);
+            ConfigSnapshot configured=ConfigSnapshot.create(4,12346,radius);
+            ConfigSnapshot restored=configured==null?null:ConfigSnapshot.parse(configured.serialize());
+            check(restored!=null&&offset.equals(restored.get(RecentsCardRadiusOptions.OFFSET))&&enabled.equals(restored.get(RecentsCardRadiusOptions.ENABLED)),"signed recent-task radius survives snapshots while enabled or disabled: "+offset+"/"+enabled);
+            check("1".equals(restored.get(ConfigSchema.AI_TRIGGER_ENABLED)),"recent-task radius preserves unrelated active features");
+        }
+        for(String invalid:new String[]{"-2001","2001","0.5","NaN","-",""})
+            check(ConfigSchema.normalize(RecentsCardRadiusOptions.OFFSET,invalid)==null,"recent-task radius rejects invalid or unsupported offsets: "+invalid);
         check("0".equals(upgraded.get(SystemUiOptions.ISLAND_OFFSET_Y))&&"0".equals(upgraded.get(SystemUiOptions.ISLAND_TRANSPARENT)),"island upgrade preserves centered opaque appearance");
         for(String offset:new String[]{"-24","0","24"}){
             Map<String,String> island=new LinkedHashMap<>(previous);

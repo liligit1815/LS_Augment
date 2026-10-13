@@ -15,6 +15,7 @@ final class RapidFirePhysicalCapture {
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private volatile File lease;
     private volatile File completion;
+    private volatile File recorderState;
     private final long generation = ResetWriteFence.generation();
     private ModuleWorkerDrain.Ticket ticket;
 
@@ -56,20 +57,29 @@ final class RapidFirePhysicalCapture {
         if (cancelled()) return new Result(null, "采集已取消");
         RapidFireInputDetector.Device target = new RapidFireInputDetector.Device(
                 left ? device0 : device1, left ? "nubia_tgk_aw_sar0_ch0" : "nubia_tgk_aw_sar1_ch0");
+        boolean hardwareStarted = false;
         try (InputStream input = context.getAssets().open("rapid_input_capture.sh")) {
             String script = ShellScriptSource.readUtf8(input);
             lease = new File(context.getCacheDir(), "rapid-input-"
                     + UUID.randomUUID() + ".lease");
             if (!lease.createNewFile()) return new Result(null, "无法建立临时肩键测试会话");
+            File recovery = new File(context.getFilesDir(), "rapid-capture-v1");
+            if (!recovery.isDirectory() && !recovery.mkdir()) return new Result(null, "无法建立肩键恢复目录");
+            if (!recovery.getCanonicalFile().equals(recovery.getAbsoluteFile()))
+                return new Result(null, "肩键恢复目录异常");
+            recorderState = new File(recovery, lease.getName() + ".recorder");
+            if (!recorderState.createNewFile()) return new Result(null, "无法建立肩键恢复凭据");
             completion = new File(lease.getCanonicalPath() + ".complete");
             if (cancelled()) return new Result(null, "采集已取消");
             AtomicBoolean ready = new AtomicBoolean();
             AtomicBoolean pair = new AtomicBoolean();
+            hardwareStarted = true;
             RootShell.Result shell = RootShell.run("/system/bin/sh -c "
                     + RootShell.quote(script) + " -- " + Process.myPid()
                     + " " + RootShell.quote(lease.getCanonicalPath()) + " "
                     + RootShell.quote(device0) + " " + RootShell.quote(device1)
-                    + " " + RootShell.quote(target.path),
+                    + " " + RootShell.quote(target.path) + " " + Process.myUid()
+                    + " " + RootShell.quote(recorderState.getCanonicalPath()),
                     null, 20, 256 * 1024, output -> {
                         if (output.contains("LSA_CAPTURE_READY=")
                                 && !cancelled() && ready.compareAndSet(false, true)) {
@@ -114,6 +124,10 @@ final class RapidFirePhysicalCapture {
             if (current != null) current.delete();
             File done = completion;
             if (done != null) done.delete();
+            // A root watchdog can still own this record after its caller exits.
+            // Only the controller may delete a nonempty restoration responsibility.
+            File state = recorderState;
+            if (!hardwareStarted && state != null && state.length() == 0L) state.delete();
         }
     }
 

@@ -21,6 +21,7 @@ JDK = Path(r'C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 BASH = Path(r'C:/Program Files/Git/bin/bash.exe')
 assert BASH.is_file(), 'Fixture currently requires the existing Git Bash runtime'
 sources = {
+ 'ls/augment/com/LauncherOwnedStateStore.java':'package ls.augment.com;final class LauncherOwnedStateStore {static boolean pendingGrid(android.content.Context c){return false;}static boolean pagesHistory(android.content.Context c){return false;}}',
  'android/content/Context.java': '''package android.content;public class Context{
  public Context getApplicationContext(){return this;}
  public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}

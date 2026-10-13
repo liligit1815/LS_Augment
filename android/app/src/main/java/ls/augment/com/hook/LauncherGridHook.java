@@ -29,7 +29,6 @@ import ls.augment.com.LauncherGridMigrationCheck;
  */
 final class LauncherGridHook {
     static final String DIAGNOSTIC = "ls_augment_launcher_grid_runtime";
-    private static final String STATE = "ls_augment_launcher_grid_state";
     private static boolean installed;
     private static volatile Controller controller;
     private static final ThreadLocal<Boolean> FITTING=ThreadLocal.withInitial(()->false);
@@ -46,6 +45,7 @@ final class LauncherGridHook {
                 int rows=(Integer)chain.getArg(2), cols=(Integer)chain.getArg(3);
                 c.configure(context,chain.getThisObject(),chain.getArg(0),rows,cols);
                 Object result=c.owns?chain.proceed(new Object[]{chain.getArg(0),context,c.rows,c.cols}):chain.proceed();
+                if(c.storageUnavailable)c.t.resizing.setBoolean(chain.getThisObject(),false);
                 c.profile=chain.getArg(0);
                 c.report(false);
                 return result;
@@ -234,7 +234,7 @@ final class LauncherGridHook {
         final Map<Long,Object> loadingItems=new LinkedHashMap<>();
         volatile List<LauncherGridMigrationCheck.Row> migratedRows;
         volatile boolean ready,decided,owns;
-        boolean repacked,subscribed;
+        boolean repacked,subscribed,storageUnavailable;
         int rows,cols,baseRows,baseCols,actualRows,actualCols,workspaceRows,workspaceCols,cellWidth,cellHeight,iconPixels,labelPixels;
         String state="native",error="",database;
         Controller(AugmentModule module,Targets t){this.module=module;this.t=t;}
@@ -242,8 +242,10 @@ final class LauncherGridHook {
         synchronized void configure(Context supplied,Object desktop,Object idp,int nativeRows,int nativeCols) {
             if(decided) return;
             context=supplied.getApplicationContext();if(context==null)context=supplied;
-            saved=context.getSharedPreferences(STATE,Context.MODE_PRIVATE);
+            Map<String,?> before=Collections.emptyMap();
             try {
+                saved=LauncherOwnedStateClient.preferences(context,"grid");
+                before=saved.getAll();
                 boolean verified=FeatureSettings.hasVerifiedSnapshot(context);
                 requested=LauncherGridSpec.parse(FeatureSettings.text(context,LauncherGridSpec.ENABLED,"0"),
                         FeatureSettings.text(context,LauncherGridSpec.ROWS,"6"),FeatureSettings.text(context,LauncherGridSpec.COLUMNS,"4"));
@@ -282,9 +284,22 @@ final class LauncherGridHook {
                 report(false);
             }catch(Throwable failure){
                 // A failed read must never expose a smaller native grid to already-migrated items.
-                rows=saved.getInt("effective_rows",nativeRows);cols=saved.getInt("effective_columns",nativeCols);
-                owns=saved.getBoolean("owned",false);state="blocked";error=String.valueOf(failure.getMessage());decided=true;
-                if(owns&&saved.getBoolean("migration_pending",false))try{t.resizing.setBoolean(desktop,true);}catch(Exception ignored){}
+                if(saved==null){
+                    storageUnavailable=true;
+                    try{database=(String)t.dbFile.get(idp);}catch(Exception ignored){ }
+                    Readout existing=Readout.read(context,database);
+                    rows=Math.max(nativeRows,existing.extentRows);cols=Math.max(nativeCols,existing.extentCols);
+                    owns=existing.complete&&(rows!=nativeRows||cols!=nativeCols);
+                }else{
+                    // A worker may finish a timed-out commit later. This constructor
+                    // must retain the trusted pre-transaction geometry regardless.
+                    Object priorRows=before.get("effective_rows"),priorCols=before.get("effective_columns");
+                    rows=priorRows instanceof Integer?(Integer)priorRows:nativeRows;
+                    cols=priorCols instanceof Integer?(Integer)priorCols:nativeCols;
+                    owns=Boolean.TRUE.equals(before.get("owned"));
+                    if(owns&&Boolean.TRUE.equals(before.get("migration_pending")))try{t.resizing.setBoolean(desktop,true);}catch(Exception ignored){}
+                }
+                state="blocked";error=String.valueOf(failure.getMessage());decided=true;
                 module.logFeatureError("LAUNCHER_GRID_PRECHECK",failure);report(false);
             }
         }
@@ -309,7 +324,7 @@ final class LauncherGridHook {
         }
 
         void bound(Object launcher){
-            if(!decided)return;
+            if(!decided||storageUnavailable)return;
             try{
                 ViewGroup ws=(ViewGroup)t.workspace.invoke(launcher);
                 workspaceRows=workspaceCols=0;

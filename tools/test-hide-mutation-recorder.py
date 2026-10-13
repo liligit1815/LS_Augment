@@ -14,6 +14,7 @@ All generated Java/classes are temporary. No adb, su or device is used.
 missing recorder helpers come from current source, but cannot replace that method.
 """
 from pathlib import Path
+from hide_private_test_support import PRIVATE_STORAGE_STUB
 import argparse
 import contextlib
 import json
@@ -385,6 +386,7 @@ def main():
         parser.error("A local POSIX shell is required; pass --shell (Git for Windows includes bash.exe)")
     names = ("HideMutationRecorder.java", "HideBatchExecutor.java", "RootShell.java", "HideRecoveryJournal.java", "HideRootClient.java", "HideRootPendingStore.java", "HideRootProtocol.java", "HideRootServer.java", "HideTargetCodec.java", "HideRestoreGrantLedger.java", "HideRestoreGrantStore.java")
     production = {name: (args.source_dir / name).read_text(encoding="utf-8") for name in names}
+    production["HidePrivateStorage.java"] = PRIVATE_STORAGE_STUB
     current_manager = (args.source_dir / "RootHideManager.java").read_text(encoding="utf-8")
     manager = args.manager_source.read_text(encoding="utf-8") if args.manager_source else current_manager
     members = [member(manager, "private HideBatchExecutor.Outcome<Target> executeBatch(")]

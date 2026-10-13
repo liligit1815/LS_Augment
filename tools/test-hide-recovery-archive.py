@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import os
 from pathlib import Path
+from hide_private_test_support import private_storage_stub, PUBLICATION_HOST_SHIM
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 BASH = Path(r'C:\Program Files\Git\bin\bash.exe')
-ROOT_ASSIGNMENT = "ROOT='/data/adb/ls_augment/v2'"
+ROOT_ASSIGNMENT = 'ROOT="${LSA_PRIVATE_ROOT:?}/v2"'
 SUCCESS = b'LSA_RECOVERY_ARCHIVE_OK'
 SOURCE_FILES = {'targets': 'targets.conf', 'backup': 'targets.backup.conf',
                 'script': 'emergency_restore.sh'}
@@ -35,7 +36,10 @@ def bash(script, *, stdin=b'', env=None, cwd=None):
     return subprocess.run(
         [str(BASH), '--noprofile', '--norc', '-c', script], input=stdin,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=cwd,
-        timeout=40,
+        # Parallel writers each launch the host Python fsync adapter. Windows
+        # process startup under other regression jobs needs a larger harness
+        # deadline; the production transport timeout is unchanged.
+        timeout=240,
     )
 
 
@@ -80,7 +84,7 @@ public final class ArchiveCommandProbe {
         subprocess.run([
             'javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes),
             str(JAVA / 'RootShell.java'), str(JAVA / 'HideRecoveryArchive.java'),
-            str(probe),
+            str(probe), str(private_storage_stub(probe.parent)),
         ], check=True, timeout=30)
         generated = subprocess.run([
             'java', '-cp', str(classes), 'ls.augment.com.ArchiveCommandProbe',
@@ -123,7 +127,7 @@ for arg in sys.argv[1:]:
                         encoding='utf-8', newline='\n')
         shim.chmod(0o755)
         startup = cls.workspace / 'bash-env'
-        startup.write_text('export PATH="$LSA_TEST_PATH"\n', encoding='utf-8')
+        startup.write_text('export PATH="$LSA_TEST_PATH"\n' + PUBLICATION_HOST_SHIM, encoding='utf-8')
         cls.env = dict(os.environ, BASH_ENV=posix(startup),
                        PATH=posix(cls.fsync_bin) + ':' + cls.shell_path,
                        LSA_TEST_FSYNC_LOG=str(cls.fsync_log))
@@ -136,7 +140,7 @@ for arg in sys.argv[1:]:
     def setUp(self):
         self.case = self.workspace / self._testMethodName
         self.case.mkdir()
-        self.root = self.case / 'root'
+        self.root = self.case / 'v2'
         self.root.mkdir()
 
     def seed(self, generation=b'A', root=None):
@@ -155,10 +159,18 @@ for arg in sys.argv[1:]:
 
     def run_archive(self, selection=b'proposed\n', *, root=None, env=None):
         root = root or self.root
-        rewritten = self.command.replace(ROOT_ASSIGNMENT, 'ROOT=' + quoted(posix(root)))
+        self.assertEqual(root.name, 'v2')
+        rewritten = self.command
         self.assertNotIn('/data/adb', rewritten)
         return bash(rewritten, stdin=selection,
-                    env=self.env if env is None else env, cwd=self.case)
+                    env=dict(self.env if env is None else env, LSA_PRIVATE_ROOT=posix(root.parent)), cwd=self.case)
+
+    def test_missing_private_root_refuses_without_altering_sources(self):
+        self.seed()
+        before = self.source_snapshot()
+        result = bash(self.command, env=dict(self.env, LSA_PRIVATE_ROOT=''))
+        self.assert_failure(result)
+        self.assertEqual(self.source_snapshot(), before)
 
     def assert_success(self, result):
         self.assertEqual(result.returncode, 0, description(result))
@@ -252,10 +264,10 @@ done
         self.assertEqual(self.source_snapshot(), before)
 
     def test_copy_hash_publish_and_fsync_failures_preserve_sources(self):
-        for tool in ('cp', 'sha256sum', 'cmp', 'ln', 'fsync', 'ls'):
+        for tool in ('cp', 'sha256sum', 'cmp', 'mv', 'fsync', 'ls'):
             with self.subTest(tool=tool):
-                root = self.case / tool
-                root.mkdir()
+                root = self.case / tool / 'v2'
+                root.mkdir(parents=True)
                 self.seed(root=root)
                 if tool == 'ls':
                     (root / 'targets.conf').unlink()
@@ -284,7 +296,7 @@ done
         recorded = [line.split(' ', 1) for line in calls.read_text(encoding='utf-8').splitlines()]
         actual_files = {Path(path) for kind, path in recorded if kind == 'file-fsync'}
         actual_dirs = {Path(path) for kind, path in recorded if kind == 'directory-call-only'}
-        self.assertEqual(actual_files, {self.archived(kind, content)
+        self.assertEqual({path for path in actual_files if not path.name.startswith('.pending.')}, {self.archived(kind, content)
                                       for kind, content in {**old, 'selection': selection}.items()})
         history = self.root / 'recovery-history-v1'
         self.assertEqual(actual_dirs, {history, self.root, self.root.parent,
@@ -328,8 +340,8 @@ done
     def test_corrupt_existing_digest_is_rejected_without_overwrite(self):
         for kind in CATEGORIES:
             with self.subTest(kind=kind):
-                root = self.case / kind
-                root.mkdir()
+                root = self.case / kind / 'v2'
+                root.mkdir(parents=True)
                 old = self.seed(root=root)
                 selection = b'proposed\n'
                 content = selection if kind == 'selection' else old[kind]
@@ -345,8 +357,16 @@ done
         old = self.seed()
         before = self.source_snapshot()
         selections = [f'writer-{index % 5}\n'.encode() for index in range(10)]
+        # This case checks competing publication, not durability. The separate
+        # fsync case executes real regular-file fsync and validates every call.
+        # Avoid starting 80 Windows Python processes while all writers hold the
+        # shared lock; that tests host startup latency instead of publication.
+        startup = self.case / 'concurrent-env'
+        startup.write_text('export PATH="$LSA_TEST_PATH"\n' + PUBLICATION_HOST_SHIM
+                           + '\nfsync() { :; }\n', encoding='utf-8')
+        env = dict(self.env, BASH_ENV=posix(startup))
         with ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(self.run_archive, selections))
+            results = list(executor.map(lambda value: self.run_archive(value, env=env), selections))
         for result in results:
             self.assert_success(result)
         self.assertEqual(self.source_snapshot(), before)
@@ -360,8 +380,8 @@ done
         for relative in ('recovery-history-v1',
                          *(f'recovery-history-v1/{kind}' for kind in CATEGORIES)):
             with self.subTest(path=relative):
-                root = self.case / relative.replace('/', '-')
-                root.mkdir()
+                root = self.case / relative.replace('/', '-') / 'v2'
+                root.mkdir(parents=True)
                 self.seed(root=root)
                 obstacle = root / relative
                 obstacle.parent.mkdir(parents=True, exist_ok=True)
@@ -372,8 +392,8 @@ done
                 self.assertEqual(obstacle.read_bytes(), b'keep obstacle')
         for kind, name in SOURCE_FILES.items():
             with self.subTest(directory_source=name):
-                root = self.case / ('directory-' + kind)
-                root.mkdir()
+                root = self.case / ('directory-' + kind) / 'v2'
+                root.mkdir(parents=True)
                 self.seed(root=root)
                 (root / name).unlink()
                 (root / name).mkdir()
@@ -397,8 +417,8 @@ done
         for relative in (*SOURCE_FILES.values(), 'recovery-history-v1',
                          *(f'recovery-history-v1/{kind}' for kind in CATEGORIES)):
             with self.subTest(symlink=relative):
-                root = self.case / ('link-' + relative.replace('/', '-'))
-                root.mkdir()
+                root = self.case / ('link-' + relative.replace('/', '-')) / 'v2'
+                root.mkdir(parents=True)
                 self.seed(root=root)
                 link = root / relative
                 link.parent.mkdir(parents=True, exist_ok=True)
@@ -412,7 +432,8 @@ done
                 self.assertEqual(self.source_snapshot(root), before)
                 self.assertTrue(link.is_symlink())
                 self.assertEqual(target.read_bytes(), b'outside evidence must remain untouched')
-        root_link = self.case / 'root-link'
+        root_link = self.case / 'root-link/v2'
+        root_link.parent.mkdir()
         os.symlink(self.root, root_link, target_is_directory=True)
         self.seed()
         before = self.source_snapshot()
@@ -498,7 +519,7 @@ public final class PreserveWrapperProbe {
         classes = self.case / 'wrapper-classes'
         compiled = subprocess.run([
             'javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes),
-            str(JAVA / 'HideRecoveryArchive.java'), str(transport), str(probe),
+            str(JAVA / 'HideRecoveryArchive.java'), str(transport), str(probe), str(private_storage_stub(probe.parent)),
         ], capture_output=True, timeout=30)
         self.assertEqual(compiled.returncode, 0, description(compiled))
         result = subprocess.run([

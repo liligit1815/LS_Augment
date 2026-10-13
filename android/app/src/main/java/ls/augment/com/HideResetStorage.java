@@ -4,14 +4,14 @@ package ls.augment.com;
 final class HideResetStorage {
     private HideResetStorage() { }
     static String stamp() {
-        RootShell.Result result = RootShell.run(command(""), null, 30, 4096);
+        RootShell.Result result = HidePrivateStorage.run(command(""), null, 30, 4096);
         return result != null && result.isSuccess() && result.output.trim().matches("[0-9a-f]{64}")
                 ? result.output.trim() : "";
     }
     static RootShell.Result clear(String expected) {
         if (expected == null || !expected.matches("[0-9a-f]{64}"))
             return new RootShell.Result(74, "缺少完整恢复后的记录摘要，未清除", false);
-        RootShell.Result result = RootShell.run(command(expected), null, 30, 4096);
+        RootShell.Result result = HidePrivateStorage.run(command(expected), null, 30, 4096);
         return result != null && result.isSuccess() && "LSA_HIDE_RESET_CLEARED".equals(result.output.trim())
                 ? result : new RootShell.Result(74, "隐藏记录清除或持久确认失败，不能报告全部重置完成", false);
     }
@@ -21,15 +21,15 @@ final class HideResetStorage {
         return "EXPECTED=" + RootShell.quote(expected) + "\n" + """
                 umask 077
                 export LC_ALL=C
-                ROOT='/data/adb/ls_augment/v2'
-                APP='/data/adb/ls_augment'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
+                APP="${LSA_PRIVATE_ROOT:?}"
                 MANIFEST=''
                 INVENTORY=''
                 fail() { printf '%s\\n' "hide_reset:$1" >&2; exit 74; }
                 cleanup() { [ -z "$MANIFEST" ] || rm -f "$MANIFEST"; [ -z "$INVENTORY" ] || rm -f "$INVENTORY"; }
                 trap cleanup EXIT
                 trap 'exit 74' HUP INT TERM
-                [ "$(id -u)" = 0 ] || fail root_required
+                OWNER="$(id -u):$(id -g)"
                 set -o pipefail || fail pipefail_unavailable
                 parent="$ROOT"
                 while [ "$parent" != / ]; do
@@ -37,9 +37,9 @@ final class HideResetStorage {
                   parent=${parent%/*}; [ -n "$parent" ] || parent=/
                 done
                 [ -d "$APP" ] && [ ! -L "$APP" ] || fail app_directory_unavailable
-                [ "$(stat -c '%u:%g:%a' "$APP")" = 0:0:700 ] || fail app_directory_permissions
+                [ "$(stat -c '%u:%g:%a' "$APP")" = "$OWNER:700" ] || fail app_directory_permissions
                 [ -d "$ROOT" ] && [ ! -L "$ROOT" ] || fail root_directory_unavailable
-                [ "$(stat -c '%u:%g:%a' "$ROOT")" = 0:0:700 ] || fail root_directory_permissions
+                [ "$(stat -c '%u:%g:%a' "$ROOT")" = "$OWNER:700" ] || fail root_directory_permissions
                 MANIFEST=$(mktemp "$APP/.hide-reset-manifest.XXXXXXXX") || fail manifest_create
                 INVENTORY=$(mktemp "$APP/.hide-reset-inventory.XXXXXXXX") || fail inventory_create
                 paths() {
@@ -73,12 +73,12 @@ final class HideResetStorage {
                       [ ! -L "$file" ] || fail symlink_record
                       metadata=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' "$file") || fail source_stat
                       if [ -d "$file" ]; then
-                        [ "$(stat -c '%u:%g:%a' "$file")" = 0:0:700 ] || fail directory_permissions
+                        [ "$(stat -c '%u:%g:%a' "$file")" = "$OWNER:700" ] || fail directory_permissions
                         printf 'D|%s|%s\\n' "$relative" "$metadata" >>"$MANIFEST" || fail manifest_write
                       else
                         [ -f "$file" ] && [ -r "$file" ] || fail invalid_record
                         owner=$(stat -c '%u:%g:%a' "$file") || fail file_stat
-                        case "$owner" in 0:0:600|0:0:700) ;; *) fail file_permissions ;; esac
+                        case "$owner" in "$OWNER":600|"$OWNER":700) ;; *) fail file_permissions ;; esac
                         size=$(wc -c <"$file") || fail source_size
                         [ "$size" -le 1048576 ] || fail source_too_large
                         hash=$(sha256sum "$file") || fail source_hash
@@ -99,12 +99,12 @@ final class HideResetStorage {
                 # No PackageManager enable/install command belongs to this cleanup.
                 for name in $(paths); do
                   path="$ROOT/$name"
-                  case "$path" in /data/adb/ls_augment/v2/*) ;; *) fail outside_allowlist ;; esac
+                  case "$path" in "$ROOT/"*) ;; *) fail outside_allowlist ;; esac
                   [ ! -L "$path" ] || fail symlink_source
                   rm -rf -- "$path" || fail clear_failed
                   [ ! -e "$path" ] && [ ! -L "$path" ] || fail clear_not_confirmed
                 done
-                fsync "$ROOT" "$APP" /data/adb || fail cleanup_sync
+                fsync "$ROOT" "$APP" "${APP%/*}" || fail cleanup_sync
                 printf '%s\\n' 'LSA_HIDE_RESET_CLEARED'
                 """;
     }

@@ -34,7 +34,7 @@ final class HideTargetStore {
     interface Io { RootShell.Result run(Operation operation); }
     private final Io io;
 
-    HideTargetStore() { this(op -> RootShell.run(op.command(), op.stdin(), 30, MAX_OUTPUT)); }
+    HideTargetStore() { this(op -> HidePrivateStorage.run(op.command(), op.stdin(), 30, MAX_OUTPUT)); }
     HideTargetStore(Io io) { this.io = Objects.requireNonNull(io); }
 
     static final class LastOperation {
@@ -345,8 +345,8 @@ final class HideTargetStore {
     private static final String SCRIPT = """
         umask 077
         export LC_ALL=C
-        ROOT='/data/adb/ls_augment/v2/manual-targets-v1'
-        V2=${ROOT%/*}; APP=${V2%/*}; STORAGE=${APP%/*}
+        ROOT="${LSA_PRIVATE_ROOT:?}/v2/manual-targets-v1"
+        V2=${ROOT%/*}; APP=${V2%/*}; STORAGE=$APP
         FILE="$ROOT/document"
         TMP=''
         PHASE=REJECTED
@@ -356,7 +356,7 @@ final class HideTargetStore {
         cleanup() { [ -z "$TMP" ] || rm -f "$TMP"; }
         trap cleanup EXIT
         trap 'exit 74' HUP INT TERM
-        [ "$(id -u)" = 0 ] || fail root_required
+        OWNER="$(id -u):$(id -g)"
         parent=$ROOT
         while [ "$parent" != / ]; do
           [ ! -L "$parent" ] || bad symlink_parent
@@ -364,7 +364,7 @@ final class HideTargetStore {
         done
         [ -d "$STORAGE" ] || fail storage_unavailable
         meta=$(stat -c '%u:%g:%a' "$STORAGE") || fail storage_stat
-        case "$meta" in 0:0:700|0:0:750|0:0:755|0:0:711) ;; *) bad storage_permissions ;; esac
+        case "$meta" in "$OWNER":700|"$OWNER":750|"$OWNER":755|"$OWNER":711) ;; *) bad storage_permissions ;; esac
         if [ "$MODE" = CAS ]; then
           command -v fsync >/dev/null 2>&1 || fail fsync_unavailable
           command -v flock >/dev/null 2>&1 || fail flock_unavailable
@@ -377,12 +377,12 @@ final class HideTargetStore {
             mkdir "$dir" 2>/dev/null || [ -d "$dir" ] || fail directory_create
           fi
           [ -d "$dir" ] && [ ! -L "$dir" ] || bad invalid_directory
-          [ "$(stat -c '%u:%g:%a' "$dir")" = 0:0:700 ] || bad directory_permissions
+          [ "$(stat -c '%u:%g:%a' "$dir")" = "$OWNER:700" ] || bad directory_permissions
         done
         [ "$MODE" != LEGACY ] || FILE="$V2/targets.conf"
         checkfile() {
           [ ! -L "$1" ] && [ -f "$1" ] || bad invalid_file
-          [ "$(stat -c '%u:%g:%a:%h' "$1")" = 0:0:600:1 ] || bad file_permissions
+          [ "$(stat -c '%u:%g:%a:%h' "$1")" = "$OWNER:600:1" ] || bad file_permissions
           size=$(stat -c '%s' "$1") || fail file_stat
           case "$size" in ''|*[!0-9]*) bad file_size ;; esac
           [ "$size" -le 1048576 ] || bad file_too_large

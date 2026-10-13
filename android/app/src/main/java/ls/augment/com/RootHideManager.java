@@ -22,10 +22,6 @@ import java.util.regex.Pattern;
 final class RootHideManager {
     static final int APP_METADATA_FLAGS = PackageManager.MATCH_DISABLED_COMPONENTS
             | PackageManager.MATCH_UNINSTALLED_PACKAGES;
-    private static final String ROOT_DIR = "/data/adb/ls_augment/v2";
-    private static final String TARGETS_FILE = ROOT_DIR + "/targets.conf";
-    private static final String BACKUP_FILE = ROOT_DIR + "/targets.backup.conf";
-    private static final String EMERGENCY_FILE = ROOT_DIR + "/emergency_restore.sh";
     static final ReentrantLock ACTION_LOCK = new ReentrantLock();
     private static final String RESET_REQUIRED = "配置已被重置，请重新打开此页面后再操作";
     private static final Pattern PACKAGE = Pattern.compile(
@@ -57,6 +53,7 @@ final class RootHideManager {
 
     RootHideManager(Context context) {
         this.context = context.getApplicationContext();
+        HidePrivateStorage.configure(this.context.getFilesDir(), android.os.Process.myUid()/100000 == 0);
         this.actionGeneration = ResetWriteFence.generation();
         this.config = new AppConfig(this.context);
     }
@@ -153,7 +150,7 @@ final class RootHideManager {
 
     long targetRevision() { return targetSnapshot == null ? -1 : targetSnapshot.revision; }
 
-    /** Worker-thread only. Existing independent data always wins over the private cache. */
+    /** Worker-thread only. The private recovery document is authoritative over the settings cache. */
     OperationResult refreshTargets() {
         ACTION_LOCK.lock();
         try {

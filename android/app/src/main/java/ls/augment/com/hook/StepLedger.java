@@ -1,47 +1,77 @@
 package ls.augment.com.hook;
 
-import android.content.ContentValues;
 import android.content.Context;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.database.sqlite.SQLiteOpenHelper;
-import org.json.JSONObject;
-import java.time.*;
+import android.net.Uri;
+import android.os.Binder;
+import android.os.Bundle;
+import android.os.Looper;
+import java.io.IOException;
 import java.util.*;
-import java.io.*;
-import java.nio.channels.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import ls.augment.com.ConfigSchema;
 import ls.augment.com.StepPlan;
 
-/** Private write-ahead ledger in the health app sandbox, isolated by account and source. */
-final class StepLedger extends SQLiteOpenHelper {
+/** Authenticated client for the module-private ledger; never creates host files. */
+final class StepLedger {
     private static final ReentrantLock WRITER=new ReentrantLock(true);
-    private final File lockFile;
-    StepLedger(Context c){super(c,"ls_augment_steps_v1.db",null,2);lockFile=new File(c.getFilesDir(),"ls_augment_steps.lock");setWriteAheadLoggingEnabled(true);}
-    /** Covers the ledger and the native DAO commit together, across health processes. */
+    private static final Binder CLIENT=new Binder();
+    private static String session,pendingRelease;
+    private final Context context;
+    private final Transaction transaction=new Transaction();
+    StepLedger(Context context){this.context=context.getApplicationContext();}
     Guard guard()throws IOException{return new Guard();}
     final class Guard implements AutoCloseable {
-        private RandomAccessFile file;private FileLock lock;private boolean closed;
+        private boolean closed;
         Guard()throws IOException{
-            WRITER.lock();
-            try{if(WRITER.getHoldCount()==1){file=new RandomAccessFile(lockFile,"rw");lock=file.getChannel().lock();}}
-            catch(IOException|RuntimeException e){if(file!=null)try{file.close();}catch(IOException ignored){}WRITER.unlock();throw e;}
+            if(Looper.myLooper()==Looper.getMainLooper())throw new IOException("健康保存回调位于主线程，本次保留原生保存");
+            try{if(!WRITER.tryLock(5,TimeUnit.SECONDS))throw new IOException("健康账本正在处理其他记录");}
+            catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new IOException(interrupted);}
+            try{
+                if(WRITER.getHoldCount()>1)return;
+                if(pendingRelease!=null){session=pendingRelease;request("release",new Bundle());pendingRelease=null;}
+                session=UUID.randomUUID().toString();
+                Bundle args=new Bundle();args.putString("account",FeatureSettings.text(context,ConfigSchema.HEALTH_ACCOUNT,""));args.putBinder("client",CLIENT);
+                boolean legacy=context.getDatabasePath("ls_augment_steps_v1.db").exists()
+                        ||context.getDatabasePath("ls_augment_steps_v1.db-wal").exists()
+                        ||context.getDatabasePath("ls_augment_steps_v1.db-shm").exists()
+                        ||context.getDatabasePath("ls_augment_steps_v1.db-journal").exists()
+                        ||new java.io.File(context.getFilesDir(),"ls_augment_steps.lock").exists();
+                args.putBoolean("legacy",legacy);
+                long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                for(;;){
+                    Bundle response=invoke("acquire",args);
+                    if(response!=null&&response.getBoolean("ok",false))break;
+                    if(response==null||!"busy".equals(response.getString("state"))||System.nanoTime()>=until)
+                        throw new IOException("模块健康私有账本不可用，等待迁移或重试");
+                    Thread.sleep(25);
+                }
+            }catch(Exception failure){
+                if(failure instanceof InterruptedException)Thread.currentThread().interrupt();
+                if(WRITER.getHoldCount()==1&&session!=null){try{request("release",new Bundle());}catch(RuntimeException unavailable){pendingRelease=session;}session=null;}
+                WRITER.unlock();throw failure instanceof IOException?(IOException)failure:new IOException(failure);
+            }
         }
-        @Override public void close(){if(closed)return;closed=true;try{if(lock!=null)lock.release();}catch(IOException ignored){}
-            finally{try{if(file!=null)file.close();}catch(IOException ignored){}WRITER.unlock();}}
+        @Override public void close(){
+            if(closed)return;closed=true;
+            try{if(WRITER.getHoldCount()==1){
+                try{if(transaction.active){transaction.success=false;transaction.endTransaction();}request("release",new Bundle());}
+                catch(RuntimeException unavailable){pendingRelease=session;}
+                finally{session=null;}
+            }}finally{WRITER.unlock();}
+        }
     }
-    @Override public void onCreate(SQLiteDatabase d){
-        d.execSQL("CREATE TABLE records(account TEXT NOT NULL,sid TEXT NOT NULL,time INTEGER NOT NULL,raw TEXT NOT NULL,output TEXT NOT NULL,token TEXT NOT NULL,generated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,sid,time))");
-        d.execSQL("CREATE TABLE plans(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,spec TEXT NOT NULL,PRIMARY KEY(account,id,day))");
-        d.execSQL("CREATE TABLE events(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,time INTEGER NOT NULL,steps INTEGER NOT NULL,admitted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,id,day,time))");
-        createAwards(d);
+    final class Transaction {
+        boolean active,success;
+        void beginTransaction(){if(active)throw new IllegalStateException("nested transaction");request("begin",new Bundle());active=true;success=false;}
+        void setTransactionSuccessful(){if(!active)throw new IllegalStateException("missing transaction");success=true;}
+        void endTransaction(){if(!active)return;try{request(success?"commit":"rollback",new Bundle());}finally{active=false;success=false;}}
     }
-    @Override public void onUpgrade(SQLiteDatabase d,int old,int next){
-        if(old==1&&next==2){createAwards(d);return;}
-        throw new IllegalStateException("unknown step ledger schema");
-    }
-    private static void createAwards(SQLiteDatabase d){
-        d.execSQL("CREATE TABLE plan_awards(account TEXT NOT NULL,time INTEGER NOT NULL,requested INTEGER NOT NULL,allowed INTEGER NOT NULL CHECK(allowed>=0 AND allowed<=requested),PRIMARY KEY(account,time))");
+    Transaction getWritableDatabase(){return transaction;}
+    private Bundle invoke(String op,Bundle args){args.putString("op",op);args.putString("session",session);return context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"health_ledger",null,args);}
+    private Bundle request(String op,Bundle args){
+        if(!WRITER.isHeldByCurrentThread()||session==null)throw new IllegalStateException("health guard required");
+        Bundle result=invoke(op,args);if(result==null||!result.getBoolean("ok",false))throw new IllegalStateException("私有健康账本操作未完成");return result;
     }
     static final class Record {
         final String raw,output,token;final boolean generated;
@@ -51,63 +81,25 @@ final class StepLedger extends SQLiteOpenHelper {
         final String sid;final long time;final Record record;
         SavedRecord(String sid,long time,Record record){this.sid=sid;this.time=time;this.record=record;}
     }
-    List<SavedRecord> records(String account,long startInclusive,long endExclusive){
-        List<SavedRecord> values=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT sid,time,raw,output,token,generated FROM records WHERE account=? AND time>=? AND time<? ORDER BY time,sid",new String[]{account,""+startInclusive,""+endExclusive})){
-            while(c.moveToNext())values.add(new SavedRecord(c.getString(0),c.getLong(1),new Record(c.getString(2),c.getString(3),c.getString(4),c.getInt(5)!=0)));
-        }
-        return values;
-    }
-    static final class Award {
-        final int requested,allowed;
-        Award(int requested,int allowed){this.requested=requested;this.allowed=allowed;}
-    }
-    Award award(String account,long time){
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT requested,allowed FROM plan_awards WHERE account=? AND time=?",new String[]{account,""+time})){
-            return c.moveToFirst()?new Award(c.getInt(0),c.getInt(1)):null;
-        }
-    }
-    void award(String account,long time,int requested,int allowed){
-        if(allowed<0||allowed>requested)throw new IllegalArgumentException("invalid plan award");
-        ContentValues v=new ContentValues();v.put("account",account);v.put("time",time);v.put("requested",requested);v.put("allowed",allowed);
-        if(getWritableDatabase().insertWithOnConflict("plan_awards",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)
-            throw new IllegalStateException("无法保存计划步数上限判断");
-    }
-    Record get(String account,String sid,long time){
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT raw,output,token,generated FROM records WHERE account=? AND sid=? AND time=?",new String[]{account,sid,""+time})){
-            return c.moveToFirst()?new Record(c.getString(0),c.getString(1),c.getString(2),c.getInt(3)!=0):null;
+    static final class Award {final int requested,allowed;Award(int requested,int allowed){this.requested=requested;this.allowed=allowed;}}
+    private static Record record(Bundle b){return b==null?null:new Record(b.getString("raw"),b.getString("output"),b.getString("token"),b.getBoolean("generated"));}
+    private static Bundle key(String sid,long time){Bundle b=new Bundle();b.putString("sid",sid);b.putLong("time",time);return b;}
+    Record get(String account,String sid,long time){return record(request("get",key(sid,time)).getBundle("record"));}
+    void put(String account,String sid,long time,Record r){Bundle b=key(sid,time);b.putString("raw",r.raw);b.putString("output",r.output);b.putString("token",r.token);b.putBoolean("generated",r.generated);request("put",b);}
+    Award award(String account,long time){Bundle b=request("award_get",key("",time));return b.getBoolean("present",false)?new Award(b.getInt("requested"),b.getInt("allowed")):null;}
+    void award(String account,long time,int requested,int allowed){Bundle b=key("",time);b.putInt("requested",requested);b.putInt("allowed",allowed);request("award_put",b);}
+    List<SavedRecord> records(String account,long start,long end){
+        List<SavedRecord> result=new ArrayList<>();int offset=0;
+        for(;;){Bundle b=new Bundle();b.putLong("start",start);b.putLong("end",end);b.putInt("offset",offset);
+            ArrayList<Bundle> rows=request("records",b).getParcelableArrayList("rows");if(rows==null)throw new IllegalStateException("missing records");
+            for(Bundle row:rows)result.add(new SavedRecord(row.getString("sid"),row.getLong("time"),record(row)));
+            if(rows.isEmpty())return result;offset=Math.addExact(offset,rows.size());
         }
     }
-    void put(String account,String sid,long time,Record r){
-        ContentValues v=new ContentValues();v.put("account",account);v.put("sid",sid);v.put("time",time);
-        v.put("raw",r.raw);v.put("output",r.output);v.put("token",r.token);v.put("generated",r.generated?1:0);
-        if(getWritableDatabase().insertWithOnConflict("records",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)
-            throw new IllegalStateException("无法保存增步去重记录");
-    }
-    void admit(StepPlan p,long now){
-        SQLiteDatabase d=getWritableDatabase();d.beginTransaction();
-        try{
-            LocalDate today=Instant.ofEpochSecond(now).atZone(ZoneId.of(p.zone)).toLocalDate();
-            // An old configuration cannot silently schedule years of missed work.
-            LocalDate first=p.startDate.isBefore(today.minusDays(366))?today.minusDays(366):p.startDate;
-            for(LocalDate day=first;!day.isAfter(today);day=day.plusDays(1)){
-                if(!p.repeat&&!day.equals(p.startDate))continue;
-                ContentValues plan=new ContentValues();plan.put("account",p.account);plan.put("id",p.id);plan.put("day",day.toString());plan.put("spec",p.serialize());
-                if(d.insertWithOnConflict("plans",null,plan,SQLiteDatabase.CONFLICT_IGNORE)>=0)
-                    for(Map.Entry<Long,Integer> e:p.timetable(day).entrySet()){
-                        ContentValues v=new ContentValues();v.put("account",p.account);v.put("id",p.id);v.put("day",day.toString());v.put("time",e.getKey());v.put("steps",e.getValue());
-                        d.insertOrThrow("events",null,v);
-                    }
-            }
-            d.execSQL("UPDATE events SET admitted=1 WHERE account=? AND id=? AND time<=?",new Object[]{p.account,p.id,now});
-            d.setTransactionSuccessful();
-        }finally{d.endTransaction();}
-    }
+    void admit(StepPlan p,long now){Bundle b=new Bundle();b.putString("plan",p.serialize());b.putLong("now",now);request("admit",b);}
     Map<Long,Integer> admitted(String account){
-        TreeMap<Long,Integer> values=new TreeMap<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT time,SUM(steps) FROM events WHERE account=? AND admitted=1 GROUP BY time",new String[]{account})){
-            while(c.moveToNext())values.put(c.getLong(0),c.getInt(1));
-        }
-        return values;
+        Map<Long,Integer> result=new TreeMap<>();int offset=0;
+        for(;;){Bundle b=new Bundle();b.putInt("offset",offset);ArrayList<Bundle> rows=request("admitted",b).getParcelableArrayList("rows");if(rows==null)throw new IllegalStateException("missing events");
+            for(Bundle row:rows)result.put(row.getLong("time"),row.getInt("steps"));if(rows.isEmpty())return result;offset=Math.addExact(offset,rows.size());}
     }
 }

@@ -19,7 +19,7 @@ final class DiagnosticExport {
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
             .append("callbackThrows 为传播异常总数；moduleCallbackThrows 是模块处理异常，proceedChainThrows 是继续调用链传回的异常。最后回调时间不等于错误发生时间，须查看 lastErrorAt 和来源。\n")
-            .append("AI/肩键详细记录仅包含开启后的有界窗口；锁屏上滑运行日志始终纳入采集。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、自定义锁屏提示文字全文或壁纸内容。\n");
+            .append("AI/肩键详细记录仅包含开启后的有界窗口；肩键快捷切换必要状态/错误和锁屏上滑运行日志始终纳入采集。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、原始肩键数据、自定义锁屏提示文字全文或壁纸内容。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
@@ -81,6 +81,7 @@ final class DiagnosticExport {
         out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
         appendLiftArcLog(out,context);
+        appendShoulderSwitchLog(out,context);
         // Cleanup failures need process death and graphics evidence even when AI /
         // shoulder detail switches are off. Read buffers without clearing them.
         source(out,"LAUNCHER_EXIT_INFO; historical entries must be matched to reproduction time",
@@ -150,7 +151,9 @@ final class DiagnosticExport {
         for(String line:source.output.split("\\r?\\n")){
             if(moduleOnly&&!line.contains("LS_Augment"))continue;
             String u=line.toUpperCase(Locale.ROOT);if(!ai&&(u.contains("AI_STAGE")||u.contains("AI_TRIGGER")||u.contains("FEATURE_AI")))continue;
-            if(!shoulder&&(u.contains("TGK")||u.contains("SHOULDER")||u.contains("RAPID")))continue;
+            boolean necessaryShoulder=ShoulderSwitchLogPolicy.necessaryLine(line);
+            if(!shoulder&&(u.contains("TGK")||u.contains("SHOULDER")||u.contains("RAPID")||u.contains("LS_AUGMENTNATIVE"))&&!necessaryShoulder)continue;
+            if(necessaryShoulder)line=ShoulderSwitchLogPolicy.safe(line);
             if(!line.isEmpty())out.append(line).append('\n');
         }
         return new RootShell.Result(source.exitCode,out.toString(),source.timedOut,source.capture);
@@ -225,6 +228,9 @@ final class DiagnosticExport {
     /** The unified export always includes this section, even when optional detailed logs are off. */
     static void appendLiftArcLog(StringBuilder out,Context context){
         file(out,context,"LIFTARC_RUNTIME INFO/WARN/ERROR",DiagnosticStore.LIFTARC_FILE,DiagnosticStore.DETAIL_MAX_BYTES,"LIFTARC");
+    }
+    static void appendShoulderSwitchLog(StringBuilder out,Context context){
+        file(out,context,"SHOULDER_SWITCH_RUNTIME INFO/WARN/ERROR",DiagnosticStore.SHOULDER_SWITCH_FILE,DiagnosticStore.DETAIL_MAX_BYTES,ShoulderSwitchLogPolicy.FEATURE);
     }
     private static void file(StringBuilder out,Context context,String label,String name,int limit,String stat){try{
         File file=new File(context.getFilesDir(),name);out.append("\n===== SOURCE ").append(label).append(" ").append(name).append(" =====\n");

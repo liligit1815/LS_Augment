@@ -7,6 +7,7 @@ Also compiles the real emergency Java wrapper against transport/archive doubles.
 import hashlib
 import importlib.util
 from pathlib import Path
+from hide_private_test_support import private_storage_stub
 import subprocess
 import unittest
 
@@ -31,10 +32,10 @@ public class EmergencyCommandProbe {
         classes = cls.workspace / 'emergency-classes'
         subprocess.run(['javac', '--release', '17', '-encoding', 'UTF-8', '-d', str(classes),
                         str(J.JAVA / 'RootShell.java'), str(J.JAVA / 'HideRecoveryArchive.java'),
-                        str(J.JAVA / 'HideRecoveryEmergency.java'), str(probe)], check=True, timeout=30)
+                        str(J.JAVA / 'HideRecoveryEmergency.java'), str(probe), str(private_storage_stub(probe.parent))], check=True, timeout=30)
         cls.commands = {}
         for mode in ('archive', 'install', 'targets'):
-            result = subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.EmergencyCommandProbe', mode],
+            result = subprocess.run(['java', '-Dstdout.encoding=UTF-8', '-cp', str(classes), 'ls.augment.com.EmergencyCommandProbe', mode],
                                     check=True, capture_output=True, timeout=10)
             value = result.stdout.decode('utf-8')
             if value.count(J.ROOT_ASSIGNMENT) != 1:
@@ -45,8 +46,8 @@ public class EmergencyCommandProbe {
     injected = J.JournalTests.injected
 
     def run_command(self, mode, stdin=b'', env=None):
-        command = self.commands[mode].replace(J.ROOT_ASSIGNMENT, 'ROOT=' + J.quoted(J.posix(self.root)))
-        return J.bash(command, stdin=stdin, env=env or self.env)
+        return J.bash(self.commands[mode], stdin=stdin,
+                      env=dict(env or self.env, LSA_PRIVATE_ROOT=J.posix(self.root.parent)))
 
     def assert_success(self, result):
         self.assertEqual(result.returncode, 0, J.description(result))
@@ -67,12 +68,15 @@ public class EmergencyCommandProbe {
         script = (self.root / 'emergency_restore.sh').read_bytes()
         for forbidden in (b'/system/bin/pm', b'content call', b'settings delete', b'rm ', b'--user 999'):
             self.assertNotIn(forbidden, script)
-        for guidance in (b'user serial', b'reinstalling', b'uninstalling', b'Root is unavailable', b'do not prove ownership'):
+        for guidance in (b'user serial', b'uninstalling', b'Root is unavailable',
+                         b'new explicit confirmation', b'never replayed',
+                         b'Android removes private recovery history',
+                         b'clearing app data', b'${0%/*}/recovery-history-v1'):
             self.assertIn(guidance, script)
         executed = J.bash(script.decode('utf-8'))
         self.assertEqual(executed.returncode, 2, J.description(executed))
         self.assertIn(b'requires review', executed.stdout)
-        self.assertIn(b'Current recovery is read-only', executed.stdout)
+        self.assertIn(b'This script is read-only', executed.stdout)
         self.assertNotIn(b'Choose Show', executed.stdout)
         self.archive()
         self.assert_success(self.run_command('install'))
@@ -169,8 +173,8 @@ public class EmergencyWrapperProbe {
 ''', encoding='utf-8')
         classes = self.case / 'classes'
         subprocess.run(['javac', '--release', '17', '-encoding', 'UTF-8', '-d', str(classes), str(source),
-                        str(J.JAVA / 'HideRecoveryEmergency.java')], check=True, timeout=30)
-        result = subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.EmergencyWrapperProbe'], capture_output=True, timeout=10)
+                        str(J.JAVA / 'HideRecoveryEmergency.java'), str(private_storage_stub(source.parent))], check=True, timeout=30)
+        result = subprocess.run(['java', '-Dstdout.encoding=UTF-8', '-cp', str(classes), 'ls.augment.com.EmergencyWrapperProbe'], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, J.description(result))
 
 

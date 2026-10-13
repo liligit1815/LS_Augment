@@ -46,6 +46,7 @@ final class ShoulderQuickSwitchHook {
     private static volatile long lastError;
 
     static int install(AugmentModule module, ClassLoader loader) {
+        ShoulderQuickSwitchRuntime.install(module, loader);
         int installed = 0;
         try {
             Class<?> service = Class.forName(SERVICE, false, loader);
@@ -67,17 +68,21 @@ final class ShoulderQuickSwitchHook {
                     if (view == null || !Boolean.TRUE.equals(TargetReflection.call(view,"getIsNormal"))) return chain.proceed();
                     Catalog catalog = catalog(TargetReflection.field(owner,"mTgkGameInfo"));
                     List<CaseRef> selected = candidates(owner).visible(catalog.refs());
-                    CaseRef target = ShoulderQuickSwitchPolicy.directTarget(selected,catalog.current());
+                    CaseRef target = ShoulderQuickSwitchPolicy.directTarget(selected,
+                            ShoulderQuickSwitchRuntime.logicalCurrent(owner,catalog.current()));
                     if (target == null) return chain.proceed();
-                    apply(owner,catalog,target);
+                    ShoulderQuickSwitchRuntime.request(owner,target,"direct");
                     TargetReflection.call(owner,"hideTgkCaseListPopView");
                     TargetReflection.call(view,"setTgkCaseStates",false);
                     Handler handler = (Handler) TargetReflection.field(owner,"mHandler");
                     handler.removeMessages(6);
                     TargetReflection.call(owner,"sendMsgDelayed",6,null,5000);
-                    hit(owner,"direct|candidates=" + selected.size());
                     return null;
-                } catch (Throwable error) { failure(module,owner,"direct",error); return chain.proceed(); }
+                } catch (Throwable error) {
+                    failure(module,owner,"direct",error);
+                    Toast.makeText(context(owner),"方案未切换，请重新打开肩键面板",Toast.LENGTH_SHORT).show();
+                    return null;
+                }
             }));
             installed++;
             Method setListener = method(adapter,"setListener",listener);
@@ -116,9 +121,7 @@ final class ShoulderQuickSwitchHook {
                     int position = (Integer) chain.getArg(1);
                     try {
                         if (position < 0 || position >= popup.visible.size()) return null;
-                        Catalog live = catalog(TargetReflection.field(owner,"mTgkGameInfo"));
-                        apply(owner,live,popup.visible.get(position));
-                        hit(owner,"menu|candidates=" + popup.visible.size());
+                        ShoulderQuickSwitchRuntime.request(owner,popup.visible.get(position),"menu");
                     } catch (Throwable error) {
                         failure(module,owner,"menu_apply",error);
                         Toast.makeText(context(owner),"方案未切换，请重新打开肩键面板",Toast.LENGTH_SHORT).show();
@@ -216,36 +219,6 @@ final class ShoulderQuickSwitchHook {
         current.box.setOnCheckedChangeListener(current.listener);
     }
 
-    private static void apply(Object service,Catalog catalog,CaseRef target)throws Throwable {
-        CaseRef current=catalog.current();
-        if(target.equals(current))return;
-        Entry next=catalog.find(target), previous=catalog.find(current);
-        if(next==null||previous==null)throw new IllegalStateException("case no longer exists");
-        Object listener=TargetReflection.field(service,"tgkCaseListViewAdapterListener");
-        Object info=TargetReflection.field(service,"mTgkGameInfo");
-        int oldState=((Number)TargetReflection.field(previous.data,"state")).intValue();
-        int newState=((Number)TargetReflection.field(next.data,"state")).intValue();
-        try{
-            set(previous.data,"state",oldState&~1);set(next.data,"state",newState|1);
-            TargetReflection.call(listener,"onChanged",next.ref.tableId,next.index);
-        }catch(Throwable error){
-            set(previous.data,"state",oldState);set(next.data,"state",newState);
-            set(info,"selectedTableId",previous.ref.tableId);set(info,"selectedCasePosition",previous.index);
-            try{TargetReflection.call(listener,"onChanged",previous.ref.tableId,previous.index);}catch(Throwable ignored){}
-            throw error;
-        }
-        // The OEM async writer stores object references. Snapshot the cases to prevent rapid taps
-        // from changing a pending write's selected bit before the serial AsyncTask executes it.
-        TargetReflection.call(listener,"onTgkDataChanged",previous.ref.tableId,copy(previous.data));
-        TargetReflection.call(listener,"onTgkDataChanged",next.ref.tableId,copy(next.data));
-    }
-    private static Object copy(Object data)throws ReflectiveOperationException {
-        Object result=data.getClass().getDeclaredConstructor().newInstance();
-        for(Field f:data.getClass().getDeclaredFields())if(!java.lang.reflect.Modifier.isStatic(f.getModifiers())){
-            f.setAccessible(true);f.set(result,f.get(data));
-        }
-        return result;
-    }
     private static Catalog catalog(Object info)throws ReflectiveOperationException {
         if(info==null)throw new IllegalStateException("no game case model");
         List<Entry> entries=new ArrayList<>();
@@ -269,19 +242,17 @@ final class ShoulderQuickSwitchHook {
         return result==null?ShoulderQuickSwitchPolicy.empty():result;
     }
     private static Context context(Object owner){return FeatureSettings.from(owner);}
-    private static boolean enabled(Object owner){return owner!=null&&FeatureSettings.enabled(context(owner),GameOptions.QUICK_SWITCH,false);}
+    private static boolean enabled(Object owner){return owner!=null
+            &&FeatureSettings.enabled(context(owner),FeatureSettings.GAME_MASTER)
+            &&FeatureSettings.enabled(context(owner),GameOptions.QUICK_SWITCH,false);}
     private static Method method(Class<?> owner,String name,Class<?>...args)throws ReflectiveOperationException{
         Method result=owner.getDeclaredMethod(name,args);result.setAccessible(true);return result;
-    }
-    private static void set(Object owner,String name,Object value)throws ReflectiveOperationException{
-        Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);
-    }
-    private static void hit(Object owner,String detail){
-        FeatureSettings.diagnostic(context(owner),"ls_augment_shoulder_quick_last_hit",detail+"|"+System.currentTimeMillis());
     }
     private static void failure(AugmentModule module,Object owner,String step,Throwable error){
         long now=System.currentTimeMillis();if(now-lastError<5000)return;lastError=now;
         module.logFeatureError("SHOULDER_QUICK_"+step,error);
+        HookTelemetry.shoulderSwitch("ERROR","stage=QUICK_FAILED route="+step
+                +" errorClass="+error.getClass().getSimpleName());
         FeatureSettings.diagnostic(context(owner),"ls_augment_shoulder_quick_error",step+"|"+error.getClass().getSimpleName());
     }
     private static final class Entry{

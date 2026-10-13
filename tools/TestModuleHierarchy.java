@@ -8,7 +8,7 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,13,24,11,8,5,3,18,4,16,15,11,4};
+        int[] counts={84,14,24,11,8,5,3,18,4,16,15,11,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
         require(HookAppCatalog.targets().size()==18,"Runtime targets remain independent of the 13 display categories");
@@ -17,7 +17,7 @@ public final class TestModuleHierarchy {
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==216,"Presentation includes 216 capabilities in 13 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==217,"Presentation includes 217 capabilities in 13 ordered categories");
         require(ModulePresentationCatalog.find("statusbar")==null&&ModulePresentationCatalog.find("themes")==null,"Empty old categories are absent from Home");
         require("主题与锁屏".equals(ModulePresentationCatalog.find("lockscreen").title),"Theme and lock screen use the requested shared title");
         require("systemui".equals(ModulePresentationCatalog.find("notifications").restartScope),"Merged notification directory retains the former status-bar restart shortcut and default");
@@ -71,6 +71,9 @@ public final class TestModuleHierarchy {
         owner("ls_augment_rm_usb_mode_enabled","group/connectivity/usb_connection");owner("ls_augment_rm_notification_quiet_unlocked","group/notifications/notification_alerts");
         owner("ls_augment_rm_qs_volume_percent","group/audio/volume_panel");owner(BrightnessRange.ENABLED,"group/system_settings/display");
         owner("ls_augment_rm_third_party_launcher","group/desktop/default_launcher");owner("ls_augment_rm_third_party_recents_no_scrim","group/desktop/default_launcher");owner("ls_augment_rm_weather_time_period","group/desktop/desktop_clock");
+        owner(RecentsCardRadiusOptions.ENABLED,"group/desktop/recents");owner(RecentsCardRadiusOptions.OFFSET,"group/desktop/recents");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.OFFSET.equals(key)?"-24":"0")==0,"Stored radius parameters remain inactive while the switch is off");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.ENABLED.equals(key)?"1":"0")==1,"Recent-task radius is one separately counted feature");
         require(ModuleHierarchy.path("group/connectivity/usb_mtp").equals(Arrays.asList("home","target-connectivity","group/connectivity/usb","group/connectivity/usb_mtp")),"MTP lives under the shared USB directory");
         require(new HashSet<>(ModuleHierarchy.restartScopes(ModuleHierarchy.group("group/connectivity/usb_debug"))).equals(new HashSet<>(Arrays.asList("systemui","settings"))),"USB debug retains both actual affected processes");
         require("device".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/connectivity/usb_debug"))),"Mixed USB scope never advertises an app-only restart");
@@ -102,6 +105,6 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==3,"Shoulder count includes two embedded controls and one generic control");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 216 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 217 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

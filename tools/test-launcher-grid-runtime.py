@@ -10,9 +10,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 sources = {
+'ls/augment/com/hook/LauncherOwnedStateClient.java':'package ls.augment.com.hook;import android.content.*;class LauncherOwnedStateClient {static boolean unavailable;static SharedPreferences preferences(Context c,String kind){if(unavailable)throw new IllegalStateException("provider unavailable");return c.prefs;}}',
 'android/content/SharedPreferences.java': r'''
 package android.content;import java.util.*;
-public class SharedPreferences {public final Map<String,Object> values=new HashMap<>();public boolean writable=true;
+public class SharedPreferences {public final Map<String,Object> values=new HashMap<>();public boolean writable=true;public Map<String,?> getAll(){return new HashMap<>(values);}
  public int getInt(String k,int d){return ((Number)values.getOrDefault(k,d)).intValue();}public boolean getBoolean(String k,boolean d){return (Boolean)values.getOrDefault(k,d);}
  public Editor edit(){return new Editor();}public class Editor{Map<String,Object> changes=new HashMap<>();Set<String> removes=new HashSet<>();boolean cleared;
  public Editor putInt(String k,int v){changes.put(k,v);return this;}public Editor putBoolean(String k,boolean v){changes.put(k,v);return this;}
@@ -155,6 +156,11 @@ public class TestLauncherGridRuntime {
   m=fresh();desktop=new b0();idp=new F1();set(m,desktop,idp,other,6,4);check(!desktop.d,"unchanged grid does not repeatedly reflow dormant overlaps");
   request(false,6,6);m=fresh();desktop=new b0();idp=new F1();set(m,desktop,idp,other,6,4);visible=new y(0,0,1,1);visible.id=54;m.call(desktop,controller().t.placeItem,other,idp,visible,new t0());m.call(desktop,controller().t.repack,idp,new z1.y0(),other,false);bound(m,6,4);check(!controller().owns&&!other.prefs.getBoolean("owned",false),"dormant row retained while native restoration completes");
   other=new Context();request(true,6,4);m=fresh();desktop=new b0();idp=new F1();set(m,desktop,idp,other,6,4);check(!desktop.d,"same native shape needs no migration");request(false,6,4);m=fresh();desktop=new b0();idp=new F1();set(m,desktop,idp,other,6,4);bound(m,6,4);check(!controller().owns&&!other.prefs.getBoolean("owned",false),"same-shape disable relinquishes without fabricating a migration snapshot");
+  other=new Context();LauncherOwnedStateClient.unavailable=true;request(true,3,3);SQLiteDatabase.data=new long[][]{{77,-100,8,9,2,2,0}};
+  m=fresh();desktop=new b0();idp=new F1();set(m,desktop,idp,other,6,4);
+  check(controller().storageUnavailable&&idp.G0==11&&idp.H0==10,"private provider failure preserves actual occupied bounds");
+  check(!desktop.d&&other.prefs.values.isEmpty(),"provider failure cannot start migration or fabricate ownership");
+  LauncherOwnedStateClient.unavailable=false;
   System.out.println("LauncherGrid production runtime: "+checks+" assertions PASS");
  }
 }

@@ -54,6 +54,8 @@ public class TestGridFrameCache {
  static class MFVBatteryViewLayout extends ViewGroup {public int mBateryLevel=80,mShowMode;public boolean mIsCharing,mTextHollowEffectAvailable;}
  static class SystemUiAdapter {static Object field(Object owner,String name){try{return owner.getClass().getField(name).get(owner);}catch(Exception ignored){return null;}}}
  static class ConnectivityIconView extends View{}
+ // Tint replay itself is covered by the lifecycle and Android tint suites.
+ static class StatusBarTintHook {static int dirtyRefreshes;static View lastRoot;static void refreshDirty(View root){dirtyRefreshes++;lastRoot=root;}}
  // CLIPPING
  // WITNESS
  // VISIBLE
@@ -131,7 +133,21 @@ public class TestGridFrameCache {
   mixed.active=false;mixed.restorePlacedClips();
   check(mixed.root.getClipChildren()&&!mixed.root.getClipToPadding()&&!mixedArea.getClipChildren()&&mixedArea.getClipToPadding(),"restore retains each ancestor's independent original clipping flags");
  }
+ static void paletteOnlyFrames(){
+  State state=new State();int before=StatusBarTintHook.dirtyRefreshes;
+  state.beforeDraw();check(StatusBarTintHook.dirtyRefreshes==before,"initial geometry pass does not use palette-only refresh");
+  for(int i=0;i<1200;i++)state.beforeDraw();
+  check(StatusBarTintHook.dirtyRefreshes==before+1200&&StatusBarTintHook.lastRoot==state.root,"stable frames check palette dirtiness for their actual root");
+  check(state.layouts==1&&state.capacityChecks==1,"palette checks preserve cached geometry and native capacity");
+  before=StatusBarTintHook.dirtyRefreshes;state.layoutDirty=true;state.beforeDraw();
+  check(state.layouts==2&&StatusBarTintHook.dirtyRefreshes==before,"dirty geometry takes the layout path instead of palette-only refresh");
+  state.root.alpha=0;state.beforeDraw();state.root.alpha=1;state.active=false;state.beforeDraw();
+  check(StatusBarTintHook.dirtyRefreshes==before,"invisible or inactive roots skip palette-only refresh");
+  state.active=true;state.beforeDraw();state.packingSuspended=true;state.beforeDraw();
+  check(StatusBarTintHook.dirtyRefreshes==before,"reenabling and suspended packing cannot reuse the stable palette path");
+ }
  public static void main(String[] args){
+  paletteOnlyFrames();
   State state=new State();ViewGroup area=new ViewGroup();TextView clock=new TextView();ImageView signal=new ImageView();MFVBatteryViewLayout battery=new MFVBatteryViewLayout();
   state.root.add(area);area.add(clock);area.add(signal);area.add(battery);state.alphaAnchor=battery;state.overlay=new ViewGroup();state.connectivityIcon=new ConnectivityIconView();state.root.add(state.overlay);state.root.add(state.connectivityIcon);
   ImageView lightsOut=new ImageView();lightsOut.visibility=View.GONE;lightsOut.requested=true;state.root.add(lightsOut);

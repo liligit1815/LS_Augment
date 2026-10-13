@@ -3,6 +3,7 @@
 No device, PackageManager command, real Root process, or real deletion is used.
 """
 from pathlib import Path
+from hide_private_test_support import PRIVATE_STORAGE_STUB
 import subprocess
 import tempfile
 import os
@@ -10,6 +11,7 @@ import os
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 STUBS = {
+    'ls/augment/com/HidePrivateStorage.java': PRIVATE_STORAGE_STUB,
     'android/content/Context.java': '''package android.content;
 public class Context { public Context getApplicationContext(){return this;} }''',
     'ls/augment/com/OfflineTypes.java': r'''
@@ -134,7 +136,8 @@ public class TestHideTotalReset {
   test("cleanup failure is not full success",a->{var c=new HideResetController(a);var r=c.restoreRecorded(null);check(r.success,"setup");a.clearFails=true;check(!c.clearVerified(r).success,"unconfirmed cleanup accepted");});
   String cleanup=HideResetStorage.command(STAMP);check(!cleanup.contains("pm enable")&&!cleanup.contains("install-existing"),"overbroad package reset");
   check(cleanup.contains("[ \"$HASH\" = \"$EXPECTED\" ] || fail records_changed"),"missing exact-byte cleanup gate");
-  check(cleanup.contains("/data/adb/ls_augment/v2/*"),"missing fixed root allowlist");
+  check(cleanup.contains("ROOT=\"${LSA_PRIVATE_ROOT:?}/v2\"")&&cleanup.contains("case \"$path\" in \"$ROOT/\"*)"),"missing private root allowlist");
+  check(cleanup.contains("OWNER=\"$(id -u):$(id -g)\"")&&!cleanup.contains("/data/adb"),"storage must use its current app UID/GID");
   if(args.length==1)try{java.nio.file.Files.writeString(java.nio.file.Path.of(args[0]),cleanup);}catch(Exception e){throw new RuntimeException(e);}
   System.out.println("TOTAL HIDE RESET RESULT "+tests+" cases, "+checks+" assertions passed");
  }
@@ -165,16 +168,16 @@ def main():
 def shell_fixture(folder, production):
     """Execute the real allowlist/stamp/delete shell in a fresh temporary directory.
 
-    Root ownership, flock and fsync are doubles; real file reads, inventory, hashes,
+    Host mode reporting, flock and fsync are doubles; ownership uses the executing UID/GID; real file reads, inventory, hashes,
     source-change rejection, path allowlisting, and deletion operate only on fixtures.
     """
     shell = Path('C:/Program Files/Git/bin/bash.exe') if os.name == 'nt' else Path('/bin/bash')
     if not shell.exists():
         raise RuntimeError('A local shell is required for the isolated storage fixture')
-    sandbox = (folder / 'root-storage').resolve()
+    sandbox = (folder / 'app-private-storage').resolve()
     assert sandbox.parent == folder.resolve(), 'Fixture target escaped temporary directory'
     sandbox.mkdir()
-    root = sandbox / 'ls_augment/v2'
+    root = sandbox / 'v2'
     root.mkdir(parents=True)
     targets = root / 'manual-targets-v1'
     targets.mkdir()
@@ -186,31 +189,40 @@ def shell_fixture(folder, production):
     unrelated = root / 'runtime.properties'
     unrelated.write_text('must remain\n', encoding='ascii')
     shim = r'''
-id() { if [ "$1" = -u ]; then printf '0\n'; else command id "$@"; fi; }
 stat() {
   if [ "$1" = -c ] && [ "$2" = '%u:%g:%a' ]; then
-    if [ -d "$3" ]; then printf '0:0:700\n'; else printf '0:0:600\n'; fi
+    owner="$(command id -u):$(command id -g)"
+    [ -z "${LSA_TEST_WRONG_OWNER:-}" ] || owner='-1:-1'
+    if [ -d "$3" ]; then printf '%s:700\n' "$owner"; else printf '%s:600\n' "$owner"; fi
   else command stat "$@"; fi
 }
 flock() { return 0; }
 fsync() { return 0; }
 '''
-    # Both checked absolute roots and the deletion-case guard are replaced together.
-    # No source-derived path or selected system package is substituted here.
+    # Execute the unchanged production boundary and allowlist under a temporary app root.
     posix_sandbox = sandbox.as_posix()
     if os.name == 'nt':
         posix_sandbox = '/' + posix_sandbox[0].lower() + posix_sandbox[2:]
-    rewritten = shim + production.replace('/data/adb', posix_sandbox)
+    assert '/data/adb' not in production
+    rewritten = shim + production
+    environment = dict(os.environ, LSA_PRIVATE_ROOT=posix_sandbox)
     marker = "EXPECTED='" + 'd' * 64 + "'"
 
-    def run(expected):
+    def run(expected, **changes):
         assert marker in rewritten
         script = folder / 'fixture-storage.sh'
         script.write_text(rewritten.replace(marker, "EXPECTED='" + expected + "'"), encoding='utf-8', newline='\n')
         syntax = subprocess.run([str(shell), '-n', str(script)], capture_output=True, text=True, timeout=15)
         assert syntax.returncode == 0, syntax.stderr
-        return subprocess.run([str(shell), str(script)], capture_output=True, text=True, timeout=15)
+        return subprocess.run([str(shell), str(script)], capture_output=True, text=True, timeout=15,
+                              env=dict(environment, **changes))
 
+    wrong_owner = run('', LSA_TEST_WRONG_OWNER='1')
+    assert wrong_owner.returncode != 0 and 'app_directory_permissions' in wrong_owner.stderr
+    assert (targets / 'document').exists() and (journal / 'fixture.record').exists()
+    missing_root = run('', LSA_PRIVATE_ROOT='')
+    assert missing_root.returncode != 0
+    assert (targets / 'document').exists() and (journal / 'fixture.record').exists()
     first = run('')
     assert first.returncode == 0, first.stderr
     stamp = first.stdout.strip()

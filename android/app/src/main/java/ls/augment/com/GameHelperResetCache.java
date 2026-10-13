@@ -17,6 +17,13 @@ final class GameHelperResetCache {
         Context appContext = context.getApplicationContext();
         if (new AppConfig(appContext).getBoolean(AppConfig.COMBO_SPEED_ENABLED))
             return failure("连招速度尚未关闭，未清理游戏助手缓存");
+        if (!ComboMotionPrivateCache.clear(appContext)) return failure("模块私有连招缓存未能清理");
+        return retireLegacy(appContext);
+    }
+
+    /** Upgrade retirement leaves the user configuration untouched and stops only an old writer. */
+    static Result retireLegacy(Context context) {
+        Context appContext = context.getApplicationContext();
         int user = android.os.Process.myUid() / 100000;
         HideUserIdentity.Snapshot identity = HideUserIdentity.read(appContext, user);
         if (!identity.success) return failure("游戏助手用户身份未确认");

@@ -63,6 +63,11 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/GamePerformanceMonitorConfig.java" \
   "$ROOT/tools/TestGamePerformanceMonitorConfig.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusRange.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusUiRange.java" \
+  "$ROOT/tools/TestRecentsCardRadiusRange.java" \
+  "$ROOT/tools/TestRecentsCardRadiusUiRange.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherGridSpec.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherGridSafety.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherGridMigrationCheck.java" \
@@ -153,8 +158,6 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestLauncherPageOrder.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarNetworkDisplay.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ConfigSnapshot.java" \
-  "$ROOT/android/app/src/main/java/ls/augment/com/BootConfigMirror.java" \
-  "$ROOT/tools/TestBootConfigMirror.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HookTargetRegistry.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/UserResolution.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RapidFireInputDetector.java" \
@@ -173,6 +176,8 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HideBatchExecutor.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HidePackageSnapshot.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RootShell.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/HidePrivateStorage.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/HideLegacyStorageMigration.java" \
   "$ROOT/tools/TestHideBatchExecutor.java" \
   "$ROOT/tools/TestHidePackageSnapshot.java" \
   "$ROOT/tools/TestRootShellTransport.java" \
@@ -241,7 +246,6 @@ java -cp "$TMP" ls.augment.com.TestHidePackageSnapshot
 java -cp "$TMP" ls.augment.com.TestRootShellTransport
 java -cp "$TMP" ls.augment.com.TestConfigSnapshot
 java -cp "$TMP" ls.augment.com.TestSmsVerificationCode
-java -cp "$TMP" ls.augment.com.TestBootConfigMirror
 java -cp "$TMP" ls.augment.com.TestHookTargetRegistry \
   "$ROOT/android/app/src/main/resources/META-INF/xposed/scope.list"
 java -cp "$TMP" ls.augment.com.TestUserResolution
@@ -275,6 +279,8 @@ java -cp "$TMP" ls.augment.com.TestLauncherGridBackup "$ROOT"
 java -cp "$TMP" TestLauncherMemoryPresentation
 java -cp "$TMP" ls.augment.com.hook.TestLauncherPageOrder
 java -cp "$TMP" ls.augment.com.TestEnhancementCatalog
+java -cp "$TMP" ls.augment.com.TestRecentsCardRadiusRange
+java -cp "$TMP" ls.augment.com.TestRecentsCardRadiusUiRange
 java -cp "$TMP" ls.augment.com.TestOtaPackageLabel
 java -cp "$TMP" ls.augment.com.TestHookAppCatalog
 java -cp "$TMP" ls.augment.com.TestModuleEnvironment
@@ -294,6 +300,8 @@ java -cp "$TMP" ls.augment.com.hook.TestNotificationWeatherText
 # Durable finite Root transaction client. Explicit I/O/engine models; never launches su.
 javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RootShell.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/HidePrivateStorage.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/HideLegacyStorageMigration.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HideTargetCodec.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HideRecoveryJournal.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HideRootProtocol.java" \
@@ -344,6 +352,7 @@ python "$ROOT/tools/test-power-menu-lifecycle.py"
 python "$ROOT/tools/test-power-mode-control.py"
 python "$ROOT/tools/test-entry-visibility-runtime.py"
 python "$ROOT/tools/test-collab-runtime.py"
+python "$ROOT/tools/test-collab-charging-runtime.py"
 python "$ROOT/tools/test-modern-fingerprint-runtime.py"
 python "$ROOT/tools/test-compact-signal-painter.py"
 python "$ROOT/tools/test-dual-signal-badges.py"
@@ -376,3 +385,29 @@ java -cp "$TMP" ls.augment.com.TestBluetoothFreeformConfig
 java -cp "$TMP" ls.augment.com.TestGamePerformanceMonitorConfig
 java -cp "$TMP" ls.augment.com.TestBrightnessRange
 java -cp "$TMP" ls.augment.com.TestHealthAccountState
+python "$ROOT/tools/test-recents-card-radius-runtime.py"
+python "$ROOT/tools/test-recents-card-radius-publisher.py"
+python "$ROOT/tools/test-recents-radius-store.py"
+python "$ROOT/tools/test-recents-radius-loading-ui.py"
+python "$ROOT/tools/test-screen-timeout-runtime.py"
+python "$ROOT/tools/test-settings-private-storage.py"
+python "$ROOT/tools/test-module-system-settings.py"
+python "$ROOT/tools/test-extra-dim-runtime.py"
+python "$ROOT/tools/test-extra-dim-private-client.py"
+python "$ROOT/tools/test-gfrc-recovery-store.py"
+python "$ROOT/tools/test-super-resolution-runtime.py"
+python "$ROOT/tools/test-reset-storage-offline.py"
+python "$ROOT/tools/test-module-external-reset-shell.py"
+python "$ROOT/tools/test-feature-settings-async.py"
+python "$ROOT/tools/test-launcher-owned-state.py"
+python "$ROOT/tools/test-hide-private-migration.py"
+python "$ROOT/tools/test-combo-private-storage.py"
+python "$ROOT/tools/test-hook-storage-boundaries.py"
+python "$ROOT/tools/test-health-private-ledger.py"
+python "$ROOT/tools/test-health-runtime-gate.py"
+python "$ROOT/tools/test-health-reset-cleanup.py"
+python "$ROOT/tools/test-retired-boot-cache.py"
+python "$ROOT/tools/test-legacy-root-storage-migration.py"
+python "$ROOT/tools/test-health-ledger-migration-shell.py"
+python "$ROOT/tools/test-hide-private-stores.py"
+python "$ROOT/tools/test-rapid-private-capture.py"

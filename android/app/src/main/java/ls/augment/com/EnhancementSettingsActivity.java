@@ -47,6 +47,16 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private View queryAnchor;private Bundle editorStates;
     private ArrayAdapter<String> memoryContentAdapter;
     private View memoryColorsRow;
+    private SeekBar recentsRadiusSlider;
+    private TextView recentsRadiusValue,recentsRadiusStatus;
+    private RecentsCardRadiusUiRange recentsRadiusRange;
+    private int recentsRadiusRequest;
+    private boolean recentsRadiusActive,recentsRadiusLoading,recentsRadiusTracking,recentsRadiusUpdatePending;
+    private RecentsCardRadiusUiRange recentsRadiusPendingRange;
+    private SharedPreferences recentsRadiusPreferences;
+    private final SharedPreferences.OnSharedPreferenceChangeListener recentsRadiusListener=(prefs,key)->{
+        if(recentsRadiusActive&&(key==null||RecentsCardRadiusStore.KEY.equals(key)))loadRecentsRadiusRange();
+    };
     private TextView launcherGridRuntime;
     private LinearLayout updateLinksContent;
     private SharedPreferences updateLinksPreferences;
@@ -111,6 +121,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         worker.execute(()->main.post(this::showSaveFailure));
     }
     private void render(int previousY){
+        stopRecentsRadiusRange();recentsRadiusSlider=null;recentsRadiusValue=null;recentsRadiusStatus=null;
+        recentsRadiusRange=null;recentsRadiusLoading=true;
         if(liftArcEditor!=null){liftArcEditor.onDestroy();liftArcEditor=null;}
         String route=ModuleNavigation.route(this);
         ModulePresentationCatalog.Category target=ModulePresentationCatalog.find(targetId);
@@ -486,9 +498,45 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private View input(EnhancementOption option){return input(option,false);}
     private View input(EnhancementOption option,boolean parentOwnsTitle){
         LinearLayout row=ui.parameterInputGroup();
-        if(!parentOwnsTitle)row.addView(ui.featureTitle(option.title,FeatureHelp.forOption(option)),ui.wrap());
+        if(!parentOwnsTitle||RecentsCardRadiusOptions.OFFSET.equals(option.key)){
+            LinearLayout title=ui.featureTitle(option.title,FeatureHelp.forOption(option));
+            if(RecentsCardRadiusOptions.OFFSET.equals(option.key)){
+                for(int i=0;i<title.getChildCount();i++)if(title.getChildAt(i) instanceof TextView){
+                    recentsRadiusValue=(TextView)title.getChildAt(i);recentsRadiusValue.setTag("value:"+option.key);break;
+                }
+            }
+            row.addView(title,ui.wrap());
+        }
         if(CollabOptions.THEME_VARIANT.equals(option.key))return themeChoice(row,option);
-        if(option.kind==EnhancementOption.Kind.CHOICE){
+        if(RecentsCardRadiusOptions.OFFSET.equals(option.key)){
+            SeekBar slider=new SeekBar(this);
+            // No guessed endpoints: the launcher supplies an authenticated resting-card range.
+            slider.setMin(0);slider.setMax(0);slider.setEnabled(false);recentsRadiusSlider=slider;
+            slider.setKeyProgressIncrement(1);slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));
+            slider.setContentDescription(option.title);slider.setTag("config:"+option.key);
+            slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));
+            slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
+            recentsRadiusStatus=ui.text("",12,ui.muted,false);recentsRadiusStatus.setVisibility(View.GONE);
+            recentsRadiusStatus.setTag("recents-radius-status");
+            row.addView(recentsRadiusStatus,ui.wrap());row.addView(slider,ui.wrap());
+            slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+                public void onStartTrackingTouch(SeekBar bar){recentsRadiusTracking=true;}
+                public void onStopTrackingTouch(SeekBar bar){
+                    if(recentsRadiusRange!=null&&bar.isEnabled())change(option.key,String.valueOf(bar.getProgress()),bar);
+                    recentsRadiusTracking=false;
+                    if(recentsRadiusUpdatePending){
+                        RecentsCardRadiusUiRange next=recentsRadiusPendingRange;
+                        recentsRadiusUpdatePending=false;recentsRadiusPendingRange=null;applyRecentsRadiusRange(next);
+                    }
+                    renderRecentsRadiusValue();flush();
+                }
+                public void onProgressChanged(SeekBar bar,int progress,boolean user){
+                    if(user&&recentsRadiusRange!=null&&bar.isEnabled())change(option.key,String.valueOf(progress),bar);
+                    renderRecentsRadiusValue();
+                }
+            });
+            renderRecentsRadiusValue();controls.put(option.key,slider);
+        }else if(option.kind==EnhancementOption.Kind.CHOICE){
             Spinner choice=ui.choiceSpinner("选择选项","ls_augment_rm_recents_memory_content".equals(option.key)?this::memoryExampleText:null);choice.setContentDescription(option.title);if("ls_augment_rm_recents_memory_content".equals(option.key)){
                 memoryContentAdapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,option.choices){
                     @Override public View getView(int position,View recycled,ViewGroup parent){return memoryContentExample(option,position,false);}
@@ -559,8 +607,64 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         return row;
     }
     private static Set<String> tokens(String value){Set<String> result=new LinkedHashSet<>();for(String token:value.split(","))if(!token.trim().isEmpty())result.add(token.trim());return result;}
+    private static String signedRadius(int value){return (value>0?"+":"")+value+" dp";}
+    private void renderRecentsRadiusValue(){
+        if(recentsRadiusSlider==null||recentsRadiusValue==null)return;
+        int saved=Integer.parseInt(value(RecentsCardRadiusOptions.OFFSET));
+        String text=signedRadius(saved)+(saved==0?"（原厂）":""),status="";
+        if(recentsRadiusRange!=null){
+            int actual=recentsRadiusRange.clamp(saved);
+            if(actual!=saved)status="实际为"+(saved<actual?"直角 ":"最圆 ")+signedRadius(actual)+"；调节后保存";
+        }else if(!recentsRadiusLoading)status="请先进入一次最近任务，读取卡片圆角范围";
+        recentsRadiusValue.setText("圆角偏移 "+signedRadius(saved));
+        recentsRadiusStatus.setText(status);recentsRadiusStatus.setVisibility(status.isEmpty()?View.GONE:View.VISIBLE);
+        recentsRadiusSlider.setStateDescription(text+(status.isEmpty()?"":"，"+status));
+    }
+    private void startRecentsRadiusRange(){
+        if(recentsRadiusSlider==null)return;
+        stopRecentsRadiusRange();recentsRadiusActive=true;recentsRadiusLoading=recentsRadiusRange==null;
+        recentsRadiusPreferences=getSharedPreferences(RecentsCardRadiusStore.PREFS,MODE_PRIVATE);
+        recentsRadiusPreferences.registerOnSharedPreferenceChangeListener(recentsRadiusListener);
+        renderRecentsRadiusValue();
+        loadRecentsRadiusRange();
+    }
+    private void stopRecentsRadiusRange(){
+        recentsRadiusActive=false;recentsRadiusRequest++;recentsRadiusTracking=false;
+        recentsRadiusUpdatePending=false;recentsRadiusPendingRange=null;
+        if(recentsRadiusPreferences!=null){
+            recentsRadiusPreferences.unregisterOnSharedPreferenceChangeListener(recentsRadiusListener);
+            recentsRadiusPreferences=null;
+        }
+    }
+    private void applyRecentsRadiusRange(RecentsCardRadiusUiRange range){
+        recentsRadiusLoading=false;
+        if(recentsRadiusTracking){recentsRadiusPendingRange=range;recentsRadiusUpdatePending=true;return;}
+        recentsRadiusRange=range;
+        if(range!=null){
+            recentsRadiusSlider.setMin(range.minOffsetDp);recentsRadiusSlider.setMax(range.maxOffsetDp);
+            recentsRadiusSlider.setKeyProgressIncrement(1);
+            recentsRadiusSlider.setProgress(range.clamp(Integer.parseInt(value(RecentsCardRadiusOptions.OFFSET))));
+        }
+        recentsRadiusSlider.setEnabled(range!=null);renderRecentsRadiusValue();
+    }
+    private void loadRecentsRadiusRange(){
+        if(!recentsRadiusActive||recentsRadiusSlider==null||worker.isShutdown())return;
+        int request=++recentsRadiusRequest;
+        android.util.DisplayMetrics real=new android.util.DisplayMetrics();
+        Display display=getDisplay();if(display==null){applyRecentsRadiusRange(null);return;}display.getRealMetrics(real);
+        int width=real.widthPixels,height=real.heightPixels,density=getResources().getDisplayMetrics().densityDpi;
+        worker.execute(()->{
+            // App-private calibration only. No live launcher query, diagnostic TTL or polling.
+            RecentsCardRadiusUiRange received=RecentsCardRadiusStore.load(getApplicationContext(),density,width,height);
+            main.post(()->{
+                if(!recentsRadiusActive||request!=recentsRadiusRequest||isDestroyed()||isFinishing())return;
+                applyRecentsRadiusRange(received);
+            });
+        });
+    }
     private void refreshInput(String key,String next){
         View view=controls.get(key);if(view instanceof EditText){EditText field=(EditText)view;if(!next.contentEquals(field.getText()))field.setText(next);}
+        else if(view instanceof SeekBar){int number=Integer.parseInt(next);((SeekBar)view).setProgress(RecentsCardRadiusOptions.OFFSET.equals(key)&&recentsRadiusRange!=null?recentsRadiusRange.clamp(number):number);if(RecentsCardRadiusOptions.OFFSET.equals(key))renderRecentsRadiusValue();}
         else if(view instanceof Spinner){
             Spinner spinner=(Spinner)view;int selected=Integer.parseInt(next);
             if(spinner.getTag() instanceof int[]){int[] variants=(int[])spinner.getTag();int position=0;for(int i=0;i<variants.length;i++)if(variants[i]==selected)position=i;spinner.setSelection(position);}
@@ -739,8 +843,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
-    @Override protected void onPause(){if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
         // A pending picker can return to the recreated page; an old Activity import is not resumed.
         state.putLong("aodFontGeneration",aodFontGeneration);state.putLong("aodFontPickerGeneration",aodFontPickerGeneration);
@@ -749,7 +853,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

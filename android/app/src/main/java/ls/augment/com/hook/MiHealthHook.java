@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.Context;
 import android.os.*;
 import android.os.Process;
-import android.database.sqlite.SQLiteDatabase;
 import org.json.JSONObject;
 import java.lang.reflect.*;
 import java.nio.charset.StandardCharsets;
@@ -310,7 +309,7 @@ final class MiHealthHook {
             try{since=Long.parseLong(FeatureSettings.text(context,ConfigSchema.HEALTH_SINCE,"0"));}catch(Exception ignored){since=Long.MAX_VALUE;}
             int limit=dailyLimit(id);Map<Long,Budget> days=new HashMap<>();
             if(!enabled(id))return;
-            StepLedger ledger=ledger();SQLiteDatabase db=ledger.getWritableDatabase();db.beginTransaction();
+            StepLedger ledger=ledger();StepLedger.Transaction db=ledger.getWritableDatabase();db.beginTransaction();
             List<Object[]> changes=new ArrayList<>();
             try{
                 // Match the native DAO's replace-first-five / insert-ignore path as
@@ -466,7 +465,7 @@ final class MiHealthHook {
             }
             int compensation=StepMath.phoneAddition(natural,phone,bonus)-bonus;
             List<Object> models=new ArrayList<>();boolean first=true;
-            SQLiteDatabase intents=ledger.getWritableDatabase();intents.beginTransaction();
+            StepLedger.Transaction intents=ledger.getWritableDatabase();intents.beginTransaction();
             try{for(Map.Entry<Long,Integer> event:due.entrySet()){
                 long minute=event.getKey();if(minute<bucket||minute>=bucket+gap)continue;
                 Object existing=generated.get(minute);StepLedger.Record saved=generatedLedgers.get(minute);

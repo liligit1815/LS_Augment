@@ -39,6 +39,9 @@ public final class TestNativeFeatureGroups {
         require("assets".equals(NativeFeatureGroups.statusBarDestination(find(StatusBarIconSpacingSpec.KEY))),"per-icon spacing belongs to its asset editor");
         NativeFeatureGroups.Feature wifi=find("ls_augment_rm_wifi_country_enabled");
         require(wifi.allKeys().equals(Arrays.asList("ls_augment_rm_wifi_country_enabled","ls_augment_rm_wifi_country")),"Wi-Fi country is owned by its true switch");
+        NativeFeatureGroups.Feature radius=find(RecentsCardRadiusOptions.OFFSET);
+        require(RecentsCardRadiusOptions.ENABLED.equals(radius.toggleKey)&&radius.allKeys().equals(Arrays.asList(RecentsCardRadiusOptions.ENABLED,RecentsCardRadiusOptions.OFFSET)),"Recent-task radius uses a real independent switch and one retained signed parameter");
+        require(radius.hasConfiguration()&&OPTIONS.get(RecentsCardRadiusOptions.OFFSET).kind==EnhancementOption.Kind.INTEGER,"Recent-task radius expands into the shared signed integer editor");
         NativeFeatureGroups.Feature usb=find("ls_augment_rm_usb_hide_dialog");
         require(usb.children.length==1&&usb.children[0].toggleKey.equals("ls_augment_rm_usb_hide_notification_dialog"),"USB notification boolean stays inside its parent configuration");
         NativeFeatureGroups.Feature ota=find("ls_augment_rm_ota_spoof_enabled");

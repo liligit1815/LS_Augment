@@ -8,6 +8,7 @@ Android directory durability, SELinux behavior, or power-loss safety.
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+from hide_private_test_support import private_storage_stub, PUBLICATION_HOST_SHIM
 import subprocess
 import sys
 import tempfile
@@ -35,7 +36,7 @@ def captured_run(argv, **kwargs):
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 BASH = Path(r'C:\Program Files\Git\bin\bash.exe')
-ROOT_ASSIGNMENT = "ROOT='/data/adb/ls_augment/v2'"
+ROOT_ASSIGNMENT = 'ROOT="${LSA_PRIVATE_ROOT:?}/v2"'
 SUCCESS = b'LSA_RECOVERY_JOURNAL_OK'
 OWNER = 'aaaa0000-0000-0000-0000-000000000001'
 
@@ -50,7 +51,7 @@ def bash(script, *, stdin=b'', env=None):
     if env is not None:
         env = dict(env, LSA_TEST_PATH=env['PATH'])
     return captured_run([str(BASH), '--noprofile', '--norc', '-c', script],
-                          input=stdin, capture_output=True, env=env, timeout=60)
+                          input=stdin, capture_output=True, env=env, timeout=240)
 
 
 def posix(path):
@@ -102,7 +103,7 @@ public final class JournalCommandProbe {
         classes = cls.workspace / 'classes'
         compiled = captured_run(['javac', '-encoding', 'UTF-8', '--release', '17',
                                    '-d', str(classes), str(JAVA / 'RootShell.java'),
-                                   str(JAVA / 'HideRecoveryJournal.java'), str(JAVA / 'HideRestoreGrantLedger.java'), str(probe)],
+                                   str(JAVA / 'HideRecoveryJournal.java'), str(JAVA / 'HideRestoreGrantLedger.java'), str(probe), str(private_storage_stub(probe.parent))],
                                   capture_output=True, timeout=30)
         if compiled.returncode:
             raise AssertionError(description(compiled))
@@ -141,7 +142,7 @@ for arg in sys.argv[1:]:
                            encoding='utf-8', newline='\n')
         wrapper.chmod(0o755)
         startup = cls.workspace / 'bash-env'
-        startup.write_text('export PATH="$LSA_TEST_PATH"\n', encoding='utf-8')
+        startup.write_text('export PATH="$LSA_TEST_PATH"\n' + PUBLICATION_HOST_SHIM, encoding='utf-8')
         cls.env = dict(os.environ, BASH_ENV=posix(startup),
                        PATH=posix(cls.fsync_bin) + ':' + cls.shell_path,
                        LSA_TEST_FSYNC_LOG=str(cls.fsync_log))
@@ -153,7 +154,7 @@ for arg in sys.argv[1:]:
     def setUp(self):
         self.case = self.workspace / self._testMethodName
         self.case.mkdir()
-        self.root = self.case / 'root'
+        self.root = self.case / 'v2'
         self.root.mkdir()
         self.originals = {'targets.conf': b'old targets\x00\xff',
                           'targets.backup.conf': b'old backup',
@@ -165,10 +166,18 @@ for arg in sys.argv[1:]:
             path.write_bytes(content)
 
     def run_journal(self, content=None, *, root=None, env=None):
-        command = self.command.replace(ROOT_ASSIGNMENT,
-                                       'ROOT=' + quoted(posix(root or self.root)))
+        root = root or self.root
+        self.assertEqual(root.name, 'v2')
+        command = self.command
         return bash(command, stdin=batch(record()) if content is None else content,
-                    env=env or self.env)
+                    env=dict(env or self.env, LSA_PRIVATE_ROOT=posix(root.parent)))
+
+    def test_missing_private_root_refuses_without_altering_sources(self):
+        before = self.snapshot()
+        result = bash(self.command, env=dict(self.env, LSA_PRIVATE_ROOT=''))
+        self.assert_failure(result)
+        self.assertEqual(self.snapshot(), before)
+        self.assert_originals()
 
     def assert_success(self, result):
         self.assertEqual(result.returncode, 0, description(result))
@@ -209,7 +218,7 @@ for arg in sys.argv[1:]:
         # Explicit signed-32-bit numeric-test model. String/file tests stay real
         # Bash builtins; this is not an Android mksh or durability claim.
         startup = self.case / 'mksh32-env'
-        startup.write_text(r"""export PATH="$LSA_TEST_PATH"
+        startup.write_text(PUBLICATION_HOST_SHIM + r"""export PATH="$LSA_TEST_PATH"
 function [() {
   if [[ $# == 4 && $4 == ']' && $2 =~ ^-(eq|ne|lt|le|gt|ge)$ ]]; then
     local left="$1" right="$3" left_negative=0 right_negative=0
@@ -361,7 +370,7 @@ function [() {
         self.assertEqual(self.snapshot(), before)
 
     def test_checked_copy_hash_compare_publish_permission_and_input_failures(self):
-        for name in ('cp', 'sha256sum', 'cmp', 'ln', 'fsync', 'chmod', 'cat', 'mktemp'):
+        for name in ('cp', 'sha256sum', 'cmp', 'mv', 'fsync', 'chmod', 'cat', 'mktemp'):
             with self.subTest(tool=name):
                 marker = self.case / (name + '-called')
                 env = self.injected(name, f'printf x >> {quoted(posix(marker))}\nexit 74\n')
@@ -375,7 +384,7 @@ function [() {
         startup = self.case / 'printf-env'
         # PATH cannot override a shell builtin. This explicit injected function
         # fails only the canonical record write and leaves diagnostics intact.
-        startup.write_text('export PATH="$LSA_TEST_PATH"\n'
+        startup.write_text(PUBLICATION_HOST_SHIM + 'export PATH="$LSA_TEST_PATH"\n'
                            'printf() {\n'
                            '  if [ "$1" = \'%s\\n\' ]; then\n'
                            '    case "$2" in LSARJ1\\|*)\n'
@@ -389,11 +398,11 @@ function [() {
         self.assertEqual(self.snapshot(), {})
         self.assert_originals()
 
-    def test_partially_published_batch_survives_later_link_failure(self):
-        env = self.injected('ln', '''case "$2" in
+    def test_partially_published_batch_survives_later_rename_failure(self):
+        env = self.injected('mv', '''case "$3" in
   *000000000002.PREPARED.record) exit 74 ;;
 esac
-exec /usr/bin/ln "$@"
+exec /usr/bin/mv "$@"
 ''')
         self.assert_failure(self.run_journal(batch(record(1), record(2)), env=env))
         self.assert_records(record(1))
@@ -409,7 +418,7 @@ exec /usr/bin/ln "$@"
         recorded = [line.split(' ', 1) for line in log.read_text(encoding='utf-8').splitlines()]
         dirs = {Path(path) for kind, path in recorded if kind == 'directory-call-only'}
         journal = self.root / 'recovery-journal-v1'
-        self.assertEqual(dirs, {journal / 'events', journal, self.root,
+        self.assertEqual({path for path in dirs if not path.name.startswith('.batch.')}, {journal / 'events', journal, self.root,
                                 self.root.parent, self.root.parent.parent})
         files = [Path(path) for kind, path in recorded if kind == 'file-fsync']
         self.assertEqual(len(files), 2)
@@ -419,7 +428,7 @@ exec /usr/bin/ln "$@"
 
     def test_directory_fsync_and_post_publish_hash_failure_retain_records(self):
         record_sync = self.injected('fsync',
-                                    'case "$1" in */events/*) exit 74 ;; esac\n'
+                                    'case "$1" in */events/*.record) exit 74 ;; esac\n'
                                     f'exec {quoted(posix(self.fsync_bin / "fsync"))} "$@"\n',
                                     directory=self.case / 'record-sync-bin')
         result = self.run_journal(env=record_sync)
@@ -459,8 +468,8 @@ exec /usr/bin/sha256sum "$@"
 
     def test_non_directory_paths_and_directory_record_are_rejected(self):
         for index, relative in enumerate(('recovery-journal-v1', 'recovery-journal-v1/events')):
-            root = self.case / ('obstacle-' + str(index))
-            root.mkdir()
+            root = self.case / ('obstacle-' + str(index)) / 'v2'
+            root.mkdir(parents=True)
             obstacle = root / relative
             obstacle.parent.mkdir(parents=True, exist_ok=True)
             obstacle.write_bytes(b'keep obstacle')
@@ -487,8 +496,8 @@ exec /usr/bin/sha256sum "$@"
         paths = ('recovery-journal-v1', 'recovery-journal-v1/events',
                  'recovery-journal-v1/events/00000000-0000-0000-0000-000000000001.PREPARED.record')
         for index, relative in enumerate(paths):
-            root = self.case / ('link-' + str(index))
-            root.mkdir()
+            root = self.case / ('link-' + str(index)) / 'v2'
+            root.mkdir(parents=True)
             link = root / relative
             link.parent.mkdir(parents=True, exist_ok=True)
             directory = not relative.endswith('.record')
@@ -498,7 +507,7 @@ exec /usr/bin/sha256sum "$@"
             self.assertEqual(evidence.read_bytes(), b'outside remains untouched')
         parent = self.case / 'parent-link'
         os.symlink(outside, parent, target_is_directory=True)
-        self.assert_failure(self.run_journal(root=parent / 'nested/root'))
+        self.assert_failure(self.run_journal(root=parent / 'nested/v2'))
         self.assertEqual(set(p.name for p in outside.iterdir()), {'evidence'})
 
     def test_permissions_when_host_exposes_posix_modes(self):
@@ -625,7 +634,7 @@ public final class JournalModelProbe {
         classes = self.case / 'stub-classes'
         compiled = captured_run(['javac', '-encoding', 'UTF-8', '--release', '17',
                                    '-d', str(classes), str(JAVA / 'HideRecoveryJournal.java'), str(JAVA / 'HideRestoreGrantLedger.java'),
-                                   str(transport), str(probe)], capture_output=True, timeout=30)
+                                   str(transport), str(probe), str(private_storage_stub(probe.parent))], capture_output=True, timeout=30)
         self.assertEqual(compiled.returncode, 0, description(compiled))
         result = captured_run(['java', '-cp', str(classes), 'ls.augment.com.JournalModelProbe'],
                                 capture_output=True, timeout=10)

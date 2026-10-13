@@ -1,6 +1,6 @@
 """Execute real catalog Java and generated read-only shell in temporary Git Bash paths.
 
-Only ROOT is changed in generated commands. No su/adb/PM and no production
+The production ROOT expression is used with a temporary LSA_PRIVATE_ROOT environment. No su/adb/PM and no production
 RootShell.run: wrapper tests compile a separate transport stub. Snapshot checks
 cover file bytes/inodes/mtime and directory membership, not filesystem atime.
 """
@@ -8,6 +8,7 @@ import base64
 import hashlib
 import os
 from pathlib import Path
+from hide_private_test_support import private_storage_stub
 import subprocess
 import tempfile
 import unittest
@@ -15,7 +16,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 BASH = Path(r'C:\Program Files\Git\bin\bash.exe')
-ASSIGNMENT = "ROOT='/data/adb/ls_augment/v2'"
+ASSIGNMENT = 'ROOT="${LSA_PRIVATE_ROOT:?}/v2"'
 FOOTER = b'LSA_RECOVERY_CATALOG_OK'
 
 
@@ -75,6 +76,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 public final class CatalogProbe {
     public static void main(String[] args) throws Exception {
+        if(args[0].equals("search-command")){
+            System.out.print(HideRecoverySearch.command(new HideRecoverySearch.Query(10,42,"com.example.same","")));return;
+        }
+        if(args[0].equals("search-parse")){
+            var p=HideRecoverySearch.parseProtocol(new String(System.in.readAllBytes(),StandardCharsets.UTF_8),
+                new HideRecoverySearch.Query(10,42,"com.example.same",""));
+            System.out.println("SEARCH|"+p.success+"|"+p.sources.size());return;
+        }
         if(args[0].equals("command")){
             System.out.print(HideRecoveryCatalog.command(args[1],args[2]));return;
         }
@@ -89,7 +98,8 @@ public final class CatalogProbe {
         cls.classes = cls.workspace / 'classes'
         result = subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17',
                                  '-d', str(cls.classes), str(JAVA / 'RootShell.java'),
-                                 str(JAVA / 'HideRecoveryCatalog.java'), str(probe)],
+                                 str(JAVA / 'HideRecoveryCatalog.java'), str(JAVA / 'HideRecoverySearch.java'),
+                                 str(JAVA / 'HideRecoveryJournal.java'), str(JAVA / 'HideRestoreGrantLedger.java'), str(probe), str(private_storage_stub(probe.parent))],
                                 capture_output=True, timeout=30)
         if result.returncode:
             raise AssertionError(describe(result))
@@ -98,12 +108,12 @@ public final class CatalogProbe {
         startup.write_text('export PATH="$LSA_TEST_PATH"\n', encoding='utf-8')
         cls.env = dict(os.environ, PATH=cls.shell_path, BASH_ENV=posix(startup))
         print('Production Catalog + RootShell compiled; executing only generated shell '
-              'with one temporary ROOT substitution and real Java parseProtocol.', flush=True)
+              'with a temporary private-root environment and real Java parseProtocol.', flush=True)
 
     def setUp(self):
         self.case = self.workspace / self._testMethodName
         self.case.mkdir()
-        self.root = self.case / 'root'
+        self.root = self.case / 'v2'
         self.root.mkdir()
 
     def java(self, *args, stdin=None):
@@ -131,8 +141,9 @@ public final class CatalogProbe {
         self.assertEqual(command.count(ASSIGNMENT), 1)
         self.assertEqual([line for line in command.splitlines() if line.lstrip().startswith('ROOT=')],
                          [ASSIGNMENT])
-        result = bash(command.replace(ASSIGNMENT, 'ROOT=' + quote(posix(root or self.root))),
-                      env=env or self.env)
+        root = root or self.root
+        self.assertEqual(root.name, 'v2')
+        result = bash(command, env=dict(env or self.env, LSA_PRIVATE_ROOT=posix(root.parent)))
         # Root merges stderr into stdout in production; emulate that for handled
         # diagnostics so unexpected output cannot accidentally pass the parser.
         page = self.parse(result.stdout + result.stderr) if result.returncode == 0 else None
@@ -219,10 +230,15 @@ public final class CatalogProbe {
         self.assert_ok(result, page)
         self.assertEqual(page['sources'], [])
         self.assertEqual(self.snapshot(), before)
-        missing = self.case / 'not-created/nested/root'
+        private = self.case / 'empty-private'
+        private.mkdir()
+        missing = private / 'v2'
         result, page = self.run_catalog(root=missing)
         self.assert_ok(result, page)
         self.assertEqual(page['sources'], [])
+        self.assertFalse(missing.exists())
+        # An unavailable app-private parent cannot certify an empty catalog.
+        self.assert_failed(*self.run_catalog(root=self.case / 'not-created/nested/v2'))
         self.assertFalse((self.case / 'not-created').exists())
 
     def test_missing_parent_inventory_failure_is_not_empty_success(self):
@@ -350,16 +366,65 @@ public final class CatalogProbe {
         self.assertEqual(page['sources'][0]['problem'], 'SYMLINK')
         for index, relative in enumerate(('recovery-history-v1', 'recovery-history-v1/targets',
                                           'recovery-journal-v1', 'recovery-journal-v1/events')):
-            root = self.case / ('root-' + str(index))
-            root.mkdir()
+            root = self.case / ('root-' + str(index)) / 'v2'
+            root.mkdir(parents=True)
             link = root / relative
             link.parent.mkdir(parents=True, exist_ok=True)
             os.symlink(outside, link, target_is_directory=True)
             self.assert_failed(*self.run_catalog(root=root))
         parent = self.case / 'linked-parent'
         os.symlink(outside, parent, target_is_directory=True)
-        self.assert_failed(*self.run_catalog(root=parent / 'nested/root'))
+        self.assert_failed(*self.run_catalog(root=parent / 'nested/v2'))
         self.assertEqual(evidence.read_bytes(), b'outside')
+
+    def test_private_reader_traverses_unreadable_ancestor_without_listing_it(self):
+        # NTFS ACLs do not reproduce Android /data permissions. These explicit
+        # shell doubles deny read/list of one ancestor but retain real traversal
+        # and all private source reads; device UID/SELinux remains separate QA.
+        key = journal(1)
+        payload = ("LSARJ1|00000000-0000-0000-0000-000000000001|"
+                   "aaaa0000-0000-0000-0000-000000000001|0|10|42|com.example.same|" +
+                   "a" * 64 + "|123456789|PREPARED|VISIBLE|0|0\n").encode()
+        source = self.path(key)
+        source.parent.mkdir(parents=True)
+        source.write_bytes(payload)
+        startup = self.case / 'ancestor-env'
+        startup.write_text(r'''export PATH="$LSA_TEST_PATH"
+function [ {
+  if [[ $1 == -r && $2 == "$LSA_TEST_ANCESTOR" ]]; then return 1; fi
+  builtin [ "$@"
+}
+ls() {
+  for argument in "$@"; do
+    if [[ $argument == "$LSA_TEST_ANCESTOR" ]]; then return 73; fi
+  done
+  command ls "$@"
+}
+''', encoding='utf-8', newline='\n')
+        env = dict(self.env, BASH_ENV=posix(startup), LSA_TEST_ANCESTOR=posix(self.case),
+                   LSA_PRIVATE_ROOT=posix(self.root.parent))
+        denied = bash('if [ -r "$LSA_TEST_ANCESTOR" ]; then exit 91; fi\n'
+                      'if ls -a1 "$LSA_TEST_ANCESTOR"; then exit 92; fi\n'
+                      '[ -x "$LSA_TEST_ANCESTOR" ]', env=env)
+        self.assertEqual(denied.returncode, 0, describe(denied))
+        for mode in ('command', 'search-command'):
+            args = (mode, '', '') if mode == 'command' else (mode,)
+            generated = self.java(*args)
+            self.assertEqual(generated.returncode, 0, describe(generated))
+            command = generated.stdout.decode()
+            self.assertEqual(command.count(ASSIGNMENT), 1)
+            result = bash(command, env=env)
+            self.assertEqual(result.returncode, 0, describe(result))
+            if mode == 'command':
+                page = self.parse(result.stdout)
+                self.assertTrue(page['success'])
+                self.assertEqual([item['bytes'] for item in page['sources']], [payload])
+            else:
+                parsed = self.java('search-parse', stdin=result.stdout)
+                self.assertEqual(parsed.stdout.strip(), b'SEARCH|true|1', describe(parsed))
+            missing = bash(command, env=dict(env, LSA_PRIVATE_ROOT=''))
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertEqual(source.read_bytes(), payload)
 
     def test_maximum_four_file_page_stays_under_transport_bound(self):
         keys = [self.raw(category, (category[0].encode() * 1048576))
@@ -459,7 +524,7 @@ public final class CatalogWrapperProbe {
 ''', encoding='utf-8')
         classes = self.case / 'stub-classes'
         result = subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes),
-                                 str(JAVA / 'HideRecoveryCatalog.java'), str(stub), str(probe)],
+                                 str(JAVA / 'HideRecoveryCatalog.java'), str(stub), str(probe), str(private_storage_stub(probe.parent))],
                                 capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, describe(result))
         result = subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.CatalogWrapperProbe',

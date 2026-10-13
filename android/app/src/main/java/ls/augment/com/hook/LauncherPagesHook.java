@@ -30,7 +30,6 @@ import ls.augment.com.LauncherOptions;
 /** Shared stock/260005 implementation, verified against both launcher DEX files. */
 final class LauncherPagesHook {
     private static final String ENTRY_TAG = "ls_augment.pages.entry";
-    private static final String PREFS = "ls_augment_launcher_pages";
     private static boolean installed;
     private static Controller controller;
 
@@ -218,14 +217,17 @@ final class LauncherPagesHook {
             }
             if (context == null) {
                 context = view.getContext().getApplicationContext();
-                prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                try{prefs = LauncherOwnedStateClient.preferences(context,"pages");}
+                catch(RuntimeException unavailable){failed(unavailable);}
+            } else if (prefs == null) {
+                prefs = LauncherOwnedStateClient.readyPreferences(context,"pages");
             }
             LauncherResetHook.attach(context);
             if (!subscribed) {
                 subscribed = FeatureSettings.addSnapshotListener(context, () -> main.post(this::configurationChanged));
             }
         }
-        boolean enabled(String key) { return !resetPaused && context != null && FeatureSettings.enabled(context, key); }
+        boolean enabled(String key) { return !resetPaused && context != null && prefs != null && FeatureSettings.enabled(context, key); }
         boolean keepEmpty() {
             return !resetPaused && prefs != null && LauncherPageOrder.preserveEmpty(FeatureSettings.hasVerifiedSnapshot(context),
                     enabled(LauncherOptions.KEEP_EMPTY), prefs.getBoolean("keep_empty", false));
@@ -257,6 +259,9 @@ final class LauncherPagesHook {
         }
         void configurationChanged() {
             try {
+                boolean awaitingPrivate = prefs == null;
+                if (awaitingPrivate && context != null)
+                    prefs = LauncherOwnedStateClient.readyPreferences(context,"pages");
                 if(resetPaused){
                     if(!FeatureSettings.hasVerifiedSnapshot(context)||FeatureSettings.snapshot(context).revision==resetRevision)return;
                     resetPaused=false;
@@ -265,6 +270,9 @@ final class LauncherPagesHook {
                 if (menuView != null) attachMenu(menuView);
                 ViewGroup ws = workspace.get();
                 if (ws == null || !ready || binding || mutating || !FeatureSettings.hasVerifiedSnapshot(context)) return;
+                // Receiving a recovered record must not rewrite it with the fallback
+                // layout; normal binding/editing applies the existing page policy.
+                if(awaitingPrivate || prefs==null)return;
                 boolean before = prefs.getBoolean("keep_empty", false);
                 boolean after = enabled(LauncherOptions.KEEP_EMPTY);
                 if (before && !after) {
@@ -282,7 +290,8 @@ final class LauncherPagesHook {
             try {
                 boolean keep = keepEmpty();
                 String order = LauncherPageOrder.encode(order());
-                if (!order.equals(prefs.getString("order", "")) || keep != prefs.getBoolean("keep_empty", false)) {
+                if (!order.equals(prefs.getString("order", "")) || keep != prefs.getBoolean("keep_empty", false)
+                        ||LauncherOwnedStateClient.needsSave(prefs)) {
                     prefs.edit().putString("order", order).putBoolean("keep_empty", keep).apply();
                 }
             } catch (Throwable error) { failed(error); }

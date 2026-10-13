@@ -48,6 +48,11 @@ sources['android/content/UriPermission.java'] = '''package android.content;publi
 sources['android/content/Intent.java'] = '''package android.content;public class Intent {
  public static final int FLAG_GRANT_READ_URI_PERMISSION=1,FLAG_GRANT_WRITE_URI_PERMISSION=2;}
 '''
+sources['ls/augment/com/LauncherOwnedStateStore.java'] = '''package ls.augment.com;final class LauncherOwnedStateStore {static final String GRID_PREFS="launcher-grid-recovery-v1";}'''
+sources['ls/augment/com/LegacyRootStorageMigration.java'] = '''package ls.augment.com;final class LegacyRootStorageMigration {static boolean blocked;static void requireResetSafe(android.content.Context c)throws java.io.IOException {if(blocked)throw new java.io.IOException("unfinished archive");}}'''
+sources['ls/augment/com/GfrcRecoveryStore.java'] = '''package ls.augment.com;final class GfrcRecoveryStore {
+ static final String PREFS="native-gfrc-recovery-v1";
+}'''
 fault_source = (ROOT / 'tools/TestRuntimeStores.java').read_text(encoding='utf-8')
 fault_classes = '    static final class FakeContext' + fault_source.split(
     '    static final class FakeContext', 1)[1].rsplit('\n}', 1)[0]
@@ -176,7 +181,7 @@ public final class TestResetStorageOffline {
     check(remote.disk.keySet().equals(Set.of(RemoteConfig.SNAPSHOT,RemoteConfig.HIDDEN,RemoteConfig.TILE,RemoteConfig.RUNTIME_REVISION)),"unexpected remote fields survived");
     check(FrameworkConfigSync.isPublished(config.configSnapshot()),"published cache not current");break;
    }
-   case "module_storage":case "module_storage_failed_pref":case "module_storage_orphan_backup":case "module_storage_failed_grant": {
+   case "module_storage":case "module_storage_failed_pref":case "module_storage_orphan_backup":case "module_storage_failed_grant":case "module_storage_legacy_pending": {
     Path work=Files.createTempDirectory("lsa-module-storage-fixture-");
     try{
      FakeContext context=seeded();context.fixtureData=Files.createDirectory(work.resolve("module-data")).toFile();
@@ -188,15 +193,24 @@ public final class TestResetStorageOffline {
      context.resolver.grants.add(new UriPermission());context.resolver.grants.add(new UriPermission());
      AppConfig config=new AppConfig(context);Map<String,Object> configBefore=new HashMap<>(context.prefs(AppConfig.PREFS).disk);
      Files.writeString(prefs.resolve(AppConfig.PREFS+".xml"),"configuration marker");
+     FakePreferences grid=context.prefs(LauncherOwnedStateStore.GRID_PREFS);
+     grid.edit().putString("record","pending grid recovery").commit();
+     Files.writeString(prefs.resolve(LauncherOwnedStateStore.GRID_PREFS+".xml"),"grid marker");
+     FakePreferences recovery=context.prefs(GfrcRecoveryStore.PREFS);
+     recovery.edit().putString("journal","pending native recovery").commit();
+     Files.writeString(prefs.resolve(GfrcRecoveryStore.PREFS+".xml"),"recovery marker");
      FakePreferences obsolete=context.prefs("retired-private-state");obsolete.edit().putString("old-account-hash","a".repeat(64)).commit();
      Files.writeString(prefs.resolve("retired-private-state"+(test.equals("module_storage_orphan_backup")?".xml.bak":".xml")),"cached pref marker");
      if(test.equals("module_storage_failed_pref"))obsolete.failNext=1;
      if(test.equals("module_storage_failed_grant"))context.resolver.failRelease=true;
+     if(test.equals("module_storage_legacy_pending"))LegacyRootStorageMigration.blocked=true;
      boolean failed=false;try{ModuleResetStorage.clear(context);}catch(IOException expected){failed=true;}
-     check(failed==(test.equals("module_storage_failed_pref")||test.equals("module_storage_failed_grant")),"unexpected module storage failure status");
+     check(failed==(test.equals("module_storage_failed_pref")||test.equals("module_storage_failed_grant")||test.equals("module_storage_legacy_pending")),"unexpected module storage failure status");
      check(context.prefs(AppConfig.PREFS).disk.equals(configBefore),"module storage altered coordinator-owned main config");
+     check("pending native recovery".equals(recovery.disk.get("journal")),"module storage discarded unfinished native recovery");
+     check("pending grid recovery".equals(grid.disk.get("record")),"module storage discarded launcher grid recovery");
      check(Files.readString(imported).equals("original document"),"original imported document deleted");
-     if(test.equals("module_storage_failed_pref")){
+     if(test.equals("module_storage_failed_pref")||test.equals("module_storage_legacy_pending")){
       check(obsolete.disk.containsKey("old-account-hash"),"failed pref clear changed disk");
       check(Files.exists(context.getFilesDir().toPath().resolve("old-private-info")),"continued deleting files after pref failure");
       check(context.resolver.releases==0,"continued revoking imports after pref failure");
@@ -216,7 +230,7 @@ public final class TestResetStorageOffline {
 ''' + fault_classes + '\n}\n'
 cases = ('fence', 'config_replace', 'config_failed_commit', 'config_failed_no_publish', 'config_fence', 'blocked_constructor',
          'runtime_clear', 'fuse_clear', 'remote_replace', 'module_storage', 'module_storage_failed_pref',
-         'module_storage_orphan_backup', 'module_storage_failed_grant')
+         'module_storage_orphan_backup', 'module_storage_failed_grant', 'module_storage_legacy_pending')
 environment = dict(os.environ)
 java_home = Path(r'C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 if java_home.is_dir():

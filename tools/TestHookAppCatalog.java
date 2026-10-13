@@ -69,6 +69,9 @@ public final class TestHookAppCatalog {
         // GameExtrasHook.space() installs both watermark editor hooks in GameSpace.
         check(HookAppCatalog.affectedPackages(GameOptions.WATERMARK_UNLIMITED).equals(
                 List.of("cn.nubia.gamelauncher")), "watermark scope must match the GameSpace editor consumer");
+        check(HookAppCatalog.affectedPackages(GameOptions.PLUGINS).equals(
+                List.of("system", "cn.nubia.gamelauncher", "cn.nubia.gameassist")),
+                "expanded super resolution needs the system runtime and native UI scopes");
         check(!editorRoutes.contains("battery")&&HookAppCatalog.targetForRoute("battery")==null,"retired battery entry remains reachable");
         check(editorRoutes.containsAll(List.of("freeform", "audio_gain", "signature_install",
                 "status_layout", "launcher_custom", "launcher_compatibility", "shoulder", "combo_speed",

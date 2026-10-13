@@ -336,6 +336,7 @@ public final class AugmentModule extends RootEarlyModule {
         }
         if (GAME_HELPER_PACKAGE.equals(readyPackageName)) {
             installGameHelperShoulderHooks(param.getClassLoader());
+            ShoulderMacroSwitchHook.install(this, param.getClassLoader());
             installGameHelperComboSpeedHooks(param.getClassLoader());
             installGameHelperPreviewSpeedHooks(param.getClassLoader());
             return;
@@ -370,6 +371,7 @@ public final class AugmentModule extends RootEarlyModule {
             LauncherPagesHook.install(this, param.getClassLoader());
             ThirdPartyRecentsBackgroundHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
+            LauncherRecentsCardRadiusHook.install(this, param.getClassLoader());
             LauncherCleanupBombHook.install(this, param.getClassLoader());
             LiquidGlassDockHook.install(this, param.getClassLoader());
             return;
@@ -589,6 +591,7 @@ public final class AugmentModule extends RootEarlyModule {
         if (context != null) {
             // Start background loading before boot-time feature consumers are constructed.
             FeatureSettings.snapshot(context);
+            SuperResolutionRuntimeHook.attach(context);
             systemServerLifecyclePublishAttempts = 0;
             systemServerLifecycleRetryScheduled = false;
             ScreenOffAutomationHook.attach(context);
@@ -1183,6 +1186,7 @@ public final class AugmentModule extends RootEarlyModule {
                 return 0;
             }
             notifyChange.setAccessible(true);
+            if (!installComboPrivateFdHook(classLoader)) return 0;
             // Defer only on the verified manager lifecycle. Other ROM variants
             // retain the original nonblocking fallback if cancellation is unknown.
             boolean canDefer = installComboPlaybackCancellationHooks(manager) == 3;
@@ -1223,7 +1227,7 @@ public final class AugmentModule extends RootEarlyModule {
                                     String preparePath = path instanceof String ? (String) path : null;
                                     float prepareRate = comboSpeedRate(context);
                                     comboMotionCache.post(() -> comboMotionCache.prepare(
-                                            context.getCacheDir(), preparePath, prepareRate, true));
+                                            context, preparePath, prepareRate, true));
                                 }
                             } catch (Throwable ignored) {
                                 // Pre-generation is opportunistic; OEM behavior already completed.
@@ -1262,22 +1266,23 @@ public final class AugmentModule extends RootEarlyModule {
                                         replay != null ? replay : isMainThread()
                                                 ? comboMotionCache.lookupPublished(sourcePath, targetRate)
                                                 : comboMotionCache.lookupOrSchedule(
-                                                context.getCacheDir(), sourcePath, targetRate,
+                                                context, sourcePath, targetRate,
                                                 true);
                                 if (replay == null && isMainThread()
                                         && "cold_cache".equals(scaled.error)) {
                                     if (canDefer && deferComboPlayback(notifyChange, managerOwner,
                                             context, sourcePath, targetRate, requestedAt)) return null;
                                     comboMotionCache.prepareAsync(
-                                            context::getCacheDir, sourcePath, targetRate);
+                                            context, sourcePath, targetRate);
                                 }
                                 if (!scaled.success) {
                                     String diagnostic = "file_cache_unavailable|rate=" + targetRate
                                             + "|reason=" + safePart(scaled.error);
                                     comboMotionCache.post(() -> writeComboSpeedProbe(
                                             COMBO_SPEED_LAST_ERROR_KEY, diagnostic));
-                                } else if (!writeStringField(managerOwner,
-                                        "mCurrentRecoverPath", scaled.outputPath)) {
+                                } else if (!ComboMotionFileScaler.pin(managerOwner, scaled)
+                                        || !writeStringField(managerOwner, "mCurrentRecoverPath", scaled.outputPath)) {
+                                    ComboMotionFileScaler.releasePlayback(managerOwner);
                                     String diagnostic = "file_path_write_failed|rate=" + targetRate;
                                     comboMotionCache.post(() -> writeComboSpeedProbe(
                                             COMBO_SPEED_LAST_ERROR_KEY, diagnostic));
@@ -2458,6 +2463,30 @@ public final class AugmentModule extends RootEarlyModule {
         return installed;
     }
 
+    private boolean installComboPrivateFdHook(ClassLoader classLoader) {
+        try {
+            Class<?> provider = Class.forName(GAME_HELPER_PROVIDER_CLASS, false, classLoader);
+            Method getFd = findMethod(provider, "getFdCall", Bundle.class, String.class);
+            if (getFd == null) return false;
+            getFd.setAccessible(true);
+            HookHandle handle = observedHook(getFd)
+                    .setId("ls_augment.api102.combo_speed.gamehelper.private_fd")
+                    .setPriority(PRIORITY_HIGHEST)
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        String path = stringArg(chain, 0);
+                        // A missing/retired virtual token must never fall through to OEM CREATE.
+                        return ComboMotionFileScaler.isVirtualPath(path)
+                                ? ComboMotionFileScaler.openNative(path) : chain.proceed();
+                    });
+            comboSpeedHookHandles.add(handle);
+            return true;
+        } catch (Throwable error) {
+            logError("COMBO_PRIVATE_FD_INSTALL_FAILED", error);
+            return false;
+        }
+    }
+
     private boolean deferComboPlayback(Method notifyChange, Object owner, Context context,
             String sourcePath, float rate, long requestedAt) {
         ComboPlaybackPending.Token token = comboPlaybackPending.begin(owner, sourcePath,
@@ -2473,7 +2502,7 @@ public final class AugmentModule extends RootEarlyModule {
                 comboPlaybackPending.cancel(owner);
                 return false;
             }
-            comboMotionCache.prepareAsync(context::getCacheDir, sourcePath, rate)
+            comboMotionCache.prepareAsync(context, sourcePath, rate)
                     .whenComplete((ready, error) -> main.post(() -> {
                         main.removeCallbacks(timeout);
                         ComboMotionFileScaler.Result result = token.remainingNanos(
@@ -2529,6 +2558,7 @@ public final class AugmentModule extends RootEarlyModule {
     }
 
     private void cancelComboPlayback(Object owner, String reason) {
+        ComboMotionFileScaler.releasePlayback(owner);
         ComboPlaybackPending.Token token = comboPlaybackPending.cancel(owner);
         if (token != null) recordComboDeferred(token, "cancel_" + reason);
     }
@@ -2581,7 +2611,7 @@ public final class AugmentModule extends RootEarlyModule {
                 // An immediately dispatched unchanged snapshot must not invalidate
                 // the first pending request. Worker fingerprinting still checks edits.
                 comboMotionCache.post(() -> comboMotionCache.prepare(
-                        current.getCacheDir(), preparePath, rate, false));
+                        current, preparePath, rate, false));
             } catch (Throwable ignored) {
                 // The next OEM notification or playback will retry preparation.
             }

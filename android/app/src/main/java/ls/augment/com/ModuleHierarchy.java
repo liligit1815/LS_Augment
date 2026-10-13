@@ -39,7 +39,7 @@ public final class ModuleHierarchy {
         add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty");
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
         add(section("desktop","dock_glass","Dock"),"launcher:liquid_glass");
-        add(section("desktop","recents","最近任务与清理"),"launcher:cleanup_bomb","ls_augment_rm_recents_memory_custom");
+        add(section("desktop","recents","最近任务与清理"),"launcher:cleanup_bomb",RecentsCardRadiusOptions.ENABLED,"ls_augment_rm_recents_memory_custom");
         add(section("lockscreen","theme_download","主题下载与使用"),"beautify:unlimited_trial","ls_augment_rm_theme_no_login");
         add(section("lockscreen","collab_theme","联名主题"),"collab:theme");
         source(section("lockscreen","fingerprint","指纹样式"),"theme","collab_fingerprint");

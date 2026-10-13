@@ -11,6 +11,7 @@ public final class AugmentApplication extends Application
 
     @Override public void onCreate() {
         super.onCreate();
+        HidePrivateStorage.configure(getFilesDir(), android.os.Process.myUid()/100000 == 0);
         FrameworkConfigSync.initialize(this);
         ModuleScopeService.initialize();
         ConfigVisibilityGrant.refresh(this);

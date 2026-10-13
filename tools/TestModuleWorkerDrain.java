@@ -72,6 +72,15 @@ public final class TestModuleWorkerDrain {
         check(!unconfirmed.getBoolean(null), "cancelled hardware session accepts restoration proof despite exit 130");
         RapidCaptureReset.observeHardwareResult(new RootShell.Result(2, "LSA_CAPTURE_ERROR=busy", false));
         check(!unconfirmed.getBoolean(null), "busy rejection did not modify hardware");
+        for (String error : new String[]{"missing_flock", "lock_unavailable", "invalid_recorder", "recovery_pending"}) {
+            RapidCaptureReset.observeHardwareResult(new RootShell.Result(2, "LSA_CAPTURE_ERROR=" + error, false));
+            check(!unconfirmed.getBoolean(null), "pre-wake rejection does not invent recovery: " + error);
+        }
+        String failedReader = ack + "LSA_CAPTURE_ERROR=reader_stop_failed\n";
+        RapidCaptureReset.observeHardwareResult(new RootShell.Result(0, failedReader, false,
+                new RootShell.CapturedOutput(failedReader.getBytes(StandardCharsets.UTF_8), true, false, false)));
+        check(unconfirmed.getBoolean(null), "mode restore cannot excuse an unconfirmed reader stop");
+        unconfirmed.setBoolean(null, false);
         RapidCaptureReset.observeHardwareResult(new RootShell.Result(2, "LSA_CAPTURE_ERROR=restore_failed", false));
         check(unconfirmed.getBoolean(null), "restoration failure requires review even if lock disappears");
         unconfirmed.setBoolean(null, false);

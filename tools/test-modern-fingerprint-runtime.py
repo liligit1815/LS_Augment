@@ -115,7 +115,7 @@ public class TestModernFingerprint {
  }
 }
 '''
-for name in ('EnhancementOption.java','CollabOptions.java','CollabPolicy.java','hook/CollabUnlockHook.java','hook/OemHooks.java','hook/GoldFingerprintHook.java'):
+for name in ('EnhancementOption.java','CollabOptions.java','CollabPolicy.java','hook/CollabChargingFrame.java','hook/CollabUnlockHook.java','hook/OemHooks.java','hook/GoldFingerprintHook.java'):
     files['ls/augment/com/'+name]=(SRC/name).read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='duo-fingerprint-') as temp:
     sources=[]

@@ -12,7 +12,7 @@ final class HideRestoreGrantStore {
     enum Mode { READ, CLAIM, FINISH }
     private final Io io;
 
-    HideRestoreGrantStore() { this(op -> RootShell.run(op.command(), null, 30, 8192)); }
+    HideRestoreGrantStore() { this(op -> HidePrivateStorage.run(op.command(), null, 30, 8192)); }
     HideRestoreGrantStore(Io io) { this.io = Objects.requireNonNull(io); }
 
     static final class Snapshot {
@@ -178,15 +178,15 @@ final class HideRestoreGrantStore {
     private static final String SCRIPT = """
         umask 077
         export LC_ALL=C
-        ROOT='/data/adb/ls_augment/v2/restore-grants-v1'
+        ROOT="${LSA_PRIVATE_ROOT:?}/v2/restore-grants-v1"
         V2=${ROOT%/*}
         APP=${V2%/*}
-        STORAGE=${APP%/*}
+        STORAGE=$APP
         TMP=''
         fail() { printf '%s\\n' "restore_grant_store:$1" >&2; exit 74; }
         trap '[ -z "$TMP" ] || rm -f "$TMP"' EXIT
         trap 'exit 74' HUP INT TERM
-        [ "$(id -u)" = 0 ] || fail root_required
+        OWNER="$(id -u):$(id -g)"
         ascii=$(printf '%s' "$RECORD" | tr -cd '!-~') || fail ascii_check
         [ "$ascii" = "$RECORD" ] && [ "${#RECORD}" -lt 2048 ] || fail noncanonical_record
         separators=$(printf '%s' "$RECORD" | tr -cd '|') || fail field_count
@@ -240,18 +240,18 @@ final class HideRestoreGrantStore {
         checkdir() {
           [ ! -L "$1" ] && [ -d "$1" ] || fail invalid_directory
           metadata=$(stat -c '%u:%g:%a' "$1") || fail directory_stat
-          [ "$metadata" = 0:0:700 ] || fail directory_owner_or_mode
+          [ "$metadata" = "$OWNER:700" ] || fail directory_owner_or_mode
         }
         checkfile() {
           [ ! -L "$1" ] && [ -f "$1" ] && [ -r "$1" ] || fail invalid_record
-          metadata=$(stat -c '%u:%g:%a' "$1") || fail record_stat
-          [ "$metadata" = 0:0:600 ] || fail record_owner_or_mode
+          metadata=$(stat -c '%u:%g:%a:%h' "$1") || fail record_stat
+          [ "$metadata" = "$OWNER:600:1" ] || fail record_owner_or_mode
         }
         checkstorage() {
           [ ! -L "$STORAGE" ] && [ -d "$STORAGE" ] || fail invalid_storage
           metadata=$(stat -c '%u:%g:%a' "$STORAGE") || fail storage_stat
-          # Existing system storage is not chmod/chowned. Reject non-root or group/world writable storage.
-          case "$metadata" in 0:0:[0-7][0145][0145]) ;; *) fail storage_owner_or_mode ;; esac
+          # The app-owned parent is never chmod/chowned. Reject foreign or shared-writable storage.
+          case "$metadata" in "$OWNER":[0-7][0145][0145]) ;; *) fail storage_owner_or_mode ;; esac
         }
         checkdirs() {
           checkstorage
@@ -305,13 +305,34 @@ final class HideRestoreGrantStore {
           [ ! -L "$directory" ] || fail symlink_directory
           if [ ! -e "$directory" ]; then
             if mkdir "$directory" 2>/dev/null; then
-              chown 0:0 "$directory" && chmod 0700 "$directory" || fail directory_permissions
+              chmod 0700 "$directory" || fail directory_permissions
             else
               [ -d "$directory" ] || fail directory_create
             fi
           fi
           checkdir "$directory"
         done
+        # Reuse the target-store/reset lock; never unlink or replace its inode.
+        PUBLICATION_OWNER="$(id -u):$(id -g)"
+        LOCKDIR="${LSA_PRIVATE_ROOT:?}/v2/manual-targets-v1"
+        [ ! -L "$LOCKDIR" ] || fail symlink_lock_directory
+        if [ ! -e "$LOCKDIR" ]; then mkdir "$LOCKDIR" 2>/dev/null || [ -d "$LOCKDIR" ] || fail lock_directory_create; fi
+        [ -d "$LOCKDIR" ] && [ ! -L "$LOCKDIR" ] || fail invalid_lock_directory
+        [ "$(stat -c '%u:%g:%a' "$LOCKDIR")" = "$PUBLICATION_OWNER:700" ] || fail lock_directory_permissions
+        LOCK="$LOCKDIR/lock"
+        [ ! -L "$LOCK" ] || fail symlink_lock
+        if [ ! -e "$LOCK" ]; then (set -C; : >"$LOCK") 2>/dev/null || [ -f "$LOCK" ] || fail lock_create; fi
+        lockcheck() {
+          [ -f "$LOCK" ] && [ ! -L "$LOCK" ] || fail invalid_lock
+          [ "$(stat -c '%u:%g:%a:%h:%s' "$LOCK")" = "$PUBLICATION_OWNER:600:1:0" ] || fail lock_permissions
+        }
+        lockcheck
+        LOCK_ID=$(stat -c '%d:%i' "$LOCK") || fail lock_stat
+        exec 9<>"$LOCK" || fail lock_open
+        command -v flock >/dev/null 2>&1 || fail flock_unavailable
+        flock -x 9 9>&9 || fail lock_unavailable
+        lockcheck
+        [ "$(stat -c '%d:%i' "$LOCK")" = "$LOCK_ID" ] || fail lock_replaced
         checkdirs
         [ ! -L "$CLAIM" ] && [ ! -L "$DONE" ] || fail symlink_record
         if [ "$MODE" = CLAIM ]; then
@@ -331,13 +352,14 @@ final class HideRestoreGrantStore {
           fi
         fi
         TMP=$(mktemp "$DIR/.write.XXXXXXXX") || fail temp_create
-        chown 0:0 "$TMP" && chmod 0600 "$TMP" || fail file_permissions
+        chmod 0600 "$TMP" || fail file_permissions
         if [ "$MODE" = CLAIM ]; then content="$RECORD"; destination="$CLAIM"; else content="$RECORD|$TERMINAL"; destination="$DONE"; fi
         printf '%s\\n' "$content" >"$TMP" || fail content_write
         exact "$TMP" "$content"
         fsync "$TMP" || fail content_sync
         checkdirs
-        if ! ln "$TMP" "$destination" 2>/dev/null; then
+        [ ! -L "$destination" ] || fail symlink_record
+        if [ -e "$destination" ]; then
           [ "$MODE" = FINISH ] || fail already_claimed
           read_done
           if [ "$actual_terminal" = LOCAL_NOT_SENT ] && [ "$TERMINAL" = REJECTED_BEFORE_WRITE ]; then
@@ -345,11 +367,15 @@ final class HideRestoreGrantStore {
           else
             [ "$actual_terminal" = "$TERMINAL" ] || fail terminal_conflict
           fi
+        else
+          mv -n "$TMP" "$destination" || fail record_publish
+          [ ! -e "$TMP" ] && [ ! -L "$TMP" ] || fail record_not_moved
+          TMP=''
         fi
         exact "$destination" "$content"
         exact "$CLAIM" "$RECORD"
         fsync "$CLAIM" "$destination" || fail published_sync
-        rm -f "$TMP" || fail temp_remove
+        [ -z "$TMP" ] || rm -f "$TMP" || fail temp_remove
         TMP=''
         checkdirs
         syncdirs

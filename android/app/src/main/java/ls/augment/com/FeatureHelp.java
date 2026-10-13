@@ -41,6 +41,8 @@ public final class FeatureHelp {
         String description = description(option);
         if (description.isEmpty() || GENERIC_SUMMARY.equals(description))
             throw new IllegalArgumentException("Missing feature help: " + option.key);
+        if (RecentsCardRadiusOptions.OFFSET.equals(option.key))
+            return description + "\n\n可设置范围以滑条显示的实测上下限为准，每步 1 dp。默认值：0（原厂）。";
         switch (option.kind) {
             case INTEGER:
             case DECIMAL:

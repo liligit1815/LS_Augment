@@ -12,11 +12,13 @@ public class Context {public android.content.res.Resources getResources(){return
 """,
     "android/os/Build.java": "package android.os;public class Build{public static String DEVICE=\"NX809J\",MODEL=\"NX809J\";}",
     "android/os/Bundle.java": "package android.os;public class Bundle {}",
+    "android/os/SystemClock.java": "package android.os;public class SystemClock {public static long now=1000;public static long elapsedRealtime(){return now;}}",
     "android/content/res/Resources.java": "package android.content.res;public class Resources {public int getIdentifier(String n,String t,String p){return 99;}public String getString(int id){return \"native\";}public CharSequence getText(int id){return \"native\";}}",
     "android/graphics/Bitmap.java": "package android.graphics;public class Bitmap {}",
     "android/graphics/BitmapFactory.java": """package android.graphics;
 public class BitmapFactory {public static class Options {public boolean inJustDecodeBounds;public int outWidth,outHeight;}
- public static Bitmap decodeFile(String path,Options o){return null;}}
+ public static Bitmap decodeFile(String path,Options o){return null;}
+ public static Bitmap decodeStream(java.io.InputStream input,Object padding,Options o){return null;}}
 """,
     "android/os/Looper.java": """package android.os;public class Looper {
  private static final Looper MAIN=new Looper();public static Looper getMainLooper(){return MAIN;}}
@@ -164,7 +166,7 @@ public class TestCollabRuntime {
 """,
 }
 
-for name in ("EnhancementOption.java", "CollabOptions.java", "CollabPolicy.java",
+for name in ("EnhancementOption.java", "CollabOptions.java", "CollabPolicy.java", "hook/CollabChargingFrame.java",
              "hook/CollabUnlockHook.java", "hook/OemHooks.java", "hook/GoldFingerprintHook.java"):
     files["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 

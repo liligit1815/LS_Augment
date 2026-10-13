@@ -4,13 +4,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Objects;
 
-/** Root-owned append-only transaction slots. Observing a claim never recreates sending authority. */
+/** App-private append-only transaction slots. Observing a claim never recreates sending authority. */
 final class HideRootPendingStore {
     static final int MAX_SLOTS=8192;
     interface Io { RootShell.Result run(Operation operation); }
     enum Mode { READ, CLAIM, FINISH }
     private final Io io;
-    HideRootPendingStore(){this(operation->RootShell.run(operation.command(),null,30,8192));}
+    HideRootPendingStore(){this(operation->HidePrivateStorage.run(operation.command(),null,30,8192));}
     HideRootPendingStore(Io io){this.io=Objects.requireNonNull(io);}
 
     static final class Snapshot {
@@ -133,7 +133,7 @@ final class HideRootPendingStore {
     private static final String SCRIPT="""
         umask 077
         export LC_ALL=C
-        ROOT='/data/adb/ls_augment/v2/root-transactions-v1'
+        ROOT="${LSA_PRIVATE_ROOT:?}/v2/root-transactions-v1"
         DIR="$ROOT/$KEY"
         TMP=''
         fail() { printf '%s\\n' "root_pending:$1" >&2; exit 74; }
@@ -145,13 +145,17 @@ final class HideRootPendingStore {
           [ ! -L "$parent" ] || fail symlink_parent
           parent=${parent%/*}; [ -n "$parent" ] || parent=/
         done
-        [ -d /data/adb ] || fail root_storage_unavailable
+        [ -d "${LSA_PRIVATE_ROOT:?}" ] || fail private_storage_unavailable
         mkdir -p "$DIR" || fail directory_create
         chmod 0700 "$ROOT" "$DIR" || fail directory_permissions
         [ -d "$DIR" ] && [ ! -L "$DIR" ] || fail invalid_directory
-        checkfile() { [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ] || fail invalid_record; }
+        RECORD_OWNER="$(id -u):$(id -g)"
+        checkfile() {
+          [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ] || fail invalid_record
+          [ "$(stat -c '%u:%g:%a:%h' "$1")" = "$RECORD_OWNER:600:1" ] || fail record_permissions
+        }
         slotpath() { printf '%s/%08d.claim' "$DIR" "$1"; }
-        syncdirs() { fsync "$DIR" "$ROOT" /data/adb/ls_augment/v2 /data/adb/ls_augment /data/adb || fail directory_sync; }
+        syncdirs() { fsync "$DIR" "$ROOT" "${LSA_PRIVATE_ROOT:?}/v2" "${LSA_PRIVATE_ROOT:?}" || fail directory_sync; }
         emit() { printf 'LSARTS1\\n%s\\nLSARTS_END\\n' "$1" || fail output; }
         readrecord() {
           checkfile "$1"
@@ -208,9 +212,30 @@ final class HideRootPendingStore {
         TERMINAL|$result"
           exit 0
         fi
+        # Reuse the target-store/reset lock; never unlink or replace its inode.
+        PUBLICATION_OWNER="$(id -u):$(id -g)"
+        LOCKDIR="${LSA_PRIVATE_ROOT:?}/v2/manual-targets-v1"
+        [ ! -L "$LOCKDIR" ] || fail symlink_lock_directory
+        if [ ! -e "$LOCKDIR" ]; then mkdir "$LOCKDIR" 2>/dev/null || [ -d "$LOCKDIR" ] || fail lock_directory_create; fi
+        [ -d "$LOCKDIR" ] && [ ! -L "$LOCKDIR" ] || fail invalid_lock_directory
+        [ "$(stat -c '%u:%g:%a' "$LOCKDIR")" = "$PUBLICATION_OWNER:700" ] || fail lock_directory_permissions
+        LOCK="$LOCKDIR/lock"
+        [ ! -L "$LOCK" ] || fail symlink_lock
+        if [ ! -e "$LOCK" ]; then (set -C; : >"$LOCK") 2>/dev/null || [ -f "$LOCK" ] || fail lock_create; fi
+        lockcheck() {
+          [ -f "$LOCK" ] && [ ! -L "$LOCK" ] || fail invalid_lock
+          [ "$(stat -c '%u:%g:%a:%h:%s' "$LOCK")" = "$PUBLICATION_OWNER:600:1:0" ] || fail lock_permissions
+        }
+        lockcheck
+        LOCK_ID=$(stat -c '%d:%i' "$LOCK") || fail lock_stat
+        exec 9<>"$LOCK" || fail lock_open
+        command -v flock >/dev/null 2>&1 || fail flock_unavailable
+        flock -x 9 9>&9 || fail lock_unavailable
+        lockcheck
+        [ "$(stat -c '%d:%i' "$LOCK")" = "$LOCK_ID" ] || fail lock_replaced
         [ "$SLOT" -ge 0 ] && [ "$SLOT" -lt 8192 ] || fail invalid_slot
         path=$(slotpath "$SLOT")
-        TMP=$(mktemp "$ROOT/.write.XXXXXXXX") || fail temp_create
+        TMP=$(mktemp "$DIR/.write.XXXXXXXX") || fail temp_create
         chmod 0600 "$TMP" || fail file_permissions
         printf '%s\\n' "$RECORD" >"$TMP" || fail record_write
         if [ "$MODE" = CLAIM ]; then
@@ -234,8 +259,11 @@ final class HideRootPendingStore {
           fi
           fsync "$TMP" || fail claim_sync
           # An existing identical claim never grants another client's sending permission.
-          ln "$TMP" "$path" 2>/dev/null || fail slot_already_claimed
-          checkfile "$path"; cmp -s "$TMP" "$path" || fail claim_compare
+          [ ! -e "$path" ] && [ ! -L "$path" ] || fail slot_already_claimed
+          mv -n "$TMP" "$path" || fail claim_publish
+          [ ! -e "$TMP" ] && [ ! -L "$TMP" ] || fail claim_not_moved
+          TMP=''
+          checkfile "$path"; printf '%s\\n' "$RECORD" | cmp -s - "$path" || fail claim_compare
           fsync "$path" || fail claim_sync
           syncdirs
           emit "CLAIMED|$RECORD"
@@ -250,10 +278,15 @@ final class HideRootPendingStore {
           printf '%s|%s\\n' "$RECORD" "$TERMINAL" >"$TMP" || fail terminal_write
           fsync "$TMP" || fail terminal_sync
           dest="${path%.claim}.done"
-          if ! ln "$TMP" "$dest" 2>/dev/null; then
+          [ ! -L "$dest" ] || fail symlink_terminal
+          if [ -e "$dest" ]; then
             checkfile "$dest"; cmp -s "$TMP" "$dest" || fail terminal_conflict
+          else
+            mv -n "$TMP" "$dest" || fail terminal_publish
+            [ ! -e "$TMP" ] && [ ! -L "$TMP" ] || fail terminal_not_moved
+            TMP=''
           fi
-          checkfile "$dest"; cmp -s "$TMP" "$dest" || fail terminal_compare
+          checkfile "$dest"; printf '%s|%s\\n' "$RECORD" "$TERMINAL" | cmp -s - "$dest" || fail terminal_compare
           fsync "$path" "$dest" || fail terminal_sync
           syncdirs
           emit "FINISHED|$RECORD|$TERMINAL"

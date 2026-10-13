@@ -9,10 +9,14 @@ import java.util.Set;
 final class ModuleResetStorage {
     private ModuleResetStorage() { }
     static void clear(Context app) throws IOException {
+        LegacyRootStorageMigration.requireResetSafe(app);
         if (!RuntimeStateStore.clearForReset(app) || !CrashFuseStore.clearForReset(app))
             throw new IOException("运行状态未能清除，请重试重置");
         // The cached durable stores have their own reset APIs; all other prefs use Android's cached editor.
-        Set<String> handled = Set.of(AppConfig.PREFS, "ls_augment_runtime_v2", "ls_augment_crash_fuse_v2");
+        // A native recovery journal is not disposable cache. The runtime removes
+        // its contents only after native recovery has been verified.
+        Set<String> handled = Set.of(AppConfig.PREFS, "ls_augment_runtime_v2", "ls_augment_crash_fuse_v2",
+                GfrcRecoveryStore.PREFS, LauncherOwnedStateStore.GRID_PREFS);
         File folder = new File(app.getDataDir(), "shared_prefs");
         if (java.nio.file.Files.isSymbolicLink(folder.toPath())) throw new IOException("模块偏好目录无效");
         File[] files = folder.listFiles();
@@ -28,6 +32,7 @@ final class ModuleResetStorage {
                 throw new IOException("偏好未能清除：" + name);
         }
         OwnedFileCleaner.clear(app.getFilesDir());
+        HidePrivateStorage.clearedForReset();
         OwnedFileCleaner.clear(app.getCacheDir());
         OwnedFileCleaner.clear(app.getCodeCacheDir());
         for (File file : app.getExternalFilesDirs(null)) if (file != null) OwnedFileCleaner.clear(file);

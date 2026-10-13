@@ -229,7 +229,7 @@ public final class HookAppCatalog {
                 return Collections.singletonList("cn.nubia.gamelauncher");
             if (GameOptions.COMBO_LIMITS.equals(key)) return Collections.singletonList("cn.nubia.gamehelpmodule");
             if (GameOptions.HIGHLIGHTS.equals(key)) return Collections.singletonList("cn.nubia.gamehighlights");
-            if (GameOptions.PLUGINS.equals(key)) return immutable(Arrays.asList("cn.nubia.gamelauncher", "cn.nubia.gameassist"));
+            if (GameOptions.PLUGINS.equals(key)) return immutable(Arrays.asList("system", "cn.nubia.gamelauncher", "cn.nubia.gameassist"));
             if (GameOptions.HIDE_DIABLO_DIALOG.equals(key)) return immutable(Arrays.asList("cn.nubia.gameassist", "cn.zte.gamefloat"));
             if (GameOptions.FREE_RECORD.equals(key)) return immutable(Arrays.asList("cn.nubia.gameassist", "cn.nubia.gamehighlights"));
             return Collections.singletonList("cn.nubia.gameassist");
@@ -332,7 +332,7 @@ public final class HookAppCatalog {
             case "launcher": return "桌面页面";
             case "launcher_grid": return "桌面布局";
             case "desktop_clock": return "桌面时钟";
-            case "recents": return "最近任务内存信息";
+            case "recents": return "最近任务";
             case "shoulder": return "肩键方案";
             case "combo": return "连招录制与循环";
             case "performance": return "游戏面板与性能模式";

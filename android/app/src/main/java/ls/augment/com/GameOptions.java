@@ -24,7 +24,7 @@ public final class GameOptions {
             EnhancementOption.toggle(WATERMARK_UNLIMITED,"game","红魔水印字数解限","解除游戏空间自定义水印的 5 个汉字或 10 个英文字母限制；截图和录制继续使用原厂水印。重新打开水印编辑框后生效。"),
             EnhancementOption.toggle(QUICK_SWITCH,"game","肩键方案快捷切换","在原厂肩键方案页勾选参与方案：一个直接应用，两个点击互切，更多以下拉选择。"),
             EnhancementOption.internal(ShoulderQuickSwitchPolicy.KEY,ShoulderQuickSwitchPolicy.EMPTY,ShoulderQuickSwitchPolicy::normalize),
-            EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","开放原厂提供的插件入口，原厂继续负责功能运行。"),
+            EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","扩展原厂游戏空间的插件支持。超境画质由原厂引擎处理，自动适配处理输入尺寸；首次开启后重新进入游戏，画质和帧率仍在原厂界面选择。关闭后恢复原厂支持范围，已建立的处理会话在重新进入游戏后恢复原厂尺寸。更高档位仍受原厂引擎限制。"),
             EnhancementOption.toggle(PERFORMANCE_MONITOR,"game","自定义性能监测","选择游戏空间性能监控弹窗显示的项目，并调整背景透明度；数据继续来自原厂监控插件。"),
             EnhancementOption.internal(MONITOR_ITEMS,GamePerformanceMonitorConfig.DEFAULT_ITEMS,GamePerformanceMonitorConfig::normalizeItems),
             EnhancementOption.integer(MONITOR_TRANSPARENCY,"game","背景透明度（%）","调整游戏空间性能监控弹窗的背景透明度。0% 为不透明，100% 为完全透明；文字和图标不受影响。",50,0,100),

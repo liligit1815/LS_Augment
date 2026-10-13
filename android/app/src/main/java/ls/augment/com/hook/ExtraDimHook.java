@@ -30,24 +30,22 @@ final class ExtraDimHook {
             Method local=base.getDeclaredMethod("getLocalService",Class.class);
             Method context=base.getMethod("getContext");
             Method dump=service.getDeclaredMethod("dumpInternal",PrintWriter.class);
+            Method nativeActivation=service.getDeclaredMethod("onReduceBrightColorsActivationChanged",boolean.class);
+            Method nativeStrength=service.getDeclaredMethod("onReduceBrightColorsStrengthLevelChanged");
             Field user=service.getDeclaredField("mCurrentUser");
+            Field nativeHandler=service.getDeclaredField("mHandler");
             Field controller=service.getDeclaredField("mReduceBrightColorsTintController");
-            for(Method method:new Method[]{apply,activated,matrix,available,state,strength,expected,level,actual,local,dump})method.setAccessible(true);
-            user.setAccessible(true);controller.setAccessible(true);
+            for(Method method:new Method[]{apply,activated,matrix,available,state,strength,expected,level,actual,local,dump,nativeActivation,nativeStrength})method.setAccessible(true);
+            user.setAccessible(true);controller.setAccessible(true);nativeHandler.setAccessible(true);
             module.registerFeatureHook(module.prepareFeatureHook(apply,"extra_dim.transform",false).intercept(chain -> {
                 Object target=chain.getArg(0);
                 if(reduction.isInstance(target))try {
                     Object instance=chain.getThisObject();int current=user.getInt(instance);
                     Context ctx=(Context)context.invoke(instance);
-                    if(current>=0 && "1".equals(read(ctx,"ls_augment_extra_dim_owned",current))) {
-                        String on=read(ctx,"reduce_bright_colors_activated",current);
-                        String amount=read(ctx,"reduce_bright_colors_level",current);
-                        if(Boolean.TRUE.equals(available.invoke(target,ctx)) && ("0".equals(on)||"1".equals(on))
-                                && amount!=null && amount.matches("[0-9]{1,3}")) {
-                            int value=Integer.parseInt(amount);
-                            if(value<=100){matrix.invoke(target,value);activated.invoke(target,Boolean.valueOf("1".equals(on)));}
-                        }
-                        FeatureSettings.diagnostic(ctx,"ls_augment_extra_dim_runtime","user="+current+";owned=1;requested="+on+";strength="+amount+";model="+Build.MODEL);
+                    ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
+                    if(request.owned && Boolean.TRUE.equals(available.invoke(target,ctx))) {
+                        matrix.invoke(target,request.strength);activated.invoke(target,Boolean.valueOf(request.active));
+                        FeatureSettings.diagnostic(ctx,"ls_augment_extra_dim_runtime","user="+current+";owned=1;requested="+(request.active?1:0)+";strength="+request.strength+";model="+Build.MODEL);
                     }
                 }catch(ReflectiveOperationException | RuntimeException error){module.logFeatureError("EXTRA_DIM_STATE",error);}
                 return chain.proceed();
@@ -91,8 +89,8 @@ final class ExtraDimHook {
                     try {
                         Object instance=chain.getThisObject();Context ctx=(Context)context.invoke(instance);int current=user.getInt(instance);
                         Object target=controller.get(instance);
-                        if(current>=0 && target!=null && "1".equals(read(ctx,"ls_augment_extra_dim_owned",current))
-                                && Boolean.TRUE.equals(available.invoke(target,ctx)))apply.invoke(instance,target,true);
+                        ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
+                        if(request.owned && target!=null && Boolean.TRUE.equals(available.invoke(target,ctx)))apply.invoke(instance,target,true);
                     }catch(ReflectiveOperationException | RuntimeException error){module.logFeatureError("EXTRA_DIM_SETUP",error);}
                     return result;
                 }));
@@ -100,11 +98,23 @@ final class ExtraDimHook {
             installed=true;
         }catch(Throwable error){module.logFeatureError("EXTRA_DIM_INSTALL",error);}
     }
-    private static String read(Context context,String key,int user) {
-        // The system-server Secure cache can lag a root update. Read the exact
-        // native user's provider value instead of the module app's user.
-        android.os.Bundle args=new android.os.Bundle();args.putInt("_user",user);
-        android.os.Bundle result=context.getContentResolver().call(android.net.Uri.parse("content://settings"),"GET_secure",key,args);
-        return result==null?null:result.getString("value");
+    private static ExtraDimOwnershipClient.State request(AugmentModule module, Object instance, Context context, int current,
+            Field nativeHandler, Field user, Field controller, Method apply, Method nativeActivation, Method nativeStrength) throws ReflectiveOperationException {
+        android.os.Handler handler = (android.os.Handler) nativeHandler.get(instance);
+        return ExtraDimOwnershipClient.peek(context, current, handler, owned -> {
+            try {
+                if (user.getInt(instance) != current || nativeHandler.get(instance) != handler) return;
+                Object target = controller.get(instance);
+                if (target == null) return;
+                if (!owned) {
+                    // Reset may restore Settings while an older cached request is still in
+                    // the controller. Reload only this native feature through its own
+                    // callbacks so ROM defaults/range mapping remain authoritative.
+                    nativeStrength.invoke(instance);
+                    nativeActivation.invoke(instance, false);
+                }
+                apply.invoke(instance, target, true);
+            } catch (ReflectiveOperationException | RuntimeException error) { module.logFeatureError("EXTRA_DIM_REFRESH", error); }
+        });
     }
 }

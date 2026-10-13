@@ -24,9 +24,8 @@ public final class TestModuleSystemSettings {
         public ModuleSystemSettings.Read read(ModuleSystemSettings.Address address) { return new ModuleSystemSettings.Read(!failRead, settings.get(address)); }
         public boolean write(ModuleSystemSettings.Address address, String value) {
             sequence.add(address);
-            // Retiring the module's own inactive marker does not alter a native setting.
-            boolean ownMetadata=address.equals(OWNED)&&value==null&&"0".equals(settings.get(ACTIVE));
-            check(ownMetadata||!disk.isEmpty(), "recovery intent precedes native platform write");
+            check(!address.equals(OWNED) || value == null, "module metadata never written into Settings");
+            check(!disk.isEmpty(), "durable private data precedes native platform write or legacy deletion");
             if (++writes == failWrite) return false;
             if (value == null) settings.remove(address); else settings.put(address, value);
             return true;
@@ -36,8 +35,9 @@ public final class TestModuleSystemSettings {
         }
         ModuleSystemSettings.WriteResult dim(String level) {
             LinkedHashMap<ModuleSystemSettings.Address, String> updates = new LinkedHashMap<>();
-            updates.put(OWNED, "1"); updates.put(LEVEL, level); updates.put(ACTIVE, "1");
-            return engine.put(updates);
+            updates.put(LEVEL, level); updates.put(ACTIVE, "1");
+            ModuleSystemSettings.WriteResult migration = engine.migrateExtraDimOwnership();
+            return migration.success ? engine.put(updates) : migration;
         }
     }
     public static void main(String[] args) throws Exception {
@@ -64,10 +64,10 @@ public final class TestModuleSystemSettings {
 
         Fixture dim = new Fixture(); dim.settings.put(LEVEL, "27"); dim.settings.put(ACTIVE, "0");
         check(dim.dim("80").success, "new dim setting");
-        check(dim.sequence.get(0).equals(OWNED),"ownership precedes native setting notifications after durable backup");dim.sequence.clear();
+        check(dim.sequence.get(0).equals(LEVEL) && dim.engine.extraDimOwned() && !dim.settings.containsKey(OWNED),"private ownership precedes native notifications without a Settings marker");dim.sequence.clear();
         check(dim.engine.restore().success && dim.settings.get(LEVEL).equals("27") && dim.settings.get(ACTIVE).equals("0")
                 && !dim.settings.containsKey(OWNED) && dim.disk.isEmpty(), "dim restores both originals and removes marker");
-        check(dim.sequence.get(dim.sequence.size()-1).equals(OWNED),"native strength and activation restore before removing compatibility ownership");
+        check(dim.sequence.stream().noneMatch(OWNED::equals) && !dim.engine.extraDimOwned(),"restore retires private ownership without creating a Settings marker");
 
         Fixture commit = new Fixture(); commit.failCommit = true;
         check(!commit.put(ADB, "1").success && commit.writes == 0 && commit.settings.isEmpty(), "failed backup causes no platform write");
@@ -90,7 +90,7 @@ public final class TestModuleSystemSettings {
 
         Fixture legacy = new Fixture(); legacy.settings.put(OWNED, "1"); legacy.settings.put(LEVEL, "91");
         ModuleSystemSettings.RestoreResult old = legacy.engine.restore();
-        check(!old.success && old.reviewRequired && legacy.writes == 0, "old marker alone does not reveal prior dim values");
+        check(!old.success && old.reviewRequired && legacy.writes == 1 && legacy.engine.extraDimOwned() && !legacy.settings.containsKey(OWNED), "old marker migrates but alone does not reveal prior dim values");
         check(legacy.dim("60").success, "legacy setting remains operable");
         check(!legacy.engine.restore().success && legacy.settings.get(LEVEL).equals("60"), "legacy snapshot must not invent a baseline");
 
@@ -99,9 +99,27 @@ public final class TestModuleSystemSettings {
         check(retired.success&&retired.legacyDimHistoryUnknown&&!inactiveLegacy.settings.containsKey(OWNED),"inactive legacy marker retired with explicit missing history");
         check(inactiveLegacy.settings.get(ACTIVE).equals("0")&&inactiveLegacy.settings.get(LEVEL).equals("42")&&inactiveLegacy.writes==1,"legacy native strength and disabled state preserved");
         Fixture activeLegacy=new Fixture();activeLegacy.settings.put(OWNED,"1");activeLegacy.settings.put(ACTIVE,"1");
-        check(!activeLegacy.engine.restore().success&&activeLegacy.writes==0,"active legacy dim still requires a real baseline");
+        check(!activeLegacy.engine.restore().success&&activeLegacy.writes==1&&activeLegacy.engine.extraDimOwned(),"active legacy dim still requires a real baseline after private migration");
         Fixture deniedLegacy=new Fixture();deniedLegacy.settings.put(OWNED,"1");deniedLegacy.settings.put(ACTIVE,"0");deniedLegacy.failWrite=1;
         check(!deniedLegacy.engine.restore().success&&deniedLegacy.settings.containsKey(OWNED),"failed marker removal preserves legacy evidence");
+
+        Fixture blockedMigration = new Fixture(); blockedMigration.settings.put(OWNED,"1"); blockedMigration.failCommit=true;
+        check(!blockedMigration.engine.migrateExtraDimOwnership().success && blockedMigration.writes==0
+                && blockedMigration.settings.containsKey(OWNED),"failed private persistence never removes the old marker");
+        blockedMigration.failCommit=false;
+        check(blockedMigration.engine.migrateExtraDimOwnership().success && blockedMigration.engine.extraDimOwned()
+                && !blockedMigration.settings.containsKey(OWNED),"failed migration can safely retry");
+        int migrationWrites=blockedMigration.writes;
+        check(blockedMigration.engine.migrateExtraDimOwnership().success && blockedMigration.writes==migrationWrites,"migration retry never recreates legacy metadata");
+        Fixture forbidden = new Fixture();
+        check(!forbidden.put(OWNED,"1").success && forbidden.writes==0 && forbidden.disk.isEmpty(),"public platform writer rejects custom Settings metadata");
+        Fixture oldComplete = new Fixture(); oldComplete.settings.put(OWNED,"1");oldComplete.settings.put(LEVEL,"80");oldComplete.settings.put(ACTIVE,"1");
+        oldComplete.disk.put(OWNED.id(),new ModuleSystemSettings.Record(OWNED,true,null,null,"1").encode());
+        oldComplete.disk.put(LEVEL.id(),new ModuleSystemSettings.Record(LEVEL,true,"23","23","80").encode());
+        oldComplete.disk.put(ACTIVE.id(),new ModuleSystemSettings.Record(ACTIVE,true,"0","0","1").encode());
+        check(oldComplete.engine.migrateExtraDimOwnership().success && oldComplete.engine.extraDimOwned(),"existing complete recovery record is retained during migration");
+        check(oldComplete.engine.restore().success && "23".equals(oldComplete.settings.get(LEVEL)) && "0".equals(oldComplete.settings.get(ACTIVE))
+                && !oldComplete.settings.containsKey(OWNED),"migrated upgrade restores the actual original native values");
 
         Fixture damaged = new Fixture(); damaged.disk.put(ADB.id(), "corrupt");
         check(!damaged.engine.restore().success && damaged.writes == 0 && damaged.disk.containsKey(ADB.id()), "corrupt record fails closed");
@@ -116,6 +134,16 @@ public final class TestModuleSystemSettings {
         check(!user.engine.put(Map.of(new ModuleSystemSettings.Address(10, "global", "adb_enabled"), "1")).success && user.writes == 0,
                 "different Android user cannot be modified by this owner");
         check(!user.put(LEVEL, "101").success && user.writes == 0, "out of range inputs rejected");
+        Fixture secondary = new Fixture();
+        ModuleSystemSettings.Address secondaryMarker = new ModuleSystemSettings.Address(10, "secure", "ls_augment_extra_dim_owned");
+        ModuleSystemSettings.Address secondaryLevel = new ModuleSystemSettings.Address(10, "secure", "reduce_bright_colors_level");
+        secondary.settings.put(secondaryMarker, "1"); secondary.settings.put(secondaryLevel, "62");
+        ModuleSystemSettings.Engine secondaryEngine = new ModuleSystemSettings.Engine(secondary, secondary, 10);
+        check(secondaryEngine.migrateExtraDimOwnership().success && secondaryEngine.extraDimOwned()
+                && !secondary.settings.containsKey(secondaryMarker) && "62".equals(secondary.settings.get(secondaryLevel)),
+                "secondary user migrates only its own metadata and retains native state");
+        check(!secondary.engine.restore().success && secondary.disk.keySet().stream().allMatch(id -> id.startsWith("10:")),
+                "another app user cannot read or restore a different user's private recovery records");
         try { key("global", "unrelated_user_setting"); throw new AssertionError("unknown settings must be rejected"); }
         catch (IllegalArgumentException expected) { checks++; }
         System.out.println("PASS ModuleSystemSettings: " + checks + " assertions; no device commands");

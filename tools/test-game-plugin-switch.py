@@ -63,6 +63,14 @@ public class TestPluginSwitch {
     Chain c=new Chain(false,new Context(),"keylink","ordinary.app",false);
     check(Boolean.TRUE.equals(hook.getValue().run(c)),"explicit app never borrows foreground");
    }
+   for(Map.Entry<Method,Action> hook:h.hooks.entrySet()){
+    int n=hook.getKey().getParameterCount();
+    for(boolean nativeResult:new boolean[]{false,true}){
+     Object[] args=n==2?new Object[]{new Context(),"super_resolution"}:n==3?new Object[]{new Context(),"super_resolution","ordinary.app"}:new Object[]{new Context(),"super_resolution","ordinary.app",false};
+     Chain c=new Chain(nativeResult,args);
+     check(hook.getValue().run(c).equals(nativeResult)&&c.calls==1,"super resolution preserves native capability, state sync and plugin switch");
+    }
+   }
   }
   TestPluginSwitch bad=new TestPluginSwitch();bad.plugin(Wrong.class.getName(),true);
   check(bad.hooks.isEmpty(),"unknown method shapes never hooked");

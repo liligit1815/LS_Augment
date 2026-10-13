@@ -81,10 +81,12 @@ final class HealthResetController {
             return failure(app, "模块健康记录清理结果无法核验");
         if (!HideUserIdentity.match(app, user, identity.userSerial).success)
             return failure(app, "健康清理后用户身份已变化，请核对当前用户");
-        boolean history = configured || ledger == 1;
+        boolean privateLedger=HealthLedgerStore.hasRecords(app);
+        if(!HealthLedgerStore.clearPrivate(app))return failure(app,"模块私有健康账本仍在使用或未能清除，恢复依据已保留");
+        boolean history = configured || ledger == 1 || privateLedger;
         AuditLog.write(app, "HEALTH_RESET", "user=" + user + " module_files_removed=" + files
                 + " native_history_restored=false history_may_be_modified=" + history);
-        return new Result(true, files, ledger == 1, history, history ? HISTORY_LIMITATION : "");
+        return new Result(true, files, ledger == 1 || privateLedger, history, history ? HISTORY_LIMITATION : "");
     }
 
     private static Result absentPackage(Context context, int user, long serial, boolean configured) {
@@ -103,9 +105,12 @@ final class HealthResetController {
         if (!absent.isSuccess() || !"HEALTH_RESET_ABSENT=1".equals(absent.output)
                 || !HideUserIdentity.match(context, user, serial).success)
             return failure(context, "未找到当前用户的小米运动健康，无法核验模块健康记录是否已清除");
+        boolean privateLedger=HealthLedgerStore.hasRecords(context);
+        if(!HealthLedgerStore.clearPrivate(context))return failure(context,"模块私有健康账本未能清除");
+        configured |= privateLedger;
         AuditLog.write(context, "HEALTH_RESET", "user=" + user
                 + " health_package_absent=true module_files_removed=0 native_history_restored=false");
-        return new Result(true, 0, false, configured, configured ? HISTORY_LIMITATION : "");
+        return new Result(true, 0, privateLedger, configured, configured ? HISTORY_LIMITATION : "");
     }
 
     static int outputNumber(String output, String prefix) {

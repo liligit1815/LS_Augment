@@ -10,7 +10,7 @@ final class HideRecoveryArchive {
     private HideRecoveryArchive() { }
 
     static RootShell.Result preserve(String selection) {
-        RootShell.Result result = RootShell.run(command(),
+        RootShell.Result result = HidePrivateStorage.run(command(),
                 selection.isEmpty() ? "" : selection + "\n", 30, 4096);
         if (!result.isSuccess()) return result;
         // A zero exit from su without the verified script footer is not a commit.
@@ -22,7 +22,7 @@ final class HideRecoveryArchive {
     static String command() {
         return """
                 umask 077
-                ROOT='/data/adb/ls_augment/v2'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
                 ROOT_PARENT=${ROOT%/*}
                 STORAGE=${ROOT_PARENT%/*}
                 HISTORY="$ROOT/recovery-history-v1"
@@ -68,18 +68,25 @@ final class HideRecoveryArchive {
                   hash=$(digest "$SNAP") || fail snapshot_hash
                   dest="$HISTORY/$kind/$hash.raw"
                   [ ! -L "$dest" ] || fail symlink_archive
-                  if [ ! -e "$dest" ]; then
-                    # Hard-link publication never overwrites an earlier record.
-                    # Another writer may publish the same bytes first.
-                    ln "$SNAP" "$dest" 2>/dev/null || [ -f "$dest" ] || fail publish
+                  fsync "$SNAP" || fail snapshot_sync
+                  if [ -e "$dest" ]; then
+                    [ -f "$dest" ] || fail invalid_archive
+                    cmp -s "$SNAP" "$dest" || fail archive_compare
+                  else
+                    # The shared immutable lock serializes absence+rename. App
+                    # SELinux domains may rename private files but deny link().
+                    # Keep abandoned staging outside catalogued categories.
+                    [ "$(stat -c '%d' "$SNAP")" = "$(stat -c '%d' "$HISTORY/$kind")" ] || fail cross_filesystem_publish
+                    mv -n "$SNAP" "$dest" || fail publish
+                    [ ! -e "$SNAP" ] && [ ! -L "$SNAP" ] || fail publish_not_moved
+                    SNAP=''
                   fi
                   [ ! -L "$dest" ] && [ -f "$dest" ] || fail invalid_archive
-                  chmod 0600 "$dest" || fail archive_permissions
-                  cmp -s "$SNAP" "$dest" || fail archive_compare
+                  [ "$(stat -c '%u:%g:%a:%h' "$dest")" = "$PUBLICATION_OWNER:600:1" ] || fail archive_permissions
                   reread=$(digest "$dest") || fail archive_hash
                   [ "$reread" = "$hash" ] || fail archive_hash_mismatch
                   VERIFY="$VERIFY $kind/$hash.raw"
-                  rm -f "$SNAP" || fail snapshot_cleanup
+                  [ -z "$SNAP" ] || rm -f "$SNAP" || fail snapshot_cleanup
                   SNAP=''
                 }
                 archive() {
@@ -106,6 +113,27 @@ final class HideRecoveryArchive {
                   publish "$category"
                 }
                 directory "$ROOT"
+                # Reuse the target-store/reset lock; never unlink or replace its inode.
+                PUBLICATION_OWNER="$(id -u):$(id -g)"
+                LOCKDIR="${LSA_PRIVATE_ROOT:?}/v2/manual-targets-v1"
+                [ ! -L "$LOCKDIR" ] || fail symlink_lock_directory
+                if [ ! -e "$LOCKDIR" ]; then mkdir "$LOCKDIR" 2>/dev/null || [ -d "$LOCKDIR" ] || fail lock_directory_create; fi
+                [ -d "$LOCKDIR" ] && [ ! -L "$LOCKDIR" ] || fail invalid_lock_directory
+                [ "$(stat -c '%u:%g:%a' "$LOCKDIR")" = "$PUBLICATION_OWNER:700" ] || fail lock_directory_permissions
+                LOCK="$LOCKDIR/lock"
+                [ ! -L "$LOCK" ] || fail symlink_lock
+                if [ ! -e "$LOCK" ]; then (set -C; : >"$LOCK") 2>/dev/null || [ -f "$LOCK" ] || fail lock_create; fi
+                lockcheck() {
+                  [ -f "$LOCK" ] && [ ! -L "$LOCK" ] || fail invalid_lock
+                  [ "$(stat -c '%u:%g:%a:%h:%s' "$LOCK")" = "$PUBLICATION_OWNER:600:1:0" ] || fail lock_permissions
+                }
+                lockcheck
+                LOCK_ID=$(stat -c '%d:%i' "$LOCK") || fail lock_stat
+                exec 9<>"$LOCK" || fail lock_open
+                command -v flock >/dev/null 2>&1 || fail flock_unavailable
+                flock -x 9 9>&9 || fail lock_unavailable
+                lockcheck
+                [ "$(stat -c '%d:%i' "$LOCK")" = "$LOCK_ID" ] || fail lock_replaced
                 directory "$HISTORY"
                 for kind in targets backup script selection; do directory "$HISTORY/$kind"; done
                 INPUT=$(mktemp "$HISTORY/.input.XXXXXXXX") || fail input_create

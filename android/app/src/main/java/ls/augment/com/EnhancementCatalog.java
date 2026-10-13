@@ -7,6 +7,7 @@ public final class EnhancementCatalog {
         ArrayList<EnhancementOption> all=new ArrayList<>();
         all.addAll(SystemOptions.options());all.addAll(SystemUiOptions.options());
         all.addAll(GameOptions.options());all.addAll(LauncherOptions.options());
+        all.addAll(RecentsCardRadiusOptions.options());
         all.addAll(AppearanceOptions.options());
         all.addAll(CollabOptions.options());
         all.addAll(EntryVisibilityOptions.options());

@@ -41,14 +41,14 @@ final class ConfigBridgeReadiness {
                 content=service==null?null:(IBinder)service;
             }catch(Exception unavailable){
                 if(unavailable instanceof SecurityException)throw unavailable;
-                probeError="service_manager_probe:"+unavailable;
+                probeError="service_manager_probe:"+callFailure(unavailable);
                 // Older/OEM reflection surfaces may omit checkService. The
                 // resolver's actual IContentService is an independent fallback.
                 try {
                     Object service=invoke(ContentResolver.class,"getContentService",new Class<?>[0]);
                     content=service==null?null:((IInterface)service).asBinder();
                 }catch(Exception fallback){
-                    return new Result("FAILED","content_service_probe_failed:"+fallback,probeError);
+                    return new Result("FAILED","content_service_probe_failed:"+callFailure(fallback),probeError);
                 }
             }
             if(content==null||!content.isBinderAlive())return unavailable("WAITING_FOR_SERVICE","content_service_unavailable",probeError);
@@ -65,7 +65,7 @@ final class ConfigBridgeReadiness {
                 return unavailable("WAITING_FOR_PROVIDER","module_provider_not_acquirable",probeError);
             }
             waitingSince=-1;return new Result("READY","",probeError);
-        }catch(Exception failure){return new Result("FAILED","readiness_probe_failed:"+failure,probeError);}
+        }catch(Exception failure){return new Result("FAILED","readiness_probe_failed:"+callFailure(failure),probeError);}
     }
 
     private Result unavailable(String state,String reason,String probeError){
@@ -78,6 +78,15 @@ final class ConfigBridgeReadiness {
         String message=error.getMessage();
         return message!=null&&(message.equals("Unknown authority "+AUTHORITY)
                 ||message.equals("Unknown authority: "+AUTHORITY));
+    }
+    /** IPC exceptions can contain payload text; publish a bounded type and a known reason only. */
+    static String callFailure(Throwable failure){
+        if(failure instanceof IllegalArgumentException&&unknownAuthority((IllegalArgumentException)failure))
+            return "provider_unavailable;exception=IllegalArgumentException";
+        if(failure instanceof SecurityException)return "permission_denied;exception=SecurityException";
+        String type=failure.getClass().getName();
+        if(type.length()>160||!type.matches("[A-Za-z0-9_.$]+"))type="unknown";
+        return "call_exception;type="+type;
     }
     private static Object invoke(Class<?> type,String name,Class<?>[] signature,Object...args)throws Exception{
         Method method=type.getDeclaredMethod(name,signature);method.setAccessible(true);

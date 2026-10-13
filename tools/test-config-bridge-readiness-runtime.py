@@ -62,8 +62,10 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   acquireUnknown=true;check(gate.check(context).waiting(),"startup Unknown authority at acquisition is expected waiting");acquireUnknown=false;
   permissionDenied=true;check(gate.check(context).error.contains("SecurityException")&&!gate.check(context).waiting(),"permission denial is an immediate real failure");permissionDenied=false;
   serviceProbeUnavailable=true;ConfigBridgeReadiness.Result fallback=gate.check(context);
-  check(fallback.ready()&&fallback.probeError.contains("OEM checkService absent"),"resolver fallback works and retains concrete probe warning");
-  fallbackProbeUnavailable=true;check(gate.check(context).state.equals("FAILED")&&gate.check(context).error.contains("fallback unavailable"),"unsupported probes do not turn into permanent waiting");
+  check(fallback.ready()&&fallback.probeError.contains("UnsupportedOperationException")&&!fallback.probeError.contains("OEM checkService absent"),"resolver fallback works and retains safe exception type without raw message");
+  fallbackProbeUnavailable=true;check(gate.check(context).state.equals("FAILED")&&gate.check(context).error.contains("content_service_probe_failed"),"unsupported probes do not turn into permanent waiting");
+  check(ConfigBridgeReadiness.callFailure(new IllegalArgumentException("Unknown authority ls.augment.com.config")).startsWith("provider_unavailable"),"provider disappears after admission remains an explicit unavailable failure");
+  check(!ConfigBridgeReadiness.callFailure(new IllegalArgumentException("PRIVATE_PAYLOAD")).contains("PRIVATE_PAYLOAD"),"IPC failure messages do not expose payload text");
 
   reset();contentReady=false;startController(new Context());
   check(owner.bridge.equals("WAITING_FOR_SERVICE")&&owner.lastBridgeError.isEmpty()&&receiverRegisters==0&&observerRegisters==0&&snapshotReads==0,"automation does not register or query before service admission");
@@ -102,7 +104,10 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   check(inventoryWrites==0&&diagnostics.get("ls_augment_statusbar_inventory_error").contains("SecurityException"),"inventory permission error is not classified as boot waiting");
   permissionDenied=false;Assets.next();check(inventoryWrites==1&&diagnostics.get("ls_augment_statusbar_inventory_error").isEmpty(),"inventory successful retry recovers current error");
   reset();Assets.clear();inventoryReject=true;Assets.capture(new Context(),"reject");
-  check(inventoryWrites==1&&diagnostics.get("ls_augment_statusbar_inventory_error").equals("Provider rejected inventory"),"provider rejects remain real errors");
+  check(inventoryWrites==1&&diagnostics.get("ls_augment_statusbar_inventory_error").contains("inventory_rejected:row_id_invalid"),"provider rejection retains specific reason and remains an error");
+  Bundle hostile=new Bundle();hostile.putString("reason","PRIVATE_PAYLOAD");hostile.putString("payload","secret");
+  check(Assets.inventoryRejection(hostile).equals("inventory_rejected:reason_unavailable"),"unknown provider diagnostics never echo arbitrary text");
+  check(Assets.inventoryRejection(null).equals("inventory_rejected:reply_missing"),"null publication reply stays distinct from rejection");
   inventoryReject=false;Assets.next();check(inventoryWrites==2&&Assets.pendingInventory==null,"accepted retry recovers rejection");
   reset();Assets.clear();providerDeclared=false;Assets.capture(new Context(),"stale");now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;Assets.next();
   check(inventoryWrites==0&&diagnostics.get("ls_augment_statusbar_inventory_error").contains("readiness_timeout"),"long inventory provider absence is diagnosable even after payload expiry");
@@ -118,13 +123,13 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--jdk',type=Path,default=Path('C:/Program Files/Android/openjdk/jdk-21.0.8'))
     parser.add_argument('--mutation',choices=['skip-start-admission','skip-inventory-admission']);args=parser.parse_args()
     assets=(SRC/'hook/StatusBarAssetsHook.java').read_text(encoding='utf-8')
-    pieces='\n'.join(extract(assets,x) for x in ['private static final class InventoryPublication {','private static void publishInventory(InventoryPublication item) {','private static void scheduleInventoryRetry(InventoryPublication item,long delay,String state){'])
+    pieces='\n'.join(extract(assets,x) for x in ['private static final class InventoryPublication {','private static void publishInventory(InventoryPublication item) {','private static String inventoryRejection(Bundle response){','private static void scheduleInventoryRetry(InventoryPublication item,long delay,String state){'])
     if args.mutation=='skip-inventory-admission':
-        start=pieces.index('            ConfigBridgeReadiness.Result status=');end=pieces.index('            Bundle extras=',start)
-        pieces=pieces[:start]+pieces[end:]
+        start=pieces.index('            ConfigBridgeReadiness.Result status=');end=pieces.index('                Bundle extras=',start)
+        pieces=pieces[:start]+'            {\n'+pieces[end:]
     fixture=base.FIXTURE.replace(extract(base.FIXTURE,'public static void main(String[] args)throws Exception'),MAIN)
     fixture=fixture.replace('import java.util.*;','import java.util.*;import android.os.SystemClock;import java.util.concurrent.TimeUnit;')
-    fixture=fixture.replace('throw new AssertionError(method);','if(method.equals("statusbar_inventory_publish")){inventoryWrites++;inventoryPayload=extras.getString("payload");Bundle b=new Bundle();b.putBoolean("ok",!inventoryReject);return b;}throw new AssertionError(method);')
+    fixture=fixture.replace('throw new AssertionError(method);','if(method.equals("statusbar_inventory_publish")){inventoryWrites++;inventoryPayload=extras.getString("payload");Bundle b=new Bundle();b.putBoolean("ok",!inventoryReject);if(inventoryReject)b.putString("reason","row_id_invalid");return b;}throw new AssertionError(method);')
     fixture=fixture[:-1]+EXTRA.replace('// ASSETS_PRODUCTION',pieces)+'\n}'
     stubs=dict(base.STUBS)
     stubs['android/content/ContentResolver.java']=stubs['android/content/ContentResolver.java'].replace('return ls.augment.com.hook.AutomationHookFixture.providerAcquirable?new ContentProviderClient():null;','if(!ls.augment.com.hook.AutomationHookFixture.providerAcquirable)return null;ls.augment.com.hook.AutomationHookFixture.clientOpens++;return new ContentProviderClient();')

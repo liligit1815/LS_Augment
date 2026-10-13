@@ -5,6 +5,7 @@ This suite checks the conservative guard, not completed ownership-safe recovery.
 HIDDEN previews must fail; VISIBLE confirmation may perform no PackageManager write.
 """
 from pathlib import Path
+from hide_private_test_support import PRIVATE_STORAGE_STUB
 import subprocess
 import tempfile
 import argparse
@@ -22,6 +23,7 @@ def member(source, signature):
     return source[start:i]
 
 SOURCES = {
+    'ls/augment/com/HidePrivateStorage.java': PRIVATE_STORAGE_STUB,
 'android/content/Context.java': 'package android.content;public class Context {public Context getApplicationContext(){return this;}}',
 'android/os/SystemClock.java': 'package android.os;public class SystemClock {public static long elapsedRealtime(){return ls.augment.com.TestRecoveryController.active.now;}}',
 'ls/augment/com/HideRecoveryArchive.java': '''package ls.augment.com;final class HideRecoveryArchive {static RootShell.Result preserve(String text){return TestRecoveryController.active.archive(text);}}''',

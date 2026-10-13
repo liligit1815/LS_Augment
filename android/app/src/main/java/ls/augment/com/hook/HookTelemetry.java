@@ -10,6 +10,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.json.*;
 import ls.augment.com.BuildConfig;
+import ls.augment.com.ShoulderSwitchLogPolicy;
 import ls.augment.com.hook.HookTelemetryObserver.Counter;
 import ls.augment.com.hook.HookTelemetryObserver.ErrorRecord;
 import ls.augment.com.hook.HookTelemetryObserver.Failures;
@@ -18,10 +19,20 @@ import ls.augment.com.hook.HookTelemetryObserver.Failures;
 final class HookTelemetry {
     private static final ConcurrentHashMap<String,Counter> counters=new ConcurrentHashMap<>();
     private static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);
+    private static final int BATCH_LIMIT=128,MAX_BATCH_ATTEMPTS=3;
+    private static final long RETRY_DELAY_MS=3000,BATCH_MAX_AGE_MS=30000;
+    private static final String deliverySession=UUID.randomUUID().toString();
+    // Only the single writer touches the in-flight batch. Producers remain bounded at 256.
+    private static List<String[]> pendingBatch=Collections.emptyList();
+    private static String pendingBatchId="",pendingPayload="";
+    private static long batchSequence,pendingBatchStarted,pendingRetryAt,retriedBatches,exhaustedBatches,expiredBatches,terminalBatches;
+    private static int pendingBatchAttempts;
     private static final AtomicLong dropped=new AtomicLong(),sequence=new AtomicLong();
     private static final ConcurrentHashMap<String,AtomicLong> dropReasons=new ConcurrentHashMap<>();
     private static volatile long lastDropAt,lastPublishAttemptAt,lastPublishAcceptedAt,lastPublishFailureAt;
-    private static volatile String lastDropReason="",lastPublishFailureReason="";
+    private static volatile String lastDropReason="",lastPublishFailureReason="",currentPublishFailureReason="",lastPublishFailureType="";
+    private static volatile String lastPublishFailureDetail="";
+    private static volatile long lastPublishRecoveredAt;
     private static final HookTelemetryObserver.StackBudget errorStacks=new HookTelemetryObserver.StackBudget(8,4096);
     private static final long startedWall=System.currentTimeMillis(),startedElapsed=SystemClock.elapsedRealtime();
     private static volatile String process="unknown",pkg="unknown",framework="unknown";
@@ -74,8 +85,15 @@ final class HookTelemetry {
         if(text.length()>1900)text=text.substring(0,1900)+" [TRUNCATED]";
         if(!trace.offer(new String[]{"LIFTARC",text,level}))recordDrop("queue_full",1);
     }
-    private static boolean hasLiftArcEvents(){
-        for(String[] event:trace)if("LIFTARC".equals(event[0]))return true;
+    /** Switch state/failure witnesses persist even with optional shoulder detail off. */
+    static void shoulderSwitch(String level,String value){
+        if(!ShoulderSwitchLogPolicy.level(level))return;
+        String safe=ShoulderSwitchLogPolicy.safeSwitch(value);if(safe.isEmpty())return;
+        String text="seq="+sequence.incrementAndGet()+" wall="+System.currentTimeMillis()+" elapsed="+SystemClock.elapsedRealtime()+" thread="+Thread.currentThread().getName()+" "+safe;
+        if(!trace.offer(new String[]{ShoulderSwitchLogPolicy.FEATURE,text,level}))recordDrop("queue_full",1);
+    }
+    private static boolean hasRuntimeEvents(){
+        for(String[] event:trace)if(event.length>2&&ShoulderSwitchLogPolicy.runtime(event[0],event[2]))return true;
         return false;
     }
     static void event(String message){
@@ -83,11 +101,25 @@ final class HookTelemetry {
         if(upper.contains("TGK")||upper.contains("SHOULDER")||upper.contains("RAPID"))detail("SHOULDER",message);
         else if(upper.contains("AI_")||upper.contains("AI."))detail("AI",message);
     }
-    private static void publish(){int pendingEvents=0;try{
+    private static void publish(){try{
+        long now=SystemClock.elapsedRealtime();
+        if(!pendingBatch.isEmpty()&&now-pendingBatchStarted>=BATCH_MAX_AGE_MS){
+            recordDrop("retry_expired",pendingBatch.size());expiredBatches++;clearBatch();
+        }
         Context context=FeatureSettings.from(null);if(context==null)return;
         shoulder=FeatureSettings.enabled(context,FeatureSettings.SHOULDER_DIAGNOSTICS);
         ai=FeatureSettings.enabled(context,FeatureSettings.AI_TRIGGER_DIAGNOSTICS);
-        long now=SystemClock.elapsedRealtime();if(!shoulder&&!ai&&!hasLiftArcEvents()&&now-lastPublished<15000)return;lastPublished=now;lastPublishAttemptAt=System.currentTimeMillis();
+        if(!pendingBatch.isEmpty()&&now<pendingRetryAt)return;
+        if(pendingBatch.isEmpty()&&!shoulder&&!ai&&!hasRuntimeEvents()&&now-lastPublished<15000)return;
+        lastPublished=now;lastPublishAttemptAt=System.currentTimeMillis();
+        if(pendingBatch.isEmpty()){
+            pendingPayload="";pendingBatchId="";pendingBatchAttempts=0;
+            pendingBatch=new ArrayList<>(BATCH_LIMIT);trace.drainTo(pendingBatch,BATCH_LIMIT);
+            if(!pendingBatch.isEmpty()){
+                pendingBatchId=deliverySession+":"+(++batchSequence);pendingBatchStarted=now;
+            }
+        }
+        if(!pendingBatch.isEmpty()&&++pendingBatchAttempts==2)retriedBatches++;
         JSONObject out=new JSONObject().put("package",pkg).put("packages",packageNames()).put("process",process).put("pid",android.os.Process.myPid())
             .put("moduleVersion",BuildConfig.VERSION_NAME).put("framework",framework).put("moduleLoadedAt",startedWall)
             .put("processStartedElapsed",android.os.Process.getStartElapsedRealtime()).put("moduleLoadedElapsed",startedElapsed).put("snapshotAt",System.currentTimeMillis()).put("moduleLoaded",true)
@@ -112,20 +144,38 @@ final class HookTelemetry {
         }
         if("com.android.systemui".equals(pkg))out.put("qsClockDebug",ControlCenterHeaderHook.clockDebug);
         out.put("hooks",targets);Bundle extras=new Bundle();extras.putString("snapshot",out.toString());
-        JSONArray events=new JSONArray();for(int i=0;i<128;i++){String[] e=trace.poll();if(e==null)break;pendingEvents++;
-            JSONObject event=new JSONObject().put("feature",e[0]).put("value",e[1]);
-            if(e.length>2){
-                event.put("level",e[2]);
-                android.util.Log.println("ERROR".equals(e[2])?android.util.Log.ERROR:"WARN".equals(e[2])?android.util.Log.WARN:android.util.Log.INFO,
-                        "LS_Augment","LIFTARC "+e[2]+" "+e[1]);
+        if(pendingPayload.isEmpty()){
+            JSONArray events=new JSONArray();for(String[] e:pendingBatch){
+                JSONObject event=new JSONObject().put("feature",e[0]).put("value",e[1]);
+                if(e.length>2)event.put("level",e[2]);
+                events.put(event);
             }
-            events.put(event);
+            pendingPayload=events.toString();
+            // Native log forwarding is best effort and happens once, never once per retry.
+            for(String[] e:pendingBatch)if(e.length>2)try{
+                android.util.Log.println("ERROR".equals(e[2])?android.util.Log.ERROR:"WARN".equals(e[2])?android.util.Log.WARN:android.util.Log.INFO,
+                        "LS_Augment",e[0]+" "+e[2]+" "+e[1]);
+            }catch(Throwable ignored){}
         }
-        extras.putString("events",events.toString());pendingEvents=events.length();
+        extras.putString("events",pendingPayload);extras.putString("eventBatchId",pendingBatchId);
         Bundle result=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"telemetry",null,extras);
-        if(result==null||!result.getBoolean("ok")){recordDrop("provider_rejected",events.length());publishFailure("provider_rejected",null);}
-        else {lastPublishAcceptedAt=System.currentTimeMillis();lastPublishFailureReason="";}
-    }catch(Throwable error){recordDrop("publish_failed",pendingEvents);publishFailure("publish_failed",error);}}
+        if(result==null||!result.getBoolean("ok")){
+            boolean retryable=result==null||result.getBoolean("retryable",true);
+            String detail=retryable?"":"APPEND_COMMIT_UNKNOWN".equals(result.getString("detailFailure",""))
+                    ?"APPEND_COMMIT_UNKNOWN":"UNSPECIFIED_TERMINAL_REJECTION";
+            publishFailure(retryable?"provider_rejected":"provider_terminal",null,
+                    result==null?"NO_REPLY":providerFailureType(result),retryable,detail);
+        }
+        else {
+            lastPublishAcceptedAt=System.currentTimeMillis();
+            if(!currentPublishFailureReason.isEmpty())lastPublishRecoveredAt=lastPublishAcceptedAt;
+            currentPublishFailureReason="";clearBatch();
+        }
+    }catch(Throwable error){publishFailure("publish_failed",error);}}
+    private static void clearBatch(){
+        pendingBatch=Collections.emptyList();pendingBatchId="";pendingPayload="";
+        pendingBatchAttempts=0;pendingBatchStarted=0;pendingRetryAt=0;
+    }
     private static void recordDrop(String reason,int count){
         if(count<=0)return;
         dropped.addAndGet(count);dropReasons.computeIfAbsent(reason,key->new AtomicLong()).addAndGet(count);
@@ -133,17 +183,39 @@ final class HookTelemetry {
     }
     private static JSONObject deliveryJson()throws JSONException{
         JSONObject reasons=new JSONObject();
-        for(String reason:new String[]{"queue_full","provider_rejected","publish_failed"}){
+        for(String reason:new String[]{"queue_full","provider_rejected","publish_failed","retry_expired","provider_terminal"}){
             AtomicLong count=dropReasons.get(reason);reasons.put(reason,count==null?0:count.get());
         }
-        return new JSONObject().put("queueCapacity",256).put("batchLimit",128).put("pendingEvents",trace.size())
+        return new JSONObject().put("queueCapacity",256).put("batchLimit",BATCH_LIMIT).put("maxBufferedEvents",256+BATCH_LIMIT)
+                .put("pendingEvents",trace.size()+pendingBatch.size()).put("queuedEvents",trace.size()).put("inFlightEvents",pendingBatch.size())
+                .put("batchAttempts",pendingBatchAttempts).put("maxBatchAttempts",MAX_BATCH_ATTEMPTS).put("batchMaxAgeMs",BATCH_MAX_AGE_MS)
+                .put("retriedBatches",retriedBatches).put("retryExhaustedBatches",exhaustedBatches).put("retryExpiredBatches",expiredBatches)
+                .put("terminalRejectedBatches",terminalBatches)
                 .put("droppedByReason",reasons).put("lastDropAt",lastDropAt).put("lastDropReason",lastDropReason)
                 .put("lastPublishAttemptAt",lastPublishAttemptAt).put("lastPublishAcceptedAt",lastPublishAcceptedAt)
                 .put("lastPublishFailureAt",lastPublishFailureAt).put("lastPublishFailureReason",lastPublishFailureReason)
-                .put("meaning","bounded detail delivery; dropped events do not increment hook exception counters; provider acceptance is not file durability");
+                .put("lastPublishFailureType",lastPublishFailureType).put("currentPublishFailureReason",currentPublishFailureReason)
+                .put("lastPublishFailureDetail",lastPublishFailureDetail)
+                .put("lastPublishRecoveredAt",lastPublishRecoveredAt)
+                .put("meaning","bounded retries retain unacknowledged events; dropped counts include abandoned unacknowledged events; duplicate suppression is bounded to the provider process; dropped events do not increment hook exception counters; provider acceptance is not file durability");
     }
     private static void publishFailure(String reason,Throwable error){
-        lastPublishFailureAt=System.currentTimeMillis();lastPublishFailureReason=reason;publishWarning(reason,error);
+        publishFailure(reason,error,"",true,"");
+    }
+    private static String providerFailureType(Bundle result){
+        String type=result.getString("error","");
+        return type.matches("[A-Za-z][A-Za-z0-9_.$]{0,159}")?type:"UNKNOWN_PROVIDER_REJECTION";
+    }
+    private static void publishFailure(String reason,Throwable error,String providerType,boolean retryable,String detail){
+        lastPublishFailureAt=System.currentTimeMillis();lastPublishFailureReason=reason;currentPublishFailureReason=reason;
+        lastPublishFailureType=error==null?providerType:error.getClass().getName();
+        lastPublishFailureDetail=detail;
+        if(!pendingBatch.isEmpty()){
+            if(!retryable){recordDrop(reason,pendingBatch.size());terminalBatches++;clearBatch();}
+            else if(pendingBatchAttempts>=MAX_BATCH_ATTEMPTS){recordDrop(reason,pendingBatch.size());exhaustedBatches++;clearBatch();}
+            else pendingRetryAt=SystemClock.elapsedRealtime()+RETRY_DELAY_MS;
+        }
+        publishWarning(reason,error);
     }
     private static void publishWarning(String reason,Throwable error){
         if(!BuildConfig.DEBUG||!android.util.Log.isLoggable("LS_Augment",android.util.Log.INFO))return;

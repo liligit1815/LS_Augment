@@ -8,6 +8,7 @@ The final boundary case verifies original serial propagation and rejection by
 the modeled service; it does not prove actual ART/G or filesystem durability.
 """
 from pathlib import Path
+from hide_private_test_support import PRIVATE_STORAGE_STUB
 import argparse
 import contextlib
 import datetime
@@ -26,6 +27,8 @@ REAL = ("RootHideManager", "HideUserIdentity", "HideRecoveryIdentity", "HideTarg
         "HideRestoreGrantLedger", "HideRestoreGrantStore")
 
 STUBS = {
+    'android/os/Process.java': 'package android.os;public class Process {public static int myUid(){return 10001;}}',
+    'ls/augment/com/HidePrivateStorage.java': PRIVATE_STORAGE_STUB,
 "android/content/SharedPreferences.java": r'''package android.content;
 import java.util.*;
 public class SharedPreferences {
@@ -48,6 +51,7 @@ public class Context {
  public final PackageManager pm=new PackageManager();
  public final Map<String,SharedPreferences> prefs=new HashMap<>();
  public Context getApplicationContext(){return this;}
+ public java.io.File getFilesDir(){return new java.io.File("offline-private-files");}
  public SharedPreferences getSharedPreferences(String n,int m){return prefs.computeIfAbsent(n,k->new SharedPreferences());}
  public <T>T getSystemService(Class<T> c){return c.cast(c==UserManager.class?users:power);}
  public PackageManager getPackageManager(){return pm;}

@@ -981,17 +981,19 @@ final class StatusBarAssetsHook {
                 long delay=Math.min(30_000L,1000L<<Math.min(5,item.waits++));
                 scheduleInventoryRetry(item,delay,status.state);return;
             }
-            if(!status.ready())throw new IllegalStateException(status.error);
-            if(SystemClock.elapsedRealtime()-item.started>=60_000L){
-                pendingInventory=null;
-                // Readiness may take longer than an observation's validity.
-                // Capture current UI state instead of publishing stale pixels.
-                MAIN.post(()->{reportedAt=0;publish();});return;
+            if(!status.ready())error=status.error;
+            else {
+                if(SystemClock.elapsedRealtime()-item.started>=60_000L){
+                    pendingInventory=null;
+                    // Readiness may take longer than an observation's validity.
+                    // Capture current UI state instead of publishing stale pixels.
+                    MAIN.post(()->{reportedAt=0;publish();});return;
+                }
+                Bundle extras=new Bundle();extras.putString("payload",item.payload);
+                Bundle response=item.context.getContentResolver().call(PROVIDER,"statusbar_inventory_publish",null,extras);
+                if(response==null||!response.getBoolean("ok",false))error=inventoryRejection(response);
             }
-            Bundle extras=new Bundle();extras.putString("payload",item.payload);
-            Bundle response=item.context.getContentResolver().call(PROVIDER,"statusbar_inventory_publish",null,extras);
-            if(response==null||!response.getBoolean("ok",false))error="Provider rejected inventory";
-        }catch(Exception failure){error=failure.toString();}
+        }catch(Exception failure){error=ConfigBridgeReadiness.callFailure(failure);}
         if(item.generation!=inventoryGeneration)return;
         FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_error",error);
         if(error.isEmpty()) {
@@ -1001,6 +1003,21 @@ final class StatusBarAssetsHook {
         }
         long delay=ls.augment.com.InventoryRetryPolicy.delay(++item.failures,SystemClock.elapsedRealtime()-item.started);
         scheduleInventoryRetry(item,delay,"failed");
+    }
+    private static String inventoryRejection(Bundle response){
+        if(response==null)return "inventory_rejected:reply_missing";
+        String reason=response.getString("reason","");
+        // Only fixed protocol codes and numeric positions/limits cross into persistent logs.
+        switch(reason){
+            case "caller_user_mismatch":case "caller_not_systemui":case "payload_missing":case "payload_too_large":
+            case "json_invalid":case "version_invalid":case "session_or_time_missing":case "session_invalid":case "observed_at_invalid":
+            case "surfaces_invalid":case "surface_invalid":case "surface_rows_invalid":case "too_many_rows":
+            case "row_invalid":case "row_id_missing":case "row_id_invalid":case "row_too_large":case "observation_out_of_order":break;
+            default:return "inventory_rejected:reason_unavailable";
+        }
+        return "inventory_rejected:"+reason+";chars="+response.getInt("payloadChars",-1)
+                +";surfaceIndex="+response.getInt("surfaceIndex",-1)+";rowIndex="+response.getInt("rowIndex",-1)
+                +";actual="+response.getLong("actual",-1)+";limit="+response.getLong("limit",-1);
     }
     private static void scheduleInventoryRetry(InventoryPublication item,long delay,String state){
         FeatureSettings.diagnostic(item.context,"ls_augment_statusbar_inventory_bridge_state",

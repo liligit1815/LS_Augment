@@ -12,6 +12,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import java.io.File;
+import java.io.FileOutputStream;
+import org.json.JSONObject;
 
 /** Disposable, local-only targets for actual OEM recognition and macro playback. */
 public final class GameActivity extends Activity {
@@ -60,6 +63,7 @@ public final class GameActivity extends Activity {
                         + ";eventTime=" + event.getEventTime() + ";now=" + SystemClock.elapsedRealtime()
                         + ";down=" + down[index] + ";up=" + up[index]
                         + ";x=" + event.getRawX() + ";y=" + event.getRawY());
+                recordDeliveredTouch(index, action, event);
                 render();
                 return true;
             });
@@ -104,6 +108,23 @@ public final class GameActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /** Firmware may suppress every Log.i tag; retain delivered input in the fixture's own bounded file. */
+    private void recordDeliveredTouch(int target, int action, MotionEvent event) {
+        try {
+            File trace = new File(getFilesDir(), "shoulder-validation-events.jsonl");
+            JSONObject row = new JSONObject().put("wall", System.currentTimeMillis())
+                    .put("pid", android.os.Process.myPid()).put("target", target).put("action", action)
+                    .put("eventTime", event.getEventTime()).put("now", SystemClock.elapsedRealtime())
+                    .put("down", down[target]).put("up", up[target]).put("x", event.getRawX())
+                    .put("y", event.getRawY()).put("deviceId", event.getDeviceId()).put("source", event.getSource());
+            try (FileOutputStream output = new FileOutputStream(trace, trace.length() < 262144)) {
+                output.write((row.toString() + "\n").getBytes("UTF-8"));
+            }
+        } catch (Exception error) {
+            android.util.Log.e("LSA-GameValidation", "fixture input file failed", error);
+        }
     }
 
     private void render() {

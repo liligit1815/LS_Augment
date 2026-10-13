@@ -56,7 +56,7 @@ final class HideRecoverySearch {
 
     static Page read(Query query) {
         if (query == null) return Page.failure("恢复来源查询目标无效");
-        RootShell.Result result = RootShell.run(command(query), null, 30, MAX_OUTPUT);
+        RootShell.Result result = HidePrivateStorage.run(command(query), null, 30, MAX_OUTPUT);
         if (result == null || !result.isSuccess() || result.capture == null || !result.capture.reliable())
             return Page.failure("恢复来源读取未完整确认，请重新读取："
                     + (result == null ? "结果未知" : result.publicError()));
@@ -143,7 +143,7 @@ final class HideRecoverySearch {
         return "TARGET_USER='" + query.userId + "'\nSERIAL='" + query.userSerial + "'\nPACKAGE='" + query.packageName
                 + "'\nCURSOR='" + query.cursor + "'\nCURSOR64='" + encoded + "'\nPREFIX='" + query.prefix() + "'\n" + """
                 export LC_ALL=C
-                ROOT='/data/adb/ls_augment/v2'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
                 fail() { printf '%s\\n' "recovery_search:$1" >&2; exit 74; }
                 set -o pipefail || fail pipeline_unavailable
                 directory() {
@@ -156,7 +156,8 @@ final class HideRecoverySearch {
                   rest=${ROOT#/}; prefix=''
                   while [ -n "$rest" ]; do
                     segment=${rest%%/*}; prefix="$prefix/$segment"
-                    directory "$prefix" || return 1
+                    if [ "$prefix" = "$ROOT" ]; then directory "$prefix" || return 1
+                    else [ ! -L "$prefix" ] && [ -d "$prefix" ] && [ -x "$prefix" ] || fail ancestor_unavailable; fi
                     case "$rest" in */*) rest=${rest#*/} ;; *) rest='' ;; esac
                   done
                   directory "$ROOT/recovery-journal-v1" || return 1

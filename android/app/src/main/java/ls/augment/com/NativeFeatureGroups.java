@@ -270,7 +270,8 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_desktop_clock_enabled","桌面时钟增强","ls_augment_rm_desktop_clock_enabled",new String[]{"ls_augment_rm_desktop_clock_pattern"},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_desktop_clock_period","桌面时钟显示中文时段","ls_augment_rm_desktop_clock_period",new String[]{},"boolean","0", new Feature[]{})
         }),
-        new Section("launcher","recents","最近任务内存信息", new Feature[]{
+        new Section("launcher","recents","最近任务", new Feature[]{
+            new Feature(RecentsCardRadiusOptions.ENABLED,"最近任务卡片圆角调节",RecentsCardRadiusOptions.ENABLED,new String[]{RecentsCardRadiusOptions.OFFSET},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_recents_memory_custom","自定义最近任务内存显示","ls_augment_rm_recents_memory_custom",new String[]{"ls_augment_rm_recents_memory_style","ls_augment_rm_recents_memory_content","ls_augment_rm_recents_memory_color_mode","ls_augment_rm_recents_memory_light_color","ls_augment_rm_recents_memory_dark_color","ls_augment_rm_recents_memory_simple_size","ls_augment_rm_recents_memory_detailed_size","ls_augment_rm_recents_memory_portrait_left","ls_augment_rm_recents_memory_landscape_left","ls_augment_rm_recents_memory_portrait_top","ls_augment_rm_recents_memory_landscape_top","ls_augment_rm_recents_memory_portrait_height","ls_augment_rm_recents_memory_landscape_height"},"boolean","0", new Feature[]{})
         }),
         new Section("game","shoulder","肩键方案", new Feature[]{

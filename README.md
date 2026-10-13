@@ -2,7 +2,9 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前版本：`2.0.0-alpha1-test20528`，内部版本号 `20528`。** 以 [android/version.properties](android/version.properties) 为准。双排信号固定 SIM1 在上、SIM2 在下，流量箭头跟随实际活动数据卡，颜色随原厂信号所在区域更新；三合一圆环保留流量卡与另一张卡的原有角色。通知堆叠支持独立的大、小模式，点击首卡逐层展开，并修复下拉时日期与通知卡片间距抖动。[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20528/redmagic-duo-20528.apk)，[本版 Release](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20528)。源码仓库：[liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment)，仅维护源码、必要资源与公开文档；APK 及更新清单统一在 `lispacerelease` 分发。
+**当前源码版本：`2.0.0-alpha1-test20541`，内部版本号 `20541`。** 以 [android/version.properties](android/version.properties) 为准。变化见[本版更新说明](docs/releases/v2.0.0-alpha1-test20541.md)，模块数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
+
+当前在线版本为 test20528：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20528/redmagic-duo-20528.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20528)。20541 尚未在线发布。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
@@ -11,6 +13,7 @@
 | 文档 | 内容 |
 |---|---|
 | [最新版功能说明](docs/最新版功能说明.md) | 当前入口、操作、参数和适用限制 |
+| [模块私有存储](docs/模块私有存储.md) | 模块数据归属、跨进程访问、旧数据迁移与原生状态边界 |
 | [项目结构与文件说明](docs/项目结构与文件说明.md) | 当前目录职责、运行关系与维护入口 |
 | [配置定义](android/app/src/main/java/ls/augment/com/ConfigSchema.java)、[锁屏上滑配置](android/app/src/main/java/ls/augment/com/LiftArcOptions.java) | 当前配置字段、默认值与取值范围 |
 | [网页原型说明](ui-preview/README.md) | 当前预览运行方式、样例数据和手机功能边界 |
@@ -19,30 +22,21 @@
 
 ## 当前版本要点
 
-- **固定双排SIM顺序**：按物理卡槽显示SIM1上排、SIM2下排，切换数据卡不交换两排。流量箭头及对应素材跟随实际活动数据订阅；三合一圆环继续按流量卡与另一张卡选择内容和圆弧角色。
-- **同步双排信号颜色**：使用原厂对信号所在区域实际生效的前景色，不从时钟颜色或应用深浅模式猜测。原厂颜色变化时立即重绘；布局稳定时也处理待更新颜色，按最终图形边界重新取得原厂区域色。无法取得有效颜色时恢复原厂图标。
-- **通知堆叠组合**：总开关开启后，大、小都关闭保持原厂列表；仅小堆叠直接在通知、静默各自分类内按同应用收起；仅大堆叠合并两类，展开后逐条显示；两项同时开启则先展开大堆叠，再展开应用小堆叠。取消模块展开箭头，点击收起首卡一次展开一层，这次点击不执行通知原动作；展开后保留原厂操作。三个开关默认关闭，总开关关闭保留子项设置，升级不自动开启新模式。原生通知组继续使用原有摘要和展开方式，国内固件按原厂静默判定适配通知分类。
-- **处理应用切换中的状态栏裁剪**：原厂只更新裁剪矩形、轮廓或父容器裁剪开关时，也在绘制前重新检查并释放影响自定义排列的裁剪；稳定帧继续复用。通知图标仍遵循原厂隐藏规则，诊断补充通知区域祖先及子图标状态，便于区分系统隐藏与裁剪。
-- **修复日期下方通知间距抖动**：时钟秒数或中文时段开启时，通知列表按当前日期区域分配留白，避免原厂动画位移重复计算及旧间距覆盖新布局。通知堆叠关闭时同样适用；首次布局未提交、关闭相关格式、普通横屏格式模式或空间不足时使用原厂间距。保留原厂入场、回弹和其他动画。
-- **修复本次日志问题**：锁屏指示条检查原厂画笔颜色，保留有效主题色；配置桥等系统服务、用户解锁和模块配置提供者就绪后接入，持续不可用及真实权限错误继续报告。健康后台准确区分停止、等待连接、已连接和关闭状态；日志导出补充空来源备用采集、实际覆盖时间、截断及事件丢弃原因。
-- **稳定通知间距**：通知列表按当前日期区域和已设置的通知间距定位，防止下拉结束后的原厂间距更新再次推开通知；关闭相关格式及大时钟后恢复原厂间距。
-- **同步状态栏实际高度**：高度调整同时更新状态栏窗口及系统提供给应用的顶部空间，覆盖横竖屏与恢复默认；通话提示跟随状态栏尺寸。
-- **按系统能力适配极暗**：移除 NX809J 型号限定，同步原生极暗开关与强度，并核验系统实际颜色变换；缺少执行能力或反馈时显示具体原因，保留关闭入口。更新后需重启手机。
-- **修复横屏控制中心错位**：“下拉面板时钟显示秒”和“下拉面板时钟显示中文时段”在普通横屏面板中保留原厂时间、日期、流量、操作按钮及头部高度，只更新时钟文字；横屏切换和关闭功能时恢复原厂时段显示。
-- **锁屏上滑效果**：在“主页 → 主题与锁屏”新增入口，整合 LiftArc 的指示条、触感反馈、内容联动、回弹、快速上甩、弧形、静态壁纸模糊、玻璃材质和提示文字；解锁继续遵循系统安全规则。
-- **统一配置与维护**：39 项锁屏配置纳入现有导入、导出和全局重置；运行日志纳入现有查看、复制、清空、分享及统一导出，无额外日志开关。顶部复用“重启作用域”弹窗，保留“状态栏（SystemUI）”名称。
-- **精简数值编辑**：锁屏页的 22 项数值使用滑动条及实时数值，移除重复输入框和本页恢复默认值按钮，保留文字、颜色与选项编辑，沿用公共 `UiKit` 样式。
-- **更新网页感谢**：“关于 → 贡献名单”继续使用网页，展示 HyperCeiler、LiftArc、红魔助手及原始项目图标；前两个项目可点击打开 GitHub。新增“感谢”说明，加大加粗“感谢”“捐赠列表”标题，移除原贡献者栏目、名单及项目描述。
-- **在线更新与离线显示**：贡献名单先显示构建时取得的正式网页，再自动请求最新内容；三个图标内联，离线也能显示。
-
-本版更新与必要操作见[发布说明](docs/releases/v2.0.0-alpha1-test20528.md)。
+- 新增最近任务卡片圆角滑条，0 保持原厂，负数更尖锐、正数更圆滑，调节范围随卡片尺寸、样式和横竖屏自动更新。
+- 修复肩键快捷切换仍执行旧方案的问题，普通触点和连招同步切换。
+- 完善超境画质的画质、帧率选项，适配原厂处理尺寸。
+- 修复自动息屏选择“30 分钟”或“从不”后被重置的问题。
+- 改进联名充电动画素材读取与异常处理。
+- 模块配置、缓存和恢复记录统一迁入应用私有存储，自动迁移并安全清理旧数据，保留 LSPosed 官方配置副本。
+- 改进桌面开机恢复与隐藏记录保存，保留已有布局，增强历史归档和全部重置可靠性。
+- 支持在线更新并保留已有配置，安装后请重启手机使新版功能生效。
 
 ## 功能概览
 
 | 分类 | 主要能力 |
 |---|---|
 | 通知与控制中心 | 状态栏排列、素材与字体、三合一电池、温度与网速、灵动岛、通知外观、控制中心 |
-| 桌面与最近任务 | 图标名称、页面排序、空白页、行列布局、时钟、清理动画及内存信息 |
+| 桌面与最近任务 | 图标名称、页面排序、空白页、行列布局、时钟、任务卡片圆角、清理动画及内存信息 |
 | 主题与锁屏 | 主题下载与使用、联名主题、指纹、充电动画、锁屏上滑效果、锁屏与息屏显示 |
 | 声音与音量 | 本机联名音频、音量档数、软件增益和面板百分比 |
 | 操作与手势 | 侧滑图标与背景、高级重启、助理、单手模式和剪贴板 |
@@ -107,10 +101,11 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 当前 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20528-release.apk` |
+| 当前版本本地 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20541-release.apk` |
 | 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
 | 源码包 | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
+
 
 目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20528)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
 
@@ -120,59 +115,17 @@ Shell 文件需保持 UTF-8 无 BOM、LF 换行。`.gitattributes` 固定源码�
 
 ## 发布新版并推送在线更新
 
-红魔 Duo 使用公共更新仓库 [liligit1815/lispacerelease](https://github.com/liligit1815/lispacerelease)，软件标识为 `redmagic-duo`，包名为 `ls.augment.com`。客户端固定读取 [updates/redmagic-duo.json](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)。以后发布 APK 时必须使用更新仓库的发布工具推进这份清单；只在源码仓库上传 Release、修改显示版本名或标记 GitHub “Latest”，不会向现有客户端推送更新。继续保留当前更新实现和清单地址即可，无需每次重新接入。
+红魔 Duo 使用公共更新仓库 [liligit1815/lispacerelease](https://github.com/liligit1815/lispacerelease)，软件标识为 `redmagic-duo`，包名为 `ls.augment.com`。客户端固定读取 [updates/redmagic-duo.json](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)。发布 APK 时必须同时推进这份清单；仓库级 Latest 标记不参与客户端版本判断。
 
-1. **修改版本并构建同签名 Release。** 查看 `android/version.properties`、上一版安装包和远端清单。按本项目构建规则将 `versionCode` 比上一版增加 1，并同步 `versionName` 的 `-test<versionCode>` 后缀；新包内部版本号还必须高于线上清单。只改显示版本名不会触发更新。沿用现有发行私钥及签名配置，不能使用 Debug 签名或另换证书。以下以 `20527` 为上一版、构建 `20528` 举例，后续替换为实际相邻版本：
+1. 递增 `android/version.properties`，使用现有发行私钥构建 Release，并完成对应功能检查。已发布版本号不得换包。
+2. 将本版要点写入 `docs/releases/` 的 UTF-8 文件，更新说明经过审核后再正式发布。源码仓库只维护当前版本说明，历史版本保留在 Git 历史和 GitHub Release。
+3. 同步更新仓库的 `main`，使用其 `tools/publish.py` 运行 `--dry-run`，核对 APK、签名、说明及目标版本。
+4. 确认发布计划后执行正式发布。工具先上传并校验公开 APK，再更新红魔 Duo 专属清单，保持其他软件的清单不变。
+5. 重新读取公网清单和安装包，核对客户端解析、大小、摘要与签名，再同步源码仓库的在线版本和下载链接。
 
-   ```powershell
-   Set-Location 'E:\LS_Augment'
-   $releasePython = 'C:\Users\P53\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-   $env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
-   & $releasePython tools/build-release.py --previous 'E:\LS_Augment\out\RedMagicDuo-v2.0.0-alpha1-test20527-release.apk'
-   if ($LASTEXITCODE -ne 0) { throw 'Release 构建或验证失败，停止发布' }
-   ```
+完整命令、协议和核验步骤见[发布与在线更新](docs/发布与在线更新.md)。本地[清单示例](docs/examples/redmagic-duo.json)对应已发布的 20528；下一版清单由发布工具根据实际 APK 生成。
 
-   构建前需已按前文配置 SDK、依赖和签名；本工具给 Gradle 传入 `--offline`，首次开发环境需先联网缓存依赖，贡献名单网页快照仍需联网获取。工具检查版本递增、历史签名和对齐，输出 `out/RedMagicDuo-v<versionName>-release.apk`、校验值及验证记录。以输出的已签名 APK 发布，不使用 `app-debug.apk`；同时完成本次改动对应的回归检查。
-
-2. **准备更新说明和发布环境。** 将本次变化、适用范围及必要操作写入 UTF-8 文件，例如 `docs/releases/v2.0.0-alpha1-test20528.md`，该内容会显示在软件更新弹窗中。发布工具需要 Python 3.11+、Android SDK build-tools 和 JDK；示例使用本机现有解释器，换电脑时调整 `$releasePython`。确认 `E:\lispacerelease` 已存在、位于 `main` 分支，并使用有此仓库 Contents 写权限的 GitHub 身份；工具支持已登录的 Git Credential Manager / GitHub CLI 或 `GH_TOKEN` / `GITHUB_TOKEN`。清单通过 API 直接提交到 `main`，发布身份必须满足分支保护与规则集要求，工具不会创建 PR。令牌、签名私钥和密码不写入 README、Git 或更新清单。
-
-3. **同步清单并预检查。** 以下 PowerShell 示例使用本机现有路径；换电脑时调整路径，新版本发布时替换 APK 与说明文件名。`--dry-run` 只在本地核对 APK 和同步后的清单、显示发布计划，不访问或修改 GitHub：
-
-   ```powershell
-   Set-Location 'E:\lispacerelease'
-   git pull --ff-only
-   if ($LASTEXITCODE -ne 0) { throw '更新仓库同步失败，停止预检查' }
-   $releasePython = 'C:\Users\P53\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-   $releaseApk = 'E:\LS_Augment\out\RedMagicDuo-v2.0.0-alpha1-test20528-release.apk'
-   $releaseNotes = 'E:\LS_Augment\docs\releases\v2.0.0-alpha1-test20528.md'
-   $releasePublishArgs = @(
-       'tools/publish.py', '--app', 'redmagic-duo',
-       '--apk', $releaseApk, '--notes-file', $releaseNotes,
-       '--sdk', 'E:\LS_Augment\audit-output\android-sdk',
-       '--java-home', 'C:\Program Files\Android\openjdk\jdk-21.0.8'
-   )
-   & $releasePython @releasePublishArgs --dry-run
-   if ($LASTEXITCODE -ne 0) { throw '发布预检查失败，停止发布' }
-   ```
-
-4. **确认计划后正式发布。** 在同一 PowerShell 窗口中运行下面的命令。真实发布会重新读取线上版本，先上传并公开已校验的 APK，再更新红魔 Duo 清单；不会改变另外两个软件的推送版本。
-
-   ```powershell
-   & $releasePython @releasePublishArgs
-   if ($LASTEXITCODE -ne 0) { throw '发布未确认成功，请先核对公网清单和附件' }
-   git pull --ff-only
-   if ($LASTEXITCODE -ne 0) { throw '发布后本地清单同步失败' }
-   & $releasePython tools/validate.py
-   if ($LASTEXITCODE -ne 0) { throw '本地清单验证失败' }
-   ```
-
-   标签和附件名自动生成为 `redmagic-duo-v<versionCode>`、`redmagic-duo-<versionCode>.apk`。包名、实际版本、最低系统版本、签名、大小和 SHA-256 均由工具生成，不手填清单，不覆盖旧附件。若中断或报错，核对结果后用同一 APK、同一更新说明和命令重试；工具会复用已核验附件，附件未完整公开前不会推进清单。重试时改动说明可能使清单与既有 Release 正文不同。同版本号不能换包，修正已推送 APK 应增加内部版本号。发布记录保存在更新仓库忽略的 `out/published/`，远端清单更新后需再次拉取才能同步本地文件。
-
-5. **核对推送并验证客户端。** 按[发布后联网核验](docs/发布与在线更新.md#发布后联网核验)重新下载公网清单，用客户端实际解析器检查格式，再匿名下载清单指向的 APK，核对大小、SHA-256、包名、版本、最低系统版本和发行签名。`tools/validate.py` 只检查本地更新仓库，不能代替这些联网检查。在安装了较低版本且已具有在线更新功能的手机上，通过“关于 → 检查更新”验证说明、下载、权限授权及系统覆盖安装；验收步骤及已验证边界见[真机验收](docs/发布与在线更新.md#真机验收)。`20518` 之前的旧版需先手动安装具备在线更新功能的版本。每个软件目前只有一个通道，使用真实发布命令就表示将该版本推送给用户，`alpha` / `test` 版本也会被推送。
-
-更新工具的完整说明和协议见[更新仓库 README](https://github.com/liligit1815/lispacerelease#发布新版)及[更新协议](https://github.com/liligit1815/lispacerelease/blob/main/docs/update-protocol.md)。
-
-清单示例见 [docs/examples/redmagic-duo.json](docs/examples/redmagic-duo.json)，这是 `20518` 的已发布快照，仅用于理解字段和解析验证。实际清单由发布工具生成。客户端在远端 `versionCode` 更高且系统兼容时提示升级，下载后核对 APK 摘要、清单中的发行证书指纹及当前应用签名，兼容后才允许安装；JSON 清单本身没有数字签名。当前清单指向 `20528`，具有在线更新功能的较低版本可通过“关于 → 检查更新”覆盖升级；安装 `20528` 后再次检查显示“已是最新版本”。发布者使用的电脑工具只用于构建、发布和验收，手机检查、下载与安装更新无需电脑配合。
+在线更新由手机端检查、下载、校验并交给系统安装器完成，无需电脑配合。客户端仅在远端内部版本号更高且系统兼容时提示升级，下载后核对摘要、包名、版本与发行签名。20518 之前的版本需先手动安装具有在线更新能力的版本。当前只有一个更新通道，正式发布的 alpha / test 版本同样会推送。
 
 ## 网页原型
 

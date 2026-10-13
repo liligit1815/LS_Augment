@@ -160,6 +160,10 @@ final class ModuleExternalReset {
             return write.isSuccess() && replacement.equals(tiles());
         }
         public Phase cleanLegacy() {
+            // The private journal must remain durable until the live runtime has
+            // restored its native properties. Never clear it as ordinary cache.
+            if(!GfrcRecoveryStore.awaitRestored(context))
+                return new Phase(false,0,"超分辨率/补帧的原生状态尚未恢复，恢复记录已保留，请稍后重试");
             RootShell.Result result = RootShell.run("nsenter -t 1 -m -- sh -c "+RootShell.quote(legacyCommand()), null, 30, 32768);
             int count = 0;
             for (String line : result.output.split("\\r?\\n")) if (line.matches("LSA_RESET_REMOVED:[A-Za-z0-9_./-]+")) count++;
@@ -206,16 +210,17 @@ final class ModuleExternalReset {
     }
 
     static String legacyCommand() {
-        return "set -e; entries=$(settings list global) || exit 71; "
+        // The system runtime restores its native properties after the paused
+        // snapshot arrives. Its recovery journal survives broad legacy cleanup.
+        return "set -e; gfrc_wait=0; while :; do "
+                + "gfrc_owner=$(settings get global redmagic_duo_native_gfrc_recovery_v1) || exit 82; "
+                + "case \"$gfrc_owner\" in ''|null) break;; esac; "
+                + "[ \"$gfrc_wait\" -lt 15 ] || { echo LSA_NATIVE_GFRC_RECOVERY_PENDING; exit 82; }; "
+                + "gfrc_wait=$((gfrc_wait+1)); sleep 0.2; done; entries=$(settings list global) || exit 71; "
                 + "printf '%s\\n' \"$entries\" | while IFS= read -r entry; do case \"$entry\" in ls_augment_*=*) "
                 + "key=${entry%%=*}; case \"$key\" in *[!a-zA-Z0-9_.]*) exit 72;; esac; "
                 + "settings delete global \"$key\" >/dev/null || exit 73; printf 'LSA_RESET_REMOVED:%s\\n' \"$key\";; esac; done; "
-                + "for parent in /data /data/system /data/system/ls_augment; do [ ! -L \"$parent\" ] || exit 74; "
-                + "[ ! -e \"$parent\" ] || [ -d \"$parent\" ] || exit 75; done; "
-                + "for file in /data/system/ls_augment/boot-config-v1 /data/system/ls_augment/boot-config-v1.tmp; do "
-                + "[ ! -L \"$file\" ] || exit 76; if [ -e \"$file\" ]; then [ -f \"$file\" ] || exit 77; "
-                + "rm -f \"$file\" || exit 78; [ ! -e \"$file\" ] && [ ! -L \"$file\" ] || exit 79; "
-                + "printf 'LSA_RESET_REMOVED:%s\\n' \"$file\"; fi; done; "
+                + RetiredBootCache.command(true)
                 + "remaining=$(settings list global) || exit 80; printf '%s\\n' \"$remaining\" | while IFS= read -r entry; do "
                 + "case \"$entry\" in ls_augment_*=*) exit 81;; esac; done; printf 'LSA_EXTERNAL_LEGACY_END\\n'";
     }

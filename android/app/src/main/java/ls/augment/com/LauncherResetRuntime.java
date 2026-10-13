@@ -67,6 +67,11 @@ final class LauncherResetRuntime {
             result.putLong("createdAt",r.createdAt);result.putLong("expiresAt",r.expiresAt);result.putLong("generation",r.generation);
             return result;
         }
+        if("launcher_reset_pages_clear".equals(method)){
+            if(extras==null||extras.size()!=1||!(extras.get("nonce") instanceof String)
+                    ||!r.nonce.equals(extras.getString("nonce"))||!session.claim(pid,SystemClock.elapsedRealtime()))return result;
+            result.putBoolean("ok",LauncherOwnedStateStore.clearPagesForReset(context));return result;
+        }
         if(!"launcher_reset_ack".equals(method)||extras==null||extras.size()!=9
                 ||!(extras.get("nonce") instanceof String)||!(extras.get("user") instanceof Integer)
                 ||!(extras.get("serial") instanceof Long)||!(extras.get("version") instanceof Integer)

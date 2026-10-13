@@ -3,15 +3,19 @@
 Exercise actions queued behind total reset; no Root command or Android device is used.
 """
 from pathlib import Path
+from hide_private_test_support import PRIVATE_STORAGE_STUB
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 STUBS = {
+    'android/os/Process.java': 'package android.os;public class Process {public static int myUid(){return 10001;}}',
+    'ls/augment/com/HidePrivateStorage.java': PRIVATE_STORAGE_STUB,
     'android/content/Context.java': '''package android.content;
 public class Context {public static final int MODE_PRIVATE=0;
  public Context getApplicationContext(){return this;}
+ public java.io.File getFilesDir(){return new java.io.File("offline-private-files");}
  public SharedPreferences getSharedPreferences(String n,int m){return new SharedPreferences();}
  public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}
  public <T> T getSystemService(Class<T> t){return null;}}''',

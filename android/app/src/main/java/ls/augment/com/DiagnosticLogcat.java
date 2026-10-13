@@ -8,6 +8,7 @@ import java.util.Locale;
 final class DiagnosticLogcat {
     static final int TAIL_RECORDS=300,BUFFER_BYTES=8192;
     private static final String BUFFERS="logcat -b main -b system -b crash";
+    private static final String SHOULDER_TAGS="LS_Augment_TGK:I LS_AugmentNative:I InputManagerProxy:E TgkHelper:E TgkService:W ";
     interface Reader {RootShell.Result read(String command,long timeoutSeconds,int bytes);}
     static final class Collection {
         final long sinceWall;
@@ -22,11 +23,11 @@ final class DiagnosticLogcat {
     private DiagnosticLogcat(){}
     static Collection cleanup(long now,Reader reader){
         return collect(now-10*60*1000,768*1024,
-                "LS_Augment:I AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader);
+                "LS_Augment:I "+SHOULDER_TAGS+"AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader);
     }
     static Collection module(long now,boolean ai,boolean shoulder,Reader reader){
-        return collect(now-30*60*1000,1024*1024,"LS_Augment:I "
-                +(ai?"LS_Augment_AI:I ":"")+(shoulder?"LS_Augment_TGK:I LS_AugmentNative:I ":"")+"'*:S'",reader);
+        return collect(now-30*60*1000,1024*1024,"LS_Augment:I "+SHOULDER_TAGS
+                +(ai?"LS_Augment_AI:I ":"")+"'*:S'",reader);
     }
     private static Collection collect(long since,int limit,String tags,Reader reader){
         String timestamp=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(since));

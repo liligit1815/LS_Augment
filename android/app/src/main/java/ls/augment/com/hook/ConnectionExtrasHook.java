@@ -85,10 +85,7 @@ final class ConnectionExtrasHook {
             if(fromNotification(activity)&&!enabled(activity,"usb_hide_notification_dialog"))return chain.proceed();
             activity.finish();return null;
         });
-        hook("settings_long_timeout","com.zte.adapt.display.ScreenTimeoutSettingsAdapt",
-                "getInitialValuesLength",int.class,2,chain->{
-            Object values=chain.getArg(1);return values instanceof CharSequence[]?((CharSequence[])values).length:chain.proceed();
-        });
+        count+=ScreenTimeoutHook.install(module,loader);
         hook("settings_hide_battery_percent","com.zte.settings.notification.MfvBatteryPercentagePreferenceController",
                 "isAvailable",boolean.class,0,chain->false);
         hook("settings_time_period","com.android.settings.datetime.TimePreferenceController","getSummary",CharSequence.class,0,chain->{

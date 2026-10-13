@@ -119,7 +119,7 @@ final class HideRecoveryJournal {
                 return new RootShell.Result(74, "恢复操作记录无效", false);
             input.append(entry.encode()).append('\n');
         }
-        RootShell.Result result = RootShell.run(command(), input.toString(), 30, 4096);
+        RootShell.Result result = HidePrivateStorage.run(command(), input.toString(), 30, 4096);
         if (!result.isSuccess()) return result;
         if (!SUCCESS.equals(result.output.trim()))
             return new RootShell.Result(74, "恢复操作记录校验未完成", false);
@@ -130,7 +130,7 @@ final class HideRecoveryJournal {
         return """
                 umask 077
                 export LC_ALL=C
-                ROOT='/data/adb/ls_augment/v2'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
                 ROOT_PARENT=${ROOT%/*}
                 STORAGE=${ROOT_PARENT%/*}
                 JOURNAL="$ROOT/recovery-journal-v1"
@@ -235,6 +235,27 @@ final class HideRecoveryJournal {
                   fi
                 }
                 directory "$ROOT"
+                # Reuse the target-store/reset lock; never unlink or replace its inode.
+                PUBLICATION_OWNER="$(id -u):$(id -g)"
+                LOCKDIR="${LSA_PRIVATE_ROOT:?}/v2/manual-targets-v1"
+                [ ! -L "$LOCKDIR" ] || fail symlink_lock_directory
+                if [ ! -e "$LOCKDIR" ]; then mkdir "$LOCKDIR" 2>/dev/null || [ -d "$LOCKDIR" ] || fail lock_directory_create; fi
+                [ -d "$LOCKDIR" ] && [ ! -L "$LOCKDIR" ] || fail invalid_lock_directory
+                [ "$(stat -c '%u:%g:%a' "$LOCKDIR")" = "$PUBLICATION_OWNER:700" ] || fail lock_directory_permissions
+                LOCK="$LOCKDIR/lock"
+                [ ! -L "$LOCK" ] || fail symlink_lock
+                if [ ! -e "$LOCK" ]; then (set -C; : >"$LOCK") 2>/dev/null || [ -f "$LOCK" ] || fail lock_create; fi
+                lockcheck() {
+                  [ -f "$LOCK" ] && [ ! -L "$LOCK" ] || fail invalid_lock
+                  [ "$(stat -c '%u:%g:%a:%h:%s' "$LOCK")" = "$PUBLICATION_OWNER:600:1:0" ] || fail lock_permissions
+                }
+                lockcheck
+                LOCK_ID=$(stat -c '%d:%i' "$LOCK") || fail lock_stat
+                exec 9<>"$LOCK" || fail lock_open
+                command -v flock >/dev/null 2>&1 || fail flock_unavailable
+                flock -x 9 9>&9 || fail lock_unavailable
+                lockcheck
+                [ "$(stat -c '%d:%i' "$LOCK")" = "$LOCK_ID" ] || fail lock_replaced
                 directory "$JOURNAL"
                 directory "$EVENTS"
                 STAGING=$(mktemp -d "$JOURNAL/.batch.XXXXXXXX") || fail staging_create
@@ -278,17 +299,23 @@ final class HideRecoveryJournal {
                   fsync "$staged" || fail staged_sync
                   dest="$EVENTS/${staged##*/}"
                   [ ! -L "$dest" ] || fail symlink_record
-                  if [ ! -e "$dest" ]; then
-                    ln "$staged" "$dest" 2>/dev/null || [ -f "$dest" ] || fail publish
+                  if [ -e "$dest" ]; then
+                    filecheck "$dest"
+                    cmp -s "$staged" "$dest" || fail record_conflict
+                  else
+                    # A same-filesystem rename is atomic. Keep any interrupted
+                    # staging batch outside the events catalog.
+                    [ "$(stat -c '%d' "$staged")" = "$(stat -c '%d' "$EVENTS")" ] || fail cross_filesystem_publish
+                    mv -n "$staged" "$dest" || fail publish
+                    [ ! -e "$staged" ] && [ ! -L "$staged" ] || fail publish_not_moved
                   fi
                   filecheck "$dest"
-                  cmp -s "$staged" "$dest" || fail record_conflict
-                  chmod 0600 "$dest" || fail record_permissions
+                  [ "$(stat -c '%u:%g:%a:%h' "$dest")" = "$PUBLICATION_OWNER:600:1" ] || fail record_permissions
                   fsync "$dest" || fail record_sync
                   actual=$(digest "$dest") || fail record_hash
                   [ "$actual" = "$hash" ] || fail record_hash_mismatch
                 done
-                fsync "$EVENTS" "$JOURNAL" "$ROOT" "$ROOT_PARENT" "$STORAGE" || fail directory_sync
+                fsync "$STAGING" "$EVENTS" "$JOURNAL" "$ROOT" "$ROOT_PARENT" "$STORAGE" || fail directory_sync
                 printf '%s\\n' 'LSA_RECOVERY_JOURNAL_OK'
                 """;
     }

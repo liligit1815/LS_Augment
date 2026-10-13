@@ -24,6 +24,7 @@ public final class LSConfigProvider extends ContentProvider {
     private static long audioGainDiscoveryAt=-1000;
     @Override
     public boolean onCreate() {
+        if (getContext() != null) RecentsCardRadiusStore.onProviderCreated(getContext());
         removeLegacyFanNotification();
         // Rediscover the live SystemUI endpoint if this provider process was reclaimed.
         if(getContext()!=null)try{getContext().sendBroadcast(new Intent("ls.augment.com.CAPTURE_SURFACE_REDISCOVER").setPackage("com.android.systemui"));}catch(RuntimeException ignored) { }
@@ -35,7 +36,7 @@ public final class LSConfigProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
         if (getContext() == null) return result;
-        if ("launcher_reset_read".equals(method)||"launcher_reset_ack".equals(method)) {
+        if ("launcher_reset_read".equals(method)||"launcher_reset_ack".equals(method)||"launcher_reset_pages_clear".equals(method)) {
             if(arg!=null)return result;
             int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
             String caller=getCallingPackage();
@@ -44,13 +45,42 @@ public final class LSConfigProvider extends ContentProvider {
             try{return LauncherResetRuntime.call(getContext(),method,uid,pid,caller,packages,extras);}
             finally{Binder.restoreCallingIdentity(identity);}
         }
+        if ("launcher_owned_read".equals(method)||"launcher_owned_write".equals(method)||"launcher_owned_import".equals(method)) {
+            if(arg!=null)return result;
+            int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return LauncherOwnedStateStore.call(getContext(),method,uid,pid,caller,packages,extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("health_ledger".equals(method)) {
+            int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
+            String caller=getCallingPackage();
+            if(arg!=null||extras==null||uid/100000!=Process.myUid()/100000||!"com.mi.health".equals(caller))return result;
+            try { if(getContext().getPackageManager().getApplicationInfo("com.mi.health",0).uid!=uid)return result; }
+            catch(android.content.pm.PackageManager.NameNotFoundException absent){return result;}
+            long identity=Binder.clearCallingIdentity();
+            try{return HealthLedgerStore.call(getContext(),extras,uid,pid);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if (ComboMotionPrivateCache.CALL.equals(method)) {
+            if(arg!=null)return result;
+            int uid=Binder.getCallingUid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return ComboMotionPrivateCache.prepare(getContext(),uid,caller,packages,extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
         if ("statusbar_inventory_publish".equals(method)) {
-            if(Binder.getCallingUid()/100000!=Process.myUid()/100000)return result;
+            if(Binder.getCallingUid()/100000!=Process.myUid()/100000)
+                return StatusBarInventoryBridge.rejected("caller_user_mismatch",-1,-1,-1,-1,-1);
             String[] callers=getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
-            if(callers==null||!java.util.Arrays.asList(callers).contains("com.android.systemui"))return result;
-            boolean accepted=extras!=null&&StatusBarInventoryBridge.publish(extras.getString("payload"));
-            result.putBoolean("ok",accepted);
-            if(accepted)getContext().getContentResolver().notifyChange(Uri.parse("content://ls.augment.com.config/statusbar-inventory"),null);
+            if(callers==null||!java.util.Arrays.asList(callers).contains("com.android.systemui"))
+                return StatusBarInventoryBridge.rejected("caller_not_systemui",-1,-1,-1,-1,-1);
+            result=StatusBarInventoryBridge.publishDetailed(extras==null?null:extras.getString("payload"));
+            if(result.getBoolean("ok",false))getContext().getContentResolver().notifyChange(Uri.parse("content://ls.augment.com.config/statusbar-inventory"),null);
             return result;
         }
         if ("statusbar_inventory_get".equals(method)) {
@@ -64,6 +94,25 @@ public final class LSConfigProvider extends ContentProvider {
             finally { Binder.restoreCallingIdentity(identity); }
         }
         if (!allowedCaller()) return result;
+        if ("extra_dim_ownership".equals(method)) {
+            int uid=Binder.getCallingUid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            if(arg!=null || extras!=null || uid!=Process.SYSTEM_UID || !"android".equals(caller)
+                    || packages==null || !java.util.Arrays.asList(packages).contains("android"))return result;
+            long identity=Binder.clearCallingIdentity();
+            try{return ModuleSystemSettings.extraDimOwnership(getContext());}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("gfrc_recovery_read".equals(method) || "gfrc_recovery_write".equals(method)) {
+            if(arg!=null)return result;
+            int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return GfrcRecoveryStore.call(getContext(),method,uid,pid,caller,packages,extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
         if(AudioGainState.REGISTER.equals(method)||AudioGainState.GET.equals(method)){
             result.putString("state","invalid_argument");if(arg!=null)return result;
             int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
@@ -280,6 +329,16 @@ public final class LSConfigProvider extends ContentProvider {
             result.putString("message", saved.message);
             return result;
         }
+        if ("recents_radius_publish".equals(method)) {
+            if (arg != null) return result;
+            int uid = Binder.getCallingUid(), pid = Binder.getCallingPid();
+            String caller;
+            try { caller = getCallingPackage(); }
+            catch (SecurityException invalidCaller) { return result; }
+            long identity = Binder.clearCallingIdentity();
+            try { return RecentsCardRadiusStore.publish(getContext(), uid, pid, caller, extras); }
+            finally { Binder.restoreCallingIdentity(identity); }
+        }
         if ("diagnostic".equals(method)) {
             if(AutomationDiagnosticState.OWNER_KEY.equals(arg)) {
                 if(Binder.getCallingUid()!=Process.SYSTEM_UID||extras==null)return result;
@@ -450,6 +509,12 @@ public final class LSConfigProvider extends ContentProvider {
         if(getContext()==null||!"r".equals(mode)||!allowedCaller())throw new java.io.FileNotFoundException("read only");
         int uid=Binder.getCallingUid();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
         java.util.List<String> path=uri.getPathSegments();
+        if(!path.isEmpty()&&"combo-motion".equals(path.get(0))) {
+            String caller=getCallingPackage();
+            long identity=Binder.clearCallingIdentity();
+            try{return ComboMotionPrivateCache.open(getContext(),uid,caller,packages,uri,mode);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
         if(path.size()==2&&"statusbar-icon".equals(path.get(0))) {
             if(uid/100000!=Process.myUid()/100000)throw new java.io.FileNotFoundException("same user only");
             if(uid!=Process.myUid()&&(packages==null||!java.util.Arrays.asList(packages).contains("com.android.systemui")))

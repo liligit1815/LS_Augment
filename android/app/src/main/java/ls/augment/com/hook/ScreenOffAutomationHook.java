@@ -128,8 +128,12 @@ final class ScreenOffAutomationHook {
                 // system main thread on provider access, Root commands or PackageManager.
                 Bundle reply = context.getContentResolver().call(
                         PROVIDER, "snapshot", null, null);
-                ConfigSnapshot snapshot=verifiedSnapshot(reply);
-                if(snapshot==null)throw new IllegalArgumentException("invalid_or_incomplete_configuration_snapshot");
+                SnapshotCheck checked=inspectSnapshot(reply);
+                ConfigSnapshot snapshot=checked.snapshot;
+                if(snapshot==null){
+                    bridgeFailed("FAILED","snapshot_read_failed:invalid_or_incomplete_configuration_snapshot:"+checked.error);
+                    scheduleBridgeRetry();return;
+                }
                 bridge="READY";bridgeError="";bridgeAttempts=0;handler.removeCallbacks(retry);
                 boolean enabled = ConfigSchema.truthy(snapshot.get(ConfigSchema.HIDE_MASTER))
                         && ConfigSchema.truthy(snapshot.get(ConfigSchema.AUTOMATION_ENABLED));
@@ -162,7 +166,7 @@ final class ScreenOffAutomationHook {
                 acceptExecutionReply(result);
             } catch (Throwable error) {
                 if(dispatched)executionUncertain("execution_reply_unavailable:"+error);
-                else {bridgeFailed("FAILED","snapshot_read_failed:"+error);
+                else {bridgeFailed("FAILED","snapshot_read_failed:"+ConfigBridgeReadiness.callFailure(error));
                     // Configuration reads are idempotent. Keep a bounded backoff
                     // across long boot/update windows, separate from operation retries.
                     scheduleBridgeRetry();}
@@ -176,13 +180,31 @@ final class ScreenOffAutomationHook {
         }
 
         static ConfigSnapshot verifiedSnapshot(Bundle reply) {
-            if(reply==null||!reply.getBoolean("ok",false))return null;
-            ConfigSnapshot snapshot=ConfigSnapshot.parse(reply.getString("snapshot"));
-            return snapshot!=null&&snapshot.schemaVersion==reply.getInt("schemaVersion",-1)
-                    &&snapshot.revision==reply.getLong("revision",-1)
-                    &&snapshot.updatedAt==reply.getLong("updatedAt",-1)
-                    &&snapshot.scope.equals(reply.getString("scope",""))
-                    &&snapshot.checksum.equals(reply.getString("checksum",""))?snapshot:null;
+            return inspectSnapshot(reply).snapshot;
+        }
+        static final class SnapshotCheck {
+            final ConfigSnapshot snapshot;final String error;
+            SnapshotCheck(ConfigSnapshot snapshot,String error){this.snapshot=snapshot;this.error=error;}
+        }
+        static SnapshotCheck inspectSnapshot(Bundle reply) {
+            if(reply==null)return new SnapshotCheck(null,"reply_missing");
+            if(!reply.getBoolean("ok",false))return new SnapshotCheck(null,"reply_not_accepted");
+            String payload=reply.getString("snapshot");
+            String size=";chars="+(payload==null?-1:payload.length());
+            ConfigSnapshot.ParseResult parsed=ConfigSnapshot.parseDetailed(payload);
+            if(parsed.snapshot==null)return new SnapshotCheck(null,parsed.error+size);
+            ConfigSnapshot snapshot=parsed.snapshot;
+            for(String field:new String[]{"schemaVersion","revision","updatedAt","scope","checksum"})
+                if(!reply.containsKey(field))return new SnapshotCheck(null,"metadata_missing;field="+field+size);
+            if(snapshot.schemaVersion!=reply.getInt("schemaVersion",-1))
+                return new SnapshotCheck(null,"schema_metadata_mismatch;actual="+reply.getInt("schemaVersion",-1)+";expected="+snapshot.schemaVersion+size);
+            if(snapshot.revision!=reply.getLong("revision",-1))
+                return new SnapshotCheck(null,"revision_metadata_mismatch;actual="+reply.getLong("revision",-1)+";expected="+snapshot.revision+size);
+            if(snapshot.updatedAt!=reply.getLong("updatedAt",-1))
+                return new SnapshotCheck(null,"updated_at_metadata_mismatch;actual="+reply.getLong("updatedAt",-1)+";expected="+snapshot.updatedAt+size);
+            if(!snapshot.scope.equals(reply.getString("scope","")))return new SnapshotCheck(null,"scope_metadata_mismatch"+size);
+            if(!snapshot.checksum.equals(reply.getString("checksum","")))return new SnapshotCheck(null,"checksum_metadata_mismatch"+size);
+            return new SnapshotCheck(snapshot,"");
         }
 
         void bridgeFailed(String state,String message) {

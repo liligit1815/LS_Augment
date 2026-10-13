@@ -62,24 +62,41 @@ public final class ConfigSnapshot {
         return create(1L, 1L, safe);
     }
 
-    public static ConfigSnapshot parse(String serialized) {
+    /** Fixed reason codes and numeric positions only; never expose settings or decoded data. */
+    public static final class ParseResult {
+        public final ConfigSnapshot snapshot;
+        public final String error;
+        private ParseResult(ConfigSnapshot snapshot, String error) {
+            this.snapshot = snapshot; this.error = error;
+        }
+    }
+
+    private static ParseResult invalid(String reason) { return new ParseResult(null, reason); }
+
+    public static ConfigSnapshot parse(String serialized) { return parseDetailed(serialized).snapshot; }
+
+    public static ParseResult parseDetailed(String serialized) {
         try {
-            if (serialized == null || serialized.length() > MAX_SERIALIZED_LENGTH) return null;
+            if (serialized == null) return invalid("payload_missing");
+            if (serialized.length() > MAX_SERIALIZED_LENGTH) return invalid("payload_too_large");
             String[] parts = serialized.split("\\.", 3);
             if (parts.length != 3 || !PREFIX.equals(parts[0])
-                    || !parts[1].matches("[0-9a-f]{64}")) return null;
-            String body = new String(Base64.getUrlDecoder().decode(parts[2]),
-                    StandardCharsets.UTF_8);
-            if (!constantTimeEquals(parts[1], sha256(body))) return null;
+                    || !parts[1].matches("[0-9a-f]{64}")) return invalid("envelope_invalid");
+            String body;
+            try { body = new String(Base64.getUrlDecoder().decode(parts[2]), StandardCharsets.UTF_8); }
+            catch (IllegalArgumentException malformed) { return invalid("body_base64_invalid"); }
+            if (!constantTimeEquals(parts[1], sha256(body))) return invalid("checksum_mismatch");
 
             String[] lines = body.split("\\n", -1);
-            if (lines.length < 5) return null;
+            if (lines.length < 5) return invalid("headers_incomplete");
             int version = parseInt(header(lines[0], "v="), -1);
             long revision = parseLong(header(lines[1], "r="), -1L);
             long updatedAt = parseLong(header(lines[2], "t="), -1L);
             String scope = header(lines[3], "s=");
-            if (version != ConfigSchema.VERSION || revision < 1L || updatedAt < 1L
-                    || !ConfigSchema.SCOPE_DEVICE.equals(scope)) return null;
+            if (version != ConfigSchema.VERSION) return invalid("schema_unsupported;actual="+version+";expected="+ConfigSchema.VERSION);
+            if (revision < 1L) return invalid("revision_invalid");
+            if (updatedAt < 1L) return invalid("updated_at_invalid");
+            if (!ConfigSchema.SCOPE_DEVICE.equals(scope)) return invalid("scope_invalid");
 
             LinkedHashMap<String, String> values = new LinkedHashMap<>();
             java.util.HashSet<String> seen = new java.util.HashSet<>();
@@ -87,30 +104,32 @@ public final class ConfigSnapshot {
                 String line = lines[i];
                 if (line.isEmpty()) continue;
                 int separator = line.indexOf('=');
-                if (separator <= 0) return null;
+                if (separator <= 0) return invalid("entry_malformed;line="+i);
                 String key = line.substring(0, separator);
-                if (!seen.add(key)) return null;
-                String value = new String(Base64.getUrlDecoder().decode(
-                        line.substring(separator + 1)), StandardCharsets.UTF_8);
+                if (!seen.add(key)) return invalid("duplicate_key;line="+i);
+                String value;
+                try { value = new String(Base64.getUrlDecoder().decode(
+                        line.substring(separator + 1)), StandardCharsets.UTF_8); }
+                catch (IllegalArgumentException malformed) { return invalid("value_base64_invalid;line="+i); }
                 // Validate, then discard the two retired fan fields from older signed
                 // snapshots. Their presence must not reset unrelated active features.
                 if (ConfigSchema.FAN_UNLOCK_MAX.equals(key)) {
-                    if (!"0".equals(value) && !"1".equals(value)) return null;
+                    if (!"0".equals(value) && !"1".equals(value)) return invalid("retired_value_invalid;line="+i);
                     continue;
                 }
                 if (ConfigSchema.FAN_TARGET_RPM.equals(key)) {
                     int rpm = parseInt(value, -1);
-                    if (rpm < 500 || rpm > 100000 || !String.valueOf(rpm).equals(value)) return null;
+                    if (rpm < 500 || rpm > 100000 || !String.valueOf(rpm).equals(value)) return invalid("retired_value_invalid;line="+i);
                     continue;
                 }
-                if (!ConfigSchema.isRuntimeKey(key)) return null;
+                if (!ConfigSchema.isRuntimeKey(key)) return invalid("unknown_key;line="+i);
                 String normalized = ConfigSchema.normalize(key, value);
                 // Older signed snapshots retain their original bytes/checksum. Accept only the
                 // former default label; AppConfig applies the new display name when reading it.
                 boolean legacyLabel = ConfigSchema.TILE_LABEL.equals(key) && "LS_Augment".equals(value);
                 boolean legacyFanLevel = ConfigSchema.FAN_FIXED_LEVEL.equals(key) && "0".equals(value);
                 boolean retiredSheetMode = ConfigSchema.STATUSBAR_LAYOUT_MODE.equals(key) && "sheet".equals(value);
-                if (normalized == null || (!normalized.equals(value) && !legacyLabel && !legacyFanLevel && !retiredSheetMode)) return null;
+                if (normalized == null || (!normalized.equals(value) && !legacyLabel && !legacyFanLevel && !retiredSheetMode)) return invalid("value_invalid;line="+i);
                 values.put(key, legacyFanLevel || retiredSheetMode ? normalized : value);
             }
             // A snapshot predating the two stack modes keeps its original checksum
@@ -129,16 +148,16 @@ public final class ConfigSnapshot {
                 boolean hasLiftArc = false;
                 for (String key : values.keySet())
                     if (key.startsWith("ls_augment_liftarc_")) { hasLiftArc = true; break; }
-                if (hasLiftArc) return null;
+                if (hasLiftArc) return invalid("keys_incomplete;actual="+values.size()+";expected="+ConfigSchema.runtimeKeys().size());
                 for (Map.Entry<String, String> entry : ConfigSchema.runtimeDefaults().entrySet())
                     if (entry.getKey().startsWith("ls_augment_liftarc_"))
                         values.put(entry.getKey(), entry.getValue());
-                if (!values.keySet().equals(ConfigSchema.runtimeKeys())) return null;
+                if (!values.keySet().equals(ConfigSchema.runtimeKeys())) return invalid("keys_incomplete;actual="+values.size()+";expected="+ConfigSchema.runtimeKeys().size());
             }
-            return new ConfigSnapshot(version, revision, updatedAt, scope, values,
-                    parts[1], serialized);
+            return new ParseResult(new ConfigSnapshot(version, revision, updatedAt, scope, values,
+                    parts[1], serialized), "");
         } catch (Throwable ignored) {
-            return null;
+            return invalid("parse_exception");
         }
     }
 

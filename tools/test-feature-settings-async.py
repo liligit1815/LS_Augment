@@ -8,11 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FEATURE = ROOT / 'android/app/src/main/java/ls/augment/com/hook/FeatureSettings.java'
 source = FEATURE.read_text(encoding='utf-8')
 assert 'Settings.Global.' not in source, 'Global settings configuration transport returned'
-# The boot mirror is an existing, one-shot server installation fallback. Normal
-# readers must continue through cached remote preferences and verified Provider data.
-boot_fallback = re.search(r'static void awaitBootSnapshot\(\).*?\n    }\n', source, re.S)
-assert boot_fallback and source.count('BootConfigMirror.read()') == 1
-assert 'BootConfigMirror.read()' in boot_fallback.group(0), 'boot mirror entered a normal reader'
+# Startup uses only the framework/private provider publication, never a root file.
+assert 'BootConfigMirror' not in source
+assert '/data/system' not in source
 assert 'getRemotePreferences(RemoteConfig.GROUP)' in source
 assert 'publishSnapshot(providerSnapshot(context), true)' in source
 constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', source)))
@@ -38,7 +36,6 @@ SOURCES = {
     'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.*;final class AugmentModule {final Map<Method,Hooker> hooks=new HashMap<>();HookBuilder prepareFeatureHook(Method target,String id,boolean protect){return h->{hooks.put(target,h);return new HookHandle(){};};}void registerFeatureHook(HookHandle handle){}void logFeatureError(String message,Throwable error){throw new AssertionError(message,error);}}''',
     'ls/augment/com/hook/OemHooks.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/OemHooks.java').read_text(encoding='utf-8'),
     'ls/augment/com/BuildConfig.java': '''package ls.augment.com;public final class BuildConfig {public static final int VERSION_CODE=20497;public static final String VERSION_NAME="fixture-test20497";}''',
-    'ls/augment/com/BootConfigMirror.java': '''package ls.augment.com;public final class BootConfigMirror {public static int reads;public static ConfigSnapshot value;public static ConfigSnapshot read(){reads++;return value;}}''',
     'ls/augment/com/RemoteConfig.java': (ROOT / 'android/app/src/main/java/ls/augment/com/RemoteConfig.java').read_text(encoding='utf-8'),
     'ls/augment/com/HideTargetCodec.java': (ROOT / 'android/app/src/main/java/ls/augment/com/HideTargetCodec.java').read_text(encoding='utf-8'),
     'ls/augment/com/HideUserIdentity.java': (ROOT / 'android/app/src/main/java/ls/augment/com/HideUserIdentity.java').read_text(encoding='utf-8'),
@@ -308,17 +305,17 @@ public final class TestFeatureSettingsAsync {
         check(businessCalls.get()==1&&GuardOwner.ownerReads.get()>0&&GuardChain.receiverReads.get()>0,"enabled guard skipped normal context/body path");
         providerValue="5:0";refresh();GuardOwner.ownerReads.set(0);GuardChain.receiverReads.set(0);guardedReads(hook,owner);
         check(GuardOwner.ownerReads.get()==0&&GuardChain.receiverReads.get()==0&&businessCalls.get()==1,"off-after-enable did not restore early return");
-        check(BootConfigMirror.reads==0,"hot configuration or hook guard invoked boot mirror");
         check(wrongThread.get()==0,"guard moved IPC onto a callback reader thread");
         System.out.println("FeatureSettings/OemHooks actual guard: unverified refresh, 4000 fresh off callbacks without IPC/owner lookup, 4000 expired off callbacks with blocked worker refresh, enable/disable changes passed");
     }
     public static void main(String[] args)throws Throwable {
         if(args.length>0&&args[0].equals("verified_off_guard")){verifiedOffGuard();return;}
         if(args.length>0&&args[0].equals("boot_startup")){
-            BootConfigMirror.value=ConfigSnapshot.parse("7:1");FeatureSettings.awaitBootSnapshot();FeatureSettings.awaitBootSnapshot();
-            check(BootConfigMirror.reads==1&&FeatureSettings.hasVerifiedSnapshot(null),"boot mirror was not a one-shot verified fallback");
-            check(providerSnapshotCalls.get()==0&&wrongThread.get()==0,"one-shot boot mirror performed Provider IPC");
-            System.out.println("FeatureSettings one-shot boot installation mirror fallback passed");return;
+            remoteValue="7:1";REMOTE_GATE.countDown();FeatureSettings.attachFramework(new Framework());
+            until(()->FeatureSettings.hasVerifiedSnapshot(null));FeatureSettings.awaitBootSnapshot();FeatureSettings.awaitBootSnapshot();
+            check(FeatureSettings.hasVerifiedSnapshot(null),"private framework boot publication unavailable");
+            check(providerSnapshotCalls.get()==0&&wrongThread.get()==0,"private boot publication moved IPC onto caller");
+            System.out.println("FeatureSettings private framework startup publication passed");return;
         }
         if(args.length>0&&args[0].equals("diagnostic_retry")){diagnosticRetry();return;}
         if(args.length>0&&args[0].equals("hidden_binding")){hiddenBindings();return;}

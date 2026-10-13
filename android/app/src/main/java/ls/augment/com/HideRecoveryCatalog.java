@@ -55,7 +55,7 @@ final class HideRecoveryCatalog {
 
     private static Page execute(String cursor, String key) {
         if (!cursor.isEmpty() && !validKey(cursor)) return Page.failure("恢复分页标识无效，请重新刷新");
-        RootShell.Result result = RootShell.run(command(cursor, key), null, 30, MAX_OUTPUT);
+        RootShell.Result result = HidePrivateStorage.run(command(cursor, key), null, 30, MAX_OUTPUT);
         if (!result.isSuccess()) return Page.failure("读取恢复记录失败，请重新刷新：" + result.publicError());
         Page page = parseProtocol(result.output);
         if (page.success && !key.isEmpty() && (page.sources.size() != 1
@@ -132,7 +132,7 @@ final class HideRecoveryCatalog {
         // Validated keys contain no quotes, substitutions, path separators or whitespace.
         return "CURSOR='" + after + "'\nSINGLE='" + single + "'\n" + """
                 export LC_ALL=C
-                ROOT='/data/adb/ls_augment/v2'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
                 fail() { printf '%s\\n' "recovery_catalog:$1" >&2; exit 74; }
                 set -o pipefail || fail pipeline_unavailable
                 directory() {
@@ -197,7 +197,12 @@ final class HideRecoveryCatalog {
                 while [ -n "$rest" ]; do
                   segment=${rest%%/*}
                   prefix="$prefix/$segment"
-                  if ! directory "$prefix"; then present=0; break; fi
+                  # App UIDs may traverse /data but must not enumerate system parents.
+                  if [ "$prefix" = "$ROOT" ]; then
+                    if ! directory "$prefix"; then present=0; break; fi
+                  else
+                    [ ! -L "$prefix" ] && [ -d "$prefix" ] && [ -x "$prefix" ] || fail ancestor_unavailable
+                  fi
                   case "$rest" in */*) rest=${rest#*/} ;; *) rest='' ;; esac
                 done
                 printf '%s\\n' 'LSA_RECOVERY_CATALOG_V1' || fail output

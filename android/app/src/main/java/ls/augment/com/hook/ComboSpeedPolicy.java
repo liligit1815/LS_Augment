@@ -8,13 +8,13 @@ package ls.augment.com.hook;
  * the original duration first prevents applying the selected multiplier on
  * top of that OEM mode.</p>
  */
-final class ComboSpeedPolicy {
+public final class ComboSpeedPolicy {
     static final float MIN_RATE = 1.00f;
     static final float MAX_RATE = 10.00f;
 
     private ComboSpeedPolicy() { }
 
-    static boolean isValidRate(float rate) {
+    public static boolean isValidRate(float rate) {
         return !Float.isNaN(rate) && !Float.isInfinite(rate)
                 && rate >= MIN_RATE && rate <= MAX_RATE
                 && rate == Math.rint(rate);
@@ -77,7 +77,7 @@ final class ComboSpeedPolicy {
      * OEM player schedules every event from these timestamps, so changing a
      * separate playback-duration field cannot affect the real gesture speed.
      */
-    static long scaleTimestamp(long timestamp, long origin, float targetRate) {
+    public static long scaleTimestamp(long timestamp, long origin, float targetRate) {
         if (timestamp < 0L || origin < 0L || timestamp <= origin
                 || !isValidRate(targetRate)) {
             return timestamp;

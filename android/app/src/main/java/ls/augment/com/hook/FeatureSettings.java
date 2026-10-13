@@ -13,7 +13,6 @@ import io.github.libxposed.api.XposedInterface;
 
 import ls.augment.com.ConfigSchema;
 import ls.augment.com.ConfigSnapshot;
-import ls.augment.com.BootConfigMirror;
 import ls.augment.com.RemoteConfig;
 import ls.augment.com.HideUserIdentity;
 import ls.augment.com.HideTargetCodec;
@@ -338,13 +337,8 @@ final class FeatureSettings {
     static void awaitBootSnapshot() {
         if (!bootWaited.compareAndSet(false, true)) return;
         if (verifiedSnapshot) { bootstrapStatus = "ready"; return; }
-        // AudioService reads its maximum-volume properties while constructing,
-        // before the provider and framework preferences are reliably available.
-        // The root-owned boot copy is local and checksummed, so it can seed this
-        // one-time startup snapshot without entering a provider/Binder call.
-        ConfigSnapshot boot = BootConfigMirror.read();
-        if (boot != null) publishSnapshot(boot, false);
-        if (verifiedSnapshot) { bootstrapStatus = "ready"; return; }
+        // Early constructors use the framework's official private preference
+        // channel, already loaded on CONFIG_WORKER. No system-directory mirror.
         try {
             boolean finished = BOOTSTRAP_READY.await(250L, TimeUnit.MILLISECONDS);
             bootstrapStatus = verifiedSnapshot ? "ready" : finished ? "unavailable" : "timeout";

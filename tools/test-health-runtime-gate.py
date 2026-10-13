@@ -77,10 +77,11 @@ sources = {
 ''',
  'ls/augment/com/hook/StepLedger.java': '''package ls.augment.com.hook;import java.util.*;import ls.augment.com.StepPlan;
  final class StepLedger {
- static int created,guards,reads,writes,deleted;boolean oldEvidence=true;final android.database.sqlite.SQLiteDatabase db=new android.database.sqlite.SQLiteDatabase();
+ static int created,guards,reads,writes,deleted;boolean oldEvidence=true;final Transaction db=new Transaction();
  StepLedger(android.content.Context c){created++;}Guard guard(){guards++;return new Guard();}
  final class Guard implements AutoCloseable{public void close(){}}
- android.database.sqlite.SQLiteDatabase getWritableDatabase(){writes++;return db;}
+ static final class Transaction extends android.database.sqlite.SQLiteDatabase{}
+ Transaction getWritableDatabase(){writes++;return db;}
  static final class Record{final String raw,output,token;final boolean generated;Record(String r,String o,String t,boolean g){raw=r;output=o;token=t;generated=g;}}
  static final class SavedRecord{String sid;long time;Record record;}
  static final class Award{int requested,allowed;}

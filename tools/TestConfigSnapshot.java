@@ -26,6 +26,7 @@ public final class TestConfigSnapshot {
         ConfigSnapshot snapshot = ConfigSnapshot.create(42L, 123456L, values);
         if (snapshot == null) throw new AssertionError("snapshot creation failed");
         ConfigSnapshot parsed = ConfigSnapshot.parse(snapshot.serialize());
+        verifyDiagnosticReasons(snapshot);
         if (parsed == null || !"1".equals(parsed.get(ConfigSchema.TGK_RAPID_FIRE_COUNT))
                 || !"1".equals(parsed.get(SystemOptions.SMS_CODE_CLIPBOARD)))
             throw new AssertionError("new settings failed snapshot round trip");
@@ -184,6 +185,34 @@ public final class TestConfigSnapshot {
                 ||!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_SMALL)))
             throw new AssertionError("new stack modes must default disabled");
         System.out.println("PASS TestConfigSnapshot (including legacy, LiftArc and notification stack upgrade compatibility)");
+    }
+    private static void verifyDiagnosticReasons(ConfigSnapshot snapshot) throws Exception {
+        String raw=snapshot.serialize();
+        String body=new String(java.util.Base64.getUrlDecoder().decode(raw.split("\\.",3)[2]),java.nio.charset.StandardCharsets.UTF_8);
+        expectReason(null,"payload_missing");
+        expectReason("x".repeat(256*1024+1),"payload_too_large");
+        expectReason("PRIVATE_PAYLOAD","envelope_invalid");
+        expectReason("LSA1."+"0".repeat(64)+".!","body_base64_invalid");
+        expectReason("LSA1."+"0".repeat(64)+"."+raw.split("\\.",3)[2],"checksum_mismatch");
+        expectReason(signBody("v=1"),"headers_incomplete");
+        expectReason(signBody(body.replaceFirst("v=[0-9]+","v=999")),"schema_unsupported;actual=999");
+        expectReason(signBody(body.replaceFirst("r=[0-9]+","r=0")),"revision_invalid");
+        expectReason(signBody(body.replaceFirst("t=[0-9]+","t=0")),"updated_at_invalid");
+        expectReason(signBody(body.replaceFirst("s=device","s=PRIVATE_PAYLOAD")),"scope_invalid");
+        expectReason(signBody(body+"PRIVATE_PAYLOAD\n"),"entry_malformed;line=");
+        expectReason(signBody(body+body.split("\\n")[4]+"\n"),"duplicate_key;line=");
+        expectReason(signBody(body+"PRIVATE_PAYLOAD=!\n"),"value_base64_invalid;line=");
+        expectReason(signBody(body+"PRIVATE_PAYLOAD=MQ\n"),"unknown_key;line=");
+        expectReason(withValue(snapshot,ConfigSchema.TILE_LABEL,"  PRIVATE_PAYLOAD  "),"value_invalid;line=");
+        expectReason(withoutExactKeys(snapshot,ConfigSchema.AI_TRIGGER_ENABLED),"keys_incomplete;actual=");
+        ConfigSnapshot.ParseResult success=ConfigSnapshot.parseDetailed(raw);
+        if(success.snapshot==null||!success.error.isEmpty())throw new AssertionError("valid detailed parse must stay successful");
+    }
+    private static void expectReason(String raw,String reason) {
+        ConfigSnapshot.ParseResult result=ConfigSnapshot.parseDetailed(raw);
+        if(result.snapshot!=null||!result.error.startsWith(reason)||result.error.length()>160
+                ||result.error.contains("PRIVATE_PAYLOAD")||ConfigSnapshot.parse(raw)!=null)
+            throw new AssertionError("unsafe or imprecise snapshot rejection: expected="+reason+" actual="+result.error);
     }
     private static String withLabel(ConfigSnapshot snapshot,String label) throws Exception {
         return withValue(snapshot,ConfigSchema.TILE_LABEL,label);

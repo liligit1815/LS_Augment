@@ -72,6 +72,7 @@ final class ConfigResetController {
             defaultsWritten=true;
             HiddenEntrySession.lock();
             ModuleResetStorage.clear(app);
+            RecentsCardRadiusStore.onStorageReset(app);
             ModuleRuntimeReset.Result notifications=ModuleRuntimeReset.clearNotifications(app);
             if(!notifications.success)return failure(app,true,false,notifications.message);
             app.getPackageManager().setComponentEnabledSetting(new ComponentName(app,app.getPackageName()+".LauncherAlias"),

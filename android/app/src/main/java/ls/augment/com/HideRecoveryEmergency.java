@@ -8,14 +8,14 @@ final class HideRecoveryEmergency {
     static RootShell.Result install() {
         RootShell.Result archived = HideRecoveryArchive.preserve("");
         if (!archived.isSuccess()) return archived;
-        return verified(RootShell.run(command(), null, 30, 4096));
+        return verified(HidePrivateStorage.run(command(), null, 30, 4096));
     }
 
     /** Current selections remain replaceable; immutable archive history does not. */
     static RootShell.Result writeTargets(String selection) {
         RootShell.Result installed = install();
         if (!installed.isSuccess()) return installed;
-        return verified(RootShell.run(targetCommand(), selection.isEmpty() ? "" : selection + "\n", 30, 4096));
+        return verified(HidePrivateStorage.run(targetCommand(), selection.isEmpty() ? "" : selection + "\n", 30, 4096));
     }
 
     private static RootShell.Result verified(RootShell.Result result) {
@@ -37,9 +37,9 @@ final class HideRecoveryEmergency {
                 printf '%s\n' 'Open the app recovery page and verify each package, Android user and user serial.'
                 printf '%s\n' 'This script is read-only. Showing an app requires a new explicit confirmation in the app.'
                 printf '%s\n' 'Old selections and pending operations are never replayed to show an app.'
-                printf '%s\n' "Root records beside this script: ${0%/*}/recovery-history-v1 and ${0%/*}/recovery-journal-v1."
-                printf '%s\n' 'After uninstalling, reinstall the current APK, open History and Recovery, and review each user.'
-                printf '%s\n' 'After clearing data or reinstalling, reopen recovery review; Root history is retained.'
+                printf '%s\n' "Private records beside this script: ${0%/*}/recovery-history-v1 and ${0%/*}/recovery-journal-v1."
+                printf '%s\n' 'Restore hidden apps before uninstalling or clearing app data.'
+                printf '%s\n' 'Android removes private recovery history when app data is cleared or the app is uninstalled.'
                 printf '%s\n' 'Disabling or uninstalling the module does not automatically show hidden apps.'
                 printf '%s\n' 'If Root is unavailable, keep all records and retry after granting Root access.'
                 printf '%s\n' 'This script changes no app state and deletes no recovery evidence.'
@@ -65,7 +65,7 @@ final class HideRecoveryEmergency {
         return """
                 umask 077
                 export LC_ALL=C
-                ROOT='/data/adb/ls_augment/v2'
+                ROOT="${LSA_PRIVATE_ROOT:?}/v2"
                 ROOT_PARENT=${ROOT%/*}
                 STORAGE=${ROOT_PARENT%/*}
                 INPUT=''

@@ -108,7 +108,7 @@ public class TestRapidDecisionEvidence {
 '''
 
 COMBO_HARNESS = r'''
-package ls.augment.com.hook;
+package ls.augment.com;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.nio.charset.StandardCharsets;
@@ -117,24 +117,24 @@ import org.json.*;
 public class TestComboCacheEvidence {
  static Path source,cache;static int checks;
  static void yes(boolean b,String m){checks++;if(!b)throw new AssertionError(m);}
- static ComboMotionFileScaler.Result scale(float rate){return ComboMotionFileScaler.scale(cache.toFile(),ComboMotionCache.Request.capture(cache.toFile(),source.toString(),rate,0L));}
+ static ComboMotionPrivateScaler.Result scale(float rate)throws Exception{return ComboMotionPrivateScaler.scale(cache.toFile(),ComboMotionPrivateScaler.Request.capture(cache.toFile(),source.toString(),rate,0L));}
  static void write(Path p,String value)throws Exception{Files.writeString(p,value,StandardCharsets.UTF_8);}
  static String recording(long end){return "{\"name\":\"macro\",\"events\":[{\"sampleEventTime\":1000,\"downTime\":1000,\"action\":0},{\"sampleEventTime\":"+end+",\"downTime\":1000,\"action\":1}]}";}
  public static void main(String[] a)throws Exception {
   Path temp=Files.createTempDirectory("duo-combo-evidence-");source=temp.resolve("source.json");cache=temp.resolve("cache");Files.createDirectory(cache);
   try {
    write(source,recording(3000));
-   ComboMotionFileScaler.Result first=scale(2);
+   ComboMotionPrivateScaler.Result first=scale(2);
    yes(first.success&&!first.cacheHit&&first.eventCount==2&&first.sourceSpanMs==2000&&first.outputSpanMs==1000,"fresh source metrics");
    Path output=Path.of(first.outputPath);String bytes=Files.readString(output);
    yes(new JSONObject(bytes).getJSONArray("events").getJSONObject(1).getInt("action")==1,"release event retained");
-   ComboMotionFileScaler.Result disk=scale(2);
+   ComboMotionPrivateScaler.Result disk=scale(2);
    yes(disk.success&&disk.cacheHit&&disk.evidenceSource.equals("DISK_CACHE_VERIFIED")&&disk.eventCount==2&&disk.sourceSpanMs==2000&&disk.outputSpanMs==1000,"old-format disk cache reconstructs evidence");
    yes(Files.readString(output).equals(bytes),"valid cache is not scaled again");
-   ComboMotionFileScaler.Result memory=disk.asPublishedHit();
+   ComboMotionPrivateScaler.Result memory=disk.asPublishedHit();
    yes(memory.evidenceSource.equals("MEMORY_CACHE")&&memory.sourceSpanMs==2000&&memory.outputSpanMs==1000,"memory retains metrics");
    JSONObject damaged=new JSONObject(bytes);damaged.getJSONArray("events").getJSONObject(1).put("sampleEventTime",1500);write(output,damaged.toString());
-   ComboMotionFileScaler.Result repaired=scale(2);
+   ComboMotionPrivateScaler.Result repaired=scale(2);
    yes(repaired.success&&!repaired.cacheHit&&repaired.outputSpanMs==1000&&Files.readString(output).equals(bytes),"double-scaled cache rebuilt from original");
    damaged=new JSONObject(bytes);damaged.getJSONArray("events").getJSONObject(1).put("action",0);write(output,damaged.toString());
    yes(!scale(2).cacheHit&&Files.readString(output).equals(bytes),"wrong release action cache rejected");
@@ -144,12 +144,12 @@ public class TestComboCacheEvidence {
    yes(!scale(2).cacheHit,"missing release cache rejected");
    write(output,"broken");yes(scale(2).success&&!scale(2).evidenceSource.equals("UNKNOWN"),"broken cache recovers");
    FileTime saved=Files.getLastModifiedTime(source);write(source,recording(5000));Files.setLastModifiedTime(source,saved);
-   ComboMotionFileScaler.Result changed=scale(2);
+   ComboMotionPrivateScaler.Result changed=scale(2);
    yes(changed.success&&!changed.cacheIdentity.equals(first.cacheIdentity)&&changed.sourceSpanMs==4000&&changed.outputSpanMs==2000,"same-size and mtime content change invalidates identity");
    for(int rate:new int[]{1,2,10}){
-    ComboMotionFileScaler.Result r=scale(rate);yes(r.success&&r.sourceSpanMs==4000&&r.outputSpanMs==4000/rate,"rate "+rate);
+    ComboMotionPrivateScaler.Result r=scale(rate);yes(r.success&&r.sourceSpanMs==4000&&r.outputSpanMs==4000/rate,"rate "+rate);
    }
-   write(source,recording(1000));ComboMotionFileScaler.Result zero=scale(10);
+   write(source,recording(1000));ComboMotionPrivateScaler.Result zero=scale(10);
    yes(zero.success&&zero.eventCount==2&&zero.sourceSpanMs==0&&zero.outputSpanMs==0,"zero span is real evidence");
    yes(scale(10).cacheHit&&scale(10).eventCount==2,"zero span disk verification");
    System.out.println("PASS combo old/disk/memory cache evidence and corruption recovery: "+checks+" checks");
@@ -176,7 +176,7 @@ def main():
             'android/os/Handler.java': 'package android.os;public class Handler {public boolean sendEmptyMessageDelayed(int w,long d){return true;}public boolean sendMessageDelayed(Message m,long d){return true;}public void dispatchMessage(Message m){}}',
             'ls/augment/com/hook/TestAiHandlerScopeRuntime.java': AI_HARNESS.replace('// PRODUCTION', common + '\n' + '\n'.join(callbacks)),
             'ls/augment/com/hook/TestRapidDecisionEvidence.java': DECISION_HARNESS,
-            'ls/augment/com/hook/TestComboCacheEvidence.java': COMBO_HARNESS,
+            'ls/augment/com/TestComboCacheEvidence.java': COMBO_HARNESS,
         }
         files = []
         for name, value in sources.items():
@@ -185,10 +185,11 @@ def main():
             path.write_text(value, encoding='utf-8')
             files.append(path)
         files += [HOOK / (name + '.java') for name in
-                  ('AiHandlerScope', 'RapidFireDecisionEvidence', 'ComboSpeedPolicy', 'ComboMotionFileScaler', 'ComboMotionCache')]
+                  ('AiHandlerScope', 'RapidFireDecisionEvidence', 'ComboSpeedPolicy')]
+        files.append(HOOK.parent / 'ComboMotionPrivateScaler.java')
         subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-cp', str(args.json_jar), '-d', folder, *map(str, files)], check=True)
         for name in ('TestAiHandlerScopeRuntime', 'TestRapidDecisionEvidence', 'TestComboCacheEvidence'):
-            subprocess.run(['java', '-cp', folder + os.pathsep + str(args.json_jar), 'ls.augment.com.hook.' + name], check=True, timeout=30)
+            subprocess.run(['java', '-cp', folder + os.pathsep + str(args.json_jar), ('ls.augment.com.' if name == 'TestComboCacheEvidence' else 'ls.augment.com.hook.') + name], check=True, timeout=30)
 
 
 if __name__ == '__main__':

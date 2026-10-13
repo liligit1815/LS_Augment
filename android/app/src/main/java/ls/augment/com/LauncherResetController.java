@@ -38,7 +38,7 @@ final class LauncherResetController {
         }catch(IOException missing){return failure("无法读取桌面记录清理程序",true);}
         // Root only observes the two fixed stores. The owning process updates
         // its cached SharedPreferences and acknowledges this exact reset.
-        boolean pending=false,history=false;
+        boolean pending=LauncherOwnedStateStore.pendingGrid(appContext),history=LauncherOwnedStateStore.pagesHistory(appContext);
         String primary=app.dataDir.equals(deviceBase)?deviceBase:base;
         for(String directory:new String[]{base,deviceBase}){
             String header="expected_uid="+app.uid+"\nexpected_user="+user+"\nbase="+RootShell.quote(directory)
@@ -61,6 +61,8 @@ final class LauncherResetController {
             session=LauncherResetRuntime.begin(appContext,app.uid,user,identity.userSerial);
             LauncherResetPolicy.Receipt receipt=LauncherResetRuntime.await(session);
             if(!receipt.success)return failure("系统桌面未确认清理："+receipt.code+"；恢复依据已保留",pending);
+            if(LauncherOwnedStateStore.pagesHistory(appContext))return failure("模块私有页面记录仍存在，未提交默认设置",pending);
+            pending|=LauncherOwnedStateStore.pendingGrid(appContext);
             for(String directory:new String[]{base,deviceBase}){
                 String header="expected_uid="+app.uid+"\nexpected_user="+user+"\nbase="+RootShell.quote(directory)
                         +"\nrequired_base="+(directory.equals(primary)?1:0)+"\nstage=read\n";

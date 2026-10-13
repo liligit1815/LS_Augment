@@ -3,7 +3,6 @@ package ls.augment.com.hook;
 import android.app.Application;
 import android.app.Instrumentation;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
@@ -17,9 +16,6 @@ import android.system.OsConstants;
 import android.system.StructStat;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -32,7 +28,6 @@ import ls.augment.com.LauncherResetPolicy;
 final class LauncherResetHook {
     private static final Uri PROVIDER=Uri.parse("content://ls.augment.com.config");
     private static final Uri URI=Uri.parse("content://ls.augment.com.config/launcher-reset");
-    private static final String PREFS="ls_augment_launcher_pages";
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final ScheduledExecutorService WORKER=Executors.newSingleThreadScheduledExecutor(r->{
         Thread t=new Thread(r,"LSA-LauncherReset");t.setDaemon(true);return t;
@@ -47,6 +42,7 @@ final class LauncherResetHook {
         try{
             module.registerFeatureHook(module.prepareFeatureHook(Instrumentation.class.getDeclaredMethod(
                     "callApplicationOnCreate",Application.class),"launcher.reset.application",true).intercept(chain->{
+                LauncherOwnedStateClient.preload((Application)chain.getArg(0));
                 Object result=chain.proceed();
                 attach((Application)chain.getArg(0));return result;
             }));
@@ -96,45 +92,14 @@ final class LauncherResetHook {
             if(!LauncherPagesHook.pauseForReset(r.revision)){
                 MAIN.postDelayed(()->apply(r),80L);return;
             }
-            List<SharedPreferences> stores=new ArrayList<>();
-            SharedPreferences cached=LauncherPagesHook.cachedResetPreferences();
-            if(cached!=null)stores.add(cached);
-            Context[] storageContexts=new Context[]{credentialStorage(app),app.createDeviceProtectedStorageContext()};
-            for(Context storage:storageContexts){
-                validateStorage(storage,r.user,r.launcherUid);
-                SharedPreferences prefs=storage.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
-                validateMap(prefs.getAll());
-                if(!stores.contains(prefs))stores.add(prefs);
-            }
-            for(SharedPreferences prefs:stores)validateMap(prefs.getAll());
-            // commit waits for earlier apply writes and changes the cached maps,
-            // preventing old page order from being recreated after completion.
-            for(SharedPreferences prefs:stores)if(!prefs.edit().clear().commit()){
-                ack(r,false,"commit_failed");return;
-            }
-            for(SharedPreferences prefs:stores)if(!prefs.getAll().isEmpty()){
-                ack(r,false,"cached_pages_remain");return;
-            }
-            for(Context storage:storageContexts)
-                validateStorage(storage,r.user,r.launcherUid);
-            ack(r,true,"pages_empty");
+            WORKER.execute(()->{
+                boolean cleared=LauncherOwnedStateClient.clearPagesForReset(app,r);
+                ack(r,cleared,cleared?"pages_empty":"commit_failed");
+            });
         }catch(Exception unsafe){ack(r,false,"storage_not_verified");}
     }
-    private static Context credentialStorage(Context app)throws ReflectiveOperationException,IOException{
-        // The platform method is @SystemApi and omitted from the public SDK jar.
-        // Invoke only this fixed Context API; a missing implementation fails closed.
-        Object storage=Context.class.getDeclaredMethod("createCredentialProtectedStorageContext").invoke(app);
-        if(!(storage instanceof Context))throw new IOException("credential storage unavailable");
-        return (Context)storage;
-    }
-    private static void validateMap(Map<String,?> values)throws IOException{
-        for(Map.Entry<String,?> entry:values.entrySet()){
-            if("order".equals(entry.getKey())&&entry.getValue() instanceof String)continue;
-            if("keep_empty".equals(entry.getKey())&&entry.getValue() instanceof Boolean)continue;
-            throw new IOException("unrecognized page recovery field");
-        }
-    }
-    private static void validateStorage(Context storage,int user,int uid)throws Exception{
+    static void validateStorage(Context storage,int user,int uid,String name)throws Exception{
+        if(!"ls_augment_launcher_pages".equals(name)&&!"ls_augment_launcher_grid_state".equals(name))throw new IOException("storage role");
         if(storage==null||!LauncherResetPolicy.PACKAGE.equals(storage.getPackageName()))throw new IOException("storage identity");
         File base=storage.getDataDir();
         String ce="/data/user/"+user+"/"+LauncherResetPolicy.PACKAGE;
@@ -150,10 +115,10 @@ final class LauncherResetHook {
         File folder=new File(base,"shared_prefs");StructStat dir=optional(folder);
         if(dir!=null&&(!OsConstants.S_ISDIR(dir.st_mode)||dir.st_uid!=uid
                 ||!folder.getCanonicalPath().equals(canonical+"/shared_prefs")))throw new IOException("prefs directory");
-        for(String name:new String[]{PREFS+".xml",PREFS+".xml.bak"}){
-            File file=new File(folder,name);StructStat stat=optional(file);
+        for(String fileName:new String[]{name+".xml",name+".xml.bak"}){
+            File file=new File(folder,fileName);StructStat stat=optional(file);
             if(stat!=null&&(!OsConstants.S_ISREG(stat.st_mode)||stat.st_uid!=uid||stat.st_nlink!=1
-                    ||stat.st_size<0||stat.st_size>262144||!file.getCanonicalPath().equals(canonical+"/shared_prefs/"+name)))
+                    ||stat.st_size<0||stat.st_size>262144||!file.getCanonicalPath().equals(canonical+"/shared_prefs/"+fileName)))
                 throw new IOException("prefs file");
         }
     }

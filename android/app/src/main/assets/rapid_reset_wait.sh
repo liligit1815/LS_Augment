@@ -19,6 +19,20 @@ fi
 lock=/dev/.lsaugment_rapid_input_capture
 had_lock=0
 if [ -e "$lock" ] || [ -L "$lock" ]; then had_lock=1; fi
+# Only the verified wake-capable driver has a global hardware session. Other
+# devices continue to drain their read-only private leases without this tool.
+driver=/vendor_dlkm/lib/modules/aw9620x.ko
+driver_sum=$(sha256sum "$driver" 2>/dev/null || :)
+hardware_lock=0
+hardware_locked=0
+if [ "${driver_sum%% *}" = 3211fdc4b97aabe3c0db8f06f3ec07da8c3c382a6273412adb089940e9d4b532 ]; then
+  command -v flock >/dev/null || fail missing_flock
+  exec 9< "$driver" || fail hardware_lock_open
+  opened_sum=$(sha256sum "/proc/$$/fd/9" 2>/dev/null) || fail hardware_lock_identity
+  [ "${opened_sum%% *}" = "${driver_sum%% *}" ] || fail hardware_lock_identity
+  hardware_lock=1
+  if flock -x -n 9 9>&9; then hardware_locked=1; else had_lock=1; fi
+fi
 leases=
 for lease in "$cache"/rapid-input-*.lease; do
   name=${lease##*/}
@@ -47,6 +61,9 @@ EOF
 ticks=0
 while :; do
   pending=0
+  if [ "$hardware_lock" = 1 ] && [ "$hardware_locked" = 0 ]; then
+    if flock -x -n 9 9>&9; then hardware_locked=1; else pending=1; fi
+  fi
   if [ -e "$lock" ] || [ -L "$lock" ]; then
     [ -d "$lock" ] && [ ! -L "$lock" ] || fail external_lock_type
     [ "$(readlink -f "$lock")" = "$lock" ] || fail external_lock_canonical
@@ -63,4 +80,33 @@ while :; do
   [ "$ticks" -lt 150 ] || fail session_still_running
   sleep 0.1
 done
+# These are durable responsibility records, not runtime locks. Empty records
+# never reached a wake write; a different boot has reset the hardware. Retain
+# current-boot or malformed records rather than guess after both processes die.
+recovery="$actual_base/files/rapid-capture-v1"
+if [ -e "$recovery" ] || [ -L "$recovery" ]; then
+  for directory in "$actual_base/files" "$recovery"; do
+    [ -d "$directory" ] && [ ! -L "$directory" ] || fail recovery_type
+    [ "$(readlink -f "$directory")" = "$directory" ] || fail recovery_canonical
+    [ "$(stat -c %u "$directory")" = "$expected_uid" ] || fail recovery_owner
+  done
+  boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || fail boot_identity
+  printf '%s\n' "$boot_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || fail boot_identity
+  for state in "$recovery"/*; do
+    [ -e "$state" ] || [ -L "$state" ] || continue
+    name=${state##*/}
+    printf '%s\n' "$name" | grep -Eq '^rapid-input-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.lease\.recorder$' || fail recovery_unknown
+    [ -f "$state" ] && [ ! -L "$state" ] || fail recovery_file_type
+    [ "$(stat -c %u "$state")" = "$expected_uid" ] && [ "$(stat -c %h "$state")" = 1 ] || fail recovery_file_owner
+    [ "$(readlink -f "$state")" = "$state" ] || fail recovery_file_canonical
+    if [ -s "$state" ]; then
+      [ "$(stat -c %s "$state")" -le 96 ] || fail recovery_format
+      saved=$(cat "$state") || fail recovery_read
+      printf '%s\n' "$saved" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]{1,10}:[0-9]{1,20}$' || fail recovery_format
+      [ "${saved%%:*}" != "$boot_id" ] || fail recovery_unconfirmed
+    fi
+    rm -f -- "$state" || fail recovery_remove
+    [ ! -e "$state" ] && [ ! -L "$state" ] || fail recovery_remains
+  done
+fi
 printf 'RAPID_CAPTURE_DRAINED:%s:%s\n' "$signals" "$had_lock"

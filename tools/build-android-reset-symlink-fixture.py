@@ -29,6 +29,11 @@ def translate(kind, source):
     body = re.sub(r'(?<![A-Za-z0-9_/])/data(?=/|[\s\'"]|$)', case + '/data', source)
     body = body.replace('/proc/[0-9]', case + '/proc/[0-9]')
     body = body.replace('/dev/.lsaugment_rapid_input_capture', case + '/dev/.lsaugment_rapid_input_capture')
+    body = body.replace('/vendor_dlkm/lib/modules/aw9620x.ko', case + '/vendor_dlkm/lib/modules/aw9620x.ko')
+    body = body.replace('/proc/sys/kernel/random/boot_id', case + '/proc/sys/kernel/random/boot_id')
+    # These link-rejection fixtures do not create a driver or enter its lock
+    # branch; keep even its diagnostic FD path scoped to the disposable tree.
+    body = body.replace('/proc/$$/fd/9', case + '/proc/$$/fd/9')
     executable = '\n'.join(line for line in body.splitlines() if not line.lstrip().startswith('#'))
     paths = re.findall(r'/(?:data|dev|proc|vendor|system|sys|storage|sdcard|mnt)(?:/[^\s\'";|&<>)]*)?', executable)
     forbidden = [path for path in paths if path != '/dev/null' and not path.startswith(case + '/')]

@@ -107,15 +107,14 @@ design-qa.md
 !/docs/跨设备开发说明.md
 !/docs/红魔Duo-UI规范.md
 !/docs/statusbar-assets.md
+!/docs/模块私有存储.md
 !/docs/发布与在线更新.md
 !/docs/examples/
 /docs/examples/*
 !/docs/examples/redmagic-duo.json
 !/docs/releases/
 /docs/releases/*
-!/docs/releases/v2.0.0-alpha1-test20510.md
-!/docs/releases/v2.0.0-alpha1-test20518.md
-!/docs/releases/v2.0.0-alpha1-test20528.md
+!/docs/releases/v2.0.0-alpha1-test20541.md
 
 # 图标提取原件留在本地，仓库保留实际使用的图标及来源记录
 /contributors-site/icons/liftarc-original-vector.xml
@@ -152,3 +151,6 @@ design-qa.md
 /tools/install-fan-regression-build.py
 /tools/install-game-regression-build.py
 /tools/restore-fan-device-baseline.py
+/tools/build-shoulder-validation-fixture.py
+/tools/prepare-shoulder-device-validation.py
+/tools/fixtures/shoulder-device/

@@ -126,10 +126,15 @@ final class GameExtrasHook {
     }
 
     private Object pluginEligibility(Chain chain) throws Throwable {
+        // Its native query supplies the quality/FPS capability and synchronizes
+        // the saved state. An unlocked tile alone can otherwise have no options.
+        if ("super_resolution".equals(chain.getArg(1))) return chain.proceed();
         return AugmentModule.isGamePluginTarget((String)chain.getArg(2)) ? true : chain.proceed();
     }
 
     private Object pluginAvailability(Chain chain) throws Throwable {
+        // Preserve the OEM plugin switch even when expanded engine support is on.
+        if ("super_resolution".equals(chain.getArg(1))) return chain.proceed();
         return AugmentModule.isGamePluginTarget(AugmentModule.currentFullscreenPackage(loader))
                 ? true : chain.proceed();
     }

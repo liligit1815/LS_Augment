@@ -20,17 +20,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--adb', type=Path, default=Path(os.environ.get(
         'LS_AUGMENT_ADB', ROOT / 'audit-output/android-sdk/platform-tools/adb.exe')))
-    parser.add_argument('--serial', default=os.environ.get('LS_AUGMENT_DEVICE', '9125258103D6'))
+    parser.add_argument('--serial', default=os.environ.get('LS_AUGMENT_DEVICE'),
+                        help='Explicit target device serial, or set LS_AUGMENT_DEVICE.')
     parser.add_argument('--output', type=Path, default=ROOT / 'out/game-performance-monitor-ui-device')
     parser.add_argument('--layout-matrix', action='store_true',
                         help='Test font scale 1.0 and 1.3 in portrait and landscape, restoring the original scale')
     parser.add_argument('--layout-only', action='store_true')
     parser.add_argument('--landscape', action='store_true')
     args = parser.parse_args()
+    if not args.serial or not re.fullmatch(r'[A-Za-z0-9_.:-]+', args.serial):
+        parser.error('A valid --serial or LS_AUGMENT_DEVICE is required before device access')
     if not args.adb.is_file():
         raise FileNotFoundError(args.adb)
-    if not re.fullmatch(r'[A-Za-z0-9_.:-]+', args.serial):
-        raise ValueError('Invalid device serial')
     args.output.mkdir(parents=True, exist_ok=True)
 
     def adb(*arguments, timeout=40, check=True):

@@ -1,6 +1,7 @@
 package ls.augment.com.hook;
 
 import java.io.File;
+import android.content.Context;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,7 +12,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 
 /** Single-worker cache coordinator; playback callers only consume published files. */
 final class ComboMotionCache {
@@ -31,47 +31,28 @@ final class ComboMotionCache {
         worker.allowCoreThreadTimeOut(true);
     }
 
-    void prepare(File cacheDir, String sourcePath, float rate, boolean invalidate) {
+    void prepare(Context context, String sourcePath, float rate, boolean invalidate) {
         String alias = Request.alias(sourcePath, rate);
-        if (alias.isEmpty() || cacheDir == null || !ComboSpeedPolicy.isValidRate(rate)) return;
+        if (alias.isEmpty() || context == null || !ComboSpeedPolicy.isValidRate(rate)) return;
         long generation = generations.getOrDefault(alias, 0L);
         if (invalidate) {
             generation = generations.merge(alias, 1L, Long::sum);
-            published.remove(alias);
+            retire(published.remove(alias));
         }
-        schedule(cacheDir, sourcePath, rate, alias, generation);
+        schedule(context, sourcePath, rate, alias, generation);
     }
 
-    /** Even resolving Android's cache directory may touch disk, so do that on the worker. */
+    /** Preparation, source reads and the provider transaction always run on the worker. */
     CompletableFuture<ComboMotionFileScaler.Result> prepareAsync(
-            Supplier<File> cacheDirectory, String sourcePath, float rate) {
-        CompletableFuture<ComboMotionFileScaler.Result> result = new CompletableFuture<>();
-        try {
-            worker.execute(() -> {
-                try {
-                    prepareAsync(cacheDirectory.get(), sourcePath, rate)
-                            .whenComplete((ready, error) -> result.complete(error == null
-                                    ? ready : ComboMotionFileScaler.Result.failure("cache_worker_failed")));
-                } catch (Throwable error) {
-                    result.complete(ComboMotionFileScaler.Result.failure("cache_worker_failed"));
-                }
-            });
-        } catch (RejectedExecutionException rejected) {
-            result.complete(ComboMotionFileScaler.Result.failure("queue_full"));
-        }
-        return result;
-    }
-
-    private CompletableFuture<ComboMotionFileScaler.Result> prepareAsync(
-            File cacheDir, String sourcePath, float rate) {
+            Context context, String sourcePath, float rate) {
         String alias = Request.alias(sourcePath, rate);
-        if (alias.isEmpty() || cacheDir == null || !ComboSpeedPolicy.isValidRate(rate)) {
+        if (alias.isEmpty() || context == null || !ComboSpeedPolicy.isValidRate(rate)) {
             return CompletableFuture.completedFuture(
                     ComboMotionFileScaler.Result.failure("invalid_request"));
         }
         long generation = generations.getOrDefault(alias, 0L);
         CompletableFuture<ComboMotionFileScaler.Result> future =
-                schedule(cacheDir, sourcePath, rate, alias, generation);
+                schedule(context, sourcePath, rate, alias, generation);
         if (future == null) return CompletableFuture.completedFuture(
                 ComboMotionFileScaler.Result.failure("queue_full"));
         return future.thenApply(result -> generations.getOrDefault(alias, 0L) == generation
@@ -86,7 +67,7 @@ final class ComboMotionCache {
         if (hot != null && hot.request.generation == generation && hot.isFresh()) {
             return hot.result.asPublishedHit();
         }
-        if (hot != null) published.remove(alias, hot);
+        if (hot != null && published.remove(alias, hot)) hot.result.retire();
         return ComboMotionFileScaler.Result.failure("cold_cache");
     }
 
@@ -101,11 +82,11 @@ final class ComboMotionCache {
         }
     }
 
-    ComboMotionFileScaler.Result lookupOrSchedule(File cacheDir, String sourcePath,
+    ComboMotionFileScaler.Result lookupOrSchedule(Context context, String sourcePath,
             float rate, boolean mayWait) {
         final long startedAt = System.nanoTime();
         String alias = Request.alias(sourcePath, rate);
-        if (alias.isEmpty() || cacheDir == null || !ComboSpeedPolicy.isValidRate(rate)) {
+        if (alias.isEmpty() || context == null || !ComboSpeedPolicy.isValidRate(rate)) {
             return ComboMotionFileScaler.Result.failure("invalid_request");
         }
         long generation = generations.getOrDefault(alias, 0L);
@@ -114,19 +95,19 @@ final class ComboMotionCache {
             return hot.result.asPublishedHit();
         }
         if (hot != null && (!hot.isFresh() || hot.request.generation != generation)) {
-            published.remove(alias, hot);
+            if (published.remove(alias, hot)) hot.result.retire();
         }
 
         // A playback call on the main thread performs no path canonicalization,
         // stat or content read. The caller may defer its OEM notification until
         // preparation completes, or retain its original source on failure.
         if (!mayWait) {
-            prepare(cacheDir, sourcePath, rate, false);
+            prepare(context, sourcePath, rate, false);
             return ComboMotionFileScaler.Result.failure("cold_cache");
         }
 
         CompletableFuture<ComboMotionFileScaler.Result> future =
-                schedule(cacheDir, sourcePath, rate, alias, generation);
+                schedule(context, sourcePath, rate, alias, generation);
         if (future == null) return ComboMotionFileScaler.Result.failure("queue_full");
         try {
             long elapsedNanos = System.nanoTime() - startedAt;
@@ -154,9 +135,9 @@ final class ComboMotionCache {
      * the same worker. Callers only enqueue and optionally wait for the part of
      * the fixed 200 ms budget that remains after entering lookupOrSchedule.
      */
-    private CompletableFuture<ComboMotionFileScaler.Result> schedule(File cacheDir,
+    private CompletableFuture<ComboMotionFileScaler.Result> schedule(Context context,
             String sourcePath, float rate, String alias, long generation) {
-        String key = alias + '\u0000' + cacheDir.getAbsolutePath() + '\u0000' + generation;
+        String key = alias + '\u0000' + context.getPackageName() + '\u0000' + generation;
         CompletableFuture<ComboMotionFileScaler.Result> existing = jobs.get(key);
         if (existing != null) return existing;
         CompletableFuture<ComboMotionFileScaler.Result> created = new CompletableFuture<>();
@@ -170,7 +151,7 @@ final class ComboMotionCache {
                         result = ComboMotionFileScaler.Result.failure("cache_invalidated");
                     } else {
                         Request request = Request.capture(
-                                cacheDir, sourcePath, rate, generation);
+                                context, sourcePath, rate, generation);
                         if (!request.valid) {
                             result = ComboMotionFileScaler.Result.failure(request.error);
                         } else {
@@ -179,13 +160,14 @@ final class ComboMotionCache {
                                     && ready.request.equals(request)) {
                                 result = ready.result.asPublishedHit();
                             } else {
-                                if (ready != null) published.remove(alias, ready);
-                                result = ComboMotionFileScaler.scale(cacheDir, request);
+                                if (ready != null && published.remove(alias, ready)) ready.result.retire();
+                                result = ComboMotionFileScaler.scale(context, request);
                                 long currentGeneration = generations.getOrDefault(alias, 0L);
                                 if (result.success && currentGeneration == generation) {
-                                    published.put(alias, new Published(request, result));
+                                    retire(published.put(alias, new Published(request, result)));
                                     trimPublished(alias);
                                 } else if (result.success) {
+                                    result.retire();
                                     result = ComboMotionFileScaler.Result.failure(
                                             "cache_invalidated");
                                 }
@@ -207,11 +189,13 @@ final class ComboMotionCache {
         }
     }
 
+    private static void retire(Published old) { if (old != null) old.result.retire(); }
+
     private void trimPublished(String keepAlias) {
         if (published.size() <= MAX_PUBLISHED_ENTRIES) return;
         for (String alias : published.keySet()) {
             if (published.size() <= MAX_PUBLISHED_ENTRIES) return;
-            if (!alias.equals(keepAlias)) published.remove(alias);
+            if (!alias.equals(keepAlias)) retire(published.remove(alias));
         }
     }
 
@@ -246,8 +230,8 @@ final class ComboMotionCache {
             this.generation = generation;
         }
 
-        static Request capture(File cacheDir, String sourcePath, float rate, long generation) {
-            if (cacheDir == null || sourcePath == null || sourcePath.trim().isEmpty()) {
+        static Request capture(Context context, String sourcePath, float rate, long generation) {
+            if (context == null || sourcePath == null || sourcePath.trim().isEmpty()) {
                 return invalid("missing_path", generation);
             }
             if (!ComboSpeedPolicy.isValidRate(rate)) return invalid("invalid_rate", generation);
@@ -264,7 +248,7 @@ final class ComboMotionCache {
                 if (source.length() != size || source.lastModified() != modifiedAt) {
                     return invalid("source_changed_during_fingerprint", generation);
                 }
-                return new Request(true, "", cacheDir.getCanonicalPath(),
+                return new Request(true, "", context.getPackageName(),
                         source.getPath(), size, modifiedAt, contentDigest, rate,
                         alias(sourcePath, rate), generation);
             } catch (Throwable error) {
@@ -331,7 +315,7 @@ final class ComboMotionCache {
 
         boolean isFresh() {
             long age = System.nanoTime() - publishedAtNanos;
-            return age >= 0L && age <= PUBLISHED_TTL_NANOS;
+            return result.isUsable() && age >= 0L && age <= PUBLISHED_TTL_NANOS;
         }
     }
 

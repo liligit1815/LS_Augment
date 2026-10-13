@@ -12,6 +12,9 @@ import java.util.Objects;
 final class ModuleSystemSettings {
     static final String PREFS = "module-system-settings-v1";
     private static DurablePreferences durable;
+    private static boolean extraDimMigrated;
+    private static final String EXTRA_DIM_OWNED = "ls_augment_extra_dim_owned";
+    static final String EXTRA_DIM_URI = "content://ls.augment.com.config/extra-dim-ownership";
     private ModuleSystemSettings() { }
 
     static synchronized WriteResult put(Context context, String namespace, String key, String value) {
@@ -27,15 +30,48 @@ final class ModuleSystemSettings {
         if (strength < 0 || strength > 100) return new WriteResult(false, "极暗强度无效");
         int user = android.os.Process.myUid() / 100000;
         LinkedHashMap<Address, String> updates = new LinkedHashMap<>();
-        // Observers may run on the first setting change; establish ownership
-        // before level/active, after all recovery records have been persisted.
-        updates.put(new Address(user, "secure", "ls_augment_extra_dim_owned"), "1");
+        WriteResult migration = migrateExtraDimOwnership(context);
+        if (!migration.success) return migration;
         updates.put(new Address(user, "secure", ExtraDimControl.LEVEL), String.valueOf(strength));
         updates.put(new Address(user, "secure", ExtraDimControl.ACTIVE), active ? "1" : "0");
-        return engine(context).put(updates);
+        WriteResult result = engine(context).put(updates);
+        notifyExtraDim(context);
+        return result;
     }
 
-    static synchronized RestoreResult restore(Context context) { return engine(context).restore(); }
+    static synchronized WriteResult migrateExtraDimOwnership(Context context) {
+        if (ResetWriteFence.blocked()) return new WriteResult(false, "正在重置，请稍后重试");
+        if (extraDimMigrated) return new WriteResult(true, "");
+        WriteResult result = engine(context).migrateExtraDimOwnership();
+        if (result.success) { extraDimMigrated = true; notifyExtraDim(context); }
+        return result;
+    }
+
+    /** Authenticated system-server reads run on its background bridge worker. */
+    static synchronized android.os.Bundle extraDimOwnership(Context context) {
+        android.os.Bundle result = new android.os.Bundle();
+        // A system-server cache read must never initiate a new Root authorization.
+        // Upgrade migration runs through the app's authorized migration worker.
+        try {
+            result.putBoolean("owned", engine(context).extraDimOwned());
+            result.putInt("user", android.os.Process.myUid() / 100000);
+            result.putBoolean("ok", true);
+        } catch (RuntimeException invalid) { }
+        return result;
+    }
+
+    static synchronized RestoreResult restore(Context context) {
+        WriteResult migration = migrateExtraDimOwnership(context);
+        if (!migration.success) return new RestoreResult(false, false, 0, migration.message);
+        RestoreResult result = engine(context).restore();
+        notifyExtraDim(context);
+        return result;
+    }
+
+    private static void notifyExtraDim(Context context) {
+        try { context.getContentResolver().notifyChange(android.net.Uri.parse(EXTRA_DIM_URI), null); }
+        catch (RuntimeException ignored) { }
+    }
 
     private static Engine engine(Context context) {
         if (durable == null) durable = new DurablePreferences(context.getApplicationContext().getSharedPreferences(PREFS, 0));
@@ -66,7 +102,8 @@ final class ModuleSystemSettings {
             this.user = user; this.namespace = namespace; this.key = key;
         }
         String id() { return user + ":" + namespace + ":" + key; }
-        boolean dim() { return namespace.equals("secure") && !key.equals("ls_augment_extra_dim_owned"); }
+        boolean metadata() { return namespace.equals("secure") && key.equals(EXTRA_DIM_OWNED); }
+        boolean dim() { return namespace.equals("secure") && !metadata(); }
         @Override public boolean equals(Object other) { return other instanceof Address && id().equals(((Address) other).id()); }
         @Override public int hashCode() { return id().hashCode(); }
     }
@@ -121,8 +158,8 @@ final class ModuleSystemSettings {
             try {
                 Map<String, String> records = validatedRecords();
                 boolean includesDim = updates.keySet().stream().anyMatch(Address::dim);
-                Read legacy = includesDim ? io.read(new Address(ownerUser, "secure", "ls_augment_extra_dim_owned")) : new Read(true, null);
-                if (!legacy.success) return new WriteResult(false, "无法读取系统设置归属，未修改");
+                if (updates.keySet().stream().anyMatch(Address::metadata))
+                    return new WriteResult(false, "模块归属仅允许保存到应用私有存储");
                 for (Map.Entry<Address, String> entry : updates.entrySet()) {
                     Address address = entry.getKey();
                     if (address.user != ownerUser || entry.getValue() == null || !validRequested(address, entry.getValue()))
@@ -130,12 +167,16 @@ final class ModuleSystemSettings {
                     Read before = io.read(address);
                     if (!before.success) return new WriteResult(false, "无法读取原系统设置，未修改");
                     Record old = records.containsKey(address.id()) ? Record.parse(records.get(address.id())) : null;
-                    // The old owned marker proves a prior module edit, but does not reveal its original value.
-                    boolean known = old != null ? old.originalKnown : !(address.dim() && "1".equals(legacy.value));
-                    String original = old != null ? old.original : address.key.equals("ls_augment_extra_dim_owned") ? null : before.value;
+                    boolean known = old == null || old.originalKnown;
+                    String original = old != null ? old.original : before.value;
                     String previous = old != null && (Objects.equals(before.value, old.intended) || Objects.equals(before.value, old.previous))
                             ? before.value : original;
                     records.put(address.id(), new Record(address, known, original, previous, entry.getValue()).encode());
+                }
+                // Private ownership and every recovery intent are one durable transaction.
+                if (includesDim) {
+                    Address marker = new Address(ownerUser, "secure", EXTRA_DIM_OWNED);
+                    records.put(marker.id(), new Record(marker, true, null, null, "1").encode());
                 }
                 if (!store.commit(records)) return new WriteResult(false, "原系统设置未能保存，未修改");
                 for (Map.Entry<Address, String> entry : updates.entrySet()) {
@@ -148,60 +189,84 @@ final class ModuleSystemSettings {
             } catch (RuntimeException invalid) { return new WriteResult(false, "系统设置恢复记录无法读取，未修改"); }
         }
 
+        boolean extraDimOwned() {
+            String raw = validatedRecords().get(new Address(ownerUser, "secure", EXTRA_DIM_OWNED).id());
+            return raw != null && "1".equals(Record.parse(raw).intended);
+        }
+
+        /** Import before deleting: an upgrade never throws away ownership or invents a baseline. */
+        WriteResult migrateExtraDimOwnership() {
+            try {
+                Map<String, String> records = validatedRecords();
+                Address marker = new Address(ownerUser, "secure", EXTRA_DIM_OWNED);
+                Read legacy = io.read(marker);
+                if (!legacy.success) return new WriteResult(false, "无法读取旧极暗归属，原记录已保留");
+                if (legacy.value == null) return new WriteResult(true, "");
+                if (!records.containsKey(marker.id()))
+                    records.put(marker.id(), new Record(marker, true, null, null, legacy.value).encode());
+                if ("1".equals(legacy.value)) {
+                    for (String key : new String[]{"reduce_bright_colors_level", "reduce_bright_colors_activated"}) {
+                        Address nativeKey = new Address(ownerUser, "secure", key);
+                        if (records.containsKey(nativeKey.id())) continue;
+                        Read current = io.read(nativeKey);
+                        if (!current.success) return new WriteResult(false, "无法读取旧极暗设置，原记录已保留");
+                        records.put(nativeKey.id(), new Record(nativeKey, false, null, current.value, current.value).encode());
+                    }
+                }
+                if (!store.commit(records)) return new WriteResult(false, "旧极暗归属未能保存，原记录已保留");
+                Read beforeDelete = io.read(marker);
+                if (!beforeDelete.success || !Objects.equals(beforeDelete.value, legacy.value)
+                        || !io.write(marker, null)) return new WriteResult(false, "旧极暗归属清理未完成，私有记录已保留");
+                Read after = io.read(marker);
+                return new WriteResult(after.success && after.value == null,
+                        after.success && after.value == null ? "" : "旧极暗归属清理未通过核验");
+            } catch (RuntimeException invalid) { return new WriteResult(false, "极暗恢复记录无法读取，原记录已保留"); }
+        }
+
         RestoreResult restore() {
             int restored = 0; boolean failed = false, review = false, legacyHistoryUnknown = false;
             ArrayList<String> issues = new ArrayList<>();
             try {
+                WriteResult migration = migrateExtraDimOwnership();
+                if (!migration.success) return new RestoreResult(false, false, 0, migration.message);
                 Map<String, String> records = validatedRecords();
-                ArrayList<String> order=new ArrayList<>(records.keySet());
-                // Retain compatibility ownership until both original native
-                // dim settings are restored, independent of preference order.
-                order.sort(java.util.Comparator.comparing(id -> Record.parse(records.get(id)).address.key.equals("ls_augment_extra_dim_owned")));
+                ArrayList<String> order = new ArrayList<>(records.keySet());
+                // Compatibility remains owned until both native values have been restored.
+                order.sort(java.util.Comparator.comparing(id -> Record.parse(records.get(id)).address.metadata()));
                 for (String id : order) {
                     Record record = Record.parse(records.get(id));
-                    if(record.address.key.equals("ls_augment_extra_dim_owned")
-                            && records.values().stream().map(Record::parse).anyMatch(r -> r.address.dim())) {
-                        review=true;issues.add("极暗原设置尚未恢复，归属标记已保留");continue;
-                    }
-                    if (!record.originalKnown) { review = true; issues.add("旧版极暗设置缺少修改前的记录"); continue; }
-                    Read actual = io.read(record.address);
-                    if (!actual.success) { failed = true; issues.add("无法读取 " + record.address.key); continue; }
-                    if (!Objects.equals(actual.value, record.original)) {
-                        if (!Objects.equals(actual.value, record.intended) && !Objects.equals(actual.value, record.previous)) {
-                            review = true; issues.add(record.address.key + " 已被另行修改"); continue;
+                    if (record.address.metadata()) {
+                        if (records.values().stream().map(Record::parse).anyMatch(r -> r.address.dim())) {
+                            review = true; issues.add("极暗原设置尚未恢复，私有归属已保留"); continue;
                         }
-                        if (!io.write(record.address, record.original)) { failed = true; issues.add("未恢复 " + record.address.key); continue; }
-                        Read after = io.read(record.address);
-                        if (!after.success || !Objects.equals(after.value, record.original)) {
-                            failed = true; issues.add("恢复校验未通过 " + record.address.key); continue;
+                    } else if (!record.originalKnown) {
+                        Read current = io.read(new Address(ownerUser, "secure", "reduce_bright_colors_activated"));
+                        if (!current.success) { failed = true; issues.add("无法读取旧极暗执行状态"); continue; }
+                        if (!"0".equals(current.value)) {
+                            review = true; issues.add("旧版极暗设置缺少修改前的记录"); continue;
                         }
-                        restored++;
+                        // Already off: leave native strength/state intact, discard no user data,
+                        // and explicitly acknowledge that the pre-module history is unknown.
+                        legacyHistoryUnknown = true;
+                    } else {
+                        Read actual = io.read(record.address);
+                        if (!actual.success) { failed = true; issues.add("无法读取 " + record.address.key); continue; }
+                        if (!Objects.equals(actual.value, record.original)) {
+                            if (!Objects.equals(actual.value, record.intended) && !Objects.equals(actual.value, record.previous)) {
+                                review = true; issues.add(record.address.key + " 已被另行修改"); continue;
+                            }
+                            if (!io.write(record.address, record.original)) { failed = true; issues.add("未恢复 " + record.address.key); continue; }
+                            Read after = io.read(record.address);
+                            if (!after.success || !Objects.equals(after.value, record.original)) {
+                                failed = true; issues.add("恢复校验未通过 " + record.address.key); continue;
+                            }
+                            restored++;
+                        }
                     }
                     String previous = records.remove(id);
                     if (!store.commit(records)) {
                         records.put(id, previous); failed = true; issues.add("恢复记录清理未完成");
                     }
-                }
-                Read legacy = io.read(new Address(ownerUser, "secure", "ls_augment_extra_dim_owned"));
-                if (!legacy.success) { failed = true; issues.add("无法核验旧极暗设置"); }
-                else if ("1".equals(legacy.value)) {
-                    Address active=new Address(ownerUser,"secure","reduce_bright_colors_activated");
-                    Read current=io.read(active);
-                    boolean pendingDim=records.values().stream().map(Record::parse).anyMatch(r -> r.address.dim());
-                    // An inactive native feature needs no guessed native value. Retire only our
-                    // stale marker; preserve the strength and explicitly report the missing history.
-                    if(!pendingDim&&current.success&&"0".equals(current.value)) {
-                        Address marker=new Address(ownerUser,"secure","ls_augment_extra_dim_owned");
-                        Read freshMarker=io.read(marker),freshActive=io.read(active);
-                        if(!freshMarker.success||!"1".equals(freshMarker.value)||!freshActive.success||!"0".equals(freshActive.value)
-                                ||!io.write(marker,null)) { failed=true;issues.add("旧极暗标记未能清理"); }
-                        else {
-                            Read afterMarker=io.read(marker),afterActive=io.read(active);
-                            if(!afterMarker.success||afterMarker.value!=null||!afterActive.success||!"0".equals(afterActive.value)) {
-                                failed=true;issues.add("旧极暗标记清理未通过核验");
-                            } else legacyHistoryUnknown=true;
-                        }
-                    } else { review=true;issues.add("旧版极暗设置缺少修改前的记录"); }
                 }
             } catch (RuntimeException invalid) { failed = true; issues.add("系统设置恢复记录损坏，原记录已保留"); }
             String detail = String.join("；", new java.util.LinkedHashSet<>(issues));
@@ -240,6 +305,8 @@ final class ModuleSystemSettings {
             return new Read(true, value);
         }
         public boolean write(Address address, String value) {
+            // Legacy module metadata is deletion-only; never re-create it in Settings.
+            if (address.metadata() && value != null) return false;
             String command = "settings --user " + address.user + (value == null ? " delete " : " put ")
                     + address.namespace + " " + address.key + (value == null ? "" : " " + RootShell.quote(value));
             return RootShell.run(command, null, 5, 1024).isSuccess();

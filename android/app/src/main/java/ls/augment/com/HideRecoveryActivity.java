@@ -98,7 +98,7 @@ public final class HideRecoveryActivity extends Activity {
         LinearLayout explanation = ui.card();
         explanation.addView(ui.section("手动显示应用",
                 "选择当前应用与空间，再确认显示。重启、取消勾选、关闭总开关或重置设置都不会自动显示应用。"), ui.wrap());
-        explanation.addView(ui.text("清除应用数据或重装后，可重新读取已保存名单。历史记录只供查看和查询上次结果，不会再次执行。",
+        explanation.addView(ui.text("名单和恢复记录保存在本应用内，卸载或清除数据后会删除。历史记录只供查看和查询上次结果，不会再次执行。",
                 12, ui.muted, false), ui.margins(0, 9, 0, 0));
         page.addView(explanation, ui.margins(0, 8, 0, 10));
 

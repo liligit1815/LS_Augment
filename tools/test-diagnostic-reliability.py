@@ -23,7 +23,7 @@ def member(source, signature):
 STUBS = {
     "android/content/SharedPreferences.java": """package android.content;import java.util.Map;
 public interface SharedPreferences {Map<String,?> getAll();String getString(String k,String d);int getInt(String k,int d);long getLong(String k,long d);Editor edit();
-interface Editor {Editor putString(String k,String v);Editor putInt(String k,int v);Editor putLong(String k,long v);void apply();boolean commit();}}""",
+interface Editor {Editor putString(String k,String v);Editor putInt(String k,int v);Editor putLong(String k,long v);Editor remove(String k);void apply();boolean commit();}}""",
     "android/content/Context.java": """package android.content;public abstract class Context {
 public abstract SharedPreferences getSharedPreferences(String n,int mode);public abstract java.io.File getFilesDir();public Object getContentResolver(){return this;}}""",
     "android/app/Activity.java": """package android.app;public class Activity extends ls.augment.com.FakeContext {
@@ -33,6 +33,10 @@ public Activity(java.io.File dir){super(dir);}public void runOnUiThread(Runnable
 public static Toast makeText(Object c,String v,int l){return new Toast();}public void show(){}}""",
     "android/os/SystemClock.java": """package android.os;public class SystemClock {public static long now=100000;
 public static long elapsedRealtime(){return now;}public static void sleep(long delay){now+=delay;}}""",
+    "android/os/Bundle.java": """package android.os;public class Bundle {private final java.util.Map<String,Object> values=new java.util.HashMap<>();
+public void putString(String k,String v){values.put(k,v);}public String getString(String k,String d){return (String)values.getOrDefault(k,d);}
+public void putBoolean(String k,boolean v){values.put(k,v);}public boolean getBoolean(String k){return Boolean.TRUE.equals(values.get(k));}}""",
+    "android/os/Binder.java": """package android.os;public final class Binder {public static int getCallingPid(){return 321;}public static int getCallingUid(){return 1000;}}""",
     "android/provider/Settings.java": """package android.provider;public class Settings {public static class Global {
 public static final String BOOT_COUNT="boot";public static int boot=7;public static int getInt(Object r,String key,int fallback){return boot;}}}""",
     "android/util/Log.java": """package android.util;public class Log {public static int failures;
@@ -40,8 +44,10 @@ public static int e(String tag,String message){failures++;return 0;}}""",
     "ls/augment/com/BuildConfig.java": """package ls.augment.com;final class BuildConfig {static final String VERSION_NAME="test20507";}""",
     "ls/augment/com/LiftArcOptions.java": """package ls.augment.com;final class LiftArcOptions {static String key(String value){return "ls_augment_liftarc_"+value;}}""",
     "ls/augment/com/ResetWriteFence.java": """package ls.augment.com;final class ResetWriteFence {static boolean blocked(){return false;}}""",
-    "ls/augment/com/AppConfig.java": """package ls.augment.com;final class AppConfig {static boolean synced=true,throwsOnMirror;static int attempts;
-AppConfig(Object c){}RootShell.Result mirrorAll(){attempts++;if(throwsOnMirror)throw new IllegalStateException("test");return new RootShell.Result(synced?0:1,"",false);}}""",
+    "ls/augment/com/AppConfig.java": """package ls.augment.com;final class AppConfig {static boolean synced=true,throwsOnMirror,shoulderDetail,aiDetail;static int attempts;
+AppConfig(Object c){}boolean getBoolean(String key){return key.equals(ConfigSchema.SHOULDER_DIAGNOSTICS)?shoulderDetail:aiDetail;}
+RootShell.Result mirrorAll(){attempts++;if(throwsOnMirror)throw new IllegalStateException("test");return new RootShell.Result(synced?0:1,"",false);}}""",
+    "ls/augment/com/ConfigSchema.java": """package ls.augment.com;final class ConfigSchema {static final String SHOULDER_DIAGNOSTICS="shoulder_detail",AI_TRIGGER_DIAGNOSTICS="ai_detail";}""",
     "ls/augment/com/FakeContext.java": """package ls.augment.com;import android.content.*;import java.util.*;
 public class FakeContext extends Context {public java.io.File files;public boolean prefsUnavailable;public final Map<String,Prefs> stores=new HashMap<>();
 public FakeContext(java.io.File f){files=f;}public java.io.File getFilesDir(){return files;}
@@ -52,7 +58,8 @@ public int getInt(String k,int d){Object v=values.get(k);return v instanceof Num
 public long getLong(String k,long d){Object v=values.get(k);return v instanceof Number?((Number)v).longValue():d;}
 public Editor edit(){return new Editor(){final Map<String,Object> pending=new HashMap<>();
 public Editor putString(String k,String v){pending.put(k,v);return this;}public Editor putInt(String k,int v){pending.put(k,v);return this;}
-public Editor putLong(String k,long v){pending.put(k,v);return this;}public void apply(){values.putAll(pending);}public boolean commit(){apply();return !commitFails;}};}}}""",
+public Editor putLong(String k,long v){pending.put(k,v);return this;}public Editor remove(String k){pending.put(k,null);return this;}
+public void apply(){for(var e:pending.entrySet()){if(e.getValue()==null)values.remove(e.getKey());else values.put(e.getKey(),e.getValue());}}public boolean commit(){apply();return !commitFails;}};}}}""",
 }
 
 TEST = r'''
@@ -144,13 +151,17 @@ public final class TestDiagnosticReliability {
   DiagnosticLogcat.Collection fallback=DiagnosticLogcat.module(now,false,false,reader);
   yes(reader.commands.size()==3&&fallback.fallbackReason.equals("PRIMARY_NO_MATCHING_RECORDS"),"empty/banner-only source gets one bounded fallback plus buffer metadata");
   yes(reader.commands.get(1).endsWith(" -g")&&reader.commands.get(2).contains(" -t 300 "),"buffer metadata and limited tail are actually collected");
-  yes(!reader.commands.get(2).contains("LS_Augment_AI")&&!reader.commands.get(2).contains("LS_Augment_TGK"),"disabled detailed channels stay excluded in fallback");
+  yes(!reader.commands.get(2).contains("LS_Augment_AI"),"disabled AI detailed channel stays excluded in fallback");
+  for(String tag:new String[]{"LS_Augment_TGK:I","LS_AugmentNative:I","InputManagerProxy:E","TgkHelper:E","TgkService:W"})
+   yes(reader.commands.get(0).contains(tag)&&reader.commands.get(2).contains(tag),"necessary shoulder tag retained in primary and fallback: "+tag);
   String described=DiagnosticExportHarness.logcat(fallback,false,false);
   yes(described.contains("TIME_WINDOW")&&described.contains("RECENT_TAIL")&&described.contains("MAY_PRECEDE_REQUESTED_WINDOW"),"tail is never represented as current-window proof");
   yes(described.contains("BUFFER_METADATA")&&described.contains("logcatFallbackHasRecords=true"),"buffer and fallback have separate evidence");
   yes(described.contains("oldestRetainedRecordWall=1791697000000")&&described.contains("newestRetainedRecordWall=1791697000000"),"actual retained tail time range distinguishes older observations");
   reader=new LogcatReader();reader.replies.add(raw(1,"logcat: Permission denied",true,false,false));reader.replies.add(raw(0,"main: ring buffer",true,false,false));reader.replies.add(raw(0,"",true,false,false));
   DiagnosticLogcat.Collection denied=DiagnosticLogcat.cleanup(now,reader);described=DiagnosticExportHarness.logcat(denied,false,false);
+  for(String tag:new String[]{"LS_Augment_TGK:I","LS_AugmentNative:I","InputManagerProxy:E","TgkHelper:E","TgkService:W"})
+   yes(reader.commands.get(0).contains(tag),"cleanup collects shoulder errors with detail off: "+tag);
   yes(denied.fallbackReason.equals("PRIMARY_READ_FAILED_OR_INCOMPLETE")&&described.contains("READ_FAILED")&&described.contains("Permission denied"),"primary read failure survives successful empty fallback");
   yes(described.contains("logcatFallbackHasRecords=false")&&described.contains("not proof of no errors"),"empty fallback is uncertainty, not no-crash evidence");
   reader=new LogcatReader();reader.replies.add(raw(0,"1791706885.000 4595 I LS_Augment: incomplete",false,true,false));reader.replies.add(raw(0,"",true,false,false));reader.replies.add(raw(0,"1791706885.100 4595 I LS_Augment: FEATURE_AI secret\n1791706885.200 4595 I LS_Augment: SHOULDER secret",true,false,false));
@@ -163,6 +174,53 @@ public final class TestDiagnosticReliability {
   yes(described.contains("newestRetainedRecordWall=1791706885000"),"bounded tail retains actual current reproduction timestamp");
   yes(DiagnosticLogcat.recordWindow(raw(0,"1791706885.138999 4595 I LS_Augment: sample",true,false,false)).contains("newestRetainedRecordWall=1791706885138"),"epoch fractions remain precise to milliseconds");
   yes(DiagnosticLogcat.recordWindow(raw(0,"999999999999999999999999.000 4595 I LS_Augment: invalid",true,false,false)).contains("newestRetainedRecordWall=UNKNOWN"),"invalid timestamps cannot invent a coverage range");
+ }
+ static JSONObject shoulderEvent(String level,String value)throws Exception{
+  return new JSONObject().put("feature",ShoulderSwitchLogPolicy.FEATURE).put("level",level).put("value",value);
+ }
+ static void shoulderRuntime(Path dir)throws Exception{
+  AppConfig.shoulderDetail=false;AppConfig.aiDetail=false;
+  HookShoulderHarness.shoulderSwitch("INFO","stage=apply_requested index=2 count=5");
+  HookShoulderHarness.detail("SHOULDER","private detail");
+  HookShoulderHarness.shoulderSwitch("DEBUG","private debug");
+  yes(HookShoulderHarness.trace.size()==1&&HookShoulderHarness.hasRuntimeEvents(),"necessary switch event bypasses detail gate; debug/detail stay excluded");
+  String[] queued=HookShoulderHarness.trace.poll();yes(queued[0].equals(ShoulderSwitchLogPolicy.FEATURE)&&queued[1].contains("wall=")&&queued[2].equals("INFO"),"switch event carries timestamps and level");
+  yes(!HookShoulderHarness.hasRuntimeEvents(),"runtime queue emptiness does not invent pending records");
+  for(int i=0;i<257;i++)HookShoulderHarness.shoulderSwitch("WARN","stage=failure index="+i);
+  yes(HookShoulderHarness.trace.size()==256&&HookShoulderHarness.dropped.get()==1,"necessary channel remains bounded with visible queue loss");HookShoulderHarness.trace.clear();
+  for(String field:new String[]{"token","account","data","payload","settingsData","ls_augment_tgk_rapid_fire_test_session","sha256"}){
+   String sanitized=ShoulderSwitchLogPolicy.safe("apply_error index=2 "+field+"={\"private\":\"fixture-secret\"} after=secret");
+   yes(sanitized.contains("index=2")&&!sanitized.contains("fixture-secret")&&!sanitized.contains("after=secret"),"opaque private tail removed: "+field);
+  }
+  yes(ShoulderSwitchLogPolicy.safe("tokenStatus=MISSING count=3").contains("tokenStatus=MISSING"),"public token status remains useful");
+  yes(!ShoulderSwitchLogPolicy.safe("x".repeat(1500)+"😀".repeat(5)).contains("�"),"bounded content never splits a surrogate pair");
+  Path files=Files.createDirectory(dir.resolve("shoulder-runtime"));FakeContext context=new FakeContext(files.toFile());
+  JSONArray events=new JSONArray().put(shoulderEvent("INFO","stage=apply_requested index=2 count=5"))
+    .put(shoulderEvent("WARN","stage=shortcut_stale index=2 data={\"token\":\"fixture-secret\"}").put("unexpectedPrivatePayload","fixture-extra-secret"))
+    .put(shoulderEvent("ERROR","stage=apply_failed errorClass=IllegalStateException"))
+    .put(shoulderEvent("DEBUG","private-debug"))
+    .put(new JSONObject().put("feature","SHOULDER").put("value","private-shoulder-detail"));
+  android.os.Bundle request=new android.os.Bundle();request.putString("snapshot",snapshot().toString());request.putString("events",events.toString());
+  yes(DiagnosticStore.record(context,request).getBoolean("ok"),"necessary state events accepted with detail off");
+  String stored=Files.readString(files.resolve(DiagnosticStore.SHOULDER_SWITCH_FILE));
+  yes(stored.lines().count()==3&&stored.contains("INFO")&&stored.contains("WARN")&&stored.contains("ERROR"),"ordinary switch levels persist in order");
+  yes(!stored.contains("fixture-secret")&&!stored.contains("fixture-extra-secret")&&!stored.contains("private-debug"),"provider enforces safe schema and content");
+  String schema=ShoulderSwitchLogPolicy.safeSwitch("tx=1 stage=send pkg=com.test table=shortcut caseId=2 previousCaseId=1 keyCode=1 mode=3 pointHash=abc expectedHash=abc observedHash=def status=MISMATCH reason=STALE errorClass=IllegalStateException route=helper calls=1 registered=2 version=test-current pid=321 elapsed=999 schemeName=private-name macroName=private-macro");
+  for(String key:new String[]{"tx","stage","pkg","table","caseId","previousCaseId","keyCode","mode","pointHash","expectedHash","observedHash","status","reason","errorClass","route","calls","registered","version","pid","elapsed"})yes(schema.contains(key+"="),"root state field supported: "+key);
+  yes(!schema.contains("private-name")&&!schema.contains("private-macro"),"scheme/macro names excluded by whitelist");
+  yes(!Files.exists(files.resolve("detail-SHOULDER.log")),"disabled detailed data is not persisted");
+  String exported=DiagnosticExportHarness.shoulderRuntime(context);yes(exported.contains("SHOULDER_SWITCH_RUNTIME")&&exported.contains("apply_requested"),"unified export includes necessary runtime file");
+  AppConfig.shoulderDetail=true;yes(DiagnosticStore.record(context,request).getBoolean("ok")&&Files.readString(files.resolve("detail-SHOULDER.log")).contains("private-shoulder-detail"),"explicit detail enablement still works");AppConfig.shoulderDetail=false;
+  String oem="1791706885.000 4595 4595 E InputManagerProxy: inject failed index=2 data={secret}\n"
+    +"1791706885.100 4595 4595 E TgkHelper: send failed token=fixture-secret\n"
+    +"1791706885.200 4595 4595 W TgkService: invalid shortcut count=2\n"
+    +"1791706885.300 4595 4595 W LS_Augment_TGK: native failed account=fixture-secret\n"
+    +"1791706885.400 4595 4595 I LS_Augment: SHOULDER_SWITCH INFO apply_requested index=2\n"
+    +"1791706885.500 4595 4595 I LS_Augment_TGK: detailed payload secret\n"
+    +"1791706885.600 4595 4595 I LS_Augment: SHOULDER detail secret";
+  String filtered=DiagnosticExportHarness.filtered(oem,false);
+  yes(filtered.lines().count()==5&&filtered.contains("inject failed")&&filtered.contains("invalid shortcut")&&filtered.contains("apply_requested"),"necessary OEM/module errors and switch INFO survive disabled detail export");
+  yes(!filtered.contains("fixture-secret")&&!filtered.contains("{secret}")&&!filtered.contains("detailed payload")&&!filtered.contains("detail secret"),"necessary logcat strips payload/private tails and gates detailed content");
  }
  static void audit(Path dir)throws Exception{
   FakeContext c=new FakeContext(dir.toFile());yes(AuditLog.writeDurable(c,"TEST_DURABLE","before restart"),"durable log write");yes(AuditLog.read(c).contains("before restart"),"durable event present");
@@ -179,7 +237,7 @@ public final class TestDiagnosticReliability {
   AppConfig.synced=false;AppConfig.attempts=0;RootShell.calls=0;android.app.Activity blocked=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(blocked,"systemui");yes(blocked.finished.await(5,TimeUnit.SECONDS),"blocked restart completed");yes(RootShell.calls==0&&AppConfig.attempts==25&&AuditLog.read(blocked).contains("[SCOPE_RESTART_BLOCKED]"),"unsynced configuration cannot issue restart");
   AppConfig.throwsOnMirror=true;android.app.Activity thrown=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(thrown,"settings");yes(thrown.finished.await(5,TimeUnit.SECONDS),"restart exception reported");yes(AuditLog.read(thrown).contains("[SCOPE_RESTART_ERROR]"),"restart exception has audit evidence");
  }
- public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();limits();logcat();audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
+ public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();limits();logcat();shoulderRuntime(dir);audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
 }
 '''
 
@@ -218,9 +276,12 @@ final class RootShell {static int calls;static Runnable inspection;static Result
                   "private static RootShell.Result filter", "private static void filteredSource", "private static void appendLogcat",
                   "static String diagnosticValue", "static void appendDiagnosticValue", "static void compactHooks",
                   "private static void source(StringBuilder out,String name,RootShell.Result result,int limit)",
-                  "private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered)", "private static int lineCount")
-    sources["ls/augment/com/DiagnosticExportHarness.java"] = """package ls.augment.com;import java.util.*;import java.nio.charset.StandardCharsets;import org.json.*;
+                  "private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered)", "private static int lineCount",
+                  "static void appendShoulderSwitchLog", "private static void file")
+    sources["ls/augment/com/DiagnosticExportHarness.java"] = """package ls.augment.com;import java.util.*;import java.nio.charset.StandardCharsets;import org.json.*;import android.content.Context;import java.io.File;
 final class DiagnosticExportHarness {private static String diagnosticValues(String raw){return raw;}
+static String shoulderRuntime(android.content.Context context){StringBuilder out=new StringBuilder();appendShoulderSwitchLog(out,context);return out.toString();}
+static String filtered(String raw,boolean shoulder){return filter(new RootShell.Result(0,raw,false),false,shoulder,false).output;}
 static String describe(RootShell.Result raw,boolean filtered,boolean moduleOnly){StringBuilder out=new StringBuilder();source(out,"TEST",filtered?filter(raw,false,false,moduleOnly):raw,1024,false,filtered);return out.toString();}
 static RootShell.CapturedOutput filterIdentity(RootShell.Result raw){return filter(raw,false,false,true).capture;}
 static String logcat(DiagnosticLogcat.Collection collection,boolean ai,boolean shoulder){StringBuilder out=new StringBuilder();appendLogcat(out,"TEST_LOGCAT",collection,ai,shoulder);return out.toString();}
@@ -229,6 +290,11 @@ static String value(String key,String value){StringBuilder out=new StringBuilder
     sources["ls/augment/com/HookPackagesHarness.java"] = """package ls.augment.com;import java.util.*;import java.util.concurrent.*;import org.json.*;
 final class HookPackagesHarness {static String process="unknown",pkg="unknown";private static final Set<String> packages=ConcurrentHashMap.newKeySet();static JSONArray names(){return packageNames();}
 """ + member(telemetry, "static void ready") + member(telemetry, "private static JSONArray packageNames") + "}"
+    sources["ls/augment/com/HookShoulderHarness.java"] = """package ls.augment.com;import java.util.concurrent.*;import java.util.concurrent.atomic.*;import android.os.SystemClock;
+final class HookShoulderHarness {static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);static boolean shoulder,ai;
+static final AtomicLong sequence=new AtomicLong(),dropped=new AtomicLong();static final ConcurrentHashMap<String,AtomicLong> dropReasons=new ConcurrentHashMap<>();
+static long lastDropAt;static String lastDropReason="";
+""" + member(telemetry, "static void shoulderSwitch") + member(telemetry, "static void detail") + member(telemetry, "private static boolean hasRuntimeEvents").replace("private static", "static") + member(telemetry, "private static void recordDrop") + "}"
     constants = """static final String SETTINGS="settings",SYSTEM_UI="systemui",LAUNCHER="launcher",DEVICE="device",APPS="apps",GAMES="games",FAN="fan";"""
     sources["ls/augment/com/ScopeRestartHarness.java"] = """package ls.augment.com;import android.app.Activity;import android.widget.Toast;import java.util.concurrent.*;
 final class ScopeRestartHarness {""" + constants + "static void run(Activity a,String scope){restart(a,scope);}" + member(restart, "private static void restart") + member(restart, "private static String command") + "}"
@@ -241,7 +307,7 @@ final class ScopeRestartHarness {""" + constants + "static void run(Activity a,S
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             files.append(path)
-        files += [SRC / (name + ".java") for name in ("RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
+        files += [SRC / (name + ".java") for name in ("RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "DiagnosticStore", "ShoulderSwitchLogPolicy", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
         subprocess.run([javac, "-encoding", "UTF-8", "--release", "17", "-cp", str(json_jar), "-d", str(directory), *map(str, files)], check=True)
         subprocess.run([java, "-cp", str(directory) + os.pathsep + str(json_jar), "ls.augment.com.TestDiagnosticReliability"], check=True, timeout=30)
 
