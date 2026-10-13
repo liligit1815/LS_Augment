@@ -4,7 +4,7 @@
 
 **当前源码版本：`2.0.0-alpha1-test20541`，内部版本号 `20541`。** 以 [android/version.properties](android/version.properties) 为准。变化见[本版更新说明](docs/releases/v2.0.0-alpha1-test20541.md)，模块数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
 
-当前在线版本为 test20528：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20528/redmagic-duo-20528.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20528)。20541 尚未在线发布。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
+当前在线版本为 test20541：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20541/redmagic-duo-20541.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20541)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
@@ -23,13 +23,11 @@
 ## 当前版本要点
 
 - 新增最近任务卡片圆角滑条，0 保持原厂，负数更尖锐、正数更圆滑，调节范围随卡片尺寸、样式和横竖屏自动更新。
-- 修复肩键快捷切换仍执行旧方案的问题，普通触点和连招同步切换。
+- 修复肩键快捷切换仍执行旧方案的问题。
 - 完善超境画质的画质、帧率选项，适配原厂处理尺寸。
 - 修复自动息屏选择“30 分钟”或“从不”后被重置的问题。
 - 改进联名充电动画素材读取与异常处理。
-- 模块配置、缓存和恢复记录统一迁入应用私有存储，自动迁移并安全清理旧数据，保留 LSPosed 官方配置副本。
-- 改进桌面开机恢复与隐藏记录保存，保留已有布局，增强历史归档和全部重置可靠性。
-- 支持在线更新并保留已有配置，安装后请重启手机使新版功能生效。
+- 修复部分bug
 
 ## 功能概览
 
@@ -107,7 +105,7 @@ Windows 也可直接构建：
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
 
 
-目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20528)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
+目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20541)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
 
 签名通过 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量或被忽略的本地配置注入。Release 构建使用 `:app:assembleRelease`，正式打包使用 `tools/build-release.py` 校验证书、版本与对齐。公开 `.pem` 不能代替私钥。当前发布证书 SHA-256 为 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`，覆盖更新需要相同证书。
 
@@ -123,7 +121,7 @@ Shell 文件需保持 UTF-8 无 BOM、LF 换行。`.gitattributes` 固定源码�
 4. 确认发布计划后执行正式发布。工具先上传并校验公开 APK，再更新红魔 Duo 专属清单，保持其他软件的清单不变。
 5. 重新读取公网清单和安装包，核对客户端解析、大小、摘要与签名，再同步源码仓库的在线版本和下载链接。
 
-完整命令、协议和核验步骤见[发布与在线更新](docs/发布与在线更新.md)。本地[清单示例](docs/examples/redmagic-duo.json)对应已发布的 20528；下一版清单由发布工具根据实际 APK 生成。
+完整命令、协议和核验步骤见[发布与在线更新](docs/发布与在线更新.md)。本地[清单示例](docs/examples/redmagic-duo.json)对应已发布的 20541；下一版清单由发布工具根据实际 APK 生成。
 
 在线更新由手机端检查、下载、校验并交给系统安装器完成，无需电脑配合。客户端仅在远端内部版本号更高且系统兼容时提示升级，下载后核对摘要、包名、版本与发行签名。20518 之前的版本需先手动安装具有在线更新能力的版本。当前只有一个更新通道，正式发布的 alpha / test 版本同样会推送。
 
