@@ -39,9 +39,9 @@ checks = {
     'launcher alias': (app / 'src/main/AndroidManifest.xml', '.LauncherAlias'),
     'launcher icon control': (src / 'FeatureEditorController.java', '隐藏桌面图标'),
     'space selector': (src / 'HideAppsActivity.java', 'renderSpaceSelector'),
-    'collapsed app list': (src / 'HideAppsActivity.java', 'showAppList(false)'),
-    'app list expansion': (src / 'HideAppsActivity.java',
-                           'appConfigBody.setVisibility(expanded ? View.VISIBLE : View.GONE)'),
+    'direct hide manager entry': (src / 'HideMenuActivity.java', 'extends HideAppsActivity'),
+    'configured app filter': (src / 'HideAppsActivity.java', '已配置'),
+    'hidden app filter': (src / 'HideAppsActivity.java', '已隐藏'),
     'hide automation integrated': (src / 'HideAppsActivity.java', '锁屏自动隐藏'),
     'private config authority': (src / 'AppConfig.java', 'ls_augment_config_v2'),
     'root pm truth': (src / 'HidePackageSnapshot.java', 'dumpsys package'),
@@ -265,7 +265,7 @@ def check_scope():
         'com.android.packageinstaller', 'com.zte.zdm', 'com.zte.mifavor.weather',
         'cn.zte.gamefloat', 'cn.nubia.gamehighlights',
         'com.android.permissioncontroller', 'com.android.nfc',
-        'cn.nubia.filebrowser', 'com.android.ztescreenshot',
+        'cn.nubia.filebrowser', 'com.android.ztescreenshot', 'cn.nubia.photoeditor',
         'system', 'cn.nubia.neostore'
     }, scope
     assert 'com.smallcircle.heartvoice' not in scope
@@ -326,6 +326,19 @@ def check_slider():
 
 def check_hidden_entry():
     hide_ui = (src / 'HideAppsActivity.java').read_text(encoding='utf-8')
+    assert 'hideFold' not in hide_ui, \
+        'the app manager must keep recovery actions independent of the feature switch'
+    assert 'hide-list-toggle' in hide_ui and 'hide-choose-apps' in hide_ui, \
+        'the application list needs an explicit fold and a direct app-selection action'
+    assert 'masterCard.addView(environment' not in hide_ui, \
+        'the hide switch must not have a fixed runtime-condition footer'
+    assert 'HideAutomationReadiness.inspect(' in hide_ui \
+        and 'config.diagnostic("ls_augment_automation_runtime")' not in hide_ui, \
+        'automatic-hide readiness must use current conditions instead of a cached listener diagnostic'
+    assert 'ui.detailPage(' in hide_ui and 'ui.preferenceCard()' in hide_ui, \
+        'the concealed manager must share public detail navigation and preference cards'
+    assert 'Color.rgb(' not in hide_ui and 'Color.argb(' not in hide_ui, \
+        'the app manager must use UiKit theme colors instead of a private palette'
     assert '消失吧图标' not in hide_ui and 'HiddenEntrySession.unlock(' not in hide_ui, \
         'retired hide-entry toggle must not bypass the About system-version gate'
     settings_ui = (src / 'SettingsActivity.java').read_text(encoding='utf-8')
@@ -459,6 +472,26 @@ def check_configured_batch():
     subprocess.run([sys.executable, str(root / 'tools/test-hide-configured-batch.py')], check=True)
 
 
+def check_hide_scoped_actions():
+    subprocess.run([sys.executable, str(root / 'tools/test-hide-scoped-actions.py')], check=True)
+
+
+def check_hide_page_save():
+    subprocess.run([sys.executable, str(root / 'tools/test-hide-page-save.py')], check=True)
+
+
+def check_hide_automation_readiness():
+    subprocess.run([sys.executable, str(root / 'tools/test-hide-automation-readiness.py')], check=True)
+
+
+def check_settings_fold_state():
+    subprocess.run([sys.executable, str(root / 'tools/test-settings-folds.py')], check=True)
+
+
+def check_device_feature_availability():
+    subprocess.run([sys.executable, str(root / 'tools/test-device-feature-availability-ui.py')], check=True)
+
+
 def check_audit_fixes():
     subprocess.run([sys.executable, str(root / 'tools/test-audit-fixes.py')], check=True)
 
@@ -513,6 +546,11 @@ def main():
         check_manifest,
         check_hidden_navigation,
         check_configured_batch,
+        check_hide_scoped_actions,
+        check_hide_page_save,
+        check_hide_automation_readiness,
+        check_settings_fold_state,
+        check_device_feature_availability,
         check_audit_fixes,
         check_toolchain,
     )

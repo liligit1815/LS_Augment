@@ -32,7 +32,7 @@ FIELDS = [
 ]
 METHODS = [
     ("init", "void", "I", "initView", "", "", "initCore();return null;"),
-    ("dimensions", "void", "H", "initSize", "", "", "currentWidth(fullWidth());return null;"),
+    ("dimensions", "void", "H", "initSize", "", "", "dimensionsCore();return null;"),
     ("params", "WindowManager.LayoutParams", "G", "initLayoutParams", "", "", "params().width=shortened()?shortWidth():fullWidth();return params();"),
     ("show", "void", "v", "addOpenOrShortenWindow", "boolean value", "boolean.class", "showCore((Boolean)a[0]);return null;"),
     ("add", "void", "addFloatView", "addFloatView", "String value", "String.class", "added(true);showCore(shortened());return null;"),
@@ -78,7 +78,7 @@ public class ViewGroup extends View {
     "android/widget/LinearLayout.java": """package android.widget;import android.content.Context;import android.view.*;
 public class LinearLayout extends ViewGroup {
  public int measurements;public LinearLayout(Context c){super(c);}
- @Override public void measure(int w,int h){measurements++;for(View v:children)v.measure(w,h);measuredWidth=w&0x3fffffff;}
+  @Override public void measure(int w,int h){measurements++;for(View v:children)if(v.getVisibility()!=GONE)v.measure(w,h);else v.measuredWidth=0;measuredWidth=w&0x3fffffff;}
  public void layoutCells(){int cursor=paddingLeft;for(View v:children)if(v.getVisibility()!=GONE){
   ViewGroup.LayoutParams p=v.getLayoutParams();int l=0,r=0;if(p instanceof MarginLayoutParams){
    l=((MarginLayoutParams)p).leftMargin;r=((MarginLayoutParams)p).rightMargin;}
@@ -153,9 +153,10 @@ OEM_COMMON = r"""
  public static int occupied(int i){return CELL_WIDTHS[i]+leftMargin(i)+rightMargin(i);}
  public final Map<String,Integer> nativeCounts=new HashMap<>();public final Map<String,Object[]> lastArgs=new HashMap<>();
  public final List<Integer> initWidths=new ArrayList<>();public int animations,clamps,fades;
- public int savedFullX=Integer.MIN_VALUE,savedShortX=Integer.MIN_VALUE,fadeDelay;
+ public int savedFullX=Integer.MIN_VALUE,savedShortX=Integer.MIN_VALUE,fadeDelay,nextNativeWidth=Integer.MIN_VALUE;
  public boolean goingToFade;public ViewGroup fullRoot,shortRoot;
- public PerformanceMonitorFloatingWindow(){context(new Context());fullWidth(originalWidth());currentWidth(originalWidth());
+ public PerformanceMonitorFloatingWindow(){this(originalWidth());}
+ public PerformanceMonitorFloatingWindow(int initialWidth){context(new Context());fullWidth(initialWidth);currentWidth(initialWidth);
   pointX(BASE_X);params(new WindowManager.LayoutParams());params().x=BASE_X;
   manager(new WindowManagerUtil());selectedIndex(-1);initCore();}
  public int count(String name){return nativeCounts.getOrDefault(name,0);}
@@ -178,6 +179,8 @@ OEM_COMMON = r"""
   fullRoot.layout=()->layout();shortRoot.layout=()->{};root(shortened()?shortRoot:fullRoot);
   c.measure(View.MeasureSpec.makeMeasureSpec(fullWidth(),View.MeasureSpec.EXACTLY),0);layout();}
  public void layout(){content().layoutCells();}
+ private void dimensionsCore(){if(nextNativeWidth!=Integer.MIN_VALUE){fullWidth(nextNativeWidth);nextNativeWidth=Integer.MIN_VALUE;}
+  currentWidth(fullWidth());}
  private void showCore(boolean value){shortened(value);root(value?shortRoot:fullRoot);
   params().width=value?shortWidth():fullWidth();currentWidth(params().width);if(!value)layout();}
  private int stockHit(float x){int cell=currentWidth()/5;if(x<cell)return 0;if(x<2*cell)return 1;
@@ -205,6 +208,7 @@ public class TestMonitorRuntime {
   for(int i=0;i<5;i++)if((mask&(1<<i))!=0)out.add(items[i]);return String.join(",",out);}
  static int expectedWidth(int mask){int width=PerformanceMonitorFloatingWindow.originalWidth();
   for(int i=0;i<5;i++)if((mask&(1<<i))==0)width-=PerformanceMonitorFloatingWindow.occupied(i);return width;}
+  static int expectedWidth(int mask,int nativeWidth){return nativeWidth-PerformanceMonitorFloatingWindow.originalWidth()+expectedWidth(mask);}
  static AugmentModule install(){FeatureSettings.reset();AugmentModule module=new AugmentModule();
   GamePerformanceMonitorHook.install(module,TestMonitorRuntime.class.getClassLoader());eq(8,module.hooks.size(),"eight hooks");
   check(module.errors.isEmpty(),"install errors");check(module.info.size()==1&&module.info.get(0).contains("route="+ROUTE+";"),"resolved route diagnostic");
@@ -327,9 +331,91 @@ public class TestMonitorRuntime {
   FeatureSettings.on=false;FeatureSettings.fire();o.layout();shape(o,31,false);
   close(PerformanceMonitorFloatingWindow.FULL_ALPHA,o.background().getAlpha(),"new background restores fresh native alpha");healthy();
  }
+  static void delayedNativeSizing()throws Throwable {
+   for(int initial:new int[]{0,-1,-2})for(int mask:new int[]{31,1,21}){
+    install();FeatureSettings.on=true;FeatureSettings.selection=selection(mask);
+    PerformanceMonitorFloatingWindow o=new PerformanceMonitorFloatingWindow(initial);o.call(INIT);o.call(PARAMS);
+    eq(initial,o.fullWidth(),"unknown native width is preserved before sizing");
+    eq(initial,o.params().width,"pending geometry does not fabricate a one-pixel window");
+    for(int i=0;i<5;i++)eq(View.VISIBLE,o.content().getChildAt(i).getVisibility(),"pending geometry preserves native item "+i);
+    check(FeatureSettings.diagnostics.stream().anyMatch(s->s.contains("phase=pending_native_size")),"pending sizing is explicitly diagnosed");
+    o.nextNativeWidth=PerformanceMonitorFloatingWindow.originalWidth();o.call(DIM);o.call(ADD,"delayed.game");o.layout();shape(o,mask,true);
+    FeatureSettings.on=false;FeatureSettings.fire();o.layout();shape(o,31,false);healthy();
+   }
+  }
+  static void nativeWidthUpdates()throws Throwable {
+   PerformanceMonitorFloatingWindow o=fixture(21,true);int lastNativeWidth=expectedWidth(21,608);
+   // A direct native write and a write inside initSize must both become the latest baseline.
+   for(int nativeWidth:new int[]{512,608,lastNativeWidth}){
+    if(nativeWidth==512){o.fullWidth(nativeWidth);o.call(DIM);}
+    else{o.nextNativeWidth=nativeWidth;o.call(DIM);}
+    eq(expectedWidth(21,nativeWidth),o.fullWidth(),"latest native size custom width");
+    for(int mask=1;mask<32;mask++){
+     FeatureSettings.selection=selection(mask);FeatureSettings.fire();o.layout();
+     eq(expectedWidth(mask,nativeWidth),o.fullWidth(),"custom width cannot feed back into native cache mask="+mask);
+    }
+    FeatureSettings.selection=selection(21);FeatureSettings.fire();
+    FeatureSettings.on=false;FeatureSettings.fire();eq(nativeWidth,o.fullWidth(),"disable restores latest native width");
+    for(int i=0;i<5;i++)eq(View.VISIBLE,o.content().getChildAt(i).getVisibility(),"latest size disable restores item "+i);
+    FeatureSettings.on=true;FeatureSettings.fire();eq(expectedWidth(21,nativeWidth),o.fullWidth(),"re-enable retains latest native width");
+   }
+   o.call(INIT);eq(lastNativeWidth,o.initWidths.get(o.initWidths.size()-1),"reinit sees latest native width");
+   eq(expectedWidth(21,lastNativeWidth),o.fullWidth(),"reinit retains native size baseline");
+   o.fullWidth(700);o.call(INIT);eq(700,o.initWidths.get(o.initWidths.size()-1),"external native width is preserved before reinit");
+   eq(expectedWidth(21,700),o.fullWidth(),"reinit adopts external native width");
+   FeatureSettings.on=false;FeatureSettings.fire();eq(700,o.fullWidth(),"reinit native width remains restorable");healthy();
+  }
+  static void tooSmallNativeSizing()throws Throwable {
+   for(int initial:new int[]{1,17,200})for(int mask:new int[]{31,1,21}){
+    install();FeatureSettings.on=true;FeatureSettings.selection=selection(mask);
+    PerformanceMonitorFloatingWindow o=new PerformanceMonitorFloatingWindow(initial);o.call(INIT);o.call(PARAMS);
+    eq(initial,o.fullWidth(),"undersized native width is preserved pending real geometry");
+    for(int i=0;i<5;i++)eq(View.VISIBLE,o.content().getChildAt(i).getVisibility(),"undersized geometry keeps all native cells");
+    String diagnostic=FeatureSettings.diagnostics.get(FeatureSettings.diagnostics.size()-1);
+    check(diagnostic.contains("applied=false")&&diagnostic.contains("phase=native_width_too_small"),"actual cell capacity rejects a too-small native width");
+    check(diagnostic.contains("nativeFullWidth="+initial)&&diagnostic.contains("originalWidth=0")
+      &&diagnostic.contains("appliedWidth=0")&&diagnostic.contains("shortened=false")&&diagnostic.contains("shortWidth=0"),"sizing sources remain explicit");
+    o.nextNativeWidth=PerformanceMonitorFloatingWindow.originalWidth();o.call(DIM);o.call(ADD,"recovered.game");o.layout();shape(o,mask,true);
+    FeatureSettings.on=false;FeatureSettings.fire();shape(o,31,false);healthy();
+   }
+  }
+  static void shortWidthReadiness()throws Throwable {
+   PerformanceMonitorFloatingWindow o=fixture(21,true);int index=2;
+   View item=o.content().getChildAt(index);item.right=item.left;
+   o.call(CLICK,(float)(item.getLeft()+o.content().getLeft()));
+   check(o.shortened(),"pre-layout click uses the measured native cell");
+   eq(PerformanceMonitorFloatingWindow.CELL_WIDTHS[index],o.shortWidth(),"zero laid-out width uses native measurement");
+   o.shortWidth(0);o.currentWidth(0);o.params().width=0;FeatureSettings.fire();
+   eq(PerformanceMonitorFloatingWindow.CELL_WIDTHS[index],o.shortWidth(),"zero short width repairs from the selected native cell");
+   eq(o.shortWidth(),o.params().width,"short repair updates native params");
+   o.shortWidth(1);FeatureSettings.fire();eq(PerformanceMonitorFloatingWindow.CELL_WIDTHS[index],o.shortWidth(),"one-pixel short width cannot contain the native cell");
+   o.shortWidth(91);FeatureSettings.fire();eq(91,o.shortWidth(),"positive OEM short width is preserved");
+   eq(91,o.currentWidth(),"positive OEM short width remains active");
+   FeatureSettings.on=false;FeatureSettings.fire();check(!o.shortened(),"disable opens full window after short repair");
+   eq(PerformanceMonitorFloatingWindow.originalWidth(),o.fullWidth(),"short repair disable restores native full width");healthy();
+  }
+  static void delayedCellSizing()throws Throwable {
+   install();FeatureSettings.on=true;FeatureSettings.selection=selection(21);
+   PerformanceMonitorFloatingWindow o=new PerformanceMonitorFloatingWindow();
+   for(int i=0;i<5;i++){View item=o.content().getChildAt(i);item.getLayoutParams().width=0;item.measuredWidth=0;item.right=item.left;}
+   o.call(PARAMS);eq(PerformanceMonitorFloatingWindow.originalWidth(),o.fullWidth(),"missing cell measurements retain native full width");
+   for(int i=0;i<5;i++)eq(View.VISIBLE,o.content().getChildAt(i).getVisibility(),"missing cell measurements keep native visibility");
+   check(FeatureSettings.diagnostics.get(FeatureSettings.diagnostics.size()-1).contains("phase=pending_cell_sizes"),"pending cell measurements diagnosed");
+   for(int i=0;i<5;i++)o.content().getChildAt(i).getLayoutParams().width=PerformanceMonitorFloatingWindow.CELL_WIDTHS[i];
+   o.call(DIM);o.call(ADD,"measured.game");o.layout();shape(o,21,true);
+   FeatureSettings.on=false;FeatureSettings.fire();o.layout();shape(o,31,false);healthy();
+  }
+  static void disabledNativeSizeUpdate()throws Throwable {
+   PerformanceMonitorFloatingWindow o=fixture(31,false);o.nextNativeWidth=450;o.call(DIM);
+   eq(450,o.fullWidth(),"disabled native width update proceeds");
+   FeatureSettings.selection=selection(21);FeatureSettings.on=true;FeatureSettings.fire();
+   eq(expectedWidth(21,450),o.fullWidth(),"enable uses the latest disabled native size");
+   FeatureSettings.on=false;FeatureSettings.fire();eq(450,o.fullWidth(),"disabled update remains restorable");healthy();
+  }
  public static void main(String[] args)throws Throwable {
   disabledPassthrough();allSelectionsAndLiveUpdates();alphaAndFade();collapseExpandAndRemoval();singleItem();
-  disableRestores(false);disableRestores(true);originalVisibilityAndInitRebuild();
+   disableRestores(false);disableRestores(true);originalVisibilityAndInitRebuild();
+   delayedNativeSizing();delayedCellSizing();tooSmallNativeSizing();nativeWidthUpdates();shortWidthReadiness();disabledNativeSizeUpdate();
   System.out.println("PASS "+VARIANT+" route="+ROUTE+" checks="+checks);
  }
 }

@@ -74,6 +74,10 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   providerDeclared=true;providerAcquirable=false;retryNow();check(observerRegisters==0&&snapshotReads==0,"unpublished provider cannot start listener");
   providerAcquirable=true;enabled=false;retryNow();
   check(owner.bridge.equals("READY")&&owner.runtime.equals("disabled")&&snapshotReads==1&&actualCalls==0&&receiverRegisters==1&&observerRegisters==1,"readiness recovery registers once and reads latest disabled snapshot");
+  String disabledHandshake=diagnostics.get("ls_augment_automation_runtime");
+  check(disabledHandshake!=null&&disabledHandshake.contains("version="+ls.augment.com.BuildConfig.VERSION_NAME+";")
+    &&disabledHandshake.contains("listener=system_server;")&&disabledHandshake.contains("enabled=false;")
+    &&disabledHandshake.contains("time="),"real disabled listener publishes activation handshake before any action can run");
   run();check(receiverRegisters==1&&observerRegisters==1,"normal refresh never duplicates registrations");
   check(clientOpens==clientCloses,"startup clients are all released");
 

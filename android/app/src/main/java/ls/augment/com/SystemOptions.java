@@ -16,6 +16,8 @@ public final class SystemOptions {
             {"secure_capture","system","允许受限窗口截图和录屏","允许捕获设置了禁止截图标记的窗口。"},
             {"screenshot_hide_status_bar","system","截图隐藏状态栏","仅从原厂截图结果中排除状态栏，手机上的显示保持正常。"},
             {"record_hide_status_bar","system","录屏隐藏状态栏","原厂录屏期间隐藏画面中的状态栏。截图和录屏同时进行时，任一隐藏选项生效都会同时影响两者。"},
+            {"screenshot_crop_unlimited","system","取消截图裁剪最小尺寸限制","允许原厂截图裁剪框缩小到原厂最小尺寸以下，仍保留有效图片边界。关闭后恢复原厂限制，下一次操作裁剪框时生效。首次安装或更新后需重启截图应用加载新逻辑。"},
+            {"gallery_crop_unlimited","system","取消相册编辑裁剪最小尺寸限制","允许原厂相册编辑裁剪框缩小到原厂最小尺寸以下，仍保留有效图片尺寸和边界。关闭后恢复原厂限制，下一次操作裁剪框时生效。首次安装或更新后需重启图片编辑器加载新逻辑。"},
             {"strong_auth_timeout","system","取消每 72 小时强制验证密码","取消周期性强认证超时，开机首次解锁仍按原厂规则。"},
             {"lock_timeout_enabled","system","自定义锁屏息屏时间","仅在锁屏时使用下面的等待时间。"},
             {"notification_quiet_unlocked","system","亮屏解锁时通知静音","屏幕亮起且已解锁时，通知不播放声音和振动。"},

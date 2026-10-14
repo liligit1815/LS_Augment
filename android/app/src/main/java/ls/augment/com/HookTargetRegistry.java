@@ -36,6 +36,7 @@ public final class HookTargetRegistry {
                     "com.android.nfc",
                     "cn.nubia.filebrowser",
                     "com.android.ztescreenshot",
+                    "cn.nubia.photoeditor",
                     "system")));
 
     private HookTargetRegistry() { }

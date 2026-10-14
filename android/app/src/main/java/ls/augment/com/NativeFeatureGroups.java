@@ -341,7 +341,11 @@ final class NativeFeatureGroups {
         }),
         new Section("screenshot","capture","截图与录屏画面", new Feature[]{
             new Feature("ls_augment_rm_screenshot_hide_status_bar","截图隐藏状态栏","ls_augment_rm_screenshot_hide_status_bar",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature("ls_augment_rm_record_hide_status_bar","录屏隐藏状态栏","ls_augment_rm_record_hide_status_bar",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_rm_record_hide_status_bar","录屏隐藏状态栏","ls_augment_rm_record_hide_status_bar",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("ls_augment_rm_screenshot_crop_unlimited","取消截图裁剪最小尺寸限制","ls_augment_rm_screenshot_crop_unlimited",new String[]{},"boolean","0", new Feature[]{})
+        }),
+        new Section("gallery","image_edit","图片编辑", new Feature[]{
+            new Feature("ls_augment_rm_gallery_crop_unlimited","取消相册编辑裁剪最小尺寸限制","ls_augment_rm_gallery_crop_unlimited",new String[]{},"boolean","0", new Feature[]{})
         })
     };
 }

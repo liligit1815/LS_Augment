@@ -483,13 +483,13 @@ export default function CurrentPrototype() {
             {unlocked && !query && (
               <button
                 className="c-card c-app-row"
-                {...identity('route:hide', '消失吧APP')}
+                {...identity('route:hide', '四大皆空')}
                 title="应用管理、自动隐藏与快捷磁贴"
                 onClick={() => go('hide')}
               >
                 <img className="c-app-icon" src="/current/boat.png" alt="" />
                 <span className="c-app-copy">
-                  <strong>消失吧APP</strong>
+                  <strong>四大皆空</strong>
                 </span>
                 <ChevronRight size={15} />
               </button>

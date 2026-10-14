@@ -6,7 +6,7 @@ import java.lang.reflect.Method;
 import io.github.libxposed.api.XposedInterface;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
-/** RedMagic 11.5/Android 16 entry points, inspected from the target SystemUI APK. */
+/** RedMagic lockscreen entry points; the native bouncer signature varies across ROMs. */
 final class LiftArcHooks {
     private static final String WINDOW="com.android.systemui.shade.NotificationShadeWindowView";
     private static final String MANAGER="com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager";
@@ -48,7 +48,7 @@ final class LiftArcHooks {
         int managerCount=0;
         try {
             Class<?> manager=Class.forName(MANAGER,false,loader);
-            manager.getDeclaredMethod("showPrimaryBouncer",boolean.class,String.class);
+            LiftArcUnlockEntry.require(manager);
             for(Constructor<?> constructor:manager.getDeclaredConstructors()) {
                 module.registerFeatureHook(module.hook(constructor).setId("ls_augment.api102.liftarc.manager."+constructor.getParameterCount())
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain-> {

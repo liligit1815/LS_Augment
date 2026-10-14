@@ -109,6 +109,8 @@ public class TestHideResetActionFence {
   queued("single SHOW",m->rejected(m.show(target)));
   queued("confirmed batch HIDE",m->rejected(m.changeConfirmed(true,Set.of(target),s->{})));
   queued("confirmed batch SHOW",m->rejected(m.changeConfirmed(false,Set.of(target),s->{})));
+  queued("confirmed scoped HIDE",m->rejected(m.changeConfirmed(true,Set.of(target),Set.of(target),s->{})));
+  queued("confirmed scoped SHOW",m->rejected(m.changeConfirmed(false,Set.of(target),Set.of(target),s->{})));
   queued("tile toggle",m->rejected(m.toggleAll()));
   queued("screen-off automation",m->rejected(m.runScreenOffAutomation()));
   queued("Root probe",m->{var r=m.rootStatus();check(r.state!=RootHideManager.RootState.GRANTED&&r.message.contains("重置"),"stale root probe accepted");});

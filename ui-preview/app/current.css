@@ -1856,3 +1856,130 @@
 .c-native-config #status-pane-4 .c-status-component {margin-top:8px;}
 .c-native-config .c-order-summary {font-size:10.5px;}
 .c-application-section > .c-section-heading {margin-top:18px!important;}
+
+/* 四大皆空 reuses the shared cards, controls and typography. */
+.c-hide-list-head > .c-hide-count {
+  margin-left: auto !important;
+  font-size: 12px;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+.c-hide-page .c-button {
+  min-height: 48px;
+}
+.c-hide-scope,
+.c-hide-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.c-hide-scope > select,
+.c-hide-sort > select {
+  flex: 1;
+  min-width: 0;
+}
+.c-hide-scope > .c-button,
+.c-hide-filters > .c-button,
+.c-hide-app > .c-button {
+  margin-top: 0;
+}
+.c-hide-search {
+  min-height: 48px;
+  box-sizing: border-box;
+  margin: 8px 0;
+}
+.c-hide-filters {
+  display: flex;
+  gap: 8px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.c-hide-filters > .c-button {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.c-hide-sort {
+  margin-top: 4px;
+}
+.c-hide-sort > span {
+  color: var(--c-muted);
+}
+.c-hide-count {
+  margin: 4px 0 !important;
+}
+.c-hide-batch {
+  margin-bottom: 8px;
+}
+.c-hide-page .c-button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.c-hide-app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 72px;
+  border-top: 1px solid #6196b52b;
+}
+.c-hide-app-details {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  min-height: 72px;
+  border: 0;
+  padding: 8px 0;
+  background: transparent;
+  text-align: left;
+}
+.c-hide-app-icon {
+  flex: none;
+  color: var(--c-blue);
+}
+.c-hide-app-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.c-hide-app-copy strong {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.c-hide-app-copy small {
+  font-size: 11px;
+  color: var(--c-muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.c-hide-state-hidden {
+  color: var(--c-blue);
+}
+.c-hide-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 48px;
+}
+.c-hide-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--c-blue);
+}
+.c-hide-app > .c-button {
+  flex: none;
+  min-width: 54px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.c-hide-empty {
+  padding: 18px 0 8px;
+  text-align: center;
+  line-height: 1.45;
+}

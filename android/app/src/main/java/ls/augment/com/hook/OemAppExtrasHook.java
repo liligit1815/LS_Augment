@@ -19,6 +19,8 @@ final class OemAppExtrasHook {
         if("com.android.systemui".equals(pkg))DefaultAssistantUiHook.install(module,loader);
         if("com.android.systemui".equals(pkg)||"com.android.ztescreenshot".equals(pkg))SystemRulesHook.installCapture(module,loader);
         CaptureVisibilityHook.install(module,loader,pkg);
+        ScreenshotCropHook.install(module,loader,pkg);
+        GalleryCropHook.install(module,loader,pkg);
         ThemeExtrasHook.install(module,loader,pkg);
         DefaultLauncherRoleHook.install(module,loader,pkg);
     }

@@ -27,7 +27,7 @@ public final class TestModuleFeatureSearch {
             }
             if(!unlocked){
                 require(!ModuleHierarchy.isRestricted(result.route),"Locked search exposed hidden management: "+result.route);
-                require(!result.title.contains("消失吧")&&!result.title.contains("应用隐藏")&&!result.path.contains("消失吧"),"Locked result text exposed hidden management");
+                require(!result.title.contains("四大皆空")&&!result.title.contains("消失吧")&&!result.title.contains("应用隐藏")&&!result.path.contains("四大皆空")&&!result.path.contains("消失吧"),"Locked result text exposed hidden management");
             }
         }
         return results;
@@ -69,6 +69,8 @@ public final class TestModuleFeatureSearch {
         exactFeature("锁定刷新率（原厂开关）","group/system_settings/display","system_settings");
         exactFeature("截图隐藏状态栏","group/capture/capture","capture");
         exactFeature("录屏隐藏状态栏","group/capture/capture","capture");
+        exactFeature("取消截图裁剪最小尺寸限制","group/capture/capture","capture");
+        exactFeature("取消相册编辑裁剪最小尺寸限制","group/capture/image_edit","capture");
         exactFeature("双击状态栏锁屏","group/interaction/status_gestures","interaction");
         exactFeature("隐藏锁屏顶部状态栏","group/lockscreen/lock_display","lockscreen");
         exactFeature("锁屏上滑效果","group/lockscreen/liftarc","lockscreen");
@@ -87,7 +89,7 @@ public final class TestModuleFeatureSearch {
         for(String query:Arrays.asList("主题下载与使用","联名主题"))for(ModuleFeatureSearch.Result result:search(query,false))if("lockscreen".equals(ModuleHierarchy.categoryForRoute(result.route)))require(result.path.startsWith("主题与锁屏"),"Merged theme feature path uses requested title: "+query);
         destination("游戏登录","freeform_rules","multitasking");destination("小窗数量上限","freeform_limits","multitasking");
         destination("固定转速","fan_control","cooling");destination("超过100%音量","group/audio/audio_gain","audio");
-        for(String query:Arrays.asList("消失吧APP","应用隐藏","锁屏自动隐藏"))require(search(query,HiddenEntrySession.isUnlocked()).isEmpty(),"Locked session must not advertise concealed features: "+query);
+        for(String query:Arrays.asList("四大皆空","消失吧APP","应用隐藏","锁屏自动隐藏"))require(search(query,HiddenEntrySession.isUnlocked()).isEmpty(),"Locked session must not advertise concealed features: "+query);
         require(search("消失",false).stream().anyMatch(r->"status_notifications".equals(r.route)&&!ModuleHierarchy.isRestricted(r.route)),"A short hidden-name substring still finds ordinary notification descriptions while locked");
         for(int i=0;i<7;i++)HiddenEntrySession.recordSystemVersionTap(1_000L+i*100L);
         require(HiddenEntrySession.isUnlocked(),"Test uses the real seven-tap session transition");
@@ -95,14 +97,14 @@ public final class TestModuleFeatureSearch {
         require(shortHiddenQuery.stream().anyMatch(r->"hide".equals(r.route)&&ModuleHierarchy.isRestricted(r.route)),"Unlocked short query reaches the real hidden management page");
         require(shortHiddenQuery.stream().anyMatch(r->"status_notifications".equals(r.route)&&!ModuleHierarchy.isRestricted(r.route)),"Unlocked short query retains a legitimate ordinary notification result");
         for(ModuleFeatureSearch.Result result:shortHiddenQuery)if(ModuleHierarchy.isRestricted(result.route))require("apps".equals(ModuleHierarchy.categoryForRoute(result.route)),"Only restricted matches require Applications ownership for a short query");
-        for(String query:Arrays.asList("消失吧APP","应用隐藏","锁屏自动隐藏")){
+        for(String query:Arrays.asList("四大皆空","消失吧APP","应用隐藏","锁屏自动隐藏")){
             List<ModuleFeatureSearch.Result> results=search(query,HiddenEntrySession.isUnlocked());
             require(!results.isEmpty(),"Unlocked hidden feature can be discovered: "+query);
             require(results.stream().anyMatch(r->ModuleHierarchy.isRestricted(r.route)),"Unlocked query reaches the guarded management route: "+query);
             for(ModuleFeatureSearch.Result result:results)require("apps".equals(ModuleHierarchy.categoryForRoute(result.route)),"Concealed app controls have only app-management as their primary category");
         }
         HiddenEntrySession.lock();
-        require(search("消失吧APP",HiddenEntrySession.isUnlocked()).isEmpty(),"Leaving the session must remove previously discoverable hidden results");
+        require(search("四大皆空",HiddenEntrySession.isUnlocked()).isEmpty(),"Leaving the session must remove previously discoverable hidden results");
         require(search("消失",false).stream().noneMatch(r->ModuleHierarchy.isRestricted(r.route)),"Locking again removes restricted short-query results while retaining ordinary matches");
         // Broad queries exercise titles, parameter summaries, direct system actions and editor aliases.
         for(String query:Arrays.asList("状态栏","通知","控制中心","桌面","锁屏","主题","音量","手势","小窗","截图","游戏","风扇","连接","应用","系统","步数","字体","图标","隐藏","安装","usb","MTP","Wi-Fi","刷新率")){

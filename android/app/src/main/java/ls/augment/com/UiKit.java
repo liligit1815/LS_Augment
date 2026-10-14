@@ -266,6 +266,10 @@ final class UiKit {
     private final java.util.Map<String,java.util.function.Consumer<Boolean>> foldSetters=new java.util.LinkedHashMap<>();
     void saveState(android.os.Bundle state){android.os.Bundle values=new android.os.Bundle();for(String key:foldValues.keySet())values.putBoolean(key,foldValues.get(key).get());state.putBundle("ui-folds",values);}
     void restoreState(android.os.Bundle state){android.os.Bundle values=state==null?null:state.getBundle("ui-folds");if(values==null)return;for(String key:values.keySet())if(foldSetters.containsKey(key))foldSetters.get(key).accept(values.getBoolean(key));}
+    void setGroupExpanded(String title,boolean expanded){
+        java.util.function.Consumer<Boolean> setter=foldSetters.get("group:"+title);
+        if(setter!=null)setter.accept(expanded);
+    }
     void setContentReceiver(java.util.function.Consumer<View> receiver){contentReceiver=receiver;}
     boolean embedded(){return contentReceiver!=null;}
     void setContentView(View content) {
@@ -806,19 +810,19 @@ final class UiKit {
                 }
                 show(content.getVisibility() != View.VISIBLE);
             });
-            wasEnabled = control.isChecked() && control.isEnabled(); show(false);
+            wasEnabled = control.isChecked(); show(false);
             String key="switch:"+(control.getTag()==null?control.getContentDescription():control.getTag());
             foldValues.put(key,()->content.getVisibility()==View.VISIBLE);foldSetters.put(key,this::show);
         }
         void sync() {
-            boolean enabled = control.isChecked() && control.isEnabled();
+            boolean enabled = control.isChecked();
             if (enabled != wasEnabled) show(enabled);
             wasEnabled = enabled;
             arrow.setEnabled(control.isEnabled() && (accessibleWhileOff || enabled));
             arrow.setAlpha(arrow.isEnabled() ? 1f : .34f);
         }
         void show(boolean expanded) {
-            expanded = expanded && (accessibleWhileOff || control.isChecked()) && control.isEnabled();
+            expanded = expanded && (accessibleWhileOff || control.isChecked());
             content.setVisibility(expanded ? View.VISIBLE : View.GONE);
             arrow.setRotation(expanded ? 180 : 0);
             arrow.setContentDescription(expanded ? "收起配置" : "展开配置");

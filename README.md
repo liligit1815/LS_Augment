@@ -2,9 +2,9 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20541`，内部版本号 `20541`。** 以 [android/version.properties](android/version.properties) 为准。变化见[本版更新说明](docs/releases/v2.0.0-alpha1-test20541.md)，模块数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
+**当前源码版本：`2.0.0-alpha1-test20542`，内部版本号 `20542`。** 以 [android/version.properties](android/version.properties) 为准。变化见[本版更新说明](docs/releases/v2.0.0-alpha1-test20542.md)，模块数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
 
-当前在线版本为 test20541：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20541/redmagic-duo-20541.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20541)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
+当前在线版本为 test20542：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20542/redmagic-duo-20542.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20542)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
@@ -18,16 +18,14 @@
 | [配置定义](android/app/src/main/java/ls/augment/com/ConfigSchema.java)、[锁屏上滑配置](android/app/src/main/java/ls/augment/com/LiftArcOptions.java) | 当前配置字段、默认值与取值范围 |
 | [网页原型说明](ui-preview/README.md) | 当前预览运行方式、样例数据和手机功能边界 |
 | [跨设备开发说明](docs/跨设备开发说明.md) | 拉取、环境准备、构建和签名 |
-| [发布与在线更新验收](docs/发布与在线更新.md) | 清单字段、真实 JSON 示例、发布后联网核验及真机验收 |
+| [发布与在线更新](docs/发布与在线更新.md) | 清单字段、当前 JSON 示例、发布流程及手机更新操作 |
 
 ## 当前版本要点
 
-- 新增最近任务卡片圆角滑条，0 保持原厂，负数更尖锐、正数更圆滑，调节范围随卡片尺寸、样式和横竖屏自动更新。
-- 修复肩键快捷切换仍执行旧方案的问题。
-- 完善超境画质的画质、帧率选项，适配原厂处理尺寸。
-- 修复自动息屏选择“30 分钟”或“从不”后被重置的问题。
-- 改进联名充电动画素材读取与异常处理。
-- 修复部分bug
+- 支持红魔系列Android15设备桌面自定义布局。
+- 新增去除剪辑图片时裁剪尺寸限制。
+- 新增去除截图图片裁剪尺寸限制。
+- 新增部分功能不支持提示。
 
 ## 功能概览
 
@@ -39,7 +37,7 @@
 | 声音与音量 | 本机联名音频、音量档数、软件增益和面板百分比 |
 | 操作与手势 | 侧滑图标与背景、高级重启、助理、单手模式和剪贴板 |
 | 小窗与多任务 | 跨应用跳转、小窗数量与应用范围、触摸规则 |
-| 截图与录屏 | 捕获画面的状态栏隐藏及窗口限制 |
+| 截图与录屏 | 捕获画面的状态栏隐藏、窗口限制、截图与相册编辑裁剪解限 |
 | 游戏空间 | 肩键、极速连点、连招、超分、性能监测、AI 触发器及游戏录制 |
 | 散热风扇 | 固定一至五档、本机转速测量、原厂磁贴增强及息屏延续 |
 | 网络与连接 | USB、MTP、调试、NFC、Wi-Fi、热点及飞行模式 |
@@ -99,13 +97,13 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 当前版本本地 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20541-release.apk` |
+| 当前版本本地 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20542-release.apk` |
 | 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
 | 源码包 | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
 
 
-目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20541)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
+目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20542)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
 
 签名通过 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量或被忽略的本地配置注入。Release 构建使用 `:app:assembleRelease`，正式打包使用 `tools/build-release.py` 校验证书、版本与对齐。公开 `.pem` 不能代替私钥。当前发布证书 SHA-256 为 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`，覆盖更新需要相同证书。
 
@@ -116,12 +114,12 @@ Shell 文件需保持 UTF-8 无 BOM、LF 换行。`.gitattributes` 固定源码�
 红魔 Duo 使用公共更新仓库 [liligit1815/lispacerelease](https://github.com/liligit1815/lispacerelease)，软件标识为 `redmagic-duo`，包名为 `ls.augment.com`。客户端固定读取 [updates/redmagic-duo.json](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)。发布 APK 时必须同时推进这份清单；仓库级 Latest 标记不参与客户端版本判断。
 
 1. 递增 `android/version.properties`，使用现有发行私钥构建 Release，并完成对应功能检查。已发布版本号不得换包。
-2. 将本版要点写入 `docs/releases/` 的 UTF-8 文件，更新说明经过审核后再正式发布。源码仓库只维护当前版本说明，历史版本保留在 Git 历史和 GitHub Release。
+2. 将本版要点写入 `docs/releases/` 的 UTF-8 文件，与版本和安装包保持一致。源码仓库只维护当前版本说明，历史版本保留在 Git 历史和 GitHub Release。
 3. 同步更新仓库的 `main`，使用其 `tools/publish.py` 运行 `--dry-run`，核对 APK、签名、说明及目标版本。
-4. 确认发布计划后执行正式发布。工具先上传并校验公开 APK，再更新红魔 Duo 专属清单，保持其他软件的清单不变。
+4. 执行正式发布。工具先上传并校验公开 APK，再更新红魔 Duo 专属清单，保持其他软件的清单不变。
 5. 重新读取公网清单和安装包，核对客户端解析、大小、摘要与签名，再同步源码仓库的在线版本和下载链接。
 
-完整命令、协议和核验步骤见[发布与在线更新](docs/发布与在线更新.md)。本地[清单示例](docs/examples/redmagic-duo.json)对应已发布的 20541；下一版清单由发布工具根据实际 APK 生成。
+完整命令、协议和核验步骤见[发布与在线更新](docs/发布与在线更新.md)。本地[清单示例](docs/examples/redmagic-duo.json)说明当前清单字段，发布工具根据实际 APK 生成新版清单。
 
 在线更新由手机端检查、下载、校验并交给系统安装器完成，无需电脑配合。客户端仅在远端内部版本号更高且系统兼容时提示升级，下载后核对摘要、包名、版本与发行签名。20518 之前的版本需先手动安装具有在线更新能力的版本。当前只有一个更新通道，正式发布的 alpha / test 版本同样会推送。
 

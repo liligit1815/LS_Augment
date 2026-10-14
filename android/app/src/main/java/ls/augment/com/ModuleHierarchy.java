@@ -62,6 +62,7 @@ public final class ModuleHierarchy {
         entry(section("multitasking","freeform_limits","小窗数量与应用范围"),"freeform_limits");
         add(section("multitasking","overlay_touch","悬浮窗触摸"),"ls_augment_rm_untrusted_touch_allow");
         source(section("capture","capture","捕获画面"),"screenshot","capture");
+        source(section("capture","image_edit","图片编辑"),"gallery","image_edit");
         add(section("capture","secure_capture","窗口捕获限制"),"ls_augment_rm_secure_capture");
         entry(section("gaming","ai","AI 触发器"),"ai_trigger");
         Section shoulder=section("gaming","shoulder","肩键与极速连点");source(shoulder,"game","shoulder");entry(shoulder,"shoulder");
@@ -81,7 +82,7 @@ public final class ModuleHierarchy {
         entry(section("apps","download","应用下载"),"store_download");entry(section("apps","double","应用双开"),"double_app");
         add(section("apps","default_apps","默认打开方式"),"ls_augment_rm_intent_hijack_disable");
         Section install=section("apps","installer","APK 安装规则");source(install,"system","installer");entry(install,"signature_install");
-        entry(section("apps","hidden","应用隐藏（消失吧APP）",null,true),"hide");
+        entry(section("apps","hidden","四大皆空",null,true),"hide");
         source(section("system_settings","update","系统更新"),"update","update");
         add(section("system_settings","settings_entries","设置入口与时间格式"),"settings:hide_healthy_use","ls_augment_rm_settings_hide_battery_percent","ls_augment_rm_settings_time_period");
         Section display=section("system_settings","display","显示与休眠");add(display,"ls_augment_rm_settings_long_timeout","systemui:full_brightness");settings(display,"lock_refresh_rate");
@@ -105,6 +106,7 @@ public final class ModuleHierarchy {
         String[][] values={{"system","system_settings"},{"systemui","notifications"},{"statusbar","notifications"},{"settings","system_settings"},{"launcher","desktop"},{"game","gaming"},{"ai_trigger","gaming"},{"fan","cooling"},{"theme","lockscreen"},{"themes","lockscreen"},{"collab","lockscreen"},{"doubleapp","apps"},{"store","apps"},{"installer","apps"},{"update","system_settings"},{"weather","desktop"},{"nfc","connectivity"},{"files","connectivity"},{"permissions","desktop"},{"screenshot","capture"}};
         for(String[] pair:values)alias("target-"+pair[0],"target-"+pair[1]);
         alias("target-ai_trigger","ai_trigger");alias("target-files","group/connectivity/usb_mtp");alias("target-nfc","group/connectivity/nfc");alias("target-weather","group/desktop/desktop_clock");alias("target-permissions","group/desktop/default_launcher");alias("target-update","group/system_settings/update");alias("target-installer","group/apps/installer_ui");alias("target-store","store_download");alias("target-doubleapp","double_app");
+        alias("target-gallery","group/capture/image_edit");
     }
     private static void legacySections(){
         String[][] values={
@@ -185,7 +187,7 @@ public final class ModuleHierarchy {
     public static String categoryForRoute(String route){for(String item:path(route)){if(item.startsWith("target-"))return item.substring(7);Section s=group(item);if(s!=null)return s.target;}Section s=group(ENTRY_PARENTS.get(resolve(route)));return s==null?null:s.target;}
     public static String title(String route){
         String statusTitle=StatusBarPages.title(route);if(!statusTitle.isEmpty())return statusTitle;if(route.startsWith("asset/")){StatusBarIconCatalog.Icon icon=StatusBarIconCatalog.find(route.substring(6));if(icon!=null)return icon.title;}
-        switch(route){case "icon_crop":case "gesture_icon_crop":case "tile_icon_crop":return "裁剪图片";case "home":return "主页";case "settings":return "模块";case "about":return "关于";case "rapid_compatibility":return "兼容性测试";case "extra_dim":return "极暗磁贴";case "hide":return "应用隐藏（消失吧APP）";case "hide_apps":return "应用选择与显隐";case "automation":return "自动隐藏";case "tile":return "快捷磁贴";case "freeform_rules":return "跨应用跳转规则";case "freeform_limits":return "小窗数量与应用范围";case "scope":return "模块作用域";case "log_export":return "导出日志";case "support":return "支持作者";case "contributors":return "贡献名单";}
+        switch(route){case "icon_crop":case "gesture_icon_crop":case "tile_icon_crop":return "裁剪图片";case "home":return "主页";case "settings":return "模块";case "about":return "关于";case "rapid_compatibility":return "兼容性测试";case "extra_dim":return "极暗磁贴";case "hide":return "四大皆空";case "hide_apps":return "应用选择与显隐";case "automation":return "自动隐藏";case "tile":return "快捷磁贴";case "freeform_rules":return "跨应用跳转规则";case "freeform_limits":return "小窗数量与应用范围";case "scope":return "模块作用域";case "log_export":return "导出日志";case "support":return "支持作者";case "contributors":return "贡献名单";}
         if(route.startsWith("target-")){ModulePresentationCatalog.Category category=ModulePresentationCatalog.find(route.substring(7));if(category!=null)return category.title;}Section s=group(route);if(s!=null)return s.title;
         for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if(entry.route.equals(route))return entry.title;String resolved=resolve(route);return resolved.equals(route)?"":title(resolved);
     }

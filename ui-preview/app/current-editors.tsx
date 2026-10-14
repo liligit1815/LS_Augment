@@ -1,22 +1,23 @@
 /* eslint-disable nextjs/no-img-element -- Local native assets must retain their measured dimensions; user-selected images are data URLs. */
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { EyeOff, ChevronDown, Image as ImageIcon } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { EyeOff, ChevronDown, Image as ImageIcon, AppWindow } from 'lucide-react';
 import {
   Card,
   FeatureTitle,
-  LinkCard,
   Button,
   Toggle,
   Range,
   Field,
   useModel,
+  useDisclosure,
 } from './current-ui';
 import data from './current-editor-data.json';
 import catalog from './current-catalog.json';
 import { NativeSelect } from './current-native-controls';
 import { CurrentHealth } from './current-health';
 import { LatestStatusEditor } from './current-status-editor';
+import { runtimeState } from './current-runtime';
 const definitions = data.defaults as Record<
   string,
   { key: string; default: unknown }
@@ -50,7 +51,7 @@ export const editorTitles: Record<string, string> = {
   mi_health: '步数修改',
   status_layout: '状态栏',
   launcher_custom: 'APP图标名称编辑',
-  hide: '消失吧APP',
+  hide: '四大皆空',
   hide_apps: '应用隐藏',
   automation: '自动隐藏',
   tile: '快捷磁贴',
@@ -820,325 +821,569 @@ function CropImage({
 }
 function HideEditor({ route }: { route: string }) {
   const m = useModel(),
-    [space, setSpace] = useState('0'),
-    [expanded, expand] = useState(false),
+    [space, setSpace] = useState('all'),
     [query, setQuery] = useState(''),
-    [sort, setSort] = useState(false),
+    [filter, setFilter] = useState('configured'),
+    [sort, setSort] = useState('name'),
     file = useRef<HTMLInputElement>(null);
-  const selected = (m.values['hide:' + space + ':apps'] || '')
-    .split(',')
-    .filter(Boolean);
-  const simulate = (hide: boolean) => {
-    ['0', '999'].forEach((s) =>
-      (m.values['hide:' + s + ':apps'] || '')
-        .split(',')
-        .filter(Boolean)
-        .forEach((pkg) =>
-          m.set('hide:' + s + ':state:' + pkg, hide ? '1' : '0'),
-        ),
+  const [appsExpanded, expandApps] = useDisclosure('hide:apps');
+  const appsBodyId = useId();
+  const master = m.values[k('HIDE_MASTER')] === '1';
+  const runtime = runtimeState(m.values);
+  const spaces = space === 'all' ? ['0', '999'] : [space];
+  const spaceName = (id: string) =>
+    id === '0' ? '机主 · 空间 0' : 'Mix11 · 空间 999';
+  const rangeName = space === 'all' ? '全部空间' : spaceName(space);
+  const selected = (id: string) =>
+    (m.values['hide:' + id + ':apps'] || '').split(',').filter(Boolean);
+  const rows = spaces.flatMap((id) => {
+    const configured = selected(id);
+    // Keep configured packages visible even when absent from the sample inventory.
+    const inventory = [
+      ...appList,
+      ...configured
+        .filter((pkg) => !appList.some((a) => a.pkg === pkg))
+        .map((pkg) => ({ name: pkg.split('.').pop() || pkg, pkg })),
+    ];
+    return inventory.map((app, index) => ({
+      ...app,
+      space: id,
+      installedOrder: index,
+      configured: configured.includes(app.pkg),
+      hidden: m.values['hide:' + id + ':state:' + app.pkg] === '1',
+    }));
+  });
+  const targets = rows.filter((app) => app.configured);
+  const visibleRows = rows
+    .filter(
+      (app) =>
+        filter === 'all' || (filter === 'hidden' ? app.hidden : app.configured),
+    )
+    .filter((app) =>
+      (app.name + app.pkg + spaceName(app.space))
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        (sort === 'installed'
+          ? b.installedOrder - a.installedOrder
+          : a.name.localeCompare(b.name, 'zh')) ||
+        a.space.localeCompare(b.space),
     );
-    m.tell('原型演示：已' + (hide ? '隐藏' : '显示') + '所有已配置应用');
+  const changeSelection = (id: string, pkg: string, on: boolean) => {
+    const current = selected(id);
+    m.set(
+      'hide:' + id + ':apps',
+      (on
+        ? [...new Set([...current, pkg])]
+        : current.filter((p) => p !== pkg)
+      ).join(','),
+    );
+    if (!on) m.tell('原型演示：已移出名单，应用当前状态保持不变');
   };
-  if (route === 'hide')
-    return (
+  const requireMaster = () => {
+    if (master) return true;
+    m.tell('请先开启应用隐藏');
+    return false;
+  };
+  const requireRoot = () => {
+    if (runtime.root) return true;
+    m.tell('原型演示：ROOT 未授权，请检查状态预览并重新授权');
+    return false;
+  };
+  const requireAutomation = () => {
+    if (!requireMaster() || !requireRoot()) return false;
+    if (!runtime.lsp) {
+      m.tell('请检查 LSP 作用域并重启手机');
+      return false;
+    }
+    if (!['0', '999'].some((id) => selected(id).length)) {
+      m.tell('请先选择要自动隐藏的应用');
+      return false;
+    }
+    if (runtime.id === 'update-pending') {
+      m.tell('锁屏监听尚未加载当前版本，请重启手机');
+      return false;
+    }
+    return true;
+  };
+  const setAppState = (
+    app: (typeof rows)[number],
+    hidden: boolean,
+    confirmed = false,
+  ) => {
+    if ((hidden && !requireMaster()) || !requireRoot()) return;
+    if (!confirmed) {
+      m.dialog(
+        hidden ? '隐藏应用' : '显示应用',
+        <>
+          <p>
+            {app.name} · {spaceName(app.space)}
+          </p>
+          <p className="c-note">{app.pkg}</p>
+          <p className="c-note">
+            {hidden ? '将停止并隐藏此应用' : '将显示此应用'}，应用数据保留。
+          </p>
+          <footer>
+            <button onClick={m.close}>取消</button>
+            <button
+              onClick={() => {
+                setAppState(app, hidden, true);
+                m.close();
+              }}
+            >
+              {hidden ? '隐藏' : '显示'}
+            </button>
+          </footer>
+        </>,
+      );
+      return;
+    }
+    m.set('hide:' + app.space + ':state:' + app.pkg, hidden ? '1' : '0');
+    m.tell(
+      '原型演示：已' +
+        (hidden ? '隐藏' : '显示') +
+        app.name +
+        '（' +
+        spaceName(app.space) +
+        '）',
+    );
+  };
+  const batch = (hidden: boolean) => {
+    if (!targets.length || (hidden && !requireMaster()) || !requireRoot())
+      return;
+    m.dialog(
+      hidden ? '隐藏本范围' : '显示本范围',
       <>
-        {[
-          ['应用管理', '按空间选择应用，管理隐藏与恢复。', 'hide_apps'],
-          ['自动隐藏', '设置锁屏后自动隐藏应用。', 'automation'],
-          ['快捷磁贴', '从快捷设置切换应用隐藏状态。', 'tile'],
-        ].map(([title, help, r]) => (
-          <LinkCard key={r} title={title} help={help} route={r} />
-        ))}
-      </>
-    );
-  if (route === 'automation')
-    return (
-      <Card>
-        <Feature
-          name="AUTOMATION_ENABLED"
-          title="启用锁屏自动隐藏"
-          help="由LSPosed监听，当锁屏时自动隐藏指定应用"
-        >
-          <Toggle
-            name="hide:all-spaces"
-            title="处理所有已配置空间"
-            help="关闭时只处理当前正在使用的空间。"
-          />
-        </Feature>
-      </Card>
-    );
-  if (route === 'tile')
-    return (
-      <Card>
-        <FeatureTitle
-          title="快捷设置磁贴"
-          help="点击磁贴切换隐藏状态；混合或异常状态优先恢复全部显示。"
-        />
-        <FeatureTitle title="磁贴图片" help="图片选择并裁剪后立即保存。" />
-        <button
-          className="c-picture"
-          aria-label="磁贴图片"
-          onClick={() => file.current?.click()}
-        >
-          {m.values['tile:picture'] ? (
-            <img src={m.values['tile:picture']} alt="磁贴图片" />
-          ) : (
-            <EyeOff size={52} />
-          )}
-        </button>
-        <input
-          ref={file}
-          type="file"
-          hidden
-          accept="image/*"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const r = new FileReader();
-            r.onload = () =>
-              m.dialog(
-                '裁剪图片',
-                <CropImage
-                  image={typeof r.result === 'string' ? r.result : ''}
-                  save={(s) => {
-                    m.set('tile:picture', s);
-                    m.close();
-                  }}
-                />,
+        <p>
+          {rangeName} · 已保存 {targets.length} 个应用
+        </p>
+        <p className="c-note">
+          {hidden ? '将停止并隐藏' : '将显示'}
+          本范围的全部已保存应用。搜索与筛选不会改变操作范围；应用数据保留。
+        </p>
+        <footer>
+          <button onClick={m.close}>取消</button>
+          <button
+            onClick={() => {
+              targets.forEach((app) =>
+                m.set(
+                  'hide:' + app.space + ':state:' + app.pkg,
+                  hidden ? '1' : '0',
+                ),
               );
-            r.readAsDataURL(f);
-            e.target.value = '';
-          }}
-        />
-        <div className="c-buttons">
-          <Button onClick={() => file.current?.click()}>选择图片</Button>
-          <Button onClick={() => m.set('tile:picture', '')}>
-            恢复默认图片
-          </Button>
-        </div>
-        <Field
-          name={k('TILE_LABEL')}
-          title="磁贴名称"
-          initial="LS_Augment"
-          maxLength={30}
-        />
-        <Field
-          name={k('TILE_DESCRIPTION')}
-          title="磁贴说明"
-          initial="应用隐藏"
-          maxLength={60}
-        />
-        <Button
-          onClick={() =>
-            m.dialog(
-              '添加快捷设置磁贴',
-              <>
-                <p>
-                  {m.values[k('TILE_LABEL')] || 'LS_Augment'}
-                  {'\n'}
-                  {m.values[k('TILE_DESCRIPTION')] || '应用隐藏'}
-                </p>
-                <footer>
-                  <button onClick={m.close}>取消</button>
-                  <button
-                    onClick={() => {
-                      m.close();
-                      m.tell('原型演示：LS_Augment 磁贴已添加');
-                    }}
-                  >
-                    添加
-                  </button>
-                </footer>
-              </>,
-            )
-          }
-        >
-          添加到快捷设置
-        </Button>
-      </Card>
+              m.close();
+              m.tell(
+                '原型演示：已' +
+                  (hidden ? '隐藏' : '显示') +
+                  rangeName +
+                  '的 ' +
+                  targets.length +
+                  ' 个已保存应用',
+              );
+            }}
+          >
+            {hidden ? '隐藏' : '显示'} {targets.length} 个应用
+          </button>
+        </footer>
+      </>,
     );
-  return (
+  };
+  const appDetails = (app: (typeof rows)[number]) =>
+    m.dialog(
+      app.name,
+      <>
+        <p>{app.pkg}</p>
+        <p className="c-note">
+          {spaceName(app.space)} · {app.hidden ? '已隐藏' : '已显示'} ·{' '}
+          {app.configured ? '已加入名单' : '未加入名单'}
+        </p>
+        <p className="c-note">移出名单只更改配置，不会自动显示已隐藏的应用。</p>
+        <footer>
+          <button onClick={m.close}>取消</button>
+          {app.hidden && (
+            <button
+              onClick={() => {
+                setAppState(app, false);
+              }}
+            >
+              显示应用
+            </button>
+          )}
+          <button
+            onClick={() => {
+              changeSelection(app.space, app.pkg, !app.configured);
+              m.close();
+            }}
+          >
+            {app.configured ? '移出名单' : '加入名单'}
+          </button>
+        </footer>
+      </>,
+    );
+  const automation = (
+    <Toggle
+      name={k('AUTOMATION_ENABLED')}
+      title="锁屏自动隐藏"
+      help="系统由亮到灭时隐藏已配置应用，解锁不自动显示。开启前需启用应用隐藏。"
+      beforeEnable={requireAutomation}
+      summary={
+        !master
+          ? '已暂停：应用隐藏未开启'
+          : !runtime.root || !runtime.lsp
+            ? '已暂停：' + runtime.message
+            : undefined
+      }
+    >
+      <Toggle
+        name="hide:all-spaces"
+        title="处理所有已配置空间"
+        help="关闭时只处理当前正在使用的空间。"
+      />
+    </Toggle>
+  );
+  const tile = (
     <>
-      <Card>
-        <Feature
-          name="HIDE_MASTER"
-          title="启用隐藏管理"
-          help="关闭不会自动恢复现有隐藏状态。"
-        >
-          <Card>
-            <FeatureTitle title="选择空间" help="每个空间分别保存应用清单。" />
-            <div className="c-buttons">
-              {[
-                ['0', '机主 · 空间 0'],
-                ['999', 'Mix11 · 空间 999'],
-              ].map(([n, s]) => (
-                <Button
-                  key={n}
+      <FeatureTitle title="磁贴图片" help="图片选择并裁剪后立即保存。" />
+      <button
+        className="c-picture"
+        aria-label="磁贴图片"
+        onClick={() => file.current?.click()}
+      >
+        {m.values['tile:picture'] ? (
+          <img src={m.values['tile:picture']} alt="磁贴图片" />
+        ) : (
+          <EyeOff size={52} />
+        )}
+      </button>
+      <input
+        ref={file}
+        type="file"
+        hidden
+        accept="image/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const r = new FileReader();
+          r.onload = () =>
+            m.dialog(
+              '裁剪图片',
+              <CropImage
+                image={typeof r.result === 'string' ? r.result : ''}
+                save={(s) => {
+                  m.set('tile:picture', s);
+                  m.close();
+                }}
+              />,
+            );
+          r.readAsDataURL(f);
+          e.target.value = '';
+        }}
+      />
+      <div className="c-buttons">
+        <Button onClick={() => file.current?.click()}>选择图片</Button>
+        <Button secondary onClick={() => m.set('tile:picture', '')}>
+          恢复默认图片
+        </Button>
+      </div>
+      <Field
+        name={k('TILE_LABEL')}
+        title="磁贴名称"
+        initial="红魔Duo"
+        maxLength={30}
+      />
+      <Field
+        name={k('TILE_DESCRIPTION')}
+        title="磁贴说明"
+        initial="应用隐藏"
+        maxLength={60}
+      />
+      <Button
+        onClick={() =>
+          m.dialog(
+            '添加快捷设置磁贴',
+            <>
+              <p>
+                {m.values[k('TILE_LABEL')] || '红魔Duo'}
+                {'\n'}
+                {m.values[k('TILE_DESCRIPTION')] || '应用隐藏'}
+              </p>
+              <footer>
+                <button onClick={m.close}>取消</button>
+                <button
                   onClick={() => {
-                    setSpace(n);
-                    expand(false);
-                    setQuery('');
+                    m.close();
+                    m.tell('原型演示：红魔Duo 磁贴已添加');
                   }}
                 >
-                  {space === n ? '✓ ' : ''}
-                  {s}
-                </Button>
-              ))}
-            </div>
-            <p className="c-note">当前空间 {space} · 已核验</p>
-          </Card>
-          <Card>
-            <FeatureTitle
-              title="立即操作"
-              help="使用所有空间中已保存的目标进行隐藏或显示。"
-            />
-            <div className="c-buttons">
-              <Button
-                onClick={() =>
-                  m.dialog(
-                    '隐藏全部',
-                    <>
-                      <p>将停止并隐藏所有空间中的已保存目标。</p>
-                      <footer>
-                        <button onClick={m.close}>取消</button>
-                        <button
-                          onClick={() => {
-                            simulate(true);
-                            m.close();
-                          }}
-                        >
-                          继续
-                        </button>
-                      </footer>
-                    </>,
-                  )
-                }
-              >
-                全部隐藏
-              </Button>
-              <Button onClick={() => simulate(false)}>全部显示</Button>
-            </div>
-          </Card>
-          <Card>
-            <FeatureTitle
-              title="选择应用"
-              help="只支持用户安装的应用；已勾选项显示在列表最前面。"
-            />
-            <p className="c-note">
-              空间 {space} · 可选 {appList.length} 个 · 已勾选 {selected.length}{' '}
-              个
-            </p>
-            <Button onClick={() => expand(!expanded)}>
-              {expanded ? '收起应用列表' : '管理应用（' + appList.length + '）'}
-            </Button>
-            {expanded && (
-              <>
-                <input
-                  className="c-picker-search"
-                  aria-label="搜索名称或包名"
-                  placeholder="搜索名称或包名"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                <Button onClick={() => setSort(!sort)}>
-                  {sort ? '按安装时间排序' : '按名称排序'}
-                </Button>
-                {[...appList]
-                  .filter((a) =>
-                    (a.name + a.pkg)
-                      .toLowerCase()
-                      .includes(query.toLowerCase()),
-                  )
-                  .sort(
-                    (a, b) =>
-                      Number(selected.includes(b.pkg)) -
-                        Number(selected.includes(a.pkg)) ||
-                      (sort
-                        ? b.pkg.localeCompare(a.pkg)
-                        : a.name.localeCompare(b.name, 'zh')),
-                  )
-                  .map((a) => (
-                    <div className="c-app-picker-row" key={a.pkg}>
-                      <label className="c-check">
-                        <input
-                          type="checkbox"
-                          checked={selected.includes(a.pkg)}
-                          onChange={(e) =>
-                            m.set(
-                              'hide:' + space + ':apps',
-                              (e.target.checked
-                                ? [...selected, a.pkg]
-                                : selected.filter((x) => x !== a.pkg)
-                              ).join(','),
-                            )
-                          }
-                        />
-                        <span>
-                          {a.name}
-                          <small>{a.pkg} · 第三方</small>
-                          <small>
-                            {m.values['hide:' + space + ':state:' + a.pkg] ===
-                            '1'
-                              ? '已隐藏'
-                              : '已显示'}
-                          </small>
-                        </span>
-                      </label>
-                      {selected.includes(a.pkg) && (
-                        <div className="c-buttons">
-                          <Button
-                            onClick={() =>
-                              m.set('hide:' + space + ':state:' + a.pkg, '1')
-                            }
-                          >
-                            隐藏
-                          </Button>
-                          <Button
-                            onClick={() =>
-                              m.set('hide:' + space + ':state:' + a.pkg, '0')
-                            }
-                          >
-                            显示
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </>
-            )}
-          </Card>
-        </Feature>
-      </Card>
-      <Card>
-        <FeatureTitle
-          title="恢复应用"
-          help="恢复全部已选应用，不删除应用数据。"
-        />
-        <Button
-          onClick={() =>
-            m.dialog(
-              '紧急恢复',
-              <>
-                <p>将显示全部已配置目标，不会删除应用数据。</p>
-                <footer>
-                  <button onClick={m.close}>取消</button>
-                  <button
-                    onClick={() => {
-                      simulate(false);
-                      m.close();
-                    }}
-                  >
-                    继续
-                  </button>
-                </footer>
-              </>,
-            )
-          }
-        >
-          紧急恢复
-        </Button>
-      </Card>
+                  添加
+                </button>
+              </footer>
+            </>,
+          )
+        }
+      >
+        添加到快捷设置
+      </Button>
     </>
+  );
+  // Historical routes remain usable; the current entry exposes all operations in one page.
+  if (route === 'automation')
+    return <Card className="c-feature-group">{automation}</Card>;
+  if (route === 'tile') return <Card>{tile}</Card>;
+  return (
+    <div
+      className="c-hide-page"
+      data-native-path="editor:hide"
+      data-ui-label="四大皆空"
+    >
+      <Card className="c-feature-group" label="应用隐藏">
+        <Toggle
+          name={k('HIDE_MASTER')}
+          title="应用隐藏"
+          help="需要 ROOT 授权。允许手动、锁屏或磁贴隐藏名单中的应用。关闭不恢复现有隐藏；显示应用始终可用。"
+          beforeEnable={requireRoot}
+        />
+      </Card>
+      <Card
+        className="c-hide-manager"
+        path="section:hide_apps"
+        label="应用名单"
+      >
+        <button
+          className="c-native-fold-head c-hide-list-head"
+          aria-label={(appsExpanded ? '收起' : '展开') + '应用名单'}
+          aria-expanded={appsExpanded}
+          aria-controls={appsBodyId}
+          data-native-path="fold:hide:apps"
+          data-ui-label="应用名单展开"
+          onClick={() => expandApps(!appsExpanded)}
+        >
+          <strong>应用名单</strong>
+          <small className="c-hide-count" aria-live="polite">
+            配置 {targets.length} · 隐藏{' '}
+            {rows.filter((app) => app.hidden).length}
+          </small>
+          <span className="c-disclosure-slot" aria-hidden="true">
+            <ChevronDown
+              size={18}
+              style={{ transform: appsExpanded ? 'rotate(180deg)' : undefined }}
+            />
+          </span>
+        </button>
+        <div
+          className="c-hide-scope c-native-select"
+          data-native-path="hide:space"
+          data-ui-label="空间范围"
+        >
+          <select
+            aria-label="空间范围"
+            value={space}
+            onChange={(e) => setSpace(e.target.value)}
+          >
+            <option value="all">全部空间</option>
+            <option value="0">机主 · 空间 0</option>
+            <option value="999">Mix11 · 空间 999</option>
+          </select>
+          <Button
+            secondary
+            onClick={() => {
+              if (requireRoot()) m.tell('原型演示：已刷新应用列表与状态');
+            }}
+          >
+            刷新
+          </Button>
+        </div>
+        <div className="c-buttons c-hide-batch">
+          <Button
+            disabled={!master || !runtime.root || !targets.length}
+            onClick={() => batch(true)}
+          >
+            隐藏本范围
+          </Button>
+          <Button
+            secondary
+            disabled={!targets.length}
+            onClick={() => batch(false)}
+          >
+            显示本范围
+          </Button>
+          <Button
+            secondary
+            onClick={() => {
+              setQuery('');
+              setFilter('all');
+              expandApps(true);
+            }}
+          >
+            选择应用
+          </Button>
+        </div>
+        <div
+          id={appsBodyId}
+          className="d-disclosure-body c-hide-list-body"
+          hidden={!appsExpanded}
+        >
+          <input
+            className="c-picker-search c-hide-search"
+            aria-label="搜索名称或包名"
+            placeholder="搜索应用名称或包名"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <fieldset
+            className="c-hide-filters c-native-select-buttons"
+            aria-label="应用筛选"
+          >
+            {[
+              ['configured', '已配置'],
+              ['hidden', '已隐藏'],
+              ['all', '全部应用'],
+            ].map(([value, title]) => (
+              <button
+                className={'c-button' + (filter === value ? '' : ' secondary')}
+                key={value}
+                aria-pressed={filter === value}
+                data-native-path={'hide:filter:' + value}
+                data-ui-label={title}
+                onClick={() => setFilter(value)}
+              >
+                {title}
+              </button>
+            ))}
+          </fieldset>
+          <div className="c-hide-sort c-native-select">
+            <span>排序</span>
+            <select
+              aria-label="应用排序"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+            >
+              <option value="name">按应用名称</option>
+              <option value="installed">按安装时间</option>
+            </select>
+          </div>
+          <div
+            className="c-hide-list"
+            data-native-path="hide:app-list"
+            data-ui-label="应用列表"
+          >
+            {visibleRows.map((app) => (
+              <div
+                className="c-hide-app"
+                key={app.space + ':' + app.pkg}
+                data-native-path={'hide:' + app.space + ':' + app.pkg}
+                data-ui-label={app.name + ' · ' + spaceName(app.space)}
+              >
+                {filter === 'all' && (
+                  <label className="c-hide-check">
+                    <input
+                      type="checkbox"
+                      aria-label={
+                        (app.configured ? '移出名单：' : '加入名单：') +
+                        app.name +
+                        ' · ' +
+                        spaceName(app.space)
+                      }
+                      checked={app.configured}
+                      onChange={(e) =>
+                        changeSelection(app.space, app.pkg, e.target.checked)
+                      }
+                    />
+                  </label>
+                )}
+                <button
+                  className="c-hide-app-details"
+                  aria-label={'管理' + app.name + ' · ' + spaceName(app.space)}
+                  onClick={() => appDetails(app)}
+                >
+                  <AppWindow
+                    className="c-hide-app-icon"
+                    size={28}
+                    aria-hidden="true"
+                  />
+                  <span className="c-hide-app-copy">
+                    <strong>{app.name}</strong>
+                    <small>{app.pkg}</small>
+                    <small>
+                      {spaceName(app.space)} ·{' '}
+                      <span className={app.hidden ? 'c-hide-state-hidden' : ''}>
+                        {app.hidden ? '已隐藏' : '已显示'}
+                      </span>
+                    </small>
+                  </span>
+                </button>
+                {app.configured && filter !== 'all' && (
+                  <Button
+                    secondary={app.hidden}
+                    disabled={!app.hidden && (!master || !runtime.root)}
+                    onClick={() => setAppState(app, !app.hidden)}
+                  >
+                    {app.hidden ? '显示' : '隐藏'}
+                  </Button>
+                )}
+              </div>
+            ))}
+            {!visibleRows.length && (
+              <div className="c-hide-empty">
+                <p>
+                  {query.trim()
+                    ? '没有匹配的应用'
+                    : filter === 'hidden'
+                      ? '本范围没有已隐藏应用'
+                      : filter === 'configured'
+                        ? '本范围尚未配置应用'
+                        : '本范围暂无可用应用'}
+                </p>
+                <p className="c-note">
+                  {query.trim()
+                    ? '更换关键词，或清空搜索查看名单。'
+                    : '切换“全部应用”勾选要管理的应用。'}
+                </p>
+                <Button
+                  secondary
+                  onClick={() => {
+                    setQuery('');
+                    setFilter('all');
+                  }}
+                >
+                  查看全部应用
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+      <section
+        className="c-application-section"
+        data-native-path="section:hide_automation"
+        data-ui-label="自动与快捷操作"
+      >
+        <h3 className="c-section-heading">自动与快捷操作</h3>
+        <Card className="c-feature-group" label="自动与快捷操作">
+          <div className="c-feature">{automation}</div>
+          <div className="c-feature">
+            <Toggle
+              name={k('TILE_ENABLED')}
+              initial={editorDefaults[k('TILE_ENABLED')]}
+              title="快捷磁贴"
+              help="点击磁贴切换已保存名单的隐藏状态；混合状态优先显示全部。关闭后保留面板磁贴，但不操作应用。"
+              beforeEnable={requireRoot}
+              summary={
+                !master
+                  ? '已暂停：应用隐藏未开启'
+                  : !runtime.root
+                    ? '已暂停：ROOT 未授权'
+                    : undefined
+              }
+            >
+              {tile}
+            </Toggle>
+          </div>
+        </Card>
+      </section>
+    </div>
   );
 }
 

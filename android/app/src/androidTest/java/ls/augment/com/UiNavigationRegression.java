@@ -122,7 +122,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             SystemClock.sleep(2500);
             requireText(home,"红魔Duo");requireText(home,"让红魔更顺手");
             require(onMain(()->home.getWindow().getDecorView().findViewWithTag("module-runtime-card"))==null,"status card must be on Module instead of Home");
-            require(HookAppCatalog.targets().size()==18,"theme merge group count");
+            require(HookAppCatalog.targets().size()==19,"runtime group count with photo editing");
             TextView homeTitle=onMain(()->(TextView)findText(home.getWindow().getDecorView(),"红魔Duo",false));
             float homeTitleSp=onMain(()->homeTitle.getTextSize()/homeTitle.getResources().getDisplayMetrics().scaledDensity);
             require(homeTitleSp<26f&&homeTitleSp>25f,"home typography reduction missing");
@@ -309,7 +309,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
 
             requireNavigation(home, "主页");
             require(!hasText(home, "应用配置"), "Home list heading must be removed");
-            require(HookAppCatalog.targets().size() == 18, "Expected 18 application destinations");
+            require(HookAppCatalog.targets().size() == 19, "Expected 19 application destinations");
             testColdHome(home);
             screenshot("04-home");
             testLiquidGlassBackdrop(home);
@@ -697,7 +697,7 @@ final class UiNavigationRegression implements Application.ActivityLifecycleCallb
             String packageName = installedIconPackage(target);
             (packageName == null ? absent : installed).put(target.id);
         }
-        require(HookAppCatalog.targets().size() == 18, "Icon coverage must include all 18 destinations");
+        require(HookAppCatalog.targets().size() == 19, "Icon coverage must include all 19 destinations");
         HookAppCatalog.Target system = HookAppCatalog.find(HookAppCatalog.SYSTEM);
         require("system".equals(system.packageName), "Display icon selection changed the framework hook scope");
         onMain(() -> { requireCurrentThemedIcon(home, system, "android"); return null; });

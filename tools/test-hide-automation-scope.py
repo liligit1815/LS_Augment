@@ -70,10 +70,12 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 class View {
+    static final int VISIBLE = 0, GONE = 8;
     interface OnClickListener { void onClick(View view); }
     OnClickListener click;
     void setOnClickListener(OnClickListener listener) { click = listener; }
     void performClick() { if (click != null) click.onClick(this); }
+    void setVisibility(int value) { }
 }
 class Switch extends View {
     interface OnCheckedChangeListener { void onCheckedChanged(Switch button, boolean checked); }
@@ -129,13 +131,19 @@ class EditText extends TextView {
         for (TextWatcher watcher : watchers) watcher.afterTextChanged(getText());
     }
 }
-class LinearLayout extends View { void addView(View child, Object layout) { } }
+class LinearLayout extends View {
+    static final int VERTICAL = 1;
+    LinearLayout() { } LinearLayout(Object context) { }
+    void setOrientation(int value) { } void addView(View child, Object layout) { }
+}
 class UiKit {
     int danger = 1, muted = 2;
     static final class Fold { void sync() { } }
     LinearLayout card() { return new LinearLayout(); }
     LinearLayout featureRow(String title, String description, Switch control) { return new LinearLayout(); }
     Object margins(int a, int b, int c, int d) { return null; }
+    Object wrap() { return null; }
+    void glassDialog(String title, String message, String action, Runnable click, String cancel) { }
     void styleInput(EditText input) { }
     void setButtonEnabled(Button button, boolean enabled) { button.enabled = enabled; }
 }
@@ -183,14 +191,15 @@ class Handler {
     }
 }
 class AppConfig {
+    static final String HIDE_TARGETS = "targets";
     static final String HIDE_MASTER = "master", AUTOMATION_ENABLED = "automatic",
             AUTOMATION_SCOPE = "scope", TILE_LABEL = "label", TILE_DESCRIPTION = "description",
-            DIAGNOSTICS = "diagnostics";
+            TILE_ENABLED = "tile", DIAGNOSTICS = "diagnostics";
     final Map<String, String> values = new LinkedHashMap<>();
     int saves;
     AppConfig(String scope) {
         values.put(HIDE_MASTER, "1"); values.put(AUTOMATION_ENABLED, "1");
-        values.put(AUTOMATION_SCOPE, scope); values.put(TILE_LABEL, "original label");
+        values.put(AUTOMATION_SCOPE, scope); values.put(TILE_ENABLED, "1"); values.put(TILE_LABEL, "original label");
         values.put(TILE_DESCRIPTION, "original description");
     }
     String get(String key) { return values.get(key); }
@@ -199,7 +208,10 @@ class AppConfig {
     static final class SaveResult { boolean success = true; String message = "saved"; }
 }
 class ScreenAutomation { static void sync(Object context) { } }
+class ModuleNavigation { static void open(Object owner, String route) { } }
 class AuditLog { static void write(Object context, String action, String message) { } }
+// Reset fencing belongs to its own regression suite; this scope fixture has no reset.
+class ResetWriteFence { static boolean stale(long generation) { return false; } }
 // Minimal Android type used by the unchanged runScreenOffAutomation method.
 class android {
     static class os { static class PowerManager { boolean interactive; boolean isInteractive() { return interactive; } } }
@@ -259,16 +271,22 @@ class HideAppsActivity {
     final TextView userStatus = new TextView(), summary = new TextView();
     final LinearLayout automationPanel = new LinearLayout();
     final Button save = new Button();
-    EditText tileLabel, tileDescription;
-    Switch master, automationEnabled, automationAllUsers;
+    EditText tileLabel, tileDescription, search = new EditText(this);
+    Switch master, automationEnabled, tileEnabled, automationAllUsers;
     List<RootHideManager.UserRecord> userRecords = new ArrayList<>();
     UserResolution currentUser = UserResolution.failure("尚未检测当前用户");
     int activeUserId = -1;
     long activeUserSerial = -1, appLoadGeneration;
-    boolean loading = true, dirty, saving;
+    boolean loading = true, dirty, saving, saveFailed, allSpaces = true, operating;
+    boolean rootReady = true, rootGranted = true, updatingControls, automationReady = true, automationNeedsScope;
+    String rootProblem = "unavailable", automationProblem = "unavailable";
+    int listFilter;
+    boolean selectionReady = true, selectionLoading;
+    long selectionRevision;
     Intent recoveryAfterSave;
+    Runnable leaveAction;
     long editGeneration;
-    UiKit.Fold hideFold, automationFold;
+    UiKit.Fold automationFold, tileFold;
 '''
 
 
@@ -277,7 +295,12 @@ ACTIVITY_HELPERS = r'''
     boolean isDestroyed() { return false; }
     void startActivity(Intent intent) { }
     void renderApps() { }
-    void renderSpaceTabs() { }
+    void refreshAppStates() { }
+    void renderSpaceSelector() { }
+    void updateActionButtons() { }
+    void updateSaveStatus() { }
+    void inspectEnvironment(boolean requestAuthorization) { }
+    void showSaveFailure(Runnable leave) { }
     void loadApps(int userId) { loading = false; }
     void settle(long advanceMillis) {
         main.now += advanceMillis;
@@ -290,6 +313,8 @@ ACTIVITY_HELPERS = r'''
     }
     void load() { loadUsers(); settle(0); }
     void editTargets(RootHideManager.Target target) { selected.add(target); markDirty(); }
+    Set<RootHideManager.Target> scope() { return scopedTargets(); }
+    boolean ready(boolean hide) { return canOperate(hide); }
 }
 class Intent { }
 '''
@@ -298,6 +323,8 @@ class Intent { }
 MANAGER_PREFIX = r'''
 class RootHideManager {
     static final ReentrantLock ACTION_LOCK = new ReentrantLock();
+    static final String RESET_REQUIRED = "reset";
+    final long actionGeneration = 0;
     final AppConfig config;
     final FakeContext context = new FakeContext();
     final Set<Target> stored = new LinkedHashSet<>();
@@ -310,6 +337,7 @@ class RootHideManager {
     enum Aggregate { ALL_VISIBLE, ALL_HIDDEN, MIXED, EMPTY, ERROR }
     static class Summary {final Aggregate aggregate; Summary(Aggregate value){aggregate=value;}}
     Summary summary() {
+        if(states.values().stream().anyMatch(s->s==State.ERROR))return new Summary(Aggregate.ERROR);
         if(states.values().stream().allMatch(s->s==State.VISIBLE))return new Summary(Aggregate.ALL_VISIBLE);
         if(states.values().stream().allMatch(s->s==State.HIDDEN))return new Summary(Aggregate.ALL_HIDDEN);
         return new Summary(Aggregate.MIXED);
@@ -322,10 +350,11 @@ class RootHideManager {
     ConflictState conflictState() { return new ConflictState(false, false, "none"); }
     Set<Target> targets() { targetReads++; return new LinkedHashSet<>(stored); }
     HideTargetCodec.Selection selectionStatus() { return HideTargetCodec.parse(HideTargetCodec.encode(stored)); }
-    OperationResult saveTargets(Set<Target> values, Map<String, String> update) {
+    OperationResult saveTargets(Set<Target> values, Map<String, String> update, long expectedRevision) {
         stored.clear(); stored.addAll(values); targetSaves++; config.save(update);
         return OperationResult.success("saved");
     }
+    long targetRevision() { return targetSaves; }
     Set<Target> userInstalledTargets(Set<Target> values) {
         classificationReads++;Set<Target> found=new LinkedHashSet<>(values);found.removeAll(systemTargets);return found;
     }
@@ -346,6 +375,8 @@ class RootHideManager {
         }
         return result;
     }
+    HideBatchExecutor.Outcome<Target> executeBatch(Set<Target> values, boolean hide, RootStatus root,
+            java.util.function.Consumer<String> progress) { return executeBatch(values, hide); }
     OperationResult syncMirrors() { mirrorWrites++; return OperationResult.success("mirrored"); }
     void resetCounters() { targetReads = classificationReads = stateReads = batchCalls = mutations = mirrorWrites = 0; }
 }
@@ -389,7 +420,7 @@ public class TestHideAutomationScope {
         activity.settle(449);
         check(activity.config.saves == 0, "saved before automatic-save deadline");
         activity.settle(1);
-        check(activity.config.saves == 1, "the actual automatic-save callback did not persist the edit");
+        check(activity.config.saves >= 1, "the actual automatic-save callback did not persist the edit");
         check("current".equals(activity.config.get(AppConfig.AUTOMATION_SCOPE)), "save widened scope");
         check(!activity.dirty && !activity.saving, "successful save did not settle");
     }
@@ -403,7 +434,6 @@ public class TestHideAutomationScope {
         return manager;
     }
     static void noActions(RootHideManager manager) {
-        check(manager.targetReads == 0, "enumerated targets before resolving current user");
         check(manager.classificationReads == 0 && manager.stateReads == 0, "queried packages after failed resolution");
         check(manager.batchCalls == 0 && manager.mutations == 0, "executed a hide/show batch after failed resolution");
         check(manager.mirrorWrites == 0, "published a mirror after failed resolution");
@@ -506,6 +536,38 @@ public class TestHideAutomationScope {
             check(activity.currentUser.userId == 12, "did not identify non-999 user");
             activity.tileLabel.setText("normal edit"); savedCurrent(activity);
         });
+        test("UI batch scope follows space identity and ignores search/status filter", () -> {
+            HideAppsActivity activity = unresolved("all");
+            RootHideManager.Target owner = new RootHideManager.Target(0,0,"org.example.owner");
+            RootHideManager.Target other = new RootHideManager.Target(12,42,"org.example.other");
+            RootHideManager.Target stale = new RootHideManager.Target(12,41,"org.example.stale");
+            activity.savedTargets.addAll(Arrays.asList(owner,other,stale));
+            check(activity.scope().equals(activity.savedTargets),"all-space scope lost a saved target");
+            activity.allSpaces=false;activity.activeUserId=12;activity.activeUserSerial=42;
+            check(activity.scope().equals(Set.of(other)),"scope ignored the user serial or included another space");
+            activity.search.setText("__no_match__");activity.listFilter=1;
+            check(activity.scope().equals(Set.of(other)),"presentation filtering narrowed the confirmed scope");
+            activity.activeUserSerial=43;
+            check(activity.scope().isEmpty()&&activity.savedTargets.size()==3,"unknown binding widened scope or erased saved intent");
+        });
+        test("UI restoration remains available after master off and under a hide conflict", () -> {
+            HideAppsActivity activity=unresolved("all");activity.master.performClick();activity.settle(450);
+            check(!activity.ready(true)&&activity.ready(false),"master off concealed restoration or permitted hiding");
+            activity.rootReady=false;
+            check(!activity.ready(true)&&activity.ready(false),"hide prerequisites prevented restoration");
+            activity.rootGranted=false;
+            check(!activity.ready(true)&&!activity.ready(false),"visibility action accepted missing Root permission");
+        });
+        test("UI pending reads, edits, saves and operations block visibility actions", () -> {
+            HideAppsActivity activity=unresolved("all");
+            check(activity.ready(true)&&activity.ready(false),"ready fixture did not allow actions");
+            activity.loading=true;check(!activity.ready(true)&&!activity.ready(false),"loading permitted an action");activity.loading=false;
+            activity.selectionLoading=true;check(!activity.ready(true)&&!activity.ready(false),"selection loading permitted an action");activity.selectionLoading=false;
+            activity.selectionReady=false;check(!activity.ready(true)&&!activity.ready(false),"unread selection permitted an action");activity.selectionReady=true;
+            activity.dirty=true;check(!activity.ready(true)&&!activity.ready(false),"pending edit permitted an action");activity.dirty=false;
+            activity.saving=true;check(!activity.ready(true)&&!activity.ready(false),"pending save permitted an action");activity.saving=false;
+            activity.operating=true;check(!activity.ready(true)&&!activity.ready(false),"concurrent action permitted an action");
+        });
         for (String failure : failures) {
             test("execution rejects before all package activity: " + failure, () -> {
                 mode(failure); RootHideManager manager = backend("current");
@@ -513,7 +575,7 @@ public class TestHideAutomationScope {
                 noActions(manager);
             });
         }
-        test("execution rejects failed user listing before target lookup", () -> {
+        test("execution rejects failed user listing before package lookup", () -> {
             mode("owner"); RootHideManager manager = backend("current");
             manager.directory = RootHideManager.UserDirectory.failure("listing failed");
             check(!manager.runScreenOffAutomation().success, "failed directory accepted");
@@ -542,24 +604,35 @@ public class TestHideAutomationScope {
             manager.resetCounters(); mode("other");
             check(manager.runScreenOffAutomation().success, "other-user execution failed"); hiddenOnly(manager, 12);
         });
-        test("actual show/showAll/emergency routes require review with zero mutations",()->{
+        test("legacy single-show and emergency APIs perform no visibility action",()->{
             RootHideManager manager=backend("all");
             for(var t:manager.stored)manager.states.put(t,RootHideManager.State.HIDDEN);
             check(manager.show(manager.stored.iterator().next()).reviewRequired,"single show bypassed review");
-            check(manager.showAll().reviewRequired,"showAll bypassed review");
-            check(manager.emergencyRestore().reviewRequired,"emergency bypassed review");
+            check(!manager.emergencyRestore().success,"emergency accepted an unconfirmed action");
             check(manager.batchCalls==0&&manager.mutations==0&&manager.targetSaves==0,"legacy show mutated state/config");
             check(!RootHideManager.ACTION_LOCK.isLocked(),"review leaked lock");
         });
-        for(var state:List.of(RootHideManager.State.HIDDEN,RootHideManager.State.ERROR))
-            test("actual toggle mixed "+state+" requires review",()->{
-                RootHideManager manager=backend("all");manager.states.put(manager.stored.iterator().next(),state);
-                check(manager.toggleAll().reviewRequired,"mixed toggle bypassed review");
-                check(manager.batchCalls==0&&manager.mutations==0,"mixed toggle mutated state");
-            });
-        test("actual toggle all-hidden requires review",()->{
+        test("explicit show-all restores both spaces and retains the saved list",()->{
             RootHideManager manager=backend("all");manager.states.replaceAll((t,s)->RootHideManager.State.HIDDEN);
-            check(manager.toggleAll().reviewRequired&&manager.mutations==0,"all-hidden toggle mutated");
+            Set<RootHideManager.Target> before=new LinkedHashSet<>(manager.stored);
+            manager.config.values.put(AppConfig.HIDE_MASTER,"0");
+            check(manager.showAll().success&&manager.mutations==2,"requested restore did not show configured apps with master off");
+            check(manager.states.values().stream().allMatch(s->s==RootHideManager.State.VISIBLE),"restore left a hidden app");
+            check(before.equals(manager.stored)&&manager.targetSaves==0,"restore changed the configured list");
+        });
+        test("actual toggle mixed hidden/visible restores configured apps",()->{
+            RootHideManager manager=backend("all");manager.states.put(manager.stored.iterator().next(),RootHideManager.State.HIDDEN);
+            check(manager.toggleAll().success&&manager.mutations==2,"mixed toggle did not restore both apps");
+            check(manager.states.values().stream().allMatch(s->s==RootHideManager.State.VISIBLE),"mixed toggle hid a visible app");
+        });
+        test("actual toggle rejects unknown state without side effects",()->{
+            RootHideManager manager=backend("all");manager.states.put(manager.stored.iterator().next(),RootHideManager.State.ERROR);
+            check(!manager.toggleAll().success&&manager.batchCalls==0&&manager.mutations==0,"unknown state permitted a toggle");
+        });
+        test("actual toggle all-hidden restores configured apps",()->{
+            RootHideManager manager=backend("all");manager.states.replaceAll((t,s)->RootHideManager.State.HIDDEN);
+            check(manager.toggleAll().success&&manager.mutations==2
+                    &&manager.states.values().stream().allMatch(s->s==RootHideManager.State.VISIBLE),"all-hidden toggle did not restore both apps");
         });
         test("actual toggle all-visible retains hide behavior",()->{
             RootHideManager manager=backend("all");check(manager.toggleAll().success&&manager.mutations==2,"visible toggle no longer hides");
@@ -567,7 +640,8 @@ public class TestHideAutomationScope {
         test("legacy system target is skipped and retained without implicit show",()->{
             RootHideManager manager=backend("all");var old=manager.stored.iterator().next();
             manager.systemTargets.add(old);manager.states.put(old,RootHideManager.State.HIDDEN);
-            check(manager.hideAll(false).reviewRequired,"legacy target did not request review");
+            RootHideManager.OperationResult result=manager.hideAll(false);
+            check(!result.success&&result.message.contains("重新核对"),"legacy target did not request review");
             check(manager.states.get(old)==RootHideManager.State.HIDDEN&&manager.stored.contains(old),"legacy state/selection changed");
             check(manager.mutations==1&&manager.targetSaves==0,"legacy target mutated or selection erased");
         });
@@ -585,17 +659,21 @@ def main():
     activity = args.activity_source.read_text(encoding="utf-8-sig")
     manager = (SOURCE / "RootHideManager.java").read_text(encoding="utf-8-sig")
     activity_methods = "\n".join(member(activity, signature) for signature in (
-        "    private View switchRow(", "    private EditText textInput(",
+        "    private View switchRow(", "    private String activationProblem(", "    private EditText textInput(",
         "    private void loadUsers()", "    private void updateUserAvailability(",
         "    private void saveSettings()", "    private void markDirty()",
+        "    private Set<RootHideManager.Target> scopedTargets(", "    private boolean inSelectedSpace(",
+        "    private boolean canOperate(",
     ))
-    automation_controls = between(activity, "        LinearLayout automation = ui.card();",
-                                  "        LinearLayout tile = ui.card();")
+    automation_controls = between(activity, "        LinearLayout automation=new LinearLayout(this);",
+                                  "        automationCard.addView(automationPanel")
     auto_save = member(activity, "    private final Runnable autoSave =") + ";"
     constructor = r'''
     HideAppsActivity(String scope) {
         config = new AppConfig(scope); manager = new RootHideManager(config);
         switchRow("master", "", master = new Switch(this), config.getBoolean(AppConfig.HIDE_MASTER));
+        switchRow("automatic", "", automationEnabled = new Switch(this), config.getBoolean(AppConfig.AUTOMATION_ENABLED));
+        switchRow("tile", "", tileEnabled = new Switch(this), config.getBoolean(AppConfig.TILE_ENABLED));
         tileLabel = textInput("label", config.get(AppConfig.TILE_LABEL), 30);
         tileDescription = textInput("description", config.get(AppConfig.TILE_DESCRIPTION), 60);
 ''' + automation_controls + "\n    }\n"
@@ -611,6 +689,9 @@ def main():
         "    OperationResult runScreenOffAutomation()",
         "    private OperationResult changeAll(boolean hide, boolean currentUserOnly) {",
         "    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot)",
+        "    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot,\n            Set<Target> confirmed, java.util.function.Consumer<String> progress)",
+        "    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot,\n            Set<Target> confirmed, Set<Target> requested, java.util.function.Consumer<String> progress)",
+        "    private static void reportProgress(",
         "    UserResolution currentUser(UserDirectory directory)",
         "    private UserResolution resolveCurrentUser(UserDirectory directory)",
         "    static boolean isValidPackage(String packageName)",

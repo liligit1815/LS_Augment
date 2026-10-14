@@ -33,6 +33,7 @@ public final class HookAppCatalog {
     public static final String FILES = "files";
     public static final String PERMISSIONS = "permissions";
     public static final String SCREENSHOT = "screenshot";
+    public static final String GALLERY = "gallery";
     public static final String MODULE = "module";
 
     public static final class Target {
@@ -102,7 +103,8 @@ public final class HookAppCatalog {
             target(NFC, "NFC 服务", "识别提示音与息屏识别", "device", "com.android.nfc"),
             target(FILES, "MTP传输", "电脑端存储名称与 MTP 浏览", "apps", "cn.nubia.filebrowser"),
             target(PERMISSIONS, "权限管理", "第三方默认桌面选择", "apps", "com.android.permissioncontroller"),
-            target(SCREENSHOT, "截图与录屏", "截图、录屏中的状态栏显示", "apps", "com.android.ztescreenshot")
+            target(SCREENSHOT, "截图与录屏", "截图裁剪与捕获画面的状态栏显示", "apps", "com.android.ztescreenshot"),
+            target(GALLERY, "相册图片编辑", "图片编辑中的裁剪尺寸限制", "apps", "cn.nubia.photoeditor")
     ));
     private static final Target MODULE_TARGET = target(MODULE, "模块设置",
             "模块设置、配置备份与日志导出", null, "ls.augment.com");
@@ -250,7 +252,9 @@ public final class HookAppCatalog {
         if (suffix.startsWith("mtp_")) return FILES;
         if (suffix.equals("third_party_launcher")) return PERMISSIONS;
         if (suffix.equals("weather_time_period")) return WEATHER;
-        if (suffix.equals("screenshot_hide_status_bar") || suffix.equals("record_hide_status_bar"))
+        if (suffix.equals("gallery_crop_unlimited")) return GALLERY;
+        if (suffix.equals("screenshot_hide_status_bar") || suffix.equals("record_hide_status_bar")
+                || suffix.equals("screenshot_crop_unlimited"))
             return SCREENSHOT;
         if (suffix.equals("signature_min_v1")) return SYSTEM;
         if (suffix.equals("audio_no_safe_warning")) return SYSTEM;
@@ -275,6 +279,7 @@ public final class HookAppCatalog {
                 : "theme".equals(option.group) ? "theme" : "collab_charging";
         if (SETTINGS.equals(targetId)) return suffix.startsWith("usb_") ? "usb" : "display_time";
         if (SCREENSHOT.equals(targetId)) return "capture";
+        if (GALLERY.equals(targetId)) return "image_edit";
         if (NFC.equals(targetId)) return "nfc";
         if (FILES.equals(targetId)) return "mtp";
         if (PERMISSIONS.equals(targetId)) return "default_apps";
@@ -339,6 +344,7 @@ public final class HookAppCatalog {
             case "plugins": return "游戏插件";
             case "game_capture": return "录制、高光与红魔时刻";
             case "capture": return "截图与录屏画面";
+            case "image_edit": return "图片编辑";
             case "nfc": return "NFC 识别";
             case "mtp": return "MTP传输";
             case "default_apps": return "默认应用";

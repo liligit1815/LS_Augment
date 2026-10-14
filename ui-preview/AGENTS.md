@@ -10,7 +10,7 @@
 
 ## 当前代码与目录边界
 
-Android 源码版本为 test20497。网页入口为 `app/current-prototype.tsx`，已同步当前 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
+Android 源码版本为 test20542。网页入口为 `app/current-prototype.tsx`，已同步当前 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
 
 `scripts/ExportCurrent.java` 和 `scripts/sync-current.mjs` 维护目录数据。后续改版继续在现有原型迭代，不重新导入旧目录覆盖确认的修改。`native-pages.json` 和 `layout-overrides.ts` 保存历史实测控件与覆盖，保留作设计上下文。截图、逐次标注及过程记录留在本地，不作为源码仓库必需文件。
 

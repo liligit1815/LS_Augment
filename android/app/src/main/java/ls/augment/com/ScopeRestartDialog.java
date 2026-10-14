@@ -130,7 +130,7 @@ final class ScopeRestartDialog {
                         + "am force-stop com.zte.beautifyadapter; am force-stop com.android.packageinstaller; "
                         + "am force-stop com.zte.zdm; am force-stop com.zte.mifavor.weather; "
                         + "am force-stop com.android.permissioncontroller; am force-stop cn.nubia.filebrowser; "
-                        + "am force-stop com.android.ztescreenshot; killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
+                        + "am force-stop com.android.ztescreenshot; am force-stop cn.nubia.photoeditor; killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
             case GAMES:
                 return "am force-stop cn.nubia.gamelauncher; am force-stop cn.nubia.gameassist; "
                         + "am force-stop cn.nubia.gamelab; "

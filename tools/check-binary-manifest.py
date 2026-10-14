@@ -21,7 +21,8 @@ MODULE_SETTINGS_CATEGORY = 'de.robv.android.xposed.category.MODULE_SETTINGS'
 EXPECTED_APP_PERMISSIONS = {
     'android.permission.QUERY_ALL_PACKAGES',
     'android.permission.RECEIVE_BOOT_COMPLETED',
-    'android.permission.INTERNET',  # Read-only contributors page.
+    'android.permission.INTERNET',  # Contributors and online update manifest/downloads.
+    'android.permission.REQUEST_INSTALL_PACKAGES',  # Confirmed online-update APK installation.
 }
 
 
@@ -157,7 +158,8 @@ def main():
     print('tile_service_exported=true')
     print('qs_tile_action=' + EXPECTED_ACTION)
     print('launcher_alias=' + EXPECTED_LAUNCHER_ALIAS)
-    print('internet_permission=true (contributors page)')
+    print('internet_permission=true (contributors and online updates)')
+    print('request_install_packages_permission=true (online update installer)')
 
 if __name__ == '__main__':
     main()

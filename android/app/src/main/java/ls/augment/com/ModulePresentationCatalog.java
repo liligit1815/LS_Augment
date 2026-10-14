@@ -23,7 +23,7 @@ public final class ModulePresentationCatalog {
         new Category("audio","声音与音量","铃声素材、音量面板、增益与档数","system",null,11),
         new Category("interaction","操作与手势","返回、电源、助理、单手模式与剪贴板","systemui",null,8),
         new Category("multitasking","小窗与多任务","跨应用跳转、小窗数量、应用范围与触摸","system","device",5),
-        new Category("capture","截图与录屏","捕获画面中的状态栏与窗口限制","screenshot",null,3),
+        new Category("capture","截图与录屏","捕获画面、窗口限制与图片裁剪","screenshot",null,5),
         new Category("gaming","游戏空间","AI 触发器、肩键、连招、性能与游戏录制","game","games",18),
         new Category("cooling","散热风扇","转速测量、固定档位、磁贴与息屏运行","fan","games",4),
         new Category("connectivity","网络与连接","USB 文件传输、调试、NFC、Wi-Fi 与飞行模式","files",null,16),

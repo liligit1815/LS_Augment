@@ -7,7 +7,7 @@ import {HideAppPicker,hideApps} from './hide-app-picker';
 import {PictureControl} from './picture-control';
 import {ConfigFeature} from './config-feature';
 import type {Values} from './prototype-settings';
-export const extraTitles:Record<string,string>={double_app:'扩展应用双开','hide-menu':'消失吧APP',hide:'应用隐藏','hide-auto':'自动隐藏','hide-tile':'快捷磁贴',audio_gain:'音量增强',shoulder:'全应用肩键','shoulder-expanded':'全应用肩键',combo_speed:'一键连招速度','combo_speed-expanded':'一键连招速度',fan_control:'风扇转速',freeform:'小窗增强',battery:'电池与循环次数'};
+export const extraTitles:Record<string,string>={double_app:'扩展应用双开','hide-menu':'四大皆空',hide:'应用隐藏','hide-auto':'自动隐藏','hide-tile':'快捷磁贴',audio_gain:'音量增强',shoulder:'全应用肩键','shoulder-expanded':'全应用肩键',combo_speed:'一键连招速度','combo_speed-expanded':'一键连招速度',fan_control:'风扇转速',freeform:'小窗增强',battery:'电池与循环次数'};
 export function ExtraPage({page,values:v,set,tell,go}:{page:string,values:Values,set:(k:string,v:unknown)=>void,tell:(s:string)=>void,go:(p:string)=>void}){
  const [modal,show]=useState(''),[progress,advance]=useState(0),[measured,finish]=useState(false),[refresh,setRefresh]=useState('正在读取…');
  useEffect(()=>{const t=setTimeout(()=>setRefresh('进入页面已自动刷新 · 示例数据'),350);return()=>clearTimeout(t)},[]);

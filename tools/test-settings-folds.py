@@ -1,7 +1,7 @@
 """Exercise the production Fold with view doubles; no Android/Root operations.
 
-Covers initial expansion, user toggles, manual collapse and independent settings
-accessible with their layout switch off. This does not verify pixel appearance.
+Covers initial expansion, user toggles, manual collapse, temporary interaction
+locks and settings accessible with their layout switch off. No pixel QA is claimed.
 """
 from pathlib import Path
 import subprocess
@@ -17,10 +17,11 @@ import java.util.*;
 public class TestSettingsFolds {
  static class View {
   static final int VISIBLE=0,GONE=8; int visibility=VISIBLE; boolean enabled=true;
-  float rotation,alpha; String description; View parent; java.util.function.Consumer<View> click;
+  float rotation,alpha; String description; Object tag; View parent; java.util.function.Consumer<View> click;
   int getVisibility(){return visibility;} void setVisibility(int v){visibility=v;}
   boolean isEnabled(){return enabled;} void setEnabled(boolean v){enabled=v;}
   View getParent(){return parent;} void setRotation(float v){rotation=v;}
+  Object getTag(){return tag;}String getContentDescription(){return description;}
   void setAlpha(float v){alpha=v;} void setContentDescription(String v){description=v;}
   void setOnClickListener(java.util.function.Consumer<View> v){click=v;}
   void click(){if(enabled&&click!=null)click.accept(this);}
@@ -37,6 +38,8 @@ public class TestSettingsFolds {
  static class Color {static int TRANSPARENT=0;}
  static class Toast {static int LENGTH_SHORT; static Toast makeText(Object a,String s,int i){return new Toast();}void show(){}}
  Object activity=new Object();int muted;int dp(int n){return n;}Object round(int c,int r){return null;}Object pressable(Object b){return b;}
+ final Map<String,java.util.function.Supplier<Boolean>> foldValues=new LinkedHashMap<>();
+ final Map<String,java.util.function.Consumer<Boolean>> foldSetters=new LinkedHashMap<>();
  // PRODUCTION_FOLD
  Fold create(boolean checked,boolean enabled,boolean accessible){
   Switch control=new Switch();control.checked=checked;control.enabled=enabled;
@@ -58,6 +61,15 @@ public class TestSettingsFolds {
   active.control.checked=false;active.sync();collapsed(active);
   active.control.checked=true;active.sync();check(active.content.visibility==View.VISIBLE,"user activation opens configuration");
   active.control.checked=false;active.sync();collapsed(active);check(!active.arrow.enabled,"disabled feature cannot expand");
+  Fold lockedCollapsed=ui.create(true,true,false);lockedCollapsed.arrow.click();lockedCollapsed.arrow.click();collapsed(lockedCollapsed);
+  lockedCollapsed.control.enabled=false;lockedCollapsed.sync();collapsed(lockedCollapsed);check(!lockedCollapsed.arrow.enabled,"busy controls cannot expand");
+  lockedCollapsed.control.enabled=true;lockedCollapsed.sync();collapsed(lockedCollapsed);
+  check(lockedCollapsed.control.checked,"a temporary interaction lock disabled the feature");
+  Fold lockedExpanded=ui.create(true,true,false);lockedExpanded.arrow.click();
+  lockedExpanded.control.enabled=false;lockedExpanded.sync();
+  check(lockedExpanded.content.visibility==View.VISIBLE&&!lockedExpanded.arrow.enabled,"busy controls discarded the expanded state");
+  lockedExpanded.control.enabled=true;lockedExpanded.sync();
+  check(lockedExpanded.content.visibility==View.VISIBLE&&lockedExpanded.arrow.enabled,"unlocking controls changed the retained expansion");
   Fold independent=ui.create(false,true,true);independent.arrow.click();independent.sync();
   check(independent.content.visibility==View.VISIBLE,"independent settings remain accessible while layout is off");
   independent.arrow.click();independent.sync();collapsed(independent);

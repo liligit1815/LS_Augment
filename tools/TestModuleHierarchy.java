@@ -8,16 +8,16 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,14,24,11,8,5,3,18,4,16,15,11,4};
+        int[] counts={84,14,24,11,8,5,5,18,4,16,15,11,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
-        require(HookAppCatalog.targets().size()==18,"Runtime targets remain independent of the 13 display categories");
+        require(HookAppCatalog.targets().size()==19,"Runtime targets remain independent of the 13 display categories");
         for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
             actualIds.add(category.id);require(counts[index++]==category.featureCount,"Approved capability count for "+category.id);total+=category.featureCount;
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==217,"Presentation includes 217 capabilities in 13 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==219,"Presentation includes 219 capabilities in 13 ordered categories");
         require(ModulePresentationCatalog.find("statusbar")==null&&ModulePresentationCatalog.find("themes")==null,"Empty old categories are absent from Home");
         require("主题与锁屏".equals(ModulePresentationCatalog.find("lockscreen").title),"Theme and lock screen use the requested shared title");
         require("systemui".equals(ModulePresentationCatalog.find("notifications").restartScope),"Merged notification directory retains the former status-bar restart shortcut and default");
@@ -66,6 +66,7 @@ public final class TestModuleHierarchy {
         }
         owner("ls_augment_rm_statusbar_double_tap_sleep","group/interaction/status_gestures");
         owner("ls_augment_rm_screenshot_hide_status_bar","group/capture/capture");owner("ls_augment_rm_record_hide_status_bar","group/capture/capture");
+        owner("ls_augment_rm_screenshot_crop_unlimited","group/capture/capture");owner("ls_augment_rm_gallery_crop_unlimited","group/capture/image_edit");
         owner("ls_augment_rm_keyguard_statusbar_hide","group/lockscreen/lock_display");owner("ls_augment_rm_secure_capture","group/capture/secure_capture");
         owner("ls_augment_rm_usb_auto_authorize","group/connectivity/usb_debug");owner("ls_augment_rm_mtp_hide_category","group/connectivity/usb_mtp");
         owner("ls_augment_rm_usb_mode_enabled","group/connectivity/usb_connection");owner("ls_augment_rm_notification_quiet_unlocked","group/notifications/notification_alerts");
@@ -105,6 +106,6 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==3,"Shoulder count includes two embedded controls and one generic control");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 217 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 219 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

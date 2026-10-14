@@ -1058,11 +1058,30 @@ final class FeatureEditorController extends NativeEditorController {
         switches.get(AppConfig.FAN_TILE_ENHANCEMENT_ENABLED).setEnabled(verifiedLevels);
         switches.get(AppConfig.FAN_FIXED_ENABLED).setEnabled(verifiedLevels);
         measure.setEnabled(verifiedLevels);
+        if(!verifiedLevels){
+            TextView unavailable=ui.text(DeviceFeatureAvailability.unavailableReason(AppConfig.FAN_FIXED_ENABLED,
+                    Build.DEVICE,Build.MODEL,Build.PRODUCT)+"\n"+DeviceFeatureAvailability.unavailableReason(
+                    AppConfig.FAN_SCREEN_OFF_ENABLED,Build.DEVICE,Build.MODEL,Build.PRODUCT),12,ui.muted,false);
+            unavailable.setTag("device-feature-unavailable:fan");fan.addView(unavailable,ui.margins(0,4,0,8));
+        }
     }
     private boolean fanVerifiedLevels() {
-        return "NX809J".equalsIgnoreCase(android.os.Build.MODEL)
-                || "NX809J".equalsIgnoreCase(android.os.Build.DEVICE)
-                || "NX809J".equalsIgnoreCase(android.os.Build.PRODUCT);
+        return FanTilePolicy.supportedDevice(Build.DEVICE,Build.MODEL,Build.PRODUCT);
+    }
+    private boolean deviceFeatureAvailable(String key) {
+        return DeviceFeatureAvailability.available(key,Build.DEVICE,Build.MODEL,Build.PRODUCT);
+    }
+    private void applyDeviceAvailability() {
+        for(Map.Entry<String,Switch> entry:switches.entrySet())if(!deviceFeatureAvailable(entry.getKey())){
+            entry.getValue().setChecked(false);entry.getValue().setEnabled(false);
+        }
+    }
+    private String persistedSwitchValue(String key,Switch control) {
+        return deviceFeatureAvailable(key)?control.isChecked()?"1":"0":config.get(key);
+    }
+    private boolean fanSettingAvailable(String key) {
+        return !MODULE_FAN_CONTROL.equals(section)||(AppConfig.FAN_SCREEN_OFF_ENABLED.equals(key)
+                ?deviceFeatureAvailable(key):fanVerifiedLevels());
     }
     private void showFanMeasurement(){
         if (!fanVerifiedLevels()) {
@@ -1703,6 +1722,7 @@ final class FeatureEditorController extends NativeEditorController {
         for (IconControl control : iconControls.values()) {
             control.load(positionValues.get(control.id));
         }
+        applyDeviceAvailability();
         for (UiKit.Fold fold : folds) fold.sync();
         loading = false;
         dirty = false;
@@ -1738,7 +1758,7 @@ final class FeatureEditorController extends NativeEditorController {
         ui.saveState(state);
         if(MODULE_SHOULDER.equals(section))state.putBoolean("shoulder-draft-dirty",dirty||pendingSaves>0);
         Bundle values=new Bundle();
-        for(Map.Entry<String,Switch> e:switches.entrySet())values.putString(e.getKey(),e.getValue().isChecked()?"1":"0");
+        for(Map.Entry<String,Switch> e:switches.entrySet())values.putString(e.getKey(),persistedSwitchValue(e.getKey(),e.getValue()));
         for(Map.Entry<String,EditText> e:inputs.entrySet())values.putString(e.getKey(),e.getValue().getText().toString());
         for(Slider slider:sliders.values())values.putString(slider.key,slider.serialized());
         for(Choice choice:choices.values())values.putString(choice.key,choice.selected);
@@ -1751,16 +1771,17 @@ final class FeatureEditorController extends NativeEditorController {
         if(MODULE_SHOULDER.equals(section)&&state!=null&&!state.getBoolean("shoulder-draft-dirty",true))return;
         Bundle values=state==null?null:state.getBundle("editor-values");if(values==null||values.isEmpty())return;
         boolean changed=false;
-        for(String key:values.keySet())if(!config.get(key).equals(values.getString(key))){changed=true;break;}
+        for(String key:values.keySet())if(fanSettingAvailable(key)&&!config.get(key).equals(values.getString(key))){changed=true;break;}
         loading=true;
         for(Map.Entry<String,Switch> e:switches.entrySet())if(values.containsKey(e.getKey()))e.getValue().setChecked("1".equals(values.getString(e.getKey())));
         for(Map.Entry<String,EditText> e:inputs.entrySet())if(values.containsKey(e.getKey()))e.getValue().setText(values.getString(e.getKey()));
         for(Slider slider:sliders.values())if(values.containsKey(slider.key))try{float raw=Float.parseFloat(values.getString(slider.key));slider.setValue(Math.round(slider.percent?raw*100:raw));}catch(NumberFormatException ignored){}
         for(Choice choice:choices.values())if(values.containsKey(choice.key))choice.select(values.getString(choice.key));
+        applyDeviceAvailability();
         for(UiKit.Fold fold:folds)fold.sync();loading=false;
         if (MODULE_FAN_CONTROL.equals(section)) {
             ArrayList<String> edited=state.getStringArrayList("fan-edited-keys");
-            if (edited!=null) for (String key : edited) if (values.containsKey(key)) markFanEdited(key);
+            if (edited!=null) for (String key : edited) if (values.containsKey(key)&&fanSettingAvailable(key)) markFanEdited(key);
         }
         // Recreating an inline group must not write unchanged settings.
         if((!embedded&&!isFreeformModule())||changed)markDirty();
@@ -1773,7 +1794,7 @@ final class FeatureEditorController extends NativeEditorController {
         for (Map.Entry<String, Switch> entry : switches.entrySet()) {
             if ("__scope_all".equals(entry.getKey())) {
                 updates.put(AppConfig.AUTOMATION_SCOPE, entry.getValue().isChecked() ? "all" : "current");
-            } else updates.put(entry.getKey(), entry.getValue().isChecked() ? "1" : "0");
+            } else updates.put(entry.getKey(), persistedSwitchValue(entry.getKey(),entry.getValue()));
         }
         for (Map.Entry<String, EditText> entry : inputs.entrySet()) {
             String value=ConfigSchema.normalize(entry.getKey(),entry.getValue().getText().toString());
@@ -1785,7 +1806,7 @@ final class FeatureEditorController extends NativeEditorController {
         }
         for (Choice choice : choices.values()) updates.put(choice.key, choice.selected);
         if (MODULE_FAN_CONTROL.equals(section))
-            updates.entrySet().removeIf(entry -> !fanEditedKeys.containsKey(entry.getKey()));
+            updates.entrySet().removeIf(entry -> !fanEditedKeys.containsKey(entry.getKey())||!fanSettingAvailable(entry.getKey()));
         if (MODULE_FAN_CONTROL.equals(section) && updates.isEmpty()) {
             dirty=false; queuedGeneration=changeGeneration; ui.setButtonEnabled(save,false); return;
         }
@@ -2008,7 +2029,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void markFanEdited(String key) {
-        if (!loading && MODULE_FAN_CONTROL.equals(section)) fanEditedKeys.put(key, changeGeneration + 1L);
+        if (!loading && MODULE_FAN_CONTROL.equals(section)&&fanSettingAvailable(key)) fanEditedKeys.put(key, changeGeneration + 1L);
     }
 
     private void markDirty() {

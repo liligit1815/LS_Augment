@@ -104,7 +104,7 @@ final class ModuleHierarchyUiCases implements Application.ActivityLifecycleCallb
         require(categoryCount==13&&((ViewGroup)panel).getChildCount()==categoryCount*2-1,"Home has 13 category rows and 12 separators");
         require(findText(panel,"状态栏与灵动岛")==null&&findText(panel,"主题资源")==null&&findText(panel,"锁屏与息屏")==null,"Merged old category titles are absent from Home");
         for(ModulePresentationCatalog.Category c:ModulePresentationCatalog.categories())require(findText(panel,c.title)!=null,"Home contains V2 category: "+c.title);
-        require(findText(panel,"消失吧APP")==null&&findText(panel,"应用隐藏（消失吧APP）")==null,"Hidden tools are never a separate Home category");return null;
+        require(findText(panel,"四大皆空")==null&&findText(panel,"应用隐藏")==null,"Hidden tools are never a separate Home category");return null;
     });}
 
     private void checkSearch(Activity home)throws Exception{
@@ -249,9 +249,18 @@ final class ModuleHierarchyUiCases implements Application.ActivityLifecycleCallb
         onMain(()->{for(View row:all(home.getWindow().getDecorView(),View.class)){String id=String.valueOf(row.getTag());if(id.startsWith("search-result:")&&ModuleHierarchy.isRestricted(id.substring(14)))require("apps".equals(ModuleHierarchy.categoryForRoute(id.substring(14))),"Restricted hidden search results belong only to Applications");}return null;});setSearch(home,"");
         clickText(home,ModulePresentationCatalog.find("apps").title);Activity unlockedApps=await(ModuleHierarchy.resolve("target-apps"));
         clickTag(unlockedApps,"navigation:group/apps/hidden");Activity hidden=await("hide");inspect(hidden,"apps");capture("page-apps-hidden");
+        onMain(()->{
+            require(hidden instanceof HideAppsActivity,"Third-level hidden route renders the manager directly");
+            require(findText(hidden.getWindow().getDecorView(),"已配置")!=null
+                    &&findText(hidden.getWindow().getDecorView(),"已隐藏")!=null
+                    &&findText(hidden.getWindow().getDecorView(),"全部应用")!=null,"Third-level page exposes application filters without another navigation step");
+            require(findText(hidden.getWindow().getDecorView(),"锁屏自动隐藏")!=null
+                    &&findText(hidden.getWindow().getDecorView(),"快捷磁贴")!=null,"Automation and tile controls share the manager page");
+            return null;
+        });
         require(ModuleHierarchy.path("hide").contains("target-apps"),"Hidden tools have the Applications home");
         clickTag(hidden,"breadcrumb:target-apps");require(await("target-apps")==unlockedApps,"Hidden breadcrumb returns Applications");clickTag(unlockedApps,"breadcrumb:home");await("home");HiddenEntrySession.lock();unchanged("hidden gate");
-        for(String route:Arrays.asList("automation","tile")){
+        for(String route:Arrays.asList("hide","automation","tile")){
             stage="hidden-resume:"+route;unlockHidden();
             onMain(()->{ModuleNavigation.open(home,route);return null;});Activity editor=await(route);
             // A normal in-app page pauses the editor without destabilizing instrumentation.
@@ -264,13 +273,13 @@ final class ModuleHierarchyUiCases implements Application.ActivityLifecycleCallb
 
             stage="hidden-direct-intent:"+route;
             int before=onMain(()->activities.size());
-            onMain(()->{home.startActivity(new Intent(home,FeatureActivity.class).putExtra(FeatureActivity.EXTRA_MODULE,route));return null;});settle();
+            onMain(()->{home.startActivity(new Intent(home,"hide".equals(route)?HideMenuActivity.class:FeatureActivity.class).putExtra(FeatureActivity.EXTRA_MODULE,route));return null;});settle();
             require(await("home")==home,"Locked direct editor Intent returns safely: "+route);
             onMain(()->{
                 boolean created=false;
                 for(int i=before;i<activities.size();i++){
                     Activity denied=activities.get(i);
-                    if(denied instanceof FeatureActivity&&route.equals(ModuleNavigation.route(denied))){
+                    if((denied instanceof FeatureActivity||denied instanceof HideMenuActivity)&&route.equals(ModuleNavigation.route(denied))){
                         created=true;require(denied.isFinishing()||denied.isDestroyed(),"Locked raw editor closes before rendering: "+route);
                     }
                 }

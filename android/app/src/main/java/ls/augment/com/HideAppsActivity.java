@@ -29,10 +29,8 @@ import android.widget.Toast;
 
 import android.window.OnBackInvokedDispatcher;
 
-import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -43,7 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Multi-space hide, recovery and automation manager. */
-public final class HideAppsActivity extends Activity {
+public class HideAppsActivity extends Activity implements ModuleNavigation.AncestorHandler {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ExecutorService actionExecutor = Executors.newSingleThreadExecutor();
@@ -57,10 +55,10 @@ public final class HideAppsActivity extends Activity {
     private TextView environment;
     private TextView summary;
     private TextView userStatus;
-    private Button spaceSelector, refreshAppsButton;
+    private Button spaceSelector, refreshAppsButton, chooseAppsButton;
+    private ImageButton appsExpand;
     private PopupWindow spacePopup;
     private LinearLayout appConfigBody;
-    private ImageButton appsExpand;
     private TextView saveStatus;
     private boolean allSpaces = true;
     private LinearLayout appBrowser;
@@ -90,18 +88,29 @@ public final class HideAppsActivity extends Activity {
     private boolean dirty;
     private long editGeneration;
     private boolean saving, saveFailed;
-    private UiKit.Fold hideFold, automationFold, tileFold;
+    private UiKit.Fold automationFold, tileFold;
+    private final List<Button> filterButtons = new ArrayList<>();
+    private int listFilter;
+    private boolean rootReady, rootGranted, checkingEnvironment, updatingControls;
+    private String rootProblem = "正在检查运行条件，请稍候";
+    private ScrollView pageScroll;
+    private Bundle restoredState, pendingDraft;
+    private Runnable leaveAction;
+    private boolean automationReady, automationNeedsScope;
+    private String automationProblem="正在检查系统作用域";
     private TileImageEditor tileImage;
     private final Runnable autoSave = () -> { if (dirty) saveSettings(); };
     private boolean sortByInstall;
     private boolean operating, resultDialogVisible;
-    private TextView operationStatus;
+    private TextView operationStatus, automationStatus, tileStatus;
     private Dialog actionDialog;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (!HiddenEntrySession.isUnlocked()) { finish(); return; }
+        restoredState = state;
+        pendingDraft=state!=null&&state.containsKey("hide-draft-selection")?new Bundle(state):null;
         ui = new UiKit(this);
         config = new AppConfig(this);
         manager = new RootHideManager(this);
@@ -117,208 +126,198 @@ public final class HideAppsActivity extends Activity {
 
     // Gesture navigation is registered separately with the platform dispatcher.
     @android.annotation.SuppressLint("GestureBackNavigation")
-    @Override public void onBackPressed() { finish(); }
+    @Override public void onBackPressed() { requestLeave(() -> super.finish()); }
 
     private void registerSystemBackCallback() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                this::finish);
+                () -> requestLeave(() -> super.finish()));
     }
 
     @Override protected void onResume() {
         super.onResume();
         if (!HiddenEntrySession.isUnlocked()) { finish(); return; }
         if (manager != null && appList != null && !loading) {
+            inspectEnvironment();
             if (!dirty && !saving) loadSelection();
             refreshAppStates();
         }
     }
 
     private void build() {
-        LinearLayout root=ui.detailChrome("应用管理",ScopeRestartDialog.SETTINGS);
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(32));
-        scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-
-
-        environment = ui.text("正在检测 Root 与运行环境…", 11, ui.muted, false);
-        environment.setPadding(ui.dp(12), ui.dp(9), ui.dp(12), ui.dp(9));
-        environment.setBackground(ui.roundStroke(ui.accentContainer, 12, ui.outline, 1));
-
-
-        appsPanel = new LinearLayout(this);
-        appsPanel.setOrientation(LinearLayout.VERTICAL);
-        automationPanel = new LinearLayout(this);
-        automationPanel.setOrientation(LinearLayout.VERTICAL);
-        tilePanel = new LinearLayout(this);
-        tilePanel.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout masterCard = ui.card();
+        LinearLayout page=ui.detailPage(ModuleHierarchy.title(ModuleNavigation.route(this)),null);
+        page.setTag("hide-management");
+        pageScroll=(ScrollView)page.getParent();
+        LinearLayout masterCard=ui.preferenceCard();
         masterCard.addView(switchRow("应用隐藏",
-                "按空间选择应用，手动隐藏或显示。关闭不会自动恢复现有隐藏状态，仍可展开配置手动显示应用。",
-                master = new Switch(this), config.getBoolean(AppConfig.HIDE_MASTER)), ui.wrap());
-        operationStatus = ui.text("", 12, ui.accent, false);
-        operationStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        operationStatus.setVisibility(View.GONE);
-        masterCard.addView(operationStatus, ui.margins(0, 6, 0, 0));
-        masterCard.addView(appsPanel, ui.margins(0, 10, 0, 0));
-        page.addView(masterCard, ui.margins(0, 0, 0, 10));
+                "开启后可手动隐藏已配置应用。关闭不自动显示应用，名单与显示操作仍可使用。",
+                master=new Switch(this),config.getBoolean(AppConfig.HIDE_MASTER)),ui.wrap());
+        // Running-condition detail belongs in help and action feedback, not below the switch.
+        environment=ui.text("",12,ui.muted,false);
+        page.addView(masterCard,ui.wrap());
 
-        LinearLayout automationCard = ui.card();
-        automationCard.addView(switchRow("锁屏自动隐藏", "由 LSPosed 监听锁屏，自动隐藏“应用隐藏”中已保存的应用；需同时开启应用隐藏。",
-                automationEnabled = new Switch(this), config.getBoolean(AppConfig.AUTOMATION_ENABLED)), ui.wrap());
-        automationCard.addView(automationPanel, ui.margins(0, 10, 0, 0));
+        appsPanel=ui.preferenceCard();appsPanel.setTag("hide-app-management");
+        appConfigBody=new LinearLayout(this);appConfigBody.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout listSection=ui.foldingSection("应用名单",appConfigBody,false);
+        LinearLayout listHeading=(LinearLayout)listSection.getChildAt(0);
+        listHeading.setTag("hide-list-header");
+        appsExpand=(ImageButton)listHeading.getChildAt(listHeading.getChildCount()-1);
+        appsExpand.setTag("hide-list-toggle");
+        summary=ui.text("正在读取…",12,ui.muted,false);summary.setMaxLines(2);
+        summary.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        listHeading.addView(summary,listHeading.getChildCount()-1,new LinearLayout.LayoutParams(-2,-2));
+        listSection.removeView(listHeading);
+        appsPanel.addView(listHeading,ui.wrap());
+        appsExpand.setOnClickListener(v->showAppList(appConfigBody.getVisibility()!=View.VISIBLE));
+        listHeading.setOnClickListener(v->showAppList(appConfigBody.getVisibility()!=View.VISIBLE));
 
-
-        LinearLayout tileCard = ui.card();
-        tileCard.addView(switchRow("快捷磁贴", "在快捷设置中隐藏或显示应用，可自定义磁贴图片、名称和说明。关闭后磁贴停止操作应用。",
-                tileEnabled = new Switch(this), config.getBoolean(AppConfig.TILE_ENABLED)), ui.wrap());
-        tileCard.addView(tilePanel, ui.margins(0, 10, 0, 0));
-
-
-        hideAllButton = ui.accentButton("全部隐藏");
-        showAllButton = ui.button("全部显示");
-        hideAllButton.setOnClickListener(view -> confirmAction("全部隐藏",
-                "将停止并隐藏所有空间中已配置的应用。", true));
-        showAllButton.setOnClickListener(view -> confirmAction("全部显示",
-                "将显示所有空间中已配置的应用。", false));
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams firstAction = new LinearLayout.LayoutParams(0, ui.dp(46), 1);
-        LinearLayout.LayoutParams nextAction = new LinearLayout.LayoutParams(0, ui.dp(46), 1);
-        nextAction.setMargins(ui.dp(6), 0, 0, 0);
-        actionRow.addView(hideAllButton, firstAction);
-        actionRow.addView(showAllButton, nextAction);
-        appsPanel.addView(actionRow, ui.margins(0, 0, 0, 10));
-
-        LinearLayout apps = ui.card();
-        LinearLayout appsHeading = new LinearLayout(this);
-        appsHeading.setGravity(Gravity.CENTER_VERTICAL);
-        appsHeading.addView(ui.section("配置应用", "勾选自动保存；取消勾选不改变应用的显示状态。"),
-                new LinearLayout.LayoutParams(0, -2, 1));
-        appsExpand = new ImageButton(this);
-        appsExpand.setImageResource(R.drawable.ic_expand_more);
-        appsExpand.setColorFilter(ui.accent);
-        appsExpand.setBackground(ui.pressable(ui.round(Color.TRANSPARENT, 12)));
-        appsHeading.addView(appsExpand, new LinearLayout.LayoutParams(ui.dp(25), ui.dp(44)));
-        apps.addView(appsHeading, ui.wrap());
-        appConfigBody = new LinearLayout(this);
-        appConfigBody.setOrientation(LinearLayout.VERTICAL);
-        apps.addView(appConfigBody, ui.wrap());
-        appsExpand.setOnClickListener(v -> showAppList(appConfigBody.getVisibility() != View.VISIBLE));
-        appsHeading.setOnClickListener(v -> appsExpand.performClick());
-        showAppList(false);
-        LinearLayout spaceRow = new LinearLayout(this);
-        spaceRow.setGravity(Gravity.CENTER_VERTICAL);
-        spaceSelector = ui.button("全部空间 ▾");
-        spaceSelector.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        spaceSelector.setContentDescription("选择应用空间：全部空间");
-        spaceSelector.setOnClickListener(v -> showSpaceChoices());
-        spaceRow.addView(spaceSelector, new LinearLayout.LayoutParams(0, ui.dp(46), 1));
-        refreshAppsButton = ui.tonalButton("刷新");
-        refreshAppsButton.setContentDescription("刷新所选空间的应用列表");
-        refreshAppsButton.setOnClickListener(v -> {
-            if (loading || operating) return;
-            if (!selectionReady && !dirty && !saving) loadSelection();
+        LinearLayout spaceRow=new LinearLayout(this);spaceRow.setGravity(Gravity.CENTER_VERTICAL);
+        spaceSelector=ui.button("全部空间 ▾");spaceSelector.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        spaceSelector.setOnClickListener(v->showSpaceChoices());
+        spaceRow.addView(spaceSelector,new LinearLayout.LayoutParams(0,-2,1));
+        refreshAppsButton=ui.tonalButton("刷新");
+        refreshAppsButton.setContentDescription("重新检查运行条件并刷新当前范围的应用");
+        refreshAppsButton.setOnClickListener(v->{
+            if(loading||operating)return;
+            inspectEnvironment(true);
+            if(!selectionReady&&!saving)loadSelection();
             loadUsers();
         });
-        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(ui.dp(120), ui.dp(46));
-        refreshParams.setMargins(ui.dp(8), 0, 0, 0);
-        spaceRow.addView(refreshAppsButton, refreshParams);
-        appConfigBody.addView(spaceRow, ui.margins(0, 9, 0, 0));
-        LinearLayout filters = new LinearLayout(this);
-        filters.setGravity(Gravity.TOP);
-        LinearLayout listInfo = new LinearLayout(this);
-        listInfo.setOrientation(LinearLayout.VERTICAL);
-        userStatus = ui.text("正在核验当前用户空间…", 11, ui.muted, false);
-        listInfo.addView(userStatus, ui.wrap());
-        summary = ui.text("正在读取应用…", 12, ui.muted, false);
-        listInfo.addView(summary, ui.margins(0, 4, 0, 0));
-        filters.addView(listInfo, new LinearLayout.LayoutParams(0, -2, 1));
-        sort = ui.tonalButton("按名称排序");
-        sort.setOnClickListener(view -> {
-            sortByInstall = !sortByInstall;
-            sort.setText(sortByInstall ? "按安装时间排序" : "按名称排序");
-            renderApps();
+        LinearLayout.LayoutParams refreshParams=new LinearLayout.LayoutParams(-2,-2);
+        refreshParams.leftMargin=ui.dp(8);spaceRow.addView(refreshAppsButton,refreshParams);
+        appsPanel.addView(spaceRow,ui.margins(0,6,0,6));
+        hideAllButton=ui.accentButton("全部隐藏");showAllButton=ui.tonalButton("全部显示");
+        hideAllButton.setOnClickListener(v->confirmAction("隐藏已配置应用","隐藏后应用将停止运行，应用数据保留。",true));
+        showAllButton.setOnClickListener(v->confirmAction("显示已配置应用","恢复应用的显示状态，应用数据保留。",false));
+        chooseAppsButton=ui.button("选择应用");chooseAppsButton.setTag("hide-choose-apps");
+        chooseAppsButton.setOnClickListener(v->{listFilter=2;showAppList(true);});
+        LinearLayout actions=new LinearLayout(this);actions.setTag("hide-batch-actions");
+        Button[] actionButtons={hideAllButton,showAllButton,chooseAppsButton};
+        for(int i=0;i<actionButtons.length;i++){
+            Button action=actionButtons[i];action.setMinimumHeight(ui.dp(48));
+            action.setPadding(ui.dp(4),ui.dp(8),ui.dp(4),ui.dp(8));
+            LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);
+            if(i>0)ap.leftMargin=ui.dp(6);actions.addView(action,ap);
+        }
+        appsPanel.addView(actions,ui.margins(0,0,0,8));
+        userStatus=ui.text("正在核验用户空间…",11,ui.muted,false);
+        userStatus.setVisibility(View.GONE);appsPanel.addView(userStatus,ui.margins(0,4,0,8));
+        operationStatus=ui.text("",12,ui.accent,false);operationStatus.setTag("hide-operation-status");
+        operationStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        operationStatus.setVisibility(View.GONE);appsPanel.addView(operationStatus,ui.margins(0,0,0,8));
+        saveStatus=ui.text("",12,ui.muted,false);saveStatus.setVisibility(View.GONE);
+        saveStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        saveStatus.setOnClickListener(v->{if(dirty&&!saving)saveSettings();});appsPanel.addView(saveStatus,ui.margins(0,0,0,8));
+
+        LinearLayout searchRow=new LinearLayout(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        search=new EditText(this);search.setHint("搜索应用名称或包名");search.setSingleLine(true);
+        search.setContentDescription("搜索应用名称或包名");ui.styleInput(search);
+        search.addTextChangedListener(new TextWatcher(){
+            @Override public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            @Override public void onTextChanged(CharSequence s,int start,int before,int count){renderApps();}
+            @Override public void afterTextChanged(Editable s){}
         });
-        LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(ui.dp(120), ui.dp(46));
-        sortParams.setMargins(ui.dp(8), 0, 0, 0);
-        filters.addView(sort, sortParams);
-        appConfigBody.addView(filters, ui.margins(0, 4, 0, 0));
-        retainedList = new LinearLayout(this);
-        retainedList.setOrientation(LinearLayout.VERTICAL);
-        appConfigBody.addView(retainedList, ui.wrap());
-        appBrowser = new LinearLayout(this);
-        appBrowser.setOrientation(LinearLayout.VERTICAL);
-        search = new EditText(this);
-        search.setHint("搜索应用名称或包名");
-        search.setSingleLine(true);
-        ui.styleInput(search);
-        search.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { renderApps(); }
-            @Override public void afterTextChanged(Editable s) { }
-        });
+        searchRow.addView(search,new LinearLayout.LayoutParams(0,-2,1));
+        sort=ui.button("名称排序");sort.setTag("hide-sort");
+        sort.setOnClickListener(v->{sortByInstall=!sortByInstall;sort.setText(sortByInstall?"时间排序":"名称排序");renderApps();});
+        LinearLayout.LayoutParams sortParams=new LinearLayout.LayoutParams(-2,-2);sortParams.leftMargin=ui.dp(6);
+        searchRow.addView(sort,sortParams);appConfigBody.addView(searchRow,ui.margins(0,0,0,8));
+        LinearLayout filters=new LinearLayout(this);filters.setGravity(Gravity.CENTER_VERTICAL);
+        String[] labels={"已配置","已隐藏","全部应用"};
+        for(int i=0;i<labels.length;i++){
+            final int filter=i;Button choice=ui.tonalButton(labels[i]);choice.setTag("hide-filter:"+i);
+            choice.setPadding(ui.dp(3),ui.dp(8),ui.dp(3),ui.dp(8));
+            choice.setOnClickListener(v->{listFilter=filter;renderApps();});filterButtons.add(choice);
+            LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(0,-2,1);
+            if(i>0)fp.leftMargin=ui.dp(6);filters.addView(choice,fp);
+        }
+        appConfigBody.addView(filters,ui.margins(0,0,0,8));
+        retainedList=new LinearLayout(this);retainedList.setOrientation(LinearLayout.VERTICAL);
+        appConfigBody.addView(retainedList,ui.wrap());
+        appBrowser=new LinearLayout(this);appBrowser.setOrientation(LinearLayout.VERTICAL);
+        appList=new LinearLayout(this);appList.setOrientation(LinearLayout.VERTICAL);
+        appBrowser.addView(appList,ui.wrap());appConfigBody.addView(appBrowser,ui.margins(0,0,0,8));
+        listSection.removeView(appConfigBody);appsPanel.addView(appConfigBody,ui.wrap());
+        page.addView(appsPanel,ui.margins(0,8,0,0));
 
-        appBrowser.addView(search, ui.margins(0, 7, 0, 4));
-        appList = new LinearLayout(this);
-        appList.setOrientation(LinearLayout.VERTICAL);
-        appBrowser.addView(appList, ui.margins(0, 4, 0, 0));
-        appConfigBody.addView(appBrowser, ui.wrap());
-        saveStatus = ui.text("选择自动保存", 11, ui.muted, false);
-        saveStatus.setOnClickListener(v -> { if (dirty && !saving) saveSettings(); });
-        appConfigBody.addView(saveStatus, ui.margins(2, 5, 0, 0));
-        appsPanel.addView(apps, ui.margins(0, 0, 0, 12));
+        ui.addDetailSectionTitle(page,"自动与快捷操作");
+        automationPanel=new LinearLayout(this);automationPanel.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout automationCard=ui.preferenceCard();
+        automationCard.addView(switchRow("锁屏自动隐藏",
+                "屏幕熄灭后隐藏已保存名单；需要开启应用隐藏。解锁不自动显示。",
+                automationEnabled=new Switch(this),config.getBoolean(AppConfig.AUTOMATION_ENABLED)),ui.wrap());
+        automationStatus=ui.text("",12,ui.muted,false);automationStatus.setVisibility(View.GONE);
+        automationStatus.setOnClickListener(v->ModuleNavigation.open(this,"scope"));
+        automationCard.addView(automationStatus,ui.margins(0,4,0,8));
+        LinearLayout automation=new LinearLayout(this);automation.setOrientation(LinearLayout.VERTICAL);
+        automation.addView(switchRow("处理所有已配置空间","关闭时仅处理当前正在使用的空间；身份无法核验时暂停执行。",
+                automationAllUsers=new Switch(this),"all".equals(config.get(AppConfig.AUTOMATION_SCOPE))),ui.wrap());
+        automationAllUsers.setOnClickListener(v->{if(!automationAllUsers.isChecked()&&!currentUser.resolved)
+            Toast.makeText(this,"无法识别当前用户时，自动隐藏暂停执行",Toast.LENGTH_LONG).show();});
+        automationPanel.addView(automation,ui.margins(0,8,0,10));
+        automationCard.addView(automationPanel,ui.wrap());page.addView(automationCard,ui.margins(0,0,0,8));
+        automationFold=ui.fold(automationEnabled,automationPanel);
+        automationFold.show(automationEnabled.isChecked());
 
-        LinearLayout automation = ui.card();
-        automation.addView(switchRow("处理所有已配置空间", "关闭时只处理当前正在使用的空间。",
-                automationAllUsers = new Switch(this),
-                "all".equals(config.get(AppConfig.AUTOMATION_SCOPE))), ui.margins(0, 5, 0, 0));
-        automationAllUsers.setOnClickListener(view -> {
-            if (!automationAllUsers.isChecked() && !currentUser.resolved) {
-                Toast.makeText(this, "已保留“仅当前用户”范围；无法识别当前用户时，自动隐藏暂停执行",
-                        Toast.LENGTH_LONG).show();
-            }
-        });
-        automationPanel.addView(automation, ui.margins(0, 0, 0, 12));
+        tilePanel=new LinearLayout(this);tilePanel.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout tileCard=ui.preferenceCard();
+        tileCard.addView(switchRow("快捷磁贴","点击磁贴切换全部已配置应用的显隐；混合状态优先显示。需要开启应用隐藏。",
+                tileEnabled=new Switch(this),config.getBoolean(AppConfig.TILE_ENABLED)),ui.wrap());
+        tileStatus=ui.text("",12,ui.muted,false);tileStatus.setVisibility(View.GONE);
+        tileCard.addView(tileStatus,ui.margins(0,4,0,8));
+        LinearLayout tile=new LinearLayout(this);tile.setOrientation(LinearLayout.VERTICAL);
+        tileLabel=textInput("磁贴名称",config.get(AppConfig.TILE_LABEL),30);
+        tileDescription=textInput("磁贴说明",config.get(AppConfig.TILE_DESCRIPTION),60);
+        tileImage=new TileImageEditor(this,ui,config,executor);tile.addView(tileImage.view(),ui.margins(0,8,0,10));
+        tile.addView(ui.section("磁贴名称","最多30个字符；留空使用红魔Duo。"),ui.wrap());
+        tile.addView(tileLabel,ui.margins(0,8,0,10));
+        tile.addView(ui.section("磁贴说明","最多60个字符；留空使用应用隐藏。"),ui.wrap());
+        tile.addView(tileDescription,ui.margins(0,8,0,10));
+        Button addTile=ui.button("添加到快捷设置");
+        addTile.setOnClickListener(v->startActivity(new Intent(this,TileSetupActivity.class)));
+        tile.addView(addTile,ui.wrap());tilePanel.addView(tile,ui.margins(0,0,0,10));
+        tileCard.addView(tilePanel,ui.wrap());page.addView(tileCard,ui.wrap());
+        tileFold=ui.fold(tileEnabled,tilePanel);tileFold.show(tileEnabled.isChecked());
+        if(restoredState!=null){
+            listFilter=Math.max(0,Math.min(2,restoredState.getInt("hide-filter",0)));
+            allSpaces=restoredState.getBoolean("hide-all-spaces",true);
+            activeUserId=restoredState.getInt("hide-user",-1);activeUserSerial=restoredState.getLong("hide-serial",-1);
+            sortByInstall=restoredState.getBoolean("hide-sort",false);sort.setText(sortByInstall?"时间排序":"名称排序");
+            search.setText(restoredState.getString("hide-search",""));
+            showAppList(restoredState.getBoolean("hide-list-expanded",false));
+            automationFold.show(restoredState.getBoolean("hide-automation-fold",automationEnabled.isChecked()));
+            tileFold.show(restoredState.getBoolean("hide-tile-fold",tileEnabled.isChecked()));
 
-        LinearLayout tile = ui.card();
-        tile.addView(ui.section("快捷设置磁贴",
-                "点击切换所有空间中已配置应用的隐藏或显示状态；混合状态时全部显示。"), ui.wrap());
-        tileLabel = textInput("磁贴名称", config.get(AppConfig.TILE_LABEL), 30);
-        tileDescription = textInput("磁贴说明", config.get(AppConfig.TILE_DESCRIPTION), 60);
-        tileImage = new TileImageEditor(this,ui,config,executor); tile.addView(tileImage.view(),ui.margins(0,10,0,10));
-        tile.addView(ui.section("磁贴名称", "最多 30 个字符；留空使用 红魔Duo。"));
-        tile.addView(tileLabel, ui.margins(0, 8, 0, 0));
-        tile.addView(ui.section("磁贴说明", "最多 60 个字符；留空使用“应用隐藏”。"),ui.margins(0,10,0,0));
-        tile.addView(tileDescription, ui.margins(0, 5, 0, 0));
-        Button addTile = ui.button("添加到快捷设置");
-        styleActionButton(addTile, true);
-        addTile.setOnClickListener(view -> startActivity(new Intent(this, TileSetupActivity.class)));
-        tile.addView(addTile, ui.margins(0, 7, 0, 0));
-        tilePanel.addView(tile, ui.margins(0, 0, 0, 12));
-
-        ui.setContentView(root);
-        ui.applyGestureInset(root, 0);
-        // Showing configured apps remains available even when hiding is disabled.
-        hideFold = ui.fold(master, appsPanel, true);
-        automationFold = ui.fold(automationEnabled, automationPanel);
-        tileFold = ui.fold(tileEnabled, tilePanel);
-        hideFold.show(false);
-        automationFold.show(false);
-        tileFold.show(false);
-
+        }
     }
 
     private View switchRow(String title, String description, Switch control, boolean checked) {
         control.setChecked(checked);
         LinearLayout row=ui.featureRow(title,description,control);
-        control.setOnCheckedChangeListener((button,value)->markDirty());return row;
+        control.setOnCheckedChangeListener((button,value)->{
+            if(updatingControls)return;
+            String problem=value?activationProblem(control):"";
+            if(!problem.isEmpty()){
+                updatingControls=true;control.setChecked(false);updatingControls=false;
+                if(control==automationEnabled&&!automationReady&&problem.equals(automationProblem))
+                    ui.glassDialog("自动隐藏暂不可用",problem,automationNeedsScope?"设置作用域":"重新检查",
+                            ()->{if(automationNeedsScope)ModuleNavigation.open(this,"scope");else inspectEnvironment(true);},"返回");
+                else Toast.makeText(this,problem,Toast.LENGTH_LONG).show();
+                return;
+            }
+            markDirty();
+        });return row;
+    }
+
+    private String activationProblem(Switch control){
+        if(control==automationAllUsers)return "";
+        if(!rootReady)return rootProblem;
+        if(!selectionReady||selectionLoading||loading)return "请等待应用名单和用户空间读取完成";
+        if(control!=master&&!master.isChecked())return "请先开启应用隐藏";
+        if(control==automationEnabled&&!automationReady)return automationProblem;
+        if(control!=master&&savedTargets.isEmpty())return "请先从全部应用中配置名单";
+        return "";
     }
 
     private EditText textInput(String hint, String value, int maximum) {
@@ -342,25 +341,32 @@ public final class HideAppsActivity extends Activity {
         return input;
     }
 
-    private void inspectEnvironment() {
-        executor.execute(() -> {
-            RootHideManager.RootStatus root = manager.rootStatus();
-            RootHideManager.ConflictState conflict = root.state == RootHideManager.RootState.GRANTED
-                    ? manager.conflictState() : new RootHideManager.ConflictState(false, false, "未执行冲突检测");
-            String version = config.diagnostic("ls_augment_probe_version");
-            String hookStatus = BuildConfig.VERSION_NAME.equals(version)
-                    ? "loadedVersion=" + version
-                    + "|installed=" + config.diagnostic("ls_augment_probe_hook_installed")
-                    + "|lastFilterVersion=" + config.diagnostic("ls_augment_hook_version")
-                    + "|last=" + config.diagnostic("ls_augment_hook_last_filter")
-                    + "|error=" + config.diagnostic("ls_augment_hook_last_error")
-                    : "当前 APK 的 Settings Hook 尚未加载";
-            String text = "Root：" + root.state + " · " + root.provider + " · " + root.message
-                    + "\nSettings Hook：" + hookStatus + "\n旧架构：" + conflict.message;
-            main.post(() -> {
-                environment.setText(text);
-                environment.setTextColor(conflict.hasConflict() || root.state != RootHideManager.RootState.GRANTED
-                        ? ui.danger : ui.muted);
+    private void inspectEnvironment(){inspectEnvironment(false);}
+
+    private void inspectEnvironment(boolean requestAuthorization) {
+        if(checkingEnvironment||isFinishing()||isDestroyed())return;
+        checkingEnvironment=true;
+        executor.execute(()->{
+            RootHideManager.RootStatus root=requestAuthorization?manager.requestRootStatus():manager.rootStatus();
+            RootHideManager.ConflictState conflict=root.state==RootHideManager.RootState.GRANTED
+                    ?manager.conflictState():new RootHideManager.ConflictState(false,false,"");
+            ModuleScopeService.Snapshot scope=ModuleScopeService.read(this);
+            HideAutomationReadiness.Result readiness=HideAutomationReadiness.inspect(scope.connected,scope.actual,
+                    BuildConfig.VERSION_NAME,getSharedPreferences(AppConfig.DIAGNOSTICS,0).getAll(),
+                    RuntimeEnvironment.bootCount(this),System.currentTimeMillis(),android.os.SystemClock.elapsedRealtime());
+            main.post(()->{
+                if(isFinishing()||isDestroyed())return;
+                checkingEnvironment=false;
+                automationReady=readiness.ready;automationNeedsScope=readiness.needsScope;
+                automationProblem=readiness.message;
+                rootGranted=root.state==RootHideManager.RootState.GRANTED;
+                rootReady=rootGranted&&!conflict.hasConflict();
+                rootProblem=!rootGranted?"Root未授权，请在Root管理器中授权后点击重试"
+                        :conflict.hasConflict()?"检测到旧隐藏架构冲突，请先处理冲突后重试":"";
+                environment.setText(rootReady?"运行条件已就绪 · 点击重新检查":rootProblem);
+                environment.setTextColor(rootReady?ui.muted:ui.danger);
+                updateActionButtons();renderApps();
+                if(requestAuthorization&&rootGranted&&!selectionReady&&!selectionLoading){loadSelection();loadUsers();}
             });
         });
     }
@@ -401,7 +407,8 @@ public final class HideAppsActivity extends Activity {
                     selectionRevision = publishedRevision;
                     selectionProblem = "";
                     selectionReady = true;
-                    if (dirty) main.post(autoSave);
+                    if(pendingDraft!=null)restoreDraft();
+                    if (dirty&&!saveFailed) main.post(autoSave);
                 } else {
                     selectionProblem = outcome.message;
                     // Keep any displayed selection; failed reads never become an empty save.
@@ -459,7 +466,7 @@ public final class HideAppsActivity extends Activity {
 
     private void selectTarget(AppItem item, boolean checked) {
         RootHideManager.Target target = item.record.target;
-        if (loading || operating || !selectionProblem.isEmpty() || !loaded.contains(item) || item.record.protectedApp
+        if (loading || operating || !selectionReady || selectionLoading || !selectionProblem.isEmpty() || !loaded.contains(item) || item.record.protectedApp
                 || !target.isBound() || !inSelectedSpace(target) || !currentBinding(target)) return;
         if (checked) {
             // Only an explicit selection of this displayed app can replace an old binding.
@@ -517,6 +524,7 @@ public final class HideAppsActivity extends Activity {
 
     private void updateUserAvailability(RootHideManager.UserDirectory directory) {
         if (userStatus == null) return;
+        userStatus.setVisibility(!directory.success||!currentUser.resolved?View.VISIBLE:View.GONE);
         if (!directory.success) {
             userStatus.setText("用户空间不可用：" + directory.message);
             userStatus.setTextColor(ui.danger);
@@ -530,11 +538,15 @@ public final class HideAppsActivity extends Activity {
         }
     }
 
-    private void showAppList(boolean expanded) {
-        appConfigBody.setVisibility(expanded ? View.VISIBLE : View.GONE);
-        appsExpand.setRotation(expanded ? 180 : 0);
-        appsExpand.setContentDescription(expanded ? "收起应用列表" : "展开应用列表");
-        if (expanded) renderApps();
+    private void showAppList(boolean expanded){
+        if(appsExpand==null||operating)return;
+        ui.setGroupExpanded("应用名单",expanded);
+        if(!expanded&&search!=null){
+            search.clearFocus();
+            android.view.inputmethod.InputMethodManager keyboard=getSystemService(android.view.inputmethod.InputMethodManager.class);
+            if(keyboard!=null)keyboard.hideSoftInputFromWindow(search.getWindowToken(),0);
+        }
+        renderApps();
     }
 
     private String spaceLabel() {
@@ -598,26 +610,9 @@ public final class HideAppsActivity extends Activity {
     }
 
     private void styleActionButton(Button button, boolean enabled) {
+        if(button==null)return;
         button.setEnabled(enabled);
-        button.setAlpha(1f);
-        int deep = Color.rgb(31, 116, 197);
-        int light = Color.argb(235, 230, 244, 255);
-        int[][] states = new int[][] {
-                new int[]{android.R.attr.state_activated},
-                new int[]{-android.R.attr.state_enabled},
-                new int[]{android.R.attr.state_selected},
-                new int[]{android.R.attr.state_pressed},
-                new int[]{}
-        };
-        button.setTextColor(new android.content.res.ColorStateList(states, new int[]{
-                Color.WHITE, Color.rgb(126, 147, 168), Color.WHITE, Color.WHITE, Color.rgb(30, 68, 105)}));
-        android.graphics.drawable.StateListDrawable background = new android.graphics.drawable.StateListDrawable();
-        for (int i = 0; i < states.length; i++) {
-            boolean active = i == 0 || i == 2 || i == 3;
-            background.addState(states[i], ui.roundStroke(active ? deep : light, 12,
-                    active ? deep : Color.rgb(191, 218, 241), 1));
-        }
-        button.setBackground(background);
+        button.setAlpha(enabled?1f:.45f);
     }
 
     private void selectSpace(int userId, long serial) {
@@ -703,94 +698,112 @@ public final class HideAppsActivity extends Activity {
     }
 
     private void renderApps() {
-        if (appList == null) return;
-        updateActionButtons();
-        renderSpaceSelector();
-        updateSaveStatus();
-        if (operating || resultDialogVisible || appConfigBody.getVisibility() != View.VISIBLE) return;
-        appList.removeAllViews();
-        renderRetainedTargets();
-        if (loading) {
-            summary.setText(activeUserId < 0 ? "正在读取用户空间…" : "正在读取" + spaceLabel() + "的应用…");
-            return;
+        if(appList==null)return;
+        updateActionButtons();renderSpaceSelector();updateSaveStatus();
+        for(int i=0;i<filterButtons.size();i++){
+            Button choice=filterButtons.get(i);boolean chosen=listFilter==i;
+            choice.setSelected(chosen);choice.setTextColor(chosen?ui.accent:ui.muted);
+            choice.setBackground(ui.pressable(ui.controlGlass(choice,16,chosen
+                    ?IceGlassControlDrawable.TONAL:IceGlassControlDrawable.NEUTRAL)));
+            styleActionButton(choice,!operating);
         }
-        String query = search == null ? "" : search.getText().toString().trim().toLowerCase(Locale.ROOT);
-        ArrayList<AppItem> visible = new ArrayList<>();
-        int selectedInSpace = 0;
-        for (AppItem item : loaded) {
-            if (item.record.system) continue;
-            if (selected.contains(item.record.target)) selectedInSpace++;
-            if (!query.isEmpty() && !item.record.label.toLowerCase(Locale.ROOT).contains(query)
-                    && !item.record.target.packageName.toLowerCase(Locale.ROOT).contains(query)) continue;
+        if(operating||resultDialogVisible)return;
+        appList.removeAllViews();renderRetainedTargets();
+        if(loading||selectionLoading){
+            summary.setText(loading?"正在读取"+spaceLabel()+"的应用…":"正在读取保存名单…");
+            appList.addView(ui.text("正在读取应用，请稍候…",12,ui.muted,false),ui.margins(4,8,0,8));return;
+        }
+        String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);
+        ArrayList<AppItem> visible=new ArrayList<>();int configured=0,hidden=0;
+        for(AppItem item:loaded){
+            if(item.record.system)continue;
+            boolean managed=selected.contains(item.record.target)||savedTargets.contains(item.record.target);
+            if(selected.contains(item.record.target))configured++;
+            if(managed&&item.state==RootHideManager.State.HIDDEN)hidden++;
+            if(listFilter==0&&!managed||listFilter==1&&(!managed||item.state!=RootHideManager.State.HIDDEN))continue;
+            if(!query.isEmpty()&&!item.record.label.toLowerCase(Locale.ROOT).contains(query)
+                    &&!item.record.target.packageName.toLowerCase(Locale.ROOT).contains(query))continue;
             visible.add(item);
         }
-        Comparator<AppItem> order = Comparator
-                .comparing((AppItem item) -> !selected.contains(item.record.target));
-        if (sortByInstall) {
-            order = order.thenComparing((AppItem item) -> item.record.installedAt, Comparator.reverseOrder());
-        } else {
-            order = order.thenComparing(item -> item.record.label, String.CASE_INSENSITIVE_ORDER);
+        Comparator<AppItem> order=Comparator.comparing((AppItem item)->!selected.contains(item.record.target));
+        order=sortByInstall?order.thenComparing((AppItem item)->item.record.installedAt,Comparator.reverseOrder())
+                :order.thenComparing(item->item.record.label,String.CASE_INSENSITIVE_ORDER);
+        visible.sort(order.thenComparing(item->item.record.target.packageName).thenComparingInt(item->item.record.target.userId));
+        summary.setText("配置 "+configured+" · 隐藏 "+hidden);
+        if(appConfigBody.getVisibility()!=View.VISIBLE)return;
+        if(visible.isEmpty()){
+            LinearLayout empty=new LinearLayout(this);empty.setOrientation(LinearLayout.VERTICAL);
+            empty.setPadding(0,ui.dp(8),0,ui.dp(8));
+            empty.addView(ui.text(!query.isEmpty()?"没有找到匹配的应用":listFilter==0?"尚未配置应用"
+                    :listFilter==1?"当前范围没有已隐藏的配置应用":"当前空间没有可配置的普通应用",14,ui.text,true),ui.wrap());
+            if(query.isEmpty()&&listFilter!=2){
+                empty.addView(ui.text("从全部应用中勾选名单，勾选后会自动保存。",12,ui.muted,false),ui.margins(0,6,0,10));
+                Button add=ui.tonalButton("选择应用");add.setOnClickListener(v->{listFilter=2;renderApps();});empty.addView(add,ui.wrap());
+            }
+            appList.addView(empty,ui.wrap());return;
         }
-        visible.sort(order.thenComparing(item -> item.record.target.packageName).thenComparingInt(item -> item.record.target.userId));
-        summary.setText(spaceLabel() + " · 可选 " + visible.size() + " 个 · 已勾选 "
-                + selectedInSpace + " 个");
-        for (AppItem item : visible) appList.addView(appRow(item), ui.margins(0, 0, 0, 8));
-        if (visible.isEmpty()) appList.addView(ui.text(query.isEmpty()
-                ? "当前空间没有可配置的普通应用" : "没有找到匹配的应用", 12, ui.muted, false), ui.wrap());
+        LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);
+        for(AppItem item:visible){
+            if(rows.getChildCount()>0)rows.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
+            rows.addView(appRow(item),ui.wrap());
+        }
+        appList.addView(rows,ui.wrap());
+        if(restoredState!=null){
+            int y=restoredState.getInt("hide-scroll",0);pageScroll.post(()->pageScroll.scrollTo(0,y));restoredState=null;
+        }
     }
 
     private View appRow(AppItem item) {
-        LinearLayout card = ui.card();
-        card.setTag("app-" + item.record.target.userId + "-" + item.record.target.packageName);
-        LinearLayout top = new LinearLayout(this);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView icon = new ImageView(this);
-        Drawable drawable;
-        try {
-            PackageManager packages = getPackageManager();
-            drawable = packages.getApplicationIcon(packages.getApplicationInfo(
-                    item.record.target.packageName, RootHideManager.APP_METADATA_FLAGS));
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(ui.dp(68));row.setPadding(0,ui.dp(10),0,ui.dp(10));
+        row.setTag("app-"+item.record.target.userId+"-"+item.record.target.packageName);
+        ImageView icon=new ImageView(this);Drawable drawable;
+        try{PackageManager packages=getPackageManager();drawable=packages.getApplicationIcon(packages.getApplicationInfo(
+                item.record.target.packageName,RootHideManager.APP_METADATA_FLAGS));}
+        catch(PackageManager.NameNotFoundException error){drawable=getDrawable(R.drawable.ic_tile);}
+        icon.setImageDrawable(drawable);icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(ui.dp(36),ui.dp(36));ip.rightMargin=ui.dp(10);row.addView(icon,ip);
+        LinearLayout copy=new LinearLayout(this);copy.setOrientation(LinearLayout.VERTICAL);
+        TextView name=ui.text(item.record.label,15,ui.text,true);name.setMaxLines(2);copy.addView(name,ui.wrap());
+        boolean selectedNow=selected.contains(item.record.target),saved=savedTargets.contains(item.record.target);
+        String state=selectedNow&&!saved?"待保存":!selectedNow&&saved?"待移除"
+                :item.state==null?selectedNow?"状态待核验":"未配置":localizedState(item.state);
+        TextView status=ui.text("空间 "+item.record.target.userId+" · "+state,12,
+                item.state==RootHideManager.State.HIDDEN?ui.accent:ui.muted,false);
+        copy.addView(status,ui.margins(0,4,0,0));
+        TextView pkg=ui.text(item.record.target.packageName,11,ui.muted,false);
+        pkg.setSingleLine(true);pkg.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        copy.addView(pkg,ui.margins(0,3,0,0));
+        row.addView(copy,new LinearLayout.LayoutParams(0,-2,1));
+        if(listFilter==2){
+            CheckBox box=new CheckBox(this);ui.styleCheckBox(box);box.setChecked(selectedNow);
+            box.setContentDescription("配置"+item.record.label+"，空间 "+item.record.target.userId);
+            box.setEnabled(!operating&&!loading&&selectionReady&&selectionProblem.isEmpty()&&!item.record.protectedApp&&currentBinding(item.record.target));
+            box.setOnCheckedChangeListener((button,checked)->selectTarget(item,checked));
+            row.addView(box,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));
+            copy.setOnClickListener(v->{if(box.isEnabled())box.performClick();});
+        }else{
+            boolean hide=item.state==RootHideManager.State.VISIBLE;
+            Button action=ui.tonalButton(hide?"隐藏":item.state==RootHideManager.State.HIDDEN?"显示":"核验");
+            action.setMinimumHeight(ui.dp(48));
+            action.setContentDescription(action.getText()+item.record.label+"，空间 "+item.record.target.userId);
+            styleActionButton(action,canOperate(hide)&&saved&&selectedNow&&currentBinding(item.record.target));
+            action.setOnClickListener(v->{
+                if(item.state!=RootHideManager.State.VISIBLE&&item.state!=RootHideManager.State.HIDDEN){refreshAppStates();return;}
+                confirmTargets(hide?"隐藏应用":"显示应用",item.record.label+" · 空间 "+item.record.target.userId,
+                        hide,new LinkedHashSet<>(java.util.Collections.singleton(item.record.target)));
+            });
+            LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-2,-2);ap.leftMargin=ui.dp(6);row.addView(action,ap);
+            copy.setClickable(true);copy.setFocusable(true);copy.setBackground(ui.pressable(ui.round(Color.TRANSPARENT,8)));
+            copy.setContentDescription(item.record.label+"，查看配置详情");
+            copy.setOnClickListener(v->{
+                if(operating||loading)return;
+                ui.glassDialog(item.record.label,"空间 "+item.record.target.userId+" · "+state+"\n"+item.record.target.packageName
+                        +"\n\n移除只改变自动隐藏及磁贴使用的名单，不会显示应用。如需恢复，请先点显示。",
+                        "移除名单",()->selectTarget(item,false),"返回");
+            });
         }
-        catch (PackageManager.NameNotFoundException error) { drawable = getDrawable(R.drawable.ic_tile); }
-        icon.setImageDrawable(drawable);
-        top.addView(icon, new LinearLayout.LayoutParams(ui.dp(42), ui.dp(42)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPadding(ui.dp(10), 0, ui.dp(4), 0);
-        copy.addView(ui.text(item.record.label, 15, ui.text, true), ui.wrap());
-        boolean selectedNow = selected.contains(item.record.target);
-        card.setSelected(selectedNow);
-        top.setPadding(ui.dp(10), ui.dp(8), ui.dp(6), ui.dp(8));
-        top.setBackground(ui.roundStroke(Color.argb(235, 230, 244, 255), 12, Color.rgb(191, 218, 241), 1));
-        ((TextView) copy.getChildAt(0)).setTextColor(Color.rgb(20, 35, 58));
-        boolean saved = savedTargets.contains(item.record.target);
-        String targetStatus = selectedNow && !saved ? " · 待保存"
-                : !selectedNow && saved ? " · 待移除"
-                : item.state == null ? "" : " · " + localizedState(item.state);
-        String detail = item.record.target.packageName + " · 空间 " + item.record.target.userId + (item.record.system ? " · 系统" : " · 第三方")
-                + (item.record.installedAt > 0 ? " · "
-                + DateFormat.getDateInstance().format(new Date(item.record.installedAt)) : "")
-                + targetStatus;
-        copy.addView(ui.text(detail, 11, Color.rgb(67, 94, 121), false), ui.margins(0, 2, 0, 0));
-        top.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        CheckBox selectedBox = new CheckBox(this);
-        ui.styleCheckBox(selectedBox);
-        selectedBox.setButtonTintList(android.content.res.ColorStateList.valueOf(
-                Color.rgb(31, 116, 197)));
-        selectedBox.setChecked(selectedNow);
-        selectedBox.setContentDescription("选择" + item.record.label + "，空间 " + item.record.target.userId);
-        selectedBox.setEnabled(!operating && !item.record.protectedApp && selectionProblem.isEmpty());
-        selectedBox.setOnCheckedChangeListener((button, checked) -> {
-            if (operating) {
-                button.setChecked(selected.contains(item.record.target));
-                return;
-            }
-            selectTarget(item, checked);
-        });
-        top.addView(selectedBox, new LinearLayout.LayoutParams(-2, -2));
-        card.addView(top, ui.wrap());
-        top.setOnClickListener(view -> { if (!operating) selectedBox.performClick(); });
-        return card;
+        return row;
     }
 
     private static String localizedState(RootHideManager.State state) {
@@ -823,25 +836,37 @@ public final class HideAppsActivity extends Activity {
         executor.execute(() -> {
             RootHideManager.OperationResult targetsResult;
             long committedRevision = expectedRevision;
+            boolean settingsSaved=false;
             RootHideManager.ACTION_LOCK.lock();
             try {
                 if (!targetsChanged) {
                     AppConfig.SaveResult saved = config.save(update);
+                    settingsSaved=saved.success;
                     targetsResult = saved.success ? RootHideManager.OperationResult.success(saved.message)
                             : RootHideManager.OperationResult.failure(saved.message);
                 } else targetsResult = manager.saveTargets(targets, update, expectedRevision);
                 if (targetsChanged && targetsResult.success) committedRevision = manager.targetRevision();
-                if (targetsResult.success) ScreenAutomation.sync(this);
+                if(targetsChanged&&targetsResult.success){
+                    // The authoritative list can commit before the other settings. Verify both.
+                    Map<String,String> settings=new LinkedHashMap<>(update);
+                    settings.put(AppConfig.HIDE_TARGETS,HideTargetCodec.encode(targets));
+                    AppConfig.SaveResult saved=config.save(settings);
+                    settingsSaved=saved.success;
+                    if(!settingsSaved)targetsResult=RootHideManager.OperationResult.success(
+                            "名单已保存，但设置未保存："+saved.message);
+                }
+                if(targetsResult.success&&settingsSaved)ScreenAutomation.sync(this);
             } catch (RuntimeException error) {
                 targetsResult = RootHideManager.OperationResult.failure("保存未完成："
                         + error.getClass().getSimpleName() + "。修改仍保留在当前页面。");
             } finally { RootHideManager.ACTION_LOCK.unlock(); }
             final long savedRevision = committedRevision;
+            final boolean settingsComplete=settingsSaved;
             RootHideManager.OperationResult result = targetsResult;
             main.post(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 saving=false;
-                if (!result.success) {
+                if (!result.success||!settingsComplete) {
                     saveFailed=true;
                     updateSaveStatus();
                     Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
@@ -852,20 +877,43 @@ public final class HideAppsActivity extends Activity {
                         savedTargets.addAll(targets);
                         selectionRevision = savedRevision;
                     }
-                    dirty = editGeneration != generation;
+                    dirty = editGeneration != generation||!settingsComplete;
                     renderApps();
-                    if (dirty) main.post(autoSave);
+                    if(targetsChanged)refreshAppStates();
+                    if(dirty&&settingsComplete)main.post(autoSave);
                 }
                 updateActionButtons();
+                if(leaveAction!=null){
+                    if(result.success&&settingsComplete&&!dirty){Runnable leave=leaveAction;leaveAction=null;leave.run();}
+                    else if(!result.success||!settingsComplete){Runnable leave=leaveAction;leaveAction=null;showSaveFailure(leave);}
+                }
             });
         });
     }
 
-    private void confirmAction(String title, String message, boolean hide) {
-        if (operating || dirty || saving || !selectionReady || selectionLoading) return;
-        final Set<RootHideManager.Target> confirmed = new LinkedHashSet<>(savedTargets);
-        actionDialog = ui.glassDialog(title, message, "确认", () -> runOperation(hide, confirmed), "取消");
-        styleDialogActions(actionDialog);
+    private Set<RootHideManager.Target> scopedTargets(){
+        Set<RootHideManager.Target> targets=new LinkedHashSet<>();
+        for(RootHideManager.Target target:savedTargets)if(inSelectedSpace(target))targets.add(target);
+        return targets;
+    }
+
+    private boolean canOperate(boolean hide){
+        return selectionReady&&!selectionLoading&&!loading&&!saving&&!dirty&&!operating
+                &&rootGranted&&(!hide||rootReady&&master.isChecked());
+    }
+
+    private void confirmAction(String title,String message,boolean hide){
+        Set<RootHideManager.Target> requested=scopedTargets();
+        confirmTargets(title,spaceLabel()+" · "+requested.size()+" 个已配置应用\n"+message
+                +"\n搜索和状态筛选不改变本次操作范围。",hide,requested);
+    }
+
+    private void confirmTargets(String title,String message,boolean hide,Set<RootHideManager.Target> requested){
+        if(!canOperate(hide)||requested.isEmpty())return;
+        final Set<RootHideManager.Target> confirmed=new LinkedHashSet<>(savedTargets);
+        final Set<RootHideManager.Target> actionTargets=new LinkedHashSet<>(requested);
+        actionDialog=ui.glassDialog(title,message,hide?"确认隐藏":"确认显示",
+                ()->runOperation(hide,confirmed,actionTargets),"取消");
     }
 
     private void styleDialogActions(Dialog dialog) {
@@ -878,8 +926,8 @@ public final class HideAppsActivity extends Activity {
         }
     }
 
-    private void runOperation(boolean hide, Set<RootHideManager.Target> confirmed) {
-        if (operating || dirty || saving || !selectionReady || selectionLoading) return;
+    private void runOperation(boolean hide, Set<RootHideManager.Target> confirmed, Set<RootHideManager.Target> requested) {
+        if (!canOperate(hide)) return;
         operating = true;
         hideAllButton.setActivated(hide);
         showAllButton.setActivated(!hide);
@@ -892,7 +940,7 @@ public final class HideAppsActivity extends Activity {
             RootHideManager.OperationResult completed;
             try {
                 RootHideManager actionManager = new RootHideManager(getApplicationContext());
-                completed = actionManager.changeConfirmed(hide, confirmed, message -> main.post(() -> {
+                completed = actionManager.changeConfirmed(hide, confirmed, requested, message -> main.post(() -> {
                     if (operating && !isFinishing() && !isDestroyed()) operationStatus.setText(message);
                 }));
             } catch (RuntimeException error) { completed = RootHideManager.OperationResult.failure(
@@ -926,24 +974,48 @@ public final class HideAppsActivity extends Activity {
         automationAllUsers.setEnabled(enabled); tileLabel.setEnabled(enabled); tileDescription.setEnabled(enabled);
         search.setEnabled(enabled);
         updateActionButtons(); renderSpaceSelector();
+        for(Button filter:filterButtons)styleActionButton(filter,enabled);
+        styleActionButton(chooseAppsButton,enabled);appsExpand.setEnabled(enabled);
+        if(automationFold!=null)automationFold.sync();if(tileFold!=null)tileFold.sync();
         // Existing selection listeners also reject changes while operating.
         for (int i=0;i<appList.getChildCount();i++) appList.getChildAt(i).setAlpha(enabled ? 1f : .55f);
     }
 
     private void updateActionButtons() {
-        boolean ready = selectionReady && !selectionLoading && !saving && !dirty && !operating && !savedTargets.isEmpty();
-        if (hideAllButton != null) styleActionButton(hideAllButton, ready && master.isChecked());
-        if (showAllButton != null) styleActionButton(showAllButton, ready);
+        if(master==null)return;
+        int count=scopedTargets().size();
+        styleActionButton(chooseAppsButton,!operating&&!loading&&selectionReady);
+        if(automationStatus!=null){
+            String reason=!master.isChecked()?"已暂停：应用隐藏未开启":!rootReady?rootProblem
+                    :!automationReady?automationProblem:savedTargets.isEmpty()?"已暂停：尚未配置应用":"";
+            automationStatus.setText(reason);automationStatus.setVisibility(automationEnabled.isChecked()&&!reason.isEmpty()?View.VISIBLE:View.GONE);
+        }
+        if(tileStatus!=null){
+            String reason=!master.isChecked()?"已暂停：应用隐藏未开启":!rootReady?rootProblem
+                    :savedTargets.isEmpty()?"已暂停：尚未配置应用":"";
+            tileStatus.setText(reason);tileStatus.setVisibility(tileEnabled.isChecked()&&!reason.isEmpty()?View.VISIBLE:View.GONE);
+        }
+        if(hideAllButton!=null){
+            hideAllButton.setText(allSpaces?"全部隐藏":"隐藏本空间");
+            hideAllButton.setContentDescription(hideAllButton.getText()+"，"+spaceLabel()+"，"+count+"个已保存应用");
+            styleActionButton(hideAllButton,canOperate(true)&&count>0);
+        }
+        if(showAllButton!=null){
+            showAllButton.setText(allSpaces?"全部显示":"显示本空间");
+            showAllButton.setContentDescription(showAllButton.getText()+"，"+spaceLabel()+"，"+count+"个已保存应用");
+            styleActionButton(showAllButton,canOperate(false)&&count>0);
+        }
     }
 
     private void updateSaveStatus() {
-        if (saveStatus == null) return;
-        saveStatus.setText(saving ? "正在自动保存…" : saveFailed ? "自动保存未完成，点击重试" : dirty ? "修改待自动保存" : "选择自动保存");
-        saveStatus.setTextColor(saveFailed ? ui.danger : ui.muted);
+        if(saveStatus==null)return;
+        saveStatus.setVisibility(saving||saveFailed||dirty?View.VISIBLE:View.GONE);
+        saveStatus.setText(saving?"正在保存名单与设置…":saveFailed?"保存未完成，点击重试":dirty?"正在等待保存…":"");
+        saveStatus.setTextColor(saveFailed?ui.danger:ui.muted);
     }
 
     private void markDirty() {
-        if (hideFold!=null) hideFold.sync();
+        if(updatingControls)return;
         if (automationFold!=null) automationFold.sync();
         if (tileFold!=null) tileFold.sync();
         editGeneration++;
@@ -952,6 +1024,81 @@ public final class HideAppsActivity extends Activity {
         updateActionButtons();
         main.removeCallbacks(autoSave);main.postDelayed(autoSave,450);
         updateSaveStatus();
+    }
+
+    private void restoreDraft(){
+        Bundle draft=pendingDraft;
+        if(draft==null)return;
+        HideTargetCodec.Selection baseline=HideTargetCodec.parse(draft.getString("hide-draft-baseline",""));
+        HideTargetCodec.Selection desired=HideTargetCodec.parse(draft.getString("hide-draft-selection",""));
+        Set<RootHideManager.Target> before=new LinkedHashSet<>(),after=new LinkedHashSet<>();
+        for(HideTargetCodec.Entry entry:baseline.entries)before.add(new RootHideManager.Target(entry));
+        for(HideTargetCodec.Entry entry:desired.entries)after.add(new RootHideManager.Target(entry));
+        if(!baseline.valid||!desired.valid){saveFailed=true;saveStatus.setText("草稿无法解析，请保留页面并重试");return;}
+        if(savedTargets.equals(before)||savedTargets.equals(after)){applyDraft(draft);return;}
+        // Rotation must not turn an old edit into an automatic overwrite of a newer list.
+        Dialog conflict=ui.glassDialog("保存名单已变化","此页仍保留未保存草稿。可以重新确认草稿，或使用当前已保存的名单与设置。",
+                "重新确认草稿",()->applyDraft(draft),"用已保存内容");
+        conflict.setCancelable(false);
+        conflict.setOnCancelListener(dialog->pendingDraft=null);
+    }
+
+    private void applyDraft(Bundle draft){
+        HideTargetCodec.Selection desired=HideTargetCodec.parse(draft.getString("hide-draft-selection",""));
+        selected.clear();for(HideTargetCodec.Entry entry:desired.entries)selected.add(new RootHideManager.Target(entry));
+        updatingControls=true;
+        master.setChecked(draft.getBoolean("hide-draft-master"));
+        automationEnabled.setChecked(draft.getBoolean("hide-draft-automation"));
+        automationAllUsers.setChecked(draft.getBoolean("hide-draft-all-users"));
+        tileEnabled.setChecked(draft.getBoolean("hide-draft-tile"));
+        tileLabel.setText(draft.getString("hide-draft-label",""));
+        tileDescription.setText(draft.getString("hide-draft-description",""));
+        updatingControls=false;pendingDraft=null;
+        boolean settingsChanged=master.isChecked()!=config.getBoolean(AppConfig.HIDE_MASTER)
+                ||automationEnabled.isChecked()!=config.getBoolean(AppConfig.AUTOMATION_ENABLED)
+                ||automationAllUsers.isChecked()!= "all".equals(config.get(AppConfig.AUTOMATION_SCOPE))
+                ||tileEnabled.isChecked()!=config.getBoolean(AppConfig.TILE_ENABLED)
+                ||!tileLabel.getText().toString().equals(config.get(AppConfig.TILE_LABEL))
+                ||!tileDescription.getText().toString().equals(config.get(AppConfig.TILE_DESCRIPTION));
+        dirty=!selected.equals(savedTargets)||settingsChanged;saveFailed=false;editGeneration++;
+        if(automationFold!=null)automationFold.sync();if(tileFold!=null)tileFold.sync();
+        updateSaveStatus();renderApps();if(dirty)main.post(autoSave);
+    }
+
+    @Override public void navigateToAncestor(String route){requestLeave(()->ModuleNavigation.returnTo(this,route));}
+
+    private void requestLeave(Runnable leave){
+        if(operating){Toast.makeText(this,"正在核验操作结果，请稍候",Toast.LENGTH_SHORT).show();return;}
+        if(!dirty&&!saving){leave.run();return;}
+        leaveAction=leave;
+        if(saveFailed||!selectionReady||selectionLoading){leaveAction=null;showSaveFailure(leave);return;}
+        if(!saving)saveSettings();
+    }
+
+    private void showSaveFailure(Runnable leave){
+        ui.glassDialog("修改尚未保存","当前修改仍保留在页面中，可继续编辑并点击保存状态重试。放弃修改只丢弃未保存的设置和名单草稿。",
+                "放弃并返回",()->{dirty=false;leave.run();},"继续编辑");
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state){
+        state.putBoolean("hide-list-expanded",appConfigBody.getVisibility()==View.VISIBLE);
+        state.putBoolean("hide-all-spaces",allSpaces);state.putInt("hide-user",activeUserId);
+        state.putLong("hide-serial",activeUserSerial);state.putInt("hide-filter",listFilter);
+        state.putBoolean("hide-sort",sortByInstall);state.putString("hide-search",search.getText().toString());
+        state.putInt("hide-scroll",pageScroll.getScrollY());
+        state.putBoolean("hide-automation-fold",automationPanel.getVisibility()==View.VISIBLE);
+        state.putBoolean("hide-tile-fold",tilePanel.getVisibility()==View.VISIBLE);
+        if(dirty||saving){
+            state.putString("hide-draft-selection",HideTargetCodec.encode(selected));
+            state.putString("hide-draft-baseline",HideTargetCodec.encode(savedTargets));
+            state.putBoolean("hide-draft-master",master.isChecked());
+            state.putBoolean("hide-draft-automation",automationEnabled.isChecked());
+            state.putBoolean("hide-draft-all-users",automationAllUsers.isChecked());
+            state.putBoolean("hide-draft-tile",tileEnabled.isChecked());
+            state.putString("hide-draft-label",tileLabel.getText().toString());
+            state.putString("hide-draft-description",tileDescription.getText().toString());
+        }
+        super.onSaveInstanceState(state);
     }
 
     @Override protected void onActivityResult(int request,int result,Intent data) { super.onActivityResult(request,result,data); if(tileImage!=null)tileImage.onResult(request,result,data); }

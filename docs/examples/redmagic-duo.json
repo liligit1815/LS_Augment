@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20541,
-    "versionName": "2.0.0-alpha1-test20541",
+    "versionCode": 20542,
+    "versionName": "2.0.0-alpha1-test20542",
     "minSdk": 35,
-    "publishedAt": "2026-10-13T09:17:06Z",
-    "notes": "- 新增最近任务卡片圆角滑条，0 保持原厂，负数更尖锐、正数更圆滑，调节范围随卡片尺寸、样式和横竖屏自动更新。\n- 修复肩键快捷切换仍执行旧方案的问题。\n- 完善超境画质的画质、帧率选项，适配原厂处理尺寸。\n- 修复自动息屏选择“30 分钟”或“从不”后被重置的问题。\n- 改进联名充电动画素材读取与异常处理。\n- 修复部分bug",
+    "publishedAt": "2026-10-14T07:34:49Z",
+    "notes": "- 支持红魔系列Android15设备桌面自定义布局。\n- 新增去除剪辑图片时裁剪尺寸限制。\n- 新增去除截图图片裁剪尺寸限制。\n- 新增部分功能不支持提示。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20541/redmagic-duo-20541.apk",
-      "size": 8431857,
-      "sha256": "6a63620365ab2c4fa391052a6741d657d7a4ffdd9cf2774f07d624fd7d4ea246",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20542/redmagic-duo-20542.apk",
+      "size": 8471545,
+      "sha256": "2335fef7353103bbf0633052c4736f0f6fa007d233864293ab532c6715595857",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }

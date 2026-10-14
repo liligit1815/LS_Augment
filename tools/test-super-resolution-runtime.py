@@ -370,13 +370,17 @@ def check_reset_cleanup(directory, owner_key):
     method = re.search(r"static String legacyCommand\(\)\s*\{[\s\S]*?return\s+([\s\S]*?);\s*\n\s*\}", reset_source)
     if method is None:
         raise AssertionError("production reset legacyCommand not found")
-    tokens = re.findall(r'"(?:[^"\\]|\\.)*"', method.group(1))
+    # RetiredBootCache now owns the filesystem fragment. Exercise only the
+    # actual settings statements before that helper, without inventing its text.
+    settings_expression, separator, _ = method.group(1).partition("RetiredBootCache.command(true)")
+    assert separator, "production reset filesystem boundary not found"
+    tokens = re.findall(r'"(?:[^"\\]|\\.)*"', settings_expression)
     command = "".join(json.loads(token) for token in tokens)
     assert f"settings get global {owner_key}" in command
     assert "case \"$entry\" in ls_augment_*=*)" in command
     # Only execute the real settings fragment; /data cleanup is outside this test.
-    prefix, separator, _ = command.partition("for parent in /data /data/system /data/system/ls_augment; do ")
-    assert separator and not owner_key.startswith("ls_augment_")
+    prefix = command
+    assert not owner_key.startswith("ls_augment_")
     shell = shutil.which("bash")
     git_bash = Path("C:/Program Files/Git/bin/bash.exe")
     if os.name == "nt" and git_bash.is_file():

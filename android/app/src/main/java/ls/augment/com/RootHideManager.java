@@ -400,8 +400,22 @@ final class RootHideManager {
         return changeAll(hide, false, null, new LinkedHashSet<>(confirmed), progress);
     }
 
+    /** The full confirmed selection protects a scoped action from a stale page. */
+    OperationResult changeConfirmed(boolean hide, Set<Target> confirmedSelection, Set<Target> requestedTargets,
+            java.util.function.Consumer<String> progress) {
+        if (confirmedSelection == null) return OperationResult.failure("应用名单未确认");
+        if (requestedTargets == null) return OperationResult.failure("操作应用未确认");
+        return changeAll(hide, false, null, new LinkedHashSet<>(confirmedSelection),
+                new LinkedHashSet<>(requestedTargets), progress);
+    }
+
     private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot,
             Set<Target> confirmed, java.util.function.Consumer<String> progress) {
+        return changeAll(hide, currentUserOnly, checkedRoot, confirmed, null, progress);
+    }
+
+    private OperationResult changeAll(boolean hide, boolean currentUserOnly, RootStatus checkedRoot,
+            Set<Target> confirmed, Set<Target> requested, java.util.function.Consumer<String> progress) {
         ACTION_LOCK.lock();
         try {
             if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
@@ -410,8 +424,15 @@ final class RootHideManager {
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
             if (!selectionStatus().valid)
                 return OperationResult.failure("独立应用名单尚未读取成功，已保留原内容并停止操作");
-            if (confirmed != null && !confirmed.equals(targets()))
+            Set<Target> configured = targets();
+            if (confirmed != null && !confirmed.equals(configured))
                 return OperationResult.failure("配置应用已变化，请重新确认操作");
+            if (requested != null) {
+                if (requested.isEmpty()) return OperationResult.failure("当前范围没有已配置应用");
+                if (!configured.containsAll(requested))
+                    return OperationResult.failure("操作应用不在已确认名单中，请重新核对选择");
+                configured = new LinkedHashSet<>(requested);
+            }
             if (hide && conflictState().hasConflict()) {
                 return OperationResult.failure("旧架构仍存在，已阻止隐藏动作");
             }
@@ -428,7 +449,6 @@ final class RootHideManager {
             }
             int success = 0;
             List<String> failures = new ArrayList<>();
-            Set<Target> configured = targets();
             if (configured.isEmpty()) return OperationResult.failure("请先配置应用");
             Set<Target> userApps = userInstalledTargets(configured);
             Set<Target> actionTargets = new LinkedHashSet<>();

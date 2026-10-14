@@ -80,7 +80,7 @@ final class ModuleFeatureSearch {
             case "status_arrangement":return "单双排 位置 大小 顺序 留白 高度 预设 恢复";
             case "status_clock":return "时钟格式 字体 秒 毫秒 中文时段";
             case "status_assets":return "图标素材 字体 PNG GIF WebP 动态图标 导入 导出 社区";
-            case "hide":return "应用隐藏 消失吧APP 锁屏自动隐藏 快捷磁贴 用户空间";
+            case "hide":return "四大皆空 应用隐藏 消失吧APP 锁屏自动隐藏 快捷磁贴 用户空间";
             default:return "";
         }
     }

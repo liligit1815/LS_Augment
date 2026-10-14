@@ -39,12 +39,25 @@ final class GamePerformanceMonitorHook {
     private void install(){
         hook(access.init,chain->{
             Object owner=chain.getThisObject();State old=states.remove(owner);
-            if(old!=null&&old.applied)access.fullWidth.setInt(owner,old.originalWidth);
+            if(old!=null&&old.applied&&old.originalWidth>0&&access.fullWidth.getInt(owner)==old.appliedWidth)
+                access.fullWidth.setInt(owner,old.originalWidth);
             Object result=chain.proceed();
             try{refresh(owner,false);}catch(Throwable error){error(error);}
             return result;
         });
-        for(Method method:new Method[]{access.dimensions,access.params,access.showMode,access.add})hook(method,chain->{
+        hook(access.dimensions,chain->{
+            Object owner=chain.getThisObject();
+            try{refresh(owner,false);}catch(Throwable error){error(error);}
+            State state=states.get(owner);
+            // initSize reads the OEM full width. Give it the retained native value,
+            // then accept its result even if a new native width equals our last custom width.
+            if(state!=null&&state.applied&&state.originalWidth>0&&access.fullWidth.getInt(owner)==state.appliedWidth)
+                access.fullWidth.setInt(owner,state.originalWidth);
+            Object result=chain.proceed();
+            try{refresh(owner,access.added.getBoolean(owner),true);}catch(Throwable error){error(error);}
+            return result;
+        });
+        for(Method method:new Method[]{access.params,access.showMode,access.add})hook(method,chain->{
             Object owner=chain.getThisObject();
             try{refresh(owner,false);}catch(Throwable error){error(error);}
             Object result=chain.proceed();
@@ -86,39 +99,65 @@ final class GamePerformanceMonitorHook {
     }
 
     private void refresh(Object owner,boolean live)throws ReflectiveOperationException{
+        refresh(owner,live,false);
+    }
+
+    private void refresh(Object owner,boolean live,boolean nativeSizing)throws ReflectiveOperationException{
         ViewGroup content=(ViewGroup)access.content.get(owner);
         if(content==null||content.getChildCount()!=5)return;
         Context context=content.getContext();
         if(!listening)listening=FeatureSettings.addSnapshotListener(context,configurationChanged);
         State state=states.get(owner);
         if(state==null||state.content!=content){
-            state=new State(content,access.fullWidth.getInt(owner),(View)access.background.get(owner),(View)access.shortBackground.get(owner));
+            state=new State(content,(View)access.background.get(owner),(View)access.shortBackground.get(owner));
             states.put(owner,state);
         }
-        boolean on=enabled(owner);
-        if(!on&&!state.applied)return;
+        int nativeWidth=access.fullWidth.getInt(owner);
+        // Never promote a width written by this hook into the native baseline.
+        // Zero/wrap-content values can precede sizing; wait for a real OEM width.
+        if(nativeWidth>0&&(nativeSizing||!state.applied||nativeWidth!=state.appliedWidth)
+                &&(nativeSizing||nativeWidth!=state.originalWidth||!state.sizingReady))state.capture(nativeWidth);
+        boolean requested=enabled(owner);
         String selected=GamePerformanceMonitorConfig.normalizeItems(FeatureSettings.text(context,GameOptions.MONITOR_ITEMS,GamePerformanceMonitorConfig.DEFAULT_ITEMS));
         if(selected==null)selected=GamePerformanceMonitorConfig.DEFAULT_ITEMS;
-        boolean changed=state.applied!=on||!selected.equals(state.selection);
-        state.selection=selected;state.count=0;
-        int width=state.originalWidth;
+        if(state.originalWidth<=0){
+            if(requested)report(owner,state,requested,selected,nativeWidth,nativeWidth,
+                    nativeWidth>0?state.sizingPhase:"pending_native_size");
+            return;
+        }
         String[] items=GamePerformanceMonitorConfig.items();
+        int customWidth=state.originalWidth;
+        for(int i=0;i<5;i++)if(!GamePerformanceMonitorConfig.selected(selected,items[i]))customWidth-=state.widths[i];
+        boolean on=requested&&state.sizingReady&&customWidth>1;
+        if(!on&&!state.applied){
+            if(requested)report(owner,state,requested,selected,nativeWidth,nativeWidth,
+                    state.sizingReady?"invalid_selected_width":state.sizingPhase);
+            return;
+        }
+        int width=on?customWidth:state.originalWidth;
+        boolean changed=state.applied!=on||!selected.equals(state.selection)||state.appliedWidth!=width;
+        state.selection=selected;state.count=0;
         for(int i=0;i<5;i++){
             View item=content.getChildAt(i);
             state.selected[i]=!on||GamePerformanceMonitorConfig.selected(selected,items[i]);
-            if(state.selected[i])state.count++;else width-=state.widths[i];
+            if(state.selected[i])state.count++;
             item.setVisibility(on&&!state.selected[i]?View.GONE:state.visibility[i]);
             // Only our instant mode transition runs while customized, so reused OEM
             // items cannot retain the stock animation's hidden alpha/translation.
             if(changed){item.setAlpha(1f);item.setTranslationX(0f);}
         }
         state.applied=on;
-        width=on?Math.max(1,width):state.originalWidth;
+        state.appliedWidth=width;
         access.fullWidth.setInt(owner,width);
         boolean shortened=access.shortened.getBoolean(owner);
         int selectedIndex=access.selectedIndex.getInt(owner);
         boolean reopen=shortened&&(!on||selectedIndex<0||selectedIndex>=5||!state.selected[selectedIndex]);
         WindowManager.LayoutParams params=(WindowManager.LayoutParams)access.layoutParams.get(owner);
+        int shortWidth=access.shortWidth.getInt(owner);
+        if(shortened&&!reopen&&(shortWidth<=0||shortWidth<state.cellWidths[selectedIndex])){
+            shortWidth=itemWidth(state,selectedIndex);
+            if(shortWidth>0)access.shortWidth.setInt(owner,shortWidth);else reopen=true;
+        }
         if(reopen){
             shortened=false;access.shortened.setBoolean(owner,false);access.selectedIndex.setInt(owner,-1);
             // Recover the original full-list anchor before replacing a single-item
@@ -128,7 +167,8 @@ final class GamePerformanceMonitorHook {
                 access.pointX.setInt(owner,params.x);access.saveX.invoke(owner,params.x);
             }
         }
-        int activeWidth=shortened?access.shortWidth.getInt(owner):width;
+        int activeWidth=shortened?shortWidth:width;
+        changed|=access.currentWidth.getInt(owner)!=activeWidth||params!=null&&params.width!=activeWidth;
         access.currentWidth.setInt(owner,activeWidth);
         if(params!=null)params.width=activeWidth;
         access.rectangle.invoke(state.background,0f,(float)width);
@@ -144,15 +184,23 @@ final class GamePerformanceMonitorHook {
             access.updateWindow.invoke(manager,root,params);
             root.requestLayout();
         }
-        FeatureSettings.diagnostic(context,GameOptions.PERFORMANCE_MONITOR+"_state",
-                "enabled="+on+";items="+selected+";width="+activeWidth+";background_alpha="+state.background.getAlpha()+";text_alpha=1");
+        report(owner,state,requested,selected,nativeWidth,activeWidth,on?"applied":requested?state.sizingPhase:"restored");
+    }
+
+    private void report(Object owner,State state,boolean requested,String selected,int nativeWidth,int width,String phase)throws IllegalAccessException{
+        FeatureSettings.diagnostic(state.content.getContext(),GameOptions.PERFORMANCE_MONITOR+"_state",
+                "enabled="+requested+";items="+selected+";width="+width+";background_alpha="+state.background.getAlpha()
+                +";text_alpha="+(state.applied?"1":"native")+";state="+(state.applied?"APPLIED":requested?"WAITING_FOR_SIZE":"RESTORED")
+                +";phase="+phase+";applied="+state.applied+";nativeFullWidth="+nativeWidth+";originalWidth="+state.originalWidth
+                +";appliedWidth="+state.appliedWidth+";shortened="+access.shortened.getBoolean(owner)+";shortWidth="+access.shortWidth.getInt(owner));
     }
 
     private int hitIndex(State state,float x){
         int last=0;
         for(int i=0;i<5;i++)if(state.selected[i]){
             last=i;View item=state.content.getChildAt(i);
-            if(x<state.content.getLeft()+item.getRight())return i;
+            int right=item.getWidth()>0?item.getRight():item.getLeft()+state.cellWidths[i];
+            if(x<state.content.getLeft()+right)return i;
         }
         return last;
     }
@@ -168,9 +216,11 @@ final class GamePerformanceMonitorHook {
             params.width=access.fullWidth.getInt(owner);
         }else{
             int index=hitIndex(state,x);View item=state.content.getChildAt(index);
+            int width=itemWidth(state,index);
+            if(width<=0)return;
             params.x+=state.content.getLeft()+item.getLeft();
             access.selectedIndex.setInt(owner,index);access.shortened.setBoolean(owner,true);
-            access.shortWidth.setInt(owner,item.getWidth());params.width=item.getWidth();
+            access.shortWidth.setInt(owner,width);params.width=width;
         }
         access.pointX.setInt(owner,params.x);
         access.currentWidth.setInt(owner,params.width);
@@ -180,29 +230,48 @@ final class GamePerformanceMonitorHook {
         access.fade.invoke(owner,true);
     }
 
+    private static int itemWidth(State state,int index){
+        View item=state.content.getChildAt(index);
+        return Math.max(item.getWidth(),state.cellWidths[index]);
+    }
+
     private void error(Throwable error){
         FeatureSettings.diagnosticError(FeatureSettings.from(null),GameOptions.PERFORMANCE_MONITOR+"_error","monitor",error);
     }
 
     private static final class State{
         final ViewGroup content;final View background,shortBackground;
-        final int originalWidth;final int[] widths=new int[5],visibility=new int[5];
+        int originalWidth,appliedWidth;final int[] widths=new int[5],cellWidths=new int[5],visibility=new int[5];
         final boolean[] selected=new boolean[5];final float backgroundAlpha,shortBackgroundAlpha;
-        String selection="";boolean applied;int count;
-        State(ViewGroup content,int originalWidth,View background,View shortBackground){
-            this.content=content;this.originalWidth=originalWidth;this.background=background;this.shortBackground=shortBackground;
+        String selection="",sizingPhase="pending_cell_sizes";boolean applied,sizingReady;int count;
+        State(ViewGroup content,View background,View shortBackground){
+            this.content=content;this.background=background;this.shortBackground=shortBackground;
             backgroundAlpha=background.getAlpha();shortBackgroundAlpha=shortBackground.getAlpha();
+            for(int i=0;i<5;i++)visibility[i]=content.getChildAt(i).getVisibility();
+        }
+        void capture(int width){
+            sizingReady=false;sizingPhase="pending_cell_sizes";
             // The OEM cells use wrap_content + weight. Measure the original five
-            // cells before hiding any, keeping text widths and container padding.
-            content.measure(View.MeasureSpec.makeMeasureSpec(originalWidth,View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
-            for(int i=0;i<5;i++){
-                View item=content.getChildAt(i);ViewGroup.LayoutParams params=item.getLayoutParams();
-                widths[i]=item.getMeasuredWidth()>0?item.getMeasuredWidth():params.width>0?params.width:
-                        (originalWidth-content.getPaddingLeft()-content.getPaddingRight())/5;
-                if(params instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams margin=(ViewGroup.MarginLayoutParams)params;widths[i]+=margin.leftMargin+margin.rightMargin;}
-                visibility[i]=item.getVisibility();
-            }
+            // cells at each valid native size, including those currently hidden by us.
+            int[] currentVisibility=new int[5];
+            for(int i=0;i<5;i++){View item=content.getChildAt(i);currentVisibility[i]=item.getVisibility();item.setVisibility(visibility[i]);}
+            try{
+                content.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
+                int[] cells=new int[5],occupied=new int[5];boolean ready=true;
+                long minimum=content.getPaddingLeft()+content.getPaddingRight();
+                for(int i=0;i<5;i++){
+                    View item=content.getChildAt(i);ViewGroup.LayoutParams params=item.getLayoutParams();
+                    cells[i]=item.getMeasuredWidth()>0?item.getMeasuredWidth():params.width>0?params.width:0;
+                    occupied[i]=cells[i];if(cells[i]<=0)ready=false;
+                    if(params instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams margin=(ViewGroup.MarginLayoutParams)params;occupied[i]+=margin.leftMargin+margin.rightMargin;}
+                    minimum+=occupied[i];
+                }
+                if(!ready)return;
+                if(width<minimum){sizingPhase="native_width_too_small";return;}
+                originalWidth=width;sizingReady=true;sizingPhase="ready";
+                System.arraycopy(cells,0,cellWidths,0,5);System.arraycopy(occupied,0,widths,0,5);
+            }finally{for(int i=0;i<5;i++)content.getChildAt(i).setVisibility(currentVisibility[i]);}
         }
     }
 

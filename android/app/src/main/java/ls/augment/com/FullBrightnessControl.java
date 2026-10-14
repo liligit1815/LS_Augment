@@ -35,7 +35,7 @@ final class FullBrightnessControl {
     }
     private boolean enabled() { return new AppConfig(context).getBoolean(BrightnessRange.ENABLED); }
     private void probe() {
-        if (!"NX809J".equalsIgnoreCase(Build.MODEL) && !"NX809J".equalsIgnoreCase(Build.DEVICE)) {
+        if (!BrightnessRange.supportedDevice(Build.DEVICE, Build.MODEL)) {
             error = "此机型尚未验证完整亮度范围"; checked = true; return;
         }
         RootShell.Result result = RootShell.run("cat " + NODE + "max_brightness",null,4,256);

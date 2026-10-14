@@ -5,7 +5,10 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 /** Requests the ROM's normal security flow; never changes authentication state. */
 final class LiftArcUnlock {
     private static volatile Object manager;
-    static void capture(Object value) { manager=value; LiftArcRuntime.unlockReady(value!=null); }
+    static void capture(Object value) {
+        manager=value!=null&&LiftArcUnlockEntry.supported(value.getClass())?value:null;
+        LiftArcRuntime.unlockReady(manager!=null);
+    }
     static Object manager() { return manager; }
     static boolean show() {
         Object owner=manager;if(owner==null)return false;
@@ -26,12 +29,9 @@ final class LiftArcUnlock {
             // Unknown user/security state follows the secure native bouncer route.
         }
         try {
-            call(owner,"showPrimaryBouncer",true,"redmagic_duo_liftarc");
+            LiftArcUnlockEntry.show(owner);
             LiftArcLog.d("转交原厂锁屏验证");return true;
-        } catch(ReflectiveOperationException unavailable) {
-            try { call(owner,"showPrimaryBouncer",true);return true; }
-            catch(ReflectiveOperationException error) { LiftArcRuntime.error("原厂验证入口",error);return false; }
-        }
+        } catch(ReflectiveOperationException error) { LiftArcRuntime.error("原厂验证入口",error);return false; }
     }
     private LiftArcUnlock() { }
 }

@@ -289,7 +289,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(f.toggleKey==null&&gateMemory.contains("value:"+key)
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
-        toggle.setChecked(active);card.addView(ui.featureRow(f.title,FeatureHelp.forOption(option),toggle),ui.wrap());
+        String unavailable=DeviceFeatureAvailability.unavailableReason(key,Build.DEVICE,Build.MODEL,Build.PRODUCT);
+        boolean available=unavailable.isEmpty();
+        toggle.setChecked(active&&available);toggle.setEnabled(available);
+        card.addView(ui.featureRow(f.title,available?FeatureHelp.forOption(option):unavailable,toggle),ui.wrap());
+        if(!available){
+            TextView state=ui.text(unavailable,12,ui.muted,false);state.setTag("device-feature-unavailable:"+key);
+            card.addView(state,ui.margins(0,4,0,8));
+        }
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(ui.dp(12),0,0,0);
         if("systemui:back_icon_enabled".equals(f.id)){
             backGestureIcons=new BackGestureIconEditor(this,ui,worker,this::value,(k,v)->change(k,v,null));
@@ -765,9 +772,15 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             String raw=config.diagnostic("ls_augment_launcher_grid_runtime");
             if(!raw.isEmpty()){
                 org.json.JSONObject state=new org.json.JSONObject(raw);String kind=state.optString("state"),label;
-                switch(kind){case "active":label="自定义布局已应用";break;case "native":label="使用系统原厂布局";break;case "restored":label="已恢复系统原厂布局";break;case "blocked":label="布局未更改";break;case "pending_restart":label="等待重启桌面";break;case "unsupported":label="当前桌面暂不支持";break;default:label="等待桌面确认";}
+                boolean confirmed=state.optBoolean("bound")&&!state.optBoolean("migrationPending")
+                        &&state.optInt("workspaceRows")>0&&state.optInt("workspaceColumns")>0
+                        &&state.optInt("workspaceRows")==state.optInt("effectiveRows")
+                        &&state.optInt("workspaceColumns")==state.optInt("effectiveColumns");
+                switch(kind){case "active":label=confirmed?"自定义布局已应用":"等待桌面完成布局绑定";break;case "registered":label="布局接口已接入，等待桌面确认";break;case "native":label="使用系统原厂布局";break;case "restored":label=confirmed?"已恢复系统原厂布局":"等待桌面完成布局恢复";break;case "blocked":label="布局未更改";break;case "pending_restart":label="等待重启桌面";break;case "unsupported":label="当前桌面暂不支持";break;default:label="等待桌面确认";}
                 int rows=state.optInt("effectiveRows"),columns=state.optInt("effectiveColumns");
-                feedback="上次桌面反馈："+label+(rows>0&&columns>0?"，实际 "+columns+" 列 × "+rows+" 行":"")+"。";
+                int version=state.optInt("version");
+                String source=version>0&&version!=BuildConfig.VERSION_CODE?"历史桌面反馈（test"+version+"）：":"上次桌面反馈：";
+                feedback=source+label+(rows>0&&columns>0?"，实际 "+columns+" 列 × "+rows+" 行":"")+"。";
                 String error=state.optString("error");if(!error.isEmpty())feedback+="\n"+error;
             }
         }catch(Exception ignored){feedback="桌面反馈暂不可读，请重启桌面后查看。";}

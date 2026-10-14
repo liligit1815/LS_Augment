@@ -26,6 +26,8 @@ public class Context {public static final int MODE_PRIVATE=0;public final Shared
  public Context getApplicationContext(){return this;}public SharedPreferences getSharedPreferences(String n,int m){return prefs;}public File getDatabasePath(String n){return new File(dir,n);}public android.content.res.Resources getResources(){return new android.content.res.Resources();}
 }''',
 'android/content/res/Resources.java':'package android.content.res;public class Resources{public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}',
+'android/app/Application.java':'package android.app;public class Application extends android.content.Context{}',
+'android/app/Instrumentation.java':'package android.app;public class Instrumentation{public void callApplicationOnCreate(Application app){}}',
 'android/util/DisplayMetrics.java':'package android.util;public class DisplayMetrics{public float density=3.25f;}',
 'android/database/Cursor.java': r'''
 package android.database;
@@ -46,6 +48,7 @@ public class SQLiteDatabase implements AutoCloseable {public static final int OP
 'ls/augment/com/hook/FeatureSettings.java':r'''
 package ls.augment.com.hook;import android.content.*;import java.util.*;
 class FeatureSettings {static Map<String,String> values=new HashMap<>();static boolean verified=true;static List<Runnable> listeners=new ArrayList<>();static String report;
+ static Context from(Object owner){return owner instanceof Context?(Context)owner:null;}
  static boolean hasVerifiedSnapshot(Context c){return verified;}static String text(Context c,String k,String d){return values.getOrDefault(k,d);}
  static void addSnapshotListener(Context c,Runnable r){listeners.add(r);}static void diagnostic(Context c,String k,String v){report=v;}}
 ''',
@@ -83,8 +86,9 @@ public class b0{public boolean d;public Map<Integer,ArrayList<Object>> a=new Has
  public void g(F1 idp,z1.y0 model,Context c,boolean restore){repackCalls++;repackFlag=restore;}}
 ''',
 'com/android/launcher3/h0.java':'package com.android.launcher3;import android.graphics.Point;import android.content.Context;public class h0{public int B1=195,C1=42,D1=10,J2=195,K2=10,H2=300,I2=215,H1,I1,calls,width=189,height=316;public float N2=42;public boolean Z0,b1,failDrawer;public Point k0(){return new Point(width,height);}public void p1(float scale,Context c){calls++;H1=B1+10;I1=B1+D1+C1;ls.augment.com.hook.NativeDispatch.call(this,"h1",c);}private void h1(Context c){J2=B1;N2=C1;K2=D1;H2=J2+(int)(N2*1.3)+K2;I2=J2+K2*2;if(failDrawer)throw new IllegalStateException("native drawer failed");}}',
-'com/android/launcher3/CellLayout.java':'package com.android.launcher3;import android.view.View;public class CellLayout extends View{public int rows,cols;public h0 dp=new h0();public CellLayout(int rows,int cols){this.rows=rows;this.cols=cols;}public int getCountX(){return cols;}public int getCountY(){return rows;}public h0 getDeviceProfile(){return dp;}}',
-'com/android/launcher3/C2.java':'package com.android.launcher3;import android.view.ViewGroup;public class C2{public ViewGroup ws=new ViewGroup();public void h(com.android.launcher3.util.z0 data){}public ViewGroup B2(){return ws;}}',
+'com/android/launcher3/CellLayout.java':'package com.android.launcher3;public class CellLayout extends android.view.ViewGroup{public int rows,cols;public h0 dp=new h0();public CellLayout(int rows,int cols){this.rows=rows;this.cols=cols;}public int getCountX(){return cols;}public int getCountY(){return rows;}public h0 getDeviceProfile(){return dp;}}',
+'com/android/launcher3/Workspace.java':'package com.android.launcher3;public class Workspace extends android.view.ViewGroup{}',
+'com/android/launcher3/C2.java':'package com.android.launcher3;public class C2{public Workspace ws=new Workspace();public void h(com.android.launcher3.util.z0 data){}public Workspace B2(){return ws;}}',
 'ls/augment/com/hook/TestLauncherGridRuntime.java':r'''
 package ls.augment.com.hook;
 import android.content.*;import android.database.sqlite.SQLiteDatabase;import android.graphics.Point;import com.android.launcher3.*;import com.android.launcher3.model.data.y;import com.android.launcher3.util.t0;import java.lang.reflect.*;import java.util.*;import ls.augment.com.*;

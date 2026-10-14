@@ -1,7 +1,10 @@
 package ls.augment.com.hook;
 
+import android.app.Application;
+import android.app.Instrumentation;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Point;
@@ -10,6 +13,7 @@ import android.view.ViewGroup;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +34,7 @@ import ls.augment.com.LauncherGridMigrationCheck;
 final class LauncherGridHook {
     static final String DIAGNOSTIC = "ls_augment_launcher_grid_runtime";
     private static boolean installed;
+    private static boolean installObserverRegistered;
     private static volatile Controller controller;
     private static final ThreadLocal<Boolean> FITTING=ThreadLocal.withInitial(()->false);
 
@@ -82,7 +87,7 @@ final class LauncherGridHook {
             }));
             module.registerFeatureHook(module.prepareFeatureHook(t.drawerMetrics,"launcher.grid.drawerMetrics",true).intercept(chain -> {
                 Object dp=chain.getThisObject();Glyphs nativeGlyphs=c.glyphs.get(dp);
-                if(!c.owns||nativeGlyphs==null||!nativeGlyphs.matches(t,dp))return chain.proceed();
+                if(!c.owns||nativeGlyphs==null||!t.currentProfile(dp,c.profile)||!nativeGlyphs.matches(t,dp))return chain.proceed();
                 int icon=t.iconSize.getInt(dp),text=t.textSize.getInt(dp),gap=t.iconGap.getInt(dp);
                 // X3.F copies workspace B1/C1/D1 into all-apps J2/N2/K2 and derives drawer geometry.
                 // Let that native calculation see its original glyph metrics, then restore the workspace.
@@ -93,7 +98,8 @@ final class LauncherGridHook {
             }));
             module.registerFeatureHook(module.prepareFeatureHook(t.metrics,"launcher.grid.iconFit",true).intercept(chain -> {
                 Object result=chain.proceed();
-                if(c.owns&&!FITTING.get()&&!t.scalable.getBoolean(chain.getThisObject())&&!t.responsive.getBoolean(chain.getThisObject())){
+                if(c.owns&&!FITTING.get()&&t.currentProfile(chain.getThisObject(),c.profile)
+                        &&!t.scalable.getBoolean(chain.getThisObject())&&!t.responsive.getBoolean(chain.getThisObject())){
                     Object dp=chain.getThisObject();Context context=(Context)chain.getArg(1);
                     Point cell=(Point)t.cellSize.invoke(dp);
                     LauncherGridIconFit.Fit fit=LauncherGridIconFit.fit(t.iconSize.getInt(dp),t.textSize.getInt(dp),
@@ -115,8 +121,52 @@ final class LauncherGridHook {
                 }
                 return result;
             }));
+            if(t.glyphMetrics!=null)module.registerFeatureHook(module.prepareFeatureHook(t.glyphMetrics,"launcher.grid.nativeGlyphs",true).intercept(chain->{
+                Object dp=chain.getArg(0);Glyphs original=c.glyphs.get(dp);
+                if(!c.owns||original==null||!t.currentProfile(dp,c.profile)
+                        ||t.scalable.getBoolean(dp)||t.responsive.getBoolean(dp))return chain.proceed();
+                // The named OEM helper resets label size from IDP on every call. Ordinary
+                // refreshes must start with native inputs; our second pass must retain the
+                // fitted inputs before native folder, drag and drawer geometry is derived.
+                if(!FITTING.get()){
+                    if(original.matches(t,dp)){
+                        // Fitting never changes the gap. Retain a native gap-only style
+                        // update so this refresh can capture and fit the new style.
+                        t.iconSize.setInt(dp,original.icon);t.textSize.setInt(dp,original.text);
+                    }
+                    return chain.proceed();
+                }
+                try{return chain.proceed();}
+                finally{t.iconSize.setInt(dp,original.fittedIcon);t.textSize.setInt(dp,original.fittedText);}
+            }));
             controller=c; installed=true;c.ready=true;
-        } catch (Throwable failure) { module.logFeatureError("LAUNCHER_GRID_INSTALL",failure); }
+            publishInstallation(FeatureSettings.from(null),c,null);
+        } catch (Throwable failure) {
+            module.logFeatureError("LAUNCHER_GRID_INSTALL",failure);
+            publishInstallation(FeatureSettings.from(null),null,failure);
+            // Package-ready can precede the application Context. Preserve installation
+            // evidence in the same process once that Context exists, without touching data.
+            if(!installObserverRegistered)try{
+                Method created=Instrumentation.class.getDeclaredMethod("callApplicationOnCreate",Application.class);
+                module.registerFeatureHook(module.prepareFeatureHook(created,"launcher.grid.install_status",true).intercept(chain->{
+                    Object result=chain.proceed();Controller current=controller;
+                    if(current==null||!current.decided)publishInstallation((Application)chain.getArg(0),current,failure);
+                    return result;
+                }));
+                installObserverRegistered=true;
+            }catch(Throwable evidenceFailure){module.logFeatureError("LAUNCHER_GRID_INSTALL_EVIDENCE",evidenceFailure);}
+        }
+    }
+
+    private static void publishInstallation(Context context,Controller ready,Throwable failure){
+        if(context==null||ready!=null&&ready.decided)return;
+        try{FeatureSettings.diagnostic(context,DIAGNOSTIC,new JSONObject()
+                .put("version",BuildConfig.VERSION_CODE).put("pid",android.os.Process.myPid())
+                .put("adapter",ready==null?"none":ready.t.adapter).put("supported",ready!=null)
+                .put("state",ready==null?"unsupported":"registered").put("bound",false)
+                .put("error",ready==null?"当前桌面缺少兼容布局接口":"")
+                .put("errorClass",ready!=null||failure==null?"":failure.getClass().getSimpleName()).toString());
+        }catch(Exception ignored){ }
     }
 
     static final class Glyphs {
@@ -147,43 +197,78 @@ final class LauncherGridHook {
     }
 
     static final class Targets {
+        final String adapter;
         final Method setGrid,getPoint,getRawPoint,getEncoded,placeItem,repack,finished,workspace,getCountX,getCountY;
-        final Method vacant,mark,metrics,drawerMetrics,cellSize,deviceProfile;
+        final Method vacant,mark,metrics,drawerMetrics,cellSize,deviceProfile,glyphMetrics;
+        final Field dpIdp;
         final Field iconSize,textSize,iconGap,scalable,responsive;
         final Field resizing,pending,container,cellX,cellY,spanX,spanY,screen,itemId,idpRows,idpCols,dbFile;
         Targets(ClassLoader loader) throws Exception {
-            Class<?> desktop=Class.forName("com.android.launcher3.b0",false,loader);
-            Class<?> idp=Class.forName("com.android.launcher3.F1",false,loader);
-            Class<?> item=Class.forName("com.android.launcher3.model.data.y",false,loader);
-            Class<?> occupied=Class.forName("com.android.launcher3.util.t0",false,loader);
-            Class<?> model=Class.forName("z1.y0",false,loader);
-            Class<?> launcher=Class.forName("com.android.launcher3.C2",false,loader);
+            Class<?> desktop;boolean named;
+            try{desktop=Class.forName("com.android.launcher3.b0",false,loader);named=false;}
+            catch(ClassNotFoundException absent){desktop=Class.forName("com.android.launcher3.DesktopGrid",false,loader);named=true;}
+            adapter=named?"android15_named":"android16_obfuscated";
+            // Resolve one complete, verified ROM contract before any grid hook is registered.
+            // A changed member must not fall back to a mixture of the two class families.
+            Class<?> idp=Class.forName(named?"com.android.launcher3.InvariantDeviceProfile":"com.android.launcher3.F1",false,loader);
+            Class<?> item=Class.forName(named?"com.android.launcher3.model.data.ItemInfo":"com.android.launcher3.model.data.y",false,loader);
+            Class<?> occupied=Class.forName(named?"com.android.launcher3.util.GridOccupancy":"com.android.launcher3.util.t0",false,loader);
+            Class<?> model=Class.forName(named?"com.android.launcher3.model.BgDataModel":"z1.y0",false,loader);
+            Class<?> launcher=Class.forName(named?"com.android.launcher3.Launcher":"com.android.launcher3.C2",false,loader);
             Class<?> cell=Class.forName("com.android.launcher3.CellLayout",false,loader);
-            Class<?> dp=Class.forName("com.android.launcher3.h0",false,loader);
-            metrics=method(dp,"p1",float.class,Context.class);drawerMetrics=method(dp,"h1",Context.class);
-            cellSize=method(dp,"k0");deviceProfile=method(cell,"getDeviceProfile");
-            iconSize=field(dp,"B1");textSize=field(dp,"C1");iconGap=field(dp,"D1");
-            scalable=field(dp,"Z0");responsive=field(dp,"b1");
-            setGrid=method(desktop,"r",idp,Context.class,int.class,int.class);
-            getPoint=method(desktop,"i",Context.class);getRawPoint=method(desktop,"k",Context.class);getEncoded=method(desktop,"j",Context.class);
-            placeItem=method(desktop,"u",Context.class,idp,item,occupied);
-            repack=method(desktop,"g",idp,model,Context.class,boolean.class);
-            resizing=field(desktop,"d");pending=field(desktop,"a");
-            vacant=method(occupied,"d",int.class,int.class,int.class,int.class);
-            mark=method(occupied,"g",item,boolean.class);
-            container=field(item,"container");cellX=field(item,"cellX");cellY=field(item,"cellY");
-            spanX=field(item,"spanX");spanY=field(item,"spanY");screen=field(item,"screenId");
+            Class<?> dp=Class.forName(named?"com.android.launcher3.DeviceProfile":"com.android.launcher3.h0",false,loader);
+            Class<?> ws=Class.forName("com.android.launcher3.Workspace",false,loader);
+            if(!ViewGroup.class.isAssignableFrom(cell)||!ViewGroup.class.isAssignableFrom(ws))throw new IllegalStateException("桌面容器接口不匹配");
+            metrics=method(dp,named?"updateIconSize":"p1",void.class,float.class,Context.class);
+            drawerMetrics=method(dp,named?"updateAllAppsContainerWidth":"h1",void.class,Context.class);
+            cellSize=method(dp,named?"getCellSize":"k0",Point.class);deviceProfile=method(cell,"getDeviceProfile",dp);
+            iconSize=writable(field(dp,named?"iconSizePx":"B1",int.class));
+            textSize=writable(field(dp,named?"iconTextSizePx":"C1",int.class));
+            iconGap=writable(field(dp,named?"iconDrawablePaddingPx":"D1",int.class));
+            scalable=field(dp,named?"mIsScalableGrid":"Z0",boolean.class);responsive=field(dp,named?"mIsResponsiveGrid":"b1",boolean.class);
+            setGrid=method(desktop,named?"setGridSize":"r",void.class,idp,Context.class,int.class,int.class);
+            getPoint=method(desktop,named?"getGridNumOfRowsAndColumns":"i",Point.class,Context.class);
+            getRawPoint=method(desktop,named?"getRowsAndColumnsFromInt":"k",Point.class,Context.class);
+            getEncoded=method(desktop,named?"getGridNumOfRowsAndColumnsInt":"j",int.class,Context.class);
+            placeItem=method(desktop,named?"updateGridData":"u",boolean.class,Context.class,idp,item,occupied);
+            repack=method(desktop,named?"doReGridData":"g",void.class,idp,model,Context.class,boolean.class);
+            resizing=writable(field(desktop,named?"mShouldResize":"d",boolean.class));pending=field(desktop,named?"mResizeGridMap":"a");
+            vacant=method(occupied,named?"isRegionVacant":"d",boolean.class,int.class,int.class,int.class,int.class);
+            mark=method(occupied,named?"markCells":"g",void.class,item,boolean.class);
+            container=field(item,"container",int.class);cellX=field(item,"cellX",int.class);cellY=field(item,"cellY",int.class);
+            spanX=field(item,"spanX",int.class);spanY=field(item,"spanY",int.class);screen=field(item,"screenId",int.class);
             itemId=field(item,"id");
-            idpRows=field(idp,"G0");idpCols=field(idp,"H0");dbFile=field(idp,"E1");
-            finished=method(launcher,"h",Class.forName("com.android.launcher3.util.z0",false,loader));
-            workspace=method(launcher,"B2");getCountX=method(cell,"getCountX");getCountY=method(cell,"getCountY");
-            if(setGrid.getReturnType()!=void.class||getPoint.getReturnType()!=Point.class||getRawPoint.getReturnType()!=Point.class
-                    ||getEncoded.getReturnType()!=int.class||placeItem.getReturnType()!=boolean.class
-                    ||repack.getReturnType()!=void.class||resizing.getType()!=boolean.class
-                    ||!Map.class.isAssignableFrom(pending.getType()))throw new IllegalStateException("红魔桌面网格接口不匹配");
+            idpRows=field(idp,named?"numRows":"G0",int.class);idpCols=field(idp,named?"numColumns":"H0",int.class);
+            dbFile=field(idp,named?"dbFile":"E1",String.class);
+            finished=method(launcher,named?"finishBindingItems":"h",void.class,
+                    Class.forName(named?"com.android.launcher3.util.IntSet":"com.android.launcher3.util.z0",false,loader));
+            workspace=method(launcher,named?"getWorkspace":"B2",ws);
+            getCountX=method(cell,"getCountX",int.class);getCountY=method(cell,"getCountY",int.class);
+            if(!Map.class.isAssignableFrom(pending.getType())||!Set.of(byte.class,short.class,int.class,long.class).contains(itemId.getType()))
+                throw new IllegalStateException("桌面迁移字段接口不匹配");
+            if(named){
+                dpIdp=field(dp,"inv",idp);
+                glyphMetrics=method(Class.forName("com.android.launcher3.MFVDeviceProfile",false,loader),
+                        "updateIconSize_DeviceProfile",void.class,dp,Resources.class,float.class);
+            }else{dpIdp=null;glyphMetrics=null;}
         }
-        static Method method(Class<?> c,String name,Class<?>...args)throws Exception{Method m=c.getDeclaredMethod(name,args);m.setAccessible(true);return m;}
-        static Field field(Class<?> c,String name)throws Exception{Field f=c.getDeclaredField(name);f.setAccessible(true);return f;}
+        boolean currentProfile(Object dp,Object profile)throws Exception{return dpIdp==null||profile!=null&&dpIdp.get(dp)==profile;}
+        static Method method(Class<?> c,String name,Class<?> result,Class<?>...args)throws Exception{
+            Method m=c.getDeclaredMethod(name,args);
+            if(m.getReturnType()!=result||Modifier.isStatic(m.getModifiers())||Modifier.isAbstract(m.getModifiers()))
+                throw new IllegalStateException("桌面方法接口不匹配："+name);
+            m.setAccessible(true);return m;
+        }
+        static Field field(Class<?> c,String name,Class<?> type)throws Exception{
+            Field f=field(c,name);if(f.getType()!=type)throw new IllegalStateException("桌面字段类型不匹配："+name);return f;
+        }
+        static Field field(Class<?> c,String name)throws Exception{
+            Field f=c.getDeclaredField(name);if(Modifier.isStatic(f.getModifiers()))throw new IllegalStateException("桌面字段必须属于实例："+name);
+            f.setAccessible(true);return f;
+        }
+        static Field writable(Field field){
+            if(Modifier.isFinal(field.getModifiers()))throw new IllegalStateException("桌面字段不可调整："+field.getName());return field;
+        }
     }
 
     static final class Readout {
@@ -359,6 +444,7 @@ final class LauncherGridHook {
             try{
                 if(profile!=null){actualRows=t.idpRows.getInt(profile);actualCols=t.idpCols.getInt(profile);}
                 JSONObject json=new JSONObject().put("pid",android.os.Process.myPid()).put("version",BuildConfig.VERSION_CODE)
+                        .put("adapter",t.adapter).put("supported",true)
                         .put("requestedRows",requested==null?0:requested.rows).put("requestedColumns",requested==null?0:requested.columns)
                         .put("enabled",requested!=null&&requested.enabled).put("effectiveRows",actualRows).put("effectiveColumns",actualCols)
                         .put("workspaceRows",workspaceRows).put("workspaceColumns",workspaceCols).put("state",state).put("error",error)

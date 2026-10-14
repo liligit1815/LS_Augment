@@ -33,6 +33,8 @@ function horizontalButtons(root:NativeNode,parent:NativeNode,buttons:NativeNode[
 export function annotatedPages(baseline:Record<string,NativeNode>){
  const pages=structuredClone(baseline);
  for(const [page,root] of Object.entries(pages)){
+  setTitle(root,'消失吧APP','四大皆空');
+  for(const n of walk(root))if(n.description.includes('消失吧APP'))n.description=n.description.replaceAll('消失吧APP','四大皆空');
   removeMatching(root,n=>!!n.text?.startsWith('生效提示：'));
   // 同类功能统一为开关行和小字说明，不重复展示一组标题/描述。
   if(['shoulder','shoulder-expanded','combo_speed','combo_speed-expanded','freeform','audio_gain','double_app','fan_control','battery','detailed_diagnostics'].includes(page)){

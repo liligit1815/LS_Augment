@@ -25,7 +25,7 @@ public final class TestHookAppCatalog {
         Set<String> editorRoutes = new HashSet<>();
         List<HookAppCatalog.Target> targets = new ArrayList<>(HookAppCatalog.targets());
         check(targets.stream().noneMatch(t -> HookAppCatalog.MODULE.equals(t.id)), "module preferences leaked onto home");
-        check(targets.size()==18,"home must contain 18 groups after theme consolidation");
+        check(targets.size()==19,"runtime inventory includes the dedicated photo editor");
         check(targets.stream().noneMatch(t->HookAppCatalog.COLLAB.equals(t.id)),"standalone collaboration remains");
         check(HookAppCatalog.find("collab")==HookAppCatalog.find("theme"),"old collaboration route must resolve to theme");
         for(EnhancementOption option:CollabOptions.options())if(option.kind!=EnhancementOption.Kind.INTERNAL)
@@ -113,6 +113,12 @@ public final class TestHookAppCatalog {
         owner("weather_time_period", HookAppCatalog.WEATHER);
         owner("screenshot_hide_status_bar", HookAppCatalog.SCREENSHOT);
         owner("record_hide_status_bar", HookAppCatalog.SCREENSHOT);
+        owner("screenshot_crop_unlimited", HookAppCatalog.SCREENSHOT);
+        owner("gallery_crop_unlimited", HookAppCatalog.GALLERY);
+        check(HookAppCatalog.affectedPackages(SystemOptions.key("screenshot_crop_unlimited")).equals(
+                List.of("com.android.ztescreenshot")), "screenshot crop stays in the screenshot application");
+        check(HookAppCatalog.affectedPackages(SystemOptions.key("gallery_crop_unlimited")).equals(
+                List.of("cn.nubia.photoeditor")), "gallery editing delegates to the dedicated photo editor");
         check(HookAppCatalog.SYSTEM_UI.equals(HookAppCatalog.targetForKey(SystemUiOptions.QS_BRIGHTNESS_PERCENT)), "brightness control misplaced");
         check(HookAppCatalog.MODULE.equals(HookAppCatalog.targetForKey(AppearanceOptions.THEME)), "module theme misplaced");
         check(HookAppCatalog.targetForRoute("rm:connections") == null, "mixed old group falsely claims one target");

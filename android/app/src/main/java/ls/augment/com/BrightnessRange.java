@@ -8,6 +8,9 @@ public final class BrightnessRange {
     public static final int NATIVE_MIN = 2, NATIVE_MAX = 7030, DRIVER_MAX = 8190;
     public static final int NORMAL_START = 500, NORMAL_END = 10500, SLIDER_MAX = 12150;
     private BrightnessRange() { }
+    public static boolean supportedDevice(String device, String model) {
+        return "NX809J".equalsIgnoreCase(device) || "NX809J".equalsIgnoreCase(model);
+    }
     public static int clamp(int value) { return Math.max(0, Math.min(SLIDER_MAX, value)); }
     public static boolean extended(int value) { return value < NORMAL_START || value > NORMAL_END; }
     public static int driver(int value) {

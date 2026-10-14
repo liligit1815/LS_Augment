@@ -27,6 +27,13 @@ public final class TestEnhancementCatalog {
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);
         check(upgraded!=null&&"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))&&"2".equals(upgraded.get(ConfigSchema.STATUSBAR_CLOCK_ROWS)),"upgrade preserves existing settings");
         check("0".equals(upgraded.get(GameOptions.QUICK_SWITCH))&&"0".equals(upgraded.get(LauncherOptions.KEEP_EMPTY)),"upgrade appends disabled features");
+        String screenshotCrop=SystemOptions.key("screenshot_crop_unlimited"),galleryCrop=SystemOptions.key("gallery_crop_unlimited");
+        check("0".equals(upgraded.get(screenshotCrop))&&"0".equals(upgraded.get(galleryCrop)),"upgrade keeps both crop overrides disabled");
+        Map<String,String> cropValues=new LinkedHashMap<>(previous);
+        cropValues.put(screenshotCrop,"1");cropValues.put(galleryCrop,"0");
+        ConfigSnapshot cropSnapshot=ConfigSnapshot.create(4,12346,cropValues);
+        ConfigSnapshot cropRestored=cropSnapshot==null?null:ConfigSnapshot.parse(cropSnapshot.serialize());
+        check(cropRestored!=null&&"1".equals(cropRestored.get(screenshotCrop))&&"0".equals(cropRestored.get(galleryCrop)),"crop overrides persist independently in runtime snapshots");
         check("0".equals(upgraded.get(RecentsCardRadiusOptions.ENABLED))&&"0".equals(upgraded.get(RecentsCardRadiusOptions.OFFSET)),"upgrade preserves the factory recent-task card radius");
         for(String offset:new String[]{"-2000","-100","-24","0","24","100","2000"})for(String enabled:new String[]{"0","1"}){
             Map<String,String> radius=new LinkedHashMap<>(previous);
