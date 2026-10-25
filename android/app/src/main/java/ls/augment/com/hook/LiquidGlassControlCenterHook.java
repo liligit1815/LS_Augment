@@ -16,6 +16,7 @@ import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.ViewParent;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -39,19 +40,30 @@ final class LiquidGlassControlCenterHook {
     private LiquidGlassControlCenterHook() { }
 
     static int install(AugmentModule module, ClassLoader loader) {
-        int count = hookNamed(module, loader, "liquid_glass", PANEL, "onFinishInflate", 0, null,
+        int count=0;
+        for(String panel:new String[]{PANEL,ControlCenterGlassTargets.MODERN}){
+        count += hookNamed(module, loader, "liquid_glass", panel, "onFinishInflate", 0, null,
                 (owner, args, result) -> { if (owner instanceof View) watch((View) owner); return PASS; });
-        count += hookNamed(module, loader, "liquid_glass", PANEL, "dispatchDraw", 1,
+        count += hookNamed(module, loader, "liquid_glass", panel, "dispatchDraw", 1,
                 (owner, args, result) -> {
-                    if (owner instanceof View && args[0] instanceof Canvas) watch((View) owner).prepare();
+                    if (owner instanceof View && args[0] instanceof Canvas) watch((View) owner).prepareForDraw();
                     return PASS;
                 }, null);
+        }
         count += hookNamed(module, loader, "liquid_glass", PANEL, "dispatchTouchEvent", 1,
                 (owner, args, result) -> {
                     State state = STATES.get(owner);
                     if (state != null && args[0] instanceof MotionEvent) state.touch((MotionEvent) args[0]);
                     return PASS;
                 }, null);
+        count += hookNamed(module,loader,"liquid_glass",ControlCenterGlassTargets.CONTENT,"dispatchTouchEvent",1,
+                (owner,args,result)->{
+                    if(owner instanceof View&&args[0] instanceof MotionEvent)
+                        for(View node=(View)owner;node!=null;node=node.getParent() instanceof View?(View)node.getParent():null){
+                            State state=STATES.get(node);if(state!=null){state.touch((MotionEvent)args[0],(View)owner);break;}
+                        }
+                    return PASS;
+                },null);
         return count;
     }
 
@@ -64,6 +76,9 @@ final class LiquidGlassControlCenterHook {
         return state;
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View child(View view, String name) {
         int id = view.getResources().getIdentifier(name, "id", "com.android.systemui");
         return id == 0 ? null : view.findViewById(id);
@@ -86,7 +101,7 @@ final class LiquidGlassControlCenterHook {
             view.setPadding(left, top, right, bottom);
     }
 
-    private static final class State implements View.OnAttachStateChangeListener {
+    private static final class State implements View.OnAttachStateChangeListener,ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> reference;
         final Runnable changed = this::refresh;
         final Rect bounds = new Rect();
@@ -94,7 +109,7 @@ final class LiquidGlassControlCenterHook {
         final Map<View, WeakReference<Surface>> surfaces = new WeakHashMap<>();
         LayerBackdropSource source;
         WeakReference<Surface> touched = new WeakReference<>(null);
-        boolean attached, enabled, opaque, lessMotion, renderersFailed;
+        boolean attached, enabled, opaque, lessMotion, renderersFailed,preDrawPrepared;
         int priorityOwned;
         String lastDiagnostic = "";
 
@@ -102,8 +117,11 @@ final class LiquidGlassControlCenterHook {
         void attach() {
             if (attached) return;
             View view = reference.get(); if (view == null) return;
-            attached = true; FeatureSettings.addSnapshotListener(view.getContext(), changed); refresh();
+            attached = true; view.getViewTreeObserver().addOnPreDrawListener(this);
+            FeatureSettings.addSnapshotListener(view.getContext(), changed); refresh();
         }
+        @Override public boolean onPreDraw(){if(enabled){prepare();preDrawPrepared=true;}return true;}
+        void prepareForDraw(){if(preDrawPrepared){preDrawPrepared=false;return;}prepare();}
         void refresh() {
             View view = reference.get(); if (view == null) return;
             try {
@@ -113,6 +131,7 @@ final class LiquidGlassControlCenterHook {
                 // A failed AGSL renderer is terminal; solid mode must start with a fresh material.
                 if (!enabled || nextOpaque != opaque || renderersFailed) clear();
                 opaque = nextOpaque;
+                if(!enabled)diagnostic(view,"disabled");
                 view.invalidate();
             } catch (RuntimeException | LinkageError error) { enabled = false; clear(); }
         }
@@ -122,11 +141,23 @@ final class LiquidGlassControlCenterHook {
                     || panel.getWidth() <= 0 || panel.getHeight() <= 0) return;
             try {
                 // Verified in the OEM smali: these are separate native tile containers.
-                Object all = field(panel, "allTilesLayout");
-                if (!(all instanceof ViewGroup)) { clear(); diagnostic(panel, "native_layout_unavailable"); return; }
                 priorityOwned=0;
                 bounds.set(0, 0, panel.getWidth(), panel.getHeight());
                 for (Surface surface : liveSurfaces()) surface.seen = false;
+                if(ControlCenterGlassTargets.modern(panel)){
+                    ControlCenterGlassTargets.collect(panel,new ControlCenterGlassTargets.Visitor(){
+                        @Override public void tile(View tile){collectTile(tile);}
+                        @Override public void slider(View frame,SeekBar seek){bindSlider(frame,seek);}
+                        @Override public void media(View view){
+                            Drawable bg=view.getBackground();
+                            if(bg instanceof Material)bg=((Material)bg).original;
+                            if(bg instanceof GradientDrawable&&sliderRadius(view,bg)>=0)
+                                bind(view,view,false,null);
+                        }
+                    });
+                }else{
+                Object all = field(panel, "allTilesLayout");
+                if (!(all instanceof ViewGroup)) { clear(); diagnostic(panel, "native_layout_unavailable"); return; }
                 collectTiles((ViewGroup) all);
                 Object big = field(panel, "bigTilesLayout");
                 if (big instanceof ViewGroup) collectTiles((ViewGroup) big);
@@ -146,15 +177,18 @@ final class LiquidGlassControlCenterHook {
                     Object volume = field(top, "volume"), slider = field(top, "mVolumeSlider");
                     if (volume instanceof View && slider instanceof SeekBar) bindSlider((View) volume, (SeekBar) slider);
                 }
-                int ready = 0, total = 0, failed = 0;
+                }
+                int ready = 0, total = 0, failed = 0, outside = 0;
                 String firstGlassReason = "", rendererReason = "", hostReason = "", materialReason = "";
                 for (Surface surface : liveSurfaces()) {
                     if (!surface.seen || !descendant(surface.view, panel)) {
                         surface.restore(); surfaces.remove(surface.view); continue;
                     }
-                    if(total==0){if(source==null)source=new LayerBackdropSource(panel);source.setRegion(bounds);}
+                    if(source==null)source=new LayerBackdropSource(panel);source.setRegion(bounds);
+                    boolean available=surface.prepare((ViewGroup)panel);
+                    if(surface.outside){outside++;continue;}
                     total++;
-                    if (surface.prepare((ViewGroup) panel)) ready++;
+                    if (available) ready++;
                     else {
                         String reason = surface.glass.failureReason();
                         if (reason != null && !reason.isEmpty() && firstGlassReason.isEmpty()) firstGlassReason = reason;
@@ -169,8 +203,11 @@ final class LiquidGlassControlCenterHook {
                     }
                 }
                 if(total==0){
-                    clear();
-                    diagnostic(panel,(priorityOwned>0?"appearance_priority":"native_controls_unavailable")+":ready=0/0;failed=0");
+                    // Retain bound off-page materials so page entry can invalidate
+                    // their display lists without waiting for a new parent draw.
+                    if(outside==0)clear();
+                    else if(source!=null){source.release();source=null;}
+                    diagnostic(panel,(outside>0?"no_visible_controls":priorityOwned>0?"appearance_priority":"native_controls_unavailable")+":ready=0/0;failed=0;outside="+outside);
                     return;
                 }
                 if (!stopFailedCapture()) {
@@ -189,7 +226,7 @@ final class LiquidGlassControlCenterHook {
                     if (!firstGlassReason.isEmpty()) value += ";glass=" + firstGlassReason;
                     if (sourceReason != null && !sourceReason.isEmpty()) value += ";source=" + sourceReason;
                 }
-                diagnostic(panel, value);
+                diagnostic(panel, value+";outside="+outside);
             } catch (RuntimeException | LinkageError error) {
                 clear(); diagnostic(panel, "native_fallback:render_unavailable");
             }
@@ -205,14 +242,17 @@ final class LiquidGlassControlCenterHook {
         void collectTiles(ViewGroup group) {
             // OEM tile layouts (including TopPanel) contain tiles as direct children.
             for (int i = 0; i < Math.min(group.getChildCount(), 64); i++) {
-                View tile = group.getChildAt(i); String name = tile.getClass().getName();
-                if (!WIDE.equals(name) && !CIRCLE.equals(name)) continue;
-                Object nativeBackground = field(tile, "colorBackgroundDrawable");
-                if (!(nativeBackground instanceof GradientDrawable)) continue;
-                View target = materialOwner(tile, (Drawable) nativeBackground, 0);
-                if (target != null) bind(target, tile, CIRCLE.equals(name), null);
-                else if(ControlCenterAppearanceHook.ownsMaterial(tile,tile,false))priorityOwned++;
+                collectTile(group.getChildAt(i));
             }
+        }
+        void collectTile(View tile){
+                boolean circle=ControlCenterGlassTargets.isType(tile,CIRCLE);
+                if (!ControlCenterGlassTargets.isType(tile,WIDE) && !circle) return;
+                Object nativeBackground = field(tile, "colorBackgroundDrawable");
+                if (!(nativeBackground instanceof GradientDrawable)) return;
+                View target = materialOwner(tile, (Drawable) nativeBackground, 0);
+                if (target != null) bind(target, tile, circle, null);
+                else if(ControlCenterAppearanceHook.ownsMaterial(tile,tile,false))priorityOwned++;
         }
         View materialOwner(View view, Drawable original, int depth) {
             Drawable current = view.getBackground();
@@ -245,7 +285,7 @@ final class LiquidGlassControlCenterHook {
             if (panel == null || !descendant(view, panel)) return;
             WeakReference<Surface> saved = surfaces.get(view);
             Surface surface = saved == null ? null : saved.get();
-            if (surface != null && (view.getBackground() != surface.material || surface.progress != progress
+            if (surface != null && ((!surface.trackOnly&&view.getBackground() != surface.material) || surface.progress != progress
                     || (progress != null && (progress.findDrawableByLayerId(android.R.id.background) != surface.track
                     || Math.abs(surface.radiusDp - sliderRadius(view, surface.track.original)) > .01f)))) {
                 surface.restore(); surfaces.remove(view); surface = null;
@@ -257,18 +297,26 @@ final class LiquidGlassControlCenterHook {
             surface.seen = true;
         }
         void touch(MotionEvent event) {
+            touch(event,reference.get());
+        }
+        void touch(MotionEvent event,View origin) {
             if (!enabled) return;
+            float x=event.getX(),y=event.getY();View panel=reference.get();
+            if(origin!=panel){Rect point=new Rect((int)x,(int)y,(int)x+1,(int)y+1);
+                if(origin==null||panel==null||!GlassGeometry.map(origin,panel,point,true))return;x=point.left;y=point.top;}
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 touched.clear();
-                for (Surface surface : liveSurfaces()) if (surface.region.contains((int) event.getX(), (int) event.getY())) {
+                for (Surface surface : liveSurfaces()) if (surface.region.contains((int) x, (int) y)) {
                     touched = new WeakReference<>(surface); break;
                 }
             }
             Surface target = touched.get();
             if (target != null) {
                 boolean pressed = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL;
-                target.glass.setInteraction(event.getX() - target.region.left, event.getY() - target.region.top, pressed);
+                Rect local=target.glass.getBounds();
+                target.glass.setInteraction(local.left+(x-target.region.left)*local.width()/Math.max(1,target.region.width()),
+                        local.top+(y-target.region.top)*local.height()/Math.max(1,target.region.height()),pressed);
                 if (!pressed) touched.clear();
             }
         }
@@ -293,12 +341,15 @@ final class LiquidGlassControlCenterHook {
             return result;
         }
         void diagnostic(View view, String value) {
+            if(ControlCenterGlassTargets.modern(view))value+=";adapter=mfv_qs;host="+view.getWidth()+"x"+view.getHeight();
             value += ";build=" + ls.augment.com.BuildConfig.VERSION_CODE + ";geometry=viewport_v2";
             if (value.equals(lastDiagnostic)) return; lastDiagnostic = value;
+            if(enabled)FeatureSettings.diagnostic(view.getContext(), "ls_augment_rm_glass_cc_last_enabled", value);
             FeatureSettings.diagnostic(view.getContext(), "ls_augment_rm_glass_cc_state", value);
         }
         @Override public void onViewAttachedToWindow(View view) { attach(); }
         @Override public void onViewDetachedFromWindow(View view) {
+            if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);
             attached = false; enabled = false; FeatureSettings.removeSnapshotListener(changed); clear(); lastDiagnostic = "";
         }
     }
@@ -327,7 +378,9 @@ final class LiquidGlassControlCenterHook {
         final Material material;
         final LayerDrawable progress;
         final TrackBackground track;
-        boolean seen, drawn, fallbackDrawn, validGeometry;
+        final boolean trackOnly;
+        final ControlCenterAppearanceHook.GlassStyle appearance=new ControlCenterAppearanceHook.GlassStyle();
+        boolean seen, drawn, fallbackDrawn, validGeometry,outside;
         long lastRevision = Long.MIN_VALUE;
         boolean lastAvailable;
         long appearanceStarted = -1;
@@ -335,14 +388,18 @@ final class LiquidGlassControlCenterHook {
 
         Surface(State state, View view, View owner, boolean circle, LayerDrawable progress) {
             this.state = state; this.view = view; this.owner = owner; this.circle = circle; this.progress = progress;
+            trackOnly=progress!=null&&view instanceof SeekBar;
             Drawable nativeTrack = progress == null ? null : progress.findDrawableByLayerId(android.R.id.background);
-            radiusDp = progress != null ? sliderRadius(view, nativeTrack) : circle ? 1000 : 24;
+            float nativeRadius=24;
+            if(progress==null&&ControlCenterGlassTargets.modern(state.reference.get())&&view.getBackground() instanceof GradientDrawable)
+                nativeRadius=sliderRadius(view,view.getBackground());
+            radiusDp = progress != null ? sliderRadius(view, nativeTrack) : circle ? 1000 : nativeRadius;
             glass = new LiquidGlassDrawable(view, this, radiusDp);
             // Control Center uses monochrome glyphs, so even circular controls need contrast.
             glass.setIconOnly(false);
             glass.setControlSurface(true);
             material = new Material(this, view.getBackground());
-            backgroundPreservingPadding(view, material); material.bindCallback();
+            if(!trackOnly){backgroundPreservingPadding(view, material); material.bindCallback();}
             if (progress != null) {
                 track = new TrackBackground(this, progress.findDrawableByLayerId(android.R.id.background));
                 progress.setDrawableByLayerId(android.R.id.background, track); track.bindCallback();
@@ -350,33 +407,46 @@ final class LiquidGlassControlCenterHook {
         }
         boolean prepare(ViewGroup panel) {
             Rect next = new Rect(0, 0, view.getWidth(), view.getHeight());
-            validGeometry = view.isShown() && GlassGeometry.map(view, panel, next, true) && state.bounds.contains(next);
-            if (!region.equals(next)) { region.set(next); glass.invalidateBackdrop(); }
-            glass.setBounds(0, 0, view.getWidth(), view.getHeight());
+            Rect local=new Rect(next);
+            if(trackOnly){
+                local.set(track.original.getBounds());next.set(local);
+                // ProgressBar draws its progress drawable after translating by its
+                // content padding. Use the native track bounds, never the SeekBar box.
+                next.offset(view.getPaddingLeft(),view.getPaddingTop());
+            }
+            boolean priorGeometry=validGeometry;
+            boolean mapped=view.isShown()&&GlassGeometry.map(view,panel,next,true);
+            outside=!view.isShown()||next.isEmpty()||mapped&&(next.right<=state.bounds.left||next.left>=state.bounds.right
+                    ||next.bottom<=state.bounds.top||next.top>=state.bounds.bottom);
+            validGeometry=mapped&&!outside;
+            boolean moved=!region.equals(next);
+            if (moved) { region.set(next); glass.invalidateBackdrop(); }
+            glass.setBounds(local);
             glass.updatePreferences(state.opaque, state.lessMotion);
             Object nativeState = field(owner, "lastState");
             boolean active = nativeState instanceof Number && ((Number) nativeState).intValue() == 2;
             TextView label = null;
-            if (WIDE.equals(owner.getClass().getName()) || CIRCLE.equals(owner.getClass().getName())) {
+            if (ControlCenterGlassTargets.isType(owner,WIDE) || ControlCenterGlassTargets.isType(owner,CIRCLE)) {
                 try { Object candidate = call(owner, "getLabel"); if (candidate instanceof TextView) label = (TextView) candidate; }
                 catch (ReflectiveOperationException ignored) { }
-            } else { Object candidate = field(owner, "mTitleText"); if (candidate instanceof TextView) label = (TextView) candidate; }
+            } else { Object candidate = field(owner, "mTitleText"); if (candidate instanceof TextView) label = (TextView) candidate;
+                else{View title=child(owner,"header_title");if(title instanceof TextView)label=(TextView)title;}}
             int color = label == null ? Color.BLACK : label.getCurrentTextColor();
             glass.setForegroundIsLight(circle && active || Color.luminance(color) > .5f);
             int tint = Color.WHITE;
-            Drawable nativeBackground = material.original;
+            Drawable nativeBackground = trackOnly?track.original:material.original;
             if (active && nativeBackground instanceof GradientDrawable) {
                 GradientDrawable gradient = (GradientDrawable) nativeBackground;
                 int[] colors = gradient.getColors();
                 if (colors != null && colors.length > 0) tint = colors[0];
                 else if (gradient.getColor() != null) tint = gradient.getColor().getDefaultColor();
             }
-            glass.setMaterialTint(tint, active ? .62f : 0f);
+            if(!appearance.apply(view,owner,glass,radiusDp))glass.setMaterialTint(tint, active ? .62f : 0f);
             int alpha = nativeBackground == null ? 255 : nativeBackground.getAlpha();
             if (glass.getAlpha() != alpha) glass.setAlpha(alpha);
             boolean available = validGeometry && glass.prepare();
             long revision = revision();
-            if (lastRevision != revision || lastAvailable != available) {
+            if (moved || priorGeometry!=validGeometry || lastRevision != revision || lastAvailable != available) {
                 lastRevision = revision; lastAvailable = available;
                 // A parent invalidation alone may reuse a child's cached hardware display list.
                 view.invalidate();
@@ -391,6 +461,7 @@ final class LiquidGlassControlCenterHook {
             View panel=state.reference.get();
             if (!validGeometry || !state.enabled || panel==null || state.source==null || !state.source.isValid()) return false;
             Rect current=new Rect(0,0,view.getWidth(),view.getHeight());
+            if(trackOnly){current.set(track.original.getBounds());current.offset(view.getPaddingLeft(),view.getPaddingTop());}
             return GlassGeometry.map(view,panel,current,true) && current.equals(region);
         }
         @Override public long revision() { return state.source == null ? -1 : state.source.revision(); }
@@ -417,7 +488,7 @@ final class LiquidGlassControlCenterHook {
             if (view.getBackground() == material) backgroundPreservingPadding(view, material.original);
             if (progress != null && progress.findDrawableByLayerId(android.R.id.background) == track)
                 progress.setDrawableByLayerId(android.R.id.background, track.original);
-            material.unbindCallback();
+            if(!trackOnly)material.unbindCallback();
             if (track != null) track.unbindCallback();
             glass.release();
         }
@@ -466,6 +537,9 @@ final class LiquidGlassControlCenterHook {
     private static final class Material extends NativeDrawable {
         final Surface surface;
         Material(Surface surface, Drawable original) { super(original); this.surface = surface; }
+        @Override public void getOutline(Outline outline){
+            if(!surface.state.enabled||!surface.appearance.outline(surface.view,outline,getBounds()))super.getOutline(outline);
+        }
         @Override public void draw(Canvas canvas) {
             try {
                 // Native color animation can invalidate only this child's display list.
@@ -497,6 +571,15 @@ final class LiquidGlassControlCenterHook {
         final Surface surface;
         TrackBackground(Surface surface, Drawable original) { super(original); this.surface = surface; }
         @Override public void draw(Canvas canvas) {
+            if(surface.trackOnly){
+                View panel=surface.state.reference.get();
+                try{
+                    if(panel instanceof ViewGroup)surface.prepare((ViewGroup)panel);
+                    surface.drawn=surface.drawMaterial(canvas);
+                }catch(RuntimeException|LinkageError error){surface.drawn=false;}
+                if(!surface.drawn)drawOriginal(canvas);
+                return;
+            }
             // A stale successful backdrop must not keep masking a native track after failure.
             boolean suppress;
             try { suppress = canvas.isHardwareAccelerated() && surface.drawn && surface.state.enabled && surface.validGeometry

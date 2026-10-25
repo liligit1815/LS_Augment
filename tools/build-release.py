@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from java_properties import read_properties
 
 ROOT=Path(__file__).resolve().parents[1]
 CERT='4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb'
@@ -14,7 +15,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--previous',type=Path,required=True,help='Previous distributed release APK')
     args=parser.parse_args()
-    props=dict(line.split('=',1) for line in (ROOT/'android/local.properties').read_text().splitlines() if '=' in line)
+    props=read_properties(ROOT/'android/local.properties')
     sdk=Path(props['sdk.dir']);build=sdk/'build-tools/35.0.0'
     signer=build/('apksigner.bat' if os.name=='nt' else 'apksigner')
     aapt=build/('aapt2.exe' if os.name=='nt' else 'aapt2')

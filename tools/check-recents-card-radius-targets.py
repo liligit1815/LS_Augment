@@ -38,11 +38,23 @@ def check(path):
     with zipfile.ZipFile(path) as apk:
         identity = DEX.manifest_identity(apk.read('AndroidManifest.xml'))
     rows = []
+    named = PARAMS not in classes
     for owner, kind, signature in CONTRACTS:
+        if named:
+            # Inspected named launchers use TaskThumbnailViewDeprecated; the
+            # unused refactor thumbnail has an independent outline contract.
+            if owner == 'Lcom/android/quickstep/task/thumbnail/TaskThumbnailView;':
+                continue
+            owner = owner.replace(PARAMS, 'Lcom/android/quickstep/views/TaskView$FullscreenDrawParams;')
+            owner = owner.replace('Lcom/android/quickstep/views/TaskContainer;', 'Lcom/android/quickstep/views/TaskView$TaskContainer;')
+            signature = signature.replace(PARAMS, 'Lcom/android/quickstep/views/TaskView$FullscreenDrawParams;')
+            signature = signature.replace('currentCornerRadius:F', 'currentDrawnCornerRadius:F')
+            signature = signature.replace('updateFullscreenParams()V', 'updateSnapshotRadius()V')
         found = DEX.find_member(classes, owner, kind, signature)
         rows.append({'class': owner, 'kind': kind, 'member': signature,
                      'pass': found is not None and found[0] == owner and not found[1] & (8 | 1024)})
     return {'apk': str(path.resolve()), 'identity': identity,
+            'adapter': 'android15_named' if named else 'android16',
             'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'checks': rows,
             'pass': all(row['pass'] for row in rows)}
 

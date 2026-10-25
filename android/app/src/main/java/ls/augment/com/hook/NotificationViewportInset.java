@@ -39,6 +39,9 @@ final class NotificationViewportInset implements ViewTreeObserver.OnPreDrawListe
         View view=stack.get(),p=parent.get();
         return view==null||p==null?0:Math.max(0,p.getHeight()-p.getPaddingBottom()-view.getTop()-nativeBottom);
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private View clearButton(View source){
         int id=source.getResources().getIdentifier("iv_dismiss_notification_view","id","com.android.systemui");
         return id==0?null:source.getRootView().findViewById(id);

@@ -112,6 +112,9 @@ final class StatusBarGridHook {
         }
         return false;
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader loader) {
         int count=0;
         for (String rootClass : new String[]{ROOT, KEYGUARD}) try {
@@ -140,31 +143,64 @@ final class StatusBarGridHook {
         } catch(Throwable e) { FeatureSettings.diagnostic(FeatureSettings.from(null),FeatureSettings.SYSTEMUI_LAST_ERROR,"grid_install:"+e); }
         try{
             Class<?> container=Class.forName("com.android.systemui.statusbar.phone.NotificationIconContainer",false,loader);
-            Method calculate=container.getDeclaredMethod("calculateIconXTranslations");
-            java.lang.reflect.Field maximum=container.getDeclaredField("mMaxIcons"),width=container.getDeclaredField("mActualLayoutWidth"),speedBump=container.getDeclaredField("mSpeedBumpIndex");
-            maximum.setAccessible(true);width.setAccessible(true);speedBump.setAccessible(true);
-            module.registerFeatureHook(module.prepareFeatureHook(calculate,"systemui.grid.notification_capacity",true).intercept(chain->{
+            NotificationCapacity capacity=new NotificationCapacity(container);
+            module.registerFeatureHook(module.prepareFeatureHook(capacity.calculate,"systemui.grid.notification_capacity",true).intercept(chain->{
                 ViewGroup view=(ViewGroup)chain.getThisObject();boolean phone=false;
                 phone=inBar(view);
                 boolean unlimited=FeatureSettings.enabled(view.getContext(),ConfigSchema.STATUSBAR_NOTIFICATION_UNLIMITED);
                 int limit=unlimited?Math.max(1,view.getChildCount()):FeatureSettings.integer(view.getContext(),ConfigSchema.STATUSBAR_NOTIFICATION_MAX,0,0,20);
                 if(!phone||limit==0||!FeatureSettings.enabled(view.getContext(),ConfigSchema.SYSTEMUI_MASTER)
                         ||FeatureSettings.enabled(view.getContext(),ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY))return chain.proceed();
-                int oldMax=maximum.getInt(view),oldWidth=width.getInt(view),oldBump=speedBump.getInt(view);
+                int[] saved=capacity.snapshot(view);
                 int room=view.getWidth();for(int i=0;i<view.getChildCount();i++)room+=view.getChildAt(i).getWidth();
-                maximum.setInt(view,limit);width.setInt(view,room);speedBump.setInt(view,-1);
-                try{return chain.proceed();}finally{maximum.setInt(view,oldMax);width.setInt(view,oldWidth);speedBump.setInt(view,oldBump);}
+                try{capacity.apply(view,limit,room);return chain.proceed();}finally{capacity.restore(view,saved);}
             }));count++;
         }catch(Throwable e){module.logFeatureError("STATUSBAR_NOTIFICATION_CAPACITY",e);}
         count+=StatusBarNativeIconHook.install(module,loader);
         count+=StatusBarTintHook.install(module,loader);
         return count;
     }
+    /** Select complete legacy/new overflow contracts; unknown layouts stay native. */
+    private static final class NotificationCapacity {
+        final Method calculate;
+        final java.lang.reflect.Field maximum,width,speedBump;
+        NotificationCapacity(Class<?> type)throws ReflectiveOperationException {
+            calculate=find(type,"calculateIconXTranslations");
+            if(calculate==null||calculate.getReturnType()!=void.class||java.lang.reflect.Modifier.isStatic(calculate.getModifiers()))
+                throw new NoSuchMethodException("NotificationIconContainer.calculateIconXTranslations():void");
+            calculate.setAccessible(true);
+            maximum=integerField(type,"mMaxIcons");width=integerField(type,"mActualLayoutWidth");
+            java.lang.reflect.Field bump;
+            try{bump=integerField(type,"mSpeedBumpIndex");}catch(NoSuchFieldException absent){
+                // The newer OEM algorithm implements overflow through this exact method.
+                Method overflow=null;
+                for(Class<?> cursor=type;cursor!=null;cursor=cursor.getSuperclass())try{
+                    overflow=cursor.getDeclaredMethod("shouldForceOverflow",int.class,float.class,int.class);break;
+                }catch(NoSuchMethodException ignored){}
+                if(overflow==null||overflow.getReturnType()!=boolean.class||java.lang.reflect.Modifier.isStatic(overflow.getModifiers()))
+                    throw new NoSuchMethodException("Notification overflow contract: mSpeedBumpIndex or shouldForceOverflow(int,float,int):boolean");
+                bump=null;
+            }
+            speedBump=bump;
+        }
+        private static java.lang.reflect.Field integerField(Class<?> type,String name)throws ReflectiveOperationException {
+            for(Class<?> cursor=type;cursor!=null;cursor=cursor.getSuperclass())try{
+                java.lang.reflect.Field field=cursor.getDeclaredField(name);
+                if(field.getType()!=int.class||java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+                    throw new IllegalAccessException(name+" must be an instance int field");
+                field.setAccessible(true);return field;
+            }catch(NoSuchFieldException ignored){}
+            throw new NoSuchFieldException(name);
+        }
+        int[] snapshot(Object target)throws IllegalAccessException{return new int[]{maximum.getInt(target),width.getInt(target),speedBump==null?0:speedBump.getInt(target)};}
+        void apply(Object target,int limit,int room)throws IllegalAccessException{maximum.setInt(target,limit);width.setInt(target,room);if(speedBump!=null)speedBump.setInt(target,-1);}
+        void restore(Object target,int[] saved)throws IllegalAccessException{maximum.setInt(target,saved[0]);width.setInt(target,saved[1]);if(speedBump!=null)speedBump.setInt(target,saved[2]);}
+    }
     private static Method find(Class<?> type,String name) {
         for(Class<?> c=type;c!=null;c=c.getSuperclass()) try{return c.getDeclaredMethod(name);}catch(NoSuchMethodException ignored){}
         return null;
     }
-    private static String name(View v) { try{return v.getResources().getResourceEntryName(v.getId());}catch(Exception e){return "";} }
+    private static String name(View v) { if(v.getId()==View.NO_ID||v.getId()==0)return "";try{return v.getResources().getResourceEntryName(v.getId());}catch(Exception e){return "";} }
     private static boolean colorOnlySetting(String key) {
         return key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_COLORS)
                 ||key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_PLUG_COLOR)
@@ -571,6 +607,9 @@ final class StatusBarGridHook {
             applyHeight(Integer.parseInt(snapshot.get(ConfigSchema.STATUSBAR_HEIGHT_DP)));
             SystemUiHook.refreshGridClock(root); startMetrics();root.requestLayout();root.invalidate();
         }
+
+        // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+        //noinspection DiscouragedApi
         void applyHeight(int dp){ViewGroup.LayoutParams p=root.getLayoutParams();if(p==null)return;
             // A view inflated during an enabled boot/rotation can already have our
             // enlarged height. Query the unmodified dimension instead of restoring it.
@@ -1441,18 +1480,27 @@ final class StatusBarGridHook {
                 Bundle sample=null;
                 try{sample=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"hardware_telemetry",null,null);}catch(Exception ignored){}
                 for(String kind:new String[]{"cpu","gpu"}){
+                    if(!itemEnabled(kind))continue;
                     double degrees=sample==null?Double.NaN:sample.getDouble(kind,Double.NaN);
                     values.put(kind,Double.isFinite(degrees)?temperatureLabel(kind)+metricNumber(kind,degrees)+"°":temperature(kind));
                 }
             }
-            Long temp=readLong("/sys/class/power_supply/battery/temp");values.put("battery_temp",temp==null?"B:—":"B:"+metricNumber("battery_temp",temp/10d)+"°");
-            Long current=readLong("/sys/class/power_supply/battery/current_now"),voltage=readLong("/sys/class/power_supply/battery/voltage_now");
-            values.put("current",current==null?"I:—":"I:"+metricNumber("current",current/1000d)+"mA");
-            values.put("power",current==null||voltage==null?"P:—":"P:"+metricNumber("power",Math.abs(current.doubleValue()*voltage/1e12))+"W");
+            if(itemEnabled("battery_temp")){
+                Long temp=readLong("/sys/class/power_supply/battery/temp");values.put("battery_temp",temp==null?"B:—":"B:"+metricNumber("battery_temp",temp/10d)+"°");
+            }
+            boolean needsCurrent=itemEnabled("current"),needsPower=itemEnabled("power");
+            if(needsCurrent||needsPower){
+                Long current=readLong("/sys/class/power_supply/battery/current_now");
+                if(needsCurrent)values.put("current",current==null?"I:—":"I:"+metricNumber("current",current/1000d)+"mA");
+                if(needsPower){
+                    Long voltage=readLong("/sys/class/power_supply/battery/voltage_now");
+                    values.put("power",current==null||voltage==null?"P:—":"P:"+metricNumber("power",Math.abs(current.doubleValue()*voltage/1e12))+"W");
+                }
+            }
             if(FeatureSettings.enabled(context,"ls_augment_rm_metrics_custom")) {
                 boolean units=FeatureSettings.enabled(context,"ls_augment_rm_metrics_hide_units");
                 boolean chargingOnly=FeatureSettings.enabled(context,"ls_augment_rm_metrics_charging_only");
-                String batteryStatus=read("/sys/class/power_supply/battery/status");
+                String batteryStatus=chargingOnly&&(needsCurrent||needsPower)?read("/sys/class/power_supply/battery/status"):"";
                 boolean charging=batteryStatus.equalsIgnoreCase("Charging")||batteryStatus.equalsIgnoreCase("Full");
                 for(String kind:new String[]{"cpu","gpu","battery_temp","current","power"}) {
                     String value=values.get(kind);if(value==null)continue;
@@ -1463,6 +1511,7 @@ final class StatusBarGridHook {
                     values.put(kind,chargingOnly&&!charging&&(kind.equals("current")||kind.equals("power"))?"":prefix+numeric);
                 }
             }
+            if(itemEnabled("network")){
             long rx=TrafficStats.getTotalRxBytes(),tx=TrafficStats.getTotalTxBytes(),now=SystemClock.elapsedRealtime();
             long down=previousRx<0||rx<previousRx||now<=previousTime?0:(rx-previousRx)*1000/(now-previousTime);
             long up=previousTx<0||tx<previousTx||now<=previousTime?0:(tx-previousTx)*1000/(now-previousTime);
@@ -1477,6 +1526,7 @@ final class StatusBarGridHook {
                 boolean suffix=FeatureSettings.enabled(context,"ls_augment_rm_network_per_second");
                 values.put("network",ls.augment.com.SystemUiPolicy.hideNetwork(up,down,threshold)?"":
                     ls.augment.com.StatusBarNetworkDisplay.format(networkMode(),ls.augment.com.SystemUiPolicy.networkRate(up,digits,unit,suffix),ls.augment.com.SystemUiPolicy.networkRate(down,digits,unit,suffix),uploadMark,downloadMark));
+            }
             }
             main.post(()->{if(!active||metricsGeneration!=generation)return;for(Map.Entry<String,TextView> e:metrics.entrySet()){
                 String value=values.get(baseId(e.getKey()));
@@ -1493,9 +1543,15 @@ final class StatusBarGridHook {
         }});
         }
         final Map<String,String> thermalPaths=new HashMap<>();
-        String temperature(String kind){String path=thermalPaths.get(kind);if(path==null){File[] zones=new File("/sys/class/thermal").listFiles();if(zones!=null)for(File zone:zones){String type=read(new File(zone,"type").getPath()).toLowerCase(Locale.ROOT);
-                if(type.contains(kind)){path=new File(zone,"temp").getPath();thermalPaths.put(kind,path);break;}}}
+        final Map<String,Long> thermalScanAfter=new HashMap<>();
+        String temperature(String kind){String path=thermalPaths.get(kind);long now=SystemClock.elapsedRealtime();
+            if(path==null&&now>=thermalScanAfter.getOrDefault(kind,0L)){
+                thermalScanAfter.put(kind,now+30_000L);
+                File[] zones=new File("/sys/class/thermal").listFiles();if(zones!=null)for(File zone:zones){String type=read(new File(zone,"type").getPath());
+                    if(ls.augment.com.ThermalTelemetry.matchesSensor(type,kind)){path=new File(zone,"temp").getPath();thermalPaths.put(kind,path);break;}}
+            }
             Long value=path==null?null:readLong(path);double c=value==null?Double.NaN:Math.abs(value)>300?value/1000d:value;
+            if(path!=null&&value==null)thermalPaths.remove(kind);
             return temperatureLabel(kind)+ (Double.isFinite(c)&&c>-20&&c<150?metricNumber(kind,c)+"°":"—");}
         String metricNumber(String kind,double value){int fallback=kind.equals("battery_temp")||kind.equals("power")?1:0;
             return StatusBarMetricsFormatter.number(value,FeatureSettings.integer(context,"ls_augment_statusbar_"+kind+"_decimals",fallback,0,3));}

@@ -25,7 +25,7 @@ def baseline():
     return d
 def make(folder):return m.Journal(folder/'restore.json',baseline(),{'case':'lifecycle','runId':RUN,'secret':SECRET,'nativeBaseline':{'font':'1.3'},'notificationsBefore':[]}, {'asset':'hash'},{'user':'name'})
 def progress(**kwargs):
-    d={'schema':1,'fixtureRevision':'island-lifecycle-r1','package':m.PACKAGE,'runId':RUN,'pid':111,'startedElapsed':1000,'deadlineElapsed':176000,'observedElapsed':1200,'sequence':0,'audioOutput':False,'audioFocusRequested':False,'ownNotificationIds':[],'closed':False,'sessionReleased':False,'contentCallbacks':0,'phase':'initial-paused','musicActive':False,'error':''}
+    d={'schema':1,'fixtureRevision':'island-lifecycle-r2-controls','package':m.PACKAGE,'runId':RUN,'pid':111,'startedElapsed':1000,'deadlineElapsed':176000,'observedElapsed':1200,'sequence':0,'audioOutput':False,'audioFocusRequested':False,'ownNotificationIds':[],'closed':False,'sessionReleased':False,'contentCallbacks':0,'phase':'initial-paused','musicActive':False,'error':''}
     d.update(kwargs);return d
 def media(items=()):
     return 'MEDIA SESSION SERVICE (dumpsys media_session)\nUser Records:\n Sessions Stack - have '+str(len(items))+' sessions:\n'+''.join('  package='+p+'\n  active='+str(active).lower()+'\n  state='+state+'\n' for p,active,state in items)+'Audio playback (lastly played comes first)\n'

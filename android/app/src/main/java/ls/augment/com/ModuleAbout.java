@@ -56,6 +56,8 @@ final class ModuleAbout {
         action(ui, legal, "用户协议", "", view -> ModuleLegal.showTerms(activity, ui));
         legal.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
         action(ui, legal, "隐私政策", "", view -> ModuleLegal.showPrivacy(activity, ui));
+        legal.addView(ui.divider(), new LinearLayout.LayoutParams(-1, ui.dp(1)));
+        action(ui, legal, "许可和第三方声明", "", view -> ModuleNavigation.open(activity,"licenses"));
         parent.addView(legal, ui.margins(0, 0, 0, 8));
         return hardware;
     }

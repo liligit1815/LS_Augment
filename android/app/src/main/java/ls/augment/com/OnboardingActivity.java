@@ -52,7 +52,7 @@ public final class OnboardingActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (!needsConsent(this)) { finish(); return; }
-        if (Build.VERSION.SDK_INT >= 33) {
+        {
             backCallback = this::leave;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
@@ -92,7 +92,7 @@ public final class OnboardingActivity extends Activity {
         setContentView(root);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
-        if (Build.VERSION.SDK_INT >= 30 && getWindow().getInsetsController() != null) {
+        if (getWindow().getInsetsController() != null) {
             getWindow().getInsetsController().setSystemBarsAppearance(0,
                     android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                             | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
@@ -114,7 +114,7 @@ public final class OnboardingActivity extends Activity {
         if (intro != null) { introPosition = intro.positionMs(); intro.release(); intro = null; }
         // Reapply the module window palette after the black, immersive video surface.
         ui = new UiKit(this);
-        if (Build.VERSION.SDK_INT >= 30 && getWindow().getInsetsController() != null)
+        if (getWindow().getInsetsController() != null)
             getWindow().getInsetsController().show(android.view.WindowInsets.Type.systemBars());
         showWelcome(true);
     }
@@ -284,7 +284,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override protected void onDestroy() {
         if (intro != null) { intro.release(); intro = null; }
-        if (Build.VERSION.SDK_INT >= 33 && backCallback != null) {
+        if (backCallback != null) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
         }
         super.onDestroy();

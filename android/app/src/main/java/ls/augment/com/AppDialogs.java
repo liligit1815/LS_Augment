@@ -61,9 +61,9 @@ final class AppDialogs {
         surface.setOrientation(LinearLayout.VERTICAL);
         surface.addView(panel, new LinearLayout.LayoutParams(-1, -2, 1));
         android.widget.FrameLayout bounded = new android.widget.FrameLayout(ui.activity) {
+            private final android.graphics.Rect available = new android.graphics.Rect();
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
                 int max = Math.round(getResources().getDisplayMetrics().heightPixels * .78f);
-                android.graphics.Rect available = new android.graphics.Rect();
                 window.getDecorView().getWindowVisibleDisplayFrame(available);
                 if (available.height() > 0) max = Math.min(max, available.height() - ui.dp(24));
                 if (MeasureSpec.getMode(heightSpec) != MeasureSpec.UNSPECIFIED)
@@ -123,9 +123,10 @@ final class AppDialogs {
 
     private static void styleTree(View view, UiKit ui) {
         // Only clear framework containers, preserving backgrounds supplied by custom content.
-        boolean frameworkId = (view.getId() >>> 24) == 1;
+        String frameworkName = frameworkResourceName(view);
+        boolean frameworkId = !frameworkName.isEmpty();
         if (frameworkId && view instanceof ViewGroup) view.setBackgroundColor(Color.TRANSPARENT);
-        if (frameworkId && "customPanel".equals(view.getResources().getResourceEntryName(view.getId())))
+        if ("customPanel".equals(frameworkName))
             view.setPadding(view.getPaddingLeft(), ui.dp(16), view.getPaddingRight(), view.getPaddingBottom());
         if (view instanceof EditText) ui.styleInput((EditText) view);
         else if (view instanceof TextView && !(view instanceof Button)) {
@@ -135,7 +136,7 @@ final class AppDialogs {
                 text.setTextSize(13); text.setLineSpacing(ui.dp(4), 1.1f);
                 text.setPadding(text.getPaddingLeft(), ui.dp(16), text.getPaddingRight(), text.getPaddingBottom());
             }
-            if (frameworkId && "alertTitle".equals(view.getResources().getResourceEntryName(view.getId()))) {
+            if ("alertTitle".equals(frameworkName)) {
                 text.setTextSize(16); text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                 text.setAccessibilityHeading(true);
             }
@@ -157,6 +158,17 @@ final class AppDialogs {
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) styleTree(group.getChildAt(i), ui);
+        }
+    }
+
+    private static String frameworkResourceName(View view) {
+        int id = view.getId();
+        if (id == View.NO_ID || id == 0) return "";
+        try {
+            return "android".equals(view.getResources().getResourcePackageName(id))
+                    ? view.getResources().getResourceEntryName(id) : "";
+        } catch (android.content.res.Resources.NotFoundException unavailable) {
+            return ""; // Generated View IDs have no resource table entry.
         }
     }
 

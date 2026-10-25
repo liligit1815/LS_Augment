@@ -58,7 +58,7 @@ public final class SettingsActivity extends Activity {
         else if(getIntent().hasExtra("tab"))selected=getIntent().getStringExtra("tab");
         if(!Arrays.asList(HOME,SETTINGS,ABOUT).contains(selected))selected=HOME;
         buildScaffold();ModuleScopeService.addListener(environmentChanged);
-        if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::navigateBack);
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::navigateBack);
         if(OnboardingActivity.needsConsent(this))OnboardingActivity.open(this);
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);String tab=intent.getStringExtra("tab");if(Arrays.asList(HOME,SETTINGS,ABOUT).contains(tab))selectTab(tab);}
@@ -89,7 +89,7 @@ public final class SettingsActivity extends Activity {
         ((LiquidGlassLayout)navigation).setNavigationListener(index->selectTab(new String[]{HOME,SETTINGS,ABOUT}[index]));
         ((LiquidGlassLayout)navigation).setFocusListener(this::updateNavigationFocus);
         scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->refreshPageGlass());
-        if(Build.VERSION.SDK_INT>=28){navigation.setOutlineSpotShadowColor(0x203986bb);navigation.setOutlineAmbientShadowColor(0x203986bb);}
+        {navigation.setOutlineSpotShadowColor(0x203986bb);navigation.setOutlineAmbientShadowColor(0x203986bb);}
         FrameLayout.LayoutParams nav=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);nav.setMargins(ui.dp(16),0,ui.dp(16),ui.dp(10));root.addView(navigation,nav);
         ui.setContentView(root);ui.applyGestureInset(root,0,true);renderPage();scroll.requestFocus();
     }
@@ -316,7 +316,7 @@ public final class SettingsActivity extends Activity {
     }
     private void applyEnvironment(){
         if(runtimeCard==null)return;
-        if(environmentLoading||!environmentKnown){runtimeState.setText("正在读取 LSP 与 ROOT 状态…");return;}
+        if(environmentLoading||!environmentKnown){runtimeState.setText(runtimeState.getContext().getString(R.string.status_settingsactivity_37));return;}
         ModuleEnvironmentState state=ModuleEnvironmentState.of(runtimeActive,rootGranted,
                 BuildConfig.VERSION_NAME.equals(loadedModuleVersion));
         runtimeCard.setSurfaceTint(state.tint);runtimeState.setText(state.summary);rootState.setText(state.message);

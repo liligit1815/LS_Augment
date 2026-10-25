@@ -107,11 +107,8 @@ final class DeviceInfoObserver implements AutoCloseable {
 
     private void receive(IntentFilter filter) {
         try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                appContext.registerReceiver(receiver, filter, null, main, Context.RECEIVER_NOT_EXPORTED);
-            } else {
-                appContext.registerReceiver(receiver, filter, null, main);
-            }
+            // Module UI requires API 35; this receiver is not injected into older hosts.
+            appContext.registerReceiver(receiver, filter, null, main, Context.RECEIVER_NOT_EXPORTED);
             receiverRegistered = true;
         } catch (RuntimeException unavailable) {
             // Optional refresh signals must not prevent About from opening.

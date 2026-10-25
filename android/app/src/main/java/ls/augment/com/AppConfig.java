@@ -103,6 +103,10 @@ final class AppConfig {
 
     private final Context context;
     private static DurablePreferences sharedConfig;
+    // DurablePreferences publishes a new immutable map only after a successful commit.
+    // Identity also covers migrations/resets; a failed disk write must retain the old snapshot.
+    private static Map<String, ?> snapshotSource;
+    private static ConfigSnapshot publishedSnapshot;
     private final DurablePreferences prefs;
     private final long editorGeneration;
 
@@ -233,11 +237,15 @@ final class AppConfig {
 
     ConfigSnapshot configSnapshot() {
         synchronized (CONFIG_LOCK) {
+            Map<String, ?> source = prefs.getAll();
+            if (source == snapshotSource && publishedSnapshot != null) return publishedSnapshot;
             ConfigSnapshot result = ConfigSnapshot.create(
                     Math.max(1L, prefs.getLong(SNAPSHOT_REVISION, 1L)),
                     Math.max(1L, prefs.getLong(SNAPSHOT_UPDATED_AT, 1L)),
                     snapshotLocked());
-            return result == null ? ConfigSnapshot.safeDefaults() : result;
+            publishedSnapshot = result == null ? ConfigSnapshot.safeDefaults() : result;
+            snapshotSource = source;
+            return publishedSnapshot;
         }
     }
 
@@ -276,28 +284,49 @@ final class AppConfig {
     private SaveResult save(Map<String, String> updates,
             ShoulderQuickSwitchPolicy.CaseRef candidate, boolean checked, boolean replace,
             boolean deriveFreeformGate) {
+        if (touchesLauncherGrid(updates)) {
+            traceLauncherGrid(context, "SAVE_REQUEST", updates, configSnapshot().revision, "");
+        }
         LinkedHashMap<String, String> clean = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : updates.entrySet()) {
             String value = ConfigSchema.normalize(entry.getKey(), entry.getValue());
-            if (value == null) return new SaveResult(false, "配置值无效：" + entry.getKey());
+            if (value == null) return rejected(updates, "配置值无效：" + entry.getKey());
             clean.put(entry.getKey(), value);
         }
         ConfigSnapshot runtime;
+        String competitiveRecoveryIssue="";
         synchronized (CONFIG_LOCK) {
             if (ResetWriteFence.stale(editorGeneration))
-                return new SaveResult(false, "配置已被重置，请重新打开此页面后再修改");
+                return rejected(updates, "配置已被重置，请重新打开此页面后再修改");
             LinkedHashMap<String, String> next = new LinkedHashMap<>(replace ? DEFAULTS : snapshotLocked());
             if (candidate != null) {
                 ShoulderQuickSwitchPolicy candidates = ShoulderQuickSwitchPolicy.parse(
                         next.get(ShoulderQuickSwitchPolicy.KEY));
-                if (candidates == null) return new SaveResult(false, "肩键候选配置格式无效");
+                if (candidates == null) return rejected(updates, "肩键候选配置格式无效");
                 try {
                     clean.put(ShoulderQuickSwitchPolicy.KEY, candidates.with(candidate, checked).serialize());
                 } catch (IllegalArgumentException invalid) {
-                    return new SaveResult(false, invalid.getMessage());
+                    return rejected(updates, invalid.getMessage());
                 }
             }
             next.putAll(clean);
+            // Last explicit selection wins, atomically. Keep every appearance parameter.
+            if (ConfigSchema.truthy(clean.get(ConfigSchema.NATIVE_ISLAND_SELECTED))) {
+                clean.put(SystemUiOptions.ISLAND, "0");
+                next.put(SystemUiOptions.ISLAND, "0");
+            } else if (ConfigSchema.truthy(clean.get(SystemUiOptions.ISLAND))) {
+                clean.put(ConfigSchema.NATIVE_ISLAND_SELECTED, "0");
+                next.put(ConfigSchema.NATIVE_ISLAND_SELECTED, "0");
+            }
+            // Both entry points publish the same state under the same lock. A
+            // stale Settings page cannot enable dual signals over three-in-one.
+            if (ConfigSchema.truthy(clean.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))) {
+                clean.put(SystemUiOptions.SIGNAL_DUAL, "0");
+                next.put(SystemUiOptions.SIGNAL_DUAL, "0");
+            } else if (ConfigSchema.truthy(clean.get(SystemUiOptions.SIGNAL_DUAL))
+                    && ConfigSchema.truthy(next.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))) {
+                return rejected(updates, "请先关闭三合一图标");
+            }
             // Evaluate after merging under CONFIG_LOCK. UI-thread reads can miss
             // a sibling page's queued save and otherwise turn an enabled page off.
             // Explicit gates (including legacy imports and resets) retain their meaning.
@@ -320,7 +349,7 @@ final class AppConfig {
                 boolean explicitlyEnabling = ConfigSchema.truthy(
                         clean.get(TGK_RAPID_FIRE_ENABLED));
                 if (!compatible && explicitlyEnabling) {
-                    return new SaveResult(false, "肩键极速连点尚未通过本机兼容性测试");
+                    return rejected(updates, "肩键极速连点尚未通过本机兼容性测试");
                 }
                 if (!compatible) {
                     clean.put(TGK_RAPID_FIRE_ENABLED, "0");
@@ -330,7 +359,14 @@ final class AppConfig {
             long now = Math.max(1L, System.currentTimeMillis());
             long revision = Math.max(prefs.getLong(SNAPSHOT_REVISION, 1L) + 1L, now);
             runtime = ConfigSnapshot.create(revision, now, next);
-            if (runtime == null) return new SaveResult(false, "无法生成完整配置快照");
+            if (runtime == null) return rejected(updates, "无法生成完整配置快照");
+
+            boolean competitiveEnable=ConfigSchema.truthy(clean.get(CompetitiveKeyOptions.ENABLED))
+                    &&!getBoolean(CompetitiveKeyOptions.ENABLED);
+            if(competitiveEnable){
+                ModuleSystemSettings.WriteResult cleared=ModuleSystemSettings.put(context,"system",CompetitiveKeyOptions.NATIVE_SETTING,"0");
+                if(!cleared.success)return rejected(updates,cleared.message);
+            }
 
             DurablePreferences.Editor editor = prefs.edit();
             if (replace) editor.clear().putBoolean(PRIVATE_INITIALIZED, true)
@@ -344,7 +380,18 @@ final class AppConfig {
             }
             editor.putLong(SNAPSHOT_REVISION, revision);
             editor.putLong(SNAPSHOT_UPDATED_AT, now);
-            if (!editor.commit()) return new SaveResult(false, "无法写入应用配置");
+            if (!editor.commit()) {
+                if(competitiveEnable){
+                    ModuleSystemSettings.RestoreResult restored=ModuleSystemSettings.restoreOne(context,"system",CompetitiveKeyOptions.NATIVE_SETTING);
+                    return rejected(updates,"无法写入应用配置"+(restored.success?"":"；"+restored.message));
+                }
+                return rejected(updates, "无法写入应用配置");
+            }
+            if(clean.containsKey(CompetitiveKeyOptions.ENABLED)
+                    &&!ConfigSchema.truthy(clean.get(CompetitiveKeyOptions.ENABLED))&&!ResetWriteFence.blocked()){
+                ModuleSystemSettings.RestoreResult restored=ModuleSystemSettings.restoreOne(context,"system",CompetitiveKeyOptions.NATIVE_SETTING);
+                if(!restored.success)competitiveRecoveryIssue="；竞技键已关闭，"+restored.message;
+            }
         }
         // Publish the committed private state immediately; no Root command is part of saving.
         try {
@@ -354,8 +401,44 @@ final class AppConfig {
         AuditLog.write(context,"CONFIG_SAVE","keys="+String.join(",",clean.keySet()));
         FrameworkConfigSync.request();
         boolean synced = FrameworkConfigSync.isPublished(runtime);
-        return new SaveResult(true, synced ? "配置已保存并同步" :
-                "配置已保存；启动配置正在后台同步", synced);
+        if (touchesLauncherGrid(clean)) {
+            traceLauncherGrid(context, "SAVE_COMMITTED", runtime.values(), runtime.revision,
+                    "frameworkSync=" + (synced ? "SYNCED" : "PENDING") + ";desktopApplied=UNCONFIRMED");
+        }
+        return new SaveResult(true, (synced ? "配置已保存并同步" :
+                "配置已保存；启动配置正在后台同步")+competitiveRecoveryIssue, synced);
+    }
+
+    private SaveResult rejected(Map<String,String> updates, String message) {
+        if (touchesLauncherGrid(updates)) {
+            synchronized (CONFIG_LOCK) {
+                traceLauncherGrid(context, "SAVE_REJECTED", snapshotLocked(),
+                        prefs.getLong(SNAPSHOT_REVISION, 1L), "reason=" + message);
+            }
+        }
+        return new SaveResult(false, message);
+    }
+
+    /** Only these three public numeric settings enter the audit; never dump arbitrary updates. */
+    static boolean touchesLauncherGrid(Map<String,String> values) {
+        if (values == null) return false;
+        for (String part : new String[]{"enabled", "rows", "columns"})
+            if (values.containsKey("ls_augment_rm_launcher_grid_" + part)) return true;
+        return false;
+    }
+
+    static void traceLauncherGrid(Context context, String phase, Map<String,String> values,
+            long revision, String outcome) {
+        StringBuilder line = new StringBuilder("version=").append(BuildConfig.VERSION_NAME)
+                .append(";phase=").append(phase).append(";revision=").append(revision);
+        for (String part : new String[]{"enabled", "rows", "columns"}) {
+            String value = values.get("ls_augment_rm_launcher_grid_" + part);
+            // Rejected raw input can include arbitrary text. Record a marker, not its contents.
+            String safe = value == null ? "UNCHANGED" : value.matches("[0-9]{1,2}|true|false") ? value : "INVALID";
+            line.append(';').append(part).append('=').append(safe);
+        }
+        if (outcome != null && !outcome.isEmpty()) line.append(';').append(outcome);
+        AuditLog.write(context, "LAUNCHER_GRID_CONFIG", line.toString());
     }
 
     synchronized RootShell.Result mirrorAll() {

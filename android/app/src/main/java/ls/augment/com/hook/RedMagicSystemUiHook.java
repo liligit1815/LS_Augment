@@ -80,6 +80,8 @@ final class RedMagicSystemUiHook {
                 new String[]{"showSafetyWarningH", "showCsdWarningH"}, SystemUiOptions.AUDIO_NO_SAFE_WARNING);
         count += suppress(loader, "com.zte.feature.volume.MfvVolumeDialogImpl",
                 new String[]{"showSafetyWarningH", "showCsdWarningH"}, SystemUiOptions.AUDIO_NO_SAFE_WARNING);
+        count += suppress(loader, "com.zte.feature.volume.VolumeDialogImpl",
+                new String[]{"showSafetyWarningH", "showCsdWarningH"}, SystemUiOptions.AUDIO_NO_SAFE_WARNING);
         for (String type : new String[]{"com.android.systemui.statusbar.phone.PhoneStatusBarView",
                 "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
                 "com.zte.controlcenter.widget.CCHeaderView"}) {
@@ -251,8 +253,11 @@ final class RedMagicSystemUiHook {
                         capacityBlock.close();capacityBlock=null;
                     }
                     if (pair == null || !pair.matches(one, two,signalSource)) {
-                        if (pair != null) pair.restore();
-                        pair = SignalPair.create(one, two,signalSource);
+                        if (pair != null) {pair.restore();pair=null;}
+                        // restore() returns width ownership immediately, but measured
+                        // sizes still describe the old composite until native layout.
+                        if(SignalPair.nativeLayoutSettled(one,two))pair=SignalPair.create(one,two,signalSource);
+                        else checked=SystemClock.uptimeMillis()-200;
                     }
                     if (pair != null && !pair.apply(!grid)) {
                         SignalPair failed=pair;failed.restore();pair=null;
@@ -414,6 +419,7 @@ final class RedMagicSystemUiHook {
 
     private static final class SignalPair {
         final View one, two;
+        private static final Map<View,WeakReference<SignalPair>> OWNERS=new WeakHashMap<>();
         final ImageView first, second;
         final View anchor, collapsed;
         final ImageView anchorSignal;
@@ -426,6 +432,7 @@ final class RedMagicSystemUiHook {
         final ViewTreeObserver observer;
         final ViewTreeObserver.OnGlobalLayoutListener nativeLayout=()->layoutEpoch++;
         boolean closed;
+        String restoreFailure="";
         long generation,budgetSignature=Long.MIN_VALUE,publishedAt;
         int budgetWidth,budgetHeight;String stopReason="disabled";String published="",environmentChecksum="",environmentKey="";
         boolean widthExpanded;
@@ -448,14 +455,25 @@ final class RedMagicSystemUiHook {
             observer=anchor.getViewTreeObserver();observer.addOnGlobalLayoutListener(nativeLayout);
         }
         static SignalPair create(View one, View two,ConnectivityIconSource source) {
+            if(occupied(one)||occupied(two))return null;
             View first = find(one, "mobile_signal"), second = two==null?null:find(two, "mobile_signal");
             if (!(first instanceof ImageView) || two!=null&&!(second instanceof ImageView)
                     || one.getLayoutParams() == null || two!=null&&two.getLayoutParams() == null
                     || ((ImageView) first).getDrawable() == null || second!=null&&((ImageView) second).getDrawable() == null) return null;
             SignalPair pair = new SignalPair(one, two, (ImageView) first, (ImageView) second,source);
-            if (!pair.canDraw()){pair.restore(DualSignalTint.color(one,(ImageView)first)==null?"tint_unknown":"slot_unknown");return null;}
-            pair.anchor.getOverlay().add(pair.drawable);
-            return pair;
+            OWNERS.put(one,new WeakReference<>(pair));if(two!=null)OWNERS.put(two,new WeakReference<>(pair));
+            try{
+                if (!pair.canDraw()){pair.restore(DualSignalTint.color(one,(ImageView)first)==null?"tint_unknown":"slot_unknown");return null;}
+                pair.anchor.getOverlay().add(pair.drawable);
+                return pair;
+            }catch(RuntimeException failure){pair.restore("create_failed");throw failure;}
+        }
+        private static boolean occupied(View view){
+            WeakReference<SignalPair> ref=OWNERS.get(view);SignalPair pair=ref==null?null:ref.get();
+            return pair!=null&&!pair.closed;
+        }
+        private void releaseOwner(View view){
+            WeakReference<SignalPair> ref=OWNERS.get(view);if(ref!=null&&ref.get()==this)OWNERS.remove(view);
         }
         boolean matches(View one, View two,ConnectivityIconSource source) {
             return this.one == one && this.two == two && find(one, "mobile_signal") == first
@@ -464,7 +482,8 @@ final class RedMagicSystemUiHook {
         boolean canDraw() {
             return first.getDrawable() != null && (second==null||second.getDrawable() != null)
                     && visibleWithin(first, one) && (second==null||visibleWithin(second, two))
-                    && drawable.geometry() != null && DualSignalTint.color(anchor,anchorSignal)!=null;
+                    && drawable.geometry() != null && DualSignalTint.color(anchor,anchorSignal)!=null
+                    && drawable.artworkReady();
         }
         private static boolean visibleWithin(View child, View owner) {
             for (View current = child; current != null; current = current.getParent() instanceof View
@@ -552,15 +571,16 @@ final class RedMagicSystemUiHook {
         }
         boolean needsRefresh(){return !closed&&(nativeWait>=0||ownedWait>=0
                 ||!nativeSignature.equals(drawable.inputs())||!planSignature.equals(drawable.planInputs()));}
-        boolean layoutSettled(){
-            for(View child:new View[]{first,second})if(child!=null){
-                View stop=child==first?one:two;
+        static boolean nativeLayoutSettled(View one,View two){
+            for(View stop:new View[]{one,two})if(stop!=null){
+                View child=find(stop,"mobile_signal");if(child==null)child=stop;
                 for(View at=child;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null){
                     if(at.isLayoutRequested())return false;if(at==stop)break;
                 }
             }
             return true;
         }
+        boolean layoutSettled(){return nativeLayoutSettled(one,two);}
         void showNative(){
             drawable.readyToDraw=false;
             for(Map.Entry<View,Float> e:badges.entrySet())if(e.getKey().getTransitionAlpha()==0)e.getKey().setTransitionAlpha(e.getValue());
@@ -608,7 +628,7 @@ final class RedMagicSystemUiHook {
             if(!FeatureSettings.enabled(anchor.getContext(),ConfigSchema.SYSTEMUI_MASTER)||RedMagicLegacyUiHook.positionSizeOnly(anchor.getContext()))reason="disabled";
             if(StatusBarAssetsHook.isHidden(anchor,"dual_signal"))reason="native_hidden";
             for(View at=anchor;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null)if(at.getVisibility()!=View.VISIBLE){reason="native_hidden";break;}
-            return new ls.augment.com.DualSignalSpacingObservation(profile,surface,environmentKey,reason,generation,slots,aspects,active,drawable.activity,whole,g==null?0:g.height(),drawable.gridScale,g==null?0:g.left,g==null?0:g.top,budgetWidth,budgetHeight);
+            return new ls.augment.com.DualSignalSpacingObservation(profile,surface,environmentKey,reason,generation,slots,aspects,active,drawable.activity,whole,g==null?0:g.height(),drawable.gridScale,g==null?0:g.left,g==null?0:g.top,budgetWidth,budgetHeight,drawable.iosStyle());
         }
         void publish(String reason){
             ls.augment.com.DualSignalSpacingObservation current=observation(reason);if(current==null)return;
@@ -625,23 +645,43 @@ final class RedMagicSystemUiHook {
         }
         void restore(){restore(stopReason);}
         void restore(String reason) {
-            if(closed)return;publish(reason);closed=true;
-            DualSignalTint.unwatch(one);if(two!=null)DualSignalTint.unwatch(two);
-            if(observer.isAlive())observer.removeOnGlobalLayoutListener(nativeLayout);
-            showNative();anchor.getOverlay().remove(drawable);restoreAnchorWidth();
-            restoreWidth();
-            anchor.requestLayout();
-            if(collapsed!=null)collapsed.requestLayout();
-            anchor.invalidate();
-            if(collapsed!=null)collapsed.invalidate();
+            if(closed)return;
+            // Close before any callback or diagnostic can re-enter this pair.
+            closed=true;drawable.readyToDraw=false;drawable.invalidIdentity=null;
+            cleanup("tint_first",()->DualSignalTint.unwatch(one));
+            if(two!=null)cleanup("tint_second",()->DualSignalTint.unwatch(two));
+            cleanup("observer",()->{if(observer.isAlive())observer.removeOnGlobalLayoutListener(nativeLayout);});
+            for(Map.Entry<View,Float> entry:new ArrayList<>(badges.entrySet()))cleanup("badge",()->{
+                View badge=entry.getKey();if(badge!=null&&badge.getTransitionAlpha()==0)badge.setTransitionAlpha(entry.getValue());
+            });
+            badges.clear();
+            cleanup("signal_alpha",()->{if(anchorSignal.getTransitionAlpha()==0)anchorSignal.setTransitionAlpha(firstTransitionAlpha);});
+            if(collapsed!=null)cleanup("second_alpha",()->{if(collapsed.getTransitionAlpha()==0)collapsed.setTransitionAlpha(secondTransitionAlpha);});
+            cleanup("overlay",()->anchor.getOverlay().remove(drawable));
+            cleanup("anchor_width",this::restoreAnchorWidth);
+            cleanup("second_width",this::restoreWidth);
+            cleanup("anchor_layout",()->{anchor.requestLayout();anchor.invalidate();});
+            if(collapsed!=null)cleanup("second_layout",()->{collapsed.requestLayout();collapsed.invalidate();});
+            releaseOwner(one);releaseOwner(two);
+            // Evidence collection must never prevent native state from being restored.
+            cleanup("publish",()->publish(reason));
+            if(!restoreFailure.isEmpty())try{FeatureSettings.diagnostic(anchor.getContext(),
+                    "ls_augment_dual_signal_restore_error",restoreFailure);}catch(RuntimeException|LinkageError ignored){ }
+        }
+        private void cleanup(String phase,Runnable action){
+            try{action.run();}catch(RuntimeException|LinkageError failure){
+                if(restoreFailure.length()<1024)restoreFailure+=phase+":"+failure.getClass().getSimpleName()+";";
+            }
         }
         void restoreWidth() {
             if (!widthCollapsed) return;
-            if (collapsed.getMinimumWidth() == 0) collapsed.setMinimumWidth(secondMinimum);
-            if (collapsed.getLayoutParams() != null && collapsed.getLayoutParams().width == 0) {
-                ViewGroup.LayoutParams params = collapsed.getLayoutParams(); params.width = secondWidth; collapsed.setLayoutParams(params);
-            }
             widthCollapsed = false;
+            try{if (collapsed.getMinimumWidth() == 0) collapsed.setMinimumWidth(secondMinimum);}
+            finally{
+                if (collapsed.getLayoutParams() != null && collapsed.getLayoutParams().width == 0) {
+                    ViewGroup.LayoutParams params = collapsed.getLayoutParams(); params.width = secondWidth; collapsed.setLayoutParams(params);
+                }
+            }
         }
         private static Object subscription(View view) {
             if(view==null)return null;
@@ -661,8 +701,10 @@ final class RedMagicSystemUiHook {
         final ImageView position, first, second;
         final ConnectivityIconSource source;
         final ls.augment.com.DualSignalPainter painter=new ls.augment.com.DualSignalPainter();
+        final ls.augment.com.IosSignalPainter iosPainter=new ls.augment.com.IosSignalPainter();
+        final Runnable artworkInvalidated;
         boolean activity,readyToDraw;
-        float gridScale=1;
+        float gridScale=1,nativeInkHeight,nativeFrameHeight;
         SignalStackLayout.Geometry reference;
         Runnable invalidIdentity;boolean fallbackQueued;String fallbackReason="slot_unknown";
         void refresh(){
@@ -673,8 +715,27 @@ final class RedMagicSystemUiHook {
             refreshBadge(secondRoaming,otherOwner,"mobile_roaming","mobile_roaming_large");
             refreshBadge(firstHd,owner,"mobile_volte","mobile_ims");
             refreshBadge(secondHd,otherOwner,"mobile_volte","mobile_ims");
+            SignalStackLayout.Geometry g=geometry();
             FeatureSettings.diagnostic(owner.getContext(),"ls_augment_signal_badges",
-                    "art=reference-types-v3;cards="+(second==null?1:2)+";types="+showTypes+";arrows="+activity+";"+source.state.description());
+                    "art="+(iosStyle()?"ios-png-v4-"+(second==null?"single":"dual"):"honor-reference-v5")+";cards="+(second==null?1:2)+";types="+showTypes+";arrows="+activity
+                            +";native_ink_h="+nativeInkHeight+";native_frame_h="+nativeFrameHeight
+                            +";frame_px="+(g==null?"pending":g.width+"x"+g.height())+";"+source.state.description());
+        }
+        boolean iosStyle(){return "1".equals(FeatureSettings.snapshot(owner.getContext()).get(SystemUiOptions.SIGNAL_DUAL_STYLE));}
+        boolean unavailable(ls.augment.com.ConnectivityIconState.Sim sim){
+            return source.state.airplane||sim.level<0||sim.serviceKnown&&!sim.inService;
+        }
+        boolean artworkReady(){
+            if(!iosStyle()||StatusBarAssetsHook.virtualWholeReady(owner,"dual_signal"))return true;
+            Integer color=DualSignalTint.color(owner,position);if(color==null)return false;
+            ls.augment.com.ConnectivityIconState.Sim one=rowSim(owner),two=rowSim(otherOwner);
+            if(one==null||otherOwner!=null&&two==null)return false;
+            boolean firstReady=ls.augment.com.IosSignalAssets.ready(owner.getContext(),
+                    ls.augment.com.IosSignalPolicy.filename(one.level,one.bars,unavailable(one),color,otherOwner==null),artworkInvalidated);
+            boolean secondReady=two==null||ls.augment.com.IosSignalAssets.ready(owner.getContext(),
+                    ls.augment.com.IosSignalPolicy.filename(two.level,two.bars,unavailable(two),color,false),artworkInvalidated);
+            // Retain actual native icons until both replacement rows exist.
+            return firstReady&&secondReady;
         }
         void refreshType(SignalTypeBadge badge,View container){
             View type=container==null?null:find(container,"mobile_type");
@@ -710,7 +771,7 @@ final class RedMagicSystemUiHook {
             final String surface=StatusBarAssetsHook.surfaceFor(owner);
             return ls.augment.com.DualSignalLayout.spaced(geometry.height(),activity,slots,aspects,active,
                     (slot,part)->enabled&&parsed!=null&&ls.augment.com.StatusBarSurfaceSpec.valid(surface)?parsed.resolve(surface,"mobile"+(slot+1)+"."+part):ls.augment.com.StatusBarIconSpacingSpec.ZERO,
-                    owner.getResources().getDisplayMetrics().density/gridScale,owner.getLayoutDirection()==View.LAYOUT_DIRECTION_RTL);
+                    owner.getResources().getDisplayMetrics().density/gridScale,owner.getLayoutDirection()==View.LAYOUT_DIRECTION_RTL,iosStyle());
         }
         void refuseIdentity(){refuse("slot_unknown");}
         void refuse(String reason){
@@ -727,11 +788,23 @@ final class RedMagicSystemUiHook {
             ls.augment.com.DualSignalLayout layout=layout(geometry);if(layout==null)return null;
             Rect bounds=new Rect();new RectF(geometry.left,geometry.top,geometry.left+layout.width,geometry.top+layout.height).roundOut(bounds);return bounds;
         }
-        SignalDrawable(View owner,View otherOwner,ImageView position,ImageView first,ImageView second,ConnectivityIconSource source){this.owner=owner;this.otherOwner=otherOwner;this.position=position;this.first=first;this.second=second;this.source=source;reference=nativeGeometry();}
+        SignalDrawable(View owner,View otherOwner,ImageView position,ImageView first,ImageView second,ConnectivityIconSource source){
+            this.owner=owner;this.otherOwner=otherOwner;this.position=position;this.first=first;this.second=second;this.source=source;
+            artworkInvalidated=()->{
+                // A loading pair has already returned native ownership. Force
+                // its live source to retry; a lone invalidate can hit the 200ms throttle.
+                for(RootState state:new ArrayList<>(ROOTS.values()))if(state.signalSource==source)state.refresh(true);
+                owner.invalidate();
+            };
+            reference=nativeGeometry();
+        }
         SignalStackLayout.Geometry geometry(){return reference;}
         String inputs(){
             StringBuilder b=new StringBuilder(owner.getResources().getConfiguration().toString());
             b.append(':').append(position.getImageMatrix()).append(':').append(owner.getHeight()).append(':').append(owner.getLayoutDirection());
+            // Switching between PNG and vector proportions releases owned host
+            // width and recaptures the original slot before measuring the new style.
+            b.append(":ios=").append(iosStyle());
             Drawable d=position.getDrawable();if(d!=null)b.append(':').append(d.getBounds());
             for(View at=position;at!=null&&at!=owner;at=at.getParent() instanceof View?(View)at.getParent():null){
                 b.append('/').append(at.getLeft()).append(',').append(at.getTop()).append(',').append(at.getRight()).append(',').append(at.getBottom());
@@ -742,6 +815,7 @@ final class RedMagicSystemUiHook {
             return b.toString();
         }
         String planInputs(){return FeatureSettings.snapshot(owner.getContext()).get(ls.augment.com.StatusBarIconSpacingSpec.KEY)
+                +":"+FeatureSettings.snapshot(owner.getContext()).get(SystemUiOptions.SIGNAL_DUAL_STYLE)
                 +":"+FeatureSettings.enabled(owner.getContext(),ConfigSchema.SYSTEMUI_MASTER)+":"+RedMagicLegacyUiHook.positionSizeOnly(owner.getContext())
                 +":"+gridScale+":"+StatusBarAssetsHook.surfaceFor(owner)+":"+StatusBarAssetsHook.virtualWholeReady(owner,"dual_signal")
                 +":"+source.state.activeDataSubscription+":"+SignalPair.subscription(owner)+":"+SignalPair.subscription(otherOwner);}
@@ -758,8 +832,20 @@ final class RedMagicSystemUiHook {
             Rect origin = new Rect(0, 0, 0, 0);
             ((ViewGroup) owner).offsetDescendantRectToMyCoords(position, origin);
             ink.offset(origin.left + position.getPaddingLeft(), origin.top + position.getPaddingTop());
+            nativeInkHeight=ink.height();
+            nativeFrameHeight=position.getHeight()-position.getPaddingTop()-position.getPaddingBottom();
+            // Use this native icon's content frame, with a bounded increase over
+            // its drawable ink. The surrounding status-bar container is not a glyph.
+            float height=SignalStackLayout.referenceHeight(nativeInkHeight,nativeFrameHeight,owner.getHeight());
+            ink.top-=(height-nativeInkHeight)/2;ink.bottom=ink.top+height;
+            // The replacement owns both original SIM allocations. Restricting it
+            // to the first SIM alone shrinks a full-height glyph before the host
+            // can expand, especially when network-type badges are hidden.
+            float slotWidth=owner.getWidth()+(otherOwner==null?0:otherOwner.getWidth());
+            if(iosStyle())return SignalStackLayout.ios(ink.left,ink.top,ink.width(),ink.height(),slotWidth,owner.getHeight(),otherOwner==null);
+            if(otherOwner==null)return SignalStackLayout.compactSingle(ink.left,ink.top,ink.width(),ink.height(),owner.getWidth(),owner.getHeight());
             return SignalStackLayout.compact(ink.left, ink.top, ink.width(), ink.height(),
-                    owner.getWidth(), owner.getHeight(), owner.getResources().getDisplayMetrics().density);
+                    slotWidth, owner.getHeight(), owner.getResources().getDisplayMetrics().density);
         }
         @Override public void draw(Canvas canvas) {
             if(!readyToDraw)return;
@@ -770,7 +856,12 @@ final class RedMagicSystemUiHook {
             Integer nativeColor=DualSignalTint.color(owner,position);
             if(nativeColor==null){refuse("tint_unknown");return;}
             int foreground=nativeColor;
-            ls.augment.com.DualSignalLayout legacyCanvas=new ls.augment.com.DualSignalLayout(geometry.height(),activity,Math.max(badgeAspect(false),badgeAspect(true)));
+            ls.augment.com.DualSignalLayout legacyCanvas=iosStyle()
+                    ?(otherOwner==null?ls.augment.com.DualSignalLayout.iosSingle(geometry.height(),activity,badgeAspect(false))
+                            :ls.augment.com.DualSignalLayout.ios(geometry.height(),activity,Math.max(badgeAspect(false),badgeAspect(true))))
+                    :otherOwner==null
+                    ?ls.augment.com.DualSignalLayout.single(geometry.height(),activity,badgeAspect(false))
+                    :new ls.augment.com.DualSignalLayout(geometry.height(),activity,Math.max(badgeAspect(false),badgeAspect(true)));
             float artworkRight=geometry.left+legacyCanvas.width,artworkBottom=geometry.top+legacyCanvas.height;
             if(StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","whole",geometry.left,geometry.top,artworkRight,artworkBottom,foreground))return;
             StatusBarAssetsHook.drawLayer(owner,canvas,"dual_signal","background",geometry.left,geometry.top,artworkRight,artworkBottom,foreground);
@@ -789,7 +880,15 @@ final class RedMagicSystemUiHook {
                 if(StatusBarAssetsHook.isHidden(owner,semantic))return true;
                 View nativeSource=useSecond?otherOwner:owner;
                 boolean fitSignalInk=part.startsWith("row")&&part.endsWith(".signal")&&"whole".equals(layer);
-                return StatusBarAssetsHook.drawLayer(owner,nativeSource,target,semantic,layer,l,t,r,b,color,fitSignalInk);
+                if(StatusBarAssetsHook.drawLayer(owner,nativeSource,target,semantic,layer,l,t,r,b,color,fitSignalInk))return true;
+                if(fitSignalInk&&iosStyle()){
+                    StatusBarAssetsHook.drawLayer(owner,nativeSource,target,semantic,"background",l,t,r,b,color);
+                    boolean drawn=iosPainter.drawRow(owner.getContext(),target,l,t,r,b,sim.level,sim.bars,unavailable(sim),color,useSecond?1:0,otherOwner==null,artworkInvalidated);
+                    StatusBarAssetsHook.drawLayer(owner,nativeSource,target,semantic,"foreground",l,t,r,b,color);
+                    if(!drawn)refuse("awaiting_layout");
+                    return true;
+                }
+                return false;
             });
             painter.drawSpaced(canvas,geometry.left,geometry.top,measured,
                     state.airplane?0:rowOne.level,rowTwo==null||state.airplane?0:rowTwo.level,rowOne.bars,rowTwo==null?4:rowTwo.bars,
@@ -819,11 +918,15 @@ final class RedMagicSystemUiHook {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View find(View root, String name) {
         int id = root.getResources().getIdentifier(name, "id", root.getContext().getPackageName());
         return id == 0 ? null : root.findViewById(id);
     }
     private static String resourceName(View view) {
+        if(view.getId()==View.NO_ID||view.getId()==0)return "";
         try { return view.getResources().getResourceEntryName(view.getId()); }
         catch (Throwable ignored) { return ""; }
     }

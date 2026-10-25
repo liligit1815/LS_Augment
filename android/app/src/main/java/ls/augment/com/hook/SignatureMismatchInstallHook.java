@@ -39,6 +39,9 @@ final class SignatureMismatchInstallHook {
 
     private SignatureMismatchInstallHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader classLoader) {
         int installed = 0;
         try {
@@ -329,6 +332,10 @@ final class SignatureMismatchInstallHook {
         return fallback;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
+    //noinspection DiscouragedPrivateApi,PrivateApi
     private static Context systemContext() {
         Context context = FeatureSettings.from(null);
         if (context != null) return context;

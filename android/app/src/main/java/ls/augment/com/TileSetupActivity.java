@@ -19,11 +19,7 @@ public final class TileSetupActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         registerSystemBackCallback();
-        if (Build.VERSION.SDK_INT < 33) {
-            Toast.makeText(this, "当前系统请在快捷设置编辑页手动添加 红魔Duo", Toast.LENGTH_LONG).show();
-            finish();
-            return;
-        }
+        {}
         StatusBarManager manager = getSystemService(StatusBarManager.class);
         if (manager == null) {
             Toast.makeText(this, "无法连接 SystemUI", Toast.LENGTH_LONG).show();
@@ -66,7 +62,7 @@ public final class TileSetupActivity extends Activity {
     }
 
     private void registerSystemBackCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        {}
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 this::finish);

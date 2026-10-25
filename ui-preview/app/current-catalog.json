@@ -2044,9 +2044,9 @@
               ]
             },
             {
-              "key": "ls_augment_rm_lock_charge_hide_temperature",
+              "key": "ls_augment_rm_lock_charge_show_temperature",
               "group": "lockscreen",
-              "title": "充电详情隐藏温度",
+              "title": "充电详情显示温度",
               "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
               "help": "从锁屏充电详情中隐藏温度这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
               "kind": "BOOLEAN",
@@ -2060,9 +2060,9 @@
               ]
             },
             {
-              "key": "ls_augment_rm_lock_charge_hide_current",
+              "key": "ls_augment_rm_lock_charge_show_current",
               "group": "lockscreen",
-              "title": "充电详情隐藏电流",
+              "title": "充电详情显示电流",
               "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
               "help": "从锁屏充电详情中隐藏电流这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
               "kind": "BOOLEAN",
@@ -2076,9 +2076,9 @@
               ]
             },
             {
-              "key": "ls_augment_rm_lock_charge_hide_voltage",
+              "key": "ls_augment_rm_lock_charge_show_voltage",
               "group": "lockscreen",
-              "title": "充电详情隐藏电压",
+              "title": "充电详情显示电压",
               "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
               "help": "从锁屏充电详情中隐藏电压这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
               "kind": "BOOLEAN",
@@ -2092,9 +2092,9 @@
               ]
             },
             {
-              "key": "ls_augment_rm_lock_charge_hide_power",
+              "key": "ls_augment_rm_lock_charge_show_power",
               "group": "lockscreen",
-              "title": "充电详情隐藏功率",
+              "title": "充电详情显示功率",
               "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
               "help": "从锁屏充电详情中隐藏功率这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
               "kind": "BOOLEAN",
@@ -3196,7 +3196,7 @@
               "summary": "每个选项附显示示例；可用|总共采用紧凑单行格式。",
               "help": "选择要显示的内存内容，支持“可用|总共”。选项示例使用总共 8 GB、可用 3 GB 演示，并随简洁或详细样式变化；实际显示使用手机内存数据。\n\n可选：可用、已用和总量、可用和已用、仅可用、仅已用、仅总量、可用|总共。默认：可用、已用和总量。",
               "kind": "CHOICE",
-              "defaultValue": "0",
+              "defaultValue": "5",
               "minimum": 0.0,
               "maximum": 5.0,
               "choices": [
@@ -3219,7 +3219,7 @@
               "summary": "",
               "help": "选择最近任务内存文字沿用桌面颜色、跟随系统明暗，或使用下面分别设置的浅色和深色颜色。需开启自定义内存显示。\n\n可选：保持现有桌面颜色、跟随系统深浅色、自定义深浅色。默认：保持现有桌面颜色。",
               "kind": "CHOICE",
-              "defaultValue": "0",
+              "defaultValue": "1",
               "minimum": 0.0,
               "maximum": 2.0,
               "choices": [
@@ -3303,7 +3303,7 @@
               "summary": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。",
               "help": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。\n\n可设置范围：0～2000。默认值：16。",
               "kind": "INTEGER",
-              "defaultValue": "16",
+              "defaultValue": "220",
               "minimum": 0.0,
               "maximum": 2000.0,
               "choices": [],
@@ -3319,7 +3319,7 @@
               "summary": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。",
               "help": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。\n\n可设置范围：0～2000。默认值：16。",
               "kind": "INTEGER",
-              "defaultValue": "16",
+              "defaultValue": "660",
               "minimum": 0.0,
               "maximum": 2000.0,
               "choices": [],
@@ -3335,7 +3335,7 @@
               "summary": "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。",
               "help": "设置最近任务中“竖屏内存距顶部”的距离，单位 dp。简洁和详细样式共用此位置，切换样式会继承原位置；只移动内存文字，不移动任务卡片。需要开启自定义内存显示。\n\n可设置范围：0～2000。默认值：5。",
               "kind": "INTEGER",
-              "defaultValue": "5",
+              "defaultValue": "50",
               "minimum": 0.0,
               "maximum": 2000.0,
               "choices": [],
@@ -3351,7 +3351,7 @@
               "summary": "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。",
               "help": "设置最近任务中“横屏内存距顶部”的距离，单位 dp。简洁和详细样式共用此位置，切换样式会继承原位置；只移动内存文字，不移动任务卡片。需要开启自定义内存显示。\n\n可设置范围：0～2000。默认值：5。",
               "kind": "INTEGER",
-              "defaultValue": "5",
+              "defaultValue": "28",
               "minimum": 0.0,
               "maximum": 2000.0,
               "choices": [],
@@ -7474,9 +7474,9 @@
       ]
     },
     {
-      "key": "ls_augment_rm_lock_charge_hide_temperature",
+      "key": "ls_augment_rm_lock_charge_show_temperature",
       "group": "lockscreen",
-      "title": "充电详情隐藏温度",
+      "title": "充电详情显示温度",
       "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
       "help": "从锁屏充电详情中隐藏温度这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
       "kind": "BOOLEAN",
@@ -7490,9 +7490,9 @@
       ]
     },
     {
-      "key": "ls_augment_rm_lock_charge_hide_current",
+      "key": "ls_augment_rm_lock_charge_show_current",
       "group": "lockscreen",
-      "title": "充电详情隐藏电流",
+      "title": "充电详情显示电流",
       "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
       "help": "从锁屏充电详情中隐藏电流这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
       "kind": "BOOLEAN",
@@ -7506,9 +7506,9 @@
       ]
     },
     {
-      "key": "ls_augment_rm_lock_charge_hide_voltage",
+      "key": "ls_augment_rm_lock_charge_show_voltage",
       "group": "lockscreen",
-      "title": "充电详情隐藏电压",
+      "title": "充电详情显示电压",
       "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
       "help": "从锁屏充电详情中隐藏电压这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
       "kind": "BOOLEAN",
@@ -7522,9 +7522,9 @@
       ]
     },
     {
-      "key": "ls_augment_rm_lock_charge_hide_power",
+      "key": "ls_augment_rm_lock_charge_show_power",
       "group": "lockscreen",
-      "title": "充电详情隐藏功率",
+      "title": "充电详情显示功率",
       "summary": "关闭后恢复原厂行为；个别组件需重启系统界面。",
       "help": "从锁屏充电详情中隐藏功率这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。",
       "kind": "BOOLEAN",
@@ -8373,7 +8373,7 @@
       "summary": "每个选项附显示示例；可用|总共采用紧凑单行格式。",
       "help": "选择要显示的内存内容，支持“可用|总共”。选项示例使用总共 8 GB、可用 3 GB 演示，并随简洁或详细样式变化；实际显示使用手机内存数据。\n\n可选：可用、已用和总量、可用和已用、仅可用、仅已用、仅总量、可用|总共。默认：可用、已用和总量。",
       "kind": "CHOICE",
-      "defaultValue": "0",
+      "defaultValue": "5",
       "minimum": 0.0,
       "maximum": 5.0,
       "choices": [
@@ -8396,7 +8396,7 @@
       "summary": "",
       "help": "选择最近任务内存文字沿用桌面颜色、跟随系统明暗，或使用下面分别设置的浅色和深色颜色。需开启自定义内存显示。\n\n可选：保持现有桌面颜色、跟随系统深浅色、自定义深浅色。默认：保持现有桌面颜色。",
       "kind": "CHOICE",
-      "defaultValue": "0",
+      "defaultValue": "1",
       "minimum": 0.0,
       "maximum": 2.0,
       "choices": [
@@ -8480,7 +8480,7 @@
       "summary": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。",
       "help": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。\n\n可设置范围：0～2000。默认值：16。",
       "kind": "INTEGER",
-      "defaultValue": "16",
+      "defaultValue": "220",
       "minimum": 0.0,
       "maximum": 2000.0,
       "choices": [],
@@ -8496,7 +8496,7 @@
       "summary": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。",
       "help": "单位 dp；数值越小越靠左，超出范围时停在可见边缘。\n\n可设置范围：0～2000。默认值：16。",
       "kind": "INTEGER",
-      "defaultValue": "16",
+      "defaultValue": "660",
       "minimum": 0.0,
       "maximum": 2000.0,
       "choices": [],
@@ -8512,7 +8512,7 @@
       "summary": "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。",
       "help": "设置最近任务中“竖屏内存距顶部”的距离，单位 dp。简洁和详细样式共用此位置，切换样式会继承原位置；只移动内存文字，不移动任务卡片。需要开启自定义内存显示。\n\n可设置范围：0～2000。默认值：5。",
       "kind": "INTEGER",
-      "defaultValue": "5",
+      "defaultValue": "50",
       "minimum": 0.0,
       "maximum": 2000.0,
       "choices": [],
@@ -8528,7 +8528,7 @@
       "summary": "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。",
       "help": "设置最近任务中“横屏内存距顶部”的距离，单位 dp。简洁和详细样式共用此位置，切换样式会继承原位置；只移动内存文字，不移动任务卡片。需要开启自定义内存显示。\n\n可设置范围：0～2000。默认值：5。",
       "kind": "INTEGER",
-      "defaultValue": "5",
+      "defaultValue": "28",
       "minimum": 0.0,
       "maximum": 2000.0,
       "choices": [],

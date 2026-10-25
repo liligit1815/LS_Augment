@@ -36,6 +36,38 @@ public final class LSConfigProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
         if (getContext() == null) return result;
+        if(NativeIslandRecoveryStore.METHOD.equals(method)){
+            int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return NativeIslandRecoveryStore.call(getContext(),arg,extras,uid,caller,packages);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if (NativeIslandControl.METHOD.equals(method)) {
+            int uid=Binder.getCallingUid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return NativeIslandControl.call(getContext(),arg,extras,uid,caller,packages);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("signal_style_read".equals(method)||"signal_style_select".equals(method)) {
+            int uid=Binder.getCallingUid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return SignalStyleControl.call(getContext(),method,arg,extras,uid,caller,packages);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
+        if ("competitive_key_shell".equals(method)) {
+            int uid=Binder.getCallingUid();
+            String caller=getCallingPackage();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            if(arg!=null||uid!=Process.SYSTEM_UID||!"android".equals(caller)
+                    ||packages==null||!java.util.Arrays.asList(packages).contains("android"))return result;
+            long identity=Binder.clearCallingIdentity();
+            try{return CompetitiveKeyControl.executeShell(getContext(),extras);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
         if ("launcher_reset_read".equals(method)||"launcher_reset_ack".equals(method)||"launcher_reset_pages_clear".equals(method)) {
             if(arg!=null)return result;
             int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
@@ -93,7 +125,11 @@ public final class LSConfigProvider extends ContentProvider {
             try { result.putBoolean("ok", BootJobService.scheduleHiddenRefresh(getContext())); return result; }
             finally { Binder.restoreCallingIdentity(identity); }
         }
-        if (!allowedCaller()) return result;
+        if (!allowedCaller()) {
+            if (StartupDiagnostics.CALL.equals(method)) result.putString("reason", "CALLER_DENIED");
+            return result;
+        }
+        if (StartupDiagnostics.CALL.equals(method)) return StartupDiagnosticStore.record(getContext(), extras);
         if ("extra_dim_ownership".equals(method)) {
             int uid=Binder.getCallingUid();
             String caller=getCallingPackage();
@@ -353,10 +389,7 @@ public final class LSConfigProvider extends ContentProvider {
             }
             ProviderDiagnostics.Result recorded = ProviderDiagnostics.record(getContext(), Binder.getCallingUid(), Binder.getCallingPid(),
                     arg, extras == null ? "" : extras.getString("value", ""),extras);
-            result.putBoolean("ok", recorded == ProviderDiagnostics.Result.ACCEPTED);
-            if(recorded == ProviderDiagnostics.Result.THROTTLED)
-                result.putLong("retryAfterMs", DiagnosticWritePolicy.WINDOW_MS);
-            return result;
+            return ProviderDiagnostics.reply(recorded);
         }
         if ("diagnostic_get".equals(method) && arg != null && arg.startsWith("ls_augment_")) {
             result.putString("value", getContext().getSharedPreferences(AppConfig.DIAGNOSTICS, 0)

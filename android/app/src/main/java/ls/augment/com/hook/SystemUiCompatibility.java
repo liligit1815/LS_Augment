@@ -3,11 +3,24 @@ package ls.augment.com.hook;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-/** Select only the two inspected controller contracts; class names alone are insufficient. */
+/** Select inspected runtime contracts; class names alone are insufficient. */
 final class SystemUiCompatibility {
     private static final String WINDOW = "com.android.systemui.statusbar.window.StatusBarWindowController";
     private static final String PRIVACY = "com.android.systemui.statusbar.events.PrivacyDotViewController";
     private SystemUiCompatibility() { }
+
+    static String customizePackage(ClassLoader loader)throws ClassNotFoundException{
+        for(String prefix:new String[]{"com.zte.mifavor.qs.customize.","com.android.systemui.qs.customize."})try{
+            Class<?> adapter=Class.forName(prefix+"TileAdapter",false,loader);
+            Class<?> root=Class.forName(prefix+"QSCustomizer",false,loader);
+            Class.forName(prefix+"CustomizeTileView",false,loader);
+            if(has(adapter,"onCreateViewHolder",prefix+"TileAdapter$Holder","android.view.ViewGroup","int")
+                    &&has(adapter,"getNumColumns","int")
+                    &&has(adapter,"updateNumColumns","boolean")
+                    &&has(root,"getRecyclerView","androidx.recyclerview.widget.RecyclerView"))return prefix;
+        }catch(ClassNotFoundException|LinkageError ignored){ }
+        throw new ClassNotFoundException("No verified tile editor contract: TileAdapter/CustomizeTileView/QSCustomizer");
+    }
 
     static Class<?> windowController(ClassLoader loader) throws ClassNotFoundException {
         for (String name : new String[]{WINDOW + "Impl", WINDOW}) try {

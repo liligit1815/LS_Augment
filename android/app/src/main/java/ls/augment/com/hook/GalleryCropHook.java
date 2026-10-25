@@ -13,6 +13,9 @@ final class GalleryCropHook {
     private static boolean installed;
     private GalleryCropHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized void install(AugmentModule module, ClassLoader loader, String pkg) {
         // Gallery's normal ACTION_EDIT route launches this separate editor package.
         if (!PACKAGE.equals(pkg) || installed) return;

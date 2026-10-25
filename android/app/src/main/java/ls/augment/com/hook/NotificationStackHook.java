@@ -47,30 +47,36 @@ final class NotificationStackHook {
     private static Access access;
     private static final class Access {
         final Class<?> row,section,ranking,sectioner,pipelineEntry;
-        final Method state,alpha,setAlpha,entry,children,intrinsic,silent,sceneEnabled,backend;
-        final Method shelf,stackEnd,fraction,keyguard,provider,scrim,sectionGap,childGap,maxHeight;
+        final Method state,children,intrinsic,silent,sceneEnabled,backend;
+        final EntryAccess entry;
+        final AlphaAccess alpha;
+        final Method shelf,stackEnd,fraction,keyguard,provider,scrim,maxHeight;
+        final GapAccess gap;
         final Method dispatch,hit,actualHeight,clipTop,clipBottom,falseTap,confirmKey,menuProvider,menuVisible;
         final Method sectionSupport,rankingAttach,silentSectioner,minimizedSectioner,inSection;
         final Method[] changing;
         final Field host,algorithmState,visible,hidden,currentY,expandedEnd,ambient,sections,firstShelf,falsing;
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         Access(ClassLoader loader)throws ReflectiveOperationException {
             Class<?> algorithm=Class.forName(ALGORITHM,false,loader),layout=Class.forName(HOST,false,loader);
             row=Class.forName(ROW,false,loader);section=Class.forName(SECTION,false,loader);
             state=method(row,"getViewState");Class<?> viewState=state.getReturnType();
-            alpha=method(viewState,"getAlpha");setAlpha=method(viewState,"setAlpha",float.class);
-            hidden=member(viewState,"hidden");entry=method(row,"getEntry");children=method(row,"getAttachedChildren");
+            alpha=new AlphaAccess(viewState);
+            hidden=member(viewState,"hidden");children=method(row,"getAttachedChildren");
             intrinsic=method(row,"getIntrinsicHeight");silent=method(layout,"matchesSelection",row,int.class);
             ranking=Class.forName(RANKING,false,loader);
             sectioner=Class.forName("com.android.systemui.statusbar.notification.collection.listbuilder.pluggable.NotifSectioner",false,loader);
             pipelineEntry=Class.forName("com.android.systemui.statusbar.notification.collection.PipelineEntry",false,loader);
+            entry=new EntryAccess(row,pipelineEntry,loader);
             sectionSupport=method(Class.forName("com.zte.utils.SystemuiUtils",false,loader),"supportNotificationSection");
             rankingAttach=method(ranking,"attach",Class.forName("com.android.systemui.statusbar.notification.collection.NotifPipeline",false,loader));
             silentSectioner=method(ranking,"getSilentSectioner");minimizedSectioner=method(ranking,"getMinimizedSectioner");
             inSection=method(sectioner,"isInSection",pipelineEntry);
             if(!Modifier.isStatic(sectionSupport.getModifiers())||sectionSupport.getReturnType()!=boolean.class
                     ||rankingAttach.getReturnType()!=void.class||silentSectioner.getReturnType()!=sectioner
-                    ||minimizedSectioner.getReturnType()!=sectioner||inSection.getReturnType()!=boolean.class
-                    ||!pipelineEntry.isAssignableFrom(entry.getReturnType()))
+                    ||minimizedSectioner.getReturnType()!=sectioner||inSection.getReturnType()!=boolean.class)
                 throw new NoSuchMethodException("Native notification ranking-section contract");
             host=member(algorithm,"mHostView");algorithmState=member(algorithm,"mTempAlgorithmState");
             visible=member(algorithmState.getType(),"visibleChildren");currentY=member(algorithmState.getType(),"mCurrentYPosition");
@@ -98,12 +104,130 @@ final class NotificationStackHook {
             shelf=method(ambient.getType(),"getShelf");stackEnd=method(ambient.getType(),"getStackEndHeight");
             fraction=method(ambient.getType(),"getFractionToShade");keyguard=method(ambient.getType(),"isOnKeyguard");
             provider=method(ambient.getType(),"getSectionProvider");scrim=method(algorithm,"getScrimTopPaddingOrZero",ambient.getType());
-            sectionGap=method(algorithm,"getGapForLocation",float.class,boolean.class);
-            childGap=method(algorithm,"childNeedsGapHeight",provider.getReturnType(),int.class,View.class,View.class);
+            gap=new GapAccess(algorithm,provider.getReturnType());
             maxHeight=method(algorithm,"getMaxAllowedChildHeight",View.class);
             sceneEnabled=method(Class.forName("com.android.systemui.scene.shared.flag.SceneContainerFlag",false,loader),"isEnabled");
-            changing=new Method[]{method(row,"isUserLocked"),method(row,"areGutsExposed"),
+            Method userExpanding;
+            try{userExpanding=method(row,"isUserLocked");}catch(NoSuchMethodException absent){userExpanding=method(row,"isUserSwipingToExpandRow");}
+            if(userExpanding.getReturnType()!=boolean.class||Modifier.isStatic(userExpanding.getModifiers()))
+                throw new NoSuchMethodException("Native notification user-expansion contract");
+            changing=new Method[]{userExpanding,method(row,"areGutsExposed"),
                 method(row,"isExpandAnimationRunning"),method(row,"isGroupExpansionChanging"),method(row,"isPinned"),method(row,"isHeadsUpAnimatingAway")};
+        }
+    }
+    private static final class GapAccess {
+        final Method perChild,section,needed;
+        GapAccess(Class<?> algorithm,Class<?> provider)throws ReflectiveOperationException {
+            Method legacy;
+            try{legacy=method(algorithm,"getGapForLocation",float.class,boolean.class);}catch(NoSuchMethodException absent){legacy=null;}
+            section=legacy;
+            if(legacy!=null){
+                perChild=null;needed=method(algorithm,"childNeedsGapHeight",provider,int.class,View.class,View.class);
+                if(section.getReturnType()!=float.class||needed.getReturnType()!=boolean.class
+                        ||Modifier.isStatic(section.getModifiers())||Modifier.isStatic(needed.getModifiers()))
+                    throw new NoSuchMethodException("Native notification legacy section-gap contract");
+            }else{
+                needed=null;perChild=method(algorithm,"getGapHeightForChild",provider,int.class,View.class,View.class,float.class,boolean.class);
+                if(perChild.getReturnType()!=float.class||Modifier.isStatic(perChild.getModifiers()))
+                    throw new NoSuchMethodException("Native notification per-child gap contract");
+            }
+        }
+        float get(Object algorithm,Object provider,int index,View child,View previous,float fraction,boolean keyguard)throws ReflectiveOperationException {
+            if(perChild!=null)return ((Number)perChild.invoke(algorithm,provider,index,child,previous,fraction,keyguard)).floatValue();
+            return Boolean.TRUE.equals(needed.invoke(algorithm,provider,index,child,previous))
+                    ?((Number)section.invoke(algorithm,fraction,keyguard)).floatValue():0f;
+        }
+    }
+    /** Ordinary notifications retain their pipeline identity behind the new adapter. */
+    private static final class EntryAccess {
+        final Method rowEntry,adapterEntry;
+        final Class<?> adapterType;
+        final Class<?> rowType,pipelineType;
+        BundleAccess bundle;
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
+        EntryAccess(Class<?> row,Class<?> pipeline,ClassLoader loader)throws ReflectiveOperationException {
+            pipelineType=pipeline;
+            Method legacy;
+            try{legacy=method(row,"getEntry");}catch(NoSuchMethodException absent){legacy=null;}
+            if(legacy!=null){rowEntry=legacy;adapterEntry=null;adapterType=null;}
+            else{
+                rowEntry=method(row,"getEntryAdapter");
+                adapterType=Class.forName("com.android.systemui.statusbar.notification.collection.NotificationEntryAdapter",false,loader);
+                if(!rowEntry.getReturnType().isAssignableFrom(adapterType))
+                    throw new NoSuchMethodException("NotificationEntryAdapter does not implement row entry contract");
+                adapterEntry=method(adapterType,"getEntry");
+            }
+            Method result=adapterEntry==null?rowEntry:adapterEntry;
+            rowType=rowEntry.getDeclaringClass();
+            if(!pipeline.isAssignableFrom(result.getReturnType())||Modifier.isStatic(rowEntry.getModifiers())||Modifier.isStatic(result.getModifiers()))
+                throw new NoSuchMethodException("Native notification pipeline entry contract");
+        }
+        Object get(Object row)throws ReflectiveOperationException {
+            Object entry=rowEntry.invoke(row);
+            if(adapterEntry==null)return entry;
+            if(!adapterType.isInstance(entry))throw new IllegalStateException("Individual notification entry required; native container/unknown adapter");
+            return adapterEntry.invoke(entry);
+        }
+        String nativeContainerKey(Object row)throws ReflectiveOperationException {
+            if(adapterEntry==null)return null;
+            Object adapter=rowEntry.invoke(row);
+            if(adapterType.isInstance(adapter))return null;
+            if(bundle==null)bundle=new BundleAccess();
+            if(!bundle.type.isInstance(adapter))throw new IllegalStateException("Unknown native notification adapter");
+            Object entry=bundle.entry.invoke(adapter),key=bundle.key.invoke(adapter);
+            if(!bundle.entryType.isInstance(entry)||!Boolean.TRUE.equals(bundle.isBundle.invoke(adapter))
+                    ||bundle.row.invoke(adapter)!=row||bundle.entryRow.invoke(entry)!=row
+                    ||!(key instanceof String)||((String)key).isEmpty()||!key.equals(bundle.entryKey.invoke(entry)))
+                throw new IllegalStateException("Native Bundle identity/row contract unavailable");
+            return (String)key;
+        }
+        private final class BundleAccess {
+            final Class<?> type,entryType;
+            final Method entry,key,isBundle,row,entryRow,entryKey;
+            // Injected SystemUI contract; exact types, instance signatures and live row/key identities are mandatory.
+            //noinspection PrivateApi
+            BundleAccess()throws ReflectiveOperationException {
+                ClassLoader loader=adapterType.getClassLoader();
+                type=Class.forName("com.android.systemui.statusbar.notification.collection.BundleEntryAdapter",false,loader);
+                entryType=Class.forName("com.android.systemui.statusbar.notification.collection.BundleEntry",false,loader);
+                if(!rowEntry.getReturnType().isAssignableFrom(type)||!pipelineType.isAssignableFrom(entryType))
+                    throw new NoSuchMethodException("Native Bundle pipeline/adapter contract");
+                entry=checked(type,"getEntry",entryType);key=checked(type,"getKey",String.class);
+                isBundle=checked(type,"isBundle",boolean.class);row=checked(type,"getRow",rowType);
+                entryRow=checked(entryType,"getRow",rowType);entryKey=checked(entryType,"getKey",String.class);
+            }
+            private Method checked(Class<?> owner,String name,Class<?> result)throws ReflectiveOperationException {
+                Method method=method(owner,name);
+                if(method.getReturnType()!=result||Modifier.isStatic(method.getModifiers())||Modifier.isAbstract(method.getModifiers()))
+                    throw new NoSuchMethodException("Native Bundle contract: "+owner.getName()+"."+name);
+                return method;
+            }
+        }
+    }
+    /** Keep OEM validation and diagnostic reasons on both view-state APIs. */
+    private static final class AlphaAccess {
+        static final String OWNED_REASON="redmagic_duo.notification_stack";
+        final Method getter,setter,reason;
+        AlphaAccess(Class<?> type)throws ReflectiveOperationException {
+            getter=method(type,"getAlpha");
+            Method legacy;
+            try{legacy=method(type,"setAlpha",float.class);}catch(NoSuchMethodException absent){legacy=null;}
+            setter=legacy!=null?legacy:method(type,"setAlpha",float.class,String.class);
+            reason=legacy!=null?null:method(type,"getAlphaReason");
+            if(getter.getReturnType()!=float.class||setter.getReturnType()!=void.class
+                    ||Modifier.isStatic(getter.getModifiers())||Modifier.isStatic(setter.getModifiers())
+                    ||(reason!=null&&(reason.getReturnType()!=String.class||Modifier.isStatic(reason.getModifiers()))))
+                throw new NoSuchMethodException("Native notification view-state alpha contract");
+        }
+        float get(Object target)throws ReflectiveOperationException{return ((Number)getter.invoke(target)).floatValue();}
+        String reason(Object target)throws ReflectiveOperationException{return reason==null?null:(String)reason.invoke(target);}
+        boolean ownedZero(Object target)throws ReflectiveOperationException {
+            return get(target)==0f&&(reason==null||OWNED_REASON.equals(reason(target)));
+        }
+        void set(Object target,float value,String cause)throws ReflectiveOperationException {
+            if(reason==null)setter.invoke(target,value);else setter.invoke(target,value,cause);
         }
     }
     private static final class Ranking {
@@ -127,6 +251,9 @@ final class NotificationStackHook {
         for(Class<?> c=type;c!=null;c=c.getSuperclass())try{Field f=c.getDeclaredField(name);f.setAccessible(true);return f;}catch(NoSuchFieldException absent){}
         throw new NoSuchFieldException(type.getName()+"."+name);
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader) {
         try{access=new Access(loader);}catch(ReflectiveOperationException|LinkageError error){module.logFeatureError("NOTIFICATION_LIST_STACK_UNAVAILABLE",error);return 0;}
         int count=hookNamed(module,loader,"notification.group_stack",ALGORITHM,"resetViewStates",2,
@@ -239,13 +366,13 @@ final class NotificationStackHook {
     private static int number(Object owner,String key,int fallback){Object v=field(owner,key);return v instanceof Number?((Number)v).intValue():fallback;}
     private static float decimal(Object value,float fallback){return value instanceof Number?((Number)value).floatValue():fallback;}
     private static final class Owned {
-        final Object target;final int visibility;final float alpha,targetAlpha;final boolean hidden;
+        final Object target;final int visibility;final float alpha,targetAlpha;final boolean hidden;final String alphaReason;
         Owned(View view,Object target)throws ReflectiveOperationException {
-            this.target=target;visibility=view.getVisibility();alpha=view.getAlpha();targetAlpha=((Number)access.alpha.invoke(target)).floatValue();hidden=access.hidden.getBoolean(target);
+            this.target=target;visibility=view.getVisibility();alpha=view.getAlpha();targetAlpha=access.alpha.get(target);alphaReason=access.alpha.reason(target);hidden=access.hidden.getBoolean(target);
         }
         void restore(View view)throws ReflectiveOperationException {
             if(access.hidden.getBoolean(target))access.hidden.setBoolean(target,hidden);
-            if(((Number)access.alpha.invoke(target)).floatValue()==0f)access.setAlpha.invoke(target,targetAlpha);
+            if(access.alpha.ownedZero(target))access.alpha.set(target,targetAlpha,alphaReason);
             if(view.getVisibility()==View.INVISIBLE)view.setVisibility(visibility);
             if(view.getAlpha()==0f)view.setAlpha(alpha);
         }
@@ -278,10 +405,15 @@ final class NotificationStackHook {
                 // Domestic ZTE forcibly assigns bucket 5 to every row. Read the ROM's original
                 // ranking sectioners instead, without changing its pipeline or clear selections.
                 Ranking ranking=nativeSections?null:new Ranking(rankingCoordinator.get());
-                List<Item<View>> items=new ArrayList<>();nativeGroups=false;
+                List<Item<View>> items=new ArrayList<>();Set<String> keys=new HashSet<>();nativeGroups=false;
                 for(int i=0;i<view.getChildCount();i++) {
                     View row=view.getChildAt(i);if(!access.row.isInstance(row)||row.getVisibility()==View.GONE||yes(row,"mRemoved"))continue;
-                    Object e=access.entry.invoke(row);Object notification=call(e,"getSbn");
+                    String containerKey=access.entry.nativeContainerKey(row);
+                    if(containerKey!=null) {
+                        if(!keys.add(containerKey))throw new IllegalStateException("Duplicate native notification key");
+                        items.add(new Item<>(row,containerKey,null,false,0,true));nativeGroups=true;continue;
+                    }
+                    Object e=access.entry.get(row);Object notification=call(e,"getSbn");
                     if(!(notification instanceof StatusBarNotification))throw new IllegalStateException("Native notification metadata unavailable");
                     StatusBarNotification sbn=(StatusBarNotification)notification;long latest=sbn.getPostTime();
                     Object children=access.children.invoke(row);
@@ -290,21 +422,22 @@ final class NotificationStackHook {
                         // Order an existing summary by its latest child without reparenting children or
                         // replacing the native summary's click, privacy or group-expansion behavior.
                         for(Object child:(List<?>)children) {
-                            Object ce=access.entry.invoke(child),cs=call(ce,"getSbn");
+                            Object ce=access.entry.get(child),cs=call(ce,"getSbn");
                             if(cs instanceof StatusBarNotification)latest=Math.max(latest,((StatusBarNotification)cs).getPostTime());
                         }
                     }
                     boolean silent=ranking==null?Boolean.TRUE.equals(access.silent.invoke(null,row,2)):ranking.isSilent(e);
                     String app=sbn.getPackageName()+"/"+sbn.getUserId();
+                    if(!keys.add(sbn.getKey()))throw new IllegalStateException("Duplicate native notification key");
                     items.add(new Item<>(row,sbn.getKey(),app,silent,latest));
                 }
                 boolean big=bigEnabled,small=smallEnabled;
                 // Only the group involved in a native expand/heads-up interaction opens. A shade
                 // expansion frame never switches every group between folded and unfolded lists.
-                for(Item<View> item:items)for(Method changing:access.changing)if(Boolean.TRUE.equals(changing.invoke(item.value))) {
+                for(Item<View> item:items)if(!item.nativeContainer)for(Method changing:access.changing)if(Boolean.TRUE.equals(changing.invoke(item.value))) {
                     String section=item.silent?NotificationStackPolicy.SILENT:NotificationStackPolicy.ALERTING;
-                    if(big)expanded.add(NotificationStackPolicy.MERGED);
-                    if(small)expanded.add(section+":app:"+item.appUserKey);break;
+                    if(big)expanded.add(NotificationStackPolicy.groupKeyFor(items,item,NotificationStackPolicy.MERGED));
+                    if(small)expanded.add(NotificationStackPolicy.groupKeyFor(items,item,section+":app:"+item.appUserKey));break;
                 }
                 plan=NotificationStackPolicy.plan(items,big,small,expanded);
                 Set<String> used=new HashSet<>();
@@ -336,7 +469,7 @@ final class NotificationStackHook {
                 report(view,"native-unavailable");
             }
         }
-        boolean showLabel(Node<View> node){return node.item==null&&NotificationStackPolicy.SILENT.equals(node.groupKey);}
+        boolean showLabel(Node<View> node){return node.item==null&&NotificationStackPolicy.SILENT.equals(node.sectionKey);}
         @SuppressWarnings("unchecked") void filter(Object algorithm,Object algorithmState,Object ambient)throws ReflectiveOperationException {
             if(!active||plan==null)return;
             Object raw=access.visible.get(algorithmState);if(!(raw instanceof List))return;
@@ -355,10 +488,10 @@ final class NotificationStackHook {
             float padding=decimal(field(algorithm,"mPaddingBetweenElements"),0);
             float y=-Math.max(0,number(ambient,"mScrollY",0))+((Number)access.scrim.invoke(algorithm,ambient)).floatValue();
             float threshold=shelf==null?Float.POSITIVE_INFINITY:((Number)access.stackEnd.invoke(ambient)).floatValue()-((Number)call(shelf,"getIntrinsicHeight")).floatValue()-padding;
-            float gap=((Number)access.sectionGap.invoke(algorithm,((Number)access.fraction.invoke(ambient)).floatValue(),Boolean.TRUE.equals(access.keyguard.invoke(ambient)))).floatValue();
+            float fraction=((Number)access.fraction.invoke(ambient)).floatValue();boolean keyguard=Boolean.TRUE.equals(access.keyguard.invoke(ambient));
             View previous=null;ViewGroup view=host.get();float tail=view==null?0:16*view.getResources().getDisplayMetrics().density;
             for(int i=0;i<selected.size();i++) {
-                View child=selected.get(i);if(Boolean.TRUE.equals(access.childGap.invoke(algorithm,provider,i,child,previous)))y+=gap;
+                View child=selected.get(i);y+=access.gap.get(algorithm,provider,i,child,previous,fraction,keyguard);
                 if(candidate==null&&shelf!=null&&y>=threshold&&!child.getClass().getName().endsWith(".footer.ui.view.FooterView"))candidate=child;
                 y+=((Number)access.maxHeight.invoke(algorithm,child)).floatValue()+padding+(tails.contains(child)?tail:0);previous=child;
             }
@@ -383,7 +516,7 @@ final class NotificationStackHook {
             if(!filtered){active=false;plan=null;hidden.clear();tails.clear();collapsed.clear();clearTap();hideControls();clearBackplates(view);releaseExtent();report(view,"native-filter-unavailable");MAIN.post(this::request);return;}
             for(View row:hidden) {
                 Object target=call(row,"getViewState");owned.put(row,new Owned(row,target));
-                access.hidden.setBoolean(target,true);access.setAlpha.invoke(target,0f);
+                access.hidden.setBoolean(target,true);access.alpha.set(target,0f,AlphaAccess.OWNED_REASON);
             }
             Object algorithmState=access.algorithmState.get(algorithm);
             float end=access.expandedEnd.getFloat(algorithmState)+Math.max(0,number(ambient,"mScrollY",0));

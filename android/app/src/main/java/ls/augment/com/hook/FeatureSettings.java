@@ -30,8 +30,9 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -40,22 +41,39 @@ import java.util.concurrent.atomic.AtomicLong;
 final class FeatureSettings {
     private static final Uri PROVIDER = Uri.parse("content://ls.augment.com.config");
     private static final Uri CONFIG_URI = Uri.parse("content://ls.augment.com.config/config");
-    private static final long CACHE_MS = 1000L;
+    // Observers invalidate immediately; hot hooks share the five-second recovery poll.
+    private static final long CACHE_MS = 5000L;
+    private static final long AUXILIARY_CACHE_MS = 1000L;
     // A hook can hold Power/AMS/WM locks. Readers never enter the publication lock or do IPC.
     private static final Object PUBLICATION_LOCK = new Object();
     // Guarded by PUBLICATION_LOCK. A Provider rollback identifies a new private
     // configuration generation; stale mirrors stay quarantined until resynced.
     private static String mirrorResyncChecksum;
     private static volatile ConfigSnapshot cachedSnapshot = ConfigSnapshot.safeDefaults();
+    // One atomic publication distinguishes a verified saved configuration from
+    // the startup placeholder without making readers take the publication lock.
+    private static volatile ConfigSnapshot cachedVerifiedSnapshot;
     private static volatile long cachedAt;
     private static volatile Context applicationContext;
     private static volatile boolean verifiedSnapshot;
     private static volatile boolean observersInstalled;
+    // CONFIG_WORKER owns transport state. A failure retains the last verified
+    // publication and schedules a bounded recovery instead of publishing defaults.
+    private static String providerReadState = "not_read", remoteReadState = "not_read", runtimeReadState = "not_read";
+    private static int consecutiveReadFailures;
+    private static String startupReadState = "";
+    private static final Map<String,String> startupReadFailures = new HashMap<>();
+    private static String startupWriteFailureState = "";
     private static final AtomicBoolean handshakeSent = new AtomicBoolean();
     private static volatile XposedInterface framework;
     private static volatile String diagnosticProcessName = "";
     private static SharedPreferences remotePreferences;
+    // CONFIG_WORKER owns these bounded caches; never reuse one transport's authority for another.
+    private static final ConfigSnapshot.Reader PROVIDER_READER = new ConfigSnapshot.Reader();
+    private static final ConfigSnapshot.Reader REMOTE_READER = new ConfigSnapshot.Reader();
     private static final CountDownLatch BOOTSTRAP_READY = new CountDownLatch(1);
+    // Unlike the attempt latch above, this opens only for a verified publication.
+    private static final CountDownLatch VERIFIED_PUBLICATION_READY = new CountDownLatch(1);
     private static final AtomicBoolean bootWaited = new AtomicBoolean();
     private static volatile String bootstrapStatus = "not_requested";
     // Only CONFIG_WORKER owns the untrusted candidate string. The Settings hook
@@ -72,13 +90,27 @@ final class FeatureSettings {
             (preferences, key) -> invalidateSnapshot();
     private static final AtomicBoolean pollingStarted = new AtomicBoolean();
     private static final AtomicBoolean refreshPending = new AtomicBoolean();
-    private static final AtomicBoolean writePending = new AtomicBoolean();
+    // Only timer bookkeeping is locked; Provider calls never hold this lock.
+    private static final Object WRITE_SCHEDULE_LOCK = new Object();
+    private static ScheduledFuture<?> writeFuture;
+    private static long writeScheduledAt, writeScheduleGeneration;
+    private static final AtomicBoolean homeReadinessWritePending = new AtomicBoolean();
     private static final AtomicLong invalidations = new AtomicLong();
     private static final CopyOnWriteArrayList<Runnable> LISTENERS = new CopyOnWriteArrayList<>();
     private static final ConcurrentHashMap<String,String> DIAGNOSTIC_VALUES = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String,Long> AUXILIARY_READ_AT = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String,Boolean> AUXILIARY_PENDING = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String,PendingDiagnostic> DIAGNOSTICS = new ConcurrentHashMap<>();
+    private static final int MAX_DIAGNOSTIC_CACHE = 1024;
+    // Admission/expiry only; never held around IPC or a hook callback.
+    private static final Object DIAGNOSTIC_QUEUE_LOCK = new Object();
+    private static final long DIAGNOSTIC_RETRY_WINDOW_MS = 300_000L;
+    private static final AtomicLong diagnosticRetries = new AtomicLong(), diagnosticExpired = new AtomicLong();
+    private static final AtomicLong diagnosticRejected = new AtomicLong();
+    private static final AtomicLong diagnosticQueueFull = new AtomicLong(), diagnosticAccepted = new AtomicLong();
+    private static volatile String diagnosticLastFailureType = "", diagnosticLastDropReason = "";
+    private static volatile String diagnosticLastFailureKey = "", diagnosticLastFailureReason = "", diagnosticLastDropKey = "";
+    private static volatile long diagnosticLastFailureAt, diagnosticLastDropAt, diagnosticLastAcceptedAt;
     private static final ArrayBlockingQueue<PendingCall> ROUTES = new ArrayBlockingQueue<>(128);
     private static final ScheduledExecutorService CONFIG_WORKER = worker("LSA-ConfigReader");
     private static final ScheduledExecutorService WRITE_WORKER = worker("LSA-ConfigWriter");
@@ -268,16 +300,71 @@ final class FeatureSettings {
     }
 
     static void diagnostic(Context context, String key, String value) {
+        diagnostic(context, key, value, false);
+    }
+
+    /** Live HR1 evidence only: coalesce on the existing writer, never perform IPC on a WM callback. */
+    static void diagnosticHomeReadiness(Context context, String key, String value) {
+        if (android.os.Process.myUid() != android.os.Process.SYSTEM_UID || key == null
+                || !key.matches("ls_augment_atomic_home_readiness_[1-9][0-9]{0,9}")
+                || value == null || !value.startsWith("HR1|")) return;
+        diagnostic(context, key, value, true);
+    }
+
+    private static void diagnostic(Context context, String key, String value, boolean homeReadiness) {
         if (key == null) return;
         Context application = remember(context);
         if (application == null) return;
         String text = value == null ? "" : value;
-        String previous = DIAGNOSTIC_VALUES.put(key, text);
-        if (text.equals(previous)) return;
+        boolean admitted = true;
+        long writeDelay = 250L;
+        synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+            if (text.equals(DIAGNOSTIC_VALUES.get(key))) return;
+            if (DIAGNOSTICS.size() >= 512 && !DIAGNOSTICS.containsKey(key)) {
+                diagnosticQueueFull.incrementAndGet();
+                diagnosticLastDropReason = "queue_full"; diagnosticLastDropAt = System.currentTimeMillis();
+                diagnosticLastDropKey = safeDiagnosticKey(key);
+                // A value that was not admitted must not stay deduplicated forever.
+                admitted = false;
+            } else {
+                PendingDiagnostic pending = new PendingDiagnostic(application, text, homeReadiness);
+                PendingDiagnostic previous = DIAGNOSTICS.get(key);
+                // Fresh values cannot erase a failed Provider's backoff or restart
+                // its bounded retry window on every draw/heartbeat.
+                if (previous != null) {
+                    pending.retryAt = previous.retryAt; pending.failures = previous.failures;
+                    pending.retryStartedElapsed = previous.retryStartedElapsed;
+                }
+                DIAGNOSTICS.put(key, pending);
+                cacheValue(DIAGNOSTIC_VALUES, DIAGNOSTICS, key, text);
+                writeDelay = diagnosticWriteDelay(pending, SystemClock.elapsedRealtime());
+            }
+        }
+        // Detailed evidence has an independent bounded queue, including a value
+        // that could not enter the latest-value queue.
         HookTelemetry.event(key + "=" + text);
-        if (DIAGNOSTICS.size() >= 512 && !DIAGNOSTICS.containsKey(key)) return;
-        DIAGNOSTICS.put(key, new PendingDiagnostic(application, text));
-        scheduleWrites();
+        if (!admitted) return;
+        if (homeReadiness) scheduleHomeReadinessWrite();
+        scheduleWrites(writeDelay);
+    }
+
+    /** Local evidence for the process snapshot; never queues diagnostics about its own failure. */
+    static String diagnosticWriterState() {
+        return "version=1;pending=" + DIAGNOSTICS.size() + ";retryWindowMs=" + DIAGNOSTIC_RETRY_WINDOW_MS
+                + ";retried=" + diagnosticRetries.get() + ";expired=" + diagnosticExpired.get()
+                + ";rejected=" + diagnosticRejected.get()
+                + ";queueFull=" + diagnosticQueueFull.get() + ";accepted=" + diagnosticAccepted.get()
+                + ";lastFailureType=" + diagnosticLastFailureType + ";lastFailureAt=" + diagnosticLastFailureAt
+                + ";lastFailureKey=" + diagnosticLastFailureKey + ";lastFailureReason=" + diagnosticLastFailureReason
+                + ";lastDropReason=" + diagnosticLastDropReason + ";lastDropAt=" + diagnosticLastDropAt
+                + ";lastDropKey=" + diagnosticLastDropKey
+                + ";lastAcceptedAt=" + diagnosticLastAcceptedAt;
+    }
+
+    /** Process snapshot evidence only: no auxiliary read, provider call or write queue. */
+    static String launcherGridRuntimeValue() {
+        String value = DIAGNOSTIC_VALUES.get("ls_augment_launcher_grid_runtime");
+        return value == null ? "" : value;
     }
 
     static void diagnosticError(Context context, String key, String source, Throwable error) {
@@ -296,7 +383,7 @@ final class FeatureSettings {
     /** Always returns immediately, including while either configuration service is blocked. */
     static ConfigSnapshot snapshot(Context context) {
         remember(context);
-        if (SystemClock.elapsedRealtime() - cachedAt >= CACHE_MS || !verifiedSnapshot) requestRefresh();
+        if (cachedAt == 0L || SystemClock.elapsedRealtime() - cachedAt >= CACHE_MS) requestRefresh();
         return cachedSnapshot;
     }
 
@@ -304,6 +391,12 @@ final class FeatureSettings {
     static boolean hasVerifiedSnapshot(Context context) {
         snapshot(context);
         return verifiedSnapshot;
+    }
+
+    /** A nullable immutable publication: readiness and values belong to one generation. */
+    static ConfigSnapshot verifiedSnapshot(Context context) {
+        snapshot(context);
+        return cachedVerifiedSnapshot;
     }
 
     /** Only an already verified off state can skip owner reflection; startup still binds context. */
@@ -346,6 +439,14 @@ final class FeatureSettings {
             bootstrapStatus = "interrupted";
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Launcher installer only, before its constructors/loaders are intercepted. */
+    static void awaitLauncherGridSnapshot() {
+        if (cachedVerifiedSnapshot != null) return;
+        requestRefresh();
+        try { VERIFIED_PUBLICATION_READY.await(1750L, TimeUnit.MILLISECONDS); }
+        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
     }
 
     static Set<String> hiddenTargets(Context context) {
@@ -478,15 +579,21 @@ final class FeatureSettings {
     }
 
     private static ScheduledExecutorService worker(String name) {
-        return Executors.newSingleThreadScheduledExecutor(task -> {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, task -> {
             Thread thread = new Thread(task, name); thread.setDaemon(true); return thread;
         });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
     }
 
     private static Context remember(Context context) {
         if (context != null) {
+            boolean firstContext = applicationContext == null;
             try { Context app = context.getApplicationContext(); applicationContext = app == null ? context : app; }
             catch (RuntimeException unavailable) { applicationContext = context; }
+            // A framework-only refresh may already be running. Ensure that its
+            // context-less attempt is followed by a real provider read promptly.
+            if (firstContext) invalidations.incrementAndGet();
         }
         Context application = applicationContext;
         if (application != null && pollingStarted.compareAndSet(false, true)) {
@@ -505,18 +612,32 @@ final class FeatureSettings {
     private static void refreshOnWorker() {
         long generation = invalidations.get();
         Context context = applicationContext;
+        boolean providerReady = false;
         try {
             refreshRemotePreferences();
             refreshHiddenTargetsOnWorker(context);
             if (context == null) return;
-            publishSnapshot(providerSnapshot(context), true);
-            Bundle runtime = context.getContentResolver().call(PROVIDER, "runtime_snapshot", null, null);
-            if (runtime != null && runtime.getBoolean("ok", false)) {
-                String hidden = runtime.getString(RemoteConfig.HIDDEN, "");
-                hiddenCandidates = hidden != null && hidden.length() <= 131072 ? hidden : "";
-                runtimeAuthoritative = true;
-            }
+            ConfigSnapshot authoritative = providerSnapshot(context);
+            publishSnapshot(authoritative, true);
+            providerReady = authoritative != null;
+            // An unrelated auxiliary read must not prevent an observer from
+            // following a valid configuration that was just published.
             installObserversOnWorker(context);
+            try {
+                Bundle runtime = ConfigReadRetry.read(() -> context.getContentResolver().call(PROVIDER, "runtime_snapshot", null, null));
+                if (runtime != null && runtime.getBoolean("ok", false)) {
+                    String hidden = runtime.getString(RemoteConfig.HIDDEN, "");
+                    hiddenCandidates = hidden != null && hidden.length() <= 131072 ? hidden : "";
+                    runtimeAuthoritative = true;
+                    runtimeReadState = "ready";
+                    startupReadFailures.remove("CONFIG_RUNTIME_FAILED");
+                } else runtimeReadState = runtime == null ? "reply_missing" : "reply_not_accepted";
+            } catch (Throwable unavailable) {
+                // Auxiliary state is independent from the verified settings
+                // snapshot. Its outage cannot relabel a fresh configuration stale.
+                runtimeReadState = ConfigReadRetry.failure(unavailable);
+                startupReadFailure("CONFIG_RUNTIME_FAILED",runtimeReadState,unavailable);
+            }
             cachedAt = SystemClock.elapsedRealtime();
             if (verifiedSnapshot && handshakeSent.compareAndSet(false, true)) {
                 ConfigSnapshot value = cachedSnapshot;
@@ -525,12 +646,47 @@ final class FeatureSettings {
             }
             if (bootWaited.get()) diagnostic(context, "ls_augment_boot_snapshot_state", bootstrapStatus
                     + ("ready".equals(bootstrapStatus) ? "" : "|constructor_options_may_require_restart"));
-        } catch (Throwable ignored) {
+        } catch (Throwable unavailable) {
             // Keep the last verified state when a service is temporarily unavailable.
+            providerReadState = ConfigReadRetry.failure(unavailable);
+            providerReady = false;
             cachedAt = SystemClock.elapsedRealtime();
         } finally {
+            // Failed/context-less attempts are rate limited too. Explicit startup retries and
+            // observer invalidations still bypass this getter-side freshness check.
+            cachedAt = SystemClock.elapsedRealtime();
             // Provider/root failure does not bypass a fresh serial check of retained candidates.
             refreshHiddenTargetsOnWorker(context);
+            ConfigSnapshot observed=cachedVerifiedSnapshot;
+            String readState="provider="+providerReadState+";mirror="+remoteReadState+";runtime="+runtimeReadState
+                    +";context="+(context!=null)+";verified="+(observed!=null)+";revision="+(observed==null?-1:observed.revision)
+                    +";checksum="+(observed==null?"":observed.checksum)+";bootstrap="+bootstrapStatus+";observer="+observersInstalled;
+            if(!readState.equals(startupReadState)){
+                startupReadState=readState;
+                try{ls.augment.com.StartupDiagnostics.record("CONFIG_READ_STATE",readState,null);}catch(Throwable ignored){}
+            }
+            if (context != null) {
+                ConfigSnapshot retained = cachedVerifiedSnapshot;
+                diagnostic(context, "ls_augment_config_read_state", "provider=" + providerReadState
+                        + "|mirror=" + remoteReadState + "|verified=" + (retained != null)
+                        + "|runtime=" + runtimeReadState
+                        + "|revision=" + (retained == null ? -1 : retained.revision)
+                        + "|retained=" + (!providerReady && retained != null));
+            }
+            // Framework-only bootstrap can fail before any host Context exists.
+            // It needs the same short recovery window as later Provider reads.
+            if (context != null || (framework != null && !"remote_capability_unavailable".equals(remoteReadState))) {
+                boolean readReady = context == null ? "ready".equals(remoteReadState)
+                        : providerReady && "ready".equals(runtimeReadState);
+                if (readReady) consecutiveReadFailures = 0;
+                else {
+                    // Normal polling continues every five seconds; a brief
+                    // outage also gets three prompt, coalesced recovery checks.
+                    int failures = ++consecutiveReadFailures;
+                    if (failures <= 3) CONFIG_WORKER.schedule(FeatureSettings::requestRefresh,
+                            250L << (failures - 1), TimeUnit.MILLISECONDS);
+                }
+            }
             refreshPending.set(false);
             if (invalidations.get() != generation) requestRefresh();
         }
@@ -564,7 +720,9 @@ final class FeatureSettings {
             if (hiddenChanged)
                 hiddenSnapshot = HiddenSnapshot.EMPTY;
             cachedSnapshot = next;
+            cachedVerifiedSnapshot = next;
             verifiedSnapshot = true;
+            VERIFIED_PUBLICATION_READY.countDown();
         }
         // Publication is complete before listeners run. The publication monitor is released.
         if (changed) for (Runnable listener : LISTENERS) dispatch(listener);
@@ -582,39 +740,67 @@ final class FeatureSettings {
 
     private static ConfigSnapshot providerSnapshot(Context context) {
         try {
-            Bundle result = context.getContentResolver().call(PROVIDER, "snapshot", null, null);
-            if (result == null || !result.getBoolean("ok", false)) return null;
-            ConfigSnapshot snapshot = ConfigSnapshot.parse(result.getString("snapshot"));
+            Bundle result = ConfigReadRetry.read(() -> context.getContentResolver().call(PROVIDER, "snapshot", null, null));
+            if (result == null || !result.getBoolean("ok", false)) {
+                providerReadState = result == null ? "reply_missing" : "reply_not_accepted";
+                return null;
+            }
+            ConfigSnapshot.ParseResult parsed = PROVIDER_READER.read(result.getString("snapshot"));
+            ConfigSnapshot snapshot = parsed.snapshot;
             if (snapshot == null || snapshot.schemaVersion != result.getInt("schemaVersion", -1)
                     || snapshot.revision != result.getLong("revision", -1L)
                     || snapshot.updatedAt != result.getLong("updatedAt", -1L)
                     || !snapshot.scope.equals(result.getString("scope", ""))
-                    || !snapshot.checksum.equals(result.getString("checksum", ""))) return null;
+                    || !snapshot.checksum.equals(result.getString("checksum", ""))) {
+                providerReadState = snapshot == null ? "snapshot_invalid:"+parsed.error : "metadata_mismatch";
+                return null;
+            }
+            providerReadState = "ready";
+            startupReadFailures.remove("CONFIG_PROVIDER_FAILED");
             return snapshot;
-        } catch (Throwable ignored) { return null; }
+        } catch (Throwable unavailable) {
+            providerReadState = ConfigReadRetry.failure(unavailable);
+            startupReadFailure("CONFIG_PROVIDER_FAILED",providerReadState,unavailable);
+            return null;
+        }
     }
 
     private static void refreshRemotePreferences() {
         try {
             XposedInterface source = framework;
-            if (source == null) return;
+            if (source == null) { remoteReadState = "framework_unavailable"; return; }
             if (remotePreferences == null) {
-                if ((source.getFrameworkProperties() & XposedInterface.PROP_CAP_REMOTE) == 0) return;
+                if ((source.getFrameworkProperties() & XposedInterface.PROP_CAP_REMOTE) == 0) {
+                    remoteReadState = "remote_capability_unavailable"; return;
+                }
                 remotePreferences = source.getRemotePreferences(RemoteConfig.GROUP);
                 remotePreferences.registerOnSharedPreferenceChangeListener(REMOTE_LISTENER);
             }
             Map<String, ?> values = remotePreferences.getAll();
             Object raw = values.get(RemoteConfig.SNAPSHOT);
-            if (raw instanceof String) publishSnapshot(ConfigSnapshot.parse((String) raw), false);
+            ConfigSnapshot mirror = REMOTE_READER.read(raw instanceof String ? (String) raw : null).snapshot;
+            if (mirror != null) publishSnapshot(mirror, false);
+            remoteReadState = mirror == null ? "snapshot_missing_or_invalid" : "ready";
+            if(mirror!=null)startupReadFailures.remove("CONFIG_REMOTE_FAILED");
             Object hidden = values.get(RemoteConfig.HIDDEN);
             if (!runtimeAuthoritative)
                 hiddenCandidates = hidden instanceof String && ((String) hidden).length() <= 131072
                         ? (String) hidden : "";
         } catch (RuntimeException unavailable) {
+            remoteReadState = ConfigReadRetry.failure(unavailable);
+            startupReadFailure("CONFIG_REMOTE_FAILED",remoteReadState,unavailable);
+            SharedPreferences failed = remotePreferences;
             remotePreferences = null;
+            if (failed != null) try { failed.unregisterOnSharedPreferenceChangeListener(REMOTE_LISTENER); }
+            catch (RuntimeException cleanupUnavailable) { /* The dead connection cannot own a replacement listener. */ }
         } finally {
             BOOTSTRAP_READY.countDown();
         }
+    }
+
+    private static void startupReadFailure(String stage,String state,Throwable error){
+        if(!state.equals(startupReadFailures.put(stage,state)))
+            try{ls.augment.com.StartupDiagnostics.record(stage,state,error);}catch(Throwable ignored){}
     }
 
     private static void installObserversOnWorker(Context context) {
@@ -626,28 +812,113 @@ final class FeatureSettings {
         try {
             context.getContentResolver().registerContentObserver(CONFIG_URI, true, observer);
             observersInstalled = true;
-        } catch (Throwable ignored) {
-            try { context.getContentResolver().unregisterContentObserver(observer); } catch (Throwable cleanup) { }
+            startupReadFailures.remove("CONFIG_OBSERVER_FAILED");
+        } catch (Throwable error) {
+            try { context.getContentResolver().unregisterContentObserver(observer); }
+            catch (Throwable cleanup) { if(cleanup!=error)error.addSuppressed(cleanup); }
+            startupReadFailure("CONFIG_OBSERVER_FAILED","registration_failed",error);
         }
     }
 
     private static void requestAuxiliary(Context context, String key) {
         String request = "diagnostic:" + key;
         Long last = AUXILIARY_READ_AT.get(request);
-        if (last != null && SystemClock.elapsedRealtime() - last < CACHE_MS) return;
+        if (last != null && SystemClock.elapsedRealtime() - last < AUXILIARY_CACHE_MS) return;
         if (AUXILIARY_PENDING.size() >= 512 || AUXILIARY_PENDING.putIfAbsent(request, true) != null) return;
         WRITE_WORKER.execute(() -> {
             try {
                 Bundle value = context.getContentResolver().call(PROVIDER, "diagnostic_get", key, null);
-                if (value != null) DIAGNOSTIC_VALUES.put(key, value.getString("value", ""));
+                if (value != null) synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+                    if (!DIAGNOSTICS.containsKey(key)) cacheValue(DIAGNOSTIC_VALUES, DIAGNOSTICS, key, value.getString("value", ""));
+                }
             } catch (Throwable ignored) { }
-            finally { AUXILIARY_READ_AT.put(request, SystemClock.elapsedRealtime()); AUXILIARY_PENDING.remove(request); }
+            finally {
+                synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+                    cacheValue(AUXILIARY_READ_AT, AUXILIARY_PENDING, request, SystemClock.elapsedRealtime());
+                    AUXILIARY_PENDING.remove(request);
+                }
+            }
         });
     }
 
+    /** Caller holds DIAGNOSTIC_QUEUE_LOCK. Pending delivery/read identities must not be evicted. */
+    private static <T> void cacheValue(Map<String,T> cache, Map<String,?> pending, String key, T value) {
+        if (!cache.containsKey(key) && cache.size() >= MAX_DIAGNOSTIC_CACHE) {
+            for (String old : cache.keySet()) {
+                if (!pending.containsKey(old)) { cache.remove(old); break; }
+            }
+            if (cache.size() >= MAX_DIAGNOSTIC_CACHE) return;
+        }
+        cache.put(key, value);
+    }
+
     private static void scheduleWrites() {
-        // Keep route calls responsive while individual diagnostics wait out a quota window.
-        if (writePending.compareAndSet(false, true)) WRITE_WORKER.schedule(FeatureSettings::drainWrites, 250, TimeUnit.MILLISECONDS);
+        scheduleWrites(250L);
+    }
+
+    private static void scheduleWrites(long delay) {
+        synchronized (WRITE_SCHEDULE_LOCK) {
+            long due = SystemClock.elapsedRealtime() + delay;
+            if (writeFuture != null && writeScheduledAt <= due) return;
+            // A fresh route/value can advance a sleeping retry, never delay it.
+            if (writeFuture != null) writeFuture.cancel(false);
+            long generation = ++writeScheduleGeneration;
+            writeScheduledAt = due;
+            writeFuture = WRITE_WORKER.schedule(() -> {
+                synchronized (WRITE_SCHEDULE_LOCK) {
+                    // cancel(false) may race a task already taken by the worker.
+                    if (generation != writeScheduleGeneration) return;
+                    writeFuture = null;
+                }
+                drainWrites();
+            }, delay, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private static long diagnosticWriteDelay(PendingDiagnostic pending, long now) {
+        long retryDelay = pending.retryAt - now;
+        long expiryDelay = DIAGNOSTIC_RETRY_WINDOW_MS - (now - pending.retryStartedElapsed);
+        return Math.max(250L, Math.min(retryDelay, expiryDelay));
+    }
+
+    private static void scheduleNextWrites() {
+        long delay = ROUTES.isEmpty() ? Long.MAX_VALUE : 250L;
+        long now = SystemClock.elapsedRealtime();
+        for (PendingDiagnostic pending : DIAGNOSTICS.values())
+            delay = Math.min(delay, diagnosticWriteDelay(pending, now));
+        if (delay != Long.MAX_VALUE) scheduleWrites(delay);
+    }
+
+    private static void scheduleHomeReadinessWrite() {
+        boolean eligible = false;
+        long now = SystemClock.elapsedRealtime();
+        for (PendingDiagnostic value : DIAGNOSTICS.values()) {
+            if (value.homeReadiness && value.retryAt <= now) { eligible = true; break; }
+        }
+        if (eligible && homeReadinessWritePending.compareAndSet(false, true))
+            WRITE_WORKER.schedule(FeatureSettings::drainHomeReadiness, 16L, TimeUnit.MILLISECONDS);
+    }
+
+    private static void drainHomeReadiness() {
+        try {
+            int count = 0;
+            for (Map.Entry<String, PendingDiagnostic> entry : DIAGNOSTICS.entrySet()) {
+                PendingDiagnostic value = entry.getValue();
+                if (!value.homeReadiness) continue;
+                long now = SystemClock.elapsedRealtime();
+                if (now - value.retryStartedElapsed >= DIAGNOSTIC_RETRY_WINDOW_MS) {
+                    expireDiagnostic(entry.getKey(), value); continue;
+                }
+                if (value.retryAt > now) continue;
+                if (++count > 8) break;
+                writePendingDiagnostic(entry.getKey(), value);
+            }
+        } finally {
+            homeReadinessWritePending.set(false);
+            // Failures retain retryAt and use the ordinary bounded retry cadence.
+            // Only newly eligible observations need another prompt delivery.
+            scheduleHomeReadinessWrite();
+        }
     }
 
     private static void drainWrites() {
@@ -660,21 +931,40 @@ final class FeatureSettings {
             int count = 0;
             for (Map.Entry<String,PendingDiagnostic> entry : DIAGNOSTICS.entrySet()) {
                 PendingDiagnostic value = entry.getValue();
+                long now = SystemClock.elapsedRealtime();
+                if (now - value.retryStartedElapsed >= DIAGNOSTIC_RETRY_WINDOW_MS) {
+                    expireDiagnostic(entry.getKey(), value); continue;
+                }
                 if(value.retryAt>SystemClock.elapsedRealtime())continue;
                 if (++count > 64) break;
-                if (writeDiagnostic(entry.getKey(), value)) DIAGNOSTICS.remove(entry.getKey(), value);
-                else if ((value.retryAt<=SystemClock.elapsedRealtime()||entry.getKey().equals("ls_augment_system_server_lifecycle"))
-                        && ++value.failures >= (entry.getKey().equals("ls_augment_system_server_lifecycle")?20:3)
-                        && DIAGNOSTICS.remove(entry.getKey(), value)) {
-                    // A boot-time Provider miss must not permanently deduplicate
-                    // an installation witness that was never delivered. Only
-                    // forget this failed value; a newer queued value owns its cache.
-                    DIAGNOSTIC_VALUES.remove(entry.getKey(), value.value);
-                }
+                writePendingDiagnostic(entry.getKey(), value);
             }
         } finally {
-            writePending.set(false);
-            if (!ROUTES.isEmpty() || !DIAGNOSTICS.isEmpty()) scheduleWrites();
+            scheduleNextWrites();
+        }
+    }
+
+    private static void writePendingDiagnostic(String key, PendingDiagnostic value) {
+        if (writeDiagnostic(key, value)) { DIAGNOSTICS.remove(key, value); return; }
+        synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+            PendingDiagnostic replacement = DIAGNOSTICS.get(key);
+            // A newer draw may arrive while this worker is blocked in IPC.
+            // Carry the real failed attempt forward without discarding that draw.
+            if (replacement != null && replacement != value) {
+                replacement.retryAt = Math.max(replacement.retryAt, value.retryAt);
+                replacement.failures = Math.max(replacement.failures, value.failures);
+                replacement.retryStartedElapsed = Math.min(replacement.retryStartedElapsed, value.retryStartedElapsed);
+            }
+        }
+    }
+
+    private static void expireDiagnostic(String key, PendingDiagnostic pending) {
+        synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+            if (!DIAGNOSTICS.remove(key, pending)) return;
+            DIAGNOSTIC_VALUES.remove(key, pending.value);
+            diagnosticExpired.incrementAndGet();
+            diagnosticLastDropKey = safeDiagnosticKey(key);
+            diagnosticLastDropReason = "retry_window_expired"; diagnosticLastDropAt = System.currentTimeMillis();
         }
     }
 
@@ -685,20 +975,76 @@ final class FeatureSettings {
             extras.putString("process",diagnosticProcess());
             extras.putLong("observedAt",pending.observedAt);extras.putLong("observedElapsed",pending.observedElapsed);
             Bundle result = pending.context.getContentResolver().call(PROVIDER, "diagnostic", key, extras);
-            if (result != null && result.getBoolean("ok", false)) return true;
+            if (result != null && result.getBoolean("ok", false)) {
+                diagnosticAccepted.incrementAndGet(); diagnosticLastAcceptedAt = System.currentTimeMillis();
+                if(!startupWriteFailureState.isEmpty()){
+                    try{ls.augment.com.StartupDiagnostics.record("LAST_VALUE_DELIVERY_ACCEPTED","key="+safeDiagnosticKey(key)
+                            +";previous="+startupWriteFailureState+";otherPending="+DIAGNOSTICS.size(),null);}catch(Throwable ignored){}
+                    startupWriteFailureState="";
+                }
+                return true;
+            }
+            diagnosticLastFailureType = result == null ? "reply_missing" : "reply_not_accepted";
+            String reason = result == null ? "reply_missing" : result.getString("reason", "unspecified");
+            diagnosticLastFailureReason = diagnosticReason(reason);
+            diagnosticLastFailureKey = safeDiagnosticKey(key);
+            diagnosticLastFailureAt = System.currentTimeMillis();
+            startupWriteFailure(key,diagnosticLastFailureType+";reason="+diagnosticLastFailureReason,null);
+            // Only the explicit permanent rejection contract may end a retry.
+            // Old providers and unknown replies remain retryable, never accepted.
+            if (result != null && "invalid".equals(reason) && !result.getBoolean("retryable", true)) {
+                synchronized (DIAGNOSTIC_QUEUE_LOCK) {
+                    if (DIAGNOSTICS.remove(key, pending)) {
+                        DIAGNOSTIC_VALUES.remove(key, pending.value);
+                        diagnosticRejected.incrementAndGet();
+                        diagnosticLastDropReason = "provider_terminal";
+                        diagnosticLastDropKey = safeDiagnosticKey(key);
+                        diagnosticLastDropAt = System.currentTimeMillis();
+                    }
+                }
+                return true; // Resolved by an explicit rejection, not an acceptance.
+            }
             long retry=result==null?0:result.getLong("retryAfterMs",0);
             if(retry>0)pending.retryAt=SystemClock.elapsedRealtime()+Math.min(30_000,retry);
-        } catch (Throwable ignored) { }
-        if(key.equals("ls_augment_system_server_lifecycle")&&pending.retryAt<=SystemClock.elapsedRealtime())
-            pending.retryAt=SystemClock.elapsedRealtime()+Math.min(10_000,1000L*(pending.failures+1));
+        } catch (Throwable unavailable) {
+            diagnosticLastFailureType = ConfigReadRetry.failure(unavailable);
+            diagnosticLastFailureReason = "provider_unavailable";
+            diagnosticLastFailureKey = safeDiagnosticKey(key);
+            startupWriteFailure(key,diagnosticLastFailureType,unavailable);
+        }
+        diagnosticLastFailureAt = System.currentTimeMillis(); diagnosticRetries.incrementAndGet();
+        int failures = ++pending.failures;
+        if(pending.retryAt<=SystemClock.elapsedRealtime())
+            pending.retryAt=SystemClock.elapsedRealtime()+Math.min(30_000L,500L<<Math.min(6,failures-1));
         return false;
     }
 
+    private static void startupWriteFailure(String key,String reason,Throwable error){
+        if(!reason.equals(startupWriteFailureState)){
+            startupWriteFailureState=reason;
+            try{ls.augment.com.StartupDiagnostics.record("LAST_VALUE_DELIVERY_FAILED","key="+safeDiagnosticKey(key)+";reason="+reason,error);}
+            catch(Throwable ignored){}
+        }
+    }
+
+    private static String diagnosticReason(String reason) {
+        return "invalid".equals(reason) || "throttled".equals(reason) || "full".equals(reason)
+                || "reply_missing".equals(reason) ? reason : "unspecified";
+    }
+    private static String safeDiagnosticKey(String key) {
+        return key != null && key.length() <= 151 && key.matches("ls_augment_[A-Za-z0-9_.]+")
+                ? key : "invalid_key";
+    }
+
     private static final class PendingDiagnostic {
-        final Context context; final String value; int failures;
+        final Context context; final String value; volatile int failures;
         final long observedAt=System.currentTimeMillis(),observedElapsed=SystemClock.elapsedRealtime();
+        final boolean homeReadiness;
+        volatile long retryStartedElapsed = observedElapsed;
         volatile long retryAt;
-        PendingDiagnostic(Context context, String value) { this.context = context; this.value = value; }
+        PendingDiagnostic(Context context, String value, boolean homeReadiness) {
+            this.context = context; this.value = value; this.homeReadiness = homeReadiness;
+        }
     }
     private static final class PendingCall {
         final Context context; final Bundle extras;
@@ -748,6 +1094,10 @@ final class FeatureSettings {
         }
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
+    //noinspection DiscouragedPrivateApi,PrivateApi
     private static Context currentApplication() {
         try {
             Class<?> activityThread = Class.forName("android.app.ActivityThread");

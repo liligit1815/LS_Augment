@@ -39,7 +39,7 @@ final class ClippedClockStyle {
     void apply(View owner,TextView minute,TextView period,boolean seconds,float scale,Typeface font){
         View candidate=minute;
         while(candidate!=null){
-            String id="";try{id=candidate.getResources().getResourceEntryName(candidate.getId());}catch(Exception ignored){ }
+            String id="";try{if(candidate.getId()!=View.NO_ID&&candidate.getId()!=0)id=candidate.getResources().getResourceEntryName(candidate.getId());}catch(Exception ignored){ }
             if(id.equals("clock_time_layout")){candidate=candidate.getParent() instanceof View?(View)candidate.getParent():null;break;}
             candidate=candidate.getParent() instanceof View?(View)candidate.getParent():null;
         }

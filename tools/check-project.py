@@ -4,8 +4,8 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-import xml.etree.ElementTree as ET
 from pathlib import Path
+from manifest_permission_contract import APPLICATION_PERMISSION_PURPOSES, validate_manifest_permissions
 
 root = Path(__file__).resolve().parents[1]
 app = root / 'android/app'
@@ -260,12 +260,13 @@ def check_scope():
         'com.zte.recommend', 'com.zte.game.plugintrigger',
         'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',
         'cn.nubia.fan',
-        'com.mi.health', 'com.zte.mifavor.launcher',
+        'com.mi.health', 'com.autonavi.minimap', 'com.zte.mifavor.launcher',
+        'com.tencent.mobileqq', 'com.android.gallery3d',
         'cn.nubia.gamehelperline', 'cn.nubia.gamehelpmodule',
         'com.android.packageinstaller', 'com.zte.zdm', 'com.zte.mifavor.weather',
         'cn.zte.gamefloat', 'cn.nubia.gamehighlights',
         'com.android.permissioncontroller', 'com.android.nfc',
-        'cn.nubia.filebrowser', 'com.android.ztescreenshot', 'cn.nubia.photoeditor',
+        'cn.nubia.filebrowser', 'com.android.mtp', 'com.android.ztescreenshot', 'cn.nubia.photoeditor',
         'system', 'cn.nubia.neostore'
     }, scope
     assert 'com.smallcircle.heartvoice' not in scope
@@ -446,15 +447,28 @@ def check_source_packaging():
 
 def check_manifest():
     manifest_text = (app / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
-    android_name = '{http://schemas.android.com/apk/res/android}name'
-    permissions = {node.attrib[android_name]
-                   for node in ET.fromstring(manifest_text).findall('uses-permission')}
-    assert permissions == {
-        'android.permission.QUERY_ALL_PACKAGES',
-        'android.permission.RECEIVE_BOOT_COMPLETED',
-        'android.permission.INTERNET',
-        'android.permission.REQUEST_INSTALL_PACKAGES',
-    }, f'unexpected application permission set: {permissions}'
+    minimums = re.findall(r'^\s*minSdk\s+(\d+)\s*$', (app / 'build.gradle').read_text(encoding='utf-8'), re.M)
+    assert len(minimums) == 1, 'application minimum SDK must have one explicit value'
+    validate_manifest_permissions(manifest_text, int(minimums[0]))
+    # Bind the media declarations to the real phone-side request and observation
+    # paths. The source also probes audio, but this product does not request a
+    # broad audio grant; files use all-files settings or selected SAF URIs.
+    transfer = (src / 'AtomicWorkbenchTransfer.java').read_text(encoding='utf-8')
+    visual_permissions = {'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_VISUAL_USER_SELECTED'}
+    requested = set(re.findall(r'\b(?:android\.)?Manifest\.permission\.([A-Z_]+)', transfer))
+    assert requested == visual_permissions, f'workbench runtime media request mismatch: {requested}'
+    assert 'requestPermissions(' in transfer
+    assert 'READ_EXTERNAL_STORAGE' not in transfer, 'unreachable legacy storage request for minSdk >= 35'
+    assert 'Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION' in transfer
+    assert 'Intent.ACTION_OPEN_DOCUMENT' in transfer and 'Intent.ACTION_OPEN_DOCUMENT_TREE' in transfer
+    assert 'takePersistableUriPermission(' in transfer
+    phone_content = (src / 'AtomicWorkbenchPhoneContentSource.java').read_text(encoding='utf-8')
+    observed = set(re.findall(r'\bManifest\.permission\.([A-Z_]+)', phone_content))
+    assert visual_permissions <= observed, 'workbench source lost a declared media permission check'
+    assert 'Environment.isExternalStorageManager()' in phone_content
+    assert 'getPersistedUriPermissions()' in phone_content
+    navigation = (src / 'AtomicWorkbenchAmapLinkClient.java').read_text(encoding='utf-8')
+    assert 'com.autonavi.minimap.service.NAVIGATION_SERVICE' in navigation
     # INTERNET supports contributors, update manifests and confirmed APK downloads.
     # The contributors WebView must keep
     # scripts and remote subresources disabled when displaying fetched HTML.
@@ -466,6 +480,10 @@ def check_manifest():
 
 def check_hidden_navigation():
     subprocess.run([sys.executable, str(root / 'tools/test-project-navigation.py')], check=True)
+
+
+def check_manifest_permission_regression():
+    subprocess.run([sys.executable, str(root / 'tools/test-manifest-permissions.py')], check=True)
 
 
 def check_configured_batch():
@@ -544,6 +562,7 @@ def main():
         check_build_boundary,
         check_source_packaging,
         check_manifest,
+        check_manifest_permission_regression,
         check_hidden_navigation,
         check_configured_batch,
         check_hide_scoped_actions,

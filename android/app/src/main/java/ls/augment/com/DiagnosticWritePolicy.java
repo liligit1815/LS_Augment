@@ -17,6 +17,14 @@ final class DiagnosticWritePolicy {
     private long windowStart = -1;
     private int requests;
 
+    static boolean validKey(String key) {
+        if (key == null || key.length() > 151) return false;
+        if (key.matches("ls_augment_[a-zA-Z0-9_]{1,140}")) return true;
+        // OemHooks publishes one support table under the exact Android package.
+        // Dots are valid only in this namespace, not in arbitrary diagnostic keys.
+        return key.matches("ls_augment_rm_support_[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+");
+    }
+
     synchronized boolean allowRequest(int uid, long now) {
         if (windowStart < 0 || now < windowStart || now - windowStart >= WINDOW_MS) {
             windowStart = now; requests = 0; callers.clear();
@@ -55,6 +63,9 @@ final class DiagnosticWritePolicy {
     }
 
     static int valueLimit(String key){
+        // Structured grid stages and per-page geometry must remain complete JSON.
+        // Aggregate limits still bound the entire diagnostic store.
+        if("ls_augment_launcher_grid_runtime".equals(key))return 16384;
         if(key.startsWith("ls_augment_rm_support_"))return 32768;
         // Full native view ancestor chains need more space than short status
         // values. The aggregate 512 KiB/512-key quota remains authoritative.

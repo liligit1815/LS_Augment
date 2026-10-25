@@ -19,6 +19,7 @@ final class SystemUiHook {
     private static final String SYSTEM_BAR_UTILS = "com.android.internal.policy.SystemBarUtils";
     static final String GRID_CLOCK_TAG = "ls_augment_keyguard_clock";
     private static final Map<TextView, ClockState> CLOCK_STATES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<TextView,String> CLOCK_STATUS=new WeakHashMap<>();
     private SystemUiHook() { }
     static int install(AugmentModule module, ClassLoader loader) {
         StringBuilder compatibility = new StringBuilder();
@@ -33,6 +34,9 @@ final class SystemUiHook {
         module.logFeatureInfo("SYSTEMUI_GRID_READY hooks=" + installed + " compat=" + compatibility);
         return installed;
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int installClock(
             AugmentModule module, ClassLoader loader, StringBuilder compatibility) {
         final Class<?> type;
@@ -78,6 +82,13 @@ final class SystemUiHook {
                 && !FeatureSettings.enabled(context, ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)
                 && (GRID_CLOCK_TAG.equals(clock.getTag())
                     || FeatureSettings.enabled(context, FeatureSettings.STATUSBAR_CLOCK_CUSTOM));
+        String status="master="+FeatureSettings.enabled(context,FeatureSettings.SYSTEMUI_MASTER)
+                +";positionOnly="+FeatureSettings.enabled(context,ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)
+                +";custom="+FeatureSettings.enabled(context,FeatureSettings.STATUSBAR_CLOCK_CUSTOM)
+                +";effective="+enabled+";view="+clock.getClass().getName();
+        if(!status.equals(CLOCK_STATUS.put(clock,status)))try{
+            FeatureSettings.diagnostic(context,"ls_augment_systemui_clock_runtime",status);
+        }catch(RuntimeException ignored){ }
         if (!enabled) {
             if (state != null) {
                 CLOCK_STATES.remove(clock);
@@ -110,6 +121,14 @@ final class SystemUiHook {
     }
     static boolean holdsNativeClock(TextView clock) {
         ClockState state=CLOCK_STATES.get(clock);return state!=null&&state.nativeFallback;
+    }
+    /** Text ownership can begin before grid placement; OEM parsing uses a different format. */
+    static boolean ownsCustomClockDrawing(TextView clock) {
+        ClockState state=CLOCK_STATES.get(clock);
+        return state!=null&&!state.nativeFallback&&StatusBarGridHook.inBar(clock)
+                &&FeatureSettings.enabled(clock.getContext(),FeatureSettings.SYSTEMUI_MASTER)
+                &&!FeatureSettings.enabled(clock.getContext(),ls.augment.com.ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)
+                &&FeatureSettings.enabled(clock.getContext(),FeatureSettings.STATUSBAR_CLOCK_CUSTOM);
     }
     static void suspendGridClock(View root) {
         TextView clock=gridClock(root);ClockState state=CLOCK_STATES.get(clock);
@@ -183,6 +202,9 @@ final class SystemUiHook {
             clock.invalidate();}
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View findByNames(View root, String... names) {
         Context context = root.getContext();
         for (String name : names) {
@@ -199,7 +221,7 @@ final class SystemUiHook {
     private static String resourceName(View view) {
         try {
             int id = view.getId();
-            return id == View.NO_ID ? "" : view.getResources().getResourceEntryName(id);
+            return id == View.NO_ID || id == 0 ? "" : view.getResources().getResourceEntryName(id);
         } catch (Throwable ignored) {
             return "";
         }
@@ -330,14 +352,16 @@ final class SystemUiHook {
                     Typeface.NORMAL);
             int weight = FeatureSettings.integer(context,
                     FeatureSettings.STATUSBAR_CLOCK_WEIGHT, 400, 100, 900);
-            target.setTypeface(StatusBarAssetsHook.typeface(clock, "clock", Typeface.create(base, weight, false), originalTypeface));
+            Typeface typeface=StatusBarAssetsHook.typeface(clock,"clock",Typeface.create(base,weight,false),originalTypeface);
+            if(!Objects.equals(target.getTypeface(),typeface))target.setTypeface(typeface);
             float size = FeatureSettings.decimal(context,
                     FeatureSettings.STATUSBAR_CLOCK_SIZE_SP, 0.0f, 0.0f, 40.0f);
-            target.setTextSize(size > 0.0f ? TypedValue.COMPLEX_UNIT_SP
-                    : TypedValue.COMPLEX_UNIT_PX, size > 0.0f ? size : originalTextSize);
-            target.setLetterSpacing(FeatureSettings.decimal(context,
+            float pixels=size>0.0f?TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,size,context.getResources().getDisplayMetrics()):originalTextSize;
+            if(Float.compare(target.getTextSize(),pixels)!=0)target.setTextSize(TypedValue.COMPLEX_UNIT_PX,pixels);
+            float letters=FeatureSettings.decimal(context,
                     FeatureSettings.STATUSBAR_CLOCK_LETTER_SPACING,
-                    0.0f, -0.20f, 1.0f));
+                    0.0f, -0.20f, 1.0f);
+            if(Float.compare(target.getLetterSpacing(),letters)!=0)target.setLetterSpacing(letters);
             float lineSpacing=dp(context, FeatureSettings.decimal(context,
                     FeatureSettings.STATUSBAR_CLOCK_LINE_SPACING_DP,0.0f,0.0f,32.0f));
             if(twoLines&&FeatureSettings.enabled(context,ls.augment.com.ConfigSchema.SYSTEMUI_MASTER)
@@ -346,31 +370,29 @@ final class SystemUiHook {
                         ls.augment.com.ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,64)));
             }
             // Keep line advances positive even on unusually small OEM clock fonts.
-            target.setLineSpacing(Math.max(-target.getPaint().getFontSpacing()*.75f,lineSpacing),1.0f);
+            float spacing=Math.max(-target.getPaint().getFontSpacing()*.75f,lineSpacing);
+            if(Float.compare(target.getLineSpacingExtra(),spacing)!=0||Float.compare(target.getLineSpacingMultiplier(),1f)!=0)target.setLineSpacing(spacing,1.0f);
             String align = FeatureSettings.text(context,
                     FeatureSettings.STATUSBAR_CLOCK_TEXT_ALIGN, "center");
             int horizontal = "left".equals(align) ? Gravity.START
                     : "right".equals(align) ? Gravity.END : Gravity.CENTER_HORIZONTAL;
-            target.setGravity(horizontal | Gravity.CENTER_VERTICAL);
-            target.setIncludeFontPadding(false);
+            int gravity=horizontal|Gravity.CENTER_VERTICAL;
+            if(target.getGravity()!=gravity)target.setGravity(gravity);
+            if(target.getIncludeFontPadding())target.setIncludeFontPadding(false);
             // The grid owns fitting. Native single-line marquee/ellipsis can
             // retain a stale clipping interval after switching from two rows.
-            target.setSingleLine(false);
-            target.setHorizontallyScrolling(false);
-            target.setEllipsize(null);
-            if (twoLines) {
-                target.setMinLines(2);
-                target.setMaxLines(2);
-            } else {
-                target.setMinLines(1);
-                target.setMaxLines(1);
-            }
+            if(target.isSingleLine())target.setSingleLine(false);
+            if(target.isHorizontallyScrollable())target.setHorizontallyScrolling(false);
+            if(target.getEllipsize()!=null)target.setEllipsize(null);
+            int lines=twoLines?2:1;
+            if(target.getMinLines()!=lines)target.setMinLines(lines);
+            if(target.getMaxLines()!=lines)target.setMaxLines(lines);
             ViewGroup.LayoutParams params = target.getLayoutParams();
             if (params != null) {
                 int width = FeatureSettings.integer(context,
                         FeatureSettings.STATUSBAR_CLOCK_WIDTH_DP, 0, 0, 240);
-                params.width = width > 0 ? dp(context, width) : originalWidth;
-                target.setLayoutParams(params);
+                int pixelsWidth=width>0?dp(context,width):originalWidth;
+                if(params.width!=pixelsWidth){params.width=pixelsWidth;target.setLayoutParams(params);}
             }
         }
 

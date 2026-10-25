@@ -27,6 +27,9 @@ final class DualSignalTint {
     }
     private DualSignalTint() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader) {
         try {
             Class<?> view=Class.forName(MODERN,false,loader);

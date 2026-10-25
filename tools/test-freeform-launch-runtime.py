@@ -127,8 +127,8 @@ public class TaskDisplayAreaMifavor {public static void addWRIntentId_WindowRepl
  t=target();t.info.applicationInfo.flags=1;starter.launch(t,s,null,null);check(t.intent.flags==0,"system target skipped");
  t=new ActivityRecord(s.packageName);starter.launch(t,s,null,null);check(t.intent.flags==0,"same-app navigation skipped");
  config("excluded","com.tencent.mm");t=target();starter.launch(t,s,null,null);check(t.intent.flags==0,"exceptions honored");config("excluded","");
- s.info.applicationInfo.category=-1;t=target();starter.launch(t,s,null,null);check(t.intent.flags==0,"non-game login stays native");
- config("games","example.game");t=target();starter.launch(t,s,null,null);check(starter.seen.mode==5,"manual game list");
+ s.info.applicationInfo.category=-1;t=target();starter.launch(t,s,null,null);check(starter.seen.mode==5,"non-game login uses a window");
+ config("games","example.unrelated");t=target();starter.launch(t,s,null,null);check(starter.seen.mode==5,"retired game list does not restrict login");
  config("login","0");config("external","1");t=new ActivityRecord("example.browser");starter.launch(t,s,null,null);check(starter.seen.mode==5,"independent external switch");
  ActivityRecord auth=target(),game=source();starter.launch(game,auth,null,null);check(game.intent.flags==0,"login callback does not window game");
  auth.resultTo=s;t=new ActivityRecord(s.packageName);starter.launch(t,auth,null,null);check(t.intent.flags==0,"result return skipped");

@@ -43,6 +43,9 @@ final class RootEarlyCoordinator {
         this.authority=java.util.Objects.requireNonNull(authority);control=authority;authority.bind(this);
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     RootEarlyModule.Result onModuleLoaded(RootEarlyModule module,XposedModuleInterface.ModuleLoadedParam param,RootEarlyModule.Mode mode) {
         synchronized(control) {
             if(attempted || stopped)return outcome("REJECTED_REENTRY","one attempt already consumed",null,false);
@@ -259,8 +262,11 @@ final class RootEarlyCoordinator {
             throw new IllegalStateException("not actual system_server main thread");
         synchronized(control){pid=actualPid;uid=actualUid;}
         if(param==null || !param.isSystemServer() || !"system".equals(param.getProcessName()))throw new IllegalStateException("wrong system callback parameters");
-        if(module.getApiVersion()!=102 || module.getFrameworkVersionCode()!=7854 || !"LSPosed".equals(module.getFrameworkName()))
-            throw new IllegalStateException("framework identity differs from retained device");
+        // Framework releases do not identify the actual Android hook targets.
+        // Keep API/implementation checks here; the source and member validation
+        // in the coordinator determines whether this device supports this path.
+        if(module.getApiVersion()!=102 || !"LSPosed".equals(module.getFrameworkName()))
+            throw new IllegalStateException("early protection requires LSPosed API 102");
         if(!matchesCallbackStack(Thread.currentThread().getStackTrace()))throw new IllegalStateException("missing exact callback and synchronous initialization stack");
     }
     /** Pure shape helper; only the private runtime sampler above can open/use a window. */

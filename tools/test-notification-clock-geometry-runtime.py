@@ -169,6 +169,15 @@ public class TestNotificationClockGeometry {
   FeatureSettings.values.put(NotificationAppearanceOptions.CLOCK_LANDSCAPE,"1");frame(root,h);visibleGeometry(h,list,1,"different native header/list parent offsets");
   near(list.mAmbientState.mTopPadding,top(h)+h.getHeight()-top(list)+16,"padding conversion uses shared screen space across nested native parents");
   check(module.errors==0,"all header geometry callbacks complete without runtime failure");
+  Resources.metrics.density=Resources.metrics.scaledDensity=1;Resources.config.orientation=1;
+  FeatureSettings.values.put(NotificationAppearanceOptions.CLOCK_PORTRAIT,"0");FeatureSettings.values.put("ls_augment_rm_qs_clock_period","1");
+  ViewGroup stableRoot=new ViewGroup();stableRoot.lp=new ViewGroup.LayoutParams(400,900);CCHeaderView stable=new CCHeaderView();stable.lp.width=400;
+  NotificationStackScrollLayout stableList=new NotificationStackScrollLayout();stableList.lp=new ViewGroup.LayoutParams(400,900);stableRoot.add(stable);stableRoot.add(stableList);
+  stable.mClockView.text="12:11:00 中午";stable.icons.lp.width=50;layout(stableRoot,400,900);stableList.onLayout(true,0,0,400,900);stable.onAttachedToWindow();frame(stableRoot,stable);
+  int clockTop=top(stable.mTimeGroup),dateTop=top(stable.mDateViewContainer),headerHeight=stable.getHeight();float listTop=stableList.mAmbientState.mTopPadding;
+  for(int iconWidth:new int[]{50,180,70,200,50}){stable.icons.lp.width=iconWidth;stable.mClockView.text="12:11:58 中午";frame(stableRoot,stable);
+    near(top(stable.mTimeGroup),clockTop,"period time remains at one Y across Bluetooth widths");near(top(stable.mDateViewContainer),dateTop,"period date remains stable");
+    near(stable.getHeight(),headerHeight,"period header height remains stable");near(stableList.mAmbientState.mTopPadding,listTop,"period notification padding remains stable");}
   System.out.println("Notification clock production geometry: "+checks+" delayed-layout/anchor/RTL/font/rotation checks passed; Android rendering and touch remain unverified");
  }
 }'''

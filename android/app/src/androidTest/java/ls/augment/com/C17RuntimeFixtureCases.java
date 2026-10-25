@@ -255,6 +255,15 @@ public final class C17RuntimeFixtureCases {
         void sendStatus(String phase){Bundle status=new Bundle();status.putString("c17FixturePhase",phase);status.putString("c17Fixture",snapshot().toString());test.sendStatus(0,status);}
     }
 
+    /** Notification cancellation is asynchronous in system_server. Never wait on the UI thread. */
+    static final class NotificationCleanup {
+        static int await(java.util.function.IntSupplier remaining,java.util.function.LongSupplier clock,Runnable pause){
+            long deadline=clock.getAsLong()+2000;int count=remaining.getAsInt();
+            while(count>0&&clock.getAsLong()<deadline){pause.run();count=remaining.getAsInt();}
+            return count;
+        }
+    }
+
     private static final class Fixture {
         final Instrumentation test;
         final Context context;
@@ -313,6 +322,11 @@ public final class C17RuntimeFixtureCases {
                 event("fixture_error","error",error);
             }finally{
                 onMain(this::cleanup);
+                if(manager!=null)try{
+                    activeNotifications=NotificationCleanup.await(()->{int count=0;for(android.service.notification.StatusBarNotification n:manager.getActiveNotifications())if(tag.equals(n.getTag()))count++;return count;},SystemClock::elapsedRealtime,()->SystemClock.sleep(50));
+                    event("fixture_cleanup_observed","ownNotificationsRemaining",activeNotifications);
+                }catch(Throwable failure){cleanupErrors.put("cleanup observation: "+failure.getClass().getSimpleName());}
+                sendStatus("finished");
             }
             JSONObject report=snapshot();persist(report);
             return report;
@@ -334,8 +348,9 @@ public final class C17RuntimeFixtureCases {
             callbacks.addDataScheme("duo-c17-fixture");
             callbacks.addDataAuthority(runId,null);
             verifyCallbackFilter(callbacks);
-            if(Build.VERSION.SDK_INT>=33)context.registerReceiver(receiver,callbacks,Context.RECEIVER_NOT_EXPORTED);
-            else context.registerReceiver(receiver,callbacks);
+            // The test APK inherits minSdk 35; every supported system accepts
+            // explicit non-exported registration for our own PendingIntents.
+            context.registerReceiver(receiver,callbacks,Context.RECEIVER_NOT_EXPORTED);
             receiverRegistered=true;
             blue=art(0xff236cc0,"A");orange=art(0xffdf8d34,"B");picture=art(0xff478e7a,"6");
             for(int i=0;i<6;i++)postNotification(i,false);
@@ -488,7 +503,7 @@ public final class C17RuntimeFixtureCases {
             if(createdChannel&&manager!=null)clean("channel",()->manager.deleteNotificationChannel(channel));
             if(manager!=null)clean("remaining own notifications",()->{activeNotifications=0;for(android.service.notification.StatusBarNotification n:manager.getActiveNotifications())if(tag.equals(n.getTag()))activeNotifications++;});
             clean("artwork",()->{if(blue!=null)blue.recycle();if(orange!=null)orange.recycle();if(picture!=null)picture.recycle();});
-            event("fixture_cleanup","ownNotificationsRemaining",activeNotifications);sendStatus("finished");
+            event("fixture_cleanup","ownNotificationsRemaining",activeNotifications);
         }
         void clean(String stage,Runnable task){try{task.run();}catch(Throwable failure){cleanupErrors.put(stage+": "+failure.getClass().getSimpleName()+": "+failure.getMessage());}}
     }

@@ -37,6 +37,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final Map<String,Button> aodParameterRestores=new LinkedHashMap<>();
     private final Runnable autoSave=this::flush;
     private Dialog islandAppStyleDialog;
+    private boolean bindingIslandMaster;
+    private SharedPreferences islandPreferences;
+    private final SharedPreferences.OnSharedPreferenceChangeListener islandListener=(prefs,key)->{
+        if(key==null||SystemUiOptions.ISLAND.equals(key))main.post(this::refreshIslandMaster);
+    };
     private UiKit ui;private AppConfig config;private LinearLayout body;private SharedPreferences gateMemory;
     private String group,targetId,query="",fontKey,pendingEditor;
     private static final String AOD_FONT_KEY=SystemUiOptions.PREFIX+"aod_clock_font";
@@ -57,7 +62,6 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final SharedPreferences.OnSharedPreferenceChangeListener recentsRadiusListener=(prefs,key)->{
         if(recentsRadiusActive&&(key==null||RecentsCardRadiusStore.KEY.equals(key)))loadRecentsRadiusRange();
     };
-    private TextView launcherGridRuntime;
     private LinearLayout updateLinksContent;
     private SharedPreferences updateLinksPreferences;
     private int updateLinksRequest;
@@ -117,6 +121,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);if(liftArcEditor!=null)liftArcEditor.restoreState(state,()->body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,state.getInt("scrollY"));}));}
         if(!sectionStates.isEmpty()){sectionPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);sectionPreferences.registerOnSharedPreferenceChangeListener(sectionListener);refreshSectionCounts();}
         if(!pending.isEmpty())main.post(autoSave);
+        if("group/notifications/island".equals(ModuleNavigation.route(this))){
+            islandPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);
+            islandPreferences.registerOnSharedPreferenceChangeListener(islandListener);
+        }
         // Old-save failure remains visible after a configuration recreation.
         worker.execute(()->main.post(this::showSaveFailure));
     }
@@ -165,6 +173,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 addSectionFeatures(card,features);
             }
             String id=selected==null?group:selected.id;
+            if("island".equals(id)){
+                LinearLayout nativeCard=ui.preferenceCard();
+                nativeCard.addView(ui.preferenceRow("native-island-settings","打开星云岛设置",
+                        "开启原厂星云岛后，自动关闭Duo灵动岛",()->{
+                            flush();NativeIslandSettings.open(this,worker);
+                        }),ui.wrap());
+                body.addView(nativeCard,ui.margins(0,12,0,0));
+            }
             if(selected!=null&&!selected.deviceSettings.isEmpty())DeviceSettingsActions.add(this,ui,category(id,title),worker,selected.deviceSettings.toArray(new String[0]));
             if("collab_audio".equals(id))CollabAudioImporter.addAction(this,ui,category(id,title),worker);
         }
@@ -265,7 +281,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(body==null||isDestroyed())return;
         for(ModuleHierarchy.Section section:sectionStates.values()){
             TextView label=body.findViewWithTag("setting-count:"+section.route());if(label==null)continue;
-            int count=ModuleHierarchy.activeCount(section,config::get);label.setText("✓ 已设置 "+count+" 项");label.setVisibility(count==0?View.GONE:View.VISIBLE);
+            int count=ModuleHierarchy.activeCount(section,config::get);label.setText(label.getContext().getString(R.string.status_enhancementsettingsactivity_11 ,String.valueOf(count)));label.setVisibility(count==0?View.GONE:View.VISIBLE);
         }
     }
     void selectStatusComponent(String id){for(NativeEditorController editor:editors.values())if(editor instanceof StatusBarEditorController)((StatusBarEditorController)editor).selectComponent(id);}
@@ -289,7 +305,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(f.toggleKey==null&&gateMemory.contains("value:"+key)
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
-        String unavailable=DeviceFeatureAvailability.unavailableReason(key,Build.DEVICE,Build.MODEL,Build.PRODUCT);
+        String unavailable=FanFeatureAvailability.reason(this,key);
         boolean available=unavailable.isEmpty();
         toggle.setChecked(active&&available);toggle.setEnabled(available);
         card.addView(ui.featureRow(f.title,available?FeatureHelp.forOption(option):unavailable,toggle),ui.wrap());
@@ -305,6 +321,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         else if("ls_augment_rm_recents_memory_custom".equals(f.id))memoryControls(content);
         else if("systemui:island_enabled".equals(f.id))islandControls(content);
         else if(GameOptions.PERFORMANCE_MONITOR.equals(f.id))monitorControls(content);
+        else if("systemui:qs_grid".equals(f.id)){
+            content.addView(new ControlCenterGridEditor(this,ui,this::value,(k,v)->change(k,v,null)).view(),ui.wrap());
+        }
         else if("launcher:launcher_grid".equals(f.id)){
             LauncherGridEditor grid=new LauncherGridEditor(this,ui,this::value,this::changeLauncherGrid);
             content.addView(grid.view(),ui.wrap());
@@ -324,14 +343,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         for(NativeFeatureGroups.Feature child:f.children)content.addView(feature(child),ui.wrap());
         syncConditionalInputs();
         UiKit.Fold fold=null;if(f.hasConfiguration()||updateLink){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
-        if("launcher:launcher_grid".equals(f.id)){
-            launcherGridRuntime=ui.text("",12,ui.muted,false);launcherGridRuntime.setTag("launcher-grid-runtime");
-            card.addView(launcherGridRuntime,ui.margins(0,8,0,4));refreshLauncherGridRuntime();
-        }
         final UiKit.Fold configFold=fold;
         toggle.setOnCheckedChangeListener((view,on)->{
             if(configFold!=null)configFold.sync();
-            if(f.toggleKey!=null){change(key,on?"1":"0",toggle);if(LauncherGridSpec.ENABLED.equals(key))refreshLauncherGridRuntime();}
+            if(bindingIslandMaster&&SystemUiOptions.ISLAND.equals(key))return;
+            if(f.toggleKey!=null)change(key,on?"1":"0",toggle);
             else{
                 SharedPreferences.Editor memory=gateMemory.edit().putBoolean("open:"+key,on);String next;
                 if(!on){memory.putString("remember:"+key,value(key));next=f.noOpValue;}
@@ -377,7 +393,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(font){
             String name=original?"原厂字体":getSharedPreferences("statusbar_asset_names",MODE_PRIVATE).getString(selected,"");
             if(name==null||name.trim().isEmpty())name=selected.startsWith("/")?new java.io.File(selected).getName():"已选择自定义字体";
-            state.setText("当前字体："+name+(aodFontImportPending?"\n正在导入字体…":""));
+            state.setText(state.getContext().getString(R.string.status_enhancementsettingsactivity_12 ,String.valueOf(name), String.valueOf((aodFontImportPending?"\n正在导入字体…":""))));
         }else state.setText(original?"原厂大小（1.0 倍）":selected+" 倍");
         Button restore=aodParameterRestores.get(key);
         boolean importing=font&&(aodFontPickerPending||aodFontImportPending);
@@ -445,23 +461,20 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         EnhancementOption appStyle=options.get(SystemUiOptions.ISLAND_APP_STYLE);
         LinearLayout styleContent=new LinearLayout(this);styleContent.setOrientation(LinearLayout.VERTICAL);
         styleContent.setPadding(ui.dp(12),0,0,ui.dp(8));
-        Button styleChoice=ui.tonalButton(appStyle.choices[Integer.parseInt(value(appStyle.key))]);
-        styleChoice.setMinHeight(ui.dp(48));styleChoice.setMinimumHeight(ui.dp(48));
-        styleChoice.setContentDescription(appStyle.title+"，当前："+styleChoice.getText());
-        styleChoice.setTag("config:"+appStyle.key);
-        controls.put(appStyle.key,styleChoice);styleContent.addView(styleChoice,ui.wrap());
-        styleChoice.setOnClickListener(view->{
-            String[] labels=appStyle.choices.clone();labels[Integer.parseInt(value(appStyle.key))]+=" · 当前";
-            islandAppStyleDialog=ui.choiceDialog(appStyle.title,labels,null,selected->{
-                String next=String.valueOf(selected);change(appStyle.key,next,styleChoice);refreshInput(appStyle.key,next);
-            });
-        });
+        styleContent.addView(input(appStyle,true),ui.wrap());
         LinearLayout styleSection=ui.parameterSection(appStyle.title,FeatureHelp.forOption(appStyle),null,styleContent,false);
         styleSection.setTag("island-app-style-section");styleContent.setTag("island-app-style-options");
         content.addView(styleSection,ui.wrap());divider(content);
         LinearLayout geometry=new LinearLayout(this);geometry.setOrientation(LinearLayout.VERTICAL);geometry.setPadding(ui.dp(12),0,0,0);
         for(String suffix:new String[]{"width","height","offset_x","offset_y"})geometry.addView(input(options.get(SystemUiOptions.PREFIX+"island_"+suffix)),ui.wrap());
         content.addView(ui.foldingSection("大小与位置",geometry,false),ui.wrap());
+        refreshIslandRanges();
+    }
+    private void refreshIslandRanges(){
+        for(String suffix:new String[]{"width","height","offset_x","offset_y"}){
+            String key=SystemUiOptions.PREFIX+"island_"+suffix;View control=controls.get(key);
+            if(control instanceof ParameterSlider)PhoneParameterRanges.island(this,(ParameterSlider)control,key,this::value);
+        }
     }
     private void monitorControls(LinearLayout content){
         content.addView(ui.featureTitle("监测项目","勾选游戏空间性能监控弹窗需要显示的项目，至少保留一项。时间为当前时间，游戏时长由原厂插件统计。"),ui.margins(0,3,0,0));
@@ -504,6 +517,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private String value(String key){return draft.getOrDefault(key,config.get(key));}
     private View input(EnhancementOption option){return input(option,false);}
     private View input(EnhancementOption option,boolean parentOwnsTitle){
+        if(option.kind==EnhancementOption.Kind.BOOLEAN){
+            Switch control=new Switch(this);control.setTag("config:"+option.key);control.setChecked(ConfigSchema.truthy(value(option.key)));
+            controls.put(option.key,control);LinearLayout row=ui.featureRow(option.title,FeatureHelp.forOption(option),control);
+            control.setOnCheckedChangeListener((button,on)->change(option.key,on?"1":"0",control));return row;
+        }
         LinearLayout row=ui.parameterInputGroup();
         if(!parentOwnsTitle||RecentsCardRadiusOptions.OFFSET.equals(option.key)){
             LinearLayout title=ui.featureTitle(option.title,FeatureHelp.forOption(option));
@@ -516,7 +534,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         if(CollabOptions.THEME_VARIANT.equals(option.key))return themeChoice(row,option);
         if(RecentsCardRadiusOptions.OFFSET.equals(option.key)){
-            SeekBar slider=new SeekBar(this);
+            SeekBar slider=ui.slider();
             // No guessed endpoints: the launcher supplies an authenticated resting-card range.
             slider.setMin(0);slider.setMax(0);slider.setEnabled(false);recentsRadiusSlider=slider;
             slider.setKeyProgressIncrement(1);slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));
@@ -543,6 +561,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 }
             });
             renderRecentsRadiusValue();controls.put(option.key,slider);
+        }else if(option.kind==EnhancementOption.Kind.INTEGER||option.kind==EnhancementOption.Kind.DECIMAL){
+            ParameterSlider slider=new ParameterSlider(ui,option,value(option.key),next->change(option.key,next,controls.get(option.key)));
+            row.addView(slider,ui.wrap());controls.put(option.key,slider);
+            if((SystemUiOptions.PREFIX+"onehand_offset").equals(option.key))PhoneParameterRanges.oneHand(this,slider);
         }else if(option.kind==EnhancementOption.Kind.CHOICE){
             Spinner choice=ui.choiceSpinner("选择选项","ls_augment_rm_recents_memory_content".equals(option.key)?this::memoryExampleText:null);choice.setContentDescription(option.title);if("ls_augment_rm_recents_memory_content".equals(option.key)){
                 memoryContentAdapter=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,option.choices){
@@ -570,7 +592,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             if(GameOptions.MONITOR_TRANSPARENCY.equals(option.key))field.setTag("config:"+option.key);
             if(option.kind==EnhancementOption.Kind.INTEGER)field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED);
             else if(option.kind==EnhancementOption.Kind.DECIMAL)field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED);
-            row.addView(field,ui.wrap());controls.put(option.key,field);
+            row.addView(option.kind==EnhancementOption.Kind.COLOR?ui.colorInput(field,option.title):field,ui.wrap());controls.put(option.key,field);
             TextView error=ui.inlineInputError(field,option.key);inputErrors.put(option.key,error);row.addView(error,ui.margins(0,4,0,0));
             field.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){
                 String normalized=option.normalize(s.toString());
@@ -623,7 +645,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             int actual=recentsRadiusRange.clamp(saved);
             if(actual!=saved)status="实际为"+(saved<actual?"直角 ":"最圆 ")+signedRadius(actual)+"；调节后保存";
         }else if(!recentsRadiusLoading)status="请先进入一次最近任务，读取卡片圆角范围";
-        recentsRadiusValue.setText("圆角偏移 "+signedRadius(saved));
+        recentsRadiusValue.setText(recentsRadiusValue.getContext().getString(R.string.status_enhancementsettingsactivity_13 ,String.valueOf(signedRadius(saved))));
         recentsRadiusStatus.setText(status);recentsRadiusStatus.setVisibility(status.isEmpty()?View.GONE:View.VISIBLE);
         recentsRadiusSlider.setStateDescription(text+(status.isEmpty()?"":"，"+status));
     }
@@ -671,6 +693,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     }
     private void refreshInput(String key,String next){
         View view=controls.get(key);if(view instanceof EditText){EditText field=(EditText)view;if(!next.contentEquals(field.getText()))field.setText(next);}
+        else if(view instanceof ParameterSlider){((ParameterSlider)view).setValue(next);}
         else if(view instanceof SeekBar){int number=Integer.parseInt(next);((SeekBar)view).setProgress(RecentsCardRadiusOptions.OFFSET.equals(key)&&recentsRadiusRange!=null?recentsRadiusRange.clamp(number):number);if(RecentsCardRadiusOptions.OFFSET.equals(key))renderRecentsRadiusValue();}
         else if(view instanceof Spinner){
             Spinner spinner=(Spinner)view;int selected=Integer.parseInt(next);
@@ -695,7 +718,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     }
     private void invalidFeedback(EnhancementOption option,String saved){
         TextView error=inputErrors.get(option.key);if(error==null)return;
-        error.setText(invalidMessage(option)+"；"+saved);error.setVisibility(View.VISIBLE);
+        error.setText(error.getContext().getString(R.string.status_enhancementsettingsactivity_14 ,String.valueOf(invalidMessage(option)), String.valueOf(saved)));error.setVisibility(View.VISIBLE);
     }
     private void confirmInvalidInput(EnhancementOption option,long generation){
         if(isDestroyed()||!pending.isInvalid(option.key,generation))return;
@@ -715,10 +738,18 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     }
     private void change(String key,String value,View control){
         String normalized=ConfigSchema.normalize(key,value);if(normalized==null)return;
+        if(SystemUiOptions.SIGNAL_DUAL.equals(key)&&ConfigSchema.truthy(normalized)
+                &&(ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))
+                ||config.getBoolean(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))){
+            if(control instanceof Switch)((Switch)control).setChecked(false);
+            toast("请先关闭三合一图标");return;
+        }
         if(normalized.equals(draft.get(key))&&!pending.needsSubmission(key))return;
         draft.put(key,normalized);pending.put(key,normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        if(LauncherGridSpec.ENABLED.equals(key))traceLauncherGridIntent("toggle");
         refreshAodParameterState(key);
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();
+        if((SystemUiOptions.PREFIX+"island_width").equals(key)||(SystemUiOptions.PREFIX+"island_height").equals(key))refreshIslandRanges();
         if("ls_augment_rm_recents_memory_color_mode".equals(key))syncMemoryColorsVisibility();
         syncConditionalInputs();
         if(liftArcEditor!=null)liftArcEditor.changed(key);
@@ -760,31 +791,16 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             normalized.put(key,next);
         }
         if(normalized.entrySet().stream().allMatch(entry->entry.getValue().equals(draft.get(entry.getKey()))&&!pending.needsSubmission(entry.getKey())))return;
-        draft.putAll(normalized);pending.putAll(normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);refreshLauncherGridRuntime();
+        draft.putAll(normalized);pending.putAll(normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        traceLauncherGridIntent("dimensions");
     }
-    private void refreshLauncherGridRuntime(){
-        if(launcherGridRuntime==null)return;
-        LauncherGridSpec grid=LauncherGridSpec.parse(value(LauncherGridSpec.ENABLED),value(LauncherGridSpec.ROWS),value(LauncherGridSpec.COLUMNS));
-        if(grid==null)grid=LauncherGridSpec.defaults();
-        String selected=grid.enabled?"当前选择："+grid.columns+" 列 × "+grid.rows+" 行（重启桌面后尝试应用）":"当前选择：系统原厂布局（重启桌面后尝试恢复）";
-        String feedback="尚未收到桌面运行反馈。";
-        try{
-            String raw=config.diagnostic("ls_augment_launcher_grid_runtime");
-            if(!raw.isEmpty()){
-                org.json.JSONObject state=new org.json.JSONObject(raw);String kind=state.optString("state"),label;
-                boolean confirmed=state.optBoolean("bound")&&!state.optBoolean("migrationPending")
-                        &&state.optInt("workspaceRows")>0&&state.optInt("workspaceColumns")>0
-                        &&state.optInt("workspaceRows")==state.optInt("effectiveRows")
-                        &&state.optInt("workspaceColumns")==state.optInt("effectiveColumns");
-                switch(kind){case "active":label=confirmed?"自定义布局已应用":"等待桌面完成布局绑定";break;case "registered":label="布局接口已接入，等待桌面确认";break;case "native":label="使用系统原厂布局";break;case "restored":label=confirmed?"已恢复系统原厂布局":"等待桌面完成布局恢复";break;case "blocked":label="布局未更改";break;case "pending_restart":label="等待重启桌面";break;case "unsupported":label="当前桌面暂不支持";break;default:label="等待桌面确认";}
-                int rows=state.optInt("effectiveRows"),columns=state.optInt("effectiveColumns");
-                int version=state.optInt("version");
-                String source=version>0&&version!=BuildConfig.VERSION_CODE?"历史桌面反馈（test"+version+"）：":"上次桌面反馈：";
-                feedback=source+label+(rows>0&&columns>0?"，实际 "+columns+" 列 × "+rows+" 行":"")+"。";
-                String error=state.optString("error");if(!error.isEmpty())feedback+="\n"+error;
-            }
-        }catch(Exception ignored){feedback="桌面反馈暂不可读，请重启桌面后查看。";}
-        launcherGridRuntime.setText(selected+"\n"+feedback+"\n若现有小组件或文件夹超出新格数，桌面会保留原布局，请先调整占用后再试。");
+    private void traceLauncherGridIntent(String source){
+        LinkedHashMap<String,String> requested=new LinkedHashMap<>();
+        for(String key:new String[]{LauncherGridSpec.ENABLED,LauncherGridSpec.ROWS,LauncherGridSpec.COLUMNS})
+            requested.put(key,value(key));
+        Context app=getApplicationContext();
+        // Preserve FIFO with saves while keeping file I/O away from touch handling.
+        worker.execute(()->AppConfig.traceLauncherGrid(app,"UI_REQUEST",requested,0,"source="+source));
     }
     @Override public void prepareScopeRestart(Runnable restart){
         if(isFinishing()||isDestroyed()||worker.isShutdown())return;
@@ -816,13 +832,26 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                     for(Map.Entry<String,String> entry:values.entrySet())memory.putString("value:"+entry.getKey(),entry.getValue());
                     if(!memory.commit())failure="配置已保存，但输入记忆未保存，请重新打开此页确认";
                 }else failure="未保存："+result.message;
-            }catch(RuntimeException error){failure=saved?"配置已保存，但输入记忆未完成，请重新打开此页确认":"保存状态暂时无法确认，请重新打开此页确认";}
+            }catch(RuntimeException error){
+                if(AppConfig.touchesLauncherGrid(claimed.values()))AppConfig.traceLauncherGrid(getApplicationContext(),
+                        "SAVE_EXCEPTION",claimed.values(),0,"error="+error.getClass().getSimpleName()+";durableResult="+(saved?"COMMITTED":"UNCONFIRMED"));
+                failure=saved?"配置已保存，但输入记忆未完成，请重新打开此页确认":"保存状态暂时无法确认，请重新打开此页确认";
+            }
             finally{pending.complete(claimed,saved);}
             if(failure!=null){inputSession.failed(failure);main.post(this::showSaveFailure);}
         });
     }
     private void showSaveFailure(){
         if(isDestroyed())return;String message=inputSession.takeFailure();if(message!=null)toast(message);
+    }
+    private void refreshIslandMaster(){
+        if(isDestroyed()||body==null||islandPreferences==null||pending.restorableValues().containsKey(SystemUiOptions.ISLAND))return;
+        String saved=config.get(SystemUiOptions.ISLAND);
+        draft.put(SystemUiOptions.ISLAND,saved);
+        View toggle=body.findViewWithTag("config:"+SystemUiOptions.ISLAND);
+        bindingIslandMaster=true;
+        try{if(toggle instanceof Switch)((Switch)toggle).setChecked(ConfigSchema.truthy(saved));}
+        finally{bindingIslandMaster=false;}
     }
     private void considerQuery(View view,String title,String summary){if(queryAnchor==null&&!query.isEmpty()&&(title+summary).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))queryAnchor=view;}
     private boolean isApplicationDirectory(){return targetId!=null&&ModuleHierarchy.group(ModuleNavigation.route(this))==null;}
@@ -856,7 +885,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;if(extraDimTile!=null)extraDimTile.refresh();refreshLauncherGridRuntime();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
         // A pending picker can return to the recreated page; an old Activity import is not resumed.
@@ -866,7 +895,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(islandPreferences!=null)islandPreferences.unregisterOnSharedPreferenceChangeListener(islandListener);stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

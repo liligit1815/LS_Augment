@@ -22,6 +22,9 @@ public final class HookTargetRegistry {
                     "cn.nubia.gamelab",
                     "cn.nubia.fan",
                     "com.mi.health",
+                    "com.autonavi.minimap",
+                    "com.tencent.mobileqq",
+                    "com.android.gallery3d",
                     "cn.nubia.neostore",
                     "com.zte.mifavor.launcher",
                     "cn.nubia.gamehelperline",
@@ -35,6 +38,7 @@ public final class HookTargetRegistry {
                     "com.android.permissioncontroller",
                     "com.android.nfc",
                     "cn.nubia.filebrowser",
+                    "com.android.mtp",
                     "com.android.ztescreenshot",
                     "cn.nubia.photoeditor",
                     "system")));

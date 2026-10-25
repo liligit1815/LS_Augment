@@ -173,7 +173,18 @@ def main():
         for name in archive.namelist():
             if re.fullmatch(r'classes\d*\.dex', name):
                 actual.update(methods_in_dex(archive.read(name)))
-    missing = [entry for entry in EXPECTED if entry not in actual]
+    missing=[]
+    for entry in EXPECTED:
+        if entry in actual:continue
+        owner,name,count,result=entry
+        candidates=[]
+        if owner.startswith('com.android.systemui.qs.customize.'):
+            candidates.append((owner.replace('com.android.systemui.qs.customize.','com.zte.mifavor.qs.customize.'),name,count,
+                               result.replace('com/android/systemui/qs/customize/','com/zte/mifavor/qs/customize/')))
+        if owner=='com.android.systemui.volume.VolumeDialogImpl':
+            candidates.append(('com.zte.feature.volume.MfvVolumeDialogImpl',name,count,result))
+            candidates.append(('com.zte.feature.volume.VolumeDialogImpl',name,count,result))
+        if not any(candidate in actual for candidate in candidates):missing.append(entry)
     for entry in missing:
         print('MISSING', entry)
     print(f'SystemUI adapter signatures: {len(EXPECTED)-len(missing)}/{len(EXPECTED)} verified')

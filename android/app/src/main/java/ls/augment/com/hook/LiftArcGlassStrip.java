@@ -5,6 +5,8 @@
 package ls.augment.com.hook;
 
 import android.content.Context;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -804,6 +806,7 @@ final class LiftArcGlassStrip extends View {
     private Bitmap wallpaper;
     private int wallpaperId = Integer.MIN_VALUE;
     private boolean loading;
+    private volatile String wallpaperReadState="not_requested";
     private long lastAttempt = -RETRY_MS;
     private long lastIdCheck;
 
@@ -1077,6 +1080,7 @@ final class LiftArcGlassStrip extends View {
         try {
             WallpaperManager wm = WallpaperManager.getInstance(getContext());
             if(wm.getWallpaperInfo(WallpaperManager.FLAG_LOCK)!=null) {
+                wallpaperReadState("live_wallpaper");
                 post(() -> onWallpaperReady(null,Integer.MIN_VALUE));
                 return;
             }
@@ -1127,7 +1131,9 @@ final class LiftArcGlassStrip extends View {
             }
         } catch (Throwable ignored) {
             bmp = null;
+            wallpaperReadState("decode_failed");
         }
+        if(bmp==null&&"file_open".equals(wallpaperReadState))wallpaperReadState("decode_unavailable");
         final Bitmap result = bmp;
         final int gotId = id;
         post(() -> onWallpaperReady(result, gotId));
@@ -1139,10 +1145,10 @@ final class LiftArcGlassStrip extends View {
         releaseWallpaper();
         LiftArcRuntime.wallpaper(bmp != null,shader != null && !shaderBroken);
         if (bmp == null) {
-            LiftArcLog.d("glass: 读不到静态锁屏壁纸（超级/视频壁纸），"
-                    + "窗内无其它可用背景源，本轮不叠加玻璃（保留原描边）");
+            LiftArcLog.d("glass: 壁纸纹理不可用，reason="+wallpaperReadState+"，本轮不叠加玻璃（保留原描边）");
             return;
         }
+        wallpaperReadState("texture_ready");
         wallpaper = bmp;
         wallpaperId = id;
         // 纹理是 Shader 的**输入**，glassPaint 上挂的始终是 RuntimeShader，不能被覆盖
@@ -1174,16 +1180,36 @@ final class LiftArcGlassStrip extends View {
     }
 
     /** 打开壁纸文件；{@code bounds} 模式靠 {@link BitmapFactory.Options#inJustDecodeBounds}。 */
+    // The ROM service accepts either granted permission directly. Only perform
+    // the read for a permitted host; absence remains an unavailable texture.
+    @androidx.annotation.RequiresPermission(anyOf={Manifest.permission.MANAGE_EXTERNAL_STORAGE,"android.permission.READ_WALLPAPER_INTERNAL"},conditional=true)
     private ParcelFileReader openWallpaper(WallpaperManager wm, int flag) {
         try {
+            // wm was obtained with this same SystemUI View Context. Do not ask
+            // the module APK to acquire a signature permission it cannot grant.
+            if(getContext().checkSelfPermission("android.permission.READ_WALLPAPER_INTERNAL")!=PackageManager.PERMISSION_GRANTED
+                    &&getContext().checkSelfPermission(Manifest.permission.MANAGE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){
+                wallpaperReadState("permission_denied");return null;
+            }
             android.os.ParcelFileDescriptor pfd = wm.getWallpaperFile(flag);
             if (pfd == null) {
+                wallpaperReadState("static_file_unavailable");
                 return null;
             }
+            wallpaperReadState("file_open");
             return new ParcelFileReader(pfd, flag);
+        } catch (SecurityException denied) {
+            wallpaperReadState("access_denied:SecurityException");return null;
         } catch (Throwable t) {
+            wallpaperReadState("read_failed:"+t.getClass().getSimpleName());
             return null;
         }
+    }
+
+    private void wallpaperReadState(String state){
+        if(state.equals(wallpaperReadState))return;
+        wallpaperReadState=state;
+        FeatureSettings.diagnostic(getContext(),"ls_augment_liftarc_wallpaper_read_state","host=systemui;uid="+android.os.Process.myUid()+";context_package="+getContext().getPackageName()+";state="+state);
     }
 
     private final class ParcelFileReader {

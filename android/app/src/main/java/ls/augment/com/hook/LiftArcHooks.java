@@ -10,6 +10,9 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 final class LiftArcHooks {
     private static final String WINDOW="com.android.systemui.shade.NotificationShadeWindowView";
     private static final String MANAGER="com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager";
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static void install(AugmentModule module,ClassLoader loader) {
         LiftArcConfig config=new LiftArcConfig();
         int attached=hookNamed(module,loader,"liftarc",WINDOW,"onAttachedToWindow",0,null,(o,a,r)-> {

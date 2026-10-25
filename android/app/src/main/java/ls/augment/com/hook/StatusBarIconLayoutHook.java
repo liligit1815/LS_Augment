@@ -29,6 +29,9 @@ final class StatusBarIconLayoutHook {
     private static boolean marginLookup;
     private static Method nativeMargin;
     private StatusBarIconLayoutHook(){}
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader){
         int count=0;
         try{
@@ -86,6 +89,9 @@ final class StatusBarIconLayoutHook {
         for(int i=0;i<parent.getChildCount();i++)if(parent.getChildAt(i) instanceof ViewGroup)restoreChildBoxes((ViewGroup)parent.getChildAt(i));
         SizeRecord previous=CHILD_BOXES.get(parent);if(previous!=null&&previous.params==parent.getLayoutParams())previous.apply(parent,0,0,false);
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int installNotifications(AugmentModule module,ClassLoader loader){
         int count=0;
         try{

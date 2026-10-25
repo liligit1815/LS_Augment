@@ -86,6 +86,9 @@ final class StatusBarAssetsHook {
     private static final ThreadPoolExecutor SURFACE_READER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(1), task -> { Thread t = new Thread(task, "LS-status-surface"); t.setDaemon(true); return t; });
     private static Context application;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static ConnectivityIconSource connectivity;
     private static StatusBarNativeStateTable nativeStates;
     private static ConnectivityIconState lastConnectivity=ConnectivityIconState.unknown();
@@ -510,7 +513,7 @@ final class StatusBarAssetsHook {
             if(current==entry.wrapper)return true;
             int nativeResource=WifiStandardHook.nativeResource(image);
             Object resource=nativeResource>0?nativeResource:cachedField(image,"mResource");String originalName=null;
-            if(resource instanceof Integer&&(Integer)resource!=0)try{originalName=image.getResources().getResourceEntryName((Integer)resource);}catch(RuntimeException ignored){}
+            if(resource instanceof Integer&&(Integer)resource!=0&&(Integer)resource!=View.NO_ID)try{originalName=image.getResources().getResourceEntryName((Integer)resource);}catch(RuntimeException ignored){}
             if(originalName==null&&current!=null)originalName=DRAWABLE_RESOURCES.get(current);
             if(originalName!=null){RESOURCE_NAMES.put(image,originalName);if(current!=null)DRAWABLE_RESOURCES.put(current,originalName);}
             else RESOURCE_NAMES.remove(image);
@@ -728,6 +731,9 @@ final class StatusBarAssetsHook {
     private static void release(Drawable drawable){if(drawable==null)return;if(drawable instanceof android.graphics.drawable.AnimatedImageDrawable)((android.graphics.drawable.AnimatedImageDrawable)drawable).stop();drawable.setCallback(null);}
     static byte[] read(Context context, String hash) throws Exception {
         synchronized (BYTES) { byte[] found = BYTES.get(hash); if (found != null) return found; }
+        return ConfigReadRetry.read(() -> readUncached(context, hash));
+    }
+    private static byte[] readUncached(Context context, String hash) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (InputStream input = context.getContentResolver().openInputStream(Uri.parse(PROVIDER+"/statusbar-icon/"+hash))) {
             if (input == null) throw new java.io.IOException("missing artwork");
@@ -907,7 +913,7 @@ final class StatusBarAssetsHook {
             if(resource>0)try{return view.getResources().getResourceEntryName(resource);}catch(RuntimeException ignored){}}
         String name=RESOURCE_NAMES.get(view);if(name!=null)return name;
         if(view instanceof ViewGroup){View signal=find(view,"wifi_signal");if(signal==null)signal=find(view,"mobile_signal");if(signal!=null&&signal!=view)return drawableResource(signal);}
-        Object resource=cachedField(view,"mResource");if(resource instanceof Integer&&(Integer)resource!=0)try{return view.getResources().getResourceEntryName((Integer)resource);}catch(RuntimeException ignored){}
+        Object resource=cachedField(view,"mResource");if(resource instanceof Integer&&(Integer)resource!=0&&(Integer)resource!=View.NO_ID)try{return view.getResources().getResourceEntryName((Integer)resource);}catch(RuntimeException ignored){}
         Object icon=cachedField(view,"mIcon");Object nativeIcon=cachedField(icon,"icon");
         if(nativeIcon instanceof android.graphics.drawable.Icon){android.graphics.drawable.Icon value=(android.graphics.drawable.Icon)nativeIcon;
             if(value.getType()==android.graphics.drawable.Icon.TYPE_RESOURCE)try{return view.getResources().getResourceEntryName(value.getResId());}catch(RuntimeException ignored){}}
@@ -959,6 +965,9 @@ final class StatusBarAssetsHook {
     }
     // Confined to REPORTER. Retry the latest captured payload without rescanning UI or
     // resending an obsolete surface observation after a new publication replaces it.
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static InventoryPublication pendingInventory;
     private static final ConfigBridgeReadiness INVENTORY_BRIDGE=new ConfigBridgeReadiness();
     private static final Object INVENTORY_SUBMISSION=new Object();
@@ -1282,6 +1291,9 @@ final class StatusBarAssetsHook {
         return false;
     }
     static boolean isHidden(View view,String semanticId){return view!=null&&(enabled&&visibilityActive&&scopedHidden(view,semanticId,surfaceFor(view))||RedMagicLegacyUiHook.hiddenFor(view,semanticId));}
+    static boolean nativeLayoutHidden(View view){
+        return view!=null&&enabled&&visibilityActive&&scopedHidden(view,semanticId(view),surfaceFor(view));
+    }
     private static boolean scopedHidden(View view,String id,String surface){
         if(!enabled||!visibilityActive)return false;
         return visibility.hidden(surface,id)||activeRole(id,view)&&visibility.hidden(surface,"mobile_data"+id.substring(7));

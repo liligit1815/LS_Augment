@@ -813,6 +813,9 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
      * 结果永远走自绘 fallback（反馈「小横条依旧是自绘小横条」）。
      * 每步结果都写进诊断信息，App 里能直接看到。
      */
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private void attachSystemHandle(Context ctx) {
         Class<?> cls;
         try {
@@ -1265,6 +1268,9 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
         }
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private View find(String name) {
         try {
             int id = window.getResources().getIdentifier(name, "id", PKG);
@@ -1900,6 +1906,9 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
         return Math.max(r, 0f);
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private float dimen(String name) {
         try {
             Resources res = window.getResources();
@@ -2039,7 +2048,7 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
             hint.setTypeface(typefaceFor(config.hintFont));
         }
 
-        // 位置：与小白条的垂直间距（条上方 36dp 触控盒之外）+ 水平偏移
+        // 位置：与小白条的上下间距（条上方 36dp 触控盒之外）+ 水平偏移
         ViewGroup.LayoutParams lp = hint.getLayoutParams();
         if (lp instanceof FrameLayout.LayoutParams) {
             int bottom = (int) ((HANDLE_HEIGHT_DP + config.hintGap) * density);

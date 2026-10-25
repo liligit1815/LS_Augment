@@ -4,8 +4,35 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="${TMPDIR:-/tmp}/ls_augment_java_tests.$$"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP"
+python "$ROOT/tools/test-java-properties.py"
+python "$ROOT/tools/test-lint-ui-type-semantics.py"
+python "$ROOT/tools/test-editor-native-back.py"
+python "$ROOT/tools/test-config-transfer-action-host.py"
+python "$ROOT/tools/test-atomic-workbench-share-return-grants.py"
+python "$ROOT/tools/test-systemui-host-permissions.py"
+python "$ROOT/tools/test-native-signal-level-runtime.py"
+python "$ROOT/tools/test-boot-crash-evidence.py"
+python "$ROOT/tools/test-boot-evidence-lifecycle.py"
+python "$ROOT/tools/test-systemui-fatal-dispatch.py"
+python "$ROOT/tools/test-runtime-resource-budget.py"
+python "$ROOT/tools/test-diagnostic-write-scheduler.py"
 
 javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchInputPolicy.java" \
+  "$ROOT/tools/TestAtomicWorkbenchInputPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchWorkspaceModel.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchPoolTopology.java" \
+  "$ROOT/tools/TestAtomicWorkbenchWorkspaceModel.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchGesturePolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchConfig.java" \
+  "$ROOT/tools/TestAtomicWorkbenchGesturePolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/CompetitiveKeyOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/CompetitiveKeyPolicy.java" \
+  "$ROOT/tools/TestCompetitiveKeyPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/IosBatteryPolicy.java" \
+  "$ROOT/tools/TestIosBatteryPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/SignalStylePolicy.java" \
+  "$ROOT/tools/TestSignalStylePolicy.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/HealthAccountState.java" \
   "$ROOT/tools/TestHealthAccountState.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SmsVerificationCode.java" \
@@ -215,6 +242,42 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ThermalTelemetry.java" \
   "$ROOT/tools/TestThermalTelemetry.java"
 
+java -cp "$TMP" ls.augment.com.TestAtomicWorkbenchInputPolicy
+java -cp "$TMP" ls.augment.com.TestAtomicWorkbenchWorkspaceModel
+java -cp "$TMP" ls.augment.com.TestAtomicWorkbenchGesturePolicy
+python "$ROOT/tools/test-atomic-workbench-engine.py"
+python "$ROOT/tools/test-atomic-workbench-root-boundary.py"
+python "$ROOT/tools/test-atomic-workbench-task-allocation.py"
+python "$ROOT/tools/test-atomic-workbench-launch-runtime.py"
+python "$ROOT/tools/test-atomic-workbench-window-status.py"
+python "$ROOT/tools/test-atomic-workbench-entry-diagnostics.py"
+python "$ROOT/tools/test-app-crash-diagnostics.py"
+python "$ROOT/tools/test-launcher-native-crash-evidence.py"
+python "$ROOT/tools/test-atomic-workbench-diagnostics.py"
+python "$ROOT/tools/test-atomic-workbench-hook-diagnostics.py"
+python "$ROOT/tools/test-atomic-workbench-media.py"
+python "$ROOT/tools/test-atomic-workbench-navigation.py"
+python "$ROOT/tools/test-atomic-workbench-amap-hook.py"
+python "$ROOT/tools/test-atomic-workbench-amap-memory.py"
+python "$ROOT/tools/test-atomic-workbench-amap-link.py"
+python "$ROOT/tools/test-atomic-workbench-card-pager.py"
+python "$ROOT/tools/test-atomic-workbench-home-hook.py"
+python "$ROOT/tools/test-atomic-workbench-ime-hook.py"
+python "$ROOT/tools/test-atomic-workbench-home-runtime.py"
+python "$ROOT/tools/test-atomic-workbench-release-readiness.py"
+python "$ROOT/tools/test-atomic-workbench-quickstep.py"
+python "$ROOT/tools/test-atomic-workbench-native-recents.py"
+python "$ROOT/tools/test-atomic-workbench-launcher-crash.py"
+python "$ROOT/tools/test-atomic-workbench-wallpaper.py"
+python "$ROOT/tools/test-atomic-workbench-lifecycle.py"
+python "$ROOT/tools/test-atomic-workbench-presentation.py"
+python "$ROOT/tools/test-atomic-workbench-surface-runtime.py"
+python "$ROOT/tools/test-atomic-workbench-surface-startup.py"
+python "$ROOT/tools/test-atomic-workbench-owner-lifecycle.py"
+python "$ROOT/tools/test-atomic-workbench-cleanup.py"
+python "$ROOT/tools/test-atomic-workbench-quick-apps.py"
+python "$ROOT/tools/test-atomic-workbench-entry-controls.py"
+python "$ROOT/tools/test-atomic-workbench-entry-diagnostics.py"
 java -cp "$TMP" ls.augment.com.TestHideTargetCodec
 java -cp "$TMP" ls.augment.com.TestCollabPolicy
 java -cp "$TMP" TestEntryVisibilityPolicy
@@ -289,6 +352,9 @@ java -cp "$TMP" ls.augment.com.TestCompatibilityReport
 java -cp "$TMP" ls.augment.com.TestAboutMotionState
 java -cp "$TMP" ls.augment.com.TestShoulderQuickSwitchPolicy
 java -cp "$TMP" ls.augment.com.TestSystemUiPolicy
+java -cp "$TMP" ls.augment.com.TestCompetitiveKeyPolicy
+java -cp "$TMP" ls.augment.com.TestSignalStylePolicy
+java -cp "$TMP" TestIosBatteryPolicy
 java -cp "$TMP" ls.augment.com.hook.TestGameExtrasPolicy
 java -cp "$TMP" ls.augment.com.hook.TestAutomaticHookCompatibility
 java -cp "$TMP" ls.augment.com.TestConnectionExtrasPolicy
@@ -346,11 +412,19 @@ python "$ROOT/tools/test-back-gesture-runtime.py"
 python "$ROOT/tools/test-cleanup-bomb-runtime.py"
 python "$ROOT/tools/test-launcher-grid-runtime.py"
 python "$ROOT/tools/test-launcher-grid-named-runtime.py"
+python "$ROOT/tools/test-launcher-grid-260731-runtime.py"
+python "$ROOT/tools/test-launcher-grid-split-runtime.py"
+python "$ROOT/tools/test-launcher-grid-save-audit.py"
 python "$ROOT/tools/test-liftarc-unlock-runtime.py"
 python "$ROOT/tools/test-game-performance-monitor-runtime.py"
 python "$ROOT/tools/test-device-feature-availability-ui.py"
 python "$ROOT/tools/test-launcher-customization-runtime.py"
+python "$ROOT/tools/test-launcher-widget-dock-runtime.py"
+python "$ROOT/tools/test-launcher-dock-nx789j-runtime.py"
 python "$ROOT/tools/test-volume-percent-runtime.py"
+python "$ROOT/tools/test-control-center-percent-runtime.py"
+python "$ROOT/tools/test-full-brightness-binding-runtime.py"
+python "$ROOT/tools/test-full-brightness-control-runtime.py"
 python "$ROOT/tools/test-power-menu-runtime.py"
 python "$ROOT/tools/test-power-menu-lifecycle.py"
 python "$ROOT/tools/test-power-mode-control.py"
@@ -360,13 +434,17 @@ python "$ROOT/tools/test-collab-charging-runtime.py"
 python "$ROOT/tools/test-modern-fingerprint-runtime.py"
 python "$ROOT/tools/test-compact-signal-painter.py"
 python "$ROOT/tools/test-dual-signal-badges.py"
+python "$ROOT/tools/test-signal-type-size.py"
 python "$ROOT/tools/test-dual-signal-lifecycle.py"
+python "$ROOT/tools/test-icon-resource-access.py"
+python "$ROOT/tools/test-nx819j-access.py"
 python "$ROOT/tools/test-dual-signal-slot-identity.py"
 python "$ROOT/tools/test-statusbar-clock-scheduler.py"
 python "$ROOT/tools/test-statusbar-clock-fallback-geometry.py"
 python "$ROOT/tools/test-liquid-glass-dock-runtime.py"
 python "$ROOT/tools/test-third-party-recents-background.py"
 python "$ROOT/tools/test-liquid-glass-drawable-runtime.py"
+python "$ROOT/tools/test-glass-window-backdrop.py"
 python "$ROOT/tools/test-liquid-glass-control-center-runtime.py"
 python "$ROOT/tools/test-liquid-glass-runtime.py"
 python "$ROOT/tools/test-statusbar-failure-cleanup.py"
@@ -378,8 +456,10 @@ python "$ROOT/tools/test-statusbar-artwork-runtime.py"
 python "$ROOT/tools/test-statusbar-static-ink-fit.py"
 python "$ROOT/tools/test-statusbar-assets-isolation.py"
 python "$ROOT/tools/test-statusbar-assets-connectivity-lifecycle.py"
+python "$ROOT/tools/test-connectivity-replan-runtime.py"
 python "$ROOT/tools/test-statusbar-combined-activity.py"
 python "$ROOT/tools/test-statusbar-native-state-table.py"
+python "$ROOT/tools/test-statusbar-native-visibility-runtime.py"
 python "$ROOT/tools/test-statusbar-assets-hotpath.py"
 python "$ROOT/tools/test-statusbar-drawable-wrapper.py"
 python "$ROOT/tools/test-statusbar-inventory-identifiers.py"
@@ -404,10 +484,15 @@ python "$ROOT/tools/test-super-resolution-runtime.py"
 python "$ROOT/tools/test-reset-storage-offline.py"
 python "$ROOT/tools/test-module-external-reset-shell.py"
 python "$ROOT/tools/test-feature-settings-async.py"
+python "$ROOT/tools/test-config-read-retry.py"
+python "$ROOT/tools/test-config-bridge-readiness-runtime.py"
+python "$ROOT/tools/test-automation-diagnostics-runtime.py"
 python "$ROOT/tools/test-launcher-owned-state.py"
 python "$ROOT/tools/test-hide-private-migration.py"
 python "$ROOT/tools/test-combo-private-storage.py"
 python "$ROOT/tools/test-hook-storage-boundaries.py"
+python "$ROOT/tools/test-resource-boundary-fixes.py"
+python "$ROOT/tools/test-update-apk-provider.py"
 python "$ROOT/tools/test-health-private-ledger.py"
 python "$ROOT/tools/test-health-runtime-gate.py"
 python "$ROOT/tools/test-health-reset-cleanup.py"
@@ -416,3 +501,9 @@ python "$ROOT/tools/test-legacy-root-storage-migration.py"
 python "$ROOT/tools/test-health-ledger-migration-shell.py"
 python "$ROOT/tools/test-hide-private-stores.py"
 python "$ROOT/tools/test-rapid-private-capture.py"
+python "$ROOT/tools/test-ios-battery-runtime.py"
+python "$ROOT/tools/test-competitive-key-runtime.py"
+python "$ROOT/tools/test-signal-style-control.py"
+python "$ROOT/tools/test-settings-signal-popup.py"
+python "$ROOT/tools/test-signal-style-editor.py"
+python "$ROOT/tools/test-ios-signal-assets.py"

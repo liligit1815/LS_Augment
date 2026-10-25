@@ -16,6 +16,9 @@ final class ExtraDimOwnershipClient {
     private static final ScheduledExecutorService WORKER = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "LSA-ExtraDimOwnership"); thread.setDaemon(true); return thread;
     });
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Binding current;
     static final class State {
         static final State EMPTY = new State(false, false, 50);

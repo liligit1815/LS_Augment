@@ -9,15 +9,17 @@ public final class DeviceFeatureAvailability {
     }
 
     public static String unavailableReason(String key, String device, String model, String product) {
+        return unavailableReason(key,device,model,product,FanTilePolicy.supportedDevice(device,model,product),
+                FanScreenOffPolicy.supportedDevice(device,product,model));
+    }
+    public static String unavailableReason(String key,String device,String model,String product,boolean levels,boolean screen) {
         String name = model == null || model.isEmpty() ? device : model;
         String machine = name == null || name.isEmpty() ? "此机型" : "本机 " + name;
-        if (BrightnessRange.ENABLED.equals(key) && !BrightnessRange.supportedDevice(device, model))
-            return machine + " 尚未验证完整亮度范围，暂不可用。当前仅支持 NX809J。";
         if ((ConfigSchema.FAN_FIXED_ENABLED.equals(key) || ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED.equals(key))
-                && !FanTilePolicy.supportedDevice(device, model, product))
-            return machine + " 尚未验证风扇硬件档位，固定转速与磁贴增强暂不可用。当前仅支持 NX809J。";
+                && !levels)
+            return machine + " 尚未验证风扇硬件档位，固定转速与磁贴增强暂不可用。请先核验本机风扇作用域的驱动与接口。";
         if (ConfigSchema.FAN_SCREEN_OFF_ENABLED.equals(key)
-                && !FanScreenOffPolicy.supportedDevice(device, product, model))
+                && !screen)
             return machine + " 的原厂息屏风扇策略尚未适配，息屏延续暂不可用。";
         return "";
     }

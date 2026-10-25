@@ -11,6 +11,9 @@ final class OwnTileIconHook {
 
     private OwnTileIconHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> tile = Class.forName("com.android.systemui.qs.external.CustomTile", false, loader);

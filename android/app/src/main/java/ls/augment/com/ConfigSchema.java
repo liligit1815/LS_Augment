@@ -74,6 +74,8 @@ public final class ConfigSchema {
     public static final String FAN_MEASUREMENT = "ls_augment_fan_measurement";
 
     public static final String SYSTEMUI_MASTER = "ls_augment_systemui_master";
+    /** Explicit OEM-page selection; never inferred from an already-on system key. */
+    public static final String NATIVE_ISLAND_SELECTED = "ls_augment_native_island_selected";
     public static final String AUDIO_GAIN_ENABLED = "ls_augment_audio_gain_enabled";
     public static final String AUDIO_GAIN_STEP = "ls_augment_audio_gain_step";
     public static final String BATTERY_DISABLE_AGE_REDUCTION = "ls_augment_battery_disable_age_reduction";
@@ -206,6 +208,7 @@ public final class ConfigSchema {
     private static final Map<String, String> RUNTIME_DEFAULTS;
 
     static {
+        addBoolean(NATIVE_ISLAND_SELECTED, false);
         add(AppearanceOptions.ANGULAR_CARDS, "1", false,
                 value -> truthy(value) ? "1" : "0");
         addBoolean(HIDE_MASTER, false);
@@ -240,6 +243,17 @@ public final class ConfigSchema {
         addInteger(AI_TRIGGER_COOLDOWN_MS, 180, 50, 30000);
         addInteger(AI_TRIGGER_YOLO_SCAN_MS, 400, 150, 1500);
         addBoolean(FREEFORM_ENABLED, false);
+        addBoolean("atomic_workbench_enabled", false);
+        addInteger(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, 100, 50, 120);
+        addInteger(AtomicWorkbenchConfig.CORNER_SENSITIVITY, 100, 60, 160);
+        addBoolean("atomic_workbench_extraction_enabled", false);
+        addBoolean("atomic_workbench_extraction_text", true);
+        addBoolean("atomic_workbench_extraction_landscape", false);
+        add("atomic_workbench_extraction_blacklist", "", true, AppPackageSet::normalize);
+        add("atomic_workbench_show_media", "1", false, value -> truthy(value) ? "1" : "0");
+        add("atomic_workbench_quick_open_apps", "0", false, value -> truthy(value) ? "1" : "0");
+        add("atomic_workbench_empty_side_slots", "3", false, value -> integer(value, 0, 3));
+        add("atomic_workbench_side_count", "3", false, value -> integer(value, 3, 6));
         addBoolean(FREEFORM_UNLIMITED, false);
         addBoolean(FREEFORM_ALL_APPS, false);
         addBoolean(FREEFORM_GAME_LOGIN, false);
@@ -395,6 +409,10 @@ public final class ConfigSchema {
         addInteger(NotificationAppearanceOptions.STACK_COUNT, 2, 1, 6);
         addInteger(NotificationAppearanceOptions.STACK_STEP, 8, 4, 20);
         addInteger(NotificationAppearanceOptions.STACK_INSET, 6, 0, 16);
+
+        // Retain old signed exports without reusing inverse semantics in the new display switches.
+        for(String metric:new String[]{"temperature","current","voltage","power"})
+            addBoolean(SystemUiOptions.PREFIX+"lock_charge_hide_"+metric,false);
 
         for (EnhancementOption option : EnhancementCatalog.options()) {
             add(option.key, option.defaultValue, true, option::normalize);

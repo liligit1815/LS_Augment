@@ -1,4 +1,4 @@
-"""Execute new pure fixture scheduling/identity policy, preserving old default source bytes. No APK/device."""
+"""Execute fixture policies; pin legacy behavior except reviewed receiver/cleanup fixes. No APK/device."""
 from pathlib import Path
 import hashlib,json,re,subprocess,tempfile
 
@@ -40,6 +40,11 @@ HARNESS=r'''public final class IconTimelineChecks {
   check(C17RuntimeFixtureCases.IconTimeline.timeout(75000,30000)==45000,"update never renews TTL");
   check(C17RuntimeFixtureCases.IconTimeline.timeout(75000,75000)==1,"zero means Android unlimited so use1");
   check(C17RuntimeFixtureCases.IconTimeline.timeout(75000,80000)==1,"expired cannot restart timeout");
+  long[] clock={0};int[] remaining={3},pauses={0};
+  check(C17RuntimeFixtureCases.NotificationCleanup.await(()->remaining[0],()->clock[0],()->{clock[0]+=50;remaining[0]--;pauses[0]++;})==0&&pauses[0]==3,"wait for actual asynchronous cancellation acknowledgement");
+  check(C17RuntimeFixtureCases.NotificationCleanup.await(()->0,()->clock[0],()->{throw new AssertionError("unnecessary wait");})==0,"already removed needs no wait");
+  clock[0]=0;pauses[0]=0;
+  check(C17RuntimeFixtureCases.NotificationCleanup.await(()->2,()->clock[0],()->{clock[0]+=50;pauses[0]++;})==2&&clock[0]==2000&&pauses[0]==40,"timeout retains failure count and bounds cleanup delay");
   System.out.println("PASS "+checks);
  }
 }'''
@@ -52,27 +57,53 @@ def block(source,marker):
 
 def main():
     OUT.mkdir(exist_ok=True);text=SOURCE.read_text('utf-8');old=(OUT/'before-C17RuntimeFixtureCases.java').read_text('utf-8')
-    # Byte verification, not normalized-text comparison.
+    # All legacy bytes remain pinned except the exact receiver and asynchronous cleanup fixes.
+    # Both APK build routes already require API 35, so the API <33 branch was dead.
+    app_gradle=(ROOT/'android/app/build.gradle').read_text('utf-8')
+    standalone=(ROOT/'tools/build-c17-runtime-fixture.py').read_text('utf-8')
+    assert re.search(r'\bminSdk\s+35\b',app_gradle)
+    assert 'android:minSdkVersion="35"' in standalone and "'--min-api','35'" in standalone
+    legacy_receiver=(b'            if(Build.VERSION.SDK_INT>=33)context.registerReceiver(receiver,callbacks,Context.RECEIVER_NOT_EXPORTED);\n'
+                     b'            else context.registerReceiver(receiver,callbacks);\n')
+    current_receiver=(b'            // The test APK inherits minSdk 35; every supported system accepts\n'
+                      b'            // explicit non-exported registration for our own PendingIntents.\n'
+                      b'            context.registerReceiver(receiver,callbacks,Context.RECEIVER_NOT_EXPORTED);\n')
+    cleanup_wait=b'''                if(manager!=null)try{
+                    activeNotifications=NotificationCleanup.await(()->{int count=0;for(android.service.notification.StatusBarNotification n:manager.getActiveNotifications())if(tag.equals(n.getTag()))count++;return count;},SystemClock::elapsedRealtime,()->SystemClock.sleep(50));
+                    event("fixture_cleanup_observed","ownNotificationsRemaining",activeNotifications);
+                }catch(Throwable failure){cleanupErrors.put("cleanup observation: "+failure.getClass().getSimpleName());}
+                sendStatus("finished");
+'''
+    cleanup_end=b'event("fixture_cleanup","ownNotificationsRemaining",activeNotifications);'
     current_bytes=SOURCE.read_bytes();old_bytes=(OUT/'before-C17RuntimeFixtureCases.java').read_bytes()
     chunks={}
     for name,start,end in [('Fixture',b'    private static final class Fixture {',b'    private static Bitmap art('),
                            ('art-and-ContentActivity',b'    private static Bitmap art(',None)]:
         a=current_bytes[current_bytes.index(start):];b=old_bytes[old_bytes.index(start):]
         if end:a=a[:a.index(end)];b=b[:b.index(end)]
-        assert a==b,name+' default bytes changed'
-        chunks[name]={'sha256':hashlib.sha256(a).hexdigest(),'bytes':len(a),'equal':True}
+        if name=='Fixture':
+            assert a.count(current_receiver)==1 and b.count(legacy_receiver)==1
+            assert a.count(cleanup_wait)==1
+            assert a.count(cleanup_end)==1
+            assert a.replace(current_receiver,legacy_receiver).replace(cleanup_wait,b'').replace(cleanup_end,cleanup_end+b'sendStatus("finished");')==b,name+' changed beyond reviewed receiver/cleanup fixes'
+        else:
+            assert a==b,name+' default bytes changed'
+        chunks[name]={'sha256':hashlib.sha256(a).hexdigest(),'bytes':len(a),'byteEqual':a==b,
+                      'onlyReviewedReceiverAndCleanupChanges':name=='Fixture'}
     policy=block(text,'    static final class IconTimeline {')
+    cleanup=block(text,'    static final class NotificationCleanup {')
     variants=[('actual',policy),('late-arrival-catchup',policy.replace('elapsed>=updateAfter*1000L?MISSED:','')),
         ('late-update-catchup',policy.replace('elapsed>=removeAfter*1000L?MISSED:','')),
         ('expiry-exclusive',policy.replace('elapsed>=seconds*1000L','elapsed>seconds*1000L')),
         ('callback-no-nonce',policy.replace('&&expectedNonce.equals(nonce)','')),
         ('callback-no-id',policy.replace('&&expectedId==id','')),
-        ('timeout-renewed',policy.replace('Math.max(1,deadline-now)','75000'))]
+        ('timeout-renewed',policy.replace('Math.max(1,deadline-now)','75000')),('cleanup-immediate',policy)]
     results=[]
     for name,body in variants:
-        assert name=='actual' or body!=policy
+        assert name in ('actual','cleanup-immediate') or body!=policy
+        cleanup_body=cleanup.replace('count>0&&clock.getAsLong()<deadline','count<0') if name=='cleanup-immediate' else cleanup
         with tempfile.TemporaryDirectory() as td:
-            d=Path(td);(d/'C17RuntimeFixtureCases.java').write_text('public final class C17RuntimeFixtureCases {\n'+body+'\n}',encoding='utf-8');(d/'IconTimelineChecks.java').write_text(HARNESS,encoding='utf-8')
+            d=Path(td);(d/'C17RuntimeFixtureCases.java').write_text('public final class C17RuntimeFixtureCases {\n'+body+'\n'+cleanup_body+'\n}',encoding='utf-8');(d/'IconTimelineChecks.java').write_text(HARNESS,encoding='utf-8')
             c=subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',td,str(d/'C17RuntimeFixtureCases.java'),str(d/'IconTimelineChecks.java')],capture_output=True)
             assert c.returncode==0,c.stderr.decode('utf-8','replace')
             r=subprocess.run([str(JAVA/'java.exe'),'-cp',td,'IconTimelineChecks'],capture_output=True)

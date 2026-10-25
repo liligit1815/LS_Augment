@@ -76,6 +76,9 @@ final class FreeformHook {
 
     private static volatile Config config = Config.DISABLED;
     private static volatile boolean allAppsCompatible;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Context context;
     private static volatile boolean observerInstalled;
     private static volatile Handler configHandler;
@@ -180,6 +183,9 @@ final class FreeformHook {
         return installed;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader classLoader) {
         if (module == null || classLoader == null) return 0;
         bindContext(findSystemContext(classLoader));
@@ -1039,6 +1045,9 @@ final class FreeformHook {
      * all-apps path only when the identity, standard-activity and OEM resize
      * gates needed for a complete transaction are all present.
      */
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static boolean verifyAllAppsCompatibility(ClassLoader classLoader) {
         try {
             Class<?> activity = Class.forName(ACTIVITY_RECORD, false, classLoader);
@@ -1292,6 +1301,10 @@ final class FreeformHook {
         return FeatureSettings.enabled(value, key, false);
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
+    //noinspection DiscouragedPrivateApi,PrivateApi
     private static Context findSystemContext(ClassLoader classLoader) {
         try {
             Class<?> threadClass = Class.forName("android.app.ActivityThread", false, classLoader);

@@ -35,10 +35,10 @@ public final class ModuleHierarchy {
         add(section("notifications","panel_carrier_search","面板运营商与搜索"),"systemui:qs_carrier","systemui:carrier_notification","systemui:carrier_control","systemui:qs_search","systemui:qs_browser");
         add(section("notifications","notification_alerts","通知提醒"),"ls_augment_rm_notification_quiet_unlocked");
         add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim");
-        add(section("desktop","desktop_clock","桌面时钟与天气组件"),"ls_augment_rm_desktop_clock_enabled","ls_augment_rm_desktop_clock_period","ls_augment_rm_weather_time_period");
-        add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty");
+        add(section("desktop","desktop_clock","桌面组件"),"ls_augment_rm_desktop_clock_enabled","ls_augment_rm_desktop_clock_period","ls_augment_rm_weather_time_period",LauncherOptions.WIDGET_RESIZE);
+        add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty",LauncherOptions.NEW_APPS_LAST_PAGE);
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
-        add(section("desktop","dock_glass","Dock"),"launcher:liquid_glass");
+        add(section("desktop","dock_glass","Dock"),"launcher:liquid_glass",LauncherOptions.DOCK_UNLIMITED);
         add(section("desktop","recents","最近任务与清理"),"launcher:cleanup_bomb",RecentsCardRadiusOptions.ENABLED,"ls_augment_rm_recents_memory_custom");
         add(section("lockscreen","theme_download","主题下载与使用"),"beautify:unlimited_trial","ls_augment_rm_theme_no_login");
         add(section("lockscreen","collab_theme","联名主题"),"collab:theme");
@@ -61,6 +61,7 @@ public final class ModuleHierarchy {
         entry(section("multitasking","freeform_rules","跨应用跳转规则"),"freeform_rules");
         entry(section("multitasking","freeform_limits","小窗数量与应用范围"),"freeform_limits");
         add(section("multitasking","overlay_touch","悬浮窗触摸"),"ls_augment_rm_untrusted_touch_allow");
+        entry(section("atomic_workbench","workspace","原子工作台"),"atomic_workbench");
         source(section("capture","capture","捕获画面"),"screenshot","capture");
         source(section("capture","image_edit","图片编辑"),"gallery","image_edit");
         add(section("capture","secure_capture","窗口捕获限制"),"ls_augment_rm_secure_capture");
@@ -84,6 +85,7 @@ public final class ModuleHierarchy {
         Section install=section("apps","installer","APK 安装规则");source(install,"system","installer");entry(install,"signature_install");
         entry(section("apps","hidden","四大皆空",null,true),"hide");
         source(section("system_settings","update","系统更新"),"update","update");
+        entry(section("system_settings","competitive_key","自定义竞技键"),"competitive_key");
         add(section("system_settings","settings_entries","设置入口与时间格式"),"settings:hide_healthy_use","ls_augment_rm_settings_hide_battery_percent","ls_augment_rm_settings_time_period");
         Section display=section("system_settings","display","显示与休眠");add(display,"ls_augment_rm_settings_long_timeout","systemui:full_brightness");settings(display,"lock_refresh_rate");
         settings(section("system_settings","developer","开发者选项"),"development_settings_enabled");
@@ -137,6 +139,7 @@ public final class ModuleHierarchy {
     public static Section group(String route){return GROUPS.get(route);}
     public static List<NativeFeatureGroups.Feature> statusBarFeatures(){return Collections.unmodifiableList(STATUS_FEATURES);}
     public static String featureRoute(String key){
+        if(key!=null&&key.startsWith("ls_augment_competitive_key_"))return "competitive_key";
         String route=KEY_ROUTES.get(key);if(route!=null)return route;
         for(Section section:GROUPS.values())if(section.deviceSettings.contains(key))return section.route();
         if(key==null||!ConfigSchema.keys().contains(key))return null;
@@ -177,17 +180,25 @@ public final class ModuleHierarchy {
     public static String singleChild(String route){String alias=ALIASES.get(route);if(alias!=null)return alias;if(route.startsWith("target-")){List<Section> list=sections(route.substring(7));if(list.size()==1)return list.get(0).route();}Section s=group(route);return s!=null&&!hasInlineEditors(s)&&s.features.isEmpty()&&s.deviceSettings.isEmpty()&&s.entries.size()==1?s.entries.get(0):null;}
     public static String resolve(String route){if(route==null)return "home";Set<String> visited=new HashSet<>();String next=route;while(visited.add(next)){String child=singleChild(next);if(child==null)return next;next=child;}return route;}
     private static String immediateParent(String route){
+        if("atomic_workbench_session".equals(route)||"atomic_workbench_apps".equals(route)
+                ||"atomic_workbench_app_sort".equals(route))return "atomic_workbench";
         if("icon_crop".equals(route))return "group/desktop/launcher";if("gesture_icon_crop".equals(route))return "group/interaction/gestures";if("tile_icon_crop".equals(route))return "hide_apps";if("rapid_compatibility".equals(route))return "group/gaming/shoulder";
         if(StatusBarPages.surface(route)!=null)return "status_surfaces";if("status_surfaces".equals(route)||Arrays.asList(StatusBarPages.ROUTES).contains(route))return "status_layout";if(route.startsWith("asset/"))return "status_assets";if(Arrays.asList("hide_apps","automation","tile").contains(route))return "hide";
         Section s=group(route);if(s!=null)return s.parentId==null?"target-"+s.target:"group/"+s.target+"/"+s.parentId;if(route.startsWith("target-"))return "home";String owner=ENTRY_PARENTS.get(route);if(owner!=null)return owner;
-        if(Arrays.asList("support","contributors").contains(route))return "about";if(Arrays.asList("scope","log_export","config_transfer").contains(route))return "settings";return "home";
+        if("license_document".equals(route))return "licenses";
+        if(Arrays.asList("support","contributors","licenses").contains(route))return "about";if(Arrays.asList("scope","log_export","config_transfer").contains(route))return "settings";return "home";
     }
     public static String parent(String route){String parent=immediateParent(resolve(route));Set<String> visited=new HashSet<>();visited.add(resolve(route));while(visited.add(parent)&&singleChild(parent)!=null)parent=immediateParent(parent);return parent;}
     public static List<String> path(String route){LinkedList<String> path=new LinkedList<>();Set<String> visited=new HashSet<>();String next=resolve(route);while(visited.add(next)){path.addFirst(next);if(Arrays.asList("home","settings","about").contains(next))break;next=parent(next);}return path;}
-    public static String categoryForRoute(String route){for(String item:path(route)){if(item.startsWith("target-"))return item.substring(7);Section s=group(item);if(s!=null)return s.target;}Section s=group(ENTRY_PARENTS.get(resolve(route)));return s==null?null:s.target;}
+    public static String categoryForRoute(String route){for(String item:path(route)){if(item.startsWith("target-"))return item.substring(7);Section s=group(item);if(s!=null)return s.target;Section owner=group(ENTRY_PARENTS.get(item));if(owner!=null)return owner.target;}Section s=group(ENTRY_PARENTS.get(resolve(route)));return s==null?null:s.target;}
     public static String title(String route){
+        if("atomic_workbench".equals(route))return "原子工作台";
+        if("atomic_workbench_session".equals(route))return "运行工作台";
+        if("atomic_workbench_apps".equals(route))return "应用列表显示";
+        if("atomic_workbench_app_sort".equals(route))return "应用列表排序";
+        if("competitive_key".equals(route))return "自定义竞技键";
         String statusTitle=StatusBarPages.title(route);if(!statusTitle.isEmpty())return statusTitle;if(route.startsWith("asset/")){StatusBarIconCatalog.Icon icon=StatusBarIconCatalog.find(route.substring(6));if(icon!=null)return icon.title;}
-        switch(route){case "icon_crop":case "gesture_icon_crop":case "tile_icon_crop":return "裁剪图片";case "home":return "主页";case "settings":return "模块";case "about":return "关于";case "rapid_compatibility":return "兼容性测试";case "extra_dim":return "极暗磁贴";case "hide":return "四大皆空";case "hide_apps":return "应用选择与显隐";case "automation":return "自动隐藏";case "tile":return "快捷磁贴";case "freeform_rules":return "跨应用跳转规则";case "freeform_limits":return "小窗数量与应用范围";case "scope":return "模块作用域";case "log_export":return "导出日志";case "support":return "支持作者";case "contributors":return "贡献名单";}
+        switch(route){case "icon_crop":case "gesture_icon_crop":case "tile_icon_crop":return "裁剪图片";case "home":return "主页";case "settings":return "模块";case "about":return "关于";case "rapid_compatibility":return "兼容性测试";case "extra_dim":return "极暗磁贴";case "hide":return "四大皆空";case "hide_apps":return "应用选择与显隐";case "automation":return "自动隐藏";case "tile":return "快捷磁贴";case "freeform_rules":return "跨应用跳转规则";case "freeform_limits":return "小窗数量与应用范围";case "scope":return "模块作用域";case "log_export":return "导出日志";case "support":return "支持作者";case "contributors":return "贡献名单";case "licenses":return "许可和第三方声明";case "license_document":return "许可正文";}
         if(route.startsWith("target-")){ModulePresentationCatalog.Category category=ModulePresentationCatalog.find(route.substring(7));if(category!=null)return category.title;}Section s=group(route);if(s!=null)return s.title;
         for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if(entry.route.equals(route))return entry.title;String resolved=resolve(route);return resolved.equals(route)?"":title(resolved);
     }
@@ -195,6 +206,6 @@ public final class ModuleHierarchy {
     /** Actual scopes of the page, preserving multiple cooperating process groups. */
     public static List<String> restartScopes(Section s){Set<String> scopes=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForKey(key));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);}for(String entry:s.entries){Section child=group(entry);if(child!=null){scopes.addAll(restartScopes(child));continue;}HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForRoute(entry));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);else if(entry.startsWith("freeform_"))scopes.add("device");}if("collab_audio".equals(s.id))return Collections.emptyList();return new ArrayList<>(scopes);}
     public static String restartScope(Section s){List<String> scopes=restartScopes(s);return scopes.size()==1?scopes.get(0):scopes.isEmpty()?null:"device";}
-    public static int activeCount(Section s,java.util.function.Function<String,String> value){int count=0;for(NativeFeatureGroups.Feature f:s.features)count+=activeCount(f,value);for(String route:s.entries){Section child=group(route);if(child!=null){count+=activeCount(child,value);continue;}List<String> keys;switch(route){case "shoulder":keys=Arrays.asList(ConfigSchema.SHOULDER_ENABLED,ConfigSchema.TGK_RAPID_FIRE_ENABLED);break;case "combo_speed":keys=Collections.singletonList(ConfigSchema.COMBO_SPEED_ENABLED);break;case "super_resolution":keys=Arrays.asList(ConfigSchema.SUPER_MIRROR_LOW_MODE,ConfigSchema.SUPER_MIRROR_DIABLO_COEXIST);break;case "audio_gain":keys=Collections.singletonList(ConfigSchema.AUDIO_GAIN_ENABLED);break;case "signature_install":keys=Collections.singletonList(ConfigSchema.ALLOW_SIGNATURE_MISMATCH);break;case "ai_trigger":keys=Collections.singletonList(ConfigSchema.AI_TRIGGER_ENABLED);break;case "freeform_rules":keys=Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS);break;case "freeform_limits":keys=Arrays.asList(ConfigSchema.FREEFORM_UNLIMITED,ConfigSchema.FREEFORM_ALL_APPS);break;case "fan_control":keys=Arrays.asList(ConfigSchema.FAN_FIXED_ENABLED,ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,ConfigSchema.FAN_SCREEN_OFF_ENABLED);break;default:keys=Collections.emptyList();}for(String key:keys)if("1".equals(value.apply(key)))count++;if("launcher_custom".equals(route)){LauncherOverrides overrides=LauncherOverrides.parse(value.apply(ConfigSchema.LAUNCHER_OVERRIDES));if(overrides!=null&&!overrides.entries().isEmpty())count++;}}return count;}
+    public static int activeCount(Section s,java.util.function.Function<String,String> value){int count=0;for(NativeFeatureGroups.Feature f:s.features)count+=activeCount(f,value);for(String route:s.entries){Section child=group(route);if(child!=null){count+=activeCount(child,value);continue;}List<String> keys;switch(route){case "competitive_key":keys=Collections.singletonList(CompetitiveKeyOptions.ENABLED);break;case "shoulder":keys=Arrays.asList(ConfigSchema.SHOULDER_ENABLED,ConfigSchema.TGK_RAPID_FIRE_ENABLED);break;case "combo_speed":keys=Collections.singletonList(ConfigSchema.COMBO_SPEED_ENABLED);break;case "super_resolution":keys=Arrays.asList(ConfigSchema.SUPER_MIRROR_LOW_MODE,ConfigSchema.SUPER_MIRROR_DIABLO_COEXIST);break;case "audio_gain":keys=Collections.singletonList(ConfigSchema.AUDIO_GAIN_ENABLED);break;case "signature_install":keys=Collections.singletonList(ConfigSchema.ALLOW_SIGNATURE_MISMATCH);break;case "ai_trigger":keys=Collections.singletonList(ConfigSchema.AI_TRIGGER_ENABLED);break;case "freeform_rules":keys=Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS);break;case "freeform_limits":keys=Arrays.asList(ConfigSchema.FREEFORM_UNLIMITED,ConfigSchema.FREEFORM_ALL_APPS);break;case "fan_control":keys=Arrays.asList(ConfigSchema.FAN_FIXED_ENABLED,ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,ConfigSchema.FAN_SCREEN_OFF_ENABLED);break;default:keys=Collections.emptyList();}for(String key:keys)if("1".equals(value.apply(key)))count++;if("launcher_custom".equals(route)){LauncherOverrides overrides=LauncherOverrides.parse(value.apply(ConfigSchema.LAUNCHER_OVERRIDES));if(overrides!=null&&!overrides.entries().isEmpty())count++;}}return count;}
     private static int activeCount(NativeFeatureGroups.Feature f,java.util.function.Function<String,String> value){String key=f.toggleKey==null?f.parameterKeys[0]:f.toggleKey;boolean active=f.toggleKey!=null?"1".equals(value.apply(key)):ValueOverrideState.active(f.comparison,value.apply(key),f.noOpValue);if(!active)return 0;int count=1;for(NativeFeatureGroups.Feature child:f.children)count+=activeCount(child,value);return count;}
 }

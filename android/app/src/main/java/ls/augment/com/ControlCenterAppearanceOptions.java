@@ -17,9 +17,9 @@ public final class ControlCenterAppearanceOptions {
     public static List<EnhancementOption> options() {
         String group="quicksettings";
         return Collections.unmodifiableList(Arrays.asList(
-            EnhancementOption.toggle(CORNERS,group,"控制中心统一圆角","统一已适配的磁贴、音乐卡片及亮度和音量滑条外观，保持原厂点击与滑动范围。与控制中心玻璃材质同时开启时，这些控件优先使用本功能；关闭后恢复原厂圆角，已开启的玻璃材质重新生效。"),
+            EnhancementOption.toggle(CORNERS,group,"控制中心统一圆角","统一已适配的磁贴、音乐卡片及亮度和音量滑条外观，保持原厂点击与滑动范围。与控制中心玻璃材质同时开启时，玻璃使用此圆角；关闭后恢复原厂圆角。"),
             EnhancementOption.integer(RADIUS,group,"圆角半径（dp）","不超过控件短边的一半；0 为直角。",24,0,48),
-            EnhancementOption.toggle(TILES,group,"活动磁贴配色","只改变处于开启状态的磁贴背景，未开启和不可用状态保留原厂。叠色过亮或过暗时自动保护前景对比度。开启时磁贴优先使用此配色，暂停磁贴玻璃材质；关闭后恢复已开启的玻璃材质。"),
+            EnhancementOption.toggle(TILES,group,"活动磁贴配色","只改变处于开启状态的磁贴背景，未开启和不可用状态保留原厂。叠色过亮或过暗时自动保护前景对比度。与控制中心玻璃材质同时开启时，配色和渐变作用于玻璃；关闭后恢复原厂配色。"),
             EnhancementOption.color(TILE_LIGHT,group,"浅色主题填色","颜色叠加在原厂背景上。", "#1677D2"),
             EnhancementOption.color(TILE_DARK,group,"深色主题填色","跟随系统浅色与深色主题切换。", "#397CB8"),
             EnhancementOption.integer(TILE_OPACITY,group,"填色不透明度（%）","0 保留原厂填色；100 完全使用自定义填色。过低对比度会自动修正。",85,0,100),

@@ -42,6 +42,9 @@ final class BackGestureIconHook {
     private static volatile State requested=State.empty(),ready=State.empty();
     private static volatile boolean installed;
     private static boolean waveInstalled;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Context context;
     private static String signature="";
     private static volatile long generation;

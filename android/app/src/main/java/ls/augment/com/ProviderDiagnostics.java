@@ -14,6 +14,15 @@ final class ProviderDiagnostics {
     private static final DiagnosticWritePolicy POLICY = new DiagnosticWritePolicy();
     private ProviderDiagnostics() { }
 
+    static Bundle reply(Result recorded) {
+        Bundle result = new Bundle();
+        result.putBoolean("ok", recorded == Result.ACCEPTED);
+        result.putString("reason", recorded.name().toLowerCase(java.util.Locale.ROOT));
+        result.putBoolean("retryable", recorded == Result.THROTTLED || recorded == Result.FULL);
+        if (recorded == Result.THROTTLED) result.putLong("retryAfterMs", DiagnosticWritePolicy.WINDOW_MS);
+        return result;
+    }
+
     static Result record(Context context, int callerUid, String key, String value) {
         return record(context, callerUid, -1, key, value, null);
     }
@@ -24,7 +33,7 @@ final class ProviderDiagnostics {
         return record(context,Process.myUid(),Process.myPid(),key,value,evidence);
     }
     static Result record(Context context, int callerUid, int callerPid, String key, String value, Bundle extras) {
-        if (key == null || !key.matches("ls_augment_[a-zA-Z0-9_]{1,140}")
+        if (!DiagnosticWritePolicy.validKey(key)
                 || ConfigSchema.contains(key) || key.startsWith("ls_augment_tgk_fuse_")) return Result.INVALID;
         // Bound expensive normalization, preference snapshots and disk requests at the boundary.
         if (!POLICY.allowRequest(callerUid, SystemClock.elapsedRealtime())) return Result.THROTTLED;

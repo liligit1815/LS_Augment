@@ -9,4 +9,8 @@
         android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
     <instrumentation android:name="ls.augment.com.UiTextRunner"
         android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiHoldRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiSourceDragRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
 </manifest>

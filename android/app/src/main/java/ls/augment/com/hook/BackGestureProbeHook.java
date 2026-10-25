@@ -32,7 +32,10 @@ final class BackGestureProbeHook {
     private static final ThreadLocal<Integer> INDEX=new ThreadLocal<>();
     private static final ThreadLocal<View> DRAW=new ThreadLocal<>();
     private static volatile BackGestureProbeTrace armed;
-    private static volatile View trackedView;
+    private static volatile java.lang.ref.WeakReference<View> trackedView = new java.lang.ref.WeakReference<>(null);
+
+    // Receiver uses the process context; the observed View is now weak and the trace is time-bounded.
+    //noinspection StaticFieldLeak
     private static Context context;
     private static BroadcastReceiver receiver;
     private static boolean installed;
@@ -74,7 +77,7 @@ final class BackGestureProbeHook {
                         try{if(!completed)trace.error();trace.returned(index,status.getInt(host),SystemClock.uptimeMillis(),event.getActionMasked());
                             if(!completed&&trace.closed)trace.phase="native_error";}
                         catch(Throwable ignored){trace.error();}
-                        if(trace.closed&&armed==trace)trackedView=null;
+                        if(trace.closed&&armed==trace)trackedView=new java.lang.ref.WeakReference<>(null);
                         if(trace.closed&&trace.cancelReceived>0){BackGestureProbeTrace finished=trace;MAIN.post(()->publish(finished));}
                     }
                 }
@@ -90,7 +93,7 @@ final class BackGestureProbeHook {
             handles.add(prepare(owner,down,"wave_down").intercept(chain->{
                 Object result=chain.proceed();BackGestureProbeTrace trace=INPUT.get();
                 if(trace!=null)try{View view=(View)chain.getThisObject();if(position.getInt(view)==trace.side){
-                    trackedView=view;trace.waveDown(System.identityHashCode(view));
+                    trackedView=new java.lang.ref.WeakReference<>(view);trace.waveDown(System.identityHashCode(view));
                 }}catch(Throwable ignored){trace.error();}return result;
             }));
             Method move=method(wave,"onActionMove",float.class);
@@ -142,7 +145,7 @@ final class BackGestureProbeHook {
     }
     private static BackGestureProbeTrace tracked(View view){
         BackGestureProbeTrace trace=armed;
-        return view!=null&&view==trackedView&&trace!=null&&!trace.closed&&trace.downTime!=0?trace:null;
+        return view!=null&&view==trackedView.get()&&trace!=null&&!trace.closed&&trace.downTime!=0?trace:null;
     }
     private static void readDraw(BackGestureProbeTrace trace,View view){
         try{Rect box=(Rect)rect.get(view);Paint p=(Paint)paint.get(view);
@@ -166,7 +169,7 @@ final class BackGestureProbeHook {
                 if(!BackGestureProbeTrace.ACTION.equals(intent.getAction()))return;
                 String nonce=intent.getStringExtra("nonce");
                 if("disarm".equals(intent.getStringExtra("command"))){
-                    BackGestureProbeTrace old=armed;if(old!=null&&old.nonce.equals(nonce)){old.expire();armed=null;trackedView=null;}return;
+                    BackGestureProbeTrace old=armed;if(old!=null&&old.nonce.equals(nonce)){old.expire();armed=null;trackedView=new java.lang.ref.WeakReference<>(null);}return;
                 }
                 if(!"arm".equals(intent.getStringExtra("command")))return;
                 long revision=intent.getLongExtra("revision",-1),generation=intent.getLongExtra("generation",-1);
@@ -178,9 +181,9 @@ final class BackGestureProbeHook {
                 BackGestureProbeTrace next=new BackGestureProbeTrace(nonce,revision,generation,Process.myPid(),BuildConfig.VERSION_CODE,
                         Process.getStartElapsedRealtime(),intent.getIntExtra("side",-1),SystemClock.uptimeMillis(),
                         intent.getFloatExtra("startX",Float.NaN),intent.getFloatExtra("startY",Float.NaN));
-                if(old!=null)old.expire();trackedView=null;armed=next;
+                if(old!=null)old.expire();trackedView=new java.lang.ref.WeakReference<>(null);armed=next;
                 FeatureSettings.diagnostic(c,BackGestureProbeTrace.KEY+"_arm",next.json(0));
-                MAIN.postDelayed(()->{if(armed==next){next.expire();armed=null;trackedView=null;}},BackGestureProbeTrace.ARM_MILLIS);
+                MAIN.postDelayed(()->{if(armed==next){next.expire();armed=null;trackedView=new java.lang.ref.WeakReference<>(null);}},BackGestureProbeTrace.ARM_MILLIS);
             }catch(Throwable ignored){/* Compatibility failure cannot arm or affect native input. */}
         }};
         try{app.registerReceiver(candidate,new IntentFilter(BackGestureProbeTrace.ACTION),null,MAIN,Context.RECEIVER_EXPORTED);receiver=candidate;}

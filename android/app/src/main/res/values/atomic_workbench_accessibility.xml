@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="atomic_workbench_paste_description">在你执行文字填入时，核对工作台目标输入框、光标和选区，只在此次操作期间读取周边正文以核对结果。在你明确发起界面内容提取时，只读取经系统核对的来源窗口内可访问的文字或界面说明；来源变化、受保护、超时或取消时停止，不自动保存界面正文。</string>
+</resources>

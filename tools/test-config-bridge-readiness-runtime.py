@@ -54,9 +54,9 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   check(gate.check(context).state.equals("WAITING_FOR_UNLOCK"),"locked user is an indefinite prerequisite, not a timeout failure");
   unlocked=true;contentReady=false;check(gate.check(context).state.equals("WAITING_FOR_SERVICE")&&clientAcquires==0,"ContentService absent does not touch provider");
   now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;check(gate.check(context).error.contains("content_service_unavailable:readiness_timeout"),"persistent missing service is explicit failure");
-  contentReady=true;check(gate.check(context).ready()&&resolvedUser==999&&acquiredUser==999&&clientCloses==clientAcquires,"provider target matches actual context user and acquired clients close");
-  providerDeclared=false;check(gate.check(context).state.equals("WAITING_FOR_PROVIDER"),"declared provider absent waits before acquisition");
-  now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;check(!gate.check(context).waiting()&&gate.check(context).error.contains("module_provider_unavailable:readiness_timeout"),"permanent missing provider is not suppressed indefinitely");
+  contentReady=true;check(gate.check(context).ready()&&resolvedUser==-1&&acquiredUser==999&&clientCloses==clientAcquires,"provider target matches actual context user and acquired clients close");
+  providerDeclared=false;check(gate.check(context).ready(),"package visibility cannot reject a callable exported provider");providerAcquirable=false;check(gate.check(context).waiting(),"actual provider absence waits");
+  now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;check(!gate.check(context).waiting()&&gate.check(context).error.contains("module_provider_not_acquirable:readiness_timeout"),"permanent missing provider is not suppressed indefinitely");
   providerDeclared=true;providerAcquirable=false;check(gate.check(context).error.contains("module_provider_not_acquirable"),"declaration alone cannot admit a missing runtime provider");
   providerAcquirable=true;check(gate.check(context).ready(),"late module installation/provider publication can recover");
   acquireUnknown=true;check(gate.check(context).waiting(),"startup Unknown authority at acquisition is expected waiting");acquireUnknown=false;
@@ -69,7 +69,7 @@ MAIN=r''' public static void main(String[] args)throws Exception {
 
   reset();contentReady=false;startController(new Context());
   check(owner.bridge.equals("WAITING_FOR_SERVICE")&&owner.lastBridgeError.isEmpty()&&receiverRegisters==0&&observerRegisters==0&&snapshotReads==0,"automation does not register or query before service admission");
-  contentReady=true;providerDeclared=false;retryNow();
+  contentReady=true;providerDeclared=false;providerAcquirable=false;retryNow();
   check(owner.bridge.equals("WAITING_FOR_PROVIDER")&&owner.lastBridgeError.isEmpty()&&receiverRegisters==0&&snapshotReads==0,"automation startup provider absence does not invent failure history");
   providerDeclared=true;providerAcquirable=false;retryNow();check(observerRegisters==0&&snapshotReads==0,"unpublished provider cannot start listener");
   providerAcquirable=true;enabled=false;retryNow();
@@ -94,15 +94,15 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   reset();permissionDenied=true;startController(new Context());
   check(owner.bridge.equals("FAILED")&&owner.lastBridgeError.contains("SecurityException")&&snapshotReads==0&&observerRegisters==0,"automation readiness permission error is visible and blocks all provider/listener work");
   permissionDenied=false;retryNow();check(owner.bridge.equals("READY")&&owner.lastBridgeError.contains("SecurityException"),"permission recovery retains history");
-  reset();providerDeclared=false;startController(new Context());now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;retryNow();
+  reset();providerDeclared=false;providerAcquirable=false;startController(new Context());now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;retryNow();
   check(owner.bridge.equals("FAILED")&&owner.lastBridgeError.contains("readiness_timeout")&&snapshotReads==0,"automation permanent provider absence becomes diagnostic failure");
-  providerDeclared=true;retryNow();check(owner.bridge.equals("READY")&&owner.lastBridgeError.contains("readiness_timeout"),"permanent outage can later recover without erasing history");
+  providerDeclared=true;providerAcquirable=true;retryNow();check(owner.bridge.equals("READY")&&owner.lastBridgeError.contains("readiness_timeout"),"permanent outage can later recover without erasing history");
 
   reset();Assets.clear();contentReady=false;Assets.capture(new Context(),"old");
   check(inventoryWrites==0&&!diagnostics.containsKey("ls_augment_statusbar_inventory_error")&&Assets.pendingInventory!=null,"inventory startup service wait retains payload without false error");
-  providerDeclared=false;contentReady=true;Assets.capture(new Context(),"latest");Assets.next();
+  providerDeclared=false;providerAcquirable=false;contentReady=true;Assets.capture(new Context(),"latest");Assets.next();
   check(inventoryWrites==0&&Assets.pendingInventory.payload.equals("latest"),"stale queued retry never resubmits/replaces fresh inventory");
-  providerDeclared=true;Assets.next();
+  providerDeclared=true;providerAcquirable=true;Assets.next();
   check(inventoryWrites==1&&inventoryPayload.equals("latest")&&Assets.pendingInventory==null&&diagnostics.get("ls_augment_statusbar_inventory_error").isEmpty(),"latest pending inventory actually sends after provider recovery");
   reset();Assets.clear();permissionDenied=true;Assets.capture(new Context(),"permissions");
   check(inventoryWrites==0&&diagnostics.get("ls_augment_statusbar_inventory_error").contains("SecurityException"),"inventory permission error is not classified as boot waiting");
@@ -113,9 +113,9 @@ MAIN=r''' public static void main(String[] args)throws Exception {
   check(Assets.inventoryRejection(hostile).equals("inventory_rejected:reason_unavailable"),"unknown provider diagnostics never echo arbitrary text");
   check(Assets.inventoryRejection(null).equals("inventory_rejected:reply_missing"),"null publication reply stays distinct from rejection");
   inventoryReject=false;Assets.next();check(inventoryWrites==2&&Assets.pendingInventory==null,"accepted retry recovers rejection");
-  reset();Assets.clear();providerDeclared=false;Assets.capture(new Context(),"stale");now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;Assets.next();
+  reset();Assets.clear();providerDeclared=false;providerAcquirable=false;Assets.capture(new Context(),"stale");now+=ConfigBridgeReadiness.STARTUP_GRACE_MS;Assets.next();
   check(inventoryWrites==0&&diagnostics.get("ls_augment_statusbar_inventory_error").contains("readiness_timeout"),"long inventory provider absence is diagnosable even after payload expiry");
-  providerDeclared=true;Assets.capture(new Context(),"new observation");check(inventoryWrites==1&&inventoryPayload.equals("new observation"),"fresh observation recovers after persistent outage");
+  providerDeclared=true;providerAcquirable=true;Assets.capture(new Context(),"new observation");check(inventoryWrites==1&&inventoryPayload.equals("new observation"),"fresh observation recovers after persistent outage");
   reset();Assets.clear();unlocked=false;Assets.capture(new Context(),"locked");now+=90_000;unlocked=true;Assets.next();
   check(inventoryWrites==0&&Assets.pendingInventory==null&&freshCaptures==1,"expired unlock-wait observation requests fresh UI capture instead of sending old inventory");
   Assets.capture(new Context(),"after unlock");check(inventoryWrites==1&&inventoryPayload.equals("after unlock"),"fresh unlock observation actually publishes");
@@ -143,7 +143,7 @@ def main():
         out=Path(tmp);sources=[]
         for name,body in stubs.items():
             path=out/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');sources.append(path)
-        for name in ['hook/ScreenOffAutomationHook.java','hook/ConfigBridgeReadiness.java','ScreenAutomationPolicy.java','AutomationDiagnosticState.java','InventoryRetryPolicy.java']:
+        for name in ['hook/ScreenOffAutomationHook.java','hook/ConfigBridgeReadiness.java','hook/ConfigReadRetry.java','ScreenAutomationPolicy.java','AutomationDiagnosticState.java','InventoryRetryPolicy.java']:
             text=(SRC/name).read_text(encoding='utf-8')
             if name=='hook/ScreenOffAutomationHook.java' and args.mutation=='skip-start-admission':text=text.replace('if(!bridgeReady())return;','',1)
             path=out/'ls/augment/com'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,encoding='utf-8');sources.append(path)

@@ -23,8 +23,8 @@ final class ColorEditorDialog {
         EditText hex=new EditText(activity);ui.styleInput(hex);hex.setSingleLine(true);hex.setContentDescription("HEX颜色，#AARRGGBB或#RRGGBB");hex.setText(canonical(first));
         TextView error=ui.inlineInputError(hex,"shared-color-hex");
         TextView hueLabel=ui.text("色相",13,ui.muted,false),alphaLabel=ui.text("不透明度",13,ui.muted,false);
-        SeekBar hue=new SeekBar(activity);hue.setMax(359);hue.setProgress(Math.round(hsv[0]));hue.setMinHeight(ui.dp(48));hue.setContentDescription("色相");
-        SeekBar alpha=new SeekBar(activity);alpha.setMax(255);alpha.setProgress(Color.alpha(first));alpha.setMinHeight(ui.dp(48));alpha.setContentDescription("不透明度");
+        SeekBar hue=ui.slider();hue.setMax(359);hue.setProgress(Math.round(hsv[0]));hue.setMinHeight(ui.dp(48));hue.setContentDescription("色相");
+        SeekBar alpha=ui.slider();alpha.setMax(255);alpha.setProgress(Color.alpha(first));alpha.setMinHeight(ui.dp(48));alpha.setContentDescription("不透明度");
         for(SeekBar bar:new SeekBar[]{hue,alpha}){bar.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));bar.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));}
         SaturationValue palette=new SaturationValue(activity,ui,hsv);
         content.addView(palette,new LinearLayout.LayoutParams(-1,ui.dp(160)));
@@ -33,21 +33,21 @@ final class ColorEditorDialog {
         Runnable render=()->{
             changing[0]=true;sample.setBackground(ui.roundStroke(argb[0],10,ui.outline,1));
             double brightness=(Color.red(argb[0])*299+Color.green(argb[0])*587+Color.blue(argb[0])*114)/1000.;sample.setTextColor(brightness>145?Color.BLACK:Color.WHITE);
-            hue.setProgress(Math.round(hsv[0]));alpha.setProgress(Color.alpha(argb[0]));hueLabel.setText("色相："+Math.round(hsv[0])+"°");alphaLabel.setText("不透明度："+Math.round(Color.alpha(argb[0])*100f/255)+"%");
+            hue.setProgress(Math.round(hsv[0]));alpha.setProgress(Color.alpha(argb[0]));hueLabel.setText(hueLabel.getContext().getString(R.string.status_coloreditordialog_8 ,String.valueOf(Math.round(hsv[0]))));alphaLabel.setText(alphaLabel.getContext().getString(R.string.status_coloreditordialog_9 ,String.valueOf(Math.round(Color.alpha(argb[0])*100f/255))));
             String text=canonical(argb[0]);if(!text.contentEquals(hex.getText()))hex.setText(text);palette.invalidate();error.setText("");error.setVisibility(View.GONE);changing[0]=false;
         };
         Runnable hsvChanged=()->{argb[0]=Color.HSVToColor(alpha.getProgress(),hsv);render.run();};palette.changed=hsvChanged;
         hue.setOnSeekBarChangeListener(listener(progress->{if(changing[0])return;hsv[0]=progress;hsvChanged.run();}));
         alpha.setOnSeekBarChangeListener(listener(progress->{if(changing[0])return;argb[0]=(progress<<24)|(argb[0]&0x00FFFFFF);render.run();}));
         hex.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void afterTextChanged(Editable e){}public void onTextChanged(CharSequence text,int start,int before,int count){
-            if(changing[0])return;String value=text.toString().trim();Integer parsed=parse(value,argb[0]);if(parsed==null){error.setText("请输入6位RGB或8位ARGB颜色");error.setVisibility(View.VISIBLE);return;}
+            if(changing[0])return;String value=text.toString().trim();Integer parsed=parse(value,argb[0]);if(parsed==null){error.setText(error.getContext().getString(R.string.status_coloreditordialog_10));error.setVisibility(View.VISIBLE);return;}
             argb[0]=parsed;Color.colorToHSV(parsed,hsv);
-            changing[0]=true;sample.setBackground(ui.roundStroke(parsed,10,ui.outline,1));hue.setProgress(Math.round(hsv[0]));alpha.setProgress(Color.alpha(parsed));hueLabel.setText("色相："+Math.round(hsv[0])+"°");alphaLabel.setText("不透明度："+Math.round(Color.alpha(parsed)*100f/255)+"%");palette.invalidate();error.setText("");error.setVisibility(View.GONE);changing[0]=false;
+            changing[0]=true;sample.setBackground(ui.roundStroke(parsed,10,ui.outline,1));hue.setProgress(Math.round(hsv[0]));alpha.setProgress(Color.alpha(parsed));hueLabel.setText(hueLabel.getContext().getString(R.string.status_coloreditordialog_8 ,String.valueOf(Math.round(hsv[0]))));alphaLabel.setText(alphaLabel.getContext().getString(R.string.status_coloreditordialog_9 ,String.valueOf(Math.round(Color.alpha(parsed)*100f/255))));palette.invalidate();error.setText("");error.setVisibility(View.GONE);changing[0]=false;
         }});
         render.run();dialog[0]=ui.glassDialog(title,content,"保存",null,"取消");
         Button confirm=dialog[0].findViewById(android.R.id.button1);
         View tagged=dialog[0].getWindow().getDecorView().findViewWithTag("glass-dialog-confirm");if(tagged instanceof Button)confirm=(Button)tagged;
-        if(confirm!=null)confirm.setOnClickListener(v->{Integer parsed=parse(hex.getText().toString().trim(),argb[0]);if(parsed==null){error.setText("请输入6位RGB或8位ARGB颜色");error.setVisibility(View.VISIBLE);hex.requestFocus();return;}saved.accept(canonical(parsed));dialog[0].dismiss();});
+        if(confirm!=null)confirm.setOnClickListener(v->{Integer parsed=parse(hex.getText().toString().trim(),argb[0]);if(parsed==null){error.setText(error.getContext().getString(R.string.status_coloreditordialog_10));error.setVisibility(View.VISIBLE);hex.requestFocus();return;}saved.accept(canonical(parsed));dialog[0].dismiss();});
         return dialog[0];
     }
     static Integer parse(String hex,int current){
@@ -59,10 +59,18 @@ final class ColorEditorDialog {
     private static SeekBar.OnSeekBarChangeListener listener(java.util.function.IntConsumer changed){return new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}public void onProgressChanged(SeekBar s,int p,boolean user){if(user)changed.accept(p);}};}
     private static final class SaturationValue extends View {
         final float[] hsv;final UiKit ui;final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);Runnable changed;
+        final RectF rect=new RectF();final float[] hueColor={0,1,1};
+        Shader paletteShader;float shaderHue=Float.NaN,shaderWidth=-1,shaderHeight=-1;
+        private Shader palette(float inset,float width,float height){
+            if(paletteShader==null||shaderHue!=hsv[0]||shaderWidth!=width||shaderHeight!=height){
+                shaderHue=hsv[0];shaderWidth=width;shaderHeight=height;hueColor[0]=hsv[0];
+                paletteShader=new ComposeShader(new LinearGradient(inset,inset,inset+width,inset,Color.WHITE,Color.HSVToColor(hueColor),Shader.TileMode.CLAMP),new LinearGradient(inset,inset,inset,inset+height,Color.WHITE,Color.BLACK,Shader.TileMode.CLAMP),PorterDuff.Mode.MULTIPLY);
+            }return paletteShader;
+        }
         SaturationValue(Activity activity,UiKit ui,float[] hsv){super(activity);this.ui=ui;this.hsv=hsv;setContentDescription("饱和度与明度色盘");setFocusable(true);setMinimumHeight(ui.dp(120));}
         @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float inset=ui.dp(6),width=getWidth()-inset*2,height=getHeight()-inset*2;
-            RectF rect=new RectF(inset,inset,inset+width,inset+height);int hue=Color.HSVToColor(new float[]{hsv[0],1,1});
-            paint.setShader(new ComposeShader(new LinearGradient(inset,inset,inset+width,inset,Color.WHITE,hue,Shader.TileMode.CLAMP),new LinearGradient(inset,inset,inset,inset+height,Color.WHITE,Color.BLACK,Shader.TileMode.CLAMP),PorterDuff.Mode.MULTIPLY));canvas.drawRoundRect(rect,ui.dp(8),ui.dp(8),paint);paint.setShader(null);
+            rect.set(inset,inset,inset+width,inset+height);
+            paint.setShader(palette(inset,width,height));canvas.drawRoundRect(rect,ui.dp(8),ui.dp(8),paint);paint.setShader(null);
             float x=inset+hsv[1]*width,y=inset+(1-hsv[2])*height;paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(ui.dp(2));paint.setColor(Color.BLACK);canvas.drawCircle(x,y,ui.dp(7),paint);paint.setColor(Color.WHITE);canvas.drawCircle(x,y,ui.dp(5),paint);paint.setStyle(Paint.Style.FILL);
         }
         @Override public boolean onTouchEvent(MotionEvent e){switch(e.getActionMasked()){case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_MOVE:case MotionEvent.ACTION_UP:

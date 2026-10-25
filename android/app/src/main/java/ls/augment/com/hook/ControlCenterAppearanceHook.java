@@ -10,6 +10,8 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 import ls.augment.com.ControlCenterAppearanceOptions;
 import ls.augment.com.ControlCenterAppearancePolicy;
+import ls.augment.com.GlassOptions;
+import ls.augment.com.LiquidGlassDrawable;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 import static ls.augment.com.ControlCenterAppearanceOptions.*;
 
@@ -22,8 +24,11 @@ final class ControlCenterAppearanceHook {
     private static final Map<View,Boolean> DISABLED=new WeakHashMap<>();
     private ControlCenterAppearanceHook() { }
     static int install(AugmentModule module,ClassLoader loader){
-        int count=hookNamed(module,loader,"cc_appearance",PANEL,"onFinishInflate",0,null,(owner,args,result)->{if(owner instanceof View)watch((View)owner);return PASS;});
-        count+=hookNamed(module,loader,"cc_appearance",PANEL,"dispatchDraw",1,(owner,args,result)->{if(owner instanceof View)watch((View)owner).prepare();return PASS;},null);
+        int count=0;
+        for(String panel:new String[]{PANEL,ControlCenterGlassTargets.MODERN}){
+            count+=hookNamed(module,loader,"cc_appearance",panel,"onFinishInflate",0,null,(owner,args,result)->{if(owner instanceof View)watch((View)owner);return PASS;});
+            count+=hookNamed(module,loader,"cc_appearance",panel,"dispatchDraw",1,(owner,args,result)->{if(owner instanceof View)watch((View)owner).prepare();return PASS;},null);
+        }
         // Color animations can invalidate just a child; repaint after OEM state/theme changes too.
         for(String type:new String[]{WIDE,CIRCLE,"com.zte.qs.tileimpl.QSTileViewBase"})
             for(String method:new String[]{"handleStateChanged","updateResources","setGradientBackColors"}){
@@ -36,14 +41,50 @@ final class ControlCenterAppearanceHook {
     static boolean ownsMaterial(View view,View owner,boolean slider){
         if(view==null||owner==null)return false;
         Context c=view.getContext();String type=owner.getClass().getName();
+        // Glass incorporates corners and tile colors itself. A media cover remains an
+        // independent image surface; it must not be replaced by a second renderer.
+        if(FeatureSettings.enabled(c,GlassOptions.CONTROL_CENTER))
+            return MEDIA_VIEW.equals(type)&&FeatureSettings.enabled(c,MEDIA);
         if(slider)return FeatureSettings.enabled(c,CORNERS);
-        if(WIDE.equals(type)||CIRCLE.equals(type))return FeatureSettings.enabled(c,CORNERS)||FeatureSettings.enabled(c,TILES);
+        if(ControlCenterGlassTargets.isType(owner,WIDE)||ControlCenterGlassTargets.isType(owner,CIRCLE))return FeatureSettings.enabled(c,CORNERS)||FeatureSettings.enabled(c,TILES);
         return MEDIA_VIEW.equals(type)&&(FeatureSettings.enabled(c,CORNERS)||FeatureSettings.enabled(c,MEDIA));
     }
-    static boolean inPanel(View view){for(View at=view;at!=null;){if(PANEL.equals(at.getClass().getName()))return true;ViewParent p=at.getParent();at=p instanceof View?(View)p:null;}return false;}
+    static final class GlassStyle {
+        int fill,end,foreground,direction;boolean cached;int[] readable;float radiusDp=Float.NaN;
+        boolean apply(View view,View owner,LiquidGlassDrawable glass,float nativeRadiusDp){
+            Context c=view.getContext();
+            float nextRadius=FeatureSettings.enabled(c,CORNERS)?FeatureSettings.integer(c,RADIUS,24,0,48):nativeRadiusDp;
+            if(radiusDp!=nextRadius){radiusDp=nextRadius;view.invalidateOutline();}
+            glass.setRadiusDp(nextRadius);
+            String type=owner.getClass().getName();Object state=field(owner,"lastState");
+            if((!ControlCenterGlassTargets.isType(owner,WIDE)&&!ControlCenterGlassTargets.isType(owner,CIRCLE))||!FeatureSettings.enabled(c,TILES)
+                    ||!(state instanceof Number)||!ControlCenterAppearancePolicy.activeTile(((Number)state).intValue(),Boolean.TRUE.equals(DISABLED.get(owner))))return false;
+            boolean dark=(view.getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            int a=ControlCenterAppearancePolicy.color(FeatureSettings.snapshot(c).get(dark?TILE_DARK:TILE_LIGHT),0xff1677d2);
+            int b=FeatureSettings.integer(c,TILE_GRADIENT,0,0,1)==1
+                    ?ControlCenterAppearancePolicy.color(FeatureSettings.snapshot(c).get(dark?TILE_END_DARK:TILE_END_LIGHT),0xff725bc9):a;
+            int ink=foreground(owner),way=FeatureSettings.integer(c,TILE_DIRECTION,0,0,2);
+            if(!cached||fill!=a||end!=b||foreground!=ink){
+                readable=ControlCenterAppearancePolicy.readableGradient(a,b,ink);fill=a;end=b;foreground=ink;cached=true;
+            }
+            direction=way;
+            glass.setMaterialGradient(readable[0],readable[1],way,
+                    FeatureSettings.integer(c,TILE_OPACITY,85,0,100)/100f);
+            return true;
+        }
+        boolean outline(View view,Outline outline,Rect bounds){
+            if(!FeatureSettings.enabled(view.getContext(),CORNERS)||!Float.isFinite(radiusDp))return false;
+            outline.setRoundRect(bounds,Math.min(radiusDp*view.getResources().getDisplayMetrics().density,
+                    Math.min(bounds.width(),bounds.height())*.5f));return true;
+        }
+    }
+    static boolean inPanel(View view){for(View at=view;at!=null;){if(PANEL.equals(at.getClass().getName())||ControlCenterGlassTargets.modern(at))return true;ViewParent p=at.getParent();at=p instanceof View?(View)p:null;}return false;}
     private static void changedTile(View tile){for(View at=tile;at!=null;){State state=STATES.get(at);if(state!=null){state.prepare();return;}ViewParent p=at.getParent();at=p instanceof View?(View)p:null;}}
     private static State watch(View view){State s=STATES.get(view);if(s==null){s=new State(view);STATES.put(view,s);view.addOnAttachStateChangeListener(s);}if(view.isAttachedToWindow())s.attach();return s;}
     static void setBackground(View view,Drawable drawable){int l=view.getPaddingLeft(),t=view.getPaddingTop(),r=view.getPaddingRight(),b=view.getPaddingBottom();view.setBackground(drawable);if(l!=view.getPaddingLeft()||t!=view.getPaddingTop()||r!=view.getPaddingRight()||b!=view.getPaddingBottom())view.setPadding(l,t,r,b);}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View child(View view,String name){int id=view.getResources().getIdentifier(name,"id","com.android.systemui");return id==0?null:view.findViewById(id);}
     private static boolean belongs(View view,View panel){for(View at=view;at!=null;){if(at==panel)return true;ViewParent p=at.getParent();at=p instanceof View?(View)p:null;}return false;}
     private static View materialOwner(View view,Drawable original,int depth){Drawable d=view.getBackground();if(d==original||d instanceof Material&&((Material)d).original==original)return view;if(depth<2&&view instanceof ViewGroup){ViewGroup g=(ViewGroup)view;for(int i=0;i<g.getChildCount();i++){View found=materialOwner(g.getChildAt(i),original,depth+1);if(found!=null)return found;}}return null;}
@@ -58,11 +99,16 @@ final class ControlCenterAppearanceHook {
         List<Surface> live(){List<Surface> list=new ArrayList<>();for(WeakReference<Surface> ref:surfaces.values()){Surface s=ref.get();if(s!=null)list.add(s);}return list;}
         void prepare(){
             View v=panel.get();if(preparing||!attached||v==null)return;
+            if(FeatureSettings.enabled(v.getContext(),GlassOptions.CONTROL_CENTER)){clear();return;}
             boolean corners=FeatureSettings.enabled(v.getContext(),CORNERS),fill=FeatureSettings.enabled(v.getContext(),TILES);
             if(!corners&&!fill){if(!surfaces.isEmpty())clear();return;}preparing=true;
             try{
                 for(Surface s:live())s.seen=false;
-                for(String name:new String[]{"allTilesLayout","bigTilesLayout","topPanel"}){Object group=field(v,name);if(group instanceof ViewGroup)tiles((ViewGroup)group,corners,fill);}
+                if(ControlCenterGlassTargets.modern(v))ControlCenterGlassTargets.collect(v,new ControlCenterGlassTargets.Visitor(){
+                    @Override public void tile(View tile){tileSurface(tile,corners,fill);}
+                    @Override public void slider(View frame,SeekBar seek){if(corners)bind(frame,frame,seek.getProgressDrawable(),true,false);}
+                });
+                else for(String name:new String[]{"allTilesLayout","bigTilesLayout","topPanel"}){Object group=field(v,name);if(group instanceof ViewGroup)tiles((ViewGroup)group,corners,fill);}
                 if(corners){Object top=field(v,"topPanel");Object brightness=field(top,"brightness"),volume=field(top,"volume"),slider=field(top,"mVolumeSlider");
                     if(brightness instanceof View){View frame=child((View)brightness,"slider_frame"),seek=child((View)brightness,"slider");if(frame!=null&&seek instanceof SeekBar)bind(frame,frame,((SeekBar)seek).getProgressDrawable(),true,false);}
                     if(volume instanceof View&&slider instanceof SeekBar)bind((View)volume,(View)volume,((SeekBar)slider).getProgressDrawable(),true,false);
@@ -73,7 +119,8 @@ final class ControlCenterAppearanceHook {
             }catch(RuntimeException|LinkageError error){clear();FeatureSettings.diagnostic(v.getContext(),"ls_augment_rm_cc_appearance_state","native_fallback:"+error.getClass().getSimpleName());}
             finally{preparing=false;}
         }
-        void tiles(ViewGroup group,boolean corners,boolean fill){for(int i=0;i<Math.min(64,group.getChildCount());i++){View tile=group.getChildAt(i);String type=tile.getClass().getName();if(!WIDE.equals(type)&&!CIRCLE.equals(type))continue;Object bg=field(tile,"colorBackgroundDrawable");if(bg instanceof GradientDrawable){View target=materialOwner(tile,(Drawable)bg,0);if(target!=null)bind(target,tile,null,corners,fill);}}}
+        void tiles(ViewGroup group,boolean corners,boolean fill){for(int i=0;i<Math.min(64,group.getChildCount());i++)tileSurface(group.getChildAt(i),corners,fill);}
+        void tileSurface(View tile,boolean corners,boolean fill){if(!ControlCenterGlassTargets.isType(tile,WIDE)&&!ControlCenterGlassTargets.isType(tile,CIRCLE))return;Object bg=field(tile,"colorBackgroundDrawable");if(bg instanceof GradientDrawable){View target=materialOwner(tile,(Drawable)bg,0);if(target!=null)bind(target,tile,null,corners,fill);}}
         void bind(View target,View owner,Drawable progress,boolean corners,boolean fill){
             if(!belongs(target,panel.get()))return;WeakReference<Surface> ref=surfaces.get(target);Surface s=ref==null?null:ref.get();
             if(s!=null&&(target.getBackground()!=s.material||s.progress!=progress)){s.restore();surfaces.remove(target);s=null;}

@@ -19,7 +19,7 @@ final class ConnectivityIconView extends View {
     private Runnable invalidated;
     private String problem="awaiting_source";
     private CircleConnectivitySpacingObservation lastObservation;
-    private long generation,publishedAt;private String published="",environmentChecksum="",environment="";
+    private long generation,committedGeneration=-1,publishedAt;private String published="",environmentChecksum="",environment="";
     ConnectivityIconView(Context context){super(context);setTag("ls_augment_connectivity_circle");
         setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         source=new ConnectivityIconSource(context,()->post(()->{setContentDescription(sourceState().description());dirty();}));}
@@ -42,7 +42,8 @@ final class ConnectivityIconView extends View {
     boolean hasSpacing(){return frame!=null&&frame.plan.hasSpacing;}
     int outerWidth(){return frame==null?0:(int)Math.ceil(frame.plan.width);}
     int outerHeight(){return frame==null?0:(int)Math.ceil(frame.plan.height);}
-    void commit(){committed=usable();invalidate();}
+    void commit(){boolean next=usable(),repaint=next&&(!committed||committedGeneration!=generation);
+        committed=next;committedGeneration=generation;if(repaint)invalidate();}
     void uncommit(){committed=false;}
     boolean placed(){return committed&&usable();}
     boolean wholeCovered(){return frame!=null&&frame.layers.whole;}
@@ -106,7 +107,12 @@ final class ConnectivityIconView extends View {
     void artworkChanged(){if(preparing)return;if(frame==null||!frame.layers.token.equals(StatusBarAssetsHook.circleLayers(this).token)
             ||!Objects.equals(frame.font,StatusBarAssetsHook.typeface(this,"battery",null)))dirty();}
     /** Physical whole and default Painter must pass this same generation. */
-    boolean frameCurrent(){if(committed&&frame!=null&&frame.nativeState==sourceState()
+    boolean frameCurrent(){
+        // A rejected/pending view can still be drawn explicitly by artwork or
+        // diagnostics. Grid or the next real input owns its retry. Scheduling
+        // from that draw would restart layout after every completed traversal.
+        if(!committed)return false;
+        if(frame!=null&&frame.nativeState==sourceState()
                 &&frame.snapshot.checksum.equals(FeatureSettings.snapshot(getContext()).checksum)
                 &&Objects.equals(frame.font,StatusBarAssetsHook.typeface(this,"battery",null))
                 &&frame.layers.token.equals(StatusBarAssetsHook.circleLayers(this).token))return true;

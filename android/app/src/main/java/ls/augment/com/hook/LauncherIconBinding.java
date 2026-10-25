@@ -10,16 +10,21 @@ final class LauncherIconBinding {
     final Field icon, bitmap;
     private final Field flags, badge;
     private final Constructor<?> constructor;
+    private final LauncherImmutableIcon immutable;
 
     private LauncherIconBinding(Field icon) throws ReflectiveOperationException {
         this.icon = icon;
         Class<?> type = icon.getType();
-        constructor = type.getConstructor(Bitmap.class, int.class);
-        bitmap = field(type, "a", Bitmap.class);
-        flags = field(type, "d", int.class);
-        badge = field(type, "f", type);
+        boolean named = type.getName().equals("com.android.launcher3.icons.BitmapInfo");
+        Constructor<?> legacy;LauncherImmutableIcon modern=null;
+        try{legacy=type.getConstructor(Bitmap.class,int.class);}
+        catch(NoSuchMethodException absent){legacy=null;modern=new LauncherImmutableIcon(type);}
+        constructor=legacy;immutable=modern;
+        bitmap = field(type, named ? "icon" : "a", Bitmap.class);
+        flags = field(type, named ? "flags" : "d", int.class);
+        badge = field(type, named ? "badgeInfo" : "f", type);
         if (Modifier.isStatic(icon.getModifiers()) || Modifier.isFinal(icon.getModifiers())
-                || Modifier.isFinal(flags.getModifiers()) || Modifier.isFinal(badge.getModifiers())) {
+                || immutable==null&&(Modifier.isFinal(flags.getModifiers()) || Modifier.isFinal(badge.getModifiers()))) {
             throw new NoSuchFieldException("Launcher icon fields are not writable");
         }
         icon.setAccessible(true);
@@ -57,6 +62,7 @@ final class LauncherIconBinding {
     }
 
     Object create(Bitmap image, Object original) throws ReflectiveOperationException {
+        if(immutable!=null)return immutable.create(image,original);
         Object copy = constructor.newInstance(image, 0);
         if (original != null) {
             flags.set(copy, flags.get(original));

@@ -17,14 +17,21 @@ import java.util.function.Consumer;
 public final class ConfigTransferActivity extends Activity {
     private static final int MAX_DOCUMENT_BYTES=32*1024*1024;
     private ExecutorService worker;private AppConfig config;private TransferSession transfer;
+
+    // ResetJob is explicitly created with getApplicationContext and survives Activity recreation.
+    //noinspection StaticFieldLeak
     private static ResetJob resetJob;
     private AlertDialog resetProgress,actionDialog;
     private android.app.Dialog restartDialog;
+    private final android.window.OnBackInvokedCallback backCallback=this::handleBack;
+    private boolean backCallbackRegistered;
     private boolean resetReportShown;
     private long editorResetGeneration;
     private static final Set<String> EXCLUDED=new HashSet<>(Arrays.asList(ConfigSchema.HEALTH_ACCOUNT,ConfigSchema.HEALTH_SINCE,
         ConfigSchema.TGK_RAPID_FIRE_COMPAT_TOKEN,ConfigSchema.TGK_RAPID_FIRE_TEST_SESSION,ConfigSchema.FAN_CALIBRATION_REQUEST,ConfigSchema.FAN_MEASUREMENT));
     @Override public void onCreate(Bundle state){super.onCreate(state);config=new AppConfig(this);
+        if(!backCallbackRegistered){getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,backCallback);backCallbackRegistered=true;}
         TransferSession retained=(TransferSession)getLastNonConfigurationInstance();
         transfer=retained==null?new TransferSession():retained;worker=transfer.worker;transfer.attach(this);
         editorResetGeneration=retained!=null?transfer.editorResetGeneration:state==null?ResetWriteFence.generation():state.getLong("reset_generation",ResetWriteFence.generation());
@@ -133,16 +140,20 @@ public final class ConfigTransferActivity extends Activity {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("tab","settings"));finish();}
     private void openModule(){startActivity(new Intent(this,SettingsActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra("tab","settings"));finish();}
-    @Override public void onBackPressed(){
+    private void handleBack(){
+        if(isFinishing()||isDestroyed())return;
         if(resetJob!=null){if(resetJob.result==null){Toast.makeText(this,"重置正在进行，请稍候",Toast.LENGTH_SHORT).show();return;}reopenModule();return;}
         super.onBackPressed();
     }
     private JSONObject exportDocument()throws Exception{
+        AtomicWorkbenchAppPreferences.Result apps=new AtomicWorkbenchAppPreferences(getApplicationContext()).read();
+        if(!apps.success)throw new IOException("应用列表偏好未获读取确认，未导出不完整备份。"+apps.message);
         JSONObject values=new JSONObject(),images=new JSONObject(),fonts=new JSONObject(),artwork=new JSONObject();for(Map.Entry<String,String> e:config.snapshot().entrySet())if(!EXCLUDED.contains(e.getKey())){
             String value=e.getValue();if(e.getKey().equals(ConfigSchema.HEALTH_PLAN)&&!value.isEmpty()){String[] parts=value.split("\\|",-1);parts[2]="0".repeat(64);value=String.join("|",parts);}values.put(e.getKey(),value);
         }
         JSONObject notices=StatusBarAssetPack.exportNotices(this,noticeHashes(valueMap(values)));
-        JSONObject document=new JSONObject().put("format","LS_Augment.settings").put("version",1).put("moduleName","红魔Duo").put("moduleVersion",BuildConfig.VERSION_NAME).put("exportedAt",System.currentTimeMillis()).put("settings",values).put("images",images).put("fonts",fonts).put("statusbarArtwork",artwork).put("statusbarNotices",notices);
+        JSONObject document=new JSONObject().put("format","LS_Augment.settings").put("version",2).put("moduleName","红魔Duo").put("moduleVersion",BuildConfig.VERSION_NAME).put("exportedAt",System.currentTimeMillis()).put("settings",values).put("images",images).put("fonts",fonts).put("statusbarArtwork",artwork).put("statusbarNotices",notices)
+                .put(AtomicWorkbenchAppPreferencesTransfer.SECTION,AtomicWorkbenchAppPreferencesTransfer.exportState(apps.state));
         long[] budget={document.toString(2).getBytes(StandardCharsets.UTF_8).length};
         for(String hash:iconHashes(values))images.put(hash,backupFile(LauncherIconStore.file(this,hash),GestureArtwork.MAX_BYTES,budget));
         for(String hash:fontHashes(values))fonts.put(hash,backupFile(ManagedFont.file(this,hash),ManagedFont.MAX_BYTES,budget));
@@ -184,11 +195,13 @@ public final class ConfigTransferActivity extends Activity {
         }catch(Exception e){AuditLog.write(this,"CONFIG_TRANSFER_FAILED","request="+request+" "+e.getClass().getSimpleName()+": "+e.getMessage());complete("未导入或导出失败："+e.getMessage());}});
     }
     private void prepareImport(JSONObject document)throws Exception{
-        if(!document.optString("format").equals("LS_Augment.settings")||document.optInt("version")!=1)throw new IOException("不是支持的模块配置文件");
+        AtomicWorkbenchAppPreferencesTransfer.Import apps=AtomicWorkbenchAppPreferencesTransfer.readDocument(document,android.os.Process.myUid()/100000);
         JSONObject values=document.getJSONObject("settings"),images=document.optJSONObject("images");if(images==null)images=new JSONObject();
         LinkedHashMap<String,String> updates=new LinkedHashMap<>();Iterator<String> keys=values.keys();
         while(keys.hasNext()){String key=keys.next();if(EXCLUDED.contains(key))continue;if(!ConfigSchema.contains(key)||!(values.get(key) instanceof String))throw new IOException("未知或无效配置项："+key);
             String value=key.equals(ConfigSchema.HIDE_TARGETS)?values.getString(key):ConfigSchema.normalize(key,values.getString(key));if(value==null)throw new IOException("配置值无效："+key);updates.put(key,value);}
+        // This new preference did not exist in old backups; never reinterpret the old empty-slot key.
+        updates.putIfAbsent(AtomicWorkbenchConfig.SIDE_COUNT, "3");
         // Health bindings and hardware compatibility remain specific to this installation.
         String plan=updates.get(ConfigSchema.HEALTH_PLAN);if(plan!=null&&!plan.isEmpty()){
             String account=config.get(ConfigSchema.HEALTH_ACCOUNT);String[] parts=plan.split("\\|",-1);parts[2]=account.isEmpty()?"0".repeat(64):account;updates.put(ConfigSchema.HEALTH_PLAN,String.join("|",parts));
@@ -230,7 +243,7 @@ public final class ConfigTransferActivity extends Activity {
         Set<RootHideManager.Target> targets=importTargets(raw);
         if(raw!=null){RootHideManager.OperationResult validation=new RootHideManager(this).validateImportTargets(targets);if(!validation.success)throw new IOException(validation.message);}
         transfer.phase="import_confirmation";
-        transfer.deliver(screen->screen.confirmImport(updates,media,statusbarMedia,fontMedia,statusbarNotices,raw,targets));
+        transfer.deliver(screen->screen.confirmImport(updates,media,statusbarMedia,fontMedia,statusbarNotices,raw,targets,apps));
     }
     /** Old backups may carry worksheet-only notices; validate them without restoring an inactive reference. */
     private static Map<String,String> importedNotices(JSONObject object,Map<String,String> values)throws Exception {
@@ -242,15 +255,27 @@ public final class ConfigTransferActivity extends Activity {
         notices.keySet().retainAll(active);
         return notices;
     }
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     private void confirmImport(LinkedHashMap<String,String> updates,LinkedHashMap<String,byte[]> media,
             LinkedHashMap<String,byte[]> statusbarMedia,LinkedHashMap<String,byte[]> fontMedia,
-            Map<String,String> statusbarNotices,String raw,Set<RootHideManager.Target> targets){
-        actionDialog=AppDialogs.builder(this).setTitle("导入配置").setMessage("已校验 "+updates.size()+" 项设置与 "+media.size()+" 张图片、"+statusbarMedia.size()+" 个状态栏素材和 "+fontMedia.size()+" 个字体。导入将替换对应设置；应用选择全部作为待确认名单保留，导入不会绑定当前空间。请进入应用隐藏页面，在当前空间重新勾选需要的应用。移出清单不会改变应用显示状态，历史记录保留。账户绑定与本机兼容性测试保留。")
+            Map<String,String> statusbarNotices,String raw,Set<RootHideManager.Target> targets,
+            AtomicWorkbenchAppPreferencesTransfer.Import apps){
+        actionDialog=AppDialogs.builder(this).setTitle("导入配置").setMessage("已校验 "+updates.size()+" 项设置与 "+media.size()+" 张图片、"+statusbarMedia.size()+" 个状态栏素材和 "+fontMedia.size()+" 个字体。导入将替换对应设置；应用隐藏选择全部作为待确认名单保留，导入不会绑定当前空间。请进入应用隐藏页面，在当前空间重新勾选需要的应用。移出清单不会改变应用显示状态，历史记录保留。账户绑定与本机兼容性测试保留。\n\n"+apps.summary())
             .setNegativeButton("取消",(dialog,which)->finishDirect()).setOnCancelListener(dialog->finishDirect()).setPositiveButton("导入",(dialog,which)->{
-                transfer.phase="import_applying";transfer.clearUi();worker.execute(()->{RootHideManager.ACTION_LOCK.lock();try{
+                transfer.phase="import_applying";transfer.clearUi();worker.execute(()->{boolean ordinaryAttempted=false;RootHideManager.ACTION_LOCK.lock();try{
                 if(ResetWriteFence.stale(editorResetGeneration))throw new IOException("配置已被重置，请重新打开此页面后再导入");
                 RootHideManager manager=new RootHideManager(this);
-                if(raw!=null){RootHideManager.OperationResult validation=manager.validateImportTargets(targets);if(!validation.success)throw new IOException(validation.message);}
+                if(raw!=null){
+                    RootHideManager.OperationResult validation=manager.validateImportTargets(targets);
+                    if(!validation.success)throw new IOException(validation.message);
+                    // This confirmed phase may migrate an old target document/cache; it is not preview I/O.
+                    ordinaryAttempted=true;
+                    RootHideManager.OperationResult loaded=manager.refreshTargets();
+                    if(!loaded.success)throw new IOException(loaded.message);
+                }
+                ordinaryAttempted=true;
                 LauncherIconStore.directory(this).mkdirs();for(Map.Entry<String,byte[]> e:media.entrySet()){android.util.AtomicFile file=new android.util.AtomicFile(LauncherIconStore.file(this,e.getKey()));FileOutputStream out=file.startWrite();try{out.write(e.getValue());file.finishWrite(out);}catch(Exception error){file.failWrite(out);throw error;}}
                 for(Map.Entry<String,byte[]> e:fontMedia.entrySet())ManagedFont.store(this,e.getKey(),e.getValue());
                 for(Map.Entry<String,byte[]> e:statusbarMedia.entrySet())StatusBarAssetStore.store(this,e.getKey(),e.getValue());
@@ -261,11 +286,50 @@ public final class ConfigTransferActivity extends Activity {
                     if(selection.reviewRequired){reviewReport("导入未完成",selection.message);return;}
                     if(!selection.success)throw new IOException(selection.message);synced=selection.runtimeSynced;
                 }else{AppConfig.SaveResult saved=config.save(updates);if(!saved.success)throw new IOException(saved.message);synced=saved.runtimeSynced;}
+                if(!importedSettingsConfirmed(updates,raw,targets)){
+                    AuditLog.write(this,"CONFIG_IMPORT_PARTIAL","ordinary_readback=unconfirmed app_preferences_written=false");
+                    reviewReport("导入部分未确认","设置、资源或独立应用隐藏名单可能已部分提交，普通配置读回尚未确认。应用列表偏好尚未写入；未自动重试或回滚，请重新读取后核对。");
+                    return;
+                }
                 ScreenAutomation.sync(this);AuditLog.write(this,"CONFIG_IMPORT","settings="+updates.size()+" runtime_synced="+synced);
                 getSharedPreferences("native_value_overrides",0).edit().clear().commit();
                 getSharedPreferences("native_launcher_drafts",0).edit().clear().commit();
+                if(apps.included()){
+                    // Never enter Prefs LOCK/Fence while CONFIG_LOCK or a new outer Fence is held.
+                    AtomicWorkbenchAppPreferences.Result saved=new AtomicWorkbenchAppPreferences(getApplicationContext())
+                            .change(editorResetGeneration,prior->{
+                                if(prior.userId!=apps.state.userId)throw new IllegalArgumentException("app_preferences_user_changed");
+                                return apps.state;
+                            });
+                    if(!saved.success){
+                        AuditLog.write(this,"CONFIG_IMPORT_PARTIAL","ordinary_readback=confirmed app_preferences=unconfirmed");
+                        reviewReport("导入部分未确认","普通配置已获现有读回确认；应用列表偏好保存未确认，可能已写入。未自动重试或回滚，请重新读取后核对。\n"+saved.message);
+                        return;
+                    }
+                }
                 complete(synced?"配置已导入，按需重启作用域":"配置已导入并保存；启动配置正等待框架后台同步，无需重新导入，同步完成后再按需重启作用域");
-            }catch(Exception e){AuditLog.write(this,"CONFIG_IMPORT_FAILED",e.getClass().getSimpleName()+": "+e.getMessage());complete("导入未完成："+e.getMessage());}finally{RootHideManager.ACTION_LOCK.unlock();}});}).show();
+            }catch(Exception e){AuditLog.write(this,"CONFIG_IMPORT_FAILED",e.getClass().getSimpleName()+": "+e.getMessage());complete((ordinaryAttempted?"导入未完成，设置、资源或名单可能已部分提交，未自动重试或回滚；请重新读取核对。":"导入未完成：")+e.getMessage());}finally{RootHideManager.ACTION_LOCK.unlock();}});}).show();
+    }
+    /** Existing known-config snapshot plus a fresh authoritative target document; no repair writes. */
+    private boolean importedSettingsConfirmed(Map<String,String> updates,String raw,Set<RootHideManager.Target> targets){
+        if(ResetWriteFence.stale(editorResetGeneration))return false;
+        try{
+            Map<String,String> observed=config.snapshot();
+            for(Map.Entry<String,String> entry:updates.entrySet())
+                if(!Objects.equals(entry.getValue(),observed.get(entry.getKey())))return false;
+            if(raw!=null){
+                String expected=HideTargetCodec.encode(targets);
+                HideTargetCodec.Selection cache=HideTargetCodec.parse(observed.get(AppConfig.HIDE_TARGETS));
+                if(!cache.valid||!expected.equals(HideTargetCodec.encode(cache.entries)))return false;
+                HideTargetStore.ReadResult read=new HideTargetStore().read();
+                if(read.status!=HideTargetStore.ReadStatus.OK)return false;
+                ArrayList<HideTargetCodec.Entry> managed=new ArrayList<>();
+                for(HideTargetStore.Record record:read.snapshot.records)if(record.managed)
+                    managed.add(new HideTargetCodec.Entry(record.userId,record.userSerial,record.packageName,record.bound));
+                if(!expected.equals(HideTargetCodec.encode(managed)))return false;
+            }
+            return !ResetWriteFence.stale(editorResetGeneration);
+        }catch(RuntimeException unknown){return false;}
     }
     private static long importedSize(long total,int length)throws IOException {if(total+length>MAX_DOCUMENT_BYTES)throw new IOException("配置引用的资源合计超过 32 MiB，请分批导入素材");return total+length;}
     private static Set<RootHideManager.Target> importTargets(String raw) throws IOException {
@@ -283,6 +347,7 @@ public final class ConfigTransferActivity extends Activity {
                     .setPositiveButton("关闭",(d,w)->screen.finishDirect()).setOnCancelListener(d->screen.finishDirect()).show());}
     private void finishDirect(){transfer.clearUi();transfer.phase="finished";finish();}
     @Override protected void onDestroy(){
+        if(backCallbackRegistered){getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);backCallbackRegistered=false;}
         if(resetJob!=null)resetJob.detach(this);
         if(resetProgress!=null){resetProgress.dismiss();resetProgress=null;}
         if(actionDialog!=null){actionDialog.dismiss();actionDialog=null;}

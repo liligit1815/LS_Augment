@@ -374,7 +374,7 @@
   margin: 14px 0;
 }
 .c-phone[data-level]:not([data-level='1']) .c-range input[type='range'] {
-  min-height: 32px;
+  min-height: 48px;
 }
 .c-phone[data-level]:not([data-level='1']) .c-range small {
   font-size: 11px;
@@ -874,3 +874,10 @@
 .d-worktable td button {
   height: 100%;
 }
+.c-color-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.c-color-input .c-inline-input { flex: 1; min-width: 0; }
+.c-color-input input[type='color'] { width: 48px; height: 48px; border: 0; background: transparent; }

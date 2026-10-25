@@ -17,7 +17,7 @@ final class StatusBarMobileSpacingEditor {
         LinearLayout form=new LinearLayout(context);form.setOrientation(LinearLayout.VERTICAL);form.setTag("icon-spacing:"+scope+":"+id);
         TextView status=ui.text("",12,ui.muted,false);status.setTag("icon-spacing-mobile-capacity:"+scope+":"+id);form.addView(status,ui.wrap());
         String[] titles={"起始边距","顶部边距","末尾边距","底部边距"};SeekBar[] bars=new SeekBar[4];TextView[] labels=new TextView[4];
-        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=new SeekBar(context);bars[i].setMinimumHeight(ui.dp(48));bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
+        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setMinimumHeight(ui.dp(48));bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
         final String[] rejectedEdit={""};
         Runnable sync=()->{
             StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)return;
@@ -36,11 +36,11 @@ final class StatusBarMobileSpacingEditor {
                 int maximum=-1;
                 for(int v=0;v<=StatusBarIconSpacingSpec.MAX_DP;v++){int[] trial=values.clone();trial[i]=v;StatusBarIconSpacingSpec candidate=spec.with(scope,id,new StatusBarIconSpacingSpec.Insets(trial[0],trial[1],trial[2],trial[3]));draft.put(StatusBarIconSpacingSpec.KEY,candidate.serialize());if(inspect.apply(candidate).editable())maximum=v;}
                 draft.put(StatusBarIconSpacingSpec.KEY,spec.serialize());bars[i].setMax(Math.max(values[i],Math.max(0,maximum)));bars[i].setProgress(values[i]);bars[i].setEnabled(maximum>=0&&(maximum>0||values[i]>0));
-                labels[i].setText(titles[i]+" · "+values[i]+" dp"+(maximum>=0?" / 可设上限 "+maximum+" dp":" / 等待可用空间"));
+                labels[i].setText(labels[i].getContext().getString(R.string.status_statusbariconspacingeditor_44 ,String.valueOf(titles[i]), String.valueOf(values[i]), String.valueOf((maximum>=0?" / 可设上限 "+maximum+" dp":" / 等待可用空间"))));
             }
         };
         for(int i=0;i<4;i++){final int edge=i;bars[i].setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean user){if(user)labels[edge].setText(titles[edge]+" · "+progress+" dp");}
+            public void onProgressChanged(SeekBar b,int progress,boolean user){if(user)labels[edge].setText(labels[edge].getContext().getString(R.string.status_statusbariconspacingeditor_45 ,String.valueOf(titles[edge]), String.valueOf(progress)));}
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)return;StatusBarIconSpacingSpec.Insets e=spec.resolve(scope,id);int[] v={e.start,e.top,e.end,e.bottom};if(v[edge]==b.getProgress())return;v[edge]=b.getProgress();StatusBarIconSpacingSpec candidate=spec.with(scope,id,new StatusBarIconSpacingSpec.Insets(v[0],v[1],v[2],v[3]));Map<String,String> draft=new LinkedHashMap<>(fullDraft.get());draft.put(StatusBarIconSpacingSpec.KEY,candidate.serialize());
                 StatusBarMobileSpacingResolver.Result decision=circleWifi?StatusBarCircleSpacingResolver.inspect(context,scope,id,draft):StatusBarMobileSpacingResolver.inspect(context,scope,id,draft);

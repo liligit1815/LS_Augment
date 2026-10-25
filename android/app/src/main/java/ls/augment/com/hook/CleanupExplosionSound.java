@@ -11,6 +11,9 @@ final class CleanupExplosionSound {
     private static SoundPool pool;
     private static int sample;
     private static volatile boolean ready;
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static synchronized void prepare(Context context){
         if(pool!=null)return;
         try{

@@ -6,9 +6,11 @@ import { navigationTargets } from './current-navigation';
 import { editorTitles } from './current-editors';
 import { settingTitles } from './current-settings';
 import { useModel } from './current-ui';
-import assetIcons from './current-asset-icons.json';
+import assetIcons from './current-status-icons.json';
+import { statusDesignTitles } from './current-status-navigation';
 function titleFor(route: string) {
   return (
+    statusDesignTitles[route] ||
     (
       {
         home: '主页',

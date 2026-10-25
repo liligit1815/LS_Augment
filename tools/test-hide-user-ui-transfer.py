@@ -254,6 +254,44 @@ public final class TestUserUiTransfer {
 '''
 
 
+
+# Actual new app-document data dependencies; legacy transfer cases write zero app preferences.
+import runpy,re
+_action=runpy.run_path(str(ROOT/'tools/test-config-transfer-action-host.py'))
+_start=BOUNDARIES.index('class JSONObject {');_end=BOUNDARIES.index('class AlertDialog {',_start)
+BOUNDARIES=BOUNDARIES[:_start]+BOUNDARIES[_end:]
+BOUNDARIES=BOUNDARIES.replace('import java.text.DateFormat;','import java.text.DateFormat;import org.json.JSONObject;')
+BOUNDARIES+=r"""
+class HideTargetStore {
+ enum ReadStatus{OK,UNAVAILABLE}
+ static class Record {boolean managed,bound;int userId;long userSerial;String packageName;}
+ static class Snapshot{List<Record> records=new ArrayList<>();}static class ReadResult{ReadStatus status;Snapshot snapshot;}
+ ReadResult read(){ReadResult r=new ReadResult();r.status=ReadStatus.OK;r.snapshot=new Snapshot();
+ for(RootHideManager.Target t:RootHideManager.importing.lastTargets){Record v=new Record();v.managed=true;v.bound=t.isBound();v.userId=t.userId;v.userSerial=t.userSerial;v.packageName=t.packageName;r.snapshot.records.add(v);}return r;}
+}
+class StatusBarSheetSpec {static final String KEY="unused-sheet";List<Cell>cells=List.of();static StatusBarSheetSpec parse(String raw){return null;}static class Cell{String content="",image="";}}
+"""
+IMPORT_PREFIX=IMPORT_PREFIX.replace(' void prepare(String raw)', ' android.content.Context getApplicationContext(){return new android.content.Context();}\n void prepare(String raw)')
+_old='for(String k:values.data.keySet())out.put(k,values.getString(k));'
+assert IMPORT_PREFIX.count(_old)==1
+IMPORT_PREFIX=IMPORT_PREFIX.replace(_old,'for(Iterator<String> it=values.keys();it.hasNext();){String k=it.next();out.put(k,values.getString(k));}')
+# Format2 is the approved new document contract; all other original TEST expressions remain exact.
+_old='check(doc.optInt("version")==1,"unexpected envelope change");'
+assert TEST.count(_old)==1
+TEST=TEST.replace(_old,'check(doc.optInt("version")==2,"unexpected envelope change");')
+APP_DEPENDENCIES={
+ 'org/json/JSONObject.java':_action['STUBS']['org/json/JSONObject.java'],
+ 'android/os/Process.java':'package android.os;public class Process{public static int myUid(){return 10001;}}',
+ 'android/content/Context.java':'package android.content;public class Context{public java.io.File getFilesDir(){return new java.io.File(System.getProperty("fixture.cache"),"files");}}',
+ 'android/util/AtomicFile.java':r"""package android.util;import java.io.*;public class AtomicFile{
+ final File file;public AtomicFile(File file){this.file=file;}public AtomicFile(Object media){file=null;}public FileInputStream openRead()throws IOException{return new FileInputStream(file);}
+ public FileOutputStream startWrite(){throw new AssertionError("media");}public void finishWrite(FileOutputStream f){}public void failWrite(FileOutputStream f){}}
+ """
+}
+for _name in ['AtomicWorkbenchAppListModel.java','AtomicWorkbenchAppPreferences.java','AtomicWorkbenchAppPreferencesTransfer.java']:
+ APP_DEPENDENCIES['ls/augment/com/'+_name]=(SRC/_name).read_text(encoding='utf-8')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--activity-source", type=Path, default=SRC / "HideAppsActivity.java")
@@ -269,7 +307,7 @@ def main():
                 "appRow(", "localizedState(", "saveSettings()", "markDirty()", "openRecovery("]
     def find_method(text, name):
         import re
-        matches = list(re.finditer(r"^    private (?:static )?[\w<>.]+ " + re.escape(name), text, re.M))
+        matches = list(re.finditer(r"^    private (?:static )?[\w<>.,]+ " + re.escape(name), text, re.M))
         if len(matches) != 1:
             raise ValueError("Expected one method: " + name)
         return member(text, matches[0].group())
@@ -292,7 +330,7 @@ public final class TestUserUiTransfer {
         ui_methods += "\n" + member(activity, "    private static final class AppItem {").replace("private static final", "static final", 1)
         ui_class = UI_PREFIX.rsplit("}", 1)[0] + ui_methods + "\n}"
         tests = TEST
-    transfer_methods = "\n".join(find_method(transfer, n) for n in ["prepareImport(", "confirmImport(", "importTargets(", "importedSize(", "exportDocument()"])
+    transfer_methods = "\n".join(find_method(transfer, n) for n in ["prepareImport(", "confirmImport(", "importTargets(", "importedSize(", "exportDocument()", "importedNotices(", "importedSettingsConfirmed("])
     transfer_class = IMPORT_PREFIX.rsplit("}", 1)[0] + transfer_methods + "\n}"
     models = "\n".join(member(manager, "    static final class " + name) for name in ["Target", "UserRecord", "UserDirectory"])
     manager_class = r'''
@@ -303,6 +341,7 @@ class RootHideManager {
  long requestSerial=-1;List<AppRecord> apps=Collections.emptyList();List<UserRecord> users=Collections.emptyList();
  UserResolution resolved=UserResolution.failure("unknown");Set<Target> lastTargets=Collections.emptySet(),validated=Collections.emptySet(),queried=Collections.emptySet();
  RootHideManager(AppConfig c){config=c;}RootHideManager(ConfigTransferActivity c){config=c.config;}
+ OperationResult refreshTargets(){return OperationResult.success("controlled target snapshot already loaded");}
  UserDirectory userDirectory(){return UserDirectory.success(users);}UserResolution currentUser(UserDirectory d){return resolved;}
  List<AppRecord> listApps(int user,long serial){requestSerial=serial;return apps;}
  Map<Target,State> queryStates(Set<Target> targets){queried=new LinkedHashSet<>(targets);Map<Target,State> result=new LinkedHashMap<>();for(Target t:targets)result.put(t,State.VISIBLE);return result;}
@@ -319,6 +358,9 @@ class RootHideManager {
         "android/util/AtomicFile.java": "package android.util;public class AtomicFile {public AtomicFile(Object f){}public java.io.FileOutputStream startWrite(){throw new AssertionError(\"media\");}public void finishWrite(java.io.FileOutputStream f){}public void failWrite(java.io.FileOutputStream f){}}",
         "android/graphics/BitmapFactory.java": "package android.graphics;public class BitmapFactory {public static class Options{public boolean inJustDecodeBounds;public int outWidth,outHeight;}public static void decodeByteArray(byte[] b,int x,int y,Options o){}}",
     }
+    sources.update(APP_DEPENDENCIES)
+    # The historic media File double is renamed to avoid shadowing java.io.File in real Prefs.
+    sources["ls/augment/com/TestUserUiTransfer.java"]=re.sub(r"\bFile\b","FixtureFile",sources["ls/augment/com/TestUserUiTransfer.java"])
     with tempfile.TemporaryDirectory(prefix="lsa-user-ui-transfer-") as directory:
         out = Path(directory)
         paths = []

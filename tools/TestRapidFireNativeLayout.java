@@ -40,6 +40,12 @@ public final class TestRapidFireNativeLayout {
         check(RapidFireNativeLayout.inspectElf(malformed.array()) == null, "nonexecutable function rejected");
         for (int length = 0; length < 128; length++) check(RapidFireNativeLayout.inspectElf(new byte[length]) == null, "truncated ELF");
         pairedStores();
+        ByteBuffer compact=ByteBuffer.allocate(RapidFireNativeLayout.COMPACT_STORE_PATTERN.length*4).order(ByteOrder.LITTLE_ENDIAN);
+        for(int word:RapidFireNativeLayout.COMPACT_STORE_PATTERN)compact.putInt(word);
+        layout=RapidFireNativeLayout.inspectCode(compact.array());
+        check(layout!=null&&layout.firstCount==84&&layout.secondCount==88&&layout.firstDown==68
+                &&layout.firstUp==72&&layout.secondDown==76&&layout.secondUp==80,"compact division tail layout");
+        strictMutationSweep(compact.array(),false);
         for (String path : args) check(RapidFireNativeLayout.inspectFile(new java.io.File(path)) != null,
                 "real OEM ELF accepted: " + path);
         System.out.println("PASS TestRapidFireNativeLayout");

@@ -16,16 +16,43 @@ import ls.augment.com.LauncherOverrides;
 /** Native model icon factory covers desktop, drawer, and folder preview icons. */
 final class LauncherCustomizationHook {
     private static final ThreadLocal<Integer> WRITING=ThreadLocal.withInitial(()->0);
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Controller controller;
     private static volatile boolean initializationFailed;
     private static boolean installed;
+    private static Targets targets;
+    /** Complete inspected model family; do not mix names across launcher generations. */
+    private static final class Targets {
+        final Class<?> info,item,workspaceItem;
+        final Method icon,label;
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
+        Targets(ClassLoader loader)throws ReflectiveOperationException{
+            boolean named;
+            try{Class.forName("com.android.launcher3.model.data.z",false,loader);named=false;}
+            catch(ClassNotFoundException absent){named=true;}
+            String prefix="com.android.launcher3.model.data.";
+            info=Class.forName(prefix+(named?"ItemInfoWithIcon":"z"),false,loader);
+            item=Class.forName(prefix+(named?"ItemInfo":"y"),false,loader);
+            workspaceItem=Class.forName(prefix+(named?"WorkspaceItemInfo":"I"),false,loader);
+            Class<?> bubble=Class.forName("com.android.launcher3.BubbleTextView",false,loader);
+            icon=info.getDeclaredMethod(named?"newIcon":"G",Context.class,int.class);
+            label=bubble.getDeclaredMethod(named?"applyLabel":"B",item);
+            if(!item.isAssignableFrom(info)||!info.isAssignableFrom(workspaceItem)
+                    ||Modifier.isStatic(icon.getModifiers())||Modifier.isStatic(label.getModifiers())
+                    ||icon.getReturnType().isPrimitive()||label.getReturnType()!=void.class)
+                throw new NoSuchMethodException("Unsupported launcher customization model family");
+            icon.setAccessible(true);label.setAccessible(true);
+        }
+    }
     static synchronized void install(AugmentModule module,ClassLoader loader){
         if(installed)return;
         try{
-            Class<?> info=Class.forName("com.android.launcher3.model.data.z",false,loader);
-            Class<?> item=Class.forName("com.android.launcher3.model.data.y",false,loader);
-            Class<?> bubble=Class.forName("com.android.launcher3.BubbleTextView",false,loader);
-            Method icon=info.getDeclaredMethod("G",Context.class,int.class),label=bubble.getDeclaredMethod("B",item);
+            targets=new Targets(loader);
+            Method icon=targets.icon,label=targets.label;
             module.registerFeatureHook(module.prepareFeatureHook(icon,"launcher.icon",true).intercept(chain->{
                 Controller c=ensure(module,loader,(Context)chain.getArg(0));if(c!=null)c.apply(chain.getThisObject());
                 Object result=chain.proceed();if(c!=null)c.traceImage(chain.getThisObject(),result,"icon");return result;
@@ -34,7 +61,7 @@ final class LauncherCustomizationHook {
                 Controller c=ensure(module,loader,((View)chain.getThisObject()).getContext());if(c!=null)c.apply(chain.getArg(0));
                 Object result=chain.proceed();if(c!=null)c.traceView(chain.getArg(0),chain.getThisObject());return result;
             }));
-            for(Class<?> type:new Class<?>[]{item,Class.forName("com.android.launcher3.model.data.I",false,loader)})
+            for(Class<?> type:new Class<?>[]{targets.item,targets.workspaceItem})
                 for(Method m:type.getDeclaredMethods())if(m.getName().equals("onAddToDatabase")||m.getName().equals("writeToValues")){
                     module.registerFeatureHook(module.prepareFeatureHook(m,"launcher.persistence."+type.getSimpleName()+"."+m.getName(),true).intercept(chain->{
                         int depth=WRITING.get();WRITING.set(depth+1);Controller c=controller;Object value=chain.getThisObject();
@@ -89,7 +116,7 @@ final class LauncherCustomizationHook {
         final Runnable snapshotListener=this::load;
         Controller(AugmentModule module,ClassLoader loader,Context context){
             this.module=module;this.loader=loader;this.context=context;
-            try{Class<?> info=Class.forName("com.android.launcher3.model.data.z",false,loader),base=info.getSuperclass();infoType=info;
+            try{Class<?> info=targets.info,base=targets.item;infoType=info;
                 title=base.getField("title");description=base.getField("contentDescription");user=base.getField("user");itemType=base.getField("itemType");
             }catch(Exception e){throw new IllegalStateException(e);}
             LauncherIconBinding resolved=null;

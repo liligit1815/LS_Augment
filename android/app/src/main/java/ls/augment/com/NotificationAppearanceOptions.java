@@ -52,7 +52,7 @@ public final class NotificationAppearanceOptions {
         result.add(EnhancementOption.toggle(CLEAR,"notification_clear","通知清除按钮样式","调整原生清除按钮，保留清除范围、长按、无障碍及可见性规则。"));
         result.add(EnhancementOption.choice(CLEAR_ALIGN,"notification_clear","水平位置","避让原生通知管理按钮；原有位置不调整系统对齐。",0,"原有位置","靠左","居中","靠右"));
         result.add(EnhancementOption.integer(CLEAR_X,"notification_clear","水平偏移（dp）","自动限制在原按钮父容器内。",0,-120,120));
-        result.add(EnhancementOption.integer(CLEAR_Y,"notification_clear","垂直偏移（dp）","自动限制在原页脚的触摸区域内。",0,-24,24));
+        result.add(EnhancementOption.integer(CLEAR_Y,"notification_clear","上下偏移（dp）","自动限制在原页脚的触摸区域内。",0,-24,24));
         result.add(EnhancementOption.color(CLEAR_LIGHT,"notification_clear","浅色模式底色","保留原生按压反馈与按钮文字。","#E3E3E8"));
         result.add(EnhancementOption.color(CLEAR_DARK,"notification_clear","深色模式底色","系统使用深色主题时应用的清除按钮底色，关闭功能后恢复原厂。","#44444C"));
         result.add(EnhancementOption.integer(CLEAR_TRAVEL,"notification_clear","入场移动距离（dp）","仅在原生按钮由隐藏变为显示时播放；0 为不移动。",12,0,40));

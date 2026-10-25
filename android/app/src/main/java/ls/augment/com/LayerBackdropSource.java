@@ -111,6 +111,9 @@ public final class LayerBackdropSource implements LiquidGlassDrawable.BackdropSo
     private void drop(String reason){frame=null;frameLayers=null;frameAt=0;failure=reason;}
     private void block(String reason){blocked=true;drop(reason);MAIN.removeCallbacks(poll);View v=host.get();if(v!=null)v.invalidate();}
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private void capture(Exclusions excluded,Rect crop,int displayId,long epoch){
         try{
             if(released||epoch!=generation){MAIN.post(()->{pending=false;schedule(MIN_INTERVAL);});return;}
@@ -206,6 +209,9 @@ public final class LayerBackdropSource implements LiquidGlassDrawable.BackdropSo
         android.view.ViewGroup.LayoutParams p=view.getRootView().getLayoutParams();
         return !(p instanceof WindowManager.LayoutParams)||((((WindowManager.LayoutParams)p).flags&WindowManager.LayoutParams.FLAG_SECURE)==0);
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static List<?> roots() throws ReflectiveOperationException{
         Class<?> global=Class.forName("android.view.WindowManagerGlobal");
         Object manager=global.getMethod("getInstance").invoke(null);

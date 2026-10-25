@@ -5,7 +5,13 @@ import org.json.JSONObject;
 
 /** Runtime witnesses are separate from the 39 portable settings. */
 final class LiftArcRuntime {
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static LiftArcConfig config;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Context context;
     private static boolean installed, views, unlock, wallpaper, shader, attemptedWallpaper;
     private static boolean paused, conflict;

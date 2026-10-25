@@ -33,6 +33,9 @@ final class AodClockGroup {
         View v=parent(views.iterator().next());
         while(v!=null){boolean all=true;for(View child:views)if(!contains(v,child)){all=false;break;}if(all)return v;v=parent(v);}return null;
     }
+
+    // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+    //noinspection ObsoleteSdkInt
     static int textHeight(TextView view,TextPaint paint){
         CharSequence text=view.getText();StaticLayout.Builder b=StaticLayout.Builder.obtain(text,0,text.length(),paint,Math.max(1,(int)Math.ceil(Layout.getDesiredWidth(text,paint))))
                 .setIncludePad(view.getIncludeFontPadding()).setLineSpacing(view.getLineSpacingExtra(),view.getLineSpacingMultiplier());

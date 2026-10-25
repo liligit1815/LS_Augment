@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JAVA = Path('C:/Program Files/Java/jdk-17/bin')
+JAVA = Path(__import__('os').environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 sources = {
  'android/content/Context.java': 'package android.content; public class Context {}',
  'android/content/Intent.java': '''package android.content; public class Intent {
@@ -29,7 +29,7 @@ sources = {
  static void diagnostic(Context c,String k,String v){diagnostic=v;}}''',
  'ls/augment/com/hook/OemHooks.java': '''package ls.augment.com.hook; import java.util.*; import android.app.Service; import android.content.Intent;
  public class OemHooks {interface Action{Object invoke(Chain c)throws Throwable;}static Map<String,Action> hooks=new HashMap<>();
- static int methods(AugmentModule m,ClassLoader l,String type,String name,Class<?> r,int argc,String key,Action a){hooks.put(name,a);return 1;}
+ static int methods(AugmentModule m,ClassLoader l,String type,String name,Class<?> r,int argc,String key,Action a,Class<?>[] args){hooks.put(name,a);return 1;}
  public static Object call(Service a,String n,Object...args){try{return hooks.get(n).invoke(new Chain(a,n,args));}
  catch(RuntimeException e){throw e;}catch(Throwable e){throw new AssertionError(e);}}
  static class Chain{Service owner;String method;Object[] args;Chain(Service a,String m,Object[] x){owner=a;method=m;args=x;}

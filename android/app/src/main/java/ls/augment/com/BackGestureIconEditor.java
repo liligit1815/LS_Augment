@@ -34,7 +34,9 @@ final class BackGestureIconEditor {
         body.addView(ui.text("两侧图标和遮罩独立选图，支持 GIF、动态 WebP；动图保留完整画面，静态图标可裁剪。大小最高 10 倍。下方为组合示意，实际跟手效果请从屏幕边缘滑动查看。",12,ui.muted,false));
         Button preset=ui.accentButton("初音未来 · 应用到双侧");
         preset.setOnClickListener(v->preset(-1));body.addView(preset,ui.margins(0,8,0,8));
-        for(int side=0;side<2;side++) { sides[side]=column();body.addView(sides[side],ui.wrap());render(side); }
+        for(int side=0;side<2;side++) {
+            sides[side]=ui.preferenceCard();body.addView(sides[side],ui.margins(0,12,0,0));render(side);
+        }
         return body;
     }
     private LinearLayout column(){LinearLayout view=new LinearLayout(owner);view.setOrientation(LinearLayout.VERTICAL);return view;}
@@ -59,27 +61,20 @@ final class BackGestureIconEditor {
     }
     private void render(int side) {
         LinearLayout panel=sides[side];panel.removeAllViews();
-        panel.addView(ui.section(side==0?"左边缘 → 向右滑":"右边缘 ← 向左滑","修改此侧不会联动另一侧"),ui.margins(0,16,0,6));
-        Spinner mode=ui.choiceSpinner("图标来源",null);
-        mode.setAdapter(new ArrayAdapter<>(owner,android.R.layout.simple_spinner_dropdown_item,new String[]{"原厂图标","自定义图片"}));
-        mode.setSelection(number(side,"mode"));panel.addView(mode,ui.wrap());
-        mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
-            public void onNothingSelected(AdapterView<?> parent){}
-            public void onItemSelected(AdapterView<?> parent,View v,int position,long id){if(mode.getParent()==panel)update(side,"mode",String.valueOf(position));}
-        });
+        panel.addView(ui.section(side==0?"左边缘 → 向右滑":"右边缘 ← 向左滑","修改此侧不会联动另一侧"),ui.margins(0,0,0,8));
+        panel.addView(ui.text(number(side,"mode")==1?"当前：自定义图片":"当前：原厂图标",12,ui.muted,false),ui.margins(0,0,0,8));
         BackGesturePreview image=new BackGesturePreview(owner,side,ui);previews[side]=image;
         image.setContentDescription(side==0?"左侧自定义图片预览":"右侧自定义图片预览");
         panel.addView(image,new LinearLayout.LayoutParams(-1,ui.dp(172)));
-        Button miku=ui.tonalButton("此侧使用初音未来");miku.setOnClickListener(v->preset(side));panel.addView(miku,ui.wrap());
-        LinearLayout actions=new LinearLayout(owner);
+        Button miku=ui.tonalButton("此侧使用初音未来");miku.setOnClickListener(v->preset(side));panel.addView(miku,ui.margins(0,8,0,8));
         Button choose=ui.tonalButton("选择图标（含动图）");choose.setOnClickListener(v->pick(PICK+side));
-        actions.addView(choose,new LinearLayout.LayoutParams(0,ui.dp(48),1));
+        panel.addView(choose,ui.margins(0,0,0,8));
         Button reset=ui.tonalButton("恢复本侧原厂");reset.setOnClickListener(v->{
             edits[side]++;
             for(String field:BackGestureIconPolicy.FIELDS)change.accept(key(side,field),ConfigSchema.defaultValue(key(side,field)));
             render(side);
-        });actions.addView(reset,new LinearLayout.LayoutParams(0,ui.dp(48),1));panel.addView(actions,ui.wrap());
-        Button background=ui.tonalButton("选择遮罩背景（含动图）");background.setOnClickListener(v->pick(BACKGROUND+side));panel.addView(background,ui.wrap());
+        });
+        Button background=ui.tonalButton("选择遮罩背景（含动图）");background.setOnClickListener(v->pick(BACKGROUND+side));panel.addView(background,ui.margins(0,0,0,8));
         if(!value.apply(key(side,"background_asset")).isEmpty()){
             Button stockWave=ui.tonalButton("保留人物，恢复原厂波浪");
             stockWave.setOnClickListener(v->{update(side,"background_asset","");update(side,"background_scale_percent","100");render(side);});panel.addView(stockWave,ui.wrap());
@@ -96,16 +91,16 @@ final class BackGestureIconEditor {
             edits[1-side]++;
             for(String field:BackGestureIconPolicy.FIELDS)change.accept(key(1-side,field),value.apply(key(side,field)));
             render(1-side);
-        });panel.addView(copy,ui.wrap());preview(side);
+        });panel.addView(copy,ui.margins(0,8,0,8));panel.addView(reset,ui.wrap());preview(side);
     }
     private void slider(LinearLayout panel,int side,String field,String title,int min,int max,String unit) {
         TextView label=ui.text(title+"："+number(side,field)+unit,12,ui.text,false);panel.addView(label,ui.wrap());
-        SeekBar bar=new SeekBar(owner);bar.setContentDescription((side==0?"左侧":"右侧")+title);
+        SeekBar bar=ui.slider();bar.setContentDescription((side==0?"左侧":"右侧")+title);
         bar.setMax(max-min);bar.setProgress(number(side,field)-min);panel.addView(bar,ui.wrap());
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){}
-            public void onProgressChanged(SeekBar b,int progress,boolean user){if(user){label.setText(title+"："+(progress+min)+unit);update(side,field,String.valueOf(progress+min));}}
+            public void onProgressChanged(SeekBar b,int progress,boolean user){if(user){label.setText(label.getContext().getString(R.string.status_backgestureiconeditor_7 ,String.valueOf(title), String.valueOf((progress+min)), String.valueOf(unit)));update(side,field,String.valueOf(progress+min));}}
         });
     }
     private void preview(int side) {
@@ -165,7 +160,7 @@ final class BackGestureIconEditor {
                 owner.runOnUiThread(()->{
                     if(owner.isDestroyed()||edit!=edits[side])return;
                     change.accept(key(side,background?"background_asset":"asset"),hash);
-                    if(!background)change.accept(key(side,"mode"),"1");render(side);
+                    change.accept(key(side,"mode"),"1");render(side);
                 });
             }catch(Exception|OutOfMemoryError error){owner.runOnUiThread(()->{if(!owner.isDestroyed())Toast.makeText(owner,"图片未导入："+error.getMessage(),Toast.LENGTH_LONG).show();});}
         });

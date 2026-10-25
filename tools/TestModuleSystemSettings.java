@@ -13,6 +13,7 @@ public final class TestModuleSystemSettings {
     private static final ModuleSystemSettings.Address LEVEL = key("secure", "reduce_bright_colors_level");
     private static final ModuleSystemSettings.Address ACTIVE = key("secure", "reduce_bright_colors_activated");
     private static final ModuleSystemSettings.Address OWNED = key("secure", "ls_augment_extra_dim_owned");
+    private static final ModuleSystemSettings.Address COMPETITIVE = key("system", "fourth_physical_key_function_value");
     private static final class Fixture implements ModuleSystemSettings.Store, ModuleSystemSettings.Io {
         Map<String, String> disk = new LinkedHashMap<>();
         final Map<ModuleSystemSettings.Address, String> settings = new LinkedHashMap<>();
@@ -57,6 +58,18 @@ public final class TestModuleSystemSettings {
         ModuleSystemSettings.RestoreResult restored = absent.engine.restore();
         check(restored.success && restored.restoredCount == 1 && !absent.settings.containsKey(ADB), "first absent baseline is deleted");
         check(absent.disk.isEmpty() && absent.engine.restore().restoredCount == 0, "recovery is idempotent");
+
+        Fixture competition=new Fixture();competition.settings.put(COMPETITIVE,"14");competition.settings.put(ADB,"0");
+        check(competition.put(COMPETITIVE,"0").success&&competition.put(ADB,"1").success,"competition empty operation and unrelated owned setting saved");
+        check(competition.engine.restoreOne(COMPETITIVE).success&&competition.settings.get(COMPETITIVE).equals("14"),"single restore recovers arbitrary OEM baseline");
+        check(competition.settings.get(ADB).equals("1")&&competition.disk.size()==1&&competition.disk.containsKey(ADB.id()),"competition disable leaves unrelated owned settings intact");
+        int restoredWrites=competition.writes;check(competition.engine.restoreOne(COMPETITIVE).success&&competition.writes==restoredWrites,"competition restore retry is idempotent");
+        Fixture competingEdit=new Fixture();competingEdit.settings.put(COMPETITIVE,"3");check(competingEdit.put(COMPETITIVE,"0").success,"competition baseline captured before clear");
+        competingEdit.settings.put(COMPETITIVE,"7");int beforeEdit=competingEdit.writes;
+        check(!competingEdit.put(COMPETITIVE,"0").success&&competingEdit.writes==beforeEdit,"re-enable never overwrites an external OEM edit");
+        check(competingEdit.engine.restoreOne(COMPETITIVE).reviewRequired&&competingEdit.settings.get(COMPETITIVE).equals("7")&&competingEdit.disk.containsKey(COMPETITIVE.id()),"competition disable preserves external setting and recovery evidence");
+        Fixture illegalAction=new Fixture();check(!illegalAction.put(COMPETITIVE,"1").success&&illegalAction.writes==0,"module may only request OEM empty action");
+        Fixture noNativeValue=new Fixture();check(noNativeValue.put(COMPETITIVE,"0").success&&noNativeValue.engine.restoreOne(COMPETITIVE).success&&!noNativeValue.settings.containsKey(COMPETITIVE),"absent OEM operation restored by deleting only the owned key");
 
         Fixture literalNull = new Fixture(); literalNull.settings.put(ADB, "null");
         check(literalNull.put(ADB, "1").success && literalNull.engine.restore().success, "literal null baseline");

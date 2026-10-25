@@ -9,6 +9,10 @@ grid=(BASE/'StatusBarGridHook.java').read_text(encoding='utf-8')
 start=grid.index('    static boolean ownsRecentsContent(')
 end=grid.index('    static int install(',start)
 ownership=grid[start:end]
+clock_source=(BASE/'SystemUiHook.java').read_text(encoding='utf-8')
+cs=clock_source.index('    static boolean ownsCustomClockDrawing(')
+ce=clock_source.index('\n    }',cs)+6
+clock_ownership=clock_source[cs:ce]
 files={
  'android/content/Context.java': 'package android.content; public class Context {public boolean master,custom,position;}',
  'android/graphics/Canvas.java': 'package android.graphics; public class Canvas {public int translates;}',
@@ -21,7 +25,7 @@ public class View {public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public V
  'ls/augment/com/BuildConfig.java': 'package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=20360;}',
  'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;import android.content.Context;
 class FeatureSettings {static final String SYSTEMUI_MASTER="master",STATUSBAR_CLOCK_CUSTOM="clock";
- static boolean enabled(Context c,String k){return k.equals(SYSTEMUI_MASTER)?c.master:c.custom;}static void diagnostic(Context c,String k,String v){}}''',
+ static boolean enabled(Context c,String k){return k.equals(SYSTEMUI_MASTER)?c.master:k.equals("position")?c.position:c.custom;}static void diagnostic(Context c,String k,String v){}}''',
  'ls/augment/com/hook/StatusBarGridHook.java': '''package ls.augment.com.hook;
 import android.view.View;import android.content.Context;import java.util.*;
 class StatusBarGridHook {
@@ -29,6 +33,7 @@ class StatusBarGridHook {
  static class State {Context context;boolean active,packingSuspended;State(View v){context=v.context;}boolean positionOnly(){return context.position;}}
  static final Map<View,State> STATES=new IdentityHashMap<>();
  static boolean isBarRoot(View v){return v instanceof Phone||v instanceof Keyguard;}
+ static boolean inBar(View v){for(;v!=null;v=v.parent)if(isBarRoot(v))return true;return false;}
  static boolean isKeyguard(View v){return v instanceof Keyguard;}
  OWNERSHIP
 }'''.replace('OWNERSHIP',ownership),
@@ -63,16 +68,17 @@ public class TestRecents {
  static int checks;static void check(boolean ok,String m){checks++;if(!ok)throw new AssertionError(m);}
  public static void main(String[] args)throws Throwable{
   AugmentModule module=new AugmentModule();check(StatusBarRecentsHook.install(module,TestRecents.class.getClassLoader())==2&&module.errors==0,"both exact hooks registered");
-  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<32;flags++){
+  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<64;flags++){
    View root=lock?new StatusBarGridHook.Keyguard():new StatusBarGridHook.Phone();
    root.context.master=(flags&1)!=0;root.context.custom=(flags&2)!=0;root.context.position=(flags&4)!=0;
    StatusBarGridHook.State state=new StatusBarGridHook.State(root);state.active=(flags&8)!=0;StatusBarGridHook.STATES.put(root,state);
    state.packingSuspended=(flags&16)!=0;
    boolean grid=!lock&&state.active&&root.context.master&&!root.context.position&&!state.packingSuspended;
-   View parent=new View();parent.parent=root;TextView clock=new TextView();clock.parent=parent;
+   View parent=new View();parent.parent=root;TextView clock=new TextView();clock.parent=parent;clock.context=root.context;
+   SystemUiHook.ClockState text=new SystemUiHook.ClockState();text.nativeFallback=state.packingSuspended;if((flags&32)!=0)SystemUiHook.CLOCK_STATES.put(clock,text);
    Canvas canvas=new Canvas();Object result=module.invoke(new StatusBarClockFeature(),"handleOnDraw",new Class<?>[]{TextView.class,Canvas.class,TextPaint.class},clock,canvas,new TextPaint());
-   boolean bypass=grid&&root.context.custom;
-   check(result.equals(!bypass)&&canvas.translates==(bypass?0:1)&&module.originalCalls==(bypass?0:1),"custom clock bypasses only active layout; crowded fallback calls native draw once");
+   boolean bypass=(flags&32)!=0&&root.context.master&&root.context.custom&&!root.context.position&&!text.nativeFallback;
+   check(result.equals(!bypass)&&canvas.translates==(bypass?0:1)&&module.originalCalls==(bypass?0:1),"custom text bypasses OEM parsing even before grid activation; actual native fallback draws once");
    RedMagicFunctionIconFeature cooling=new RedMagicFunctionIconFeature();cooling.mIconContainer=parent;
    LauncherProxyServiceAdapt.hide(module,cooling,View.INVISIBLE);
    check(cooling.calls==(grid?0:1)&&parent.visibility==(grid?View.VISIBLE:View.INVISIBLE),"only active phone grid preserves launcher visibility; crowded fallback yields");
@@ -83,7 +89,7 @@ public class TestRecents {
    check(cooling.calls==before+1&&parent.visibility==View.GONE,"unrecognized launcher visibility stays native");
    clock.parent=null;canvas=new Canvas();module.invoke(new StatusBarClockFeature(),"handleOnDraw",new Class<?>[]{TextView.class,Canvas.class,TextPaint.class},clock,canvas,new TextPaint());
    check(canvas.translates==1,"detached/unmanaged clocks stay native");
-   StatusBarGridHook.STATES.clear();
+   StatusBarGridHook.STATES.clear();SystemUiHook.CLOCK_STATES.clear();
   }
   String caller="com.zte.adapt.mifavor.navbar.LauncherProxyServiceAdapt";
   check(StatusBarRecentsHook.fromLauncher(new StackTraceElement[]{new StackTraceElement(caller+"$ExternalSyntheticLambda1","run","",1)}),"synthetic launcher callback supported");
@@ -92,6 +98,14 @@ public class TestRecents {
  }
 }''',
 }
+files['ls/augment/com/ConfigSchema.java']='package ls.augment.com;public class ConfigSchema {public static final String STATUSBAR_POSITION_SIZE_ONLY="position";}'
+files['ls/augment/com/hook/SystemUiHook.java']='''package ls.augment.com.hook;
+import android.widget.TextView;import java.util.*;
+class SystemUiHook {
+ static class ClockState {boolean nativeFallback;}
+ static final Map<TextView,ClockState> CLOCK_STATES=new IdentityHashMap<>();
+ OWNERSHIP
+}'''.replace('OWNERSHIP',clock_ownership)
 files['ls/augment/com/hook/StatusBarRecentsHook.java']=(BASE/'StatusBarRecentsHook.java').read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='lsa-recents-') as temp:
     paths=[]

@@ -5,6 +5,7 @@ import {
   CurrentContext,
   FeatureTitle,
   Toggle,
+  Range,
   identity,
   useModel,
   type Option,
@@ -89,6 +90,9 @@ export function OptionInput({ option: o }: { option: Option }) {
         initial={o.defaultValue}
       />
     );
+  if (o.kind === 'INTEGER' || o.kind === 'DECIMAL')
+    return <Range name={o.key} title={o.title} min={o.minimum} max={o.maximum}
+      step={o.kind === 'INTEGER' ? 1 : 0.01} initial={Number(o.defaultValue)} />;
   const update = (next: string) => {
     setDraft(next);
     if (!validOption(o, next)) {
@@ -124,6 +128,14 @@ export function OptionInput({ option: o }: { option: Option }) {
             </option>
           ))}
         </select>
+      ) : o.kind === 'COLOR' ? (
+        <div className="c-color-input">
+          <input className="c-inline-input" aria-label={o.title} value={draft}
+            aria-invalid={!!error} onChange={(e) => update(e.target.value)} />
+          <input type="color" aria-label={o.title + '，选择颜色'}
+            value={/^#[\da-f]{8}$/i.test(value) ? '#' + value.slice(3) : value}
+            onChange={(e) => update(value.length === 9 ? value.slice(0, 3) + e.target.value.slice(1) : e.target.value)} />
+        </div>
       ) : hiddenSlots ? (
         <div className="c-inline-checks">
           {Object.entries({

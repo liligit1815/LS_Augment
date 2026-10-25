@@ -1,7 +1,7 @@
 """Host tests execute production stores; Android stubs model memory-before-disk failure.
 
 No device, root executable, installation, provider call or Global setting is used.
-Provider tests compile its actual entry prefix and allowedCaller method, excluding
+Provider tests compile its actual entry branches and allowedCaller method, excluding
 unrelated routes. This verifies policy ordering, not Android Binder integration.
 """
 from pathlib import Path
@@ -79,6 +79,8 @@ final class BuildConfig { static boolean DEBUG=true; }
     "ls/augment/com/HookTargetRegistry.java": """package ls.augment.com;
 final class HookTargetRegistry { static boolean contains(String name){return "com.android.systemui".equals(name);} }
 """,
+    "ls/augment/com/StartupDiagnostics.java": "package ls.augment.com;final class StartupDiagnostics {static final String CALL=\"startup_diagnostic\";}",
+    "ls/augment/com/ResetWriteFence.java": "package ls.augment.com;final class ResetWriteFence {static boolean blocked(){return false;}}",
 }
 
 provider = (SRC / "LSConfigProvider.java").read_text(encoding="utf-8")
@@ -90,6 +92,23 @@ crash_prefix = prefix.split('if ("crash_fuse".equals(method))', 1)[1]
 assert crash_prefix.index("Binder.getCallingUid() != Process.SYSTEM_UID") < crash_prefix.index("Binder.clearCallingIdentity()")
 recovery_prefix = prefix.split('if ("recovery_refresh".equals(method))', 1)[1].split('if (!allowedCaller())', 1)[0]
 assert recovery_prefix.index("Binder.getCallingUid() != Process.ROOT_UID") < recovery_prefix.index("Binder.clearCallingIdentity()")
+
+# Keep the tested entry branches verbatim and in their original order. Other
+# routes have separate suites; compiling their dependencies here obscures this
+# store/UID boundary test. Ordering assertions above inspect the full prefix.
+def branch(signature):
+    start = prefix.index(signature)
+    end = prefix.index("{", start) + 1
+    depth = 1
+    while depth:
+        depth += (prefix[end] == "{") - (prefix[end] == "}")
+        end += 1
+    return start, prefix[start:end]
+
+branches = [branch(signature) for signature in (
+    'if ("recovery_refresh".equals(method))', 'if (!allowedCaller())',
+    'if ("runtime_snapshot".equals(method))', 'if ("crash_fuse".equals(method))')]
+prefix = prefix[:prefix.index("        if (NativeIslandControl.METHOD")] + "\n".join(body for _, body in sorted(branches))
 gate_start = provider.index("    private boolean allowedCaller()")
 gate_end = provider.index("    private Bundle recordRapidRoute", gate_start)
 gate = provider[gate_start:gate_end]

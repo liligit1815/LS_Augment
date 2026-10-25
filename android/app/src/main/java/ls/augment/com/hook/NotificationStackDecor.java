@@ -15,6 +15,9 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 /** Passive section labels and stack edges reuse the firmware's native views and backgrounds. */
 final class NotificationStackDecor {
     private NotificationStackDecor() { }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static ViewGroup create(ViewGroup host,String label)throws ReflectiveOperationException {
         int layout=host.getResources().getIdentifier("status_bar_notification_section_header","layout","com.android.systemui");
         // Resolve through the same OEM adapter as SectionHeaderNodeControllerImpl, never pin a resource ID.

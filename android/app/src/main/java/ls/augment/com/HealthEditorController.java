@@ -51,15 +51,10 @@ final class HealthEditorController extends NativeEditorController {
         multiply.addView(multiplyHeader,ui.wrap());multiply.addView(multiplyBody,ui.wrap());settings.addView(multiply,ui.wrap());
         multiplyFold=featureFold(multiplyEnabled,multiplyHeader,multiplyBody);
         rate=ui.text("",12,ui.muted,false);rate.setContentDescription("当前步数倍率");multiplyBody.addView(rate,ui.margins(0,2,0,0));
-        LinearLayout rateRow=row();
-        Button minus=ui.tonalButton("−"),plus=ui.tonalButton("＋");minus.setContentDescription("减少一倍");plus.setContentDescription("增加一倍");
-        minus.setPadding(0,0,0,0);plus.setPadding(0,0,0,0);
-        rateRow.addView(minus,new LinearLayout.LayoutParams(ui.dp(44),ui.dp(44)));
-        multiplier=new SeekBar(this);multiplier.setContentDescription("步数倍率，1 至 10 倍");multiplier.setMax(9);multiplier.setProgress(Math.max(0,Math.min(9,config.getInt(ConfigSchema.HEALTH_MULTIPLIER,100)/100-1)));
-        multiplier.setProgressTintList(ColorStateList.valueOf(ui.accent));multiplier.setThumbTintList(ColorStateList.valueOf(ui.accent));rateRow.addView(multiplier,new LinearLayout.LayoutParams(0,ui.dp(44),1));
-        rateRow.addView(plus,new LinearLayout.LayoutParams(ui.dp(44),ui.dp(44)));multiplyBody.addView(rateRow,ui.margins(0,6,0,0));
-        Runnable showRate=()->{rate.setText("当前："+(multiplier.getProgress()+1)+" 倍");minus.setEnabled(multiplier.getProgress()>0);plus.setEnabled(multiplier.getProgress()<9);};showRate.run();
-        minus.setOnClickListener(v->{multiplier.setProgress(multiplier.getProgress()-1);changed();});plus.setOnClickListener(v->{multiplier.setProgress(multiplier.getProgress()+1);changed();});
+        multiplier=ui.slider();multiplier.setContentDescription("步数倍率，1 至 10 倍");multiplier.setMax(9);
+        multiplier.setProgress(Math.max(0,Math.min(9,config.getInt(ConfigSchema.HEALTH_MULTIPLIER,100)/100-1)));
+        multiplyBody.addView(multiplier,ui.margins(0,6,0,0));
+        Runnable showRate=()->rate.setText(rate.getContext().getString(R.string.status_healtheditorcontroller_19 ,String.valueOf((multiplier.getProgress()+1))));showRate.run();
         multiplier.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}
             public void onProgressChanged(SeekBar s,int n,boolean user){showRate.run();if(user)changed();}});
 
@@ -82,7 +77,7 @@ final class HealthEditorController extends NativeEditorController {
         for(int r=0;r<2;r++){
             LinearLayout week=row();
             for(int i=r*4;i<Math.min(7,r*4+4);i++){
-                CheckBox box=new CheckBox(this);box.setText("周"+labels[i]);box.setContentDescription("星期"+labels[i]);box.setTextSize(UiKit.compactTextSize(14));ui.styleCheckBox(box);box.setChecked(((old==null?31:old.weekdays)&(1<<i))!=0);days[i]=box;
+                CheckBox box=new CheckBox(this);box.setText(box.getContext().getString(R.string.status_healtheditorcontroller_20 ,String.valueOf(labels[i])));box.setContentDescription("星期"+labels[i]);box.setTextSize(UiKit.compactTextSize(14));ui.styleCheckBox(box);box.setChecked(((old==null?31:old.weekdays)&(1<<i))!=0);days[i]=box;
                 week.addView(box,new LinearLayout.LayoutParams(0,ui.dp(48),1));box.setOnCheckedChangeListener((b,c)->planChanged());
             }
             if(r==1)week.addView(new View(this),new LinearLayout.LayoutParams(0,ui.dp(48),1));body.addView(week,ui.wrap());
@@ -127,7 +122,7 @@ final class HealthEditorController extends NativeEditorController {
     }
     private void showPlan(boolean show){planFold.show(show);}
     private EditText input(LinearLayout parent,String label,int value){return input(parent,label,value,this::planChanged);}
-    private EditText input(LinearLayout parent,String label,int value,Runnable onChange){parent.addView(ui.text(label,13,ui.muted,false),ui.margins(0,8,0,6));EditText e=new EditText(this);ui.styleInput(e);e.setSingleLine(true);e.setSelectAllOnFocus(true);e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);e.setContentDescription(label);e.setText(""+value);parent.addView(e,new LinearLayout.LayoutParams(-1,ui.dp(48)));
+    private EditText input(LinearLayout parent,String label,int value,Runnable onChange){parent.addView(ui.text(label,13,ui.muted,false),ui.margins(0,8,0,6));EditText e=new EditText(this);ui.styleInput(e);e.setSingleLine(true);e.setSelectAllOnFocus(true);e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);e.setContentDescription(label);e.setText(String.valueOf(value));parent.addView(e,new LinearLayout.LayoutParams(-1,ui.dp(48)));
         e.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){onChange.run();}public void afterTextChanged(Editable e){}});return e;}
     private android.app.Dialog pickTime(boolean start){
         int m=start?from:to%1440;
@@ -157,13 +152,13 @@ final class HealthEditorController extends NativeEditorController {
     }
     private String time(int minute){return String.format(Locale.ROOT,"%02d:%02d",minute/60,minute%60);}
     private StepPlan draft(){int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;return new StepPlan(planId,bound,ZoneId.systemDefault().getId(),date,from,to,Integer.parseInt(executions.getText().toString()),Integer.parseInt(steps.getText().toString()),mask,seed);}
-    private void updatePreview(){fromButton.setText("开始  "+time(from));toButton.setText((to<=from?"次日  ":"结束  ")+time(to));
+    private void updatePreview(){fromButton.setText(fromButton.getContext().getString(R.string.status_healtheditorcontroller_21 ,String.valueOf(time(from))));toButton.setText(toButton.getContext().getString(to<=from?R.string.plan_end_next_day:R.string.plan_end_today,time(to)));
         int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;
         String repeat=mask==127?"每天":mask==31?"工作日":mask==96?"周末":"每周 "+Integer.bitCount(mask)+" 天";
-        try{long total=Math.multiplyExact(Long.parseLong(executions.getText().toString()),Long.parseLong(steps.getText().toString()));planSummary.setText(time(from)+"–"+(to<=from?"次日 ":"")+time(to)+" · "+repeat+"\n每日计划 "+total+" 步");}
+        try{long total=Math.multiplyExact(Long.parseLong(executions.getText().toString()),Long.parseLong(steps.getText().toString()));planSummary.setText(planSummary.getContext().getString(R.string.status_healtheditorcontroller_22 ,String.valueOf(time(from)), String.valueOf((to<=from?"次日 ":"")), String.valueOf(time(to)), String.valueOf(repeat), String.valueOf(total)));}
         catch(Exception ignored){planSummary.setText("请完善执行次数和每次步数");}
         StepPlan existing=StepPlan.parse(config.get(ConfigSchema.HEALTH_PLAN));
-        if(!planDraftChanged&&existing!=null&&existing.executions==0){planSummary.setText("一次性计划 · "+existing.startDate+" · "+existing.amount+" 步");preview.setText("保留原有一次性计划；修改后按所选星期重复。");return;}
+        if(!planDraftChanged&&existing!=null&&existing.executions==0){planSummary.setText(planSummary.getContext().getString(R.string.status_healtheditorcontroller_23 ,String.valueOf(existing.startDate), String.valueOf(existing.amount)));preview.setText(preview.getContext().getString(R.string.status_healtheditorcontroller_24));return;}
         try{StepPlan p=draft();LocalDate day=LocalDate.now();if(day.isBefore(p.startDate))day=p.startDate;for(int i=0;i<7&&!p.runsOn(day);i++)day=day.plusDays(1);
             StringBuilder text=new StringBuilder("时间示例 · "+day+"\n");int n=0;
             for(Map.Entry<Long,Integer> e:p.timetable(day).entrySet()){if(n++>=3){text.append("… 共 ").append(p.executions).append(" 次");break;}text.append(Instant.ofEpochSecond(e.getKey()).atZone(ZoneId.of(p.zone)).format(DateTimeFormatter.ofPattern("MM/dd HH:mm"))).append(" +").append(e.getValue()).append(" 步\n");}preview.setText(text.toString().trim());
@@ -246,8 +241,8 @@ final class HealthEditorController extends NativeEditorController {
         StepPlan saved=StepPlan.parse(queuedOrSaved(ConfigSchema.HEALTH_PLAN));
         loading=true;try{
             from=saved==null?540:saved.fromMinute;to=saved==null?1080:saved.toMinute;
-            executions.setText(""+(saved==null?10:saved.executions>0?saved.executions:1));
-            steps.setText(""+(saved==null?200:saved.executions>0?saved.stepsPerExecution:saved.amount));
+            executions.setText(String.valueOf((saved==null?10:saved.executions>0?saved.executions:1)));
+            steps.setText(String.valueOf((saved==null?200:saved.executions>0?saved.stepsPerExecution:saved.amount)));
             for(int i=0;i<7;i++)days[i].setChecked(((saved==null?31:saved.weekdays)&(1<<i))!=0);
         }finally{loading=false;}
     }

@@ -1,8 +1,9 @@
 """Run production device availability and editor load/restore/save methods offline.
 
-Extracts complete methods from FeatureEditorController and the real generic
-feature-switch initialization. Android widgets, scheduling, config persistence
-and unrelated status editors are facades; no device rendering is asserted.
+Extracts complete methods from FeatureEditorController, the real generic
+feature-switch initialization, and the full-brightness driver probe. Android
+widgets, Root results, scheduling, config persistence and unrelated status
+editors are facades; no device rendering or physical driver support is asserted.
 """
 from pathlib import Path
 import argparse
@@ -70,7 +71,9 @@ def constants(source, owner, names):
 
 
 STUBS = {
-    "android/content/Context.java": "package android.content;public class Context {}",
+    "android/content/Context.java": "package android.content;public class Context {public static final SharedPreferences diagnostics=new SharedPreferences();public SharedPreferences getSharedPreferences(String name,int mode){return diagnostics;}}",
+    "android/content/SharedPreferences.java": "package android.content;public class SharedPreferences {public final java.util.Map<String,String> values=new java.util.HashMap<>();public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}}",
+    "ls/augment/com/FanHardwareIdentity.java": "package ls.augment.com;public class FanHardwareIdentity {public static String current(){return \"firmware-test\";}}",
     "android/os/Build.java": "package android.os;public class Build {public static String DEVICE,MODEL,PRODUCT;}",
     "android/os/Bundle.java": """package android.os;import java.util.*;
 public class Bundle {
@@ -174,16 +177,17 @@ static void check(boolean value,String message){checks++;if(!value)throw new Ass
 static void device(String name){Build.DEVICE=Build.MODEL=Build.PRODUCT=name;}
 static AppConfig configured(String value){AppConfig c=new AppConfig();for(String key:FAN_KEYS)c.values.put(key,value);c.values.put(ConfigSchema.FAN_FIXED_LEVEL,"3");return c;}
 static void policy(){
- for(String key:new String[]{BrightnessRange.ENABLED,FAN_KEYS[0],FAN_KEYS[1],FAN_KEYS[2]}){
+ for(String key:FAN_KEYS){
   check(DeviceFeatureAvailability.available(key,"NX809J","NX809J","NX809J"),"verified model available "+key);
   check(DeviceFeatureAvailability.unavailableReason(key,"NX809J","NX809J","NX809J").isEmpty(),"verified model has no unsupported reason");
   check(!DeviceFeatureAvailability.available(key,"NX789J","NX789J","NX789J"),"log device not falsely supported "+key);
   check(!DeviceFeatureAvailability.unavailableReason(key,"NX789J","NX789J","NX789J").isEmpty(),"unsupported device has reason "+key);
  }
  check(DeviceFeatureAvailability.available("unrelated_key","NX789J","NX789J","NX789J"),"unrelated features unchanged");
- check(BrightnessRange.supportedDevice("nx809j",null)&&BrightnessRange.supportedDevice(null,"nx809j"),"brightness original device/model aliases retained");
- check(!BrightnessRange.supportedDevice(null,null)&&!BrightnessRange.supportedDevice("NX789J","NX789J"),"unknown and log device brightness rejected");
- check(!DeviceFeatureAvailability.available(BrightnessRange.ENABLED,"NX789J","NX789J","NX809J"),"product alias cannot expand brightness hardware contract");
+ for(String name:new String[]{"NX809J","NX789J","unknown","",null}) {
+  check(DeviceFeatureAvailability.available(BrightnessRange.ENABLED,name,name,name),"brightness is not model gated: "+name);
+  check(DeviceFeatureAvailability.unavailableReason(BrightnessRange.ENABLED,name,name,name).isEmpty(),"brightness has no model restriction text: "+name);
+ }
  for(String key:FAN_KEYS)check(DeviceFeatureAvailability.available(key,"other","other","NX809J"),"existing fan product alias remains supported "+key);
 }
 static void unsupported(){
@@ -213,11 +217,11 @@ static void unsupported(){
  legacy.dirty=true;legacy.changeGeneration++;legacy.queuedGeneration=-1;legacy.saveNow();
  check(config.writes.isEmpty(),"save itself rejects stale unsupported edited keys");
  GenericFeatureHost generic=new GenericFeatureHost("1");Switch brightness=generic.brightness();
- check(!brightness.isChecked()&&!brightness.isEnabled(),"generic unsupported brightness switch shows off and disabled");
+ check(brightness.isChecked()&&brightness.isEnabled(),"brightness stays available on previously excluded NX789J");
  check(generic.saved.equals("1")&&generic.value(BrightnessRange.ENABLED).equals("1")&&generic.writes==0,"brightness rendering preserves saved/draft values and cannot enqueue reset");
- check(generic.ui.lastSummary!=null&&!generic.ui.lastSummary.equals("native description")&&!generic.ui.lastSummary.isEmpty(),"generic row displays unsupported reason");
- check(generic.ui.lastText!=null&&generic.ui.lastText.contains("NX789J"),"unsupported reason is also shown as explicit visible machine text");
- brightness.userToggle(true);check(generic.writes==0,"disabled brightness cannot be toggled by user");
+ check("native description".equals(generic.ui.lastSummary),"brightness retains the shared help entry");
+ check(generic.ui.lastText==null,"brightness adds no small text below its feature row");
+ brightness.userToggle(false);check(generic.writes==1&&generic.value(BrightnessRange.ENABLED).equals("0"),"previously excluded model brightness can save changes");
 }
 static void supported(){
  device("NX809J");AppConfig config=configured("0");FeatureEditorController e=new FeatureEditorController(config);e.load();
@@ -238,7 +242,35 @@ static void supported(){
  brightness.userToggle(false);check(generic.writes==1&&generic.value(BrightnessRange.ENABLED).equals("0"),"verified brightness user edit still reaches listener");
  device("NX789J");restored.section="unrelated";check(restored.fanSettingAvailableForTest(ConfigSchema.FAN_FIXED_LEVEL),"non-fan section filter unchanged");
 }
-public static void main(String[] args){policy();unsupported();supported();System.out.println("PASS device feature availability + production load/restore/bundle/save: "+checks+" assertions (offline UI facades)");}
+static void brightnessProbe(){
+ for(String name:new String[]{"NX809J","NX789J","unknown",null}) {
+  device(name);RootShell.output="8190\n";RootShell.success=true;BrightnessProbeHost probe=new BrightnessProbeHost();probe.run();
+  check(probe.ready&&probe.checked&&probe.error.isEmpty(),"real compatible driver probe accepts model "+name);
+  check(RootShell.command.equals("cat /sys/class/backlight/panel0-backlight/max_brightness"),"only the fixed read-only backlight interface is probed");
+ }
+ for(String output:new String[]{"","4095","8191","not a driver value"}) {
+  RootShell.output=output;RootShell.success=true;BrightnessProbeHost probe=new BrightnessProbeHost();probe.run();
+  check(!probe.ready&&probe.checked&&probe.error.contains("保持原厂亮度条"),"incompatible/missing interface keeps native brightness: "+output);
+ }
+ RootShell.output="8190";RootShell.success=false;BrightnessProbeHost probe=new BrightnessProbeHost();probe.run();
+ check(!probe.ready&&probe.checked&&!probe.error.isEmpty(),"Root failure cannot enable the driver transport despite plausible output");
+}
+static void modernCapability(){
+ device("NX819J");AppConfig c=configured("1");FeatureEditorController e=new FeatureEditorController(c);e.load();
+ for(String key:FAN_KEYS)check(!e.switches.get(key).isEnabled(),"new device native until verified "+key);
+ android.content.Context.diagnostics.values.put(FanCapabilityEvidence.LEVELS,"hardware_identity=firmware-test;capability=verified_levels_1_5;level_writes=1;fan_enable_writes=0");
+ android.content.Context.diagnostics.values.put(FanCapabilityEvidence.SCREEN,"hardware_identity=firmware-test;scope=running_session;hooks=2;fan_enable_writes=0");
+ e=new FeatureEditorController(c);e.load();
+ for(String key:FAN_KEYS)check(e.switches.get(key).isEnabled()&&e.switches.get(key).isChecked(),"matching capability enables saved setting "+key);
+ e.saveNow();check(c.writes.isEmpty(),"availability refresh does not rewrite saved configuration");
+ String levels=android.content.Context.diagnostics.values.get(FanCapabilityEvidence.LEVELS);
+ check(!FanCapabilityEvidence.levels(levels,"other-firmware"),"old firmware proof rejected");
+ check(!FanCapabilityEvidence.levels(levels.replace("level_writes=1","level_writes=10"),"firmware-test"),"partial token never accepted");
+ check(!FanCapabilityEvidence.levels(levels.replace("fan_enable_writes=0","fan_enable_writes=1"),"firmware-test"),"unsafe enable contract rejected");
+ check(!FanCapabilityEvidence.screen("hardware_identity=firmware-test;scope=running_session;hooks=1","firmware-test"),"partial hook install rejected");
+ android.content.Context.diagnostics.values.clear();
+}
+public static void main(String[] args){policy();unsupported();supported();modernCapability();brightnessProbe();System.out.println("PASS device availability + production load/restore/bundle/save + brightness interface probe: "+checks+" assertions (offline UI/Root facades)");}
 }
 """
 
@@ -257,7 +289,7 @@ def sources():
     start = feature.index("Switch toggle=")
     initialization = feature[start:feature.index("LinearLayout content=", start)]
     # The initialization must include the production availability check, not a facade substitute.
-    if "DeviceFeatureAvailability" not in initialization and "deviceFeatureAvailable" not in initialization:
+    if not any(name in initialization for name in ("DeviceFeatureAvailability", "deviceFeatureAvailable", "FanFeatureAvailability")):
         raise RuntimeError("Production generic feature availability initialization is not ready")
     initialization = initialization.replace('gateMemory.contains("value:"+key)', 'false')
     initialization = initialization.replace('gateMemory.getString("value:"+key,value(key))', 'value(key)')
@@ -266,10 +298,24 @@ def sources():
     files["ls/augment/com/FeatureEditorController.java"] = EDITOR.replace("@@METHODS@@", methods)
     files["ls/augment/com/GenericFeatureHost.java"] = GENERIC.replace("@@INITIALIZATION@@", initialization)
     files["ls/augment/com/TestDeviceFeatureAvailability.java"] = TEST
+    brightness = (SRC / "FullBrightnessControl.java").read_text(encoding="utf-8")
+    node = re.search(r'private static final String NODE\s*=\s*"([^"]+)";', brightness)
+    if not node:
+        raise RuntimeError("Missing production brightness node")
+    files["ls/augment/com/BrightnessProbeHost.java"] = """package ls.augment.com;
+class BrightnessProbeHost {
+private static final String NODE="@@NODE@@";boolean ready,checked;String error="",driverMaximum="",probeState="";
+void run(){probe();}
+@@PROBE@@
+}
+class RootShell {static boolean success;static String output,command;
+static class Result {String output=RootShell.output;boolean isSuccess(){return RootShell.success;}}
+static Result run(String value,Object input,int timeout,int maximum){command=value;return new Result();}}
+""".replace("@@NODE@@", node.group(1)).replace("@@PROBE@@", method(brightness, "probe"))
     availability = (SRC / "DeviceFeatureAvailability.java").read_text(encoding="utf-8")
     app_source = (SRC / "AppConfig.java").read_text(encoding="utf-8")
     schema_source = (SRC / "ConfigSchema.java").read_text(encoding="utf-8")
-    names = set(re.findall(r"AppConfig\.(\w+)", methods + availability + EDITOR + TEST)) - {"SaveResult"}
+    names = set(re.findall(r"AppConfig\.(\w+)", methods + availability + EDITOR + TEST + (SRC / "FanFeatureAvailability.java").read_text(encoding="utf-8"))) - {"SaveResult"}
     app_constants = constants(app_source, "AppConfig", names)
     fan_policy = (SRC / "FanTilePolicy.java").read_text(encoding="utf-8")
     schema_names = set(re.findall(r"ConfigSchema\.(\w+)", app_constants + methods + availability + EDITOR + TEST + fan_policy)) - {"normalize", "truthy", "selectionUpdates"}
@@ -300,7 +346,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             paths.append(str(path))
-        paths += [str(SRC / name) for name in ("DeviceFeatureAvailability.java", "BrightnessRange.java", "FanScreenOffPolicy.java", "FanTilePolicy.java")]
+        paths += [str(SRC / name) for name in ("DeviceFeatureAvailability.java", "BrightnessRange.java", "FanScreenOffPolicy.java", "FanTilePolicy.java", "FanFeatureAvailability.java", "FanCapabilityEvidence.java")]
         subprocess.run([str(jdk / ("javac" + suffix)), "-J-Duser.language=en", "-J-Duser.country=US", "-encoding", "UTF-8", "--release", "17", "-d", str(folder / "classes"), *paths], check=True, timeout=60)
         subprocess.run([str(jdk / ("java" + suffix)), "-Dfile.encoding=UTF-8", "-cp", str(folder / "classes"), "ls.augment.com.TestDeviceFeatureAvailability"], check=True, timeout=30)
     return 0

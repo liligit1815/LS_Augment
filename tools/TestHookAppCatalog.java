@@ -25,7 +25,10 @@ public final class TestHookAppCatalog {
         Set<String> editorRoutes = new HashSet<>();
         List<HookAppCatalog.Target> targets = new ArrayList<>(HookAppCatalog.targets());
         check(targets.stream().noneMatch(t -> HookAppCatalog.MODULE.equals(t.id)), "module preferences leaked onto home");
-        check(targets.size()==19,"runtime inventory includes the dedicated photo editor");
+        check(targets.size()==20,"runtime inventory includes the dedicated photo editor and Amap navigation");
+        check(HookAppCatalog.find(HookAppCatalog.AMAP).packages.equals(List.of("com.autonavi.minimap"))
+                && HookAppCatalog.AMAP.equals(HookAppCatalog.targetForRoute("atomic_workbench")),
+                "Amap navigation has its own scope and reuses the workbench editor");
         check(targets.stream().noneMatch(t->HookAppCatalog.COLLAB.equals(t.id)),"standalone collaboration remains");
         check(HookAppCatalog.find("collab")==HookAppCatalog.find("theme"),"old collaboration route must resolve to theme");
         for(EnhancementOption option:CollabOptions.options())if(option.kind!=EnhancementOption.Kind.INTERNAL)
@@ -110,6 +113,8 @@ public final class TestHookAppCatalog {
                 "desktop changes must suggest restarting only the launcher");
         check("launcher_grid".equals(HookAppCatalog.sections(HookAppCatalog.LAUNCHER).get(0).id),
                 "desktop layout must be the first launcher section");
+        HookAppCatalog.Section dock=HookAppCatalog.sections(HookAppCatalog.LAUNCHER).stream().filter(s->s.id.equals("dock_glass")).findFirst().orElseThrow();
+        check("Dock".equals(dock.title)&&dock.options.stream().anyMatch(o->o.key.equals(LauncherOptions.DOCK_UNLIMITED)),"Dock capacity remains grouped with the Dock runtime controls");
         owner("weather_time_period", HookAppCatalog.WEATHER);
         owner("screenshot_hide_status_bar", HookAppCatalog.SCREENSHOT);
         owner("record_hide_status_bar", HookAppCatalog.SCREENSHOT);

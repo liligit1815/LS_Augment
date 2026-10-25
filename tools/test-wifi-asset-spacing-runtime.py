@@ -14,7 +14,7 @@ def extract(text, marker):
 native=ast.parse((ROOT/'tools/test-statusbar-child-spacing-runtime.py').read_text(encoding='utf-8'))
 SOURCES=next(ast.literal_eval(n.value) for n in native.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SOURCES' for t in n.targets))
 SOURCES['android/view/View.java']=SOURCES['android/view/View.java'].replace('public float getScaleX()',r'''
- public int left,top,width=46,height=42,pad; public long invalidations;public boolean zeroNative=true;public int getId(){return 1;}public boolean laidOut=true;public boolean isLaidOut(){return laidOut;}public android.graphics.Matrix getMatrix(){return new android.graphics.Matrix();}
+ public static final int NO_ID=-1;public int left,top,width=46,height=42,pad; public long invalidations;public boolean zeroNative=true;public int getId(){return 1;}public boolean laidOut=true;public boolean isLaidOut(){return laidOut;}public android.graphics.Matrix getMatrix(){return new android.graphics.Matrix();}
  public android.content.Context getContext(){return new android.content.Context();}public android.content.res.Resources getResources(){android.content.res.Resources r=new android.content.res.Resources();r.metrics.density=density;return r;}
  public int getLeft(){return left;}public int getTop(){return top;}public int getRight(){return left+width;}public int getBottom(){return top+height;}
  public int getWidth(){return width;}public int getHeight(){return height;}public int getMeasuredWidth(){return width;}public int getMeasuredHeight(){return height;}

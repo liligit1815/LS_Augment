@@ -18,17 +18,18 @@ public final class ModulePresentationCatalog {
     }
     private static final List<Category> CATEGORIES=Collections.unmodifiableList(Arrays.asList(
         new Category("notifications","通知与控制中心","状态栏、灵动岛、通知提醒与控制中心布局","systemui","systemui",84),
-        new Category("desktop","桌面与最近任务","默认桌面、布局、图标、组件与最近任务","launcher",null,14),
+        new Category("desktop","桌面与最近任务","默认桌面、布局、图标、组件与最近任务","launcher",null,17),
         new Category("lockscreen","主题与锁屏","主题下载、联名主题、锁屏上滑与息屏显示","theme","device",24),
         new Category("audio","声音与音量","铃声素材、音量面板、增益与档数","system",null,11),
         new Category("interaction","操作与手势","返回、电源、助理、单手模式与剪贴板","systemui",null,8),
         new Category("multitasking","小窗与多任务","跨应用跳转、小窗数量、应用范围与触摸","system","device",5),
+        new Category("atomic_workbench","原子工作台","全局手势、嵌入桌面、主侧窗口与任务恢复","system","device",1),
         new Category("capture","截图与录屏","捕获画面、窗口限制与图片裁剪","screenshot",null,5),
         new Category("gaming","游戏空间","AI 触发器、肩键、连招、性能与游戏录制","game","games",18),
         new Category("cooling","散热风扇","转速测量、固定档位、磁贴与息屏运行","fan","games",4),
         new Category("connectivity","网络与连接","USB 文件传输、调试、NFC、Wi-Fi 与飞行模式","files",null,16),
         new Category("apps","应用管理","安装、下载、双开、默认打开与应用隐藏","installer",null,15),
-        new Category("system_settings","系统设置","系统更新、设置入口、显示休眠与开发者选项","settings",null,11),
+        new Category("system_settings","系统设置","系统更新、竞技键、设置入口与显示休眠","settings",null,12),
         new Category("health","小米运动健康","账号绑定、步数倍率、随机计划与每日上限","health","apps",4)
     ));
     public static List<Category> categories(){return CATEGORIES;}
@@ -43,7 +44,7 @@ public final class ModulePresentationCatalog {
         if("target-connectivity".equals(route)||"group/connectivity/usb".equals(route)||"group/connectivity/usb_debug".equals(route))return Collections.singletonList(
             new Related("开发者选项总开关","开发者选项的整体开关位于系统设置","group/system_settings/developer"));
         if("target-gaming".equals(route))return Arrays.asList(
-            new Related("游戏登录跳转小窗","跨应用窗口行为归入小窗与多任务","freeform_rules"),
+            new Related("登录跳转小窗","跨应用窗口行为归入小窗与多任务","freeform_rules"),
             new Related("散热风扇","转速和息屏运行在独立风扇分组设置","fan_control"));
         if("target-lockscreen".equals(route)||"group/lockscreen/collab_theme".equals(route))return Collections.singletonList(
             new Related("联名铃声素材","铃声、通知音和闹钟归入声音与音量","group/audio/collab_audio"));

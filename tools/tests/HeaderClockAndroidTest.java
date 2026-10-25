@@ -162,6 +162,50 @@ public class HeaderClockAndroidTest {
         m.statuses.removeAllViews();m.statuses.addView(pair,new ViewGroup.LayoutParams(92,42));m.layout();assertEquals("full canvas pair is two cells wide",92,HeaderClockLayout.naturalWidth(pair));assertEquals(162,HeaderClockLayout.naturalWidth(m.icons));
         pair.getLayoutParams().width=ViewGroup.LayoutParams.MATCH_PARENT;assertEquals("a clipped MATCH_PARENT allocation is not natural width",46,HeaderClockLayout.naturalWidth(pair));
     }
+    @Test public void collapsedSecondSimCannotMoveFormattedClockToAnotherRow(){
+        for(boolean rtl:new boolean[]{false,true}){
+            Model sample=new Model(1216,2688,rtl,1);sample.text(true,false);
+            int compositeWidth=125,clockWidth=HeaderClockLayout.naturalWidth(sample.clock);
+            // The final signal pack fits the same row with eight pixels to spare.
+            // Its retained second native SIM must not spend another 65 pixels.
+            Model m=new Model(clockWidth+compositeWidth+70+26+8,2688,rtl,1);m.text(true,false);
+            m.statuses.removeAllViews();
+            FrameLayout composite=new FrameLayout(m.context),second=new FrameLayout(m.context);
+            View nativeFirst=new View(m.context),nativeSecond=new View(m.context);
+            composite.addView(nativeFirst,new FrameLayout.LayoutParams(65,42));
+            second.addView(nativeSecond,new FrameLayout.LayoutParams(65,42));
+            m.statuses.addView(composite,new ViewGroup.LayoutParams(65,42));
+            m.statuses.addView(second,new ViewGroup.LayoutParams(65,42));m.layout();
+            HeaderClockGeometry.Plan nativePlan=m.apply(false);assertNotNull(nativePlan);assertTrue(nativePlan.valid);
+            assertFalse("the two original native SIM cells fit beside the clock",nativePlan.stacked);
+            composite.getLayoutParams().width=compositeWidth;second.getLayoutParams().width=0;
+            nativeFirst.setTransitionAlpha(0);second.setTransitionAlpha(0);m.layout();
+            assertEquals("collapsed native SIM has no occupied horizontal cell",0,HeaderClockLayout.naturalWidth(second));
+            assertEquals("weighted status container still includes its real children",compositeWidth+70,HeaderClockLayout.naturalWidth(m.icons));
+            for(int pass=0;pass<4;pass++){
+                HeaderClockGeometry.Plan plan=m.apply(false);assertNotNull(plan);assertTrue(plan.valid);
+                assertFalse("a collapsed second SIM cannot force a stacked header",plan.stacked);
+                assertEquals("formatted clock retains its original top",103,plan.clockTop);m.layout();
+            }
+            assertSame("native SIM child stays available for restoration",nativeSecond,second.getChildAt(0));
+            second.getLayoutParams().width=65;second.setTransitionAlpha(1);m.layout();
+            assertEquals("restoring native width restores its occupied cell",65,HeaderClockLayout.naturalWidth(second));
+        }
+    }
+    @Test public void periodRowsRemainStableWhenBluetoothAppears(){
+        for(boolean rtl:new boolean[]{false,true}){
+            Model m=new Model(1216,2688,rtl,1);m.text(true,true);m.layout();
+            HeaderClockGeometry.Plan initial=m.apply(false);assertTrue(initial.valid);assertTrue(initial.stacked);m.layout();
+            int clockTop=m.rect(m.clock).top,dateTop=m.rect(m.date).top,bottom=initial.bottom;
+            for(int width:new int[]{0,64,140,64,0}){
+                m.nfc.getLayoutParams().width=width;m.text(true,true);m.layout();
+                HeaderClockGeometry.Plan changed=m.apply(false);assertTrue(changed.valid);m.layout();
+                assertEquals("Bluetooth must not move period clock",clockTop,m.rect(m.clock).top);
+                assertEquals("Bluetooth must not move date",dateTop,m.rect(m.date).top);
+                assertEquals("notification boundary remains stable",bottom,changed.bottom);
+            }
+        }
+    }
     @Test public void actualWeatherSharesDateBoxAndWrapsBeforeNativeActions(){
         for(boolean rtl:new boolean[]{false,true})for(float font:new float[]{1f,1.3f})for(int width:new int[]{988,1800})for(boolean expanded:new boolean[]{false,true})for(String text:new String[]{"晴 26°","内蒙古自治区呼和浩特市 多云转晴伴有间歇性小雨 当前温度二十六摄氏度"}){
             Model m=new Model(width,2688,rtl,font);m.text(true,true);TextView weather=m.weather(text);float size=weather.getTextSize();int[] clicks={0,0};m.date.setOnClickListener(v->clicks[0]++);weather.setOnClickListener(v->clicks[1]++);

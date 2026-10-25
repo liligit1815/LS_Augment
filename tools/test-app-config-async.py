@@ -34,6 +34,16 @@ static String normalize(String key,String value){return defaults().containsKey(k
 static boolean truthy(String value){return "1".equals(value)||"true".equals(value);}}
 '''
 sources.update({
+    # OEM competitive-key recovery is outside this transport test. Never invoke Root here.
+    'ls/augment/com/CompetitiveKeyOptions.java': '''package ls.augment.com;final class CompetitiveKeyOptions {
+static final String ENABLED="competitive_enabled",NATIVE_SETTING="redmagic_competitive_key_function"; }''',
+    'ls/augment/com/ModuleSystemSettings.java': '''package ls.augment.com;final class ModuleSystemSettings {
+static final class WriteResult {final boolean success=true;final String message="";}
+static final class RestoreResult {final boolean success=true;final String message="";}
+static WriteResult put(android.content.Context c,String ns,String key,String value){return new WriteResult();}
+static RestoreResult restoreOne(android.content.Context c,String ns,String key){return new RestoreResult();} }''',
+    'ls/augment/com/SystemUiOptions.java': '''package ls.augment.com;final class SystemUiOptions {
+static final String SIGNAL_DUAL="ls_augment_rm_signal_dual",ISLAND="ls_augment_rm_dynamic_island"; }''',
     'ls/augment/com/FanCalibrationData.java': '''package ls.augment.com;final class FanCalibrationData {
 static boolean validRequest(String request,long now){return "measuring".equals(request);} }''',
     'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com;import java.util.*;
@@ -41,6 +51,7 @@ final class ConfigSnapshot {final long revision,updatedAt;final Map<String,Strin
 ConfigSnapshot(long r,long t,Map<String,String> v){revision=r;updatedAt=t;values=Collections.unmodifiableMap(new LinkedHashMap<>(v));}
 static ConfigSnapshot create(long r,long t,Map<String,String> v){return new ConfigSnapshot(r,t,v);}
 static ConfigSnapshot safeDefaults(){return create(1,1,ConfigSchema.defaults());}
+Map<String,String> values(){return values;}
 String serialize(){return revision+"|"+updatedAt+"|"+new TreeMap<>(values);} }
 ''',
     'ls/augment/com/ShoulderQuickSwitchPolicy.java': '''package ls.augment.com;final class ShoulderQuickSwitchPolicy {
@@ -52,6 +63,7 @@ static String currentFingerprint(android.content.Context c){throw new AssertionE
 static class Token {static Token parse(String raw){return null;}boolean validFor(String value){return false;}} }
 ''',
     'ls/augment/com/AuditLog.java': '''package ls.augment.com;final class AuditLog {static void write(android.content.Context c,String event,String value){} }''',
+    'ls/augment/com/BuildConfig.java': '''package ls.augment.com;final class BuildConfig {static final String VERSION_NAME="host-test";}''',
     'ls/augment/com/LegacySettingsMigration.java': '''package ls.augment.com;final class LegacySettingsMigration {
 static void request(android.content.Context c){}
 static RootShell.Result runIfAuthorized(android.content.Context c){return new RootShell.Result(0,"",false);} }''',
@@ -78,6 +90,13 @@ import android.content.*;import java.util.*;import java.util.concurrent.*;import
 public final class TestAppConfigAsync {
  public static void main(String[] args)throws Exception {
   FakeContext context=new FakeContext();AppConfig config=new AppConfig(context);
+  ConfigSnapshot cached=config.configSnapshot();
+  for(int i=0;i<10000;i++)check(new AppConfig(context).configSnapshot()==cached,"unchanged preferences rebuild the snapshot");
+  context.prefs(AppConfig.PREFS).failNext=1;
+  check(!config.save(Map.of("flag","1")).success&&config.configSnapshot()==cached,"failed commit invalidated confirmed cache");
+  check(config.save(Map.of("flag","1")).success&&config.configSnapshot()!=cached,"successful write must invalidate shared cache");
+  cached=config.configSnapshot();
+  check(config.resetToDefaults().success&&config.configSnapshot()!=cached,"reset must invalidate cached authorization");
   testFreeformPages(context,config);
   String dual="ls_augment_rm_signal_dual",hide="ls_augment_rm_hide_mobile_type";
   check(config.save(Map.of(dual,"1")).success&&!config.getBoolean(hide),"enabling dual signal must preserve visible network types");

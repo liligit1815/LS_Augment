@@ -8,3 +8,5 @@
 *.jpg binary
 *.woff2 binary
 *.mp4 binary
+# Preserve upstream header formatting; keep whitespace checks for project code.
+android/app/src/main/cpp/vendor/** whitespace=-blank-at-eol,-blank-at-eof

@@ -47,6 +47,25 @@ constexpr uint32_t kPairedStorePattern[] = {
         0x2a1f03e0, 0x17ffffde, 0x2a1f03e0, 0x17fffff0,
 };
 
+// Same complete compact-tail algorithm as the Java probe.
+constexpr uint32_t kCompactStorePattern[] = {
+        0xd503233f, 0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0x7102283f, 0xaa0003f3,
+        0x540001a0, 0x7102243f, 0x54000921, 0xb9405668, 0x7100191f, 0x5400024b,
+        0xf9400268, 0x529c2001, 0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82,
+        0x14000025, 0xb9405a68, 0x7100191f, 0x5400022b, 0xf9400268, 0x529c2001,
+        0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82, 0x14000028, 0x71000d1f,
+        0x5400022b, 0xf9400268, 0x52984001, 0x529e1002, 0xaa1303e0, 0x72a17d61,
+        0x72a05f42, 0x14000012, 0x71000d1f, 0x540002ab, 0xf9400268, 0x52984001,
+        0x529e1002, 0xaa1303e0, 0x72a17d61, 0x72a05f42, 0x14000016, 0x7100051f,
+        0x540004ab, 0xf9400268, 0x528ca001, 0x52984002, 0xaa1303e0, 0x72a3b9a1,
+        0x72a17d62, 0xf9403108, 0xd63f0100, 0x52800908, 0x52800889, 0x1400000d,
+        0x7100051f, 0x5400034b, 0xf9400268, 0x528ca001, 0x52984002, 0xaa1303e0,
+        0x72a3b9a1, 0x72a17d62, 0xf9403108, 0xd63f0100, 0x52800a08, 0x52800989,
+        0x528cccea, 0x72acccca, 0x9b2a7c0a, 0x9361fd4a, 0x0b4a7d4a, 0x531f794b,
+        0x0b0a016a, 0xb8296a6a, 0xb8286a6b, 0xf9400bf3, 0xa8c27bfd, 0xd50323bf,
+        0xd65f03c0, 0x2a1f03e0, 0x17ffffe3, 0x2a1f03e0, 0x17ffffee,
+};
+
 inline uint32_t word(const uint8_t* bytes, size_t index) {
     uint32_t value;
     std::memcpy(&value, bytes + index * 4, sizeof(value));
@@ -57,8 +76,9 @@ inline bool inspect(const uint8_t* bytes, size_t size, Layout* result) {
     if (bytes == nullptr || result == nullptr || size < 4) return false;
     size_t prefix = word(bytes, 0) == 0xd503245f ? 4 : 0;
     const bool pairedStores = size == sizeof(kPairedStorePattern) + prefix;
-    const uint32_t* pattern = pairedStores ? kPairedStorePattern : kPattern;
-    const size_t patternSize = pairedStores ? sizeof(kPairedStorePattern) : sizeof(kPattern);
+    const bool compactStores = size == sizeof(kCompactStorePattern) + prefix;
+    const uint32_t* pattern = pairedStores ? kPairedStorePattern : compactStores ? kCompactStorePattern : kPattern;
+    const size_t patternSize = pairedStores ? sizeof(kPairedStorePattern) : compactStores ? sizeof(kCompactStorePattern) : sizeof(kPattern);
     if (size != patternSize + prefix) return false;
     bytes += prefix;
     uint32_t code[sizeof(kPairedStorePattern) / sizeof(uint32_t)];

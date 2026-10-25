@@ -61,11 +61,22 @@ final class LauncherRecentsCardRadiusHook {
         int lastOffset;
         LauncherRecentsRadiusSampler sampler;
 
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         Binding(AugmentModule module, ClassLoader loader) throws ReflectiveOperationException {
             this.module = module;
-            paramsType = Class.forName("com.android.quickstep.FullscreenDrawParams", false, loader);
+            Class<?> params;
+            boolean named;
+            try { params = Class.forName("com.android.quickstep.FullscreenDrawParams", false, loader); named = false; }
+            catch (ClassNotFoundException absent) {
+                params = Class.forName("com.android.quickstep.views.TaskView$FullscreenDrawParams", false, loader);
+                named = true;
+            }
+            paramsType = params;
             Class<?> task = Class.forName("com.android.quickstep.views.TaskView", false, loader);
-            Class<?> container = Class.forName("com.android.quickstep.views.TaskContainer", false, loader);
+            Class<?> container = Class.forName(named ? "com.android.quickstep.views.TaskView$TaskContainer"
+                    : "com.android.quickstep.views.TaskContainer", false, loader);
             Class<?> recents = Class.forName("com.android.quickstep.views.RecentsView", false, loader);
             Class<?> simulator = Class.forName("com.android.quickstep.util.TaskViewSimulator", false, loader);
             Class<?> transform = Class.forName("com.android.quickstep.util.TransformParams", false, loader);
@@ -73,9 +84,12 @@ final class LauncherRecentsCardRadiusHook {
             if (!View.class.isAssignableFrom(task) || !View.class.isAssignableFrom(recents))
                 throw new ClassNotFoundException("Recents owners are not Views");
             progress = method(paramsType, void.class, "setProgress", float.class, float.class, float.class);
-            radius = HookCompatibility.field(paramsType, float.class, false, "currentCornerRadius");
+            radius = HookCompatibility.field(paramsType, float.class, false,
+                    named ? "currentDrawnCornerRadius" : "currentCornerRadius");
             taskUpdate = method(task, void.class, "updateFullscreenParams", paramsType);
-            taskRefresh = method(task, void.class, "updateFullscreenParams");
+            // The named build also republishes the recomputed params to native
+            // thumbnails and invalidates them in updateSnapshotRadius().
+            taskRefresh = method(task, void.class, named ? "updateSnapshotRadius" : "updateFullscreenParams");
             containers = method(task, java.util.List.class, "getTaskContainers");
             snapshotView = method(container, View.class, "getSnapshotView");
             recentsView = method(task, recents, "getRecentsView");

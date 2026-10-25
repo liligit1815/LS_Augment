@@ -58,6 +58,7 @@ final class OemNotificationClearHook {
     private static State existing(Object owner){Object button=field(owner,"mDismissView");return button instanceof View?STATES.get(button):null;}
     private static State observe(Object owner){
         Object raw=field(owner,"mDismissView");if(!(raw instanceof ImageButton))return null;View button=(View)raw;
+        if(button.getId()==View.NO_ID||button.getId()==0)return null;
         try{if(!ID.equals(button.getResources().getResourceEntryName(button.getId())))return null;}catch(RuntimeException absent){return null;}
         State state=STATES.get(button);if(state==null){state=new State(button,owner);STATES.put(button,state);
             if(!observing)observing=FeatureSettings.addSnapshotListener(button.getContext(),CHANGED);}
@@ -67,6 +68,9 @@ final class OemNotificationClearHook {
     private static float dp(View view,float value){return value*view.getResources().getDisplayMetrics().density;}
     private static float clamp(float value,float low,float high){return Math.max(low,Math.min(Math.max(low,high),value));}
     private static boolean same(float first,float second){return Math.abs(first-second)<.01f;}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View stack(View button){int id=button.getResources().getIdentifier("notification_stack_scroller","id","com.android.systemui");return id==0?null:button.getRootView().findViewById(id);}
     private static boolean shade(View button){
         View stack=stack(button);if(stack==null)return false;Object ambient=field(stack,"mAmbientState"),status=field(ambient,"mStatusBarState");

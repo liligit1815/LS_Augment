@@ -27,7 +27,9 @@ final class StatusBarEditorController extends NativeEditorController {
     private Preview preview;
     private android.content.SharedPreferences previewPreferences;
     private final android.content.SharedPreferences.OnSharedPreferenceChangeListener previewPreferenceListener=(prefs,key)->{
-        if(preview!=null&&(SystemUiOptions.SIGNAL_DUAL.equals(key)
+        if(SystemUiOptions.SIGNAL_DUAL.equals(key)||SystemUiOptions.SIGNAL_DUAL_STYLE.equals(key)||ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP.equals(key))
+            runOnUiThread(this::refreshStoredSignalModes);
+        if(preview!=null&&(SystemUiOptions.SIGNAL_DUAL.equals(key)||SystemUiOptions.SIGNAL_DUAL_STYLE.equals(key)
                 ||(SystemUiOptions.PREFIX+"hide_mobile_type").equals(key)
                 ||(SystemUiOptions.PREFIX+"hide_mobile_activity").equals(key)
                 ||(SystemUiOptions.PREFIX+"metrics_custom").equals(key)
@@ -38,6 +40,8 @@ final class StatusBarEditorController extends NativeEditorController {
     private final ConnectivityIconPainter connectivityPainter=new ConnectivityIconPainter();
     private int exampleBattery=73,exampleCards=2;
     private boolean exampleCharging=true,exampleBypass,exampleWifi=true;
+    private IosBatteryDrawable previewBatteryArtwork;
+    private String previewBatteryAsset="",previewBatteryRequested="";
     private Button apply;
     private StatusBarGridSpec grid;
     private int tab;
@@ -51,6 +55,8 @@ final class StatusBarEditorController extends NativeEditorController {
     private boolean connectivityExpanded;
     private UiKit.Fold nativeBatteryFold;
     private boolean nativeBatteryExpanded;
+    private UiKit.Fold dualAppearanceFold;
+    private boolean dualAppearanceExpanded;
     private final Map<String,UiKit.Fold> componentFolds=new LinkedHashMap<>();
     private final Map<String,Boolean> expandedComponents=new LinkedHashMap<>();
     private final Map<String,View> componentViews=new LinkedHashMap<>();
@@ -73,6 +79,9 @@ final class StatusBarEditorController extends NativeEditorController {
         for(NativeFeatureGroups.Feature feature:relatedFeatures){
             if(isIconLayoutFeature(feature))continue;
             if(!destination.equals(StatusBarPages.destination(feature)))continue;
+            if(SystemUiOptions.SIGNAL_DUAL.equals(feature.toggleKey)){
+                dualAppearanceSection(parent,feature.title);continue;
+            }
             // Preset-owned switches share the same preview, cancel and save transaction.
             if(StatusBarPresets.ownsRelatedKey(feature.toggleKey)){
                 toggle(parent,feature.toggleKey,feature.title);continue;
@@ -80,6 +89,7 @@ final class StatusBarEditorController extends NativeEditorController {
             // Both palettes have one owner and one draft inside the three-in-one
             // settings. Do not create a second pair of controls in related items.
             if("systemui:battery_colors".equals(feature.id)||"systemui:battery_text_colors".equals(feature.id))continue;
+            if("systemui:battery_style".equals(feature.id)){batteryAppearanceChoices(parent);continue;}
             View view=relatedViews.get(feature.id);
             if(view==null){view=featureFactory.apply(feature);relatedViews.put(feature.id,view);}
             if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);
@@ -102,10 +112,8 @@ final class StatusBarEditorController extends NativeEditorController {
                 && !key.equals(StatusBarFontSpec.KEY) && (key.startsWith("ls_augment_statusbar_")
                 || key.equals(ConfigSchema.SYSTEMUI_MASTER)
                 || StatusBarPresets.ownsRelatedKey(key)
-                || key.equals(SystemUiOptions.PREFIX+"battery_colors")
-                || key.startsWith(SystemUiOptions.PREFIX+"battery_color_")
-                || key.equals(SystemUiOptions.PREFIX+"battery_charging_color")
-                || key.startsWith(SystemUiOptions.PREFIX+"battery_text_"))) draft.seed(key, config.get(key));
+                || key.equals(SystemUiOptions.SIGNAL_DUAL_STYLE)
+                || key.startsWith(SystemUiOptions.PREFIX+"battery_"))) draft.seed(key, config.get(key));
         if (state != null) {
             Bundle saved = state.getBundle("draft-edits");
             if (saved != null) for (String key : draft.keySet()) {
@@ -118,11 +126,14 @@ final class StatusBarEditorController extends NativeEditorController {
             selectedComponent=state.getString("selected-component","");
             connectivityExpanded=state.getBoolean("connectivity-expanded",false);
             nativeBatteryExpanded=state.getBoolean("native-battery-expanded",false);
+            dualAppearanceExpanded=state.getBoolean("dual-appearance-expanded",false);
             Bundle expanded=state.getBundle("expanded-components");if(expanded!=null)for(String key:expanded.keySet())expandedComponents.put(key,expanded.getBoolean(key));
             Bundle advanced=state.getBundle("advanced-expanded");if(advanced!=null)for(String key:advanced.keySet())advancedExpanded.put(key,advanced.getBoolean(key));
             Bundle positions=state.getBundle("tab-scroll");if(positions!=null)for(String key:positions.keySet())scrollPositions.put(Integer.parseInt(key),positions.getInt(key));
             Bundle undo=state.getBundle("layout-undo");if(undo!=null){lastLayoutBackup=new LinkedHashMap<>();for(String key:undo.keySet())if(draft.containsKey(key))lastLayoutBackup.put(key,undo.getString(key));}
         }
+        if(ConfigSchema.truthy(draft.get(SystemUiOptions.SIGNAL_DUAL))&&signalEnableBlocked())
+            draft.put(SystemUiOptions.SIGNAL_DUAL,"0");
         grid = StatusBarGridSpec.parse(draft.get(ConfigSchema.STATUSBAR_GRID));
         if (grid == null) grid = StatusBarGridSpec.defaults();
         tab=StatusBarPages.tab(route);
@@ -196,6 +207,8 @@ final class StatusBarEditorController extends NativeEditorController {
         connectivityFold=null;
         if(nativeBatteryFold!=null)nativeBatteryExpanded=nativeBatteryFold.content.getVisibility()==View.VISIBLE;
         nativeBatteryFold=null;
+        if(dualAppearanceFold!=null)dualAppearanceExpanded=dualAppearanceFold.content.getVisibility()==View.VISIBLE;
+        dualAppearanceFold=null;
         loading = true; sectionFold=null;clockSizeInput=null;controls.clear();content.removeAllViews();configScroll.scrollTo(0,0);
         presetActions.setVisibility(previewBackup==null?View.GONE:View.VISIBLE);undoLayout.setEnabled(lastLayoutBackup!=null&&previewBackup==null);
         undoLayout.setAlpha(undoLayout.isEnabled()?1f:.45f);
@@ -429,6 +442,9 @@ final class StatusBarEditorController extends NativeEditorController {
             @Override protected void onMeasure(int widthSpec,int heightSpec){
                 super.onMeasure(widthSpec,View.MeasureSpec.makeMeasureSpec(ui.dp(36),View.MeasureSpec.EXACTLY));
             }
+
+            // Bounded settings preview builds a coherent layout/hit-test snapshot on redraw; retained allocation tradeoff, not a hot SystemUI hook.
+            //noinspection DrawAllocation
             @Override protected void onDraw(Canvas canvas){
                 super.onDraw(canvas);float height=ui.dp(28),top=(getHeight()-height)/2f;
                 if(selected==0)nativeSample.draw(canvas,icon,"default",new android.graphics.RectF(0,top,height,top+height),ui.text);
@@ -556,13 +572,72 @@ final class StatusBarEditorController extends NativeEditorController {
     private void setBatteryMode(boolean threeInOne,boolean enabled){
         boolean circle=ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP));
         boolean nativeIcon=nativeBatteryEnabled();
-        if(threeInOne){circle=enabled;if(enabled)nativeIcon=false;}
+        if(threeInOne){circle=enabled;if(enabled){nativeIcon=false;draft.put(SystemUiOptions.SIGNAL_DUAL,"0");}}
         else{nativeIcon=enabled;if(enabled)circle=false;}
         draft.put(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,circle?"1":"0");
         draft.put(ConfigSchema.STATUSBAR_NATIVE_BATTERY_ENABLED,nativeIcon?"1":"0");
         changed();renderKeepingScroll();
         UiKit.Fold active=threeInOne?connectivityFold:nativeBatteryFold;
         if(active!=null)active.show(enabled);
+    }
+
+    private void batteryAppearanceChoices(LinearLayout parent){
+        LinearLayout group=parameterInputGroup(parent);
+        for(String key:new String[]{SystemUiOptions.BATTERY_PRESET,SystemUiOptions.PREFIX+"battery_style"}){
+            EnhancementOption option=null;
+            for(EnhancementOption candidate:SystemUiOptions.options())if(candidate.key.equals(key)){option=candidate;break;}
+            if(option==null)continue;
+            group.addView(ui.featureTitle(option.title,option.summary));
+            Spinner choice=ui.choiceSpinner(option.title);
+            choice.setContentDescription(option.title);choice.setTag("config:"+key);
+            choice.setAdapter(choiceAdapter(option.choices));choice.setSelection(number(key));group.addView(choice,ui.wrap());
+            choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+                public void onNothingSelected(AdapterView<?> owner){}
+                public void onItemSelected(AdapterView<?> owner,View view,int selected,long row){
+                    if(!loading&&selected!=number(key)){draft.put(key,String.valueOf(selected));changed();}
+                }
+            });
+        }
+    }
+
+    private void dualAppearanceSection(LinearLayout parent,String title){
+        LinearLayout section=new LinearLayout(this);section.setOrientation(LinearLayout.VERTICAL);
+        toggle(section,SystemUiOptions.SIGNAL_DUAL,title);
+        Switch control=controls.get(SystemUiOptions.SIGNAL_DUAL);control.setTag("config:"+SystemUiOptions.SIGNAL_DUAL);
+        LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(ui.dp(12),0,0,0);
+        LinearLayout fields=parameterInputGroup(body);
+        fields.addView(ui.featureTitle("信号样式",FeatureDescriptions.forKey(SystemUiOptions.SIGNAL_DUAL_STYLE,"信号样式")));
+        Spinner choice=ui.choiceSpinner("信号样式");choice.setContentDescription("信号样式");choice.setTag("config:"+SystemUiOptions.SIGNAL_DUAL_STYLE);
+        choice.setAdapter(choiceAdapter(new String[]{"荣耀双排","iOS双排"}));choice.setSelection(number(SystemUiOptions.SIGNAL_DUAL_STYLE));fields.addView(choice,ui.wrap());
+        choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(AdapterView<?> owner){}
+            public void onItemSelected(AdapterView<?> owner,View view,int selected,long row){
+                if(!loading&&selected!=number(SystemUiOptions.SIGNAL_DUAL_STYLE)){draft.put(SystemUiOptions.SIGNAL_DUAL_STYLE,String.valueOf(selected));changed();}
+            }
+        });
+        section.addView(body,ui.wrap());addFeatureBlock(parent,section);
+        dualAppearanceFold=ui.fold(control,body);dualAppearanceFold.show(dualAppearanceExpanded);
+    }
+
+    private IosBatteryDrawable previewIosBattery(){
+        int display=number(SystemUiOptions.PREFIX+"battery_style");
+        boolean dark=Color.red(ui.text)*.299f+Color.green(ui.text)*.587f+Color.blue(ui.text)*.114f<128;
+        String asset=IosBatteryPolicy.asset(IosBatteryPolicy.containsDigits(display,1),exampleCharging,false,false,dark);
+        if(!asset.equals(previewBatteryAsset)){
+            IosBatteryAssets.Sheet sheet=IosBatteryAssets.cached(asset);
+            if(sheet!=null){previewBatteryAsset=asset;previewBatteryArtwork=new IosBatteryDrawable(sheet,exampleBattery,getResources().getDisplayMetrics().density);}
+            else if(!asset.equals(previewBatteryRequested)){
+                previewBatteryRequested=asset;
+                java.lang.ref.WeakReference<StatusBarEditorController> reference=new java.lang.ref.WeakReference<>(this);
+                IosBatteryAssets.request(this,asset,loaded->{StatusBarEditorController owner=reference.get();
+                    if(owner!=null&&!owner.isDestroyed()&&loaded!=null&&asset.equals(owner.previewBatteryRequested)){
+                        owner.previewBatteryAsset=asset;owner.previewBatteryArtwork=new IosBatteryDrawable(loaded,owner.exampleBattery,owner.getResources().getDisplayMetrics().density);
+                        if(owner.preview!=null)owner.preview.invalidate();
+                    }});
+            }
+        }
+        if(previewBatteryArtwork!=null)previewBatteryArtwork.updateLevel(exampleBattery);
+        return previewBatteryArtwork;
     }
 
     private LinearLayout component(String id, String title) {
@@ -715,10 +790,34 @@ final class StatusBarEditorController extends NativeEditorController {
     private LinearLayout toggle(LinearLayout parent,String key, String label) {
         Switch s = new Switch(this);s.setChecked(ConfigSchema.truthy(draft.get(key)));controls.put(key,s);
         LinearLayout row=ui.featureRow(label,FeatureDescriptions.forKey(key,label),s);addFeatureBlock(parent,row);
-        s.setOnCheckedChangeListener((b, checked) -> { if (!loading) { draft.put(key, checked ? "1" : "0"); changed();
+        s.setOnCheckedChangeListener((b, checked) -> { if (!loading) {
+            if(SystemUiOptions.SIGNAL_DUAL.equals(key)&&checked&&signalEnableBlocked()){
+                loading=true;s.setChecked(false);loading=false;
+                refreshStoredSignalModes();
+                Toast.makeText(this,"请先关闭三合一图标",Toast.LENGTH_LONG).show();return;
+            }
+            draft.put(key, checked ? "1" : "0");
+            if(ConfigSchema.STATUSBAR_CLOCK_CUSTOM.equals(key)&&checked){
+                draft.put(ConfigSchema.SYSTEMUI_MASTER,"1");
+                boolean wasLoading=loading;loading=true;
+                try{masterControl.setChecked(true);}finally{loading=wasLoading;}
+            }
+            changed();
             if(key.equals(ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)||key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))renderKeepingScroll();
         } });
         return row;
+    }
+    private boolean signalEnableBlocked(){
+        return ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))
+                ||(!draft.unsaved().containsKey(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)
+                &&config.getBoolean(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP));
+    }
+    private void refreshStoredSignalModes(){
+        if(config==null||preview==null||isDestroyed()||previewBackup!=null)return;
+        boolean refreshed=draft.refresh(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,config.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP));
+        refreshed|=draft.refresh(SystemUiOptions.SIGNAL_DUAL,config.get(SystemUiOptions.SIGNAL_DUAL));
+        refreshed|=draft.refresh(SystemUiOptions.SIGNAL_DUAL_STYLE,config.get(SystemUiOptions.SIGNAL_DUAL_STYLE));
+        if(refreshed)renderKeepingScroll();else preview.invalidate();
     }
     private void edit(String key, String label) {
         edit(content,key,label,false);
@@ -728,7 +827,12 @@ final class StatusBarEditorController extends NativeEditorController {
         parent.addView(ui.featureTitle(label, FeatureDescriptions.forKey(key,label)));
         EditText e = new EditText(this);ui.styleInput(e); e.setSingleLine(true);e.setContentDescription(label);
         if(numeric)e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
-        e.setText(rawInputs.containsKey(key)?rawInputs.get(key):draft.get(key)); parent.addView(e);
+        e.setText(rawInputs.containsKey(key)?rawInputs.get(key):draft.get(key));
+        EnhancementOption colorOption=null;
+        for(EnhancementOption candidate:EnhancementCatalog.options())if(candidate.key.equals(key)){colorOption=candidate;break;}
+        boolean color=colorOption!=null&&colorOption.kind==EnhancementOption.Kind.COLOR
+                ||draft.get(key)!=null&&draft.get(key).matches("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?");
+        parent.addView(color?ui.colorInput(e,label):e);
         e.setError(validInput(key,e.getText().toString())==null?"格式或数值无效，已保留上次有效值":null);
         e.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int c, int n) { }
@@ -817,10 +921,10 @@ final class StatusBarEditorController extends NativeEditorController {
         parent=parameterInputGroup(parent);
         parent.addView(ui.featureTitle(label,FeatureDescriptions.layoutValue(label)+" 可选范围："+min+"–"+max+"。"));
         TextView text = ui.text("当前：" + value, 12, ui.muted, false); parent.addView(text);
-        SeekBar bar = new SeekBar(this); bar.setContentDescription(label); bar.setMax(max - min); bar.setProgress(value - min); parent.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(48)));
+        SeekBar bar = ui.slider(); bar.setContentDescription(label); bar.setMax(max - min); bar.setProgress(value - min); parent.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(48)));
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar b, int p, boolean fromUser) {
-                text.setText("当前：" + (p + min)); if (fromUser && !loading) changed.set(p + min);
+                text.setText(text.getContext().getString(R.string.status_featureeditorcontroller_18 ,String.valueOf((p + min)))); if (fromUser && !loading) changed.set(p + min);
             }
             public void onStartTrackingTouch(SeekBar b) { }
             public void onStopTrackingTouch(SeekBar b) { }
@@ -841,6 +945,7 @@ final class StatusBarEditorController extends NativeEditorController {
         if(sectionFold!=null)sectionFold.sync();
         if(connectivityFold!=null)connectivityFold.sync();
         if(nativeBatteryFold!=null)nativeBatteryFold.sync();
+        if(dualAppearanceFold!=null)dualAppearanceFold.sync();
         draft.put(ConfigSchema.STATUSBAR_GRID, grid.serialize());
         if (preview != null) preview.invalidate();
         refreshRuntimeFeedback();
@@ -861,10 +966,14 @@ final class StatusBarEditorController extends NativeEditorController {
         worker.execute(() -> {
             AppConfig.SaveResult result = config.save(batch.values);
             runOnUiThread(() -> {
+                boolean reverted=!result.success&&previewBackup==null
+                        &&draft.reconcile(batch,SystemUiOptions.SIGNAL_DUAL,config.get(SystemUiOptions.SIGNAL_DUAL));
                 draft.complete(batch,result.success);saving=false;dirty=draft.hasPending();
                 if(isDestroyed())return;
+                refreshStoredSignalModes();
+                if(reverted)renderKeepingScroll();
                 if(!result.success)Toast.makeText(this,result.message,Toast.LENGTH_LONG).show();
-                else if(dirty)main.post(autoSave);
+                if(dirty&&(result.success||"请先关闭三合一图标".equals(result.message)))main.post(autoSave);
             });
         });
     }
@@ -874,6 +983,7 @@ final class StatusBarEditorController extends NativeEditorController {
         state.putBundle("draft-edits", b); state.putInt("tab", tab); super.onSaveInstanceState(state);
         state.putBoolean("connectivity-expanded",connectivityFold!=null?connectivityFold.content.getVisibility()==View.VISIBLE:connectivityExpanded);
         state.putBoolean("native-battery-expanded",nativeBatteryFold!=null?nativeBatteryFold.content.getVisibility()==View.VISIBLE:nativeBatteryExpanded);
+        state.putBoolean("dual-appearance-expanded",dualAppearanceFold!=null?dualAppearanceFold.content.getVisibility()==View.VISIBLE:dualAppearanceExpanded);
         Bundle raw=new Bundle();for(Map.Entry<String,String> entry:rawInputs.entrySet())raw.putString(entry.getKey(),entry.getValue());state.putBundle("raw-inputs",raw);
         for(Map.Entry<String,UiKit.Fold> entry:componentFolds.entrySet())expandedComponents.put(entry.getKey(),entry.getValue().content.getVisibility()==View.VISIBLE);
         for(Map.Entry<String,View> entry:advancedViews.entrySet())advancedExpanded.put(entry.getKey(),entry.getValue().getVisibility()==View.VISIBLE);
@@ -1017,9 +1127,13 @@ final class StatusBarEditorController extends NativeEditorController {
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         final CompactSignalPainter signalPainter=new CompactSignalPainter();
         final DualSignalPainter dualPainter=new DualSignalPainter();
-        DualSignalLayout dualLayout(float height){return new DualSignalLayout(height,
-                !ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"hide_mobile_activity")),
-                ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"hide_mobile_type"))?0:1.5f);}
+        final IosSignalPainter iosSignalPainter=new IosSignalPainter();
+        DualSignalLayout dualLayout(float height){
+            boolean activity=!ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"hide_mobile_activity"));
+            float aspect=ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"hide_mobile_type"))?0:1.5f;
+            if(number(SystemUiOptions.SIGNAL_DUAL_STYLE)==1)return exampleCards==1?DualSignalLayout.iosSingle(height,activity,aspect):DualSignalLayout.ios(height,activity,aspect);
+            return exampleCards==1?DualSignalLayout.single(height,activity,aspect):new DualSignalLayout(height,activity,aspect);
+        }
         final Map<String,android.graphics.RectF> hits=new LinkedHashMap<>();
         final class IconSample {
             final String text;final float size;
@@ -1027,6 +1141,11 @@ final class StatusBarEditorController extends NativeEditorController {
             float width(){if(text.equals("signal"))return size*107f/85f;p.setTextSize(size);p.setTypeface(android.graphics.Typeface.DEFAULT);return p.measureText(text);}
         }
         Preview() { super(StatusBarEditorController.this); setContentDescription("状态栏布局示例，实际图标由系统状态决定"); }
+
+        // Bounded settings preview builds a coherent layout/hit-test snapshot on redraw; retained allocation tradeoff, not a hot SystemUI hook.
+        // Measure the host's actual system inset resource; the existing missing-ID fallback is required across OEM layouts.
+        // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+        //noinspection DiscouragedApi,DrawAllocation,InternalInsetResource
         @Override protected void onDraw(Canvas c) {
             p.setColor(ui.cardHigh); c.drawRoundRect(0, 0, getWidth(), getHeight(), ui.dp(12), ui.dp(12), p);
             p.setColor(ui.outline); c.drawLine(0, getHeight()/2f, getWidth(), getHeight()/2f, p);
@@ -1037,6 +1156,10 @@ final class StatusBarEditorController extends NativeEditorController {
             java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
             java.util.Map<String, Float> baselines = new java.util.LinkedHashMap<>();
             java.util.Map<String, java.util.List<IconSample>> iconSamples = new java.util.LinkedHashMap<>();
+            boolean iosBattery=!positionSizeOnly()&&!connectivityGroup()&&nativeBatteryEnabled()&&number(SystemUiOptions.BATTERY_PRESET)==1;
+            int batteryDisplay=number(SystemUiOptions.PREFIX+"battery_style");
+            IosBatteryDrawable iosArtwork=iosBattery&&batteryDisplay<5?previewIosBattery():null;
+            float iosIconWidth=0,iosIconHeight=0;
             for (Map.Entry<String, StatusBarGridSpec.Item> e : entries) {
                 StatusBarGridSpec.Item item = e.getValue();
                 if(e.getKey().equals("battery")&&!positionSizeOnly()&&!connectivityGroup()&&!nativeBatteryEnabled())item=StatusBarGridSpec.DEFAULT_BATTERY;
@@ -1045,6 +1168,16 @@ final class StatusBarEditorController extends NativeEditorController {
                 if(id.equals("battery")&&connectivityGroup()){
                     float size=ui.dp(number(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE));
                     nodes.add(new StatusBarGridLayout.Node(id,item.zone.substring(0,1)+"S",item.order,size,size));continue;}
+                if(id.equals("battery")&&iosBattery){
+                    if(batteryDisplay==6)continue;
+                    float textSize=previewTextSize(id);p.setTextSize(textSize);
+                    String outside=batteryDisplay==2||batteryDisplay==3||batteryDisplay==5
+                            ?exampleBattery+(ConfigSchema.truthy(draft.get(SystemUiOptions.PREFIX+"battery_hide_percent"))?"":"%") : "";
+                    iosIconHeight=textSize*1.15f;iosIconWidth=batteryDisplay==5?0:iosIconHeight*82/60f;
+                    float width=iosIconWidth+p.measureText(outside)+(outside.isEmpty()||batteryDisplay==5?0:ui.dp(2));
+                    int fixed=number(SystemUiOptions.PREFIX+"battery_width_dp");if(fixed>0)width=Math.max(width,ui.dp(fixed));
+                    nodes.add(new StatusBarGridLayout.Node(id,item.zone,item.order,width,iosIconHeight));labels.put(id,outside);continue;
+                }
                 if(id.equals("system_icons")){
                     java.util.List<IconSample> samples=new java.util.ArrayList<>();float size=previewTextSize(id);
                     boolean dual=!connectivityGroup()&&ConfigSchema.truthy(draft.get(SystemUiOptions.SIGNAL_DUAL));
@@ -1126,9 +1259,24 @@ final class StatusBarEditorController extends NativeEditorController {
                 StatusBarGridLayout.Box b = e.getValue();
                 if(e.getKey().equals("battery")&&connectivityGroup()){
                     drawConnectivity(c,b.x,b.y,b.width,ui.text);continue;}
+                if(e.getKey().equals("battery")&&iosBattery){
+                    String outside=labels.get("battery");p.setColor(ui.text);p.setTextAlign(Paint.Align.LEFT);p.setTextSize(previewTextSize("battery")*b.scale);
+                    float textWidth=p.measureText(outside),gap=outside.isEmpty()||batteryDisplay==5?0:ui.dp(2)*b.scale;
+                    float iconX=b.x+(batteryDisplay==3?textWidth+gap:0);
+                    if(iosArtwork!=null&&batteryDisplay<5){
+                        iosArtwork.setBounds(Math.round(iconX),Math.round(b.y),Math.round(iconX+iosIconWidth*b.scale),Math.round(b.y+iosIconHeight*b.scale));
+                        iosArtwork.setAlpha(Math.round(number(SystemUiOptions.PREFIX+"battery_alpha_percent")*2.55f));iosArtwork.draw(c);
+                    }
+                    if(!outside.isEmpty())c.drawText(outside,b.x+(batteryDisplay==2?iosIconWidth*b.scale+gap:0),b.y+b.height*.82f,p);
+                    continue;
+                }
                 int signalBars="5".equals(config.diagnostic("ls_augment_statusbar_signal_bars"))?5:4;
                 if(e.getKey().equals("system_icons#dual")){
-                    dualPainter.draw(c,b.x,b.y,dualLayout(b.height),signalBars,signalBars-1,signalBars,signalBars,2,ui.text,3,
+                    if(number(SystemUiOptions.SIGNAL_DUAL_STYLE)==1){
+                        drawIosRows(c,b,signalBars);continue;
+                    }
+                    dualPainter.setArtwork(null);
+                    dualPainter.draw(c,b.x,b.y,dualLayout(b.height),signalBars,signalBars-1,signalBars,signalBars,exampleCards==1?1:2,ui.text,3,
                             (canvas,row,x,y,w,h,color)->{p.setColor(color);p.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);p.setTextAlign(Paint.Align.LEFT);p.setTextSize(h);
                                 int save=canvas.save();canvas.translate(x,y);canvas.scale(w/p.measureText("5A"),h/(p.descent()-p.ascent()));canvas.drawText("5A",0,-p.ascent(),p);canvas.restoreToCount(save);});continue;
                 }
@@ -1154,6 +1302,30 @@ final class StatusBarEditorController extends NativeEditorController {
             c.restore();
             android.graphics.RectF selected=hits.get(selectedComponent);
             if(selected!=null){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(ui.dp(1));p.setColor(ui.accent);android.graphics.RectF r=new android.graphics.RectF(selected);r.inset(-ui.dp(2),-ui.dp(2));c.drawRoundRect(r,ui.dp(3),ui.dp(3),p);p.setStyle(Paint.Style.FILL);}
+        }
+        private void drawIosRows(Canvas canvas,StatusBarGridLayout.Box box,int bars){
+            DualSignalLayout reference=dualLayout(box.height);
+            boolean types=!ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"hide_mobile_type"));
+            int[] slots=exampleCards==1?new int[]{0}:new int[]{0,1};
+            float[][] aspects=exampleCards==1?new float[][]{{types?1.5f:0,0,0}}:new float[][]{{types?1.5f:0,0,0},{types?1.5f:0,0,0}};
+            int active=slots.length-1;
+            DualSignalLayout layout=DualSignalLayout.spaced(box.height,reference.activity,slots,aspects,active,
+                    null,1,false,true);
+            dualPainter.setArtwork((target,part,layer,l,t,r,b,color)->{
+                if(!part.startsWith("row")||!part.endsWith(".signal")||!layer.equals("whole"))return false;
+                int row=part.startsWith("row0")?0:1;
+                iosSignalPainter.drawRow(getContext(),target,l,t,r,b,row==0?bars:bars-1,
+                        bars,false,color,row,exampleCards==1,this::invalidate);
+                return true;
+            });
+            dualPainter.drawSpaced(canvas,box.x,box.y,layout,bars,bars-1,bars,bars,ui.text,3,active,
+                    (target,row,badge,cell,color)->{
+                        if(badge!=0)return;
+                        p.setColor(color);p.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);p.setTextAlign(Paint.Align.LEFT);p.setTextSize(cell.height);
+                        int save=target.save();target.translate(cell.x,cell.y);target.scale(cell.width/p.measureText("5A"),cell.height/(p.descent()-p.ascent()));
+                        target.drawText("5A",0,-p.ascent(),p);target.restoreToCount(save);
+                    });
+            dualPainter.setArtwork(null);
         }
     }
 }

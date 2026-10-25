@@ -262,7 +262,7 @@ export function CurrentEditor({
   if (route === 'freeform')
     return (
       <Card className="c-feature-group d-setting-group" label="小窗增强">
-        <div className="c-feature">{feature('FREEFORM_GAME_LOGIN','游戏登录跳转以小窗打开','游戏跳转登录授权页面时使用小窗。',<Button onClick={()=>m.dialog('补充游戏名单',<AppPicker multiple chosen={(m.values[k('FREEFORM_GAME_APPS')]||'').split(',')} finish={apps=>m.set(k('FREEFORM_GAME_APPS'),apps.join(','))}/>)}>补充游戏名单</Button>)}</div>
+        <div className="c-feature">{feature('FREEFORM_GAME_LOGIN','登录跳转以小窗打开','所有应用跳转登录授权页面时使用小窗。')}</div>
         <div className="c-feature">{feature('FREEFORM_EXTERNAL_APPS','打开第三方应用以小窗打开','从前台应用跳转其他第三方应用时使用小窗。')}</div>
         <div className="c-feature">
           {feature(

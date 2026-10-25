@@ -159,6 +159,9 @@ final class OemBinaryGate {
             if (changed) notifyListeners();
         }
 
+
+        // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+        //noinspection ObsoleteSdkInt
         void observe(Context app) {
             if (observing) return;
             IntentFilter filter = new IntentFilter();

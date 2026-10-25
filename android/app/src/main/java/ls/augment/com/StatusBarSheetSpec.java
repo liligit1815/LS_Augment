@@ -27,7 +27,7 @@ public final class StatusBarSheetSpec {
             List<Cell> cells,float outputScale,float outputOffsetX,float outputOffsetY,String fitMode){
         if(rows<1||cols<1)throw new IllegalArgumentException("行数和列数须为正整数");
         positive(defaultRowHeight,"默认行高");positive(defaultColWidth,"默认列宽");nonnegative(rowGap,"行间距");nonnegative(colGap,"列间距");
-        positive(outputScale,"输出比例");finite(outputOffsetX,"输出水平位置");finite(outputOffsetY,"输出垂直位置");
+        positive(outputScale,"输出比例");finite(outputOffsetX,"输出水平位置");finite(outputOffsetY,"输出上下位置");
         if(!Arrays.asList("manual","width","page").contains(fitMode))throw new IllegalArgumentException("输出缩放方式无效");
         this.rows=rows;this.cols=cols;this.defaultRowHeight=defaultRowHeight;this.defaultColWidth=defaultColWidth;
         this.rowGap=rowGap;this.colGap=colGap;this.outputScale=outputScale;this.outputOffsetX=outputOffsetX;this.outputOffsetY=outputOffsetY;this.fitMode=fitMode;
@@ -195,7 +195,7 @@ public final class StatusBarSheetSpec {
         public final int row,col,rowSpan,colSpan;public final String content,align,text,image;public final float size,paddingX,paddingY,offsetX,offsetY;
         public Cell(int row,int col,int rowSpan,int colSpan,String content,float size,float paddingX,float paddingY,float offsetX,float offsetY,String align,String text,String image){
             if(row<0||col<0||rowSpan<1||colSpan<1||(long)row+rowSpan>Integer.MAX_VALUE||(long)col+colSpan>Integer.MAX_VALUE)throw new IllegalArgumentException("单元格坐标或合并范围超出整数范围");
-            if(content==null||!content.isEmpty()&&!CONTENTS.contains(content))throw new IllegalArgumentException("单元格内容类型无效");positive(size,"内容大小");nonnegative(paddingX,"左右内边距");nonnegative(paddingY,"上下内边距");finite(offsetX,"水平偏移");finite(offsetY,"垂直偏移");
+            if(content==null||!content.isEmpty()&&!CONTENTS.contains(content))throw new IllegalArgumentException("单元格内容类型无效");positive(size,"内容大小");nonnegative(paddingX,"左右内边距");nonnegative(paddingY,"上下内边距");finite(offsetX,"水平偏移");finite(offsetY,"上下偏移");
             if(!Arrays.asList("left","center","right").contains(align))throw new IllegalArgumentException("对齐方式无效");
             if(text==null||text.indexOf('\0')>=0||!new String(text.getBytes(StandardCharsets.UTF_8),StandardCharsets.UTF_8).equals(text))throw new IllegalArgumentException("自定义文字编码无效");
             if(image==null||!image.isEmpty()&&!image.matches("[0-9a-f]{64}"))throw new IllegalArgumentException("图片须引用已导入素材的 SHA-256，不能使用路径或内嵌图片");

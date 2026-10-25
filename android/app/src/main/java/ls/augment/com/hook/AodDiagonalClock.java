@@ -36,6 +36,9 @@ final class AodDiagonalClock {
             }
         }return null;
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private View named(View root,String name){int id=root.getResources().getIdentifier(name,"id","com.android.systemui");return id==0?null:root.findViewById(id);}
     void apply(TextView clock,boolean seconds,boolean period,float scale,float periodScale,Typeface font,float nativeSize)throws ReflectiveOperationException{
         View root=owner.get();if(root==null)return;

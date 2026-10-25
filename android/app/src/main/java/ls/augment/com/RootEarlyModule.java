@@ -17,6 +17,7 @@ public abstract class RootEarlyModule extends XposedModule {
     protected RootEarlyModule(Mode mode){this.mode=java.util.Objects.requireNonNull(mode);}
 
     @Override public final void onModuleLoaded(ModuleLoadedParam param) {
+        try { StartupDiagnostics.initialize(this, param.getProcessName()); } catch (Throwable ignored) { }
         authority.open();
         Result result;
         try {
@@ -27,25 +28,40 @@ public abstract class RootEarlyModule extends XposedModule {
                     : new Result("SKIPPED_ANDROID_VERSION","Root transaction profile requires Android 16",
                             null,0,0,android.os.Process.myPid(),android.os.Process.myUid(),
                             0,0,0,Collections.emptyList(),false);
+        }catch(Throwable failure){
+            recordStartup("ROOT_EARLY_UNHANDLED", "", failure);
+            result=new Result("REJECTED_UNHANDLED","early coordinator threw",failure,0,0,
+                    android.os.Process.myPid(),android.os.Process.myUid(),0,0,0,Collections.emptyList(),false);
         }finally{authority.close();}
+        recordStartup("ROOT_EARLY_RESULT", result.renderDiagnostic()+"\n"+result.exception, null);
         // The coordinator's private window has already closed. This is data only.
-        try{onModuleLoadedAfterEarly(param,result);}catch(Throwable observerFailure){/* Must not replace the framework's ordinary continuation. */}
+        recordStartup("MODULE_INITIALIZE_BEGIN", "", null);
+        try{onModuleLoadedAfterEarly(param,result);recordStartup("MODULE_INITIALIZE_RETURNED", "", null);}
+        catch(Throwable observerFailure){recordStartup("MODULE_INITIALIZE_FAILED", "", observerFailure);}
     }
     /** Original module initialization can retain its real parameter after the early scope is closed. */
     protected void onModuleLoadedAfterEarly(ModuleLoadedParam param,Result result){onEarlyResult(result);}
     protected void onEarlyResult(Result result) { }
     @Override public final void onSystemServerStarting(SystemServerStartingParam param) {
+        recordStartup("SYSTEM_SERVER_BEGIN", "", null);
         try {
             if(mode==Mode.INSTALL_PROTECTIVE && android.os.Build.VERSION.SDK_INT==36) {
                 entryAuthority.open();
                 coordinator.installRuntimeEntry(this,param.getClassLoader(),entryAuthority);
             }
-        }catch(Throwable failure){coordinator.retire();}
+        }catch(Throwable failure){
+            recordStartup("ROOT_RUNTIME_ENTRY_FAILED", "", failure);
+            try{coordinator.retire();}catch(Throwable cleanupFailure){recordStartup("ROOT_RETIRE_FAILED", "", cleanupFailure);}
+        }
         finally{entryAuthority.close();}
-        try{onSystemServerStartingAfterRoot(param);}catch(Throwable observerFailure){/* Preserve framework startup. */}
+        try{onSystemServerStartingAfterRoot(param);recordStartup("SYSTEM_SERVER_RETURNED", "", null);}
+        catch(Throwable observerFailure){recordStartup("SYSTEM_SERVER_FAILED", "", observerFailure);}
     }
     /** Retains the module's existing system-server initialization after the private entry window. */
     protected void onSystemServerStartingAfterRoot(SystemServerStartingParam param){ }
+    protected final void recordStartup(String stage,String detail,Throwable error){
+        try{StartupDiagnostics.record(stage,detail,error);}catch(Throwable ignored){ }
+    }
     public final CompletionStage<Result> retireEarly(){return coordinator.retire();}
     /** Current immutable diagnostics only; no service, method, installer or admission token leaves here. */
     public final String startupDiagnostic(){return coordinator.startupDiagnostic();}
@@ -93,7 +109,7 @@ public abstract class RootEarlyModule extends XposedModule {
     }
     /** Immutable observation; contains no Origins/Profile/Method/installer/token/future capability. */
     public static final class Result {
-        public final String status,reason,cause;
+        public final String status,reason,cause,exception;
         public final long elapsedMillis,preparationMillis;
         public final int pid,uid,profileCount,additionalCount,unresolvedCount;
         public final boolean restartRequired;
@@ -101,6 +117,7 @@ public abstract class RootEarlyModule extends XposedModule {
         Result(String status,String reason,Throwable failure,long elapsed,long preparation,int pid,int uid,
                int profileCount,int additionalCount,int unresolvedCount,List<OwnerSource> owners,boolean restart) {
             this.status=clean(status,64);this.reason=clean(reason,192);this.cause=describe(failure);
+            this.exception=DiagnosticException.render(failure);
             elapsedMillis=elapsed;preparationMillis=preparation;this.pid=pid;this.uid=uid;
             this.profileCount=profileCount;this.additionalCount=additionalCount;this.unresolvedCount=unresolvedCount;restartRequired=restart;
             this.owners=Collections.unmodifiableList(new ArrayList<>(owners));

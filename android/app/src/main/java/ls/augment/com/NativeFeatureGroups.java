@@ -112,7 +112,8 @@ final class NativeFeatureGroups {
                     new String[]{},"boolean","0",new Feature[]{
                 new Feature("glass:dock_transparency","减少透明度",GlassOptions.DOCK_REDUCE_TRANSPARENCY,new String[]{},"boolean","0",new Feature[]{}),
                 new Feature("glass:dock_motion","减少动态效果",GlassOptions.DOCK_REDUCE_MOTION,new String[]{},"boolean","0",new Feature[]{})
-            })
+            }),
+            new Feature(LauncherOptions.DOCK_UNLIMITED,"解除Dock栏应用数量限制",LauncherOptions.DOCK_UNLIMITED,new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("systemui","power","电源菜单",new Feature[]{
             new Feature("systemui:power_reboot_modes","电源菜单高级重启",SystemUiOptions.POWER_MODES,new String[]{},"boolean","0",new Feature[]{})
@@ -156,7 +157,7 @@ final class NativeFeatureGroups {
         }),
         new Section("systemui","statusbar","状态栏细节", new Feature[]{
             new Feature("systemui:privacy_hide","隐藏隐私小绿点","ls_augment_rm_privacy_hide",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature("systemui:signal_dual","双排信号图标","ls_augment_rm_signal_dual",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("systemui:signal_dual","双排信号图标","ls_augment_rm_signal_dual",new String[]{"ls_augment_rm_signal_dual_style"},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_wifi_activity","隐藏 Wi-Fi 收发箭头","ls_augment_rm_hide_wifi_activity",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_wifi_standard","隐藏 Wi-Fi 标准数字","ls_augment_rm_hide_wifi_standard",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:hide_mobile_activity","隐藏移动网络收发箭头","ls_augment_rm_hide_mobile_activity",new String[]{},"boolean","0", new Feature[]{}),
@@ -170,7 +171,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:hide_hotspot_scope","隐藏热点图标的位置",null,new String[]{"ls_augment_rm_hide_hotspot_scope"},"number","0", new Feature[]{}),
             new Feature("systemui:hide_mobile_scope","隐藏移动网络图标的位置",null,new String[]{"ls_augment_rm_hide_mobile_scope"},"number","0", new Feature[]{}),
             new Feature("systemui:hidden_icon_slots","其他隐藏图标",null,new String[]{"ls_augment_rm_hidden_icon_slots"},"nonEmptyCommaSeparatedTokens","", new Feature[]{}),
-            new Feature("systemui:battery_style","电池样式",null,new String[]{"ls_augment_rm_battery_style"},"number","0", new Feature[]{}),
+            new Feature("systemui:battery_style","电池显示方式",null,new String[]{"ls_augment_rm_battery_style","ls_augment_rm_battery_preset"},"number","0", new Feature[]{}),
             new Feature("systemui:battery_hide_percent","隐藏电量百分号","ls_augment_rm_battery_hide_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:battery_width_dp","电池固定宽度",null,new String[]{"ls_augment_rm_battery_width_dp"},"number","0", new Feature[]{}),
             new Feature("systemui:battery_alpha_percent","电池图标不透明度（%）",null,new String[]{"ls_augment_rm_battery_alpha_percent"},"number","100", new Feature[]{}),
@@ -224,10 +225,10 @@ final class NativeFeatureGroups {
                 new Feature("ls_augment_rm_charging_every_wake","每次亮屏显示充电动画","ls_augment_rm_charging_every_wake",new String[]{},"boolean","0", new Feature[]{})
             }),
             new Feature("systemui:lock_charge_details","锁屏显示充电详情","ls_augment_rm_lock_charge_details",new String[]{"ls_augment_rm_lock_charge_text_size","ls_augment_rm_lock_charge_line_gap","ls_augment_rm_lock_charge_interval"},"boolean","0", new Feature[]{
-                new Feature("ls_augment_rm_lock_charge_hide_temperature","充电详情隐藏温度","ls_augment_rm_lock_charge_hide_temperature",new String[]{},"boolean","0", new Feature[]{}),
-                new Feature("ls_augment_rm_lock_charge_hide_current","充电详情隐藏电流","ls_augment_rm_lock_charge_hide_current",new String[]{},"boolean","0", new Feature[]{}),
-                new Feature("ls_augment_rm_lock_charge_hide_voltage","充电详情隐藏电压","ls_augment_rm_lock_charge_hide_voltage",new String[]{},"boolean","0", new Feature[]{}),
-                new Feature("ls_augment_rm_lock_charge_hide_power","充电详情隐藏功率","ls_augment_rm_lock_charge_hide_power",new String[]{},"boolean","0", new Feature[]{})
+                new Feature("ls_augment_rm_lock_charge_show_temperature","充电详情显示温度","ls_augment_rm_lock_charge_show_temperature",new String[]{},"boolean","0", new Feature[]{}),
+                new Feature("ls_augment_rm_lock_charge_show_current","充电详情显示电流","ls_augment_rm_lock_charge_show_current",new String[]{},"boolean","0", new Feature[]{}),
+                new Feature("ls_augment_rm_lock_charge_show_voltage","充电详情显示电压","ls_augment_rm_lock_charge_show_voltage",new String[]{},"boolean","0", new Feature[]{}),
+                new Feature("ls_augment_rm_lock_charge_show_power","充电详情显示功率","ls_augment_rm_lock_charge_show_power",new String[]{},"boolean","0", new Feature[]{})
             })
         }),
         new Section("systemui","aod","息屏显示", new Feature[]{
@@ -264,11 +265,13 @@ final class NativeFeatureGroups {
         new Section("launcher","launcher","桌面页面", new Feature[]{
             new Feature("launcher:hide_minors","隐藏未成年模式图标",EntryVisibilityOptions.HIDE_MINORS_ICON,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_rm_launcher_page_reorder","整页移动桌面","ls_augment_rm_launcher_page_reorder",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature("ls_augment_rm_launcher_keep_empty","允许空白桌面","ls_augment_rm_launcher_keep_empty",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_rm_launcher_keep_empty","允许空白桌面","ls_augment_rm_launcher_keep_empty",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature(LauncherOptions.NEW_APPS_LAST_PAGE,"强制新装APP图标显示在桌面末页",LauncherOptions.NEW_APPS_LAST_PAGE,new String[]{},"boolean","0", new Feature[]{})
         }),
-        new Section("launcher","desktop_clock","桌面时钟", new Feature[]{
+        new Section("launcher","desktop_clock","桌面组件", new Feature[]{
             new Feature("ls_augment_rm_desktop_clock_enabled","桌面时钟增强","ls_augment_rm_desktop_clock_enabled",new String[]{"ls_augment_rm_desktop_clock_pattern"},"boolean","0", new Feature[]{}),
-            new Feature("ls_augment_rm_desktop_clock_period","桌面时钟显示中文时段","ls_augment_rm_desktop_clock_period",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_rm_desktop_clock_period","桌面时钟显示中文时段","ls_augment_rm_desktop_clock_period",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature(LauncherOptions.WIDGET_RESIZE,"允许修改小组件大小",LauncherOptions.WIDGET_RESIZE,new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("launcher","recents","最近任务", new Feature[]{
             new Feature(RecentsCardRadiusOptions.ENABLED,"最近任务卡片圆角调节",RecentsCardRadiusOptions.ENABLED,new String[]{RecentsCardRadiusOptions.OFFSET},"boolean","0", new Feature[]{}),

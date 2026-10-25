@@ -39,7 +39,8 @@ public final class LiquidGlassDrawable extends Drawable {
 
     private final WeakReference<View> host;
     private final BackdropSource source;
-    private final float radius,density;
+    private float radius;
+    private final float density;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Paint rimPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF shape=new RectF();
@@ -53,8 +54,10 @@ public final class LiquidGlassDrawable extends Drawable {
     private int[] pixels,scratch;
     private int alpha=255;
     private boolean reduceTransparency,reduceMotion,highContrast,failed,ready,released,lightForeground;
-    private boolean iconOnly,controlSurface;
+    private boolean iconOnly,controlSurface,animatedFallback;
     private int materialTint=Color.TRANSPARENT;
+    private int materialTintEnd=Color.TRANSPARENT,tintDirection;
+    private LinearGradient materialGradient;
     private float tintStrength;
     private float lightX=.24f,lightY=.06f,pressure;
     private long sampledAt,lastAccessibilityRead,sampledRevision=-1,revealStartedAt=-1;
@@ -72,6 +75,8 @@ public final class LiquidGlassDrawable extends Drawable {
     public void setForegroundIsLight(boolean value) { if(lightForeground!=value){lightForeground=value;redraw();} }
     /** A Dock or icon well has no text requiring an opaque dark backing. */
     public void setIconOnly(boolean value) { if(iconOnly!=value){iconOnly=value;redraw();} }
+    /** Allows only uncaptured gradients during a verified native 2-D return animation. */
+    public void setAnimatedFallback(boolean value) { animatedFallback=value; }
     /** Controls need a calmer backdrop than the clear tray below opaque application icons. */
     public void setControlSurface(boolean value) {
         if(controlSurface==value)return;
@@ -79,7 +84,18 @@ public final class LiquidGlassDrawable extends Drawable {
     }
     public void setMaterialTint(int color,float strength) {
         float amount=Math.min(.65f,LiquidGlassPolicy.clamp01(strength));
-        if(materialTint!=color||tintStrength!=amount){materialTint=color;tintStrength=amount;redraw();}
+        setMaterialGradient(color,color,0,amount);
+    }
+    /** Appearance preferences affect the same material, never a competing background wrapper. */
+    public void setMaterialGradient(int first,int last,int direction,float strength) {
+        float amount=LiquidGlassPolicy.clamp01(strength);int way=Math.max(0,Math.min(2,direction));
+        if(materialTint!=first||materialTintEnd!=last||tintDirection!=way||tintStrength!=amount){
+            materialTint=first;materialTintEnd=last;tintDirection=way;tintStrength=amount;materialGradient=null;redraw();
+        }
+    }
+    public void setRadiusDp(float value) {
+        float next=Float.isFinite(value)?Math.max(0,value)*density:radius;
+        if(radius!=next){radius=next;redraw();}
     }
     public void updatePreferences(boolean lessTransparency,boolean lessMotion) {
         if(reduceTransparency!=lessTransparency){ready=false;sampledAt=0;revealStartedAt=-1;}
@@ -179,11 +195,14 @@ public final class LiquidGlassDrawable extends Drawable {
                 optics.setFloatUniform("iconOnly",iconOnly?1:0);
                 optics.setFloatUniform("controlSurface",controlSurface?1:0);
                 optics.setFloatUniform("tint",Color.red(materialTint)/255f,Color.green(materialTint)/255f,Color.blue(materialTint)/255f);
+                optics.setFloatUniform("tintEnd",Color.red(materialTintEnd)/255f,Color.green(materialTintEnd)/255f,Color.blue(materialTintEnd)/255f);
+                optics.setFloatUniform("tintDirection",tintDirection);
                 optics.setFloatUniform("tintAmount",tintStrength);
                 paint.setColor(Color.WHITE);paint.setAlpha(Math.round(alpha*reveal));paint.setShader(optics);
                 if(reveal<1)redraw();
             }else return;
             canvas.drawRoundRect(shape,round,round,paint);
+            if(reduceTransparency)drawTint(canvas,b.width(),b.height(),round,alpha);
             drawRim(canvas,b.width(),b.height(),round);
         }catch(RuntimeException error){failed=true;ready=false;failure="gpu_draw_failed";}
         finally{paint.setShader(null);canvas.restoreToCount(save);}
@@ -220,8 +239,18 @@ public final class LiquidGlassDrawable extends Drawable {
         }
         paint.setShader(fallbackGradient);paint.setColor(Color.WHITE);paint.setAlpha(opacity);
         canvas.drawRoundRect(shape,round,round,paint);paint.setShader(null);
-        if(tintStrength>0){paint.setColor(materialTint);paint.setAlpha(Math.round(opacity*tintStrength));
-            canvas.drawRoundRect(shape,round,round,paint);}
+        drawTint(canvas,width,height,round,opacity);
+    }
+    private void drawTint(Canvas canvas,int width,int height,float round,int opacity){
+        if(tintStrength<=0)return;
+        ensureGradients(width,height);
+        paint.setColor(materialTint);paint.setAlpha(Math.round(opacity*tintStrength));
+        if(materialTint!=materialTintEnd){
+            if(materialGradient==null)materialGradient=new LinearGradient(0,0,tintDirection==1?0:width,
+                    tintDirection==0?0:height,materialTint,materialTintEnd,Shader.TileMode.CLAMP);
+            paint.setShader(materialGradient);
+        }
+        canvas.drawRoundRect(shape,round,round,paint);paint.setShader(null);
     }
     private void drawRim(Canvas canvas,int width,int height,float round){
         // The paired light/dark edge remains visible on both white and dark wallpapers.
@@ -236,7 +265,7 @@ public final class LiquidGlassDrawable extends Drawable {
     }
     private void ensureGradients(int width,int height){
         if(rimGradient!=null&&gradientWidth==width&&gradientHeight==height)return;
-        gradientWidth=width;gradientHeight=height;fallbackGradient=null;
+        gradientWidth=width;gradientHeight=height;fallbackGradient=null;materialGradient=null;
         rimGradient=new LinearGradient(0,0,width*.65f,height,
                 new int[]{0xb8ffffff,0x3dffffff,0x25152a42,0x78ffffff},
                 new float[]{0,.38f,.7f,1},Shader.TileMode.CLAMP);
@@ -256,7 +285,7 @@ public final class LiquidGlassDrawable extends Drawable {
                 ||((((WindowManager.LayoutParams)params).flags&WindowManager.LayoutParams.FLAG_SECURE)==0);
     }
     private boolean validFallbackHost(View view){
-        if(!controlSurface)return validHost(view);
+        if(!controlSurface&&!animatedFallback)return validHost(view);
         // This path draws no captured pixels. Normal 2-D opening scale is applied by
         // the caller's Canvas, so its local gradient can appear with the native controls.
         // Real capture/texture coordinates still require validHost() with unit scale.
@@ -285,7 +314,7 @@ public final class LiquidGlassDrawable extends Drawable {
     private static final String SHADER=
             "uniform shader backdrop; uniform float2 size; uniform float radius; uniform float dp;"+
             "uniform float2 light; uniform float pressure; uniform float whiteText; uniform float highContrast;"+
-            "uniform float iconOnly; uniform float controlSurface; uniform float3 tint; uniform float tintAmount;"+
+            "uniform float iconOnly; uniform float controlSurface; uniform float3 tint; uniform float3 tintEnd; uniform float tintDirection; uniform float tintAmount;"+
             "float3 linearize(float3 c){return mix(c/12.92,pow((c+.055)/1.055,float3(2.4)),step(float3(.04045),c));}"+
             "float3 encode(float3 c){return mix(c*12.92,1.055*pow(max(c,0.0),float3(1.0/2.4))-.055,step(float3(.0031308),c));}"+
             "half4 main(float2 p){"+
@@ -298,7 +327,8 @@ public final class LiquidGlassDrawable extends Drawable {
             "float baseY=dot(rgb,float3(.2126,.7152,.0722));"+
             "float3 calm=mix(float3(baseY),rgb,.45);calm=mix(calm,float3(.52,.57,.64),.22);"+
             "rgb=mix(rgb,calm,controlSurface);"+
-            "rgb=mix(rgb,linearize(tint),tintAmount);"+
+            "float t=tintDirection<.5?p.x/size.x:tintDirection<1.5?p.y/size.y:(p.x/size.x+p.y/size.y)*.5;"+
+            "rgb=mix(rgb,linearize(mix(tint,tintEnd,clamp(t,0.0,1.0))),tintAmount);"+
             "float y=dot(rgb,float3(.2126,.7152,.0722));"+
             "float ceiling=mix(.115,.08,highContrast);float floor=mix(.38,.72,highContrast);"+
             "float mixDark=max(.06,1.0-ceiling/max(.001,y));float mixLight=max(.06,(floor-y)/max(.001,1.0-y));"+

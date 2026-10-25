@@ -32,6 +32,9 @@ final class FanControlHook {
     private static final long POLL_MS = 900L;
     private static final int MAX_BATTERY_TENTHS_C = 500;
 
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Controller controller;
 
     private FanControlHook() { }
@@ -43,18 +46,25 @@ final class FanControlHook {
             Method writeNode = utils.getDeclaredMethod(
                     "setNodeValue", String.class, String.class);
             Method readNode = utils.getDeclaredMethod("readNodeValue", String.class);
+            requireMethod(writeNode,void.class,true);
+            requireMethod(readNode,String.class,true);
+            Method start = type.getDeclaredMethod("start");
+            Method notifyMode = type.getDeclaredMethod("notifyCubeFan");
+            Method setEnable = type.getDeclaredMethod("setFanEnable", boolean.class);
+            requireMethod(start,void.class,false);
+            requireMethod(notifyMode,void.class,false);
+            requireMethod(setEnable,void.class,false);
             writeNode.setAccessible(true);
             readNode.setAccessible(true);
             FanCompatibilityProfile profile = FanCompatibilityProfile.resolve(
                     Build.DEVICE, Build.PRODUCT, Build.MODEL,
                     hasVoidMethod(type, "fanMaxSpeed"), hasVoidMethod(type, "fanFullSpeed"),
                     hasVoidMethod(type, "cancelFanFullSpeed"), hasVoidMethod(type, "notifyCubeFan"),
-                    path -> new File("/" + path).exists());
+                    path -> new File("/" + path).exists(), FanDriverContract.verified());
             Controller installedController = new Controller(module, writeNode, readNode, profile);
             controller = installedController;
 
             int installed = 0;
-            Method start = type.getDeclaredMethod("start");
             start.setAccessible(true);
             HookHandle startHandle = module.prepareFeatureHook(
                             start, "fan.controller_start", false)
@@ -69,7 +79,6 @@ final class FanControlHook {
             module.registerFeatureHook(startHandle);
             installed++;
 
-            Method notifyMode = type.getDeclaredMethod("notifyCubeFan");
             notifyMode.setAccessible(true);
             HookHandle modeHandle = module.prepareFeatureHook(
                             notifyMode, "fan.observe_oem_mode", false)
@@ -84,7 +93,6 @@ final class FanControlHook {
             module.registerFeatureHook(modeHandle);
             installed++;
 
-            Method setEnable = type.getDeclaredMethod("setFanEnable", boolean.class);
             setEnable.setAccessible(true);
             HookHandle enableHandle = module.prepareFeatureHook(
                             setEnable, "fan.observe_oem_enable", false)
@@ -125,6 +133,7 @@ final class FanControlHook {
             return installed;
         } catch (Throwable error) {
             Context context = FeatureSettings.from(null);
+            FeatureSettings.diagnostic(context, FeatureSettings.FAN_CONTROL_INSTALLED, "");
             FeatureSettings.diagnostic(context, FeatureSettings.FAN_CONTROL_LAST_ERROR,
                     "install:" + safeMessage(error));
             module.logFeatureError("FAN_CONTROL_INSTALL", error);
@@ -182,7 +191,7 @@ final class FanControlHook {
         }
 
         private String capabilityDiagnostic() {
-            return ";oem_session_only=1;fan_enable_writes=0;capability=" + profile.capability()
+            return ";hardware_identity="+FanHardwareIdentity.current()+";oem_session_only=1;fan_enable_writes=0;capability=" + profile.capability()
                     + ";enable_node=" + profile.enableNode + ";rpm_node=" + profile.rpmNode
                     + ";power_method=" + profile.powerMethod
                     + ";speed_interface=" + (profile.allowsLevelWrites() ? "level" : "oem_api")
@@ -395,10 +404,15 @@ final class FanControlHook {
 
                 int mode;
                 int manual;
+                String vendorKey = OEM_MODE;
                 try {
                     mode = Settings.System.getInt(current.getContentResolver(), OEM_MODE);
+                    vendorKey = OEM_MANUAL;
                     manual = Settings.System.getInt(current.getContentResolver(), OEM_MANUAL);
                 } catch (Throwable error) {
+                    FeatureSettings.diagnostic(current, "ls_augment_fan_last_vendor_read_error",
+                            "key=" + vendorKey + ";error=" + error.getClass().getSimpleName()
+                                    + ";ts=" + System.currentTimeMillis());
                     failSession("vendor_state_read", false);
                     return;
                 }
@@ -735,6 +749,9 @@ final class FanControlHook {
             capturedManual = Integer.MIN_VALUE;
         }
 
+
+        // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+        //noinspection ObsoleteSdkInt
         private boolean thermalNormal(Context current) {
             try {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false;
@@ -802,8 +819,14 @@ final class FanControlHook {
         try {
             Method method = type.getDeclaredMethod(name);
             return method.getReturnType() == void.class
-                    && !java.lang.reflect.Modifier.isStatic(method.getModifiers());
+                    && !java.lang.reflect.Modifier.isStatic(method.getModifiers())
+                    && !java.lang.reflect.Modifier.isAbstract(method.getModifiers());
         } catch (ReflectiveOperationException missing) { return false; }
+    }
+
+    private static void requireMethod(Method method,Class<?> result,boolean isStatic)throws NoSuchMethodException {
+        if(method.getReturnType()!=result||java.lang.reflect.Modifier.isStatic(method.getModifiers())!=isStatic
+                ||java.lang.reflect.Modifier.isAbstract(method.getModifiers()))throw new NoSuchMethodException(method.toString());
     }
 
     private static String safeMessage(Throwable error) {

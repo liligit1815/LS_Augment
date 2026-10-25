@@ -121,7 +121,6 @@ export function Help({ title, text }: { title: string; text?: string }) {
 export function IceIcon({ title }: { title: string }) {
   const icons: Record<string, typeof Bell> = {
     液态玻璃控制中心: LayoutGrid,
-    通知堆叠: Bell,
     '面板日期、天气与时钟': Clock,
     电源菜单高级重启: Power,
     自定义侧滑返回图标: Undo2,
@@ -305,6 +304,7 @@ export function Button({
 export function Range({
   name,
   title,
+  help,
   min,
   max,
   step = 1,
@@ -313,6 +313,7 @@ export function Range({
 }: {
   name: string;
   title: string;
+  help?: string;
   min: number;
   max: number;
   step?: number;
@@ -326,6 +327,7 @@ export function Range({
       <FeatureTitle
         title={title}
         help={
+          help ||
           keyHelp[name] ||
           titleHelp[title] ||
           `调整${title}。可选范围：${min}–${max}。`
@@ -356,6 +358,7 @@ export function Range({
 export function Field({
   name,
   title,
+  help,
   type = 'text',
   initial = '',
   min,
@@ -365,6 +368,7 @@ export function Field({
 }: {
   name: string;
   title: string;
+  help?: string;
   type?: string;
   initial?: string;
   min?: number;
@@ -385,6 +389,7 @@ export function Field({
       <FeatureTitle
         title={title}
         help={
+          help ||
           keyHelp[name] ||
           titleHelp[title] ||
           (type === 'number'

@@ -234,6 +234,9 @@ final class LauncherPagesEditor {
         dialog.dismiss();
     }
 
+
+    // Injected host view uses the host Resources; module R IDs are invalid there. Preserve these short built-in Chinese labels.
+    //noinspection SetTextI18n
     private void render(boolean selectLast) throws Exception {
         List<Integer> order = c.order();
         int refreshedCurrent = c.currentPageId();
@@ -262,6 +265,9 @@ final class LauncherPagesEditor {
         updateControls();
     }
 
+
+    // Injected host view uses the host Resources; module R IDs are invalid there. Preserve these short built-in Chinese labels.
+    //noinspection SetTextI18n
     private void updateControls() {
         int index = indexOf(selectedId);
         Page page = index < 0 ? null : pages.get(index);
@@ -616,6 +622,12 @@ final class LauncherPagesEditor {
 
     /** Render native pages without moving their child views or allocating page-sized bitmaps. */
     private final class Preview extends View {
+        final RectF emptyBounds = new RectF();
+        Shader backdrop;
+        @Override protected void onSizeChanged(int w,int h,int oldw,int oldh) {
+            super.onSizeChanged(w,h,oldw,oldh);
+            if(w>0 && h>0) backdrop=new LinearGradient(0,0,w,h,dark?0xff435d7c:0xffbfd0e6,dark?0xff293e5a:0xff8ca8cd,Shader.TileMode.CLAMP);
+        }
         final WeakReference<View> source;
         final boolean empty;
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -626,8 +638,7 @@ final class LauncherPagesEditor {
         }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            paint.setShader(new LinearGradient(0, 0, getWidth(), getHeight(),
-                    dark ? 0xff435d7c : 0xffbfd0e6, dark ? 0xff293e5a : 0xff8ca8cd, Shader.TileMode.CLAMP));
+            paint.setShader(backdrop);
             canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
             paint.setShader(null);
             if (empty) {
@@ -635,7 +646,8 @@ final class LauncherPagesEditor {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(dp(2));
                 float x = getWidth() / 2f, y = getHeight() / 2f;
-                canvas.drawRoundRect(new RectF(x - dp(15), y - dp(22), x + dp(15), y + dp(22)), dp(5), dp(5), paint);
+                emptyBounds.set(x - dp(15), y - dp(22), x + dp(15), y + dp(22));
+                canvas.drawRoundRect(emptyBounds, dp(5), dp(5), paint);
                 paint.setStyle(Paint.Style.FILL);
                 canvas.drawCircle(x, y + dp(14), dp(1), paint);
                 return;
@@ -661,6 +673,8 @@ final class LauncherPagesEditor {
     private static final class Glyph extends View {
         static final int PLUS = 0, LEFT = 1, RIGHT = 2, DELETE = 3, CHECK = 4;
         final int kind;
+        final Path path=new Path();
+        final RectF plusBounds=new RectF(4,3,20,21);
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Glyph(Context context, int kind, int color) {
             super(context);
@@ -675,9 +689,9 @@ final class LauncherPagesEditor {
             super.onDraw(canvas);
             int save = canvas.save();
             canvas.scale(getWidth() / 24f, getHeight() / 24f);
-            Path path = new Path();
+            path.reset();
             if (kind == PLUS) {
-                canvas.drawRoundRect(new RectF(4, 3, 20, 21), 3, 3, paint);
+                canvas.drawRoundRect(plusBounds, 3, 3, paint);
                 canvas.drawLine(8, 12, 16, 12, paint);
                 canvas.drawLine(12, 8, 12, 16, paint);
             } else if (kind == LEFT || kind == RIGHT) {

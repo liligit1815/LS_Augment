@@ -28,6 +28,9 @@ public final class RapidFireCompatibility {
     private static volatile String cachedNativeHash;
     private static volatile Identity cachedIdentity;
     private static volatile long cachedFingerprintAt;
+
+    // System-hook identity worker uses application/system context; callback belongs to that process-owned hook.
+    //noinspection StaticFieldLeak
     private static volatile Context asyncContext;
     private static volatile Runnable asyncListener;
     private static final class AsyncIdentity {
@@ -117,7 +120,8 @@ public final class RapidFireCompatibility {
     /** Non-blocking system hook API. An absent/expired identity never authorizes a token. */
     public static String currentFingerprintAsync(Context context, Runnable onChanged) {
         if (context == null) return "";
-        asyncContext = context; asyncListener = onChanged;
+        Context application = context.getApplicationContext();
+        asyncContext = application == null ? context : application; asyncListener = onChanged;
         if (asyncStarted.compareAndSet(false, true)) {
             identityWorker.scheduleWithFixedDelay(RapidFireCompatibility::refreshAsyncIdentity, 0, 5,
                     java.util.concurrent.TimeUnit.SECONDS);
@@ -161,12 +165,21 @@ public final class RapidFireCompatibility {
         if (cached != null) return cached;
         synchronized (RapidFireCompatibility.class) {
             if (cachedNativeHash != null) return cachedNativeHash;
-            try (FileInputStream input = new FileInputStream(INPUT_READER_PATH)) {
+            try {
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                java.util.ArrayList<java.io.File> candidates=new java.util.ArrayList<>();
+                for(String path:new String[]{INPUT_READER_PATH,"/system/lib64/libinputflinger.so"}) {
+                    java.io.File file=new java.io.File(path);if(file.isFile())candidates.add(file);
+                }
+                if(candidates.isEmpty())throw new java.io.FileNotFoundException();
                 byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = input.read(buffer)) >= 0) {
-                    if (read > 0) digest.update(buffer, 0, read);
+                for(java.io.File file:candidates) {
+                    // Preserve the legacy single-library identity. With two providers,
+                    // bind certification to both; structural selection happens after the fuse.
+                    if(candidates.size()>1)digest.update(file.getPath().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    try(FileInputStream input=new FileInputStream(file)) {
+                        int read;while((read=input.read(buffer))>=0)if(read>0)digest.update(buffer,0,read);
+                    }
                 }
                 cachedNativeHash = hex(digest.digest());
             } catch (Throwable error) {
@@ -177,8 +190,18 @@ public final class RapidFireCompatibility {
     }
 
     public static String nativeProfile() {
-        return RapidFireNativeLayout.inspectFile(new java.io.File(INPUT_READER_PATH)) != null
-                ? RapidFireNativeLayout.PROFILE : null;
+        return nativeLibraryPath() != null ? RapidFireNativeLayout.PROFILE : null;
+    }
+
+    /** A single structurally verified provider is required; never guess between two. */
+    public static String nativeLibraryPath() {
+        String selected=null;
+        for(String path:new String[]{INPUT_READER_PATH,"/system/lib64/libinputflinger.so"}) {
+            if(RapidFireNativeLayout.inspectFile(new java.io.File(path))==null)continue;
+            if(selected!=null)return null;
+            selected=path;
+        }
+        return selected;
     }
 
     private static String packageVersion(Context context, String packageName) {

@@ -9,7 +9,6 @@ import json
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / 'android/app/src/main/java/ls/augment/com'
-PROVIDER_KEY_PATTERN = re.search(r'!key\.matches\("([^"]+)"\)', (MAIN/'ProviderDiagnostics.java').read_text(encoding='utf-8')).group(1)
 FILES = {
 'android/net/Uri.java': 'package android.net;public class Uri {public static Uri parse(String s){return new Uri();}}',
 'android/content/Intent.java': 'package android.content;public class Intent {}',
@@ -296,7 +295,9 @@ def run(overrides=None, expect_assertion=False):
         sources[name]=content
     diagnostic_stub = 'ls/augment/com/hook/FeatureSettings.java'
     sources[diagnostic_stub] = sources[diagnostic_stub].replace('diagnostics.put(k,v);',
-        'if(!k.matches(' + json.dumps(PROVIDER_KEY_PATTERN) + '))return;diagnostics.put(k,v);')
+        'if(!ls.augment.com.DiagnosticKeyFixture.valid(k))return;diagnostics.put(k,v);')
+    sources['ls/augment/com/DiagnosticKeyFixture.java'] = 'package ls.augment.com;public class DiagnosticKeyFixture{public static boolean valid(String key){return DiagnosticWritePolicy.validKey(key);}}'
+    sources['ls/augment/com/DiagnosticWritePolicy.java'] = (MAIN/'DiagnosticWritePolicy.java').read_text(encoding='utf-8')
     sources['ls/augment/com/hook/TestCaptureObservation.java'] = TEST
     for relative in ['hook/CaptureVisibilityHook.java', 'CaptureRuntimeObservation.java']:
         sources['ls/augment/com/' + relative] = (overrides or {}).get(relative, (MAIN / relative).read_text(encoding='utf-8'))

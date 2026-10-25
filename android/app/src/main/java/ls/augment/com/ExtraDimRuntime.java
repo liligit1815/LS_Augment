@@ -4,6 +4,12 @@ package ls.augment.com;
 public final class ExtraDimRuntime {
     public static final String PREFIX = "LSA_EXTRA_DIM_V1 ";
     private ExtraDimRuntime() { }
+    /** Same constrained mapping and truncation as ColorDisplayService, not a raw matrix level. */
+    public static int nativeStrength(int requested,int minimum,int maximum){
+        if(minimum<0||maximum<minimum||maximum>100)throw new IllegalArgumentException("Invalid native dim range");
+        float fraction=Math.max(0,Math.min(100,requested))/100f;
+        return (int)(minimum+(maximum-minimum)*fraction);
+    }
 
     public static boolean sameTransform(boolean active, int strength, float[] expected, float[] actual) {
         if (expected == null || expected.length != 16 || actual != null && actual.length != 16) return false;

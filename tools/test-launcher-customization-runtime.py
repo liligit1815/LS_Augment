@@ -4,6 +4,7 @@ Checks native fall-through, bitmap/label replacement and restoration, persistenc
 empty boot, incompatible metadata, and the delayed initialization failure path.
 """
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -132,18 +133,41 @@ public class TestLauncherCustomization {
 
 def main():
     hooks = ROOT / 'android/app/src/main/java/ls/augment/com/hook'
-    for variant in ('baseline', 'target', 'unsupported', 'ambiguous'):
-        icon = 's1' if variant == 'baseline' else 'u1'
-        state = 'P2' if variant == 'baseline' else 'V2'
+    for variant in ('baseline', 'target', 'unsupported', 'ambiguous', 'named', 'named-unsupported', 'named-ambiguous'):
+        named = variant.startswith('named')
+        icon = 'com.android.launcher3.icons' if named else ('s1' if variant == 'baseline' else 'u1')
+        state = 'LauncherAppState' if named else ('P2' if variant == 'baseline' else 'V2')
         with tempfile.TemporaryDirectory(prefix='lsa-launcher-custom-') as directory:
             root = Path(directory)
             for name, text in SOURCES.items():
+                if named:
+                    for before, after in [('y', 'ItemInfo'), ('z', 'ItemInfoWithIcon'), ('I', 'WorkspaceItemInfo')]:
+                        name = name.replace('/' + before + '.java', '/' + after + '.java')
+                        text = re.sub(r'\b' + before + r'\b', after, text)
+                    name = name.replace('ICON/d.java', 'ICON/BitmapInfo.java').replace('ICON/o.java', 'ICON/FastBitmapDrawable.java')
+                    text = text.replace('ICON.d', 'ICON.BitmapInfo').replace('ICON.o', 'ICON.FastBitmapDrawable')
+                    text = text.replace(' G(', ' newIcon(').replace(' void B(', ' void applyLabel(')
+                    text = text.replace('STATE h(', 'STATE getInstance(').replace('Model j()', 'Model getModel()').replace('void a0()', 'void forceReload()')
+                    text = text.replace('item.g', 'item.bitmap').replace(' g=', ' bitmap=').replace('(g)', '(bitmap)').replace(')i).g', ')i).bitmap').replace('savedIcon=g', 'savedIcon=bitmap')
+                    text = text.replace('original.d', 'original.flags').replace('item.bitmap.d', 'item.bitmap.flags').replace('drawn.h.a', 'drawn.h.icon')
+                    if name == 'ICON/BitmapInfo.java':
+                        text = '''package ICON;
+public class BitmapInfo {public final android.graphics.Bitmap icon;public final int color;public int flags;private BitmapInfo badgeInfo;
+    public BitmapInfo(android.graphics.Bitmap bitmap,int color){icon=bitmap;this.color=color;}public void badge(BitmapInfo badge){badgeInfo=badge;}public BitmapInfo badge(){return badgeInfo;}}
+'''
+                    if name == 'ICON/FastBitmapDrawable.java':
+                        text = 'package ICON;public class FastBitmapDrawable {public final BitmapInfo h;public FastBitmapDrawable(BitmapInfo info){h=info;}}'
                 name = name.replace('MODEL_STATE', 'com/android/launcher3/' + state).replace('ICON', icon)
+                name = name.replace(icon + '/', icon.replace('.', '/') + '/')
                 text = text.replace('ICON.', icon + '.').replace('package ICON;', 'package ' + icon + ';').replace('STATE', state)
                 if variant == 'unsupported' and name == icon + '/d.java':
                     text = text.replace('private d f;', 'private Object f;').replace('return f;', 'return (d)f;')
                 if variant == 'ambiguous' and name == 'com/android/launcher3/model/data/z.java':
                     text = text.replace('extends y {', 'extends y {public ' + icon + '.d second;')
+                if variant == 'named-unsupported' and name.endswith('/icons/BitmapInfo.java'):
+                    text = text.replace('private BitmapInfo badgeInfo;', 'private Object badgeInfo;').replace('return badgeInfo;', 'return (BitmapInfo)badgeInfo;')
+                if variant == 'named-ambiguous' and name.endswith('/model/data/ItemInfoWithIcon.java'):
+                    text = text.replace('extends ItemInfo {', 'extends ItemInfo {public ' + icon + '.BitmapInfo second;')
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding='utf-8')
@@ -154,13 +178,13 @@ def main():
                 decoy.parent.mkdir(exist_ok=True)
                 decoy.write_text('package s1; public class d {}')
             files = list(root.rglob('*.java')) + [hooks / name for name in (
-                'LauncherCustomizationHook.java', 'LauncherIconBinding.java', 'LauncherModelRefresh.java', 'TargetReflection.java')]
+                'LauncherCustomizationHook.java', 'LauncherIconBinding.java', 'LauncherImmutableIcon.java', 'LauncherModelRefresh.java', 'TargetReflection.java')]
             files.append(ROOT / 'android/app/src/main/java/ls/augment/com/LauncherOverrides.java')
             subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(root / 'classes'), *map(str, files)], check=True)
-            modes = ('happy', 'delayedFailure', 'sourceFailure', 'subscribeFailure', 'lateContext') if variant == 'target' else ('happy',)
+            modes = ('happy', 'delayedFailure', 'sourceFailure', 'subscribeFailure', 'lateContext') if variant in ('target', 'named') else ('happy',)
             for mode in modes:
                 subprocess.run(['java', '-cp', str(root / 'classes'), '-Dvariant=' + variant,
-                                '-Dunsupported=' + str(variant in ('unsupported', 'ambiguous')).lower(),
+                                '-Dunsupported=' + str(variant in ('unsupported', 'ambiguous', 'named-unsupported', 'named-ambiguous')).lower(),
                                 'ls.augment.com.hook.TestLauncherCustomization', mode], check=True, timeout=15)
 
 

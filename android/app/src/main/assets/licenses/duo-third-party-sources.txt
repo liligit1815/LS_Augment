@@ -1,0 +1,36 @@
+红魔Duo · 引用来源记录
+
+此目录记录本地已确认的代码、词库、图标与构建依赖来源。完整许可原文分别列在许可列表中；它不是对所有素材授权或项目发行许可的完整核定。
+
+LiftArc
+来源：https://github.com/miyupyxh/LiftArc
+移植基线：1.0.22，提交13245bbdc1c5431b14d8016512463f8d336c6306。
+现有来源记录声明GPL-3.0；完整原文和六个复制改造类的映射分别见“LiftArc · GPL 原文”和“来源与改造记录”。不另行推断only或or-later。
+来源记录中AndroidLiquidGlass和HyperBetter属于上游参考，不据此列为新增运行依赖；Compose/Miuix管理界面未复制。
+
+cppjieba
+来源：https://github.com/yanyiwu/cppjieba
+MIT原始声明：Copyright (c) 2013（现有原文没有补充姓名）。
+仅分词vendor头文件和三份词库实际取自本地Van Step，提交3b27964c6b9b9e37e6465788b2ac2d372bf9f04d。
+上游cppjieba精确版本/提交未记录，保持未知。Duo的JNI桥为独立实现；本地Logger修改与原始文件摘要保存在源码SOURCE.json。
+完整MIT声明和来源文字见“cppjieba · MIT 与来源”。不把Van Step的其余依赖或整体项目许可套用为Duo全部代码的来源。
+
+Lucide / Feather图标
+来源：https://lucide.dev/
+生产ice_*.xml头标注从已安装lucide-react生成且几何未修改；本地UI工程依赖声明lucide-react 1.31.0，但未逐图核定所有生产向量所对应的具体生成版本。
+本地原始声明：Copyright (c) 2026 Lucide Icons and Contributors，ISC；声明中列举的Feather衍生图标还保留Copyright (c) 2013-present Cole Bemis，MIT。
+两段完整文字及原图标清单见“Lucide / Feather · ISC / MIT”，不将整套未使用图标计作运行功能。
+
+构建依赖
+当前Gradle直接运行依赖：io.github.libxposed:service:101.0.0，来源https://github.com/libxposed/service。
+现有构建解析记录还列出io.github.libxposed:interface:101.0.0、org.jetbrains.kotlin:kotlin-stdlib:2.2.10、org.jetbrains:annotations:13.0。
+四份本地POM均声明Apache License 2.0；开发者记录分别为libxposed、Kotlin Team / JetBrains、JetBrains Team。POM中的开发者名称不在本页改写为未提供的版权行。
+Kotlin来源：https://github.com/JetBrains/kotlin
+Annotations来源：https://github.com/JetBrains/intellij-community
+Apache 2.0完整标准许可文本见相应条目。本次只核本地构建依赖声明，没有据此逐类宣称新APK的实际打包组成或已补齐各上游全部NOTICE。
+libxposed API 102与AndroidX annotation在本项目是仅编译依赖（API另供测试）；运行API由框架提供，不列成Duo随包运行库。
+
+仍待核定的记录
+红魔Duo整体发行许可证、完整对应源码交付范围与许可兼容性没有在本次本地核查中得出结论。
+部分用户提供图片、字体、初音预设和iOS信号素材的原作者与授权文本尚未完整核定；不为其补写或假定许可证。
+HyperCeiler、LiftArc、红魔助手的原贡献名单继续保留；致谢文字本身不代替逐文件来源核查。未证明复制关系的Van组件、锤子桌面、Miuix、Compose不添加为Duo运行组件。

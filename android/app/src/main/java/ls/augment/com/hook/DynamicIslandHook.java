@@ -11,12 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSession;
@@ -33,16 +28,8 @@ import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.view.Display;
-import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.PopupWindow;
-import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,7 +41,7 @@ import ls.augment.com.IslandActivityPolicy;
 import ls.augment.com.SystemUiOptions;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
-/** Phone-only activity capsule. Uses SystemUI's existing session/notification access. */
+/** Duo event policy presented by the firmware native island engine. */
 final class DynamicIslandHook {
     private static final String PHONE="com.android.systemui.statusbar.phone.PhoneStatusBarView";
     private static final String LISTENER="com.android.systemui.statusbar.NotificationListener";
@@ -73,7 +60,7 @@ final class DynamicIslandHook {
     }
 
     static int install(AugmentModule module,ClassLoader loader) {
-        int taskHooks=0;
+        int taskHooks=NativeIslandHost.install(module,loader)+NativeIslandSettingsHook.install(module,loader);
         for(String listener:new String[]{"com.android.systemui.shared.system.TaskStackChangeListeners$Impl",
                 "com.android.wm.shell.common.TaskStackListenerImpl"}){
             for(String method:new String[]{"onTaskStackChanged","onTaskMovedToFront","onTaskDisplayChanged",
@@ -95,12 +82,6 @@ final class DynamicIslandHook {
         count+=hookNamed(module,loader,"island",PHONE,"onDetachedFromWindow",0,null,(owner,args,result)->{
             State state=STATES.remove(owner);if(state!=null)state.close();return PASS;
         });
-        // OEM intercepts status-bar gestures before child dispatch. Claim only a tap
-        // begun inside the visible capsule; scrolling elsewhere stays OEM-owned.
-        count+=hookNamed(module,loader,"island",PHONE,"dispatchTouchEvent",1,(owner,args,result)->{
-            State state=STATES.get(owner);
-            return state!=null && state.touch((MotionEvent)args[0])?Boolean.TRUE:PASS;
-        },null);
         count+=hookNamed(module,loader,"island",LISTENER,"onNotificationPosted",2,null,(owner,args,result)->{
             if(args[0] instanceof StatusBarNotification){
                 StatusBarNotification sbn=(StatusBarNotification)args[0];
@@ -129,10 +110,9 @@ final class DynamicIslandHook {
     }
 
     private static final class State {
-        final FrameLayout host;final Context context;final Capsule pill;
+        final FrameLayout host;final Context context;final NativeIslandHost nativeHost;
         final MediaSessionManager sessions;final KeyguardManager keyguard;final PowerManager power;
         final Runnable config=this::configure,tick=this::refresh,collapse=this::dismiss;
-        final Runnable longPress=this::performLongPress;
         final View.OnLayoutChangeListener hostLayout=(view,l,t,r,b,oldL,oldT,oldR,oldB)->{
             if(l!=oldL||t!=oldT||r!=oldR||b!=oldB)requestRefresh();
         };
@@ -169,20 +149,16 @@ final class DynamicIslandHook {
                 refresh();
             }
         };
-        boolean enabled,listening,receiving,closed,charging,touching,replaying,screenOff,longPressed,observedHostVisible,circularAppStyle;
-        int battery,activity,ownerUser=-1;float downX,downY;
-        MotionEvent downEvent;
+        boolean enabled,listening,receiving,closed,charging,screenOff,observedHostVisible;
+        int battery,activity,ownerUser=-1;
         long noticeUntil;String lastState="";
-        StatusBarNotification notice;MediaController media;PopupWindow popup;
+        StatusBarNotification notice;MediaController media;
         Bitmap cachedArt;Drawable cachedArtDrawable,cachedAppIcon;String cachedIconPackage="",popupContent="";
         String title="",subtitle="";Drawable icon;boolean playing;
-        State(FrameLayout host){this.host=host;context=host.getContext();pill=new Capsule(context);
+        State(FrameLayout host){this.host=host;context=host.getContext();
+            nativeHost=new NativeIslandHost(host,this::openActivity,this::expand,this::runAction);
             sessions=context.getSystemService(MediaSessionManager.class);keyguard=context.getSystemService(KeyguardManager.class);
-            power=context.getSystemService(PowerManager.class);pill.setVisibility(View.GONE);
-            pill.setContentDescription("灵动岛，轻点打开，长按展开");pill.setOnClickListener(v->openActivity());
-            pill.setOnLongClickListener(v->{expand();return true;});
-            pill.visibilityChanged=this::requestRefresh;
-            host.addView(pill,new FrameLayout.LayoutParams(1,1,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
+            power=context.getSystemService(PowerManager.class);
             host.addOnLayoutChangeListener(hostLayout);
             host.getViewTreeObserver().addOnPreDrawListener(hostVisibility);
         }
@@ -191,7 +167,9 @@ final class DynamicIslandHook {
             if(!host.isAttachedToWindow()||!host.isShown()||host.getWindowVisibility()!=View.VISIBLE)return false;
             float alpha=1f;
             for(View current=host;current!=null;){
-                alpha*=current.getAlpha();if(alpha<=.01f)return false;
+                // The native island fades this bar while its panel is open.
+                // That presentation transition is not a fullscreen/hidden-bar event.
+                alpha*=current==host&&nativeHost.ownsStatusBarFade()?1f:current.getAlpha();if(alpha<=.01f)return false;
                 android.view.ViewParent parent=current.getParent();current=parent instanceof View?(View)parent:null;
             }
             return true;
@@ -209,8 +187,12 @@ final class DynamicIslandHook {
         boolean locked(){return keyguard!=null&&keyguard.isKeyguardLocked();}
         void configure(){
             if(closed)return;boolean next=FeatureSettings.enabled(context,SystemUiOptions.ISLAND);
-            circularAppStyle=FeatureSettings.integer(context,SystemUiOptions.ISLAND_APP_STYLE,0,0,1)==1;
-            if(next!=enabled){enabled=next;if(enabled)listen();else stopListening();}
+            if(next!=enabled){
+                if(next)nativeHost.selectNative(false);
+                enabled=next;if(enabled)listen();else {stopListening();nativeHost.release();}
+            }
+            nativeHost.selectNative(!next&&FeatureSettings.enabled(context,ls.augment.com.ConfigSchema.NATIVE_ISLAND_SELECTED));
+            if(enabled)nativeHost.acquire();
             if(!option("notifications"))clearNotice();
             if(!option("charging"))chargeActivity.clear();
             if(!option("music"))mediaActivities.clear();
@@ -284,6 +266,9 @@ final class DynamicIslandHook {
             }catch(RuntimeException ignored){}
             return active!=null?active:fallback;
         }
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         String foregroundPackage(){
             Display display=host.getDisplay();if(display==null)return null;
             try{
@@ -358,14 +343,9 @@ final class DynamicIslandHook {
             if(activity!=next){dismiss();activity=next;}
             if(next==IslandActivityPolicy.NONE)hide();else{
                 updateContent();
-                // A popup is a snapshot of its media session/actions. Close it if
-                // metadata or playback state changed, so it cannot control stale UI.
-                String content=activity+"|"+title+"|"+subtitle+"|"+playing;
-                if(popup!=null&&!content.equals(popupContent))dismiss();
-                layout();showPill();pill.bringToFront();pill.invalidate();
-                // Compact notifications disclose only their app. Message content
-                // is read only after a deliberate long press on an unlocked phone.
-                pill.setContentDescription("灵动岛："+(activity==IslandActivityPolicy.NOTICE?appLabel(notice.getPackageName()):title)+"。轻点打开，长按展开");
+                String compact=activity==IslandActivityPolicy.NOTICE?appLabel(notice.getPackageName()):title;
+                boolean shown=nativeHost.show(activity,title,subtitle,compact,icon,playing,battery,media);
+                if(!shown){diagnostic("native_unavailable");return;}
                 diagnostic("activity="+next+",playing="+playing);
             }
             long deadline=0;
@@ -403,66 +383,8 @@ final class DynamicIslandHook {
         }
         String appLabel(String pkg){try{return context.getPackageManager().getApplicationLabel(context.getPackageManager().getApplicationInfo(pkg,0)).toString();}catch(Exception ignored){return "新通知";}}
         String string(CharSequence value){return value==null?"":value.toString();}
-        void layout(){
-            int h=Math.min(dp(FeatureSettings.integer(context,P+"height",32,20,48)),Math.max(0,host.getHeight()-dp(2)));
-            int w=Math.min(dp(FeatureSettings.integer(context,P+"width",120,96,240)),Math.max(0,host.getWidth()-dp(16)));
-            int x=dp(FeatureSettings.integer(context,P+"offset_x",0,-120,120)),limit=Math.max(0,(host.getWidth()-w)/2-dp(8));
-            x=Math.max(-limit,Math.min(limit,x));
-            FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)pill.getLayoutParams();
-            int y=dp(FeatureSettings.integer(context,SystemUiOptions.ISLAND_OFFSET_Y,0,-24,24));
-            int available=Math.max(0,host.getHeight()-h);
-            int top=Math.max(0,Math.min(available,available/2+y));
-            if(lp.width!=w||lp.height!=h||lp.topMargin!=top){lp.width=w;lp.height=h;lp.topMargin=top;pill.setLayoutParams(lp);}
-            pill.setTranslationX(x);pill.icon=icon;pill.playing=playing;pill.kind=activity;pill.battery=battery;
-            pill.transparent=FeatureSettings.enabled(context,SystemUiOptions.ISLAND_TRANSPARENT);
-            pill.circularIcon=circularAppStyle;
-        }
-        void showPill(){
-            if(popup!=null)return;
-            if(pill.getVisibility()!=View.VISIBLE){
-                pill.animate().cancel();pill.setAlpha(0f);pill.setScaleX(.88f);pill.setScaleY(.88f);pill.setVisibility(View.VISIBLE);
-                pill.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).start();
-            }
-        }
-        boolean touch(MotionEvent event){
-            if(replaying)return false;
-            if(event.getActionMasked()==MotionEvent.ACTION_DOWN){
-                cancelTouch();
-                touching=enabled&&!screenOff&&!locked()&&pill.isShown()&&activity!=0&&event.getX()>=pill.getX()&&event.getX()<pill.getX()+pill.getWidth()
-                        &&event.getY()>=pill.getY()&&event.getY()<pill.getY()+pill.getHeight();
-                downX=event.getX();downY=event.getY();if(touching)downEvent=MotionEvent.obtain(event);
-                if(touching)MAIN.postDelayed(longPress,ViewConfiguration.getLongPressTimeout());
-            }
-            if(!touching)return false;
-            // Once a long press opened the panel this gesture belongs to it;
-            // never turn its UP into an app launch or replay half a gesture.
-            if(longPressed){
-                if(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL)cancelTouch();
-                return true;
-            }
-            int slop=ViewConfiguration.get(context).getScaledTouchSlop();
-            if(event.getActionMasked()==MotionEvent.ACTION_POINTER_DOWN||Math.abs(event.getX()-downX)>slop||Math.abs(event.getY()-downY)>slop){
-                // The initial DOWN was held for a possible tap. Replay it once to
-                // the native dispatcher, then let the original swipe continue.
-                touching=false;replaying=true;
-                boolean clickable=pill.isClickable(),longClickable=pill.isLongClickable();
-                pill.setClickable(false);pill.setLongClickable(false);
-                try{if(downEvent!=null)host.dispatchTouchEvent(downEvent);}
-                finally{pill.setClickable(clickable);pill.setLongClickable(longClickable);replaying=false;cancelTouch();}
-                return false;
-            }
-            if(event.getActionMasked()==MotionEvent.ACTION_UP){cancelTouch();if(enabled&&!closed&&!screenOff&&!locked()&&pill.isShown())pill.performClick();}
-            if(event.getActionMasked()==MotionEvent.ACTION_CANCEL)cancelTouch();
-            return true;
-        }
-        void cancelTouch(){MAIN.removeCallbacks(longPress);touching=false;longPressed=false;if(downEvent!=null){downEvent.recycle();downEvent=null;}}
-        void performLongPress(){
-            if(touching&&enabled&&!closed&&!screenOff&&!locked()&&pill.isShown()&&ownerUser>=0&&currentUser()==ownerUser){
-                longPressed=true;pill.performLongClick();
-            }
-        }
         void openActivity(){
-            if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||!pill.isShown())return;
+            if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||!nativeHost.visible())return;
             PendingIntent intent=null;
             try{
                 if(activity==IslandActivityPolicy.NOTICE&&notice!=null)intent=notice.getNotification().contentIntent;
@@ -473,66 +395,11 @@ final class DynamicIslandHook {
             if(activity==IslandActivityPolicy.NOTICE){clearNotice();refresh();}
         }
         void expand(){
-            if(closed||!enabled||screenOff||activity==0||locked()||power==null||!power.isInteractive()||!pill.isShown()
-                    ||ownerUser<0||currentUser()!=ownerUser)return;if(popup!=null){dismiss();return;}
-            try{expandContent();}catch(RuntimeException failure){dismiss();diagnostic("expand_failed:"+failure.getClass().getSimpleName());}
-        }
-        void expandContent(){
-            LinearLayout panel=new LinearLayout(context);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(18),dp(18),dp(18),dp(12));
-            GradientDrawable background=new GradientDrawable();background.setColor(Color.BLACK);background.setCornerRadius(dp(28));panel.setBackground(background);
-            LinearLayout header=new LinearLayout(context);header.setGravity(Gravity.CENTER_VERTICAL);
-            if(icon!=null){
-                ImageView cover=new ImageView(context);cover.setImageDrawable(icon);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                GradientDrawable mask=new GradientDrawable();mask.setColor(Color.BLACK);
-                if(circularAppStyle)mask.setShape(GradientDrawable.OVAL);else mask.setCornerRadius(dp(10));
-                cover.setBackground(mask);cover.setClipToOutline(true);
-                LinearLayout.LayoutParams art=new LinearLayout.LayoutParams(dp(44),dp(44));art.rightMargin=dp(12);header.addView(cover,art);
-            }
-            LinearLayout copy=new LinearLayout(context);copy.setOrientation(LinearLayout.VERTICAL);
-            TextView heading=text(title,16);heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));heading.setMaxLines(2);copy.addView(heading);
-            if(!subtitle.isEmpty()){TextView detail=text(subtitle,13);detail.setTextColor(0xffaaaaaa);detail.setMaxLines(activity==IslandActivityPolicy.NOTICE?3:2);
-                LinearLayout.LayoutParams detailParams=new LinearLayout.LayoutParams(-1,-2);detailParams.topMargin=dp(4);copy.addView(detail,detailParams);}
-            header.addView(copy,new LinearLayout.LayoutParams(0,-2,1));panel.addView(header);
-            if(activity==IslandActivityPolicy.MUSIC&&media!=null){
-                final MediaController chosen=media;LinearLayout actions=new LinearLayout(context);
-                PlaybackState state=chosen.getPlaybackState();long allowed=state==null?0:state.getActions();
-                mediaAction(actions,"上一首",TransportButton.PREVIOUS,(allowed&PlaybackState.ACTION_SKIP_TO_PREVIOUS)!=0,()->chosen.getTransportControls().skipToPrevious());
-                mediaAction(actions,playing?"暂停":"播放",playing?TransportButton.PAUSE:TransportButton.PLAY,(allowed&(playing?PlaybackState.ACTION_PAUSE:PlaybackState.ACTION_PLAY))!=0
-                        ||(allowed&PlaybackState.ACTION_PLAY_PAUSE)!=0,()->{
-                            PlaybackState latest=chosen.getPlaybackState();
-                            if(latest!=null&&IslandActivityPolicy.mediaPlaying(latest.getState()))chosen.getTransportControls().pause();else chosen.getTransportControls().play();});
-                mediaAction(actions,"下一首",TransportButton.NEXT,(allowed&PlaybackState.ACTION_SKIP_TO_NEXT)!=0,()->chosen.getTransportControls().skipToNext());
-                LinearLayout.LayoutParams controls=new LinearLayout.LayoutParams(-1,dp(52));controls.topMargin=dp(12);panel.addView(actions,controls);
-            }else if(activity==IslandActivityPolicy.NOTICE&&notice!=null){
-                PendingIntent intent=notice.getNotification().contentIntent;
-                if(intent!=null){LinearLayout actions=new LinearLayout(context);action(actions,"打开通知",true,()->{openNotice(intent);clearNotice();});panel.addView(actions);}
-            }
-            int width=Math.min(dp(320),host.getResources().getDisplayMetrics().widthPixels-dp(24));
-            popup=new PopupWindow(panel,width,ViewGroup.LayoutParams.WRAP_CONTENT,true);popup.setBackgroundDrawable(background);
-            popup.setOutsideTouchable(true);popup.setElevation(dp(8));popup.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
-            popup.setIsLaidOutInScreen(true);popup.setIsClippedToScreen(true);
-            popup.setOnDismissListener(()->{popup=null;MAIN.removeCallbacks(collapse);
-                if(!closed&&enabled&&!screenOff&&!locked()&&activity!=IslandActivityPolicy.NONE)showPill();});
-            popupContent=activity+"|"+title+"|"+subtitle+"|"+playing;
-            try{
-                int[] location=new int[2];pill.getLocationOnScreen(location);
-                popup.showAtLocation(host,Gravity.TOP|Gravity.CENTER_HORIZONTAL,0,Math.max(dp(4),location[1]));
-                pill.animate().cancel();pill.setVisibility(View.INVISIBLE);
-                panel.setAlpha(0f);panel.setScaleX(.92f);panel.setScaleY(.92f);panel.setPivotY(0f);
-                panel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start();
-                MAIN.postDelayed(collapse,8000);
-            }
-            catch(RuntimeException error){dismiss();diagnostic("expand_failed:"+error.getClass().getSimpleName());}
-        }
-        TextView text(String value,int sp){TextView v=new TextView(context);v.setText(value);v.setTextColor(Color.WHITE);v.setTextSize(sp);v.setEllipsize(TextUtils.TruncateAt.END);return v;}
-        void action(LinearLayout row,String label,boolean available,Runnable command){
-            TextView button=text(label,14);button.setGravity(Gravity.CENTER);button.setMinHeight(dp(48));button.setEnabled(available);button.setAlpha(available?1f:.35f);
-            button.setOnClickListener(v->runAction(command));
-            row.addView(button,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));
-        }
-        void mediaAction(LinearLayout row,String label,int glyph,boolean available,Runnable command){
-            TransportButton button=new TransportButton(context,glyph);button.setContentDescription(label);button.setEnabled(available);button.setAlpha(available?1f:.3f);
-            button.setOnClickListener(v->runAction(command));row.addView(button,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.MATCH_PARENT,1));
+            openDiagnostic("long_pressed;visible="+nativeHost.visible()+";activity="+activity+";locked="+locked());
+            if(closed||!enabled||screenOff||activity==0||locked()||power==null||!power.isInteractive()||!nativeHost.visible()
+                    ||ownerUser<0||currentUser()!=ownerUser)return;
+            if(nativeHost.expanded()){dismiss();return;}
+            nativeHost.expand();MAIN.removeCallbacks(collapse);MAIN.postDelayed(collapse,8000);
         }
         void runAction(Runnable command){
             if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||ownerUser<0||currentUser()!=ownerUser)return;
@@ -559,9 +426,8 @@ final class DynamicIslandHook {
         void openDiagnostic(String state){FeatureSettings.diagnostic(context,"ls_augment_island_open",state+";at="+SystemClock.elapsedRealtime());}
         int dp(int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
         void diagnostic(String value){if(!lastState.equals(value)){lastState=value;FeatureSettings.diagnostic(context,"ls_augment_island_state",value);}}
-        void dismiss(){MAIN.removeCallbacks(collapse);if(popup!=null){PopupWindow old=popup;popup=null;try{old.dismiss();}catch(RuntimeException ignored){}}}
-        void hide(){dismiss();pill.animate().cancel();pill.playing=false;pill.icon=null;title="";subtitle="";icon=null;popupContent="";
-            pill.setContentDescription("灵动岛");pill.setVisibility(View.GONE);cancelTouch();diagnostic(enabled?"idle":"disabled");}
+        void dismiss(){MAIN.removeCallbacks(collapse);nativeHost.dismiss();}
+        void hide(){dismiss();nativeHost.hide();title="";subtitle="";icon=null;popupContent="";diagnostic(enabled?"idle":"disabled");}
         void stopMediaListening(){
             if(listening&&sessions!=null)try{sessions.removeOnActiveSessionsChangedListener(sessionListener);}catch(RuntimeException ignored){}
             listening=false;
@@ -573,76 +439,8 @@ final class DynamicIslandHook {
             chargeActivity.reset();
             if(receiving)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}receiving=false;
         }
-        void close(){closed=true;MAIN.removeCallbacks(tick);pill.animate().cancel();FeatureSettings.removeSnapshotListener(config);stopListening();cancelTouch();dismiss();
-            pill.visibilityChanged=null;host.removeOnLayoutChangeListener(hostLayout);
-            if(host.getViewTreeObserver().isAlive())host.getViewTreeObserver().removeOnPreDrawListener(hostVisibility);host.removeView(pill);}
-    }
-
-    /** Monochrome transport symbols share one geometry and full 48dp hit areas. */
-    private static final class TransportButton extends View {
-        static final int PREVIOUS=0,PLAY=1,PAUSE=2,NEXT=3;
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final android.graphics.Path path=new android.graphics.Path();final int glyph;
-        TransportButton(Context context,int glyph){super(context);this.glyph=glyph;setClickable(true);setFocusable(true);}
-        @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);float d=getResources().getDisplayMetrics().density,cx=getWidth()/2f,cy=getHeight()/2f;
-            if(glyph==PLAY||glyph==PAUSE){paint.setColor(isPressed()?0xff393939:0xff222222);canvas.drawCircle(cx,cy,24*d,paint);}
-            paint.setColor(Color.WHITE);
-            if(glyph==PAUSE){canvas.drawRoundRect(cx-7*d,cy-9*d,cx-2*d,cy+9*d,d,d,paint);canvas.drawRoundRect(cx+2*d,cy-9*d,cx+7*d,cy+9*d,d,d,paint);}
-            else if(glyph==PLAY)triangle(canvas,cx-5*d,cy,13*d,9*d);
-            else{
-                boolean next=glyph==NEXT;float direction=next?1:-1;
-                triangle(canvas,cx-direction*9*d,cy,direction*9*d,8*d);triangle(canvas,cx,cy,direction*9*d,8*d);
-                canvas.drawRect(cx+(next?9:-11)*d,cy-8*d,cx+(next?11:-9)*d,cy+8*d,paint);
-            }
-        }
-        void triangle(Canvas canvas,float x,float y,float width,float halfHeight){path.reset();path.moveTo(x,y-halfHeight);path.lineTo(x+width,y);path.lineTo(x,y+halfHeight);path.close();canvas.drawPath(path,paint);}
-    }
-
-    private static final class Capsule extends View {
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final RectF rect=new RectF();
-        final android.graphics.Path shape=new android.graphics.Path(),iconClip=new android.graphics.Path();
-        Drawable icon;boolean playing,transparent,circularIcon;int kind,battery;Runnable visibilityChanged;
-        Capsule(Context context){super(context);setClickable(true);setFocusable(true);}
-        @Override protected void onVisibilityChanged(View changedView,int visibility){
-            super.onVisibilityChanged(changedView,visibility);
-            if(changedView!=this&&visibilityChanged!=null)visibilityChanged.run();
-        }
-        @Override protected void onWindowVisibilityChanged(int visibility){
-            super.onWindowVisibilityChanged(visibility);if(visibilityChanged!=null)visibilityChanged.run();
-        }
-        float dp(float value){return value*getResources().getDisplayMetrics().density;}
-        @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);float h=getHeight(),w=getWidth();if(h<=0||w<=0)return;
-            paint.clearShadowLayer();
-            if(!transparent){paint.setColor(Color.BLACK);rect.set(0,0,w,h);canvas.drawRoundRect(rect,h/2,h/2,paint);}
-            // Keep light foreground marks legible over light app backgrounds
-            // without making the capsule itself translucent or fading its cover.
-            if(transparent)paint.setShadowLayer(dp(1.5f),0,0,0x99000000);
-            float size=Math.min(dp(22),h-dp(8)),left=dp(9),top=(h-size)/2;
-            if(icon!=null){canvas.save();iconClip.reset();
-                if(circularIcon)iconClip.addCircle(left+size/2,top+size/2,size/2,android.graphics.Path.Direction.CW);
-                else iconClip.addRoundRect(left,top,left+size,top+size,dp(5),dp(5),android.graphics.Path.Direction.CW);
-                canvas.clipPath(iconClip);
-                icon.setBounds((int)left,(int)top,(int)(left+size),(int)(top+size));icon.draw(canvas);canvas.restore();
-            }else if(kind==IslandActivityPolicy.CHARGING){
-                paint.setColor(0xff91edb2);float cx=left+size/2,cy=h/2;
-                shape.reset();shape.moveTo(cx+dp(2),cy-dp(9));shape.lineTo(cx-dp(6),cy+dp(1));shape.lineTo(cx-dp(1),cy+dp(1));
-                shape.lineTo(cx-dp(2),cy+dp(9));shape.lineTo(cx+dp(6),cy-dp(1));shape.lineTo(cx+dp(1),cy-dp(1));shape.close();canvas.drawPath(shape,paint);
-            }else{
-                paint.setColor(0xffeeeeee);canvas.drawCircle(left+size/2,h/2,dp(6),paint);
-                paint.setColor(Color.BLACK);canvas.drawCircle(left+size/2,h/2,dp(2),paint);
-            }
-            paint.setColor(0xffc7eed7);
-            if(kind==IslandActivityPolicy.MUSIC){
-                long t=SystemClock.uptimeMillis();for(int i=0;i<4;i++){float bar=playing?(float)(.3+.7*Math.abs(Math.sin(t/340.0+i*.9))):.2f;
-                    float bh=Math.min(dp(14),h-dp(10))*bar,x=w-dp(28)+dp(i*4);rect.set(x,(h-bh)/2,x+dp(2),(h+bh)/2);canvas.drawRoundRect(rect,dp(1),dp(1),paint);}
-                if(playing&&isShown())postInvalidateDelayed(80);
-            }else{
-                paint.setColor(kind==IslandActivityPolicy.CHARGING?0xff91edb2:0xffeeeeee);
-                paint.setTextSize(Math.min(12*getResources().getDisplayMetrics().scaledDensity,h-dp(10)));paint.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
-                String label=kind==IslandActivityPolicy.CHARGING?battery+"%":"通知";
-                canvas.drawText(label,w-dp(11)-paint.measureText(label),h/2-(paint.ascent()+paint.descent())/2,paint);
-            }
-        }
+        void close(){closed=true;MAIN.removeCallbacks(tick);FeatureSettings.removeSnapshotListener(config);stopListening();dismiss();nativeHost.close();
+            host.removeOnLayoutChangeListener(hostLayout);
+            if(host.getViewTreeObserver().isAlive())host.getViewTreeObserver().removeOnPreDrawListener(hostVisibility);}
     }
 }

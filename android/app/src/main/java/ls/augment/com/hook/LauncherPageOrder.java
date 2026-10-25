@@ -61,6 +61,19 @@ final class LauncherPageOrder {
         return result;
     }
 
+    /** Keep unresolved original slots without using them to create native pages. */
+    static List<Integer> retainMissing(List<Integer> current, List<Integer> original) {
+        ArrayList<Integer> remaining = new ArrayList<>(), result = new ArrayList<>();
+        for (int id : current) if (id >= 0 && !remaining.contains(id)) remaining.add(id);
+        for (int id : original) {
+            if (id < 0) continue;
+            if (!current.contains(id)) result.add(id);
+            else if (!remaining.isEmpty()) result.add(remaining.remove(0));
+        }
+        result.addAll(remaining);
+        return result;
+    }
+
     static int selectedIndex(List<Integer> ids, int selectedId, int fallback) {
         int index = ids.indexOf(selectedId);
         return index >= 0 ? index : Math.max(0, Math.min(fallback, ids.size() - 1));

@@ -16,13 +16,14 @@ import ls.augment.com.ConfigSchema;
 import ls.augment.com.SystemUiOptions;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
-/** NX809J native-resource display adapter. Never changes WifiIcon/Flow, tags or connectivity. */
+/** Native-resource display adapter. Never changes WifiIcon/Flow, tags or connectivity. */
 final class WifiStandardHook {
     private static final String KEY=SystemUiOptions.PREFIX+"hide_wifi_standard";
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final ThreadLocal<Boolean> DERIVING=new ThreadLocal<>();
     private static final Map<Integer,Integer> PLAIN=new ConcurrentHashMap<>();
     private static final Map<ImageView,Entry> VIEWS=new WeakHashMap<>();
+    private static final Map<Class<?>,IconResourceAccess> RESOURCE_ACCESS=new ConcurrentHashMap<>();
     private static boolean observing;
     private WifiStandardHook(){}
     static int install(AugmentModule module,ClassLoader loader){
@@ -30,10 +31,15 @@ final class WifiStandardHook {
                 "getWifiSignalStrengthIconId",6,null,(o,a,r)->{record(o,a,r);return PASS;});
         count+=hookNamed(module,loader,"wifi_standard","com.android.systemui.common.ui.binder.IconViewBinder",
                 "bind",2,null,(o,a,r)->{
-                    if(a[1] instanceof ImageView&&a[0]!=null&&a[0].getClass().getName().equals("com.android.systemui.common.shared.model.Icon$Resource")){
-                        Object res=call(a[0],"getRes");
+                    if(a[1] instanceof ImageView&&"wifi_signal".equals(resourceName((ImageView)a[1]))
+                            &&a[0]!=null&&a[0].getClass().getName().equals("com.android.systemui.common.shared.model.Icon$Resource")){
+                        IconResourceAccess access=RESOURCE_ACCESS.computeIfAbsent(a[0].getClass(),type->{
+                            IconResourceAccess resolved=IconResourceAccess.resolve(type);
+                            module.logFeatureInfo("WIFI_RESOURCE_ADAPTER "+resolved.description);return resolved;
+                        });
+                        int res=access.read(a[0]);
                         Object actual=field(a[1],"mResource");
-                        if(res instanceof Integer&&res.equals(actual))observe((ImageView)a[1]);
+                        if(res>0&&actual instanceof Integer&&res==(Integer)actual)observe((ImageView)a[1]);
                     }
                     return PASS;
                 });
@@ -65,7 +71,7 @@ final class WifiStandardHook {
         }));
         entry.refresh();
     }
-    private static String resourceName(View view){try{return view.getResources().getResourceEntryName(view.getId());}catch(RuntimeException ignored){return "";}}
+    private static String resourceName(View view){if(view.getId()==View.NO_ID||view.getId()==0)return "";try{return view.getResources().getResourceEntryName(view.getId());}catch(RuntimeException ignored){return "";}}
     static WifiStandardDrawable adapter(Drawable value){
         if(value instanceof StatusBarAssetDrawable)value=((StatusBarAssetDrawable)value).original();
         return value instanceof WifiStandardDrawable?(WifiStandardDrawable)value:null;

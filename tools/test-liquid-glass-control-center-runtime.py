@@ -33,7 +33,7 @@ public int saveLayerAlpha(Object bounds,int opacity){layersCreated++;stack.add(a
 public void restoreToCount(int save){while(stack.size()>=save){alpha=stack.remove(stack.size()-1);}}
 public void record(String name){events.add(name);eventAlphas.add(alpha);}}""",
 "android/graphics/ColorFilter.java": """package android.graphics;public class ColorFilter {}""",
-"android/graphics/Outline.java": """package android.graphics;public class Outline {}""",
+"android/graphics/Outline.java": """package android.graphics;public class Outline {public float radius;public void setRoundRect(Rect r,float v){radius=v;}}""",
 "android/graphics/PixelFormat.java": """package android.graphics;public class PixelFormat {public static final int TRANSLUCENT=-3;}""",
 "android/graphics/PorterDuff.java": """package android.graphics;public class PorterDuff {public enum Mode {SRC_IN}}""",
 "android/graphics/drawable/Drawable.java": """package android.graphics.drawable;
@@ -79,7 +79,7 @@ public View findViewById(int n){return id==n?this:null;}public int getWidth(){re
 public Drawable getBackground(){return background;}public void setBackground(Drawable d){if(background!=null)background.setCallback(null);background=d;
 if(d!=null){d.setCallback(this);Rect p=new Rect();d.getPadding(p);setPadding(p.left,p.top,p.right,p.bottom);d.setBounds(0,0,width,height);}}
 public int getPaddingLeft(){return pl;}public int getPaddingTop(){return pt;}public int getPaddingRight(){return pr;}public int getPaddingBottom(){return pb;}
-public void setPadding(int l,int t,int r,int b){pl=l;pt=t;pr=r;pb=b;}public void invalidate(){invalidations++;}public void postInvalidateOnAnimation(){invalidate();}
+public void setPadding(int l,int t,int r,int b){pl=l;pt=t;pr=r;pb=b;}public void invalidateOutline(){}public void invalidate(){invalidations++;}public void postInvalidateOnAnimation(){invalidate();}
 public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.add(l);}public void detach(){attached=false;for(OnAttachStateChangeListener l:listeners)l.onViewDetachedFromWindow(this);}
 public void invalidateDrawable(Drawable d){invalidate();}public void scheduleDrawable(Drawable d,Runnable r,long t){}public void unscheduleDrawable(Drawable d,Runnable r){}
 }""",
@@ -89,7 +89,7 @@ public int getChildCount(){return children.size();}public View getChildAt(int i)
 @Override public View findViewById(int id){View found=super.findViewById(id);if(found!=null)return found;for(View v:children){found=v.findViewById(id);if(found!=null)return found;}return null;}
 public void offsetDescendantRectToMyCoords(View v,Rect r){while(v!=this){if(v==null)throw new IllegalArgumentException();r.offset(v.left,v.top);v=v.parent;}}
 }""",
-"android/view/MotionEvent.java": """package android.view;public class MotionEvent {public static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;public int getActionMasked(){return ACTION_UP;}public float getX(){return 0;}public float getY(){return 0;}}""",
+"android/view/MotionEvent.java": """package android.view;public class MotionEvent {public static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;public int action=ACTION_UP;public float x,y;public MotionEvent(){}public MotionEvent(int a,float px,float py){action=a;x=px;y=py;}public int getActionMasked(){return action;}public float getX(){return x;}public float getY(){return y;}}""",
 "android/widget/SeekBar.java": """package android.widget;import android.graphics.drawable.Drawable;public class SeekBar extends android.view.View {public Drawable progress;public Drawable getProgressDrawable(){return progress;}}""",
 "android/widget/TextView.java": """package android.widget;public class TextView extends android.view.View {public int color=0xff000000;public int getCurrentTextColor(){return color;}}""",
 "ls/augment/com/GlassOptions.java": """package ls.augment.com;public class GlassOptions {public static final String CONTROL_CENTER="enabled",CC_REDUCE_TRANSPARENCY="opaque",CC_REDUCE_MOTION="motion";}""",
@@ -108,11 +108,11 @@ public void setMaterialTint(int c,float s){tint=c;strength=s;}public void setFor
 public void updatePreferences(boolean o,boolean m){opaque=o;motion=m;}public boolean prepare(){if(throwPrepare)throw new IllegalStateException("test failure");return ready=forcedReason==null&&!failed&&!released&&(opaque||source.isValid());}
 public String failureReason(){return forcedReason!=null?forcedReason:failed?"renderer_unavailable":ready?"":"backdrop_unavailable";}
 public boolean isReady(){return ready&&!released&&!failed;}public boolean isFailed(){return failed;}@Override public void draw(Canvas c){if(!c.isHardwareAccelerated())return;if(failGpu){failed=true;ready=false;return;}if(!opaque&&!source.isValid()){ready=false;return;}c.record(opaque?"solid-glass":"glass");}
-public boolean drawFallback(Canvas c){if(!c.isHardwareAccelerated()||!fallback||released)return false;c.record("fallback");return true;}public void setInteraction(float x,float y,boolean p){}
+public boolean drawFallback(Canvas c){if(!c.isHardwareAccelerated()||!fallback||released)return false;c.record("fallback");return true;}public float interactionX,interactionY;public boolean pressed;public void setInteraction(float x,float y,boolean p){interactionX=x-getBounds().left;interactionY=y-getBounds().top;pressed=p;}
 public void release(){if(released)throw new AssertionError("double glass release");released=true;releases++;}}
 """,
 "ls/augment/com/hook/AugmentModule.java": """package ls.augment.com.hook;public class AugmentModule {}""",
-"ls/augment/com/hook/ControlCenterAppearanceHook.java": """package ls.augment.com.hook;import android.view.View;public class ControlCenterAppearanceHook {static final java.util.Set<View> claimed=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());static final java.util.Map<View,Boolean> sliders=new java.util.IdentityHashMap<>();static boolean ownsMaterial(View view,View owner,boolean slider){sliders.put(view,slider);return claimed.contains(view);}static void claim(View...views){claimed.clear();java.util.Collections.addAll(claimed,views);}}""",
+"ls/augment/com/hook/ControlCenterAppearanceHook.java": """package ls.augment.com.hook;import android.view.View;public class ControlCenterAppearanceHook {static final java.util.Set<View> claimed=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());static final java.util.Map<View,Boolean> sliders=new java.util.IdentityHashMap<>();static final class GlassStyle {boolean apply(View v,View o,ls.augment.com.LiquidGlassDrawable g,float r){return false;}boolean outline(View v,android.graphics.Outline o,android.graphics.Rect r){return false;}}static boolean ownsMaterial(View view,View owner,boolean slider){sliders.put(view,slider);return claimed.contains(view);}static void claim(View...views){claimed.clear();java.util.Collections.addAll(claimed,views);}}""",
 "ls/augment/com/hook/SystemUiAdapter.java": """package ls.augment.com.hook;import java.lang.reflect.*;
 public class SystemUiAdapter {static final Object PASS=new Object();interface Patch {Object apply(Object o,Object[] a,Object r)throws Throwable;}
 static int hookNamed(AugmentModule m,ClassLoader l,String ns,String c,String name,int n,Patch b,Patch a){return 1;}
@@ -131,6 +131,9 @@ public QSTileViewWide(){setBackground(colorBackgroundDrawable);addView(label);}p
 "com/zte/qs/tileimpl/QSTileViewCircle.java": """package com.zte.qs.tileimpl;import android.graphics.drawable.GradientDrawable;import android.widget.TextView;import android.view.ViewGroup;
 public class QSTileViewCircle extends ViewGroup {public GradientDrawable colorBackgroundDrawable=new GradientDrawable();public int lastState=2;public TextView label=new TextView();public ViewGroup iconFrame=new ViewGroup();
 public QSTileViewCircle(){iconFrame.width=64;iconFrame.height=64;iconFrame.setBackground(colorBackgroundDrawable);addView(iconFrame);addView(label);}public TextView getLabel(){return label;}}""",
+"com/zte/mifavor/qs/MfvQSContainerImpl.java": """package com.zte.mifavor.qs;import android.view.*;public class MfvQSContainerImpl extends ViewGroup {public ViewGroup qsContent=new ViewGroup(),quickQSPanel=new ViewGroup();public Brightness brightnessView=new Brightness();public static class Brightness extends ViewGroup {public android.widget.SeekBar mSlider=new android.widget.SeekBar();public Brightness(){addView(mSlider);}}public MfvQSContainerImpl(){width=1000;height=2000;addView(qsContent);qsContent.addView(quickQSPanel);qsContent.addView(brightnessView);}}""",
+"com/android/systemui/util/animation/TransitionLayout.java": """package com.android.systemui.util.animation;public class TransitionLayout extends android.view.ViewGroup {}""",
+"com/android/systemui/media/controls/ui/drawable/IlluminationDrawable.java": """package com.android.systemui.media.controls.ui.drawable;public class IlluminationDrawable extends android.graphics.drawable.Drawable {public float getCornerRadius(){return 42;}}""",
 "ls/augment/com/hook/TestControlCenterGlass.java": """package ls.augment.com.hook;
 import android.view.*;import android.widget.*;import android.graphics.*;import android.graphics.drawable.*;
 import java.lang.reflect.*;import ls.augment.com.*;import com.zte.qs.tileimpl.*;
@@ -141,7 +144,7 @@ public static class Panel extends ViewGroup {public ViewGroup allTilesLayout=new
 public Panel(){width=1000;height=2000;addView(allTilesLayout);addView(bigTilesLayout);addView(topPanel);}}
 static Object field(Object o,String n)throws Exception{for(Class<?> c=o.getClass();c!=null;c=c.getSuperclass())try{Field f=c.getDeclaredField(n);f.setAccessible(true);return f.get(o);}catch(NoSuchFieldException e){}throw new NoSuchFieldException(n);}
 static Object call(Object o,String n)throws Exception{Method m=o.getClass().getDeclaredMethod(n);m.setAccessible(true);return m.invoke(o);}
-static Object watch(Panel p)throws Exception{Method m=LiquidGlassControlCenterHook.class.getDeclaredMethod("watch",View.class);m.setAccessible(true);return m.invoke(null,p);}
+static Object watch(View p)throws Exception{Method m=LiquidGlassControlCenterHook.class.getDeclaredMethod("watch",View.class);m.setAccessible(true);return m.invoke(null,p);}
 static LiquidGlassDrawable glass(View view)throws Exception{return (LiquidGlassDrawable)field(field(view.getBackground(),"surface"),"glass");}
 static void draw(View v,Canvas c){v.getBackground().draw(c);}
 static void canvasForCircle(QSTileViewCircle circle){draw(circle.iconFrame,new Canvas());}
@@ -162,7 +165,7 @@ check(wide.getPaddingLeft()==9&&wide.getPaddingTop()==10&&wide.getPaddingRight()
 check(layers.findDrawableByLayerId(1)!=nativeTrack&&layers.findDrawableByLayerId(2)==nativeFill,"only slider background layer is wrapped");
 check(nativeFill.getLevel()==5100,"installing material preserves the native clipped fill level");
 check(LayerBackdropSource.created==1,"all controls share one compositor source");
-check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0;build=20378;geometry=viewport_v2"),"diagnostic counts actual surfaces and identifies the loaded build and geometry revision");
+check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0;outside=0;build=20378;geometry=viewport_v2"),"diagnostic counts visible surfaces separately and identifies the loaded build and geometry revision");
 LiquidGlassDrawable originalWideGlass=glass(wide),originalCircleGlass=glass(circle.iconFrame),originalPlayerGlass=glass(player),originalSliderGlass=glass(volume);
 ControlCenterAppearanceHook.claim(wide,circle.iconFrame);call(state,"prepare");
 check(wide.getBackground()==wide.colorBackgroundDrawable&&circle.iconFrame.getBackground()==circle.colorBackgroundDrawable,"new tile appearance ownership restores both exact OEM tile backgrounds before it can bind");
@@ -277,6 +280,40 @@ Object unsupportedState=watch(unsupported);call(unsupportedState,"prepare");
 check(unsupportedFrame.getBackground()==null&&unsupportedLayers.findDrawableByLayerId(1)==asymmetric,"asymmetric native slider keeps its complete native outline and fill rather than adding a mismatched material");
 check(FeatureSettings.diagnostic.startsWith("native_controls_unavailable")&&field(unsupportedState,"source")==null,"missing compatible controls clear capture and do not retain stale priority diagnosis");
 unsupported.detach();
+com.zte.mifavor.qs.MfvQSContainerImpl modern=new com.zte.mifavor.qs.MfvQSContainerImpl();
+ViewGroup page=new ViewGroup(),pager=new ViewGroup();modern.qsContent.addView(pager);pager.addView(page);
+QSTileViewWide pageTile=new QSTileViewWide(),quickTile=new QSTileViewWide(),editorTile=new QSTileViewWide();
+page.addView(pageTile);modern.quickQSPanel.addView(quickTile);modern.addView(editorTile);
+com.android.systemui.util.animation.TransitionLayout modernMedia=new com.android.systemui.util.animation.TransitionLayout();modernMedia.id="qs_media_controls_zte".hashCode();modernMedia.top=200;
+GradientDrawable mediaBackground=new GradientDrawable();mediaBackground.radius=42;modernMedia.setBackground(mediaBackground);View album=new View();modernMedia.addView(album);modern.qsContent.addView(modernMedia);
+SeekBar horizontal=modern.brightnessView.mSlider;horizontal.width=320;horizontal.height=60;horizontal.left=40;horizontal.top=400;
+Drawable seekBackground=new Drawable();horizontal.setBackground(seekBackground);horizontal.setPadding(18,9,22,11);
+LayerDrawable horizontalLayers=new LayerDrawable();horizontal.progress=horizontalLayers;Drawable horizontalTrack=horizontalLayers.findDrawableByLayerId(1),horizontalFill=horizontalLayers.findDrawableByLayerId(2);horizontalTrack.setBounds(0,3,280,43);horizontalLayers.setLevel(6200);
+Object modernState=watch(modern);call(modernState,"prepare");
+check(pageTile.getBackground()!=pageTile.colorBackgroundDrawable&&quickTile.getBackground()!=quickTile.colorBackgroundDrawable,"actual MFV paged and quick panels both receive local glass");
+check(editorTile.getBackground()==editorTile.colorBackgroundDrawable,"customizer/detail sibling controls remain native");
+check(modernMedia.getBackground()!=mediaBackground&&modernMedia.getChildAt(0)==album&&glass(modernMedia).radius==42,"verified MFV media background uses native radius and leaves album foreground intact");
+check(horizontal.getBackground()==seekBackground&&horizontalLayers.findDrawableByLayerId(2)==horizontalFill&&horizontalFill.getLevel()==6200,"horizontal slider keeps its view background, progress identity and fill level");
+Object horizontalSurface=field(horizontalLayers.findDrawableByLayerId(1),"surface");LiquidGlassDrawable horizontalGlass=(LiquidGlassDrawable)field(horizontalSurface,"glass");
+check(horizontalGlass.getBounds().equals(new Rect(0,3,280,43))&&field(horizontalSurface,"region").equals(new Rect(58,412,338,452)),"horizontal material uses exact native track bounds plus padding rather than whole SeekBar");
+Canvas horizontalCanvas=new Canvas();horizontalLayers.draw(horizontalCanvas);check(horizontalCanvas.events.equals(java.util.List.of("glass","white-progress")),"horizontal native track draws glass beneath original clipped progress");
+MotionEvent trackTouch=new MotionEvent(MotionEvent.ACTION_DOWN,198,432);Method touchMethod=modernState.getClass().getDeclaredMethod("touch",MotionEvent.class);touchMethod.setAccessible(true);touchMethod.invoke(modernState,trackTouch);check(horizontalGlass.interactionX==140&&horizontalGlass.interactionY==20&&horizontalGlass.pressed&&trackTouch.getX()==198&&trackTouch.getY()==432,"track interaction maps padding and nonzero native bounds exactly once while preserving input event");
+check(FeatureSettings.diagnostic.contains("adapter=mfv_qs")&&FeatureSettings.diagnostic.contains("ready=4/4"),"modern adapter and discovered surface count are exported");
+horizontalTrack.setBounds(0,5,250,40);call(modernState,"prepare");check(field(horizontalSurface,"region").equals(new Rect(58,414,308,449)),"native track bounds updates invalidate and remap its glass crop");
+FeatureSettings.active=false;call(modernState,"refresh");check(horizontalLayers.findDrawableByLayerId(1)==horizontalTrack&&horizontal.getBackground()==seekBackground&&pageTile.getBackground()==pageTile.colorBackgroundDrawable,"modern disable restores exact native backgrounds and track objects");
+FeatureSettings.active=true;call(modernState,"refresh");call(modernState,"prepare");
+GradientDrawable replaced=new GradientDrawable();pageTile.colorBackgroundDrawable=replaced;pageTile.setBackground(replaced);call(modernState,"prepare");check(field(pageTile.getBackground(),"original")==replaced,"OEM theme replacement is rebound without wrapping stale material");
+page.left=2000;modern.getViewTreeObserver().draw();
+check(!((Boolean)field(glass(pageTile).source,"validGeometry")),"off-page tile has no usable old geometry");
+page.left=0;int pageInvalidations=pageTile.invalidations;modern.getViewTreeObserver().draw();
+check(((Boolean)field(glass(pageTile).source,"validGeometry"))&&pageTile.invalidations>pageInvalidations,"page entry prepares and invalidates cached child before parent dispatchDraw");
+page.left=-100;modern.getViewTreeObserver().draw();
+check(((Boolean)field(glass(pageTile).source,"validGeometry")),"partially visible native tile keeps a local fallback during page motion");page.left=0;
+QSTileViewWide derived=new QSTileViewWide(){};derived.top=600;page.addView(derived);modern.getViewTreeObserver().draw();
+check(derived.getBackground()!=derived.colorBackgroundDrawable,"known OEM tile subclasses retain compatible glass binding");
+modern.detach();check(horizontalLayers.findDrawableByLayerId(1)==horizontalTrack&&modernMedia.getBackground()==mediaBackground,"modern detach restores media and horizontal track");
+check(modern.getViewTreeObserver().listeners.isEmpty(),"modern detach removes the pre-draw observer");
+check(FeatureSettings.listeners==0&&LayerBackdropSource.created==LayerBackdropSource.releases&&LiquidGlassDrawable.created==LiquidGlassDrawable.releases,"modern and legacy adapters release every listener, shared source and material");
 System.out.println("PASS production LiquidGlassControlCenterHook runtime: "+checks+" checks (facade; GPU and real OEM visuals unverified)");
 }}
 """,
@@ -295,9 +332,13 @@ def java_tool(name):
     raise SystemExit("Set JAVA_HOME or add a JDK to PATH")
 
 
+import runpy
+runpy.run_path(str(ROOT/'tools/glass-lifecycle-fixture.py'))['apply'](FILES)
+
 FILES["ls/augment/com/hook/LiquidGlassControlCenterHook.java"] = (
     ROOT / "android/app/src/main/java/ls/augment/com/hook/LiquidGlassControlCenterHook.java"
 ).read_text(encoding="utf-8")
+FILES["ls/augment/com/hook/ControlCenterGlassTargets.java"] = (ROOT / "android/app/src/main/java/ls/augment/com/hook/ControlCenterGlassTargets.java").read_text(encoding="utf-8")
 FILES["ls/augment/com/GlassGeometry.java"] = (
     ROOT / "android/app/src/main/java/ls/augment/com/GlassGeometry.java"
 ).read_text(encoding="utf-8")

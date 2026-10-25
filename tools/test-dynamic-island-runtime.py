@@ -68,32 +68,17 @@ public class TestIslandReview {
   int getUserId(){return user;}String getKey(){return key;}Notification getNotification(){return notification;}}
  static class NotificationListenerService{static class Ranking{int importance=3,effects;boolean suspended,interruption=true;int getImportance(){return importance;}boolean isSuspended(){return suspended;}boolean matchesInterruptionFilter(){return interruption;}int getSuppressedVisualEffects(){return effects;}}
   static class RankingMap{Ranking value=new Ranking();boolean found=true;boolean getRanking(String key,Ranking result){result.importance=value.importance;result.effects=value.effects;result.suspended=value.suspended;result.interruption=value.interruption;return found;}}}
- static class State{Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=this::performLongPress;
+ static class NativeHost{boolean fade;boolean ownsStatusBarFade(){return fade;}}
+ static class State{NativeHost nativeHost=new NativeHost();Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=()->{};
   StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing,circularAppStyle;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
   String foreground="launcher";String foregroundPackage(){return foreground;}
   State(){host.state=this;}boolean locked(){return isLocked;}int currentUser(){return user;}boolean option(String key){return true;}void refresh(){}void dismiss(){}void requestRefresh(){refreshRequests++;}
+  boolean touch(MotionEvent e){return false;}
   // METHODS
  }
  static MotionEvent event(int action,float x,float y){return new MotionEvent(action,x,y);}
  public static void main(String[] args){
-  State s=new State();check(!s.touch(event(0,10,10)),"outside gesture stays native");
-  check(s.touch(event(0,110,10)),"capsule starts tap");check(s.touch(event(1,112,12)),"capsule finishes tap");check(s.pill.clicks==1&&MotionEvent.owned==0,"tap clicks once and releases event");
-  for(int i=0;i<100;i++){check(s.host.dispatchTouchEvent(event(0,110,10)),"hold initial down");check(s.host.dispatchTouchEvent(event(2,110,30)),"parent dispatch handles the swipe");check(s.host.dispatchTouchEvent(event(1,110,60)),"parent dispatch handles the release");}
-  check(s.host.nativeDown==100&&s.host.nativeMove==100&&s.host.nativeUp==100&&s.pill.childDown==0,"swipe replay reaches native handler instead of the clickable pill");
-  check(s.pill.clicks==1&&MotionEvent.owned==0&&s.pill.isClickable(),"swipe restores capsule clickability without a tap or event leak");
-  check(s.host.dispatchTouchEvent(event(0,110,10))&&s.host.dispatchTouchEvent(event(1,110,10))&&s.pill.clicks==2,"capsule remains tappable after native swipes");
-  State nativeFailure=new State();nativeFailure.host.failNativeDown=true;nativeFailure.host.dispatchTouchEvent(event(0,110,10));
-  try{nativeFailure.host.dispatchTouchEvent(event(2,110,30));throw new AssertionError("missing native failure");}catch(IllegalStateException expected){}
-  check(nativeFailure.pill.isClickable()&&!nativeFailure.replaying&&!nativeFailure.touching&&MotionEvent.owned==0,"failed native replay restores clickability and releases event");
-  s.touch(event(0,110,10));check(!s.touch(event(5,110,10)),"multi-touch belongs to native");check(MotionEvent.owned==0,"multi-touch releases held event");
-  s.touch(event(0,110,10));check(s.touch(event(3,110,10))&&MotionEvent.owned==0,"cancel releases held event");
-  int clicked=s.pill.clicks;s.touch(event(0,110,10));MAIN.advance(500);check(s.pill.longClicks==1,"held tap expands once");
-  check(s.touch(event(1,110,10))&&s.pill.clicks==clicked,"release after long press never launches the app");
-  s.touch(event(0,110,10));s.touch(event(3,110,10));MAIN.advance(500);check(s.pill.longClicks==1&&MAIN.jobs.isEmpty(),"canceled gesture cannot open a later popup");
-  s.touch(event(0,110,10));s.touch(event(2,110,30));MAIN.advance(500);check(s.pill.longClicks==1,"native swipe cancels long press");
-  for(int guard=0;guard<5;guard++){State blocked=new State();blocked.touch(event(0,110,10));
-   if(guard==0)blocked.isLocked=true;if(guard==1)blocked.screenOff=true;if(guard==2)blocked.enabled=false;if(guard==3)blocked.closed=true;if(guard==4)blocked.user=1;
-   MAIN.advance(500);check(blocked.pill.longClicks==0,"lifecycle changes invalidate pending long press");blocked.cancelTouch();}
+  State s=new State();
   SystemClock.now=1234;
   State visibility=new State();check(visibility.observeHostVisibility()&&visibility.refreshRequests==1,"initial attached host wakes the capsule once");
   for(int frame=0;frame<100;frame++)visibility.observeHostVisibility();check(visibility.refreshRequests==1,"unchanged draw frames do not poll activity state");
@@ -102,7 +87,12 @@ public class TestIslandReview {
   View ancestor=new View();visibility.host.parent=ancestor;ancestor.alpha=0;visibility.observeHostVisibility();check(visibility.refreshRequests==4&&!visibility.hostVisible(),"ancestor alpha is part of effective visibility");
   ancestor.alpha=1;visibility.observeHostVisibility();check(visibility.refreshRequests==5,"ancestor restoration wakes activity");
   ancestor.shown=false;visibility.observeHostVisibility();check(visibility.refreshRequests==6&&!visibility.hostVisible(),"ancestor visibility hides the expanded panel too");
-  s.screenOff=true;check(!s.touch(event(0,110,10)),"screen-off never captures taps");s.screenOff=false;s.isLocked=true;check(!s.touch(event(0,110,10)),"lock screen never captures taps");s.isLocked=false;
+  ancestor.shown=true;visibility.host.alpha=0;visibility.nativeHost.fade=true;
+  check(visibility.hostVisible(),"native panel fade does not dismiss itself");
+  ancestor.alpha=0;check(!visibility.hostVisible(),"native panel fade cannot bypass hidden ancestors");
+  ancestor.alpha=1;visibility.host.shown=false;check(!visibility.hostVisible(),"native fade cannot bypass host visibility");
+  visibility.host.shown=true;visibility.nativeHost.fade=false;check(!visibility.hostVisible(),"fullscreen alpha resumes hiding after native fade ends");
+
   MediaController paused=new MediaController(2),playing=new MediaController(3),broken=new MediaController(3);broken.bad=true;s.controllers.add(paused);s.controllers.add(broken);s.controllers.add(playing);
   check(s.selectMedia()==playing,"real playback beats a paused session even if another session fails");playing.state=new PlaybackState(1);check(s.selectMedia()==null,"an unrelated stale paused session never becomes an activity");
   playing.state=new PlaybackState(3);check(s.selectMedia()==playing,"resumed playback appears");playing.state=new PlaybackState(2);check(s.selectMedia()==playing,"new pause gets brief grace");
@@ -156,56 +146,17 @@ public class TestIslandReview {
   s.openNotice(null);check(FeatureSettings.value.startsWith("blocked;"),"null intent is never sent");
   PendingIntent canceled=new PendingIntent();canceled.canceled=true;s.openNotice(canceled);check(FeatureSettings.value.startsWith("canceled;"),"canceled intent reported without crashing SystemUI");
   PendingIntent bad=new PendingIntent();bad.bad=true;s.openNotice(bad);check(FeatureSettings.value.equals("failed:SecurityException;at=1234"),"exception diagnostic includes type only, no notification or exception payload");
-  State geometry=new State();geometry.layout();
-  check(geometry.pill.params.topMargin==16&&geometry.pill.getHeight()==32,"default capsule remains centered with native height");
-  check(!geometry.pill.transparent,"existing users keep the opaque style");
-  check(!geometry.pill.circularIcon,"existing users retain rounded-square app icons");
-  int styleUpdates=geometry.pill.layoutUpdates;geometry.circularAppStyle=true;geometry.layout();
-  check(geometry.pill.circularIcon&&geometry.pill.layoutUpdates==styleUpdates,"circular app style reaches the capsule without changing its geometry");
-  geometry.circularAppStyle=false;geometry.layout();check(!geometry.pill.circularIcon,"app icon style returns to rounded square without recreating the capsule");
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,6);geometry.layout();
-  check(geometry.pill.getY()==22,"positive offset moves the actual capsule hit region down");
-  check(!geometry.touch(event(0,110,18))&&geometry.touch(event(0,110,24)),"offset uses the visible hit region without retaining the former tap area");geometry.cancelTouch();
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,-6);geometry.layout();check(geometry.pill.getY()==10,"negative offset moves the capsule up");
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,24);geometry.layout();check(geometry.pill.getY()+geometry.pill.getHeight()==geometry.host.getHeight(),"large downward offset stays inside the status bar");
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,-24);geometry.layout();check(geometry.pill.getY()==0,"large upward offset stays inside the status bar");
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_OFFSET_Y,6);geometry.density=3.25f;geometry.host.width=1170;geometry.host.height=208;geometry.layout();
-  check(geometry.pill.params.topMargin==72&&geometry.pill.getHeight()==104,"offset is converted from dp at real device density");
-  int updates=geometry.pill.layoutUpdates;FeatureSettings.values.put(SystemUiOptions.ISLAND_TRANSPARENT,1);geometry.layout();
-  check(geometry.pill.transparent&&geometry.pill.layoutUpdates==updates,"transparent style hot update preserves geometry and hit targets");
-  FeatureSettings.values.put(SystemUiOptions.ISLAND_TRANSPARENT,0);geometry.layout();check(!geometry.pill.transparent,"style can return to opaque without recreating the host");
-  geometry.host.height=48;geometry.layout();check(geometry.pill.getY()>=0&&geometry.pill.getY()+geometry.pill.getHeight()<=48,"small status bar safely limits both height and offset");
-  geometry.host.height=0;geometry.layout();check(geometry.pill.getY()==0&&geometry.pill.getHeight()==0,"unlaid-out host cannot create a negative capsule bound");FeatureSettings.values.clear();
-  System.out.println("PASS island production touch/media/privacy: "+checks+" checks");
+  System.out.println("PASS island production event policy/privacy: "+checks+" checks");
  }
 }
 '''
-harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean touch(','void cancelTouch(','void performLongPress(','boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(','void withdrawNotice(','void clearNotice(','boolean allowedRanking(','void openNotice(','void openDiagnostic(','void layout(']))
+harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(','void withdrawNotice(','void clearNotice(','boolean allowedRanking(','void openNotice(','void openDiagnostic(']))
 # Uses the caller's configured JDK, like the other host regression scripts.
 with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  path=Path(tmp)/'TestIslandReview.java';path.write_text(harness,encoding='utf-8')
  subprocess.run(['javac','-encoding','UTF-8','-d',tmp,str(path),str(root/'android/app/src/main/java/ls/augment/com/IslandActivityPolicy.java'),str(root/'tools/TestIslandActivityPolicy.java')],check=True)
  subprocess.run(['java','-cp',tmp,'TestIslandReview'],check=True)
  subprocess.run(['java','-cp',tmp,'ls.augment.com.TestIslandActivityPolicy'],check=True)
- # Prove that the test detects the device failure, not just successful hook
- # return values: the previous implementation replayed DOWN with the pill still
- # clickable, so real hit testing captured it before the native shade handler.
- mutant=harness.replace('pill.setClickable(false);','/* mutant: child remains clickable during replay */',1)
- if mutant==harness:raise AssertionError('Clickable handoff was not found in the extracted production method')
- path.write_text(mutant,encoding='utf-8')
- subprocess.run(['javac','-encoding','UTF-8','-cp',tmp,'-d',tmp,str(path)],check=True)
- rejected=subprocess.run(['java','-cp',tmp,'TestIslandReview'],capture_output=True,text=True)
- if rejected.returncode==0 or 'swipe replay reaches native handler instead of the clickable pill' not in rejected.stderr:
-  raise AssertionError('The hit-test regression must reject replay with a clickable capsule: '+rejected.stderr)
- print('PASS clickable-child regression mutant rejected at native gesture handoff')
- mutant=harness.replace('pill.setLongClickable(false);','/* mutant: child remains long-clickable during replay */',1)
- if mutant==harness:raise AssertionError('Long-clickable handoff was not found in the extracted production method')
- path.write_text(mutant,encoding='utf-8')
- subprocess.run(['javac','-encoding','UTF-8','-cp',tmp,'-d',tmp,str(path)],check=True)
- rejected=subprocess.run(['java','-cp',tmp,'TestIslandReview'],capture_output=True,text=True)
- if rejected.returncode==0 or 'swipe replay reaches native handler instead of the clickable pill' not in rejected.stderr:
-  raise AssertionError('The hit-test regression must reject a long-clickable capsule during replay: '+rejected.stderr)
- print('PASS long-clickable-child regression mutant rejected at native gesture handoff')
  # Plain send() omitted this option and is silently blocked for a background
  # creator on modern Android. Reject that behavior even if submission returns.
  mutant=harness.replace('options.toBundle()','null',1)

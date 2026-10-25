@@ -30,7 +30,7 @@ final class StatusBarContentBounds {
 
     private static View wifiSignal(View view) {
         try {
-            String id=view.getResources().getResourceEntryName(view.getId());
+            String id=view.getId()==View.NO_ID||view.getId()==0?"":view.getResources().getResourceEntryName(view.getId());
             if ("wifi_signal".equals(id)||"mobile_signal".equals(id)||"multi_user_avatar".equals(id)||"keyguard_user_switcher_avatar".equals(id)) return view;
         } catch (android.content.res.Resources.NotFoundException ignored) { }
         if (view instanceof ViewGroup) {

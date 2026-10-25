@@ -3,6 +3,14 @@ import ls.augment.com.ThermalTelemetry;
 public final class TestThermalTelemetry {
     private static void check(boolean condition){if(!condition)throw new AssertionError();}
     public static void main(String[] args){
+        check(ThermalTelemetry.matchesSensor("CPU-0","cpu"));
+        check(ThermalTelemetry.matchesSensor("gpuss-0","gpu"));
+        for(String name:new String[]{"cpu-hw-trip-0","gpu_limit","cpu-thresh","battery",""}){
+            check(!ThermalTelemetry.matchesSensor(name,"cpu"));
+            check(!ThermalTelemetry.matchesSensor(name,"gpu"));
+        }
+        check(!ThermalTelemetry.matchesSensor(null,"cpu"));
+        check(!ThermalTelemetry.matchesSensor("cpu-gpu","gpu"));
         double[] value=ThermalTelemetry.parse("cpu-hw-trip-0|105000\ncpu-0-1|40200\ncpullc-0|39000\ngpuss-0|36500\ngpu-1|38\ncpu_limit|120000\nnoise|99000\ncpu-2|NaN\ngpu-2|999000");
         check(value[0]==40.2&&value[1]==38);
         value=ThermalTelemetry.parse("cpu-0|-1000\ngpu-0|garbage");check(value[0]==-1&&Double.isNaN(value[1]));

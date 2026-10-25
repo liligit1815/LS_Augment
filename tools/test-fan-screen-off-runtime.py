@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "android/app/src/main/java/ls/augment/com"
@@ -26,7 +27,7 @@ public interface Chain{Object proceed()throws Throwable;Object getThisObject();}
 public static final Map<Method,Interceptor> hooks=new HashMap<>();public final Set<String> deoptimized=new HashSet<>();
 public static class Builder{Method method;Builder(Method m){method=m;}Builder intercept(Interceptor i){hooks.put(method,i);return this;}}
 Builder prepareFeatureHook(Method m,String tag,boolean f){return new Builder(m);}void registerFeatureHook(Builder h){}
-void deoptimize(Method m){deoptimized.add(m.getName());}void logFeatureError(String s,Throwable t){throw new AssertionError(s,t);}
+void deoptimize(Method m){deoptimized.add(m.getName());}void logFeatureError(String s,Throwable t){throw new AssertionError(s,t);}void logFeatureInfo(String s){}
 public static Object invoke(Class<?> type,String name,Object owner,Original original){try{
  Method m=type.getDeclaredMethod(name);Interceptor i=hooks.get(m);if(i==null)return original.run();
  return i.apply(new Chain(){public Object proceed()throws Throwable{return original.run();}public Object getThisObject(){return owner;}});
@@ -64,7 +65,11 @@ public void stopForProtection(){mLastFanEnable=false;hardware=false;writes++;}}
 import cn.nubia.fan.policy.FanControllerImpl;import cn.nubia.fan.bean.FanState;import android.os.Handler;
 public class TestFanScreenOffRuntime {static int checks;static void check(boolean b,String message){checks++;if(!b)throw new AssertionError(message);}
 public static void main(String[] args){AugmentModule module=new AugmentModule();
- check(FanScreenOffHook.install(module,TestFanScreenOffRuntime.class.getClassLoader())==2,"two production hooks installed");
+ if(args.length>0){android.os.Build.DEVICE=android.os.Build.MODEL=android.os.Build.PRODUCT="NX819J";
+ FeatureSettings.diagnostics.put("ls_augment_fan_screen_off_installed","old capability");
+ check(FanScreenOffHook.install(module,TestFanScreenOffRuntime.class.getClassLoader(),"missing.apk")==0&&AugmentModule.hooks.isEmpty()
+ &&"".equals(FeatureSettings.diagnostics.get("ls_augment_fan_screen_off_installed")),"unknown OEM predicate order keeps native policy and revokes prior evidence");}
+ check(FanScreenOffHook.install(module,TestFanScreenOffRuntime.class.getClassLoader(),args.length>0?args[0]:null)==2,"two production hooks installed");
  check(module.deoptimized.contains("handleUpdateTheStateOfFan")&&module.deoptimized.contains("notifyFanStateChanged"),"precompiled callers deoptimized");
  FanControllerImpl owner=new FanControllerImpl();owner.mCurrentFanState.screen=false;owner.notifyFanStateChanged();
  check(!owner.hardware&&owner.writes==1,"disabled feature preserves native screen-off stop");
@@ -105,7 +110,8 @@ schema = (SRC / "ConfigSchema.java").read_text(encoding="utf-8")
 constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)";', schema))
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{constants[name]}";' for name in ["GAME_MASTER", "FAN_SCREEN_OFF_ENABLED"]) + "}"
-for name in ["FanScreenOffPolicy.java", "hook/FanScreenOffHook.java"]:
+FILES["ls/augment/com/FanHardwareIdentity.java"]='package ls.augment.com;public class FanHardwareIdentity {public static String current(){return "firmware-test";}}'
+for name in ["FanScreenOffPolicy.java", "hook/FanScreenOffHook.java", "hook/FanOemContract.java"]:
     FILES["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
 
@@ -127,4 +133,4 @@ with tempfile.TemporaryDirectory(prefix="lsa-fan-screen-off-") as directory:
         path.write_text(content, encoding="utf-8")
         sources.append(str(path))
     subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "--release", "17", "-d", directory, *sources], check=True)
-    subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanScreenOffRuntime"], check=True, timeout=15)
+    subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanScreenOffRuntime", *sys.argv[1:]], check=True, timeout=15)

@@ -10,6 +10,9 @@ final class NativePowerActionFactory {
     private static final String[] LAYOUTS={"global_dialog_simplified_two_buttons",
             "global_dialog_simplified_three_buttons","global_dialog_simplified_two_buttons_abroad",
             "global_dialog_simplified_three_buttons_abroad"};
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static ViewGroup create(Context context,ViewGroup reference,String label){
         int resetId=reference.getId();
         for(String name:LAYOUTS){

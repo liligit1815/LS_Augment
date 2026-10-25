@@ -16,6 +16,9 @@ final class CollabRenderHook {
     private static final Set<Method> DEOPT=new HashSet<>();
     private static final Set<Method> SENSOR_HOOKS=new HashSet<>();
     private static final ThreadLocal<Integer> CHARGE_COUNT=new ThreadLocal<>();
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static void install(AugmentModule module,ClassLoader loader,String pkg){
         if(pkg.equals("com.zte.fingerprints")){
             GoldFingerprintHook.installSettings(module,loader);

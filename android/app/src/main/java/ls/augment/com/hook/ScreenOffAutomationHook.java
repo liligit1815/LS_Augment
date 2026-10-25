@@ -23,6 +23,9 @@ import ls.augment.com.ConfigSnapshot;
 /** One event owner in system_server; all Root work remains in the shared hide queue. */
 final class ScreenOffAutomationHook {
     private static final Uri PROVIDER = Uri.parse("content://ls.augment.com.config");
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Controller controller;
 
     private ScreenOffAutomationHook() { }
@@ -71,6 +74,9 @@ final class ScreenOffAutomationHook {
             };
         }
 
+
+        // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+        //noinspection ObsoleteSdkInt
         void start() {
             if(listening){refreshAndRun("system_attached");return;}
             if(!bridgeReady())return;
@@ -126,8 +132,8 @@ final class ScreenOffAutomationHook {
                 if(!bridgeReady())return;
                 // Read the authoritative snapshot here; never block SystemUI or the
                 // system main thread on provider access, Root commands or PackageManager.
-                Bundle reply = context.getContentResolver().call(
-                        PROVIDER, "snapshot", null, null);
+                Bundle reply = ConfigReadRetry.read(() -> context.getContentResolver().call(
+                        PROVIDER, "snapshot", null, null));
                 SnapshotCheck checked=inspectSnapshot(reply);
                 ConfigSnapshot snapshot=checked.snapshot;
                 if(snapshot==null){

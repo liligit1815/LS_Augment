@@ -30,6 +30,9 @@ final class SystemRulesHook {
     private static volatile Object keyguardMonitor;
     private static volatile Field keyguardShowing;
     private static volatile Object assistantOwner;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Context assistantContext;
     private static volatile ClassLoader assistantLoader;
     private static volatile AssistantState assistantState;
@@ -39,10 +42,16 @@ final class SystemRulesHook {
     private static final Runnable ASSISTANT_CHANGED=SystemRulesHook::invalidateAssistant;
     private static final long ASSISTANT_TTL_MS=10_000L;
     private static ContentObserver assistantObserver;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Context observedAssistantContext;
     private static int observedAssistantUser=Integer.MIN_VALUE;
     private static String k(String suffix){return SystemOptions.key(suffix);}
     private SystemRulesHook() { }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized int install(AugmentModule module,ClassLoader loader) {
         if(!LOADERS.add(loader))return 0;
         int count=installKeyguardMemory(module,loader)+installAssistantCache(module,loader)+installAudio(module,loader)+installCapture(module,loader);
@@ -231,6 +240,9 @@ final class SystemRulesHook {
             });
         return count;
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int installKeyguardMemory(AugmentModule module,ClassLoader loader){
         int count=0;String name="com.android.server.policy.keyguard.KeyguardStateMonitor";
         try{
@@ -318,6 +330,9 @@ final class SystemRulesHook {
             assistantObserver=observer;observedAssistantContext=context;observedAssistantUser=user;
         }catch(RuntimeException unavailable){try{context.getContentResolver().unregisterContentObserver(observer);}catch(RuntimeException ignored){ }}
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static boolean assistantAllowedOnWorker(Object owner,Context userContext,ClassLoader loader,int behavior)throws ReflectiveOperationException{
         if(!SystemRulesPolicy.assistantPowerBehavior(behavior))return false;
         // Mirror the inspected phone's native eligibility gates using one explicit user.

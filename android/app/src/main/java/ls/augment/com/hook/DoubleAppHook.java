@@ -56,6 +56,9 @@ final class DoubleAppHook {
      * for the exact GameAssist call and only after PackageManager confirms the
      * target is not installed in user 999.
      */
+
+    // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+    //noinspection ObsoleteSdkInt
     private static int installResolverGuard(AugmentModule module, ClassLoader classLoader) {
         try {
             Class<?> type = Class.forName(RESOLVER_CLASS, false, classLoader);

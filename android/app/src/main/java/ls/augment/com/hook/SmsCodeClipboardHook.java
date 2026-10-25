@@ -24,6 +24,9 @@ import ls.augment.com.SystemOptions;
 
 /** Receives new SMS in system_server; never queries the SMS store or intercepts delivery. */
 final class SmsCodeClipboardHook {
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Controller controller;
     private SmsCodeClipboardHook() { }
 

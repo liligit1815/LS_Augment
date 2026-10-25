@@ -25,7 +25,7 @@ final class StatusBarRecentsHook {
             module.registerFeatureHook(module.prepareFeatureHook(draw,"systemui.recents.custom_clock_draw",true)
                     .intercept(chain->{
                         TextView clock=(TextView)chain.getArg(0);
-                        if(!StatusBarGridHook.ownsRecentsContent(clock,true))return chain.proceed();
+                        if(!SystemUiHook.ownsCustomClockDrawing(clock))return chain.proceed();
                         // false tells Clock.onDraw to use TextView.onDraw. Do not enter the
                         // OEM path: it translates the Canvas before returning false, and
                         // its time-part parser still uses the original format string.

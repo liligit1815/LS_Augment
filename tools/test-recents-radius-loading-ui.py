@@ -30,7 +30,9 @@ def block(source, marker):
 
 
 def harness(source):
-    declarations = source[source.index('    private SeekBar recentsRadiusSlider;'):source.index('    private TextView launcherGridRuntime;')]
+    # The unrelated launcher runtime field was retired; the next live field still
+    # delimits exactly the radius controls, range state and preference listener.
+    declarations = source[source.index('    private SeekBar recentsRadiusSlider;'):source.index('    private LinearLayout updateLinksContent;')]
     methods = '\n'.join(signature + '{' + block(source, signature) + '}' for signature in (
         'private static String signedRadius(int value)',
         'private void renderRecentsRadiusValue()',
@@ -213,7 +215,7 @@ public class TestRecentsRadiusLoadingUi {
     static class View {static final int VISIBLE=0,GONE=8;int visibility=VISIBLE;void setTag(Object tag){}void setVisibility(int v){if(onWorker)throw new AssertionError("widget write on worker");visibility=v;}}
     static class TextView extends View {String text="";boolean everVisible;void setText(String s){text=s;record();}@Override void setVisibility(int v){super.setVisibility(v);record();}void record(){if(visibility==VISIBLE&&!text.isEmpty())everVisible=true;}}
     static class LinearLayout extends View {void addView(View v,Object params){}}
-    static class Ui {int muted,accent;TextView text(String t,int size,int color,boolean bold){TextView v=new TextView();v.setText(t);return v;}Object wrap(){return null;}int dp(int value){return value;}}
+    static class Ui {int muted,accent;SeekBar slider(){return new SeekBar(this);}TextView text(String t,int size,int color,boolean bold){TextView v=new TextView();v.setText(t);return v;}Object wrap(){return null;}int dp(int value){return value;}}
     static class SeekBar extends View {
         int min,max=100,progress;boolean enabled=true;String state="";OnSeekBarChangeListener listener;
         SeekBar(Object context){}void setMin(int v){min=v;}void setMax(int v){max=v;}

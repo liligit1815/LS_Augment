@@ -30,6 +30,9 @@ final class MinorsWorkspaceHook {
         }
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private MinorsWorkspaceHook(AugmentModule module, ClassLoader loader)
             throws ReflectiveOperationException {
         this.module = module;

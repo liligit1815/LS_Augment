@@ -9,6 +9,7 @@ ascending framework resource-id order, matching aapt2 output.
 from __future__ import annotations
 import struct, sys, zipfile
 from pathlib import Path
+from manifest_permission_contract import validate_permission_declarations
 
 NO_INDEX = 0xFFFFFFFF
 ANDROID_URI = 'http://schemas.android.com/apk/res/android'
@@ -18,12 +19,6 @@ EXPECTED_ACTION = 'android.service.quicksettings.action.QS_TILE'
 EXPECTED_LAUNCHER_ALIAS = 'ls.augment.com.LauncherAlias'
 EXPECTED_SETTINGS_ACTIVITY = 'ls.augment.com.SettingsActivity'
 MODULE_SETTINGS_CATEGORY = 'de.robv.android.xposed.category.MODULE_SETTINGS'
-EXPECTED_APP_PERMISSIONS = {
-    'android.permission.QUERY_ALL_PACKAGES',
-    'android.permission.RECEIVE_BOOT_COMPLETED',
-    'android.permission.INTERNET',  # Contributors and online update manifest/downloads.
-    'android.permission.REQUEST_INSTALL_PACKAGES',  # Confirmed online-update APK installation.
-}
 
 
 def len8(buf: bytes, p: int):
@@ -107,6 +102,17 @@ def value(attrs, name):
     return None
 
 
+def validate_binary_permissions(starts):
+    sdks = [attrs for tag, attrs in starts if tag == 'uses-sdk']
+    assert len(sdks) == 1, 'compiled manifest must contain one SDK declaration'
+    minimum = value(sdks[0], 'minSdkVersion')
+    assert minimum is not None and not isinstance(minimum, bool), 'compiled minimum SDK missing or invalid'
+    declarations = [(tag, {attribute['name']: attribute['raw'] if attribute['raw'] is not None else attribute['typed']
+                           for attribute in attrs if attribute['ns'] == ANDROID_URI})
+                    for tag, attrs in starts if tag.startswith('uses-permission')]
+    validate_permission_declarations(declarations, int(minimum))
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit('usage: check-binary-manifest.py APK')
@@ -149,9 +155,7 @@ def main():
 
     categories = [value(attrs, 'name') for tag, attrs in starts if tag == 'category']
     assert MODULE_SETTINGS_CATEGORY in categories, 'LSPosed module settings category missing'
-    permissions = [value(attrs, 'name') for tag, attrs in starts if tag == 'uses-permission']
-    assert set(permissions) == EXPECTED_APP_PERMISSIONS, \
-        'compiled application permission set mismatch: ' + repr(permissions)
+    validate_binary_permissions(starts)
 
     print('Binary manifest checks: OK')
     print('tile_service_permission=' + EXPECTED_PERMISSION)

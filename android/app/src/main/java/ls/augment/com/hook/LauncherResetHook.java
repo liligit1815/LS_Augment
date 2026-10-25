@@ -32,6 +32,9 @@ final class LauncherResetHook {
     private static final ScheduledExecutorService WORKER=Executors.newSingleThreadScheduledExecutor(r->{
         Thread t=new Thread(r,"LSA-LauncherReset");t.setDaemon(true);return t;
     });
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Context context;
     private static volatile LauncherResetPolicy.Request pending;
     private static ContentObserver observer;
@@ -98,6 +101,9 @@ final class LauncherResetHook {
             });
         }catch(Exception unsafe){ack(r,false,"storage_not_verified");}
     }
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     static void validateStorage(Context storage,int user,int uid,String name)throws Exception{
         if(!"ls_augment_launcher_pages".equals(name)&&!"ls_augment_launcher_grid_state".equals(name))throw new IOException("storage role");
         if(storage==null||!LauncherResetPolicy.PACKAGE.equals(storage.getPackageName()))throw new IOException("storage identity");

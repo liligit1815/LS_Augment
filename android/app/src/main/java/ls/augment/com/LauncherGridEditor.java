@@ -34,7 +34,6 @@ final class LauncherGridEditor {
     }
     View view(){
         LinearLayout body=column();body.setTag("launcher-grid-editor");
-        body.addView(ui.text("修改会自动保存，重启系统桌面后生效。下方是布局示意，格数表示桌面页面的图标位置。",12,ui.muted,false),ui.margins(0,4,0,6));
         summary=ui.text("",15,ui.text,true);summary.setGravity(Gravity.CENTER);body.addView(summary,ui.margins(0,4,0,0));
         preview=new Preview();body.addView(preview,new LinearLayout.LayoutParams(-1,ui.dp(238)));
         body.addView(ui.featureTitle("常用布局（列 × 行）",null),ui.margins(0,6,0,6));
@@ -48,7 +47,6 @@ final class LauncherGridEditor {
         button(row,"n × n…",this::squareDialog).setContentDescription("选择方形布局，3×3 到 12×12");
         body.addView(ui.featureTitle("分别调整行列",null),ui.margins(0,7,0,3));
         dimension(body,false);dimension(body,true);
-        body.addView(ui.text("列数决定每排图标个数，行数决定每页排数。小组件会占用多格；密集布局会自动缩小图标与文字，Dock 图标沿用系统的统一尺寸，数量保持原设置。",12,ui.muted,false),ui.margins(0,8,0,8));
         refresh();return body;
     }
     private LinearLayout column(){LinearLayout result=new LinearLayout(owner);result.setOrientation(LinearLayout.VERTICAL);return result;}
@@ -82,8 +80,8 @@ final class LauncherGridEditor {
         change.accept(spec().withSize(rowCount,columnCount).values());refresh();
     }
     private void refresh(){
-        LauncherGridSpec s=spec();summary.setText(s.columns+" 列 × "+s.rows+" 行 · 每页 "+(s.rows*s.columns)+" 格");
-        rows.setText(s.rows+" 行 ▾");columns.setText(s.columns+" 列 ▾");rows.setContentDescription("桌面行数，当前 "+s.rows+" 行");columns.setContentDescription("桌面列数，当前 "+s.columns+" 列");
+        LauncherGridSpec s=spec();summary.setText(summary.getContext().getString(R.string.status_launchergrideditor_32 ,String.valueOf(s.columns), String.valueOf(s.rows), String.valueOf((s.rows*s.columns))));
+        rows.setText(rows.getContext().getString(R.string.status_launchergrideditor_33 ,String.valueOf(s.rows)));columns.setText(columns.getContext().getString(R.string.status_launchergrideditor_34 ,String.valueOf(s.columns)));rows.setContentDescription("桌面行数，当前 "+s.rows+" 行");columns.setContentDescription("桌面列数，当前 "+s.columns+" 列");
         lessRows.setEnabled(s.rows>LauncherGridSpec.MIN);moreRows.setEnabled(s.rows<LauncherGridSpec.MAX);lessColumns.setEnabled(s.columns>LauncherGridSpec.MIN);moreColumns.setEnabled(s.columns<LauncherGridSpec.MAX);
         for(int i=0;i<presets.size();i++){LauncherGridSpec.Preset p=LauncherGridSpec.PRESETS.get(i);boolean chosen=p.rows==s.rows&&p.columns==s.columns;Button b=presets.get(i);b.setSelected(chosen);b.setBackground(ui.roundStroke(chosen?ui.accentContainer:ui.cardHigh,12,chosen?ui.accent:ui.outline,chosen?2:1));}
         preview.setContentDescription("桌面布局示意，"+s.columns+" 列，"+s.rows+" 行，共 "+(s.rows*s.columns)+" 格；实际布局需重启系统桌面生效");preview.invalidate();

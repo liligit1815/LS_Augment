@@ -39,8 +39,8 @@ public final class ExtraDimActivity extends Activity {
         strengthControls.setTag("extra-dim-strength-controls");panel.addView(strengthControls,ui.wrap());
         intensityFold=ui.fold(enabled,strengthControls);
         TextView label = ui.text("",13,ui.text,false); strengthControls.addView(label,ui.margins(0,8,0,0));
-        slider = new SeekBar(this); slider.setMax(100); slider.setProgress(ExtraDimControl.strength(this));
-        slider.setContentDescription("极暗强度"); label.setText("强度 " + slider.getProgress() + "%");
+        slider = ui.slider(); slider.setMax(100); slider.setProgress(ExtraDimControl.strength(this));
+        slider.setContentDescription("极暗强度"); label.setText(label.getContext().getString(R.string.status_extradimactivity_15 ,String.valueOf(slider.getProgress())));
         slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));
         slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
         strengthControls.addView(slider, new LinearLayout.LayoutParams(-1,ui.dp(48)));
@@ -56,7 +56,7 @@ public final class ExtraDimActivity extends Activity {
         enabled.setOnCheckedChangeListener((button,on) -> { if (!rendering) {intensityFold.sync();queue();} });
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar bar,int value,boolean fromUser) {
-                label.setText("强度 " + value + "%");
+                label.setText(label.getContext().getString(R.string.status_extradimactivity_15 ,String.valueOf(value)));
                 if (fromUser && enabled.isChecked()) queue();
             }
             public void onStartTrackingTouch(SeekBar bar) { }

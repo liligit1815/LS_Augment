@@ -52,6 +52,26 @@ public final class RapidFireNativeLayout {
         0x2a1f03e0, 0x17ffffde, 0x2a1f03e0, 0x17fffff0,
     };
 
+    // Shifted-sign division tail and vtable slot 0x60, verified in libinputflinger.
+    // All branches, the quotient calculation, and both stores remain exact.
+    static final int[] COMPACT_STORE_PATTERN = {
+        0xd503233f, 0xa9be7bfd, 0xf9000bf3, 0x910003fd, 0x7102283f, 0xaa0003f3,
+        0x540001a0, 0x7102243f, 0x54000921, 0xb9405668, 0x7100191f, 0x5400024b,
+        0xf9400268, 0x529c2001, 0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82,
+        0x14000025, 0xb9405a68, 0x7100191f, 0x5400022b, 0xf9400268, 0x529c2001,
+        0x529c3802, 0xaa1303e0, 0x72a0bea1, 0x72a01c82, 0x14000028, 0x71000d1f,
+        0x5400022b, 0xf9400268, 0x52984001, 0x529e1002, 0xaa1303e0, 0x72a17d61,
+        0x72a05f42, 0x14000012, 0x71000d1f, 0x540002ab, 0xf9400268, 0x52984001,
+        0x529e1002, 0xaa1303e0, 0x72a17d61, 0x72a05f42, 0x14000016, 0x7100051f,
+        0x540004ab, 0xf9400268, 0x528ca001, 0x52984002, 0xaa1303e0, 0x72a3b9a1,
+        0x72a17d62, 0xf9403108, 0xd63f0100, 0x52800908, 0x52800889, 0x1400000d,
+        0x7100051f, 0x5400034b, 0xf9400268, 0x528ca001, 0x52984002, 0xaa1303e0,
+        0x72a3b9a1, 0x72a17d62, 0xf9403108, 0xd63f0100, 0x52800a08, 0x52800989,
+        0x528cccea, 0x72acccca, 0x9b2a7c0a, 0x9361fd4a, 0x0b4a7d4a, 0x531f794b,
+        0x0b0a016a, 0xb8296a6a, 0xb8286a6b, 0xf9400bf3, 0xa8c27bfd, 0xd50323bf,
+        0xd65f03c0, 0x2a1f03e0, 0x17ffffe3, 0x2a1f03e0, 0x17ffffee,
+    };
+
     public static final class Layout {
         public final int firstKey, secondKey, firstCount, secondCount;
         public final int firstDown, firstUp, secondDown, secondUp;
@@ -72,7 +92,8 @@ public final class RapidFireNativeLayout {
         ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         int prefix = buffer.getInt(0) == 0xd503245f ? 4 : 0; // Optional BTI landing pad.
         boolean pairedStores = bytes.length == PAIRED_STORE_PATTERN.length * 4 + prefix;
-        int[] pattern = pairedStores ? PAIRED_STORE_PATTERN : PATTERN;
+        int[] pattern = pairedStores ? PAIRED_STORE_PATTERN
+                : bytes.length == COMPACT_STORE_PATTERN.length * 4 + prefix ? COMPACT_STORE_PATTERN : PATTERN;
         if (bytes.length != pattern.length * 4 + prefix) return null;
         int[] code = new int[pattern.length];
         for (int i = 0; i < code.length; i++) {

@@ -203,10 +203,10 @@ public class TestRecentsCardRadiusSampling {
 }
 
 
-def main():
+def run(sources, variant):
     with tempfile.TemporaryDirectory(prefix='lsa-recents-radius-') as directory:
         root = Path(directory)
-        for name, source in SOURCES.items():
+        for name, source in sources.items():
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source, encoding='utf-8')
@@ -221,6 +221,33 @@ def main():
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestRecentsCardRadiusRuntime'], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.TestRecentsCardRadiusRange'], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestRecentsCardRadiusSampling'], check=True)
+        print('PASS exact launcher radius family: ' + variant, flush=True)
+
+
+def main():
+    run(SOURCES, 'android16')
+    named = {}
+    params = SOURCES['com/android/quickstep/FullscreenDrawParams.java'].split('\n', 1)[1]
+    params = params.replace('public class FullscreenDrawParams', 'public static class FullscreenDrawParams')
+    container = SOURCES['com/android/quickstep/views/TaskContainer.java'].split(';', 1)[1]
+    container = container.replace('public class TaskContainer', 'public static class TaskContainer')
+    for name, source in SOURCES.items():
+        if name in ('com/android/quickstep/FullscreenDrawParams.java', 'com/android/quickstep/views/TaskContainer.java'):
+            continue
+        source = source.replace('currentCornerRadius', 'currentDrawnCornerRadius')
+        source = source.replace('import com.android.quickstep.FullscreenDrawParams;',
+                                'import com.android.quickstep.views.TaskView.FullscreenDrawParams;')
+        if name == 'com/android/quickstep/views/TaskView.java':
+            source = source.replace('import com.android.quickstep.views.TaskView.FullscreenDrawParams;', '')
+            source = source.replace('public class TaskView extends View {',
+                                    'public class TaskView extends View {' + params.replace('currentCornerRadius', 'currentDrawnCornerRadius') + container)
+            source = source.replace('updateFullscreenParams()', 'updateSnapshotRadius()')
+        else:
+            package_end = source.index(';') + 1
+            source = source[:package_end] + ('import com.android.quickstep.views.TaskView.FullscreenDrawParams;'
+                                            'import com.android.quickstep.views.TaskView.TaskContainer;') + source[package_end:]
+        named[name] = source
+    run(named, 'android15_named')
 
 
 if __name__ == '__main__':

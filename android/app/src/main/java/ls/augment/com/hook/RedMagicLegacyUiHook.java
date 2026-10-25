@@ -65,7 +65,7 @@ final class RedMagicLegacyUiHook {
         for (String type : new String[]{"com.android.systemui.statusbar.StatusBarIconView",
                 "com.android.systemui.statusbar.pipeline.shared.ui.view.ModernStatusBarView"}) {
             count += hook(module, loader, type, "isIconVisible", 0, null,
-                    (owner, args, result) -> owner instanceof View && shouldHideStatusIcon((View) owner)
+                    (owner, args, result) -> owner instanceof View && hiddenStatusIcon((View) owner)
                             ? false : PASS);
         }
         count += hook(module, loader, "com.zte.feature.volume.MfvVolumeDialog", "shouldKeyguardHandleVolumeKeys", 0,
@@ -113,6 +113,7 @@ final class RedMagicLegacyUiHook {
         if(type.equals("MFVBatteryViewLayout")&&inBar(view)){
             refreshBatteryStyle(view);
             batteryAppearance(view);
+            IosBatteryHook.apply(view);
         }
         if (type.equals("ModernStatusBarMobileView")) {
             managed=true;
@@ -150,6 +151,14 @@ final class RedMagicLegacyUiHook {
             for(String name:names.split(",")) if(!name.trim().isEmpty()&&name.trim().equalsIgnoreCase(slot)) hide=true;
         }
         return hide;
+    }
+
+    private static boolean hiddenStatusIcon(View view) {
+        // SV1 suppresses the drawable too, but native headers measure and place
+        // StatusIconDisplayable independently. Exclude this exact icon instance
+        // so a hidden IMS badge leaves no cell and SIMs sharing a slot stay independent.
+        return shouldHideStatusIcon(view)
+                || StatusBarAssetsHook.nativeLayoutHidden(view);
     }
 
     /** Share existing global switches with synthetic rows and the three-in-one renderer. */
@@ -208,7 +217,8 @@ final class RedMagicLegacyUiHook {
 
     private static int installBattery(AugmentModule module, ClassLoader loader) {
         String type="com.zte.mifavor.views.MFVBatteryViewLayout";
-        int count=hook(module,loader,type,"getLevelDisplayMode",0,(o,a,r)->{
+        int count=IosBatteryHook.install(module,loader);
+        count+=hook(module,loader,type,"getLevelDisplayMode",0,(o,a,r)->{
             if(!inBar(o))return PASS;
             int mode=SystemUiPolicy.nativeBatteryMode(number(o,"battery_style",0,0,6));
             return mode<0?PASS:mode;
@@ -221,7 +231,7 @@ final class RedMagicLegacyUiHook {
             if(inBar(o)&&on(o,"battery_hide_percent")) {
                 Object label=field(o,"mCurrentUsedBatteryLevelView"),level=field(o,"mBateryLevel");
                 if(label instanceof TextView&&level instanceof Integer)((TextView)label).setText(String.valueOf(level));
-            }return PASS;
+            }if(o instanceof View)IosBatteryHook.apply((View)o);return PASS;
         });
         for(String name:new String[]{"getMappedBatteryIconFgColor","getMappedBatteryIconTextColor"}) {
             count+=hook(module,loader,type,name,-1,null,(o,a,r)->{
@@ -265,6 +275,7 @@ final class RedMagicLegacyUiHook {
     private static void batteryLayout(Object owner) {
         if(!inBar(owner))return;
         batteryAppearance((View)owner);
+        IosBatteryHook.apply((View)owner);
         int style=number(owner,"battery_style",0,0,6);
         Object container=field(owner,"mBatteryContainer"),label=field(owner,"mBatteryLevelOutsideView");
         if(container instanceof View) visibility((View)container,style==5||style==6);
@@ -407,7 +418,7 @@ final class RedMagicLegacyUiHook {
     static boolean preserveNativeAppearance(Object owner){return inBar(owner)&&positionSizeOnly(context(owner));}
     private static boolean appearanceSetting(String name){return name.startsWith("battery_")
             ||name.equals("statusbar_hide")||name.equals("keyguard_statusbar_hide");}
-    private static String id(View view){try{return view.getResources().getResourceEntryName(view.getId());}catch(Exception e){return "";}}
+    private static String id(View view){if(view.getId()==View.NO_ID||view.getId()==0)return "";try{return view.getResources().getResourceEntryName(view.getId());}catch(Exception e){return "";}}
     private static int iconContext(View view){
         boolean header=false,panel=false,qs=false,shadeHeader=false;
         for(View current=view;current!=null;current=current.getParent() instanceof View?(View)current.getParent():null){

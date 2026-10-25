@@ -89,17 +89,24 @@ final class StepLedger {
     Award award(String account,long time){Bundle b=request("award_get",key("",time));return b.getBoolean("present",false)?new Award(b.getInt("requested"),b.getInt("allowed")):null;}
     void award(String account,long time,int requested,int allowed){Bundle b=key("",time);b.putInt("requested",requested);b.putInt("allowed",allowed);request("award_put",b);}
     List<SavedRecord> records(String account,long start,long end){
-        List<SavedRecord> result=new ArrayList<>();int offset=0;
+        List<SavedRecord> result=new ArrayList<>();int offset=0;long chars=0;
         for(;;){Bundle b=new Bundle();b.putLong("start",start);b.putLong("end",end);b.putInt("offset",offset);
             ArrayList<Bundle> rows=request("records",b).getParcelableArrayList("rows");if(rows==null)throw new IllegalStateException("missing records");
-            for(Bundle row:rows)result.add(new SavedRecord(row.getString("sid"),row.getLong("time"),record(row)));
+            for(Bundle row:rows){Record record=record(row);chars+=record.raw.length()+record.output.length()+record.token.length()+row.getString("sid").length();
+                if(chars>4*1024*1024||result.size()>=16384)throw new IllegalStateException("健康历史查询超出预算，本轮保留原生行为");
+                result.add(new SavedRecord(row.getString("sid"),row.getLong("time"),record));}
             if(rows.isEmpty())return result;offset=Math.addExact(offset,rows.size());
         }
     }
     void admit(StepPlan p,long now){Bundle b=new Bundle();b.putString("plan",p.serialize());b.putLong("now",now);request("admit",b);}
     Map<Long,Integer> admitted(String account){
+        return admitted(account,0,Long.MAX_VALUE);
+    }
+    Map<Long,Integer> admitted(String account,long start,long end){
         Map<Long,Integer> result=new TreeMap<>();int offset=0;
-        for(;;){Bundle b=new Bundle();b.putInt("offset",offset);ArrayList<Bundle> rows=request("admitted",b).getParcelableArrayList("rows");if(rows==null)throw new IllegalStateException("missing events");
-            for(Bundle row:rows)result.put(row.getLong("time"),row.getInt("steps"));if(rows.isEmpty())return result;offset=Math.addExact(offset,rows.size());}
+        for(;;){Bundle b=new Bundle();b.putInt("offset",offset);b.putLong("start",start);b.putLong("end",end);ArrayList<Bundle> rows=request("admitted",b).getParcelableArrayList("rows");if(rows==null)throw new IllegalStateException("missing events");
+            for(Bundle row:rows){long at=row.getLong("time");if(at>=start&&at<end)result.put(at,row.getInt("steps"));}
+            if(rows.isEmpty())return result;offset=Math.addExact(offset,rows.size());
+            if(offset>65536||result.size()>16384)throw new IllegalStateException("健康事件查询超出预算，本轮保留原生行为");}
     }
 }

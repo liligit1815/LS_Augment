@@ -24,6 +24,9 @@ final class StatusBarNotificationSummaryHook {
     private static Method measured;
     private static Method nativeTint;
     private static boolean drawReady;
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader){
         try{measured=View.class.getDeclaredMethod("setMeasuredDimension",int.class,int.class);measured.setAccessible(true);}catch(Exception e){module.logFeatureError("SUMMARY_MEASURE",e);}
         int count=0;
@@ -64,6 +67,7 @@ final class StatusBarNotificationSummaryHook {
         return count;
     }
     private static boolean phone(ViewGroup owner){
+        if(owner.getId()==View.NO_ID||owner.getId()==0)return false;
         try{if(!"notificationIcons".equals(owner.getResources().getResourceEntryName(owner.getId())))return false;}catch(RuntimeException unknown){return false;}
         return phoneRoot(owner)!=null;
     }
@@ -131,7 +135,7 @@ final class StatusBarNotificationSummaryHook {
                 String hash=enabled&&mode==2?next.get(NotificationSummaryOptions.ASSET):"";
                 if(!hash.equals(requested)){requested=hash;int serial=++generation;stop();art=null;loading=!hash.isEmpty();
                     if(loading)IMAGES.execute(()->{Drawable decoded=null;try(InputStream stream=view.getContext().getContentResolver().openInputStream(Uri.parse("content://ls.augment.com.config/statusbar-icon/"+hash))){byte[] bytes=StatusBarAssetStore.read(stream);if(!hash.equals(StatusBarAssetStore.hash(bytes)))throw new IOException("hash mismatch");decoded=StatusBarAssetStore.decode(bytes,256);}catch(Exception ignored){}
-                        Drawable result=decoded;view.post(()->{if(closed||serial!=generation){if(result instanceof AnimatedImageDrawable)((AnimatedImageDrawable)result).stop();return;}art=result;loading=false;if(art!=null)art.setCallback(this);view.requestLayout();view.invalidate();FeatureSettings.diagnostic(view.getContext(),"ls_augment_notification_summary_asset",art==null?"unavailable;native_fallback":"ready");});});
+                        Drawable result=decoded;view.post(()->{if(closed||serial!=generation){if(result instanceof AnimatedImageDrawable)((AnimatedImageDrawable)result).stop();return;}art=result;loading=false;if(art!=null)art.setCallback(this);view.requestLayout();view.invalidate();FeatureSettings.diagnostic(view.getContext(),"ls_augment_notification_summary_asset_state",art==null?"unavailable;native_fallback":"ready");});});
                 }layout=true;
             }
             int nextPx=Math.round(sizeDp*view.getResources().getDisplayMetrics().density);if(nextPx!=px){px=nextPx;layout=true;}

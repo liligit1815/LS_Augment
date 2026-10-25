@@ -126,11 +126,12 @@ class OemHooks {static int methods(AugmentModule module,ClassLoader loader,Strin
   module.hooks.put(m,hook);module.registrations.add(name);count++;}}
  catch(ReflectiveOperationException e){module.logFeatureError(name,e);}return count;}
  static Object invoke(Object owner,String name,Object...args)throws ReflectiveOperationException{
-  for(Class<?> c=owner.getClass();c!=null;c=c.getSuperclass())try{Method m=c.getDeclaredMethod(name);m.setAccessible(true);return m.invoke(owner);}
-  catch(NoSuchMethodException ignored){}throw new NoSuchMethodException(name);}}
+  for(Class<?> c=owner.getClass();c!=null;c=c.getSuperclass())for(Method m:c.getDeclaredMethods())
+   if(m.getName().equals(name)&&m.getParameterCount()==args.length){m.setAccessible(true);return m.invoke(owner,args);}
+  throw new NoSuchMethodException(name);}}
 """,
     "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;import java.util.*;import android.content.Context;
-class FeatureSettings {static final Map<String,Boolean> values=new HashMap<>();static final Map<String,String> diagnostics=new HashMap<>();
+class FeatureSettings {static final java.util.Set<Runnable> listeners=new java.util.HashSet<>();static void addSnapshotListener(Context c,Runnable r){listeners.add(r);}static void removeSnapshotListener(Runnable r){listeners.remove(r);}static final Map<String,Boolean> values=new HashMap<>();static final Map<String,String> diagnostics=new HashMap<>();
  static void diagnostic(Context c,String key,String value){diagnostics.put(key,value);}
  static boolean enabled(Context c,String key){return values.getOrDefault(key,false);}}
 """,
@@ -161,7 +162,19 @@ public class LiquidGlassDrawable {public static int created,releases;public fina
  public void release(){if(released)throw new AssertionError("drawable released twice");released=true;releases++;}}
 """,
     "com/android/launcher3/K5.java": "package com.android.launcher3;public class K5 extends android.view.ViewGroup {}",
-    "com/android/launcher3/BubbleTextView.java": "package com.android.launcher3;public class BubbleTextView extends android.widget.TextView {}",
+    "com/android/launcher3/BubbleTextView.java": """package com.android.launcher3;public class BubbleTextView extends android.widget.TextView {
+ public int nativeCalls;public boolean invalidBounds;
+ public void d0(android.graphics.Rect out){nativeCalls++;if(invalidBounds){out.set(-1,0,100,100);return;}
+  android.graphics.drawable.Drawable image=compound[1];int w=image==null?64:image.bounds.width(),h=image==null?64:image.bounds.height();
+  out.set((width-w)/2,paddingTop,(width-w)/2+w,paddingTop+h);}}
+""",
+    "com/android/launcher3/folder/FolderIcon.java": """package com.android.launcher3.folder;public class FolderIcon extends android.view.ViewGroup {
+ public final android.widget.TextView name=new android.widget.TextView();public boolean textVisible;
+ public final android.graphics.Rect preview=new android.graphics.Rect(33,18,207,192);public int nativeCalls;
+ public FolderIcon(){name.visibility=GONE;addView(name);}
+ public boolean getTextVisible(){return textVisible;}public android.widget.TextView getFolderName(){return name;}
+ public void C(android.graphics.Rect out){nativeCalls++;out.set(preview);}}
+""",
     "com/android/launcher3/CellLayout.java": """package com.android.launcher3;import android.view.ViewGroup;
 public class CellLayout extends ViewGroup {public final K5 cells=new K5();public boolean missingContainer,failContainer;
  public CellLayout(){width=400;height=110;cells.left=20;cells.top=10;addView(cells);}
@@ -201,8 +214,8 @@ public class TestLiquidGlassDockRuntime {
 
  static void installAndDefaults()throws Exception{
   module=new AugmentModule();AugmentModule.active=module;LiquidGlassDockHook.install(module,TestLiquidGlassDockRuntime.class.getClassLoader());
-  check(module.registrations.equals(Arrays.asList("onDraw","dispatchTouchEvent")),"exact native drawing and touch hooks install in order");
-  LiquidGlassDockHook.install(module,TestLiquidGlassDockRuntime.class.getClassLoader());check(module.hooks.size()==2&&module.registrations.size()==2,"installation is idempotent");
+  check(module.registrations.equals(Arrays.asList("onResume","onDraw","dispatchTouchEvent")),"exact resume, drawing and touch hooks install in order");
+  LiquidGlassDockHook.install(module,TestLiquidGlassDockRuntime.class.getClassLoader());check(module.hooks.size()==3&&module.registrations.size()==3,"installation is idempotent");
   for(EnhancementOption option:GlassOptions.options())check("0".equals(option.defaultValue),"all glass settings default off");
   Hotseat h=host();onlyNative(draw(h),"disabled rendering unchanged");check(state(h)==null&&LayerBackdropSource.created==0&&Handler.pending()==0,"disabled hook allocates no sampling or callbacks");
   check(FeatureSettings.diagnostics.get("ls_augment_rm_glass_dock_state").contains(";disabled"),"disabled state is available in exported device diagnostics");
@@ -215,21 +228,33 @@ public class TestLiquidGlassDockRuntime {
   check(state(h)==null,"hidden and detached hosts create no state");
   h.failNativeDraw=true;try{draw(h);throw new AssertionError("native exception swallowed");}catch(IllegalStateException expected){}
   check(state(h)==null&&h.nativeDraws==5,"native draw runs exactly once and its failure is preserved");
+  h.detach();
  }
  static void lifecycle()throws Exception{
   Hotseat h=host();material(draw(h));Object state=state(h);LayerBackdropSource s=source(h);LiquidGlassDrawable g=glass(h);
   check(s.requests==1&&g.draws==1,"first valid frame samples and draws once");
+  check(g.animatedFallback,"Dock opts into capture-free 2-D animation material only");
+  int invalid=h.invalidations;h.getViewTreeObserver().draw();invalid=h.invalidations;
+  h.scaleX=.94f;h.getViewTreeObserver().draw();check(h.invalidations==invalid+1,"native animation change requests a Dock frame before the 250ms poll");
+  invalid=h.invalidations;h.getViewTreeObserver().draw();check(h.invalidations==invalid,"unchanged animation geometry does not perpetually redraw");
+  h.scaleX=1;h.getViewTreeObserver().draw();check(h.invalidations==invalid+1,"animation completion requests the unscaled material immediately");
+  invalid=h.invalidations;new com.android.launcher3.Launcher().onResume();check(h.invalidations==invalid+1,"launcher resume invalidates an idle Dock before its timer");
   check(g.bounds.equals(new Rect(20,2,108,90))&&s.region.equals(g.bounds),"descendant coordinates and generous padding map into Hotseat coordinates");
-  check(h.attachListeners.size()==1&&Handler.pending()==1,"one attach listener and one refresh callback");
-  for(int i=0;i<8;i++)draw(h);check(state(h)==state&&source(h)==s&&glass(h)==g&&h.attachListeners.size()==1&&Handler.pending()==1,"repeated draw does not duplicate state, material or callbacks");
+  check(h.attachListeners.size()==2&&Handler.pending()==1,"material and settings listeners and one refresh callback");
+  for(int i=0;i<8;i++)draw(h);check(state(h)==state&&source(h)==s&&glass(h)==g&&h.attachListeners.size()==2&&Handler.pending()==1,"repeated draw does not duplicate state, material or callbacks");
   int before=h.invalidations;Handler.tick();check(h.invalidations==before+1&&Handler.pending()==1,"refresh invalidates once and remains bounded");
   setting(GlassOptions.DOCK,false);onlyNative(draw(h),"disable preserves native frame");released(s,g,"disable releases both material owners");
-  check(state(h)==null&&h.attachListeners.isEmpty()&&Handler.pending()==0,"disable removes state, listener and queued refresh");
+  check(state(h)==null&&h.attachListeners.size()==1&&Handler.pending()==0,"disable retains only settings watcher and no capture timer");
+  String enabledEvidence=FeatureSettings.diagnostics.get("ls_augment_rm_glass_dock_state_last_enabled");
+  check(enabledEvidence!=null&&!enabledEvidence.endsWith(";disabled"),"turning Dock off preserves the enabled attempt and its geometry");
+  before=h.invalidations;setting(GlassOptions.DOCK,true);for(Runnable watcher:new ArrayList<>(FeatureSettings.listeners))watcher.run();
+  check(h.invalidations==before+1,"turning glass on invalidates an idle disabled Hotseat without a restart or timer");
   setting(GlassOptions.DOCK,true);material(draw(h));s=source(h);g=glass(h);h.detach();released(s,g,"detach releases material");
+  check(h.getViewTreeObserver().listeners.isEmpty(),"detach removes animation observer");
   check(state(h)==null&&Handler.pending()==0&&h.attachListeners.isEmpty(),"detached host has no pending callback");
   h.attach();material(draw(h));check(source(h)!=s&&glass(h)!=g,"reattach creates fresh material");
   s=source(h);g=glass(h);setting(GlassOptions.DOCK,false);Handler.tick();released(s,g,"timer notices disabled switch without another draw");
-  check(state(h)==null&&Handler.pending()==0,"timer disable leaves no state");setting(GlassOptions.DOCK,true);
+  check(state(h)==null&&Handler.pending()==0,"timer disable leaves no state");setting(GlassOptions.DOCK,true);close(h);
  }
  static void invalidGeometryAndContent()throws Exception{
   Hotseat h=host();draw(h);LayerBackdropSource s=source(h);LiquidGlassDrawable g=glass(h);h.cells.removeAllViews();
@@ -365,9 +390,51 @@ public class TestLiquidGlassDockRuntime {
   h.cells.scrollX=8;material(draw(h));check(glass(h).bounds.left==Math.max(0,expected.left-8),"container scrolling still moves child viewports");
   close(h);
  }
+ public static final class NamedBubble extends com.android.launcher3.BubbleTextView {
+  int namedCalls;public void getIconBounds(Rect out){namedCalls++;super.d0(out);}
+ }
+ public static final class NamedFolder extends com.android.launcher3.folder.FolderIcon {
+  int namedCalls;public void getPreviewBounds(Rect out){namedCalls++;super.C(out);}
+ }
+ static void nativeApplicationAndFolderBounds()throws Exception{
+  // The supplied July APK uses BubbleTextView.d0(Rect) and FolderIcon.C(Rect).
+  // A folder's 364px cell must not stretch the tray below its 174px preview.
+  for(boolean named:new boolean[]{false,true}){
+  Hotseat h=new Hotseat();h.width=1216;h.height=364;h.getResources().metrics.density=3.25f;
+  h.cells.left=8;h.cells.top=0;h.cells.width=1200;h.cells.height=364;
+  for(int i=0;i<4;i++){
+   com.android.launcher3.BubbleTextView icon=named?new NamedBubble():new com.android.launcher3.BubbleTextView();
+   icon.left=i*240;icon.top=0;icon.width=240;icon.height=364;icon.paddingTop=8;
+   // OEM scrolling can hide a label while its text and opaque color remain populated.
+   icon.scrollX=524288;android.graphics.drawable.Drawable image=new android.graphics.drawable.Drawable();
+   image.bounds.set(0,0,174,174);icon.compound[1]=image;h.cells.addView(icon);
+  }
+  com.android.launcher3.folder.FolderIcon folder=named?new NamedFolder():new com.android.launcher3.folder.FolderIcon();
+  folder.left=960;folder.width=240;folder.height=364;folder.paddingTop=8;h.cells.addView(folder);
+  setting(GlassOptions.DOCK_REDUCE_TRANSPARENCY,true);material(draw(h));
+  LiquidGlassDrawable g=glass(h);check(g.bounds.equals(new Rect(2,0,1214,231))&&g.iconOnly,
+   "native folder preview and scrolled application labels exclude the empty lower half of the Dock");
+  check(folder.nativeCalls==1&&g.opaque&&source(h).requests==0,"opaque Dock uses exact native preview without a capture");
+  if(named)check(((NamedFolder)folder).namedCalls==1&&((NamedBubble)h.cells.getChildAt(0)).namedCalls==1,
+   "named native artwork methods take priority over inherited obfuscated methods");
+  String detail=FeatureSettings.diagnostics.get("ls_augment_rm_glass_dock_state");
+  check(detail.contains("geometry=visible_items_v3;")&&detail.contains("native_bounds=5")
+    &&detail.contains("cell_bounds=0")&&detail.contains("visible_labels=0"),"diagnostics distinguish native artwork from cell geometry");
+  check(folder.preview.top==18&&folder.paddingTop==8&&folder.height==364&&folder.name.visibility==View.GONE,
+   "native preview offset is preserved without rewriting folder geometry or text");
+  folder.preview.set(-1,18,207,192);onlyNative(draw(h),"invalid native preview is rejected instead of using its full cell");
+  check(g.released&&glass(h)==null,"invalid native geometry releases the existing material");
+  folder.preview.set(33,18,207,192);material(draw(h));
+  folder.textVisible=true;folder.name.visibility=View.VISIBLE;material(draw(h));
+  check(!glass(h).iconOnly&&glass(h).bounds.bottom==364,"a genuinely visible folder label retains contrast protection and its layout region");
+  folder.textVisible=false;material(draw(h));check(glass(h).bounds.bottom==231&&glass(h).iconOnly,"hiding a folder label restores its preview boundary");
+  close(h);setting(GlassOptions.DOCK_REDUCE_TRANSPARENCY,false);
+  }
+ }
  public static void main(String[] args)throws Exception{
-  installAndDefaults();lifecycle();invalidGeometryAndContent();preferencesAndInput();contrastAndFallback();deviceLikeStructure();hiddenLabelScroll();permanentRendererFailure();retention();
+  installAndDefaults();lifecycle();invalidGeometryAndContent();preferencesAndInput();contrastAndFallback();deviceLikeStructure();hiddenLabelScroll();nativeApplicationAndFolderBounds();permanentRendererFailure();retention();
   check(states().isEmpty()&&Handler.pending()==0,"all hosts and timers released after test");
+  check(FeatureSettings.listeners.isEmpty(),"disabled-host watchers are detached with their native hosts");
   check(LayerBackdropSource.created==LayerBackdropSource.releases&&LiquidGlassDrawable.created==LiquidGlassDrawable.releases,"every created source and renderer reaches released state");
   check(module.errors.size()==1,"only deliberate renderer fault was reported");
   System.out.println("PASS production LiquidGlassDockHook runtime: "+checks+" checks");
@@ -393,6 +460,12 @@ def java_tool(name):
     raise SystemExit(f"JDK tool {name!r} not found; set JAVA_HOME or add its bin directory to PATH")
 
 
+import runpy
+runpy.run_path(str(ROOT/'tools/glass-lifecycle-fixture.py'))['apply'](files)
+files['com/android/launcher3/Launcher.java']='''package com.android.launcher3;public class Launcher{
+public void onResume(){ls.augment.com.hook.AugmentModule.dispatch(this,Launcher.class,"onResume",new Class<?>[0],new Object[0],()->null);}}'''
+files['ls/augment/com/LiquidGlassDrawable.java']=files['ls/augment/com/LiquidGlassDrawable.java'].replace(
+    'public class LiquidGlassDrawable {','public class LiquidGlassDrawable {public boolean animatedFallback;public void setAnimatedFallback(boolean value){animatedFallback=value;}')
 with tempfile.TemporaryDirectory(prefix="lsa-liquid-glass-dock-") as temp:
     sources = []
     for name, source in files.items():

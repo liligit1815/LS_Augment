@@ -293,6 +293,9 @@ final class LiftArcHandleView extends FrameLayout {
      * 系统 {@code homeHandleColor}（浅色主题那一档，通常就是半透明白）；
      * 读不到就退回 {@code navigation_bar_home_handle_light_color} = #80FFFFFF。
      */
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     int systemHandleColor() {
         try {
             int attr = getResources().getIdentifier("homeHandleColor", "attr", "android");

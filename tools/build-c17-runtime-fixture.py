@@ -1,8 +1,10 @@
 """Build a disposable self-instrumenting APK, leaving Duo's release permissions untouched."""
 from pathlib import Path
-import hashlib, json, os, subprocess, zipfile
+import argparse, hashlib, json, os, subprocess, zipfile
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'out/full-function-audit-20261004/c17-runtime-fixture';OUT.mkdir(parents=True,exist_ok=True)
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--output',type=Path,default=ROOT/'out/full-function-audit-20261004/c17-runtime-fixture')
+OUT=parser.parse_args().output.resolve();OUT.mkdir(parents=True,exist_ok=True)
 SDK=ROOT/'audit-output/android-sdk';BUILD=SDK/'build-tools/35.0.0';ANDROID=SDK/'platforms/android-36/android.jar'
 JAVA=Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 env=dict(os.environ,JAVA_HOME=str(JAVA.parent),PATH=str(JAVA)+os.pathsep+os.environ['PATH'])

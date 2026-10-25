@@ -144,6 +144,9 @@ public final class DefaultLauncherRoleHook {
             this.list=list;this.refresh=refresh;this.attach=attach;this.destroy=destroy;
             this.model=model;this.current=current;this.recommended=recommended;
         }
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         static HomeContract resolve(ClassLoader loader)throws ReflectiveOperationException{
             Class<?> fragment=Class.forName(FRAGMENT,false,loader);
             Class<?> preference=Class.forName("androidx.preference.PreferenceGroup",false,loader);

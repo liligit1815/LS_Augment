@@ -7,6 +7,10 @@ import java.util.*;
 final class StatusBarNativeStateTable {
     private final Map<String,LinkedHashSet<String>> states=new HashMap<>();
     private final Set<String> ambiguous=new HashSet<>();
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi,PrivateApi
     StatusBarNativeStateTable(Context context){
         ClassLoader loader=context.getClassLoader();
         // Exact NX809J ROM resources used by PhoneStatusBarPolicy's shared volume slot.

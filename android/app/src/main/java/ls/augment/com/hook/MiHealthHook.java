@@ -27,6 +27,9 @@ final class MiHealthHook {
     private static final ThreadLocal<Boolean> GENERATED=ThreadLocal.withInitial(()->false);
     private static final ThreadLocal<Object> PINNED_DB=new ThreadLocal<>();
     private static final ThreadLocal<String> PINNED_ACCOUNT=new ThreadLocal<>();
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Controller controller;
     private static boolean installed;
 
@@ -375,13 +378,23 @@ final class MiHealthHook {
                 try(StepLedger.Guard guard=ledger().guard()){reconcileLocked();}
             }
         }
+        private LocalDate historyDay;
         void reconcileLocked()throws Exception{
+            ZoneId zone=ZoneId.systemDefault();LocalDate today=Instant.ofEpochMilli(System.currentTimeMillis()).atZone(zone).toLocalDate();
+            // Current work and yesterday's overnight tail stay prompt; old pending
+            // native writes are retried one day at a time, without loading all history.
+            reconcileDay(today,zone,true);reconcileDay(today.minusDays(1),zone,false);
+            if(historyDay==null||historyDay.isBefore(today.minusDays(399))||!historyDay.isBefore(today.minusDays(1)))historyDay=today.minusDays(2);
+            reconcileDay(historyDay,zone,false);historyDay=historyDay.minusDays(1);
+        }
+        private void reconcileDay(LocalDate day,ZoneId zone,boolean current)throws Exception{
+            long windowStart=day.atStartOfDay(zone).toEpochSecond(),windowEnd=day.plusDays(1).atStartOfDay(zone).toEpochSecond();
             if(!configured())return;
             String id=currentAccount();if(!planEnabled(id)||!compatible)return;
             long now=System.currentTimeMillis()/1000;
             // Snapshot version-1 awards before admitting any newly scheduled requests.
             // Otherwise a new plan sharing an old minute would inherit unlimited credit.
-            Map<Long,Integer> priorDue=ledger.admitted(id);
+            Map<Long,Integer> priorDue=ledger.admitted(id,windowStart,windowEnd);
             if(!priorDue.isEmpty()){
                 Set<Long> legacyMinutes=new HashSet<>();
                 long start=Collections.min(priorDue.keySet()),end=Math.addExact(Collections.max(priorDue.keySet()),60);
@@ -390,12 +403,11 @@ final class MiHealthHook {
                     ledger.award(id,event.getKey(),event.getValue(),event.getValue());
             }
             StepPlan p=StepPlan.parse(FeatureSettings.text(context,ConfigSchema.HEALTH_PLAN,""));
-            if(planEnabled(id)&&p!=null&&p.account.equals(id))ledger.admit(p,now-60);
-            Map<Long,Integer> due=ledger.admitted(id);Map<Long,Integer> buckets=new TreeMap<>();
-            ZoneId zone=ZoneId.systemDefault();
+            if(current&&planEnabled(id)&&p!=null&&p.account.equals(id))ledger.admit(p,now-60);
+            Map<Long,Integer> due=ledger.admitted(id,windowStart,windowEnd);Map<Long,Integer> buckets=new TreeMap<>();
             for(Map.Entry<Long,Integer> e:due.entrySet()){
-                long day=Instant.ofEpochSecond(e.getKey()).atZone(zone).toLocalDate().atStartOfDay(zone).toEpochSecond();
-                long bucket=day+(e.getKey()-day)/gap*gap;buckets.merge(bucket,e.getValue(),Math::addExact);
+                long dayStart=Instant.ofEpochSecond(e.getKey()).atZone(zone).toLocalDate().atStartOfDay(zone).toEpochSecond();
+                long bucket=dayStart+(e.getKey()-dayStart)/gap*gap;buckets.merge(bucket,e.getValue(),Math::addExact);
             }
             int changed=0;pendingUploads=0;int limit=dailyLimit(id);Map<Long,Budget> days=new HashMap<>();
             for(Map.Entry<Long,Integer> bucket:buckets.entrySet())if(reconcileBucket(id,bucket.getKey(),bucket.getValue(),due,budget(id,bucket.getKey(),limit,days)))changed++;
@@ -416,9 +428,9 @@ final class MiHealthHook {
             }
             lastError="";
             int admitted=due.values().stream().mapToInt(Integer::intValue).sum();
-            boolean incomplete=days.values().stream().anyMatch(day->!day.complete);
-            if(!enabled(id))return;
-            FeatureSettings.diagnostic(context,"ls_augment_health_runtime","已接入保存与同步；计划累计已到时 "+admitted+" 步；本轮更新 "+changed+" 个时间段；待同步 "+(changed>0?"核对中":pendingUploads+" 段")+"；"+(enabled(id)?"配置生效":"已停止新增")+(limit>0?"；当日上限 "+limit+(incomplete?"，等待详细步数同步":""):"")+"；ts="+System.currentTimeMillis());
+            boolean incomplete=days.values().stream().anyMatch(value->!value.complete);
+            if(!enabled(id)||!current)return;
+            FeatureSettings.diagnostic(context,"ls_augment_health_runtime","已接入保存与同步；本日计划已到时 "+admitted+" 步；本轮更新 "+changed+" 个时间段；历史按日核对；待同步 "+(changed>0?"核对中":pendingUploads+" 段")+"；"+(enabled(id)?"配置生效":"已停止新增")+(limit>0?"；当日上限 "+limit+(incomplete?"，等待详细步数同步":""):"")+"；ts="+System.currentTimeMillis());
         }
         boolean reconcileBucket(String id,long bucket,int bonus,Map<Long,Integer> due,Budget budget)throws Exception{
             if(!planEnabled(id))return false;

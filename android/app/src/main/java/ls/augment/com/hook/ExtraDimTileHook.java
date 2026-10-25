@@ -31,6 +31,9 @@ final class ExtraDimTileHook {
     private static final Map<Object,Detail> DETAILS=new WeakHashMap<>();
     private static final Map<Object,Boolean> LAYOUTS=java.util.Collections.synchronizedMap(new WeakHashMap<>());
     private static boolean installed;
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader) {
         if(installed)return 0;
         try {
@@ -127,6 +130,9 @@ final class ExtraDimTileHook {
         int revision,pendingLevel=-1;
         boolean pendingActive;
         int foreground,accent;
+
+        // Physical screen/driver/stock-layout coordinates, not logical reading order; changing LEFT/RIGHT would change geometry.
+        //noinspection RtlHardcoded
         Panel(Context context,Detail detail) {
             super(context);this.detail=detail;setOrientation(VERTICAL);setPadding(dp(24),dp(6),dp(24),dp(24));
             setLayoutParams(new android.view.ViewGroup.LayoutParams(-1,-2));
@@ -154,6 +160,9 @@ final class ExtraDimTileHook {
             status=text("正在读取…",13);status.setAlpha(.65f);status.setPadding(0,dp(18),0,0);addView(status,new LayoutParams(-1,-2));
             slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
                 public void onStartTrackingTouch(SeekBar bar){dragging=true;}
+
+                // Injected host view uses the host Resources; module R IDs are invalid there. Preserve these short built-in Chinese labels.
+                //noinspection SetTextI18n
                 public void onProgressChanged(SeekBar bar,int level,boolean user){
                     value.setText(level+"%");bar.setStateDescription(level+"%");
                     if(user)select(true,level);

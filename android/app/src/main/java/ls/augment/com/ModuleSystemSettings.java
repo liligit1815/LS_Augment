@@ -25,6 +25,12 @@ final class ModuleSystemSettings {
         return engine(context).put(updates);
     }
 
+    /** Disable one feature without restoring unrelated module-owned system settings. */
+    static synchronized RestoreResult restoreOne(Context context,String namespace,String key){
+        if(ResetWriteFence.blocked())return new RestoreResult(false,false,0,"正在重置，请稍后重试");
+        return engine(context).restoreOne(new Address(android.os.Process.myUid()/100000,namespace,key));
+    }
+
     static synchronized WriteResult setExtraDim(Context context, boolean active, int strength) {
         if (ResetWriteFence.blocked()) return new WriteResult(false, "正在重置，请稍后重试");
         if (strength < 0 || strength > 100) return new WriteResult(false, "极暗强度无效");
@@ -110,7 +116,8 @@ final class ModuleSystemSettings {
 
     private static boolean allowed(String namespace, String key) {
         return "global".equals(namespace) && ("development_settings_enabled".equals(key) || "adb_enabled".equals(key))
-                || "system".equals(namespace) && ("adb_install_enabled".equals(key) || "lock_refresh_rate".equals(key))
+                || "system".equals(namespace) && ("adb_install_enabled".equals(key) || "lock_refresh_rate".equals(key)
+                    || "fourth_physical_key_function_value".equals(key))
                 || "secure".equals(namespace) && ("reduce_bright_colors_activated".equals(key)
                     || "reduce_bright_colors_level".equals(key) || "ls_augment_extra_dim_owned".equals(key));
     }
@@ -167,6 +174,9 @@ final class ModuleSystemSettings {
                     Read before = io.read(address);
                     if (!before.success) return new WriteResult(false, "无法读取原系统设置，未修改");
                     Record old = records.containsKey(address.id()) ? Record.parse(records.get(address.id())) : null;
+                    if(address.key.equals("fourth_physical_key_function_value")&&old!=null
+                            &&!Objects.equals(before.value,old.intended)&&!Objects.equals(before.value,old.previous))
+                        return new WriteResult(false,"原厂竞技键设置已被另行修改，未覆盖；请先关闭功能并处理恢复记录");
                     boolean known = old == null || old.originalKnown;
                     String original = old != null ? old.original : before.value;
                     String previous = old != null && (Objects.equals(before.value, old.intended) || Objects.equals(before.value, old.previous))
@@ -274,6 +284,32 @@ final class ModuleSystemSettings {
                     "已恢复 " + restored + " 项系统设置" + (detail.isEmpty() ? "。" : "；" + detail + "。"));
         }
 
+        RestoreResult restoreOne(Address address){
+            try{
+                if(address.user!=ownerUser||address.dim()||address.metadata())
+                    return new RestoreResult(false,false,0,"此设置不支持单项恢复");
+                Map<String,String> records=validatedRecords();String raw=records.get(address.id());
+                if(raw==null)return new RestoreResult(true,false,0,"原厂设置无需恢复");
+                Record record=Record.parse(raw);
+                if(!record.originalKnown)return new RestoreResult(false,true,0,"缺少原厂设置基线，恢复记录已保留");
+                Read current=io.read(address);
+                if(!current.success)return new RestoreResult(false,false,0,"无法读取原厂竞技键设置，恢复记录已保留");
+                int restored=0;
+                if(!Objects.equals(current.value,record.original)){
+                    if(!Objects.equals(current.value,record.intended)&&!Objects.equals(current.value,record.previous))
+                        return new RestoreResult(false,true,0,"原厂竞技键设置已被另行修改，已保留该值与恢复记录");
+                    if(!io.write(address,record.original))return new RestoreResult(false,false,0,"原厂竞技键设置恢复失败，恢复记录已保留");
+                    Read after=io.read(address);
+                    if(!after.success||!Objects.equals(after.value,record.original))
+                        return new RestoreResult(false,false,0,"原厂竞技键设置恢复核验失败，恢复记录已保留");
+                    restored=1;
+                }
+                records.remove(address.id());
+                if(!store.commit(records))return new RestoreResult(false,false,restored,"原厂设置已恢复，恢复记录清理待重试");
+                return new RestoreResult(true,false,restored,"原厂竞技键设置已恢复");
+            }catch(RuntimeException invalid){return new RestoreResult(false,false,0,"恢复记录无法读取，未修改原厂设置");}
+        }
+
         private Map<String, String> validatedRecords() {
             Map<String, String> records = new LinkedHashMap<>(store.load());
             for (Map.Entry<String, String> entry : records.entrySet()) {
@@ -284,6 +320,7 @@ final class ModuleSystemSettings {
             return records;
         }
         private static boolean validRequested(Address address, String value) {
+            if(address.key.equals("fourth_physical_key_function_value"))return value.equals("0");
             if (address.key.equals("reduce_bright_colors_level")) {
                 try { int level = Integer.parseInt(value); return level >= 0 && level <= 100 && String.valueOf(level).equals(value); }
                 catch (NumberFormatException invalid) { return false; }

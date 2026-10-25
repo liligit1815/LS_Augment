@@ -34,13 +34,24 @@ final class AodClockHook {
     private static final String P="ls_augment_rm_aod_";
     private static final Map<TextView,State> STATES=new WeakHashMap<>();
     private static final Map<View,Integer> NATIVE_OVERLAPS=new WeakHashMap<>();
+    private static final Map<Class<?>,AodClockAccess> ACCESS=new HashMap<>();
     private AodClockHook(){ }
     static void changed(Object owner){
         if(!(owner instanceof TextView))return;TextView view=(TextView)owner;
-        boolean aod=false;for(View v=view;v!=null;v=v.getParent() instanceof View?(View)v.getParent():null){String name=v.getClass().getSimpleName();if(name.contains("Aod")||name.contains("Doze")){aod=true;break;}}
-        if(!aod)return;State state=STATES.get(view);
-        if(state==null){state=new State(view);STATES.put(view,state);view.addOnAttachStateChangeListener(state);if(view.isAttachedToWindow())state.attach();}
+        boolean aod=false;for(View v=view;v!=null;v=v.getParent() instanceof View?(View)v.getParent():null){if(AodClockAccess.aodOwner(v.getClass())){aod=true;break;}}
+        if(!aod)return;
+        Class<?> type=view.getClass();if(!ACCESS.containsKey(type))ACCESS.put(type,AodClockAccess.resolve(type));
+        AodClockAccess access=ACCESS.get(type);if(access==null)return;
+        State state=STATES.get(view);
+        if(state==null)try{if(!timeFormat(access.active(view)))return;}catch(IllegalAccessException unavailable){return;}
+        if(state==null){state=new State(view,access);STATES.put(view,state);view.addOnAttachStateChangeListener(state);if(view.isAttachedToWindow())state.attach();}
         if(!state.editing){String value=view.getText().toString();if(!value.equals(state.appliedText))state.nativeText=value;state.invalidate();}
+    }
+    static void changedTree(Object owner){if(owner instanceof View)changedTree((View)owner,0);}
+    private static void changedTree(View view,int depth){
+        if(depth>16)return;
+        changed(view);
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)changedTree(group.getChildAt(i),depth+1);}
     }
     private static boolean timeFormat(Object raw){
         return formatContains(raw,"HhKkm");
@@ -53,12 +64,13 @@ final class AodClockHook {
     }
     private static final class State implements View.OnAttachStateChangeListener,ViewTreeObserver.OnPreDrawListener,ViewTreeObserver.OnDrawListener {
         final WeakReference<TextView> reference;final Runnable refresh=this::invalidate;final TextPaint paint=new TextPaint();
+        final AodClockAccess access;long reportedAt;
         CharSequence original24,original12,applied24,applied12;
         boolean format24Changed,format12Changed,attached,editing,styled;
         Typeface nativeFont,appliedFont,selectedFont;float nativeSize,appliedSize,nativeScaleX,appliedScaleX;String selectedPath="",nativeText="",appliedText="",textStyle="",lastReport="";
         AodDiagonalClock diagonal;
         WeakReference<View> overlapView=new WeakReference<>(null);int nativeOverlap;
-        State(TextView view){reference=new WeakReference<>(view);nativeFont=view.getTypeface();nativeSize=view.getTextSize();nativeScaleX=view.getTextScaleX();nativeText=view.getText().toString();diagonal=AodDiagonalClock.find(view);}
+        State(TextView view,AodClockAccess access){this.access=access;reference=new WeakReference<>(view);nativeFont=view.getTypeface();nativeSize=view.getTextSize();nativeScaleX=view.getTextScaleX();nativeText=view.getText().toString();diagonal=AodDiagonalClock.find(view);}
         void attach(){TextView view=reference.get();if(view==null||attached)return;attached=true;view.getViewTreeObserver().addOnPreDrawListener(this);if(BuildConfig.DEBUG)view.getViewTreeObserver().addOnDrawListener(this);FeatureSettings.addSnapshotListener(view.getContext(),refresh);invalidate();}
         void detach(){attached=false;FeatureSettings.removeSnapshotListener(refresh);TextView view=reference.get();if(view!=null&&view.getViewTreeObserver().isAlive()){view.getViewTreeObserver().removeOnPreDrawListener(this);if(BuildConfig.DEBUG)view.getViewTreeObserver().removeOnDrawListener(this);}}
         void invalidate(){TextView view=reference.get();if(attached&&view!=null&&view.isShown())view.invalidate();}
@@ -68,14 +80,14 @@ final class AodClockHook {
             if(!styled||Math.abs(view.getTextScaleX()-appliedScaleX)>.001f)nativeScaleX=view.getTextScaleX();
         }
         void formats(TextView view)throws ReflectiveOperationException{
-            CharSequence f24=(CharSequence)call(view,"getFormat24Hour"),f12=(CharSequence)call(view,"getFormat12Hour");
+            CharSequence f24=access.format(view,true),f12=access.format(view,false);
             if(!format24Changed||!Objects.equals(f24,applied24)){original24=f24;format24Changed=false;}
             if(!format12Changed||!Objects.equals(f12,applied12)){original12=f12;format12Changed=false;}
         }
         void restoreFormats(TextView view)throws ReflectiveOperationException{
             boolean changed=false;
-            if(format24Changed){format24Changed=false;call(view,"setFormat24Hour",original24);changed=true;}
-            if(format12Changed){format12Changed=false;call(view,"setFormat12Hour",original12);changed=true;}
+            if(format24Changed){format24Changed=false;access.format(view,true,original24);changed=true;}
+            if(format12Changed){format12Changed=false;access.format(view,false,original12);changed=true;}
             if(changed)nativeText=view.getText().toString();
         }
         void restoreStyle(TextView view){if(styled){view.setTypeface(nativeFont);view.setTextSize(TypedValue.COMPLEX_UNIT_PX,nativeSize);view.setTextScaleX(nativeScaleX);styled=false;}fitOverlap(view,1);if(view.getText().toString().equals(appliedText)&&!nativeText.equals(appliedText))view.setText(nativeText);appliedText="";}
@@ -94,7 +106,7 @@ final class AodClockHook {
         boolean fitGroup(TextView view,float scale)throws ReflectiveOperationException{
             View owner=AodClockGroup.owner(view);if(owner==null)return false;
             Map<TextView,Float> bases=new HashMap<>();Map<View,Integer> overlaps=new HashMap<>();
-            for(Map.Entry<TextView,State> entry:STATES.entrySet()){TextView t=entry.getKey();State s=entry.getValue();if(t==null||!t.isShown()||!AodClockGroup.contains(owner,t)||!timeFormat(field(t,"mFormat")))continue;
+            for(Map.Entry<TextView,State> entry:STATES.entrySet()){TextView t=entry.getKey();State s=entry.getValue();if(t==null||!t.isShown()||!AodClockGroup.contains(owner,t)||!timeFormat(s.access.active(t)))continue;
                 if(!s.editing)s.nativeStyle(t);bases.put(t,s.nativeSize);View adjusted=s.findOverlap(t);if(adjusted!=null)overlaps.put(adjusted,s.nativeOverlap);}
             if(bases.size()<2)return false;View root=AodClockGroup.commonParent(bases.keySet());if(root==null)return false;
             int height=availableSpace(root,false)+Math.min(0,margin(root,false));
@@ -105,7 +117,7 @@ final class AodClockHook {
         void render()throws ReflectiveOperationException{
             TextView view=reference.get();if(view==null||editing||!attached||!view.isShown()||view.getWidth()==0||view.getHeight()==0)return;editing=true;
             try{
-                nativeStyle(view);formats(view);Object active=field(view,"mFormat");
+                nativeStyle(view);formats(view);Object active=access.active(view);
                 if(diagonal==null)diagonal=AodDiagonalClock.find(view);
                 // A date TextClock may leave the unused 12/24-hour format null.
                 // Only its selected format determines whether this is a clock.
@@ -121,13 +133,13 @@ final class AodClockHook {
                     styled=true;appliedFont=view.getTypeface();appliedSize=view.getTextSize();appliedScaleX=view.getTextScaleX();return;}
                 if(seconds){
                     String f24=SystemUiPolicy.withSeconds(original24==null?active.toString():original24.toString()),f12=SystemUiPolicy.withSeconds(original12==null?active.toString():original12.toString());
-                    if(!Objects.equals(call(view,"getFormat24Hour"),f24)){applied24=f24;format24Changed=true;call(view,"setFormat24Hour",f24);nativeText=view.getText().toString();}
-                    if(!Objects.equals(call(view,"getFormat12Hour"),f12)){applied12=f12;format12Changed=true;call(view,"setFormat12Hour",f12);nativeText=view.getText().toString();}
+                    if(!Objects.equals(access.format(view,true),f24)){applied24=f24;format24Changed=true;access.format(view,true,f24);nativeText=view.getText().toString();}
+                    if(!Objects.equals(access.format(view,false),f12)){applied12=f12;format12Changed=true;access.format(view,false,f12);nativeText=view.getText().toString();}
                 }else restoreFormats(view);
                 view.setTypeface(selectedFont==null?nativeFont:selectedFont);
                 String value=nativeText;SpannableString text;float periodScale=FeatureSettings.decimal(view.getContext(),P+"period_scale",.6f,.3f,1.5f);
                 if(period){
-                    Object zone=call(view,"getTimeZone");Calendar now=zone instanceof String?Calendar.getInstance(TimeZone.getTimeZone((String)zone)):Calendar.getInstance();
+                    String zone=access.zone(view);Calendar now=zone!=null?Calendar.getInstance(TimeZone.getTimeZone(zone)):Calendar.getInstance();
                     String label=SystemUiPolicy.period(now.get(Calendar.HOUR_OF_DAY));value+=" "+label;text=new SpannableString(value);
                     text.setSpan(new RelativeSizeSpan(periodScale),value.length()-label.length(),value.length(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }else text=new SpannableString(value);
@@ -138,7 +150,11 @@ final class AodClockHook {
                 for(int i=0;i<4;i++){paint.setTextSize(target);float width=Layout.getDesiredWidth(text,paint);float ratio=width>space&&space>0?space/width:1;
                     int drawnHeight=textHeight(view,text,paint);if(drawnHeight>height&&height>0)ratio=Math.min(ratio,(float)height/drawnHeight);if(ratio>=1)break;target*=ratio;}
                 view.setTextSize(TypedValue.COMPLEX_UNIT_PX,target);fitOverlap(view,target/nativeSize);styled=true;appliedFont=view.getTypeface();appliedSize=target;appliedScaleX=view.getTextScaleX();
-            }finally{editing=false;}
+            }finally{editing=false;
+                long now=android.os.SystemClock.uptimeMillis();if(now-reportedAt>30000){reportedAt=now;
+                    try{FeatureSettings.diagnostic(view.getContext(),P+"runtime","adapter="+access.adapter+";view="+view.getClass().getName()
+                            +";attached="+attached+";styled="+styled+";seconds="+FeatureSettings.enabled(view.getContext(),P+"seconds"));}catch(RuntimeException ignored){ }}
+            }
         }
         int availableSpace(View view,boolean horizontal){
             int screen=horizontal?view.getResources().getDisplayMetrics().widthPixels-Math.round(16*view.getResources().getDisplayMetrics().density):view.getResources().getDisplayMetrics().heightPixels;
@@ -156,6 +172,9 @@ final class AodClockHook {
         }
         int orientation(ViewGroup group){if(group instanceof LinearLayout)return ((LinearLayout)group).getOrientation();try{return (Integer)call(group,"getOrientation");}catch(ReflectiveOperationException ignored){return -1;}}
         int margin(View view,boolean horizontal){ViewGroup.LayoutParams p=view.getLayoutParams();if(!(p instanceof ViewGroup.MarginLayoutParams))return 0;ViewGroup.MarginLayoutParams m=(ViewGroup.MarginLayoutParams)p;return horizontal?m.leftMargin+m.rightMargin:m.topMargin+m.bottomMargin;}
+
+        // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+        //noinspection ObsoleteSdkInt
         int textHeight(TextView view,CharSequence text,TextPaint paint){StaticLayout.Builder builder=StaticLayout.Builder.obtain(text,0,text.length(),paint,Math.max(1,(int)Math.ceil(Layout.getDesiredWidth(text,paint)))).setIncludePad(view.getIncludeFontPadding()).setLineSpacing(view.getLineSpacingExtra(),view.getLineSpacingMultiplier());if(android.os.Build.VERSION.SDK_INT>=28)builder.setUseLineSpacingFromFallbacks(view.isFallbackLineSpacing());return builder.build().getHeight();}
         int naturalSize(View view,int depth,boolean horizontal){
             ViewGroup.LayoutParams p=view.getLayoutParams();int fixed=p==null?0:horizontal?p.width:p.height;if(fixed>0)return fixed;
@@ -169,9 +188,9 @@ final class AodClockHook {
         void report(){
             if(!BuildConfig.DEBUG||!android.util.Log.isLoggable("LSA.ClockFit",android.util.Log.DEBUG))return;TextView v=reference.get();if(v==null||!v.isShown()||v.getLayout()==null||v.isLayoutRequested())return;
             try{Layout layout=v.getLayout();int ellipsis=0;for(int i=0;i<layout.getLineCount();i++)ellipsis+=layout.getEllipsisCount(i);
-                org.json.JSONObject r=new org.json.JSONObject();r.put("style","AOD");r.put("id",v.getResources().getResourceEntryName(v.getId()));r.put("text",v.getText());r.put("format",String.valueOf(field(v,"mFormat")));r.put("size",v.getTextSize());r.put("width",v.getWidth());r.put("height",v.getHeight());r.put("desiredWidth",Layout.getDesiredWidth(v.getText(),v.getPaint()));r.put("desiredHeight",layout.getHeight());r.put("ellipsis",ellipsis);r.put("padding",v.getCompoundPaddingLeft()+v.getCompoundPaddingRight());r.put("paddingVertical",v.getCompoundPaddingTop()+v.getCompoundPaddingBottom());r.put("availableWidth",availableSpace(v,true));r.put("availableHeight",availableSpace(v,false));
+                org.json.JSONObject r=new org.json.JSONObject();r.put("style","AOD");r.put("id",v.getResources().getResourceEntryName(v.getId()));r.put("text",v.getText());r.put("format",String.valueOf(access.active(v)));r.put("size",v.getTextSize());r.put("width",v.getWidth());r.put("height",v.getHeight());r.put("desiredWidth",Layout.getDesiredWidth(v.getText(),v.getPaint()));r.put("desiredHeight",layout.getHeight());r.put("ellipsis",ellipsis);r.put("padding",v.getCompoundPaddingLeft()+v.getCompoundPaddingRight());r.put("paddingVertical",v.getCompoundPaddingTop()+v.getCompoundPaddingBottom());r.put("availableWidth",availableSpace(v,true));r.put("availableHeight",availableSpace(v,false));
                 Matrix matrix=new Matrix();v.transformMatrixToGlobal(matrix);RectF projected=new RectF(0,0,v.getWidth(),v.getHeight());matrix.mapRect(projected);Rect visible=new Rect();v.getGlobalVisibleRect(visible);
-                r.put("projectedBounds",projected.toShortString());r.put("visibleBounds",visible.toShortString());r.put("ancestorClipped",visible.width()+1.5f<projected.width()||visible.height()+1.5f<projected.height());r.put("nativeSize",nativeSize);r.put("instance",System.identityHashCode(v));r.put("timeZone",call(v,"getTimeZone"));
+                r.put("projectedBounds",projected.toShortString());r.put("visibleBounds",visible.toShortString());r.put("ancestorClipped",visible.width()+1.5f<projected.width()||visible.height()+1.5f<projected.height());r.put("nativeSize",nativeSize);r.put("instance",System.identityHashCode(v));r.put("timeZone",access.zone(v));
                 if(diagonal!=null)diagonal.report(r);String value=r.toString();if(!value.equals(lastReport)){lastReport=value;r.put("uptimeMs",android.os.SystemClock.uptimeMillis());android.util.Log.d("LSA.ClockFit",r.toString());}
             }catch(Exception ignored){ }
         }

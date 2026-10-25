@@ -71,18 +71,18 @@ final class StatusBarIconSpacingEditor {
             boolean allowed=!verticalEdge||!headerBound||vertical!=null&&values[1]+values[3]<=vertical;
             int max=verticalEdge&&headerBound?(vertical==null?values[i]:Math.max(0,Math.min(StatusBarIconSpacingSpec.MAX_DP,vertical-values[(i+2)%4]))):StatusBarIconSpacingSpec.MAX_DP;
             bars[i].setMax(Math.max(max,values[i]));bars[i].setProgress(values[i]);bars[i].setEnabled(!wifiBlocked&&allowed&&max>0);
-            labels[i].setText(titles[i]+" · "+values[i]+" dp"+(verticalEdge&&headerBound&&vertical!=null?" / 当前最多 "+max+" dp":""));
+            labels[i].setText(labels[i].getContext().getString(R.string.status_statusbariconspacingeditor_44 ,String.valueOf(titles[i]), String.valueOf(values[i]), String.valueOf((verticalEdge&&headerBound&&vertical!=null?" / 当前最多 "+max+" dp":""))));
         }};
         for(int i=0;i<titles.length;i++){
             LinearLayout parameter=ui.parameterInputGroup();form.addView(parameter,ui.wrap());
             final int index=i;TextView label=ui.text(titles[i]+" · "+values[i]+" dp",12,ui.muted,false);parameter.addView(label,ui.wrap());
-            SeekBar bar=new SeekBar(activity);bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);parameter.addView(bar,ui.wrap());
+            SeekBar bar=ui.slider();bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);parameter.addView(bar,ui.wrap());
         }
         sync.run();
         for(int i=0;i<titles.length;i++){
             final int index=i;TextView label=labels[i];SeekBar bar=bars[i];
             bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-                public void onProgressChanged(SeekBar b,int progress,boolean user){label.setText(titles[index]+" · "+progress+" dp");}
+                public void onProgressChanged(SeekBar b,int progress,boolean user){label.setText(label.getContext().getString(R.string.status_statusbariconspacingeditor_45 ,String.valueOf(titles[index]), String.valueOf(progress)));}
                 public void onStartTrackingTouch(SeekBar b){}
                 public void onStopTrackingTouch(SeekBar b){if(values[index]==b.getProgress())return;
                     if(StatusBarWifiSpacingPolicy.member(id)){StatusBarWifiSpacingObservation latest=wifiContract(activity,scope,id);if(latest==null||!latest.reason.equals("native")){Toast.makeText(activity,"当前 Wi-Fi 图层已变化，本次未保存。请刷新后查看适配状态。",Toast.LENGTH_LONG).show();refresh.run();return;}}

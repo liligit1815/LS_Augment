@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parents[1]
 JAVA=Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source-root',type=Path,default=ROOT)
-parser.add_argument('--case',choices=['constructor','switch','layout','input','events','all'],default='all')
+parser.add_argument('--case',choices=['constructor','switch','layout','input','events','ios','badge_capacity','all'],default='all')
 args=parser.parse_args()
 base=args.source_root/'android/app/src/main/java'
 source=(base/'ls/augment/com/hook/RedMagicSystemUiHook.java').read_text(encoding='utf-8')
@@ -34,17 +34,18 @@ draw_fields=drawing[drawing.index('final View owner;'):drawing.index('void refre
 # control. Behavior (constructor/matches/layout/input), never field presence, decides.
 if 'fallbackReason' not in draw_fields:draw_fields+='String fallbackReason="slot_unknown";\n'
 pair_methods=['SignalPair(View one,','static SignalPair create(','boolean matches(','boolean canDraw()',
+              'private static boolean occupied(', 'private void releaseOwner(',
               'private static boolean visibleWithin(','private static Object subscription(',
               'ls.augment.com.DualSignalSpacingObservation observation(']
 draw_methods=['ls.augment.com.ConnectivityIconState.Sim rowSim(',
               'ls.augment.com.DualSignalLayout layout(','float[] badgeAspects(',
               'float badgeAspect(','String planInputs()','void refuseIdentity()',
               'SignalDrawable(View owner,','SignalStackLayout.Geometry geometry()',
-              '@Override public void draw(','void drawBadge(']
+              '@Override public void draw(','void drawBadge(','boolean iosStyle()','boolean unavailable(', 'boolean artworkReady()']
 if 'void refuse(String reason)' in drawing:draw_methods.append('void refuse(String reason)')
 
 HARNESS=r'''package ls.augment.com.hook;
-import java.util.*;import ls.augment.com.*;import android.graphics.Canvas;import android.telephony.SubscriptionManager;
+import java.util.*;import java.lang.ref.WeakReference;import ls.augment.com.*;import android.graphics.Canvas;import android.telephony.SubscriptionManager;
 public final class TestDualSlot {
  static int checks;static void check(boolean value,String why){checks++;if(!value)throw new AssertionError(why);}
  public static class View {
@@ -55,6 +56,7 @@ public final class TestDualSlot {
   float getTransitionAlpha(){return transition;}void setTransitionAlpha(float value){transition=value;}LayoutParams getLayoutParams(){return params;}
   int getMinimumWidth(){return 0;}int getMeasuredWidth(){return width;}Observer getViewTreeObserver(){return observer;}Overlay getOverlay(){return overlay;}
   Object getDrawable(){return new Object();}
+  void invalidate(){}
  }
  static class LayoutParams{int width=65;}static class Display{int getDisplayId(){return 0;}int getRotation(){return 0;}}
  static class Resources{Metrics getDisplayMetrics(){return new Metrics();}Configuration getConfiguration(){return new Configuration();}}
@@ -63,15 +65,16 @@ public final class TestDualSlot {
  static class ViewTreeObserver{interface OnGlobalLayoutListener{void onGlobalLayout();}void addOnGlobalLayoutListener(OnGlobalLayoutListener listener){}}
  static class Observer extends ViewTreeObserver{void addOnGlobalLayoutListener(OnGlobalLayoutListener listener){}boolean isAlive(){return true;}void removeOnGlobalLayoutListener(OnGlobalLayoutListener listener){}}
  static class Drawable{public void draw(Canvas canvas){}}
- static class RootState{SignalPair pair;}static Map<View,RootState> ROOTS=new HashMap<>();
+ static class RootState{SignalPair pair;ConnectivityIconSource signalSource;int forced;void refresh(boolean force){if(force)forced++;}}static Map<View,RootState> ROOTS=new HashMap<>();
  static class Main{void post(Runnable callback){callback.run();}}static Main MAIN=new Main();
  static class SystemClock{static long elapsedRealtime(){return 1000;}}
  static class DualSignalTint{static void watch(View owner,View signal){}static void unwatch(View owner){}static Integer color(View owner,View signal){return 0xff123456;}}
  static class RedMagicLegacyUiHook{static boolean positionSizeOnly(Object context){return false;}}
- static class SignalTypeBadge{float aspect(){return .5f;}void draw(Canvas c,float x,float y,float w,float h,int color){}}
+ static class SignalTypeBadge{float ratio=.5f;float aspect(){return ratio;}void draw(Canvas c,float x,float y,float w,float h,int color){}}
  static class FeatureSettings{
   static StatusBarIconSpacingSpec spacing=StatusBarIconSpacingSpec.empty();
-  static ConfigSnapshot snapshot(Object context){return ConfigSnapshot.create(1,1,Map.of(StatusBarIconSpacingSpec.KEY,spacing.serialize(),ConfigSchema.SYSTEMUI_MASTER,"1"));}
+  static String style="0";
+  static ConfigSnapshot snapshot(Object context){return ConfigSnapshot.create(1,1,Map.of(StatusBarIconSpacingSpec.KEY,spacing.serialize(),ConfigSchema.SYSTEMUI_MASTER,"1",SystemUiOptions.SIGNAL_DUAL_STYLE,style));}
   static boolean enabled(Object context,String key){return true;}
  }
  static class StatusBarAssetsHook{
@@ -88,12 +91,13 @@ public final class TestDualSlot {
  static class SignalPair{
   // PAIR_FIELDS
   // PAIR_METHODS
-  void restore(){restore("disabled");}void restore(String reason){closed=true;}
+  void restore(){restore("disabled");}void restore(String reason){closed=true;releaseOwner(one);releaseOwner(two);}
  }
  static class SignalDrawable extends Drawable{
   // DRAW_FIELDS
   // DRAW_METHODS
-  SignalStackLayout.Geometry nativeGeometry(){return SignalStackLayout.compact(0,0,65,42,65,42,1);}
+  SignalStackLayout.Geometry nativeGeometry(){return iosStyle()?SignalStackLayout.ios(0,0,18,24,65,42,otherOwner==null)
+    :otherOwner==null?SignalStackLayout.compactSingle(0,0,18,24,65,42):SignalStackLayout.compact(0,0,18,24,65,42,1);}
   int tint(){return DualSignalTint.color(owner,position);}
  }
  static ConnectivityIconState.Sim sim(int id,int slot,int level,int bars,int activity){return new ConnectivityIconState.Sim(id,slot,level,bars,true,true,false,true,true,activity,true,13);}
@@ -127,12 +131,15 @@ public final class TestDualSlot {
  static void events(){
   View sim1=mobile(2),sim2=mobile(1);ConnectivityIconSource source=new ConnectivityIconSource(state(1,2,List.of(sim(2,0,4,5,1))));
   SignalPair one=selected(List.of(sim2,sim1),source);one.drawable.activity=true;
-  DualSignalLayout single=one.drawable.layout(one.drawable.geometry());check(single.plan.rows.length==1&&single.plan.rows[0].slot==0&&single.plan.rows[0].signal.y>0,"removing SIM2 keeps single SIM1 in the legacy lower row");
+  DualSignalLayout single=one.drawable.layout(one.drawable.geometry());check(single.plan.rows.length==1&&single.plan.rows[0].slot==0&&single.plan.rows[0].signal.y==0,"removing SIM2 makes a true single row without an empty upper row");
+  check(Math.abs(single.height-single.plan.rows[0].signal.height)<.001,"single allocation consumes exactly one row height");
   one.drawable.readyToDraw=true;Canvas absent=new Canvas();one.drawable.draw(absent);check(absent.activeRow==-1&&absent.activity==0,"absent active subscription cannot inherit another SIM's arrow");
-  source.state=radios(1);check(!one.matches(sim1,sim2,source),"native reinsertion changes physical pair membership");SignalPair restored=selected(List.of(sim2,sim1),source);owners(restored);
-  View replacement=mobile(3);source.state=state(1,3,List.of(sim(1,1,2,4,2),sim(3,0,4,5,1)));SignalPair inserted=selected(List.of(sim2,replacement),source);
+  source.state=radios(1);check(!one.matches(sim1,sim2,source),"native reinsertion changes physical pair membership");
+  check(selected(List.of(sim2,sim1),source)==null,"second pair stole an unreleased native owner");one.restore();
+  SignalPair restored=selected(List.of(sim2,sim1),source);owners(restored);
+  View replacement=mobile(3);source.state=state(1,3,List.of(sim(1,1,2,4,2),sim(3,0,4,5,1)));restored.restore();SignalPair inserted=selected(List.of(sim2,replacement),source);
   check(inserted.anchor==replacement&&inserted.drawable.layout(inserted.drawable.geometry()).plan.rows[0].slot==0,"a new subscription in SIM1 keeps its physical row after reinsertion");
-  source.state=state(1,2,List.of(sim(1,1,2,4,3)));SignalPair only2=selected(List.of(sim2),source);only2.drawable.activity=true;
+  source.state=state(1,2,List.of(sim(1,1,2,4,3)));inserted.restore();SignalPair only2=selected(List.of(sim2),source);only2.drawable.activity=true;
   check(only2.drawable.layout(only2.drawable.geometry()).plan.rows[0].slot==1,"single SIM2 keeps physical slot identity");
   source.state=state(-1,1,List.of(sim(1,1,2,4,3)));only2.drawable.readyToDraw=true;Canvas unknown=new Canvas();only2.drawable.draw(unknown);check(unknown.activeRow==-1&&unknown.activity==0,"unknown active does not use the preferred subscription for arrows");
   source.state=state(2,1,List.of(sim(2,-1,4,5,3)));check(selected(List.of(sim1),source)==null,"native unknown slot cannot borrow SIM1's row");
@@ -145,8 +152,62 @@ public final class TestDualSlot {
   check(missingTint!=null&&missingTint.reason.equals("tint_unknown")&&!missingTint.accepts(FeatureSettings.spacing),"unknown native tint diagnostics parse but cannot claim a usable spacing allocation");
   FeatureSettings.spacing=StatusBarIconSpacingSpec.empty();
  }
- public static void main(String[] args){for(String name:args[0].equals("all")?new String[]{"constructor","switch","layout","input","events"}:args)switch(name){
+ static void ios(){
+  FeatureSettings.style="1";
+  SignalPair p=pair(2,true);p.drawable.activity=true;p.drawable.readyToDraw=true;
+  Canvas dual=new Canvas();p.drawable.draw(dual);
+  DualSignalLayout measured=p.drawable.layout(p.drawable.geometry());
+  check(measured.ios&&Math.abs(measured.plan.rows[0].signal.width/measured.plan.rows[0].signal.height-47f/26f)<.001,"iOS runtime uses the dual source's upper bars rather than repeating a single-row glyph");
+  check(Math.abs(measured.plan.rows[1].signal.width/measured.plan.rows[1].signal.height-47f/9f)<.001,"lower SIM uses the distinct short-dot source crop");
+  check(Math.abs(measured.height-24)<.001,"iOS pair keeps actual native glyph height");
+  DualSignalSpacingObservation published=p.observation("ok"),decoded=DualSignalSpacingObservation.parse(published.serialize());
+  check(decoded!=null&&decoded.ios&&published.serialize().startsWith("DSS2;"),"spacing observations preserve the active iOS geometry through export and decode");
+  DualSignalLayout decodedPlan=decoded.plan(StatusBarIconSpacingSpec.empty());
+  check(Math.abs(decodedPlan.width-measured.width)<.001&&Math.abs(decodedPlan.height-measured.height)<.001,"spacing validation measures the same complete iOS cells as runtime");
+  String[] fields=published.serialize().split(";",-1);fields[0]="DSS1";String old=String.join(";",java.util.Arrays.copyOf(fields,15))+";"+fields[16];
+  DualSignalSpacingObservation legacy=DualSignalSpacingObservation.parse(old);
+  check(legacy!=null&&!legacy.ios,"previous DSS1 observations still decode with their original Honor proportions");
+  fields[0]="DSS2";fields[15]="2";check(DualSignalSpacingObservation.parse(String.join(";",fields))==null,"invalid style flags cannot authorize spacing");
+  check(dual.iosNames.equals(List.of("dual/stat_sys_signal_3_darkmode.png","dual/stat_sys_signal_2_darkmode.png")),"iOS dual assets receive each physical SIM's independent native scale");
+  check(dual.iosRows.equals(List.of(0,1))&&dual.iosSingles.equals(List.of(false,false)),"two physical SIMs choose upper and lower crops of the dual artwork");
+  check(dual.iosLevels.equals(List.of(4,2)),"artwork does not fabricate equal SIM levels");
+  p.drawable.source.state=radios(1);Canvas switched=new Canvas();p.drawable.draw(switched);
+  check(switched.iosNames.equals(dual.iosNames)&&switched.activeRow==1,"data switch changes only activity ownership, not iOS artwork order");
+  String iosInput=p.drawable.planInputs();FeatureSettings.style="0";check(!iosInput.equals(p.drawable.planInputs()),"style change is a runtime plan input");
+  Canvas honor=new Canvas();p.drawable.draw(honor);check(honor.iosNames.isEmpty(),"returning to Honor releases iOS painter immediately");
+  FeatureSettings.style="1";View mobile=mobile(1);ConnectivityIconSource only2=new ConnectivityIconSource(state(1,1,List.of(sim(1,1,2,4,3))));
+  SignalPair single=selected(List.of(mobile),only2);single.drawable.readyToDraw=true;Canvas one=new Canvas();single.drawable.draw(one);
+  check(one.iosNames.size()==1&&single.drawable.layout(single.drawable.geometry()).plan.rows.length==1,"iOS single SIM uses exactly one PNG and one real row");
+  check(one.iosSingles.equals(List.of(true))&&!one.iosNames.get(0).startsWith("dual/"),"a lone SIM2 still uses the original single-row material");
+  check(single.drawable.layout(single.drawable.geometry()).plan.rows[0].signal.y==0,"iOS single row has no empty upper row");
+  check(Math.abs(single.drawable.layout(single.drawable.geometry()).height-24)<.001,"single iOS SIM preserves native glyph height independently of the dual frame");
+  ConnectivityIconState.Sim unavailable=new ConnectivityIconState.Sim(1,1,0,4,true,false,false,true,false,0,true,0);
+  only2.state=state(1,1,List.of(unavailable));Canvas noService=new Canvas();single.drawable.draw(noService);
+  check(noService.iosNames.equals(List.of("stat_sys_signal_null_darkmode.png")),"known no-service SIM uses the supplied X glyph, never fake signal");
+  only2.state=state(1,1,List.of(new ConnectivityIconState.Sim(1,1,-1,4)));Canvas unknown=new Canvas();single.drawable.draw(unknown);
+  check(unknown.iosNames.equals(List.of("stat_sys_signal_null_darkmode.png")),"unknown level uses the unavailable artwork");
+  IosSignalAssets.available=false;check(!single.canDraw(),"loading or failed iOS artwork retains the native signal presentation");IosSignalAssets.available=true;
+  RootState root=new RootState();root.signalSource=only2;ROOTS.put(mobile,root);single.drawable.artworkInvalidated.run();
+  check(root.forced==1,"ready callback forces a live source retry even when loading had cleared its pair");ROOTS.clear();
+  FeatureSettings.style="0";
+ }
+ static void badgeCapacity(){for(String style:new String[]{"0","1"}){
+  FeatureSettings.style=style;SignalPair p=pair(2,false);p.drawable.activity=true;
+  p.drawable.firstType.ratio=p.drawable.secondType.ratio=1.5f;p.drawable.firstRoaming.ratio=.65f;p.drawable.firstHd.ratio=1.5f;
+  p.drawable.secondRoaming.ratio=p.drawable.secondHd.ratio=0;
+  var geometry=p.drawable.geometry();var plan=p.drawable.layout(geometry);var upper=plan.plan.rows[0].badges[0];var lower=plan.plan.rows[1].badges[0];
+  check(Math.abs(upper.width-lower.width)<.001&&Math.abs(upper.height-lower.height)<.001,"runtime plan still squeezes one SIM's type label");
+  int[] required=DualSignalSpacingObservation.rounded(geometry.left,geometry.top,plan.width,plan.height);
+  p.budgetWidth=required[0];p.budgetHeight=required[1];var observation=p.observation("ok");var decoded=DualSignalSpacingObservation.parse(observation.serialize());
+  check(decoded!=null&&decoded.accepts(StatusBarIconSpacingSpec.empty()),"expanded native badges no longer fit their exact measured budget");
+  check(Arrays.equals(required,decoded.required(StatusBarIconSpacingSpec.empty())),"settings/runtime/export measure different badge columns");
+  p.budgetWidth--;check(!p.observation("ok").accepts(StatusBarIconSpacingSpec.empty()),"insufficient width silently shrinks type labels or bypasses capacity");
+  p.restore();
+ }FeatureSettings.style="0";}
+ public static void main(String[] args){for(String name:args[0].equals("all")?new String[]{"constructor","switch","layout","input","events","ios","badge_capacity"}:args)switch(name){
   case "constructor":constructor();break;case "switch":switched();break;case "layout":layout();break;case "input":input();break;case "events":events();break;
+  case "ios":ios();break;
+  case "badge_capacity":badgeCapacity();break;
   default:throw new IllegalArgumentException(name);
  }System.out.println("PASS production SIM slot identity: "+checks+" assertions");}
 }'''
@@ -158,7 +219,9 @@ FILES={
  'ls/augment/com/hook/TestDualSlot.java':HARNESS,
  'ls/augment/com/BuildConfig.java':'package ls.augment.com;public class BuildConfig{public static final int VERSION_CODE=20528;}',
  'android/telephony/SubscriptionManager.java':'package android.telephony;public class SubscriptionManager{public static java.util.Map<Integer,Integer> slots=new java.util.HashMap<>();public static int getSlotIndex(int id){return slots.getOrDefault(id,-1);}}',
- 'android/graphics/Canvas.java':'''package android.graphics;public class Canvas{public int activeRow,activity,first,second,firstBars,secondBars,color;public java.util.Map<String,Integer> sources=new java.util.HashMap<>();}''',
+ 'android/graphics/Canvas.java':'''package android.graphics;public class Canvas{public int activeRow,activity,first,second,firstBars,secondBars,color;public java.util.List<String> iosNames=new java.util.ArrayList<>();public java.util.List<Integer> iosLevels=new java.util.ArrayList<>(),iosRows=new java.util.ArrayList<>();public java.util.List<Boolean> iosSingles=new java.util.ArrayList<>();public java.util.Map<String,Integer> sources=new java.util.HashMap<>();}''',
+ 'ls/augment/com/IosSignalAssets.java':'''package ls.augment.com;public class IosSignalAssets{public static boolean available=true;public static boolean ready(Object context,String name,Runnable invalidated){return available;}}''',
+ 'ls/augment/com/IosSignalPainter.java':'''package ls.augment.com;public class IosSignalPainter{public boolean drawRow(Object context,android.graphics.Canvas canvas,float l,float t,float r,float b,int level,int bars,boolean unavailable,int color,int row,boolean single,Runnable invalidated){canvas.iosNames.add(IosSignalPolicy.filename(level,bars,unavailable,color,single));canvas.iosLevels.add(level);canvas.iosRows.add(row);canvas.iosSingles.add(single);return IosSignalAssets.available;}}''',
  'ls/augment/com/DualSignalPainter.java':'''package ls.augment.com;import android.graphics.Canvas;public class DualSignalPainter{
   private ArtworkLayers artwork;public void setArtwork(ArtworkLayers value){artwork=value;}
   public interface Badges{void draw(Canvas c,int row,int badge,DualSignalLayout.Box box,int color);}
@@ -173,7 +236,7 @@ with tempfile.TemporaryDirectory(prefix='duo-sim-slot-identity-') as folder:
     folder=Path(folder);sources=[]
     for name,code in FILES.items():
         path=folder/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(code,encoding='utf-8');sources.append(str(path))
-    sources.extend(str(base/'ls/augment/com'/name) for name in ['ConnectivityIconState.java','DualSignalLayout.java','ArtworkLayers.java','DualSignalSpacingObservation.java'])
+    sources.extend(str(base/'ls/augment/com'/name) for name in ['ConnectivityIconState.java','DualSignalLayout.java','ArtworkLayers.java','DualSignalSpacingObservation.java','IosSignalPolicy.java'])
     sources.append(str(base/'ls/augment/com/hook/SignalStackLayout.java'))
     if args.case=='all':sources.append(str(ROOT/'tools/TestConnectivityIconState.java'))
     subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-sourcepath',str(base),'-d',str(folder),*sources],check=True)

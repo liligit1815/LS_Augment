@@ -38,6 +38,7 @@ final class ConnectionExtrasHook {
             case "com.android.systemui":h.usbAuthorization();break;
             case "com.android.nfc":h.nfc();break;
             case "cn.nubia.filebrowser":h.mtp();break;
+            case "com.android.mtp":h.count+=MtpFrameworkHook.install(module,loader);break;
             case "com.zte.mifavor.launcher":h.clocks(false);break;
             case "com.zte.mifavor.weather":h.clocks(true);break;
             default:break;
@@ -234,6 +235,7 @@ final class ConnectionExtrasHook {
         });
     }
     private static void updateClock(TextClock clock,boolean weather){
+        if(clock.getId()==View.NO_ID||clock.getId()==0)return;
         String id;try{id=clock.getResources().getResourceEntryName(clock.getId());}catch(RuntimeException e){return;}
         Context c=clock.getContext();
         // Weather RemoteViews are hosted in the launcher process, with weather-owned IDs.

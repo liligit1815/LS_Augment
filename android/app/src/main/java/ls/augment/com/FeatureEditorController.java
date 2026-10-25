@@ -222,7 +222,7 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void registerSystemBackCallback() {
         if (embedded) return;
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        {}
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 this::finish);
@@ -467,7 +467,7 @@ final class FeatureEditorController extends NativeEditorController {
                     + "肩键（剩余约 " + ((remaining + 999L) / 1000L)
                     + " 秒）；采集结束后自动恢复原状态。");
             rapidCompatibilityStatus.setTextColor(ui.muted);
-            rapidCompatibilityAction.setText("正在采集" + side + "肩键…");
+            rapidCompatibilityAction.setText(rapidCompatibilityAction.getContext().getString(R.string.status_featureeditorcontroller_16 ,String.valueOf(side)));
             ui.setButtonEnabled(rapidCompatibilityAction, false);
             rapidCompatibilityCancel.setVisibility(View.VISIBLE);
             return;
@@ -1043,8 +1043,7 @@ final class FeatureEditorController extends NativeEditorController {
                 ? FeatureHelp.fanTileEnhancement()
                 : "此机型的固定档位尚未验证，暂不支持磁贴固定转速增强。原厂风扇磁贴仍可正常使用。",false);
         fan.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
-        boolean screenOffSupported=FanScreenOffPolicy.supportedDevice(
-                android.os.Build.DEVICE,android.os.Build.PRODUCT,android.os.Build.MODEL);
+        boolean screenOffSupported=FanFeatureAvailability.screen(this);
         addSwitch(fan,AppConfig.FAN_SCREEN_OFF_ENABLED,"息屏风扇不停止运转",screenOffSupported
                 ? "让已开启的风扇在息屏后继续按原厂模式运转。手动关闭、通话及系统保护仍有效；关闭本功能恢复原厂息屏策略。首次安装或更新后需重启风扇作用域。"
                 : "此机型的原厂息屏策略尚未验证，暂不支持息屏保持。",false);
@@ -1059,17 +1058,15 @@ final class FeatureEditorController extends NativeEditorController {
         switches.get(AppConfig.FAN_FIXED_ENABLED).setEnabled(verifiedLevels);
         measure.setEnabled(verifiedLevels);
         if(!verifiedLevels){
-            TextView unavailable=ui.text(DeviceFeatureAvailability.unavailableReason(AppConfig.FAN_FIXED_ENABLED,
-                    Build.DEVICE,Build.MODEL,Build.PRODUCT)+"\n"+DeviceFeatureAvailability.unavailableReason(
-                    AppConfig.FAN_SCREEN_OFF_ENABLED,Build.DEVICE,Build.MODEL,Build.PRODUCT),12,ui.muted,false);
+            TextView unavailable=ui.text(FanFeatureAvailability.reason(this,AppConfig.FAN_FIXED_ENABLED)+"\n"+FanFeatureAvailability.reason(this,AppConfig.FAN_SCREEN_OFF_ENABLED),12,ui.muted,false);
             unavailable.setTag("device-feature-unavailable:fan");fan.addView(unavailable,ui.margins(0,4,0,8));
         }
     }
     private boolean fanVerifiedLevels() {
-        return FanTilePolicy.supportedDevice(Build.DEVICE,Build.MODEL,Build.PRODUCT);
+        return FanFeatureAvailability.levels(this);
     }
     private boolean deviceFeatureAvailable(String key) {
-        return DeviceFeatureAvailability.available(key,Build.DEVICE,Build.MODEL,Build.PRODUCT);
+        return FanFeatureAvailability.reason(this,key).isEmpty();
     }
     private void applyDeviceAvailability() {
         for(Map.Entry<String,Switch> entry:switches.entrySet())if(!deviceFeatureAvailable(entry.getKey())){
@@ -1161,9 +1158,8 @@ final class FeatureEditorController extends NativeEditorController {
     private void buildFreeform() {
         LinearLayout card;
         if(!MODULE_FREEFORM_LIMITS.equals(section)){
-        card=featureCard(ConfigSchema.FREEFORM_GAME_LOGIN,"游戏登录跳转以小窗打开","游戏跳转微信、QQ 或其他登录授权页面时使用小窗。系统识别游戏，也可补充游戏名单。");
+        card=featureCard(ConfigSchema.FREEFORM_GAME_LOGIN,"登录跳转以小窗打开","所有应用跳转微信、QQ 或其他登录授权页面时使用小窗。");
         card.setTag("freeform-controls");
-        addAppSelection(settingsBody(card,ConfigSchema.FREEFORM_GAME_LOGIN,0),ConfigSchema.FREEFORM_GAME_APPS,"补充游戏名单");
         card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
         addSwitch(card,ConfigSchema.FREEFORM_EXTERNAL_APPS,"打开第三方应用以小窗打开","从前台应用跳转其他第三方应用时使用小窗；桌面启动、应用内部页面和系统界面保持原厂方式。",false);
         if(MODULE_FREEFORM_RULES.equals(section))return;
@@ -1198,8 +1194,7 @@ final class FeatureEditorController extends NativeEditorController {
         EditText value = new EditText(this);
         inputs.put(key, value);
         Button button = ui.button(label);
-        Runnable render = () -> button.setText(label + "（"
-                + AppPackageSet.parse(value.getText().toString()).size() + " 个）");
+        Runnable render = () -> button.setText(button.getContext().getString(R.string.status_featureeditorcontroller_17 ,String.valueOf(label), String.valueOf(AppPackageSet.parse(value.getText().toString()).size())));
         value.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -1628,7 +1623,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private SeekBar positionBar() {
-        SeekBar bar = new SeekBar(this);
+        SeekBar bar = ui.slider();
         bar.setMax(1000);
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
         bar.setThumbTintList(ColorStateList.valueOf(ui.accent));
@@ -1636,7 +1631,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private SeekBar scaleBar() {
-        SeekBar bar = new SeekBar(this);
+        SeekBar bar = ui.slider();
         bar.setMax(150);
         bar.setProgress(50);
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
@@ -1674,7 +1669,7 @@ final class FeatureEditorController extends NativeEditorController {
         card.addView(ui.featureTitle(label, FeatureDescriptions.forKey(key, label)), ui.margins(0, 10, 0, 0));
         TextView value = ui.text("", 12, ui.muted, false);
         card.addView(value, ui.margins(0, 3, 0, 0));
-        SeekBar bar = new SeekBar(this);
+        SeekBar bar = ui.slider();
         int safeStep = Math.max(1, step);
         bar.setMax((max - min) / safeStep);
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
@@ -2351,8 +2346,8 @@ final class FeatureEditorController extends NativeEditorController {
             render();
             return true;
         }
-        void render() { text.setText("当前：" + (percent
-                ? String.format(Locale.US, "%.2f", value() / 100f) : String.valueOf(value()))); }
+        void render() { text.setText(text.getContext().getString(R.string.status_featureeditorcontroller_18 ,String.valueOf((percent
+                ? String.format(Locale.US, "%.2f", value() / 100f) : String.valueOf(value()))))); }
         String serialized() { return percent
                 ? String.format(Locale.US, "%.2f", value() / 100f) : String.valueOf(value()); }
     }

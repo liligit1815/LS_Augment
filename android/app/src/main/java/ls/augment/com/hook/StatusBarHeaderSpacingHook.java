@@ -43,7 +43,7 @@ final class StatusBarHeaderSpacingHook {
     private static View find(View root,String id){
         if(id.equals(name(root)))return root;if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){View result=find(((ViewGroup)root).getChildAt(i),id);if(result!=null)return result;}return null;
     }
-    private static String name(View view){try{return view.getResources().getResourceEntryName(view.getId());}catch(RuntimeException ignored){return "";}}
+    private static String name(View view){if(view.getId()==View.NO_ID||view.getId()==0)return "";try{return view.getResources().getResourceEntryName(view.getId());}catch(RuntimeException ignored){return "";}}
     private static boolean inside(View child,View parent){for(View at=child;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null)if(at==parent)return true;return false;}
     private static final class State {
         final java.lang.ref.WeakReference<ViewGroup> header;

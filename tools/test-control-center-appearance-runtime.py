@@ -44,6 +44,8 @@ FILES.update({
 "com/zte/controlcenter/view/ControlCenterMediaPlayerView.java": """package com.zte.controlcenter.view;public class ControlCenterMediaPlayerView extends android.view.ViewGroup {public android.media.MediaMetadata mMediaMetadata;public android.media.session.MediaController mMediaController=new android.media.session.MediaController();public boolean mIsMediaSessionDestroyed;public String mCurrentPlayPkg=\"music\";public android.widget.TextView mTitleText=new android.widget.TextView();public ControlCenterMediaPlayerView(){setBackground(new android.graphics.drawable.GradientDrawable());addView(mTitleText);}public boolean isSupportMediaControl(String pkg){return pkg.equals(\"music\");}}""",
 })
 
+FILES["ls/augment/com/LiquidGlassDrawable.java"] = """package ls.augment.com;public class LiquidGlassDrawable {public float radius,strength;public int first,last,direction;public int writes;public void setRadiusDp(float r){if(radius!=r){radius=r;writes++;}}public void setMaterialGradient(int a,int b,int d,float s){if(first!=a||last!=b||direction!=d||strength!=s){first=a;last=b;direction=d;strength=s;writes++;}}}"""
+
 # Extend reused framework facades without changing the older runner.
 FILES["android/graphics/Bitmap.java"] = FILES["android/graphics/Bitmap.java"].replace("public static Bitmap createBitmap", "public static Bitmap createScaledBitmap(Bitmap b,int w,int h,boolean filter){return new Bitmap(w,h,b.pixels[0]);}public static Bitmap createBitmap")
 FILES["android/graphics/Color.java"] = FILES["android/graphics/Color.java"].replace("public static float luminance", "public static int rgb(int r,int g,int b){return 0xff000000|r<<16|g<<8|b;}public static float luminance")
@@ -106,13 +108,26 @@ FeatureSettings.put(MEDIA,"0");FeatureSettings.put(CORNERS,"1");
 check(ControlCenterAppearanceHook.ownsMaterial(wide,wide,false)&&ControlCenterAppearanceHook.ownsMaterial(media,media,false)&&ControlCenterAppearanceHook.ownsMaterial(sliderFrame,sliderFrame,true),"uniform corner priority covers tile media and actual slider surfaces");
 FeatureSettings.put(CORNERS,"0");
 check(!ControlCenterAppearanceHook.ownsMaterial(wide,wide,false)&&!ControlCenterAppearanceHook.ownsMaterial(media,media,false)&&!ControlCenterAppearanceHook.ownsMaterial(sliderFrame,sliderFrame,true),"all appearance switches off release every known surface to glass");
+FeatureSettings.put(CORNERS,"1");FeatureSettings.put(RADIUS,"0");FeatureSettings.put(TILES,"1");FeatureSettings.put(TILE_OPACITY,"85");FeatureSettings.put(TILE_GRADIENT,"1");FeatureSettings.put(TILE_DIRECTION,"2");FeatureSettings.put(TILE_LIGHT,"#1677D2");FeatureSettings.put(TILE_END_LIGHT,"#725BC9");
+ControlCenterPanelView both=new ControlCenterPanelView();QSTileViewWide bothTile=new QSTileViewWide();bothTile.lastState=2;both.allTilesLayout.addView(bothTile);Object bothState=call(ControlCenterAppearanceHook.class,"watch",both);
+check(bothTile.getBackground()!=bothTile.colorBackgroundDrawable,"appearance owns native wrapper before glass is enabled");FeatureSettings.put(ls.augment.com.GlassOptions.CONTROL_CENTER,"1");
+check(bothTile.getBackground()==bothTile.colorBackgroundDrawable,"enabling glass removes appearance wrapper before material discovery");
+check(!ControlCenterAppearanceHook.ownsMaterial(bothTile,bothTile,false)&&!ControlCenterAppearanceHook.ownsMaterial(sliderFrame,sliderFrame,true),"corners and color configuration cannot block glass");
+FeatureSettings.put(MEDIA,"1");check(ControlCenterAppearanceHook.ownsMaterial(media,media,false),"explicit media-cover image retains independent priority");FeatureSettings.put(MEDIA,"0");
+ls.augment.com.LiquidGlassDrawable sharedGlass=new ls.augment.com.LiquidGlassDrawable();ControlCenterAppearanceHook.GlassStyle style=new ControlCenterAppearanceHook.GlassStyle();
+check(style.apply(bothTile,bothTile,sharedGlass,24)&&sharedGlass.radius==0&&sharedGlass.direction==2&&sharedGlass.first!=sharedGlass.last&&sharedGlass.strength==.85f,"single glass material receives exact chosen corners, gradient direction and opacity");
+int glassWrites=sharedGlass.writes;for(int i=0;i<100;i++)style.apply(bothTile,bothTile,sharedGlass,24);check(sharedGlass.writes==glassWrites,"unchanged combined preferences do not invalidate glass every frame");
+bothTile.lastState=1;check(!style.apply(bothTile,bothTile,sharedGlass,24),"inactive state returns tint ownership to native material in the same prepare");bothTile.lastState=2;FeatureSettings.put(TILES,"0");check(!style.apply(bothTile,bothTile,sharedGlass,24),"disabling custom color returns tint ownership to native material");
+FeatureSettings.put(CORNERS,"0");style.apply(bothTile,bothTile,sharedGlass,42);check(sharedGlass.radius==42,"disabling custom corners restores current native radius");
+FeatureSettings.put(CORNERS,"1");FeatureSettings.put(TILES,"1");FeatureSettings.put(ls.augment.com.GlassOptions.CONTROL_CENTER,"0");check(bothTile.getBackground()!=bothTile.colorBackgroundDrawable&&bothTile.colorBackgroundDrawable.radius==0,"disabling glass resumes saved appearance on exact native background");
+check("1".equals(FeatureSettings.snapshot.get(TILES))&&"0".equals(FeatureSettings.snapshot.get(RADIUS)),"renderer transitions preserve user selections");both.detach();
 System.out.println("PASS production CC appearance lifecycle: "+checks+" checks; facade only, GPU and OEM visuals unverified");
 }}
 """
 
-for source in ("EnhancementOption", "ControlCenterAppearanceOptions", "ControlCenterAppearancePolicy"):
+for source in ("EnhancementOption", "ControlCenterAppearanceOptions", "ControlCenterAppearancePolicy", "GlassOptions"):
     FILES[f"ls/augment/com/{source}.java"] = (ROOT / f"android/app/src/main/java/ls/augment/com/{source}.java").read_text(encoding="utf-8")
-for source in ("ControlCenterNativeDrawable", "ControlCenterAppearanceHook", "ControlCenterMediaAppearanceHook"):
+for source in ("ControlCenterNativeDrawable", "ControlCenterAppearanceHook", "ControlCenterMediaAppearanceHook", "ControlCenterGlassTargets"):
     FILES[f"ls/augment/com/hook/{source}.java"] = (ROOT / f"android/app/src/main/java/ls/augment/com/hook/{source}.java").read_text(encoding="utf-8")
 
 def java_tool(name):

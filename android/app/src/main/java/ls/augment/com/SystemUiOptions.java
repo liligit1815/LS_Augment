@@ -11,6 +11,8 @@ public final class SystemUiOptions {
     public static final String POWER_MODES = PREFIX + "power_reboot_modes";
     public static final String PRIVACY_HIDE = PREFIX + "privacy_hide";
     public static final String SIGNAL_DUAL = PREFIX + "signal_dual";
+    public static final String SIGNAL_DUAL_STYLE = PREFIX + "signal_dual_style";
+    public static final String BATTERY_PRESET = PREFIX + "battery_preset";
     public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
     public static final String ISLAND = PREFIX + "island_enabled";
     public static final String ISLAND_OFFSET_Y = PREFIX + "island_offset_y";
@@ -23,7 +25,7 @@ public final class SystemUiOptions {
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
         out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
-        out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","仅在音乐播放、新通知或刚接通电源时出现；没有活动时隐藏。轻点打开来源，长按展开详情与音乐控制；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","使用系统原生星云岛显示音乐、新通知与接通电源提醒，保留大小、位置、透明背景和图标样式设置。轻点打开来源，长按展开详情与音乐控制；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
         out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","播放时显示封面与律动，暂停后短暂保留控制入口并自动收起；已暂停的旧会话不会上岛。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","新通知短暂上岛；遵循勿扰、通知重要性及锁屏隐私，不取消原通知。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电提示","刚接通电源时显示电量，5 秒后收起；持续充电、开启功能或解锁不会让提示常驻。",1,"关闭","开启"));
@@ -32,7 +34,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));
         out.add(EnhancementOption.integer(ISLAND_OFFSET_Y,"system","上下偏移（dp）","正数向下，负数向上；以居中位置为基准，实际偏移受状态栏可用高度限制，不会超出状态栏。",0,-24,24));
         out.add(EnhancementOption.toggle(ISLAND_TRANSPARENT,"system","透明样式","去掉紧凑胶囊的黑色背景，保留活动图标、文字与律动。长按展开的详情保持原有背景。"));
-        out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛app显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
+        out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
         out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
         out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","总开关只启用本功能；大、小堆叠都关闭时保持原厂列表。仅小堆叠按同应用收起，通知与静默分类分别处理；仅大堆叠合并两类，展开后逐条显示。两项同时开启时，大堆叠展开后显示同应用小堆叠。点击收起的首卡一次展开一层，展开后保留原生操作；关闭通知栏后收起，锁屏使用原厂列表。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
@@ -51,7 +53,8 @@ public final class SystemUiOptions {
             out.add(EnhancementOption.integer(p+"offset_y_dp","system",title+"下移（dp）","正数向下，负数向上。",0,-512,512));
         }
         out.add(EnhancementOption.toggle(PRIVACY_HIDE, "statusbar", "隐藏隐私小绿点", "隐藏状态栏隐私绿点和使用提醒胶囊，权限设置和访问记录保持原样。"));
-        out.add(EnhancementOption.toggle(SIGNAL_DUAL, "statusbar", "双排信号图标", "等宽对齐的圆角信号柱，单卡仅显示下排；每张卡的网络类型可显示在对应行左侧，各隐藏开关独立控制。"));
+        out.add(EnhancementOption.toggle(SIGNAL_DUAL, "statusbar", "双排信号图标", "可选择荣耀双排或 iOS双排；单卡自动单排，双卡上下两排。每张卡的网络类型可显示在对应行左侧，各隐藏开关独立控制。"));
+        out.add(EnhancementOption.choice(SIGNAL_DUAL_STYLE, "statusbar", "信号样式", "荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；两种样式都按实际 SIM 和信号状态显示。", 0, "荣耀双排", "iOS双排"));
         out.add(EnhancementOption.toggle(AUDIO_NO_SAFE_WARNING, "audio", "取消音量过高提示", "取消安全音量和累计声音剂量提示；与现有音量增益、档数设置共同生效。"));
         bool(out, "hide_wifi_activity", "statusbar", "隐藏 Wi-Fi 收发箭头");
         bool(out, "hide_wifi_standard", "statusbar", "隐藏 Wi-Fi 标准数字");
@@ -67,7 +70,8 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.choice(PREFIX+"hide_hotspot_scope","statusbar","隐藏热点图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.choice(PREFIX+"hide_mobile_scope","statusbar","隐藏移动网络图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.text(PREFIX + "hidden_icon_slots", "statusbar", "其他隐藏图标", "展开清单并勾选要隐藏的系统图标；只隐藏图标，不关闭相应服务。", "", 1024));
-        out.add(EnhancementOption.choice(PREFIX + "battery_style", "statusbar", "电池样式", "继续使用原厂电池图形及当前布局位置。", 0, "遵循原厂", "电池内显示数字", "电池后显示数字", "数字后显示电池", "仅电池图标", "仅电量数字", "隐藏电池"));
+        out.add(EnhancementOption.choice(BATTERY_PRESET, "statusbar", "电池预设样式", "ios样式随电量、数字显示、充电、省电、性能模式和图标明暗自动切换对应素材。", 0, "原生样式", "ios样式"));
+        out.add(EnhancementOption.choice(PREFIX + "battery_style", "statusbar", "电池显示方式", "选择电池数字的位置或隐藏方式，与所选电池预设样式共同生效。", 0, "遵循原厂", "电池内显示数字", "电池后显示数字", "数字后显示电池", "仅电池图标", "仅电量数字", "隐藏电池"));
         bool(out, "battery_hide_percent", "statusbar", "隐藏电量百分号");
         out.add(EnhancementOption.integer(PREFIX+"battery_width_dp","statusbar","电池固定宽度","0 为原厂宽度，包含电池图标和外置数字。",0,0,120));
         out.add(EnhancementOption.integer(PREFIX+"battery_alpha_percent","statusbar","电池图标不透明度（%）","100 为原厂透明度；与电量颜色的透明度叠加。",100,0,100));
@@ -93,7 +97,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX + "charging_duration", "lockscreen", "充电动画持续秒数", "启用自定义充电动画后生效。", 6, 1, 120));
         out.add(EnhancementOption.integer(PREFIX + "charging_delay", "lockscreen", "充电动画延迟秒数", "启用自定义充电动画后生效。", 0, 0, 60));
         out.add(EnhancementOption.toggle(QS_BRIGHTNESS_PERCENT, "quicksettings", "亮度显示百分比", "控制中心亮度条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
-        out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围。需要 Root；当前支持 NX809J。极低档显示 0.5%，原厂范围保留 0%–100%，扩展最高约 116.5%。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
+        out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围，不限制设备型号。需要 Root 和兼容的屏幕驱动接口；接口不可用时保持原厂亮度条。极低档显示 0.5%，原厂范围保留 0%–100%，扩展最高约 116.5%。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
         out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心及展开音量面板显示百分比；增益开启时可超过 100%，同一行只显示一份数字。"));
         bool(out, "qs_grid", "quicksettings", "自定义控制中心行列");
         out.add(EnhancementOption.integer(PREFIX + "qs_columns", "quicksettings", "竖屏列数", "控制中心普通磁贴列数。", 4, 2, 8));
@@ -117,7 +121,7 @@ public final class SystemUiOptions {
         bool(out, "lock_charge_details", "lockscreen", "锁屏显示充电详情");
         for(String metric:new String[]{"temperature","current","voltage","power"}) {
             String title=metric.equals("temperature")?"温度":metric.equals("current")?"电流":metric.equals("voltage")?"电压":"功率";
-            bool(out,"lock_charge_hide_"+metric,"lockscreen","充电详情隐藏"+title);
+            bool(out,"lock_charge_show_"+metric,"lockscreen","充电详情显示"+title);
         }
         out.add(EnhancementOption.integer(PREFIX+"lock_charge_text_size","lockscreen","充电详情字号","独立调整详情文字，不改变原厂锁屏提示字号。",14,8,32));
         out.add(EnhancementOption.integer(PREFIX+"lock_charge_line_gap","lockscreen","充电详情行间距","详情与原厂提示之间的间距，以 dp 为单位。",2,0,40));

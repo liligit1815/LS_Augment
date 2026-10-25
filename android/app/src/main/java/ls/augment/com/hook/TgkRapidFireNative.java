@@ -173,6 +173,9 @@ final class TgkRapidFireNative {
     static void armCadence(String id,String phase,int code){if(loaded)try{nativeArmCadence(id+":"+phase+":"+code,code);}catch(Throwable ignored){}}
     static String cadence(){if(loaded)try{return nativeCadence();}catch(Throwable ignored){}return "ready=0";}
 
+
+    // Absolute loading is required by injected loaders; canonical package lib path and APK entry SHA-256 are checked before System.load.
+    //noinspection UnsafeDynamicallyLoadedCode
     private static void loadLibrary(ApplicationInfo info, String nativeDir,
             String fileName, String libraryName) {
         Set<File> candidates = new LinkedHashSet<>();
@@ -198,14 +201,26 @@ final class TgkRapidFireNative {
         }
 
         UnsatisfiedLinkError firstError = null;
+        UnsatisfiedLinkError rejectedIdentity = null;
         for (File candidate : candidates) {
             if (!candidate.isFile()) continue;
+            if (!ls.augment.com.OwnedNativeLibrary.matches(sourceApk, candidate, fileName, Build.SUPPORTED_ABIS)) {
+                rejectedIdentity = new UnsatisfiedLinkError("module_native_identity_unverified:" + libraryName);
+                continue;
+            }
             try {
                 System.load(candidate.getAbsolutePath());
                 return;
             } catch (UnsatisfiedLinkError error) {
                 if (firstError == null) firstError = error;
             }
+        }
+        // A name lookup may resolve the same rejected file. Never use it to
+        // bypass a failed identity check. APK-internal/no-extracted-file loading
+        // and a verified file's ordinary linker fallback remain supported.
+        if (rejectedIdentity != null) {
+            if (firstError != null) rejectedIdentity.addSuppressed(firstError);
+            throw rejectedIdentity;
         }
         try {
             System.loadLibrary(libraryName);

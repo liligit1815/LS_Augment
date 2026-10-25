@@ -19,7 +19,7 @@ original = ast.literal_eval(assignment.value)
 
 types = {'F1': 'InvariantDeviceProfile', 'b0': 'DesktopGrid', 'h0': 'DeviceProfile',
          'C2': 'Launcher', 't0': 'GridOccupancy', 'z0': 'IntSet'}
-fields = {'G0': 'numRows', 'H0': 'numColumns', 'E1': 'dbFile',
+fields = {'C0': 'inv', 'G0': 'numRows', 'H0': 'numColumns', 'E1': 'dbFile',
           'B1': 'iconSizePx', 'C1': 'iconTextSizePx', 'D1': 'iconDrawablePaddingPx',
           'Z0': 'mIsScalableGrid', 'b1': 'mIsResponsiveGrid',
           'J2': 'allAppsIconSizePx', 'N2': 'allAppsIconTextSizePx',
@@ -50,13 +50,15 @@ for name, content in original.items():
     if name.endswith('/DeviceProfile.java'):
         content = content.replace(' k0(', ' getCellSize(').replace(' p1(', ' updateIconSize(')
         content = content.replace(' h1(', ' updateAllAppsContainerWidth(').replace('"h1"', '"updateAllAppsContainerWidth"')
-        content = content.replace('public class DeviceProfile{', 'public class DeviceProfile extends MFVDeviceProfile{public final InvariantDeviceProfile inv=InvariantDeviceProfile.active;public int nativeLabel=42;')
+        content = content.replace('public class DeviceProfile{', 'public class DeviceProfile extends MFVDeviceProfile{public int nativeLabel=42;')
+        content = content.replace('public InvariantDeviceProfile inv;', 'public InvariantDeviceProfile inv=InvariantDeviceProfile.active;')
         content = content.replace('calls++;', 'calls++;ls.augment.com.hook.NativeNamedDispatch.glyphs(this,c,scale);')
     if name.endswith('/Launcher.java'):
         content = content.replace(' h(', ' finishBindingItems(').replace(' B2(', ' getWorkspace(')
     if name.endswith('/ItemInfo.java'):
         content = content.replace('public long id;', 'public int id;')
     if name.endswith('/InvariantDeviceProfile.java'):
+        content = content.replace(' K0(', ' onConfigChanged(')
         content = content.replace('public class InvariantDeviceProfile{', 'public class InvariantDeviceProfile{public static InvariantDeviceProfile active;public InvariantDeviceProfile(){active=this;}')
     if name.endswith('/TestLauncherGridRuntime.java'):
         content = content.replace('desktop.d', 'desktop.mShouldResize').replace('desktop.a', 'desktop.mResizeGridMap')
@@ -136,7 +138,7 @@ with tempfile.TemporaryDirectory(prefix='launcher-grid-named-') as tmp:
         path = out / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding='utf-8')
-    production = [JAVA / 'hook/LauncherGridHook.java', JAVA / 'hook/LauncherGridIconFit.java',
+    production = [JAVA / 'hook/LauncherGridHook.java', JAVA / 'hook/LauncherWorkspaceProfile.java', JAVA / 'hook/LauncherDatabaseIdentity.java', JAVA / 'hook/LauncherGridIconFit.java',
                   JAVA / 'LauncherGridSpec.java', JAVA / 'LauncherGridSafety.java', JAVA / 'LauncherGridMigrationCheck.java']
     subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(out),
                     *map(str, out.rglob('*.java')), *map(str, production)], check=True)

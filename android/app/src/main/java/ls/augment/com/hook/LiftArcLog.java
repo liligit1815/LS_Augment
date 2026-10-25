@@ -7,6 +7,9 @@ import java.util.Map;
 
 /** Content-free runtime events use Duo's bounded, asynchronous persistent log channel. */
 final class LiftArcLog {
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Context context;
     private static final Map<String,Long> recent = new LinkedHashMap<>();
     private static long windowAt,suppressed,pendingSuppressed;

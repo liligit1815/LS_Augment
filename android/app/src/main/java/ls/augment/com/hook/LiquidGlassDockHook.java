@@ -10,8 +10,11 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.TextView;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.WeakHashMap;
 import ls.augment.com.GlassOptions;
 import ls.augment.com.GlassGeometry;
@@ -24,16 +27,31 @@ import ls.augment.com.LiquidGlassDrawable;
 final class LiquidGlassDockHook {
     private static final String DIAGNOSTIC="ls_augment_rm_glass_dock_state";
     private static final WeakHashMap<View,State> STATES=new WeakHashMap<>();
+    private static final WeakHashMap<View,Watcher> WATCHERS=new WeakHashMap<>();
+    private static final WeakHashMap<Class<?>,WeakReference<Method>> ICON_BOUNDS=new WeakHashMap<>();
     private static boolean installed;
     private LiquidGlassDockHook() { }
 
     static synchronized void install(AugmentModule module,ClassLoader loader) {
         if(installed)return;
+        for(String method:new String[]{"onFinishInflate","onLayout"})
+            OemHooks.methods(module,loader,"com.android.launcher3.Hotseat",method,
+                    void.class,"onLayout".equals(method)?5:0,"",chain->{
+                        Object result=chain.proceed();
+                        if(chain.getThisObject() instanceof View)watch((View)chain.getThisObject());
+                        return result;
+                    });
+        OemHooks.methods(module,loader,"com.android.launcher3.Launcher","onResume",void.class,0,"",chain->{
+            Object result=chain.proceed();
+            for(Watcher watcher:new java.util.ArrayList<>(WATCHERS.values()))watcher.run();
+            return result;
+        });
         int count=OemHooks.methods(module,loader,"com.android.launcher3.Hotseat","onDraw",
                 void.class,1,"",chain->{
                     Object result=chain.proceed();
                     if(!(chain.getThisObject() instanceof ViewGroup)||!(chain.getArg(0) instanceof Canvas))return result;
                     ViewGroup host=(ViewGroup)chain.getThisObject();
+                    watch(host);
                     if(!FeatureSettings.enabled(host.getContext(),GlassOptions.DOCK)) {
                         State old=STATES.remove(host);if(old!=null)old.release();
                         publish(host,"disabled");return result;
@@ -71,14 +89,86 @@ final class LiquidGlassDockHook {
     }
 
     private static void publish(View view,String value){
-        FeatureSettings.diagnostic(view.getContext(),DIAGNOSTIC,
-                "build="+ls.augment.com.BuildConfig.VERSION_CODE+";geometry=viewport_v2;"+value);
+        String detail="build="+ls.augment.com.BuildConfig.VERSION_CODE+";geometry=visible_items_v3;"+value;
+        FeatureSettings.diagnostic(view.getContext(),DIAGNOSTIC,detail);
+        // A final off frame must not erase the only evidence from the enabled attempt.
+        if(!"disabled".equals(value))FeatureSettings.diagnostic(view.getContext(),DIAGNOSTIC+"_last_enabled",detail);
+    }
+
+    private static void watch(View view){
+        if(WATCHERS.containsKey(view)||!view.isAttachedToWindow())return;
+        Watcher watcher=new Watcher(view);WATCHERS.put(view,watcher);
+        view.addOnAttachStateChangeListener(watcher);
+        view.getViewTreeObserver().addOnPreDrawListener(watcher);
+        FeatureSettings.addSnapshotListener(view.getContext(),watcher);
+    }
+
+    /** Disabled hosts still need a settings invalidation to start the first material frame. */
+    private static final class Watcher implements View.OnAttachStateChangeListener,Runnable,ViewTreeObserver.OnPreDrawListener {
+        final WeakReference<View> host;
+        long geometry=Long.MIN_VALUE;
+        Watcher(View view){host=new WeakReference<>(view);}
+        @Override public void run(){geometry=Long.MIN_VALUE;View view=host.get();if(view==null){FeatureSettings.removeSnapshotListener(this);return;}
+            if(view.isAttachedToWindow())view.invalidate();}
+        @Override public void onViewAttachedToWindow(View view){ }
+        @Override public boolean onPreDraw(){
+            View view=host.get();if(view==null)return true;
+            if(!FeatureSettings.enabled(view.getContext(),GlassOptions.DOCK)){geometry=Long.MIN_VALUE;return true;}
+            long next=view.isShown()?1:0;
+            for(View node=view;node!=null;){
+                next=next*31+Float.floatToIntBits(node.getScaleX());next=next*31+Float.floatToIntBits(node.getScaleY());
+                next=next*31+Float.floatToIntBits(node.getTranslationX());next=next*31+Float.floatToIntBits(node.getTranslationY());
+                next=next*31+node.getWidth();next=next*31+node.getHeight();
+                ViewParent parent=node.getParent();node=parent instanceof View?(View)parent:null;
+            }
+            if(next!=geometry){geometry=next;if(FeatureSettings.enabled(view.getContext(),GlassOptions.DOCK))view.invalidate();}
+            return true;
+        }
+        @Override public void onViewDetachedFromWindow(View view){
+            if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);
+            WATCHERS.remove(view);FeatureSettings.removeSnapshotListener(this);view.removeOnAttachStateChangeListener(this);
+        }
     }
 
     /** A non-null transparent theme drawable is still an empty dock, not an existing tray. */
     private static boolean emptyBackground(View view){
         Drawable background=view.getBackground();
         return background==null||background.getAlpha()==0||background.getOpacity()==PixelFormat.TRANSPARENT;
+    }
+
+    private static boolean isType(View view,String name){
+        for(Class<?> type=view.getClass();type!=null;type=type.getSuperclass())
+            if(type.getName().equals(name))return true;
+        return false;
+    }
+
+    private static boolean visibleLabel(TextView label){
+        if(label==null||label.getVisibility()!=View.VISIBLE)return false;
+        return label.getText().length()>0&&label.getTextSize()>0&&(label.getCurrentTextColor()>>>24)>=128
+                &&Math.abs((long)label.getScrollX())<label.getWidth()
+                &&Math.abs((long)label.getScrollY())<label.getHeight();
+    }
+
+    /** Both verified OEM families expose the visible artwork separately from its tall cell.
+     * In the Android 16 APK the two methods are d0(Rect) and C(Rect), respectively. */
+    private static boolean nativeIconBounds(View icon,boolean folder,Rect result)throws ReflectiveOperationException{
+        WeakReference<Method> cached=ICON_BOUNDS.get(icon.getClass());
+        Method accessor=cached==null?null:cached.get();
+        if(accessor==null){
+            for(String name:new String[]{folder?"getPreviewBounds":"getIconBounds",folder?"C":"d0"}){
+                for(Class<?> type=icon.getClass();type!=null;type=type.getSuperclass())try{
+                    Method method=type.getDeclaredMethod(name,Rect.class);
+                    if(method.getReturnType()!=void.class||Modifier.isStatic(method.getModifiers()))continue;
+                    method.setAccessible(true);accessor=method;break;
+                }catch(NoSuchMethodException ignored){ }
+                if(accessor!=null)break;
+            }
+            if(accessor==null)throw new NoSuchMethodException("Native Dock artwork bounds: "+icon.getClass().getName());
+            ICON_BOUNDS.put(icon.getClass(),new WeakReference<>(accessor));
+        }
+        result.set(0,0,0,0);accessor.invoke(icon,result);
+        return LiquidGlassDockPolicy.visibleBounds(icon.getWidth(),icon.getHeight(),
+                result.left,result.top,result.right,result.bottom);
     }
 
     private static final class State implements View.OnAttachStateChangeListener,Runnable {
@@ -102,39 +192,55 @@ final class LiquidGlassDockHook {
             Rect union=new Rect(),item=new Rect();boolean found=false;
             Boolean lightLabels=null;
             ViewGroup cells=(ViewGroup)children;
-            int visibleIcons=0;
+            int visibleIcons=0,nativeBounds=0,drawableBounds=0,cellBounds=0,visibleLabels=0;
             for(int i=0;i<cells.getChildCount();i++){
                 View icon=cells.getChildAt(i);
                 if(icon.getVisibility()!=View.VISIBLE||icon.getWidth()<=0||icon.getHeight()<=0)continue;
                 item.set(0,0,icon.getWidth(),icon.getHeight());
-                if(icon instanceof TextView){
-                    TextView label=(TextView)icon;int color=label.getCurrentTextColor();
-                    if(label.getText().length()>0&&label.getTextSize()>0&&(color>>>24)>=128){
-                        boolean light=LiquidGlassPolicy.luminance(color)>.5;
-                        if(lightLabels!=null&&lightLabels!=light){clearMaterial();status("mixed_label_contrast");return;}
-                        lightLabels=light;
-                    }else{
-                        // Hotseat hides the text, but the native cell still reserves label space.
-                        // Match its visible top drawable; do not stretch the capsule into that space.
-                        Drawable[] compound=label.getCompoundDrawables();
-                        if(compound[0]==null&&compound[1]!=null&&compound[2]==null&&compound[3]==null){
-                            Rect image=compound[1].getBounds();
-                            int[] visible=LiquidGlassDockPolicy.iconBounds(icon.getWidth(),icon.getHeight(),
-                                    image.width(),image.height(),label.getPaddingTop());
-                            if(visible!=null)item.set(visible[0],visible[1],visible[2],visible[3]);
-                        }
-                    }
+                boolean folder=isType(icon,"com.android.launcher3.folder.FolderIcon");
+                boolean bubble=isType(icon,"com.android.launcher3.BubbleTextView");
+                TextView label=icon instanceof TextView?(TextView)icon:null;
+                if(folder&&Boolean.TRUE.equals(OemHooks.invoke(icon,"getTextVisible"))){
+                    Object name=OemHooks.invoke(icon,"getFolderName");
+                    if(name instanceof TextView)label=(TextView)name;
                 }
+                if(visibleLabel(label)){
+                    int color=label.getCurrentTextColor();
+                    boolean light=LiquidGlassPolicy.luminance(color)>.5;
+                    if(lightLabels!=null&&lightLabels!=light){clearMaterial();status("mixed_label_contrast");return;}
+                    lightLabels=light;visibleLabels++;cellBounds++;
+                }else if(folder||bubble){
+                    // A FolderIcon is a ViewGroup, not a TextView. Its cell includes the
+                    // hidden folder name and gesture margin just like an application cell.
+                    if(!nativeIconBounds(icon,folder,item)){
+                        geometry+=";cell="+icon.getWidth()+"x"+icon.getHeight()+";native_icon="+item.toShortString();
+                        clearMaterial();status("unsupported_native_icon_geometry:"+icon.getClass().getName());return;
+                    }
+                    nativeBounds++;
+                }else if(label!=null){
+                    // Hotseat hides the text, but the native cell still reserves label space.
+                    // Match its visible top drawable; do not stretch the capsule into that space.
+                    Drawable[] compound=label.getCompoundDrawables();
+                    if(compound[0]==null&&compound[1]!=null&&compound[2]==null&&compound[3]==null){
+                        Rect image=compound[1].getBounds();
+                        int[] visible=LiquidGlassDockPolicy.iconBounds(icon.getWidth(),icon.getHeight(),
+                                image.width(),image.height(),label.getPaddingTop());
+                        if(visible!=null){item.set(visible[0],visible[1],visible[2],visible[3]);drawableBounds++;}
+                        else cellBounds++;
+                    }else cellBounds++;
+                }else cellBounds++;
                 // OEM TextViews can scroll their hidden label by 524288px. That scroll
                 // does not move the compound icon's viewport and must not move the tray.
-                if(!GlassGeometry.map(icon,view,item,false)||view.getScrollX()!=0||view.getScrollY()!=0){
+                if(!GlassGeometry.map(icon,view,item,true)||view.getScrollX()!=0||view.getScrollY()!=0){
                     clearMaterial();status("unsupported_icon_transform");return;
                 }
                 if(!found){union.set(item);found=true;}else union.union(item);
                 visibleIcons++;
             }
             geometry+=";container="+cells.getClass().getName()+";children="+cells.getChildCount()
-                    +";visible_icons="+visibleIcons+";icons="+union.toShortString();
+                    +";visible_icons="+visibleIcons+";icons="+union.toShortString()
+                    +";native_bounds="+nativeBounds+";drawable_bounds="+drawableBounds
+                    +";cell_bounds="+cellBounds+";visible_labels="+visibleLabels;
             if(!found){clearMaterial();status("no_visible_dock_icons");return;}
             float density=view.getResources().getDisplayMetrics().density;
             int[] region=LiquidGlassDockPolicy.bounds(view.getWidth(),view.getHeight(),union.left,union.top,
@@ -149,6 +255,7 @@ final class LiquidGlassDockHook {
             if(glass==null){
                 source=new LayerBackdropSource(view);
                 glass=new LiquidGlassDrawable(view,source,38f);
+                glass.setAnimatedFallback(true);
             }
             // Follow native dark-label/easy-mode variants without repainting their text or icons.
             glass.setForegroundIsLight(lightLabels==null||lightLabels);

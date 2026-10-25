@@ -15,6 +15,9 @@ final class RapidFireCrashFuse {
     static final String FUSED = "ls_augment_tgk_fuse_tripped";
     private enum State { UNKNOWN, READY, ARMED, FUSED }
     private static volatile State state = State.UNKNOWN;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static volatile Context context;
     private static volatile Runnable listener;
     private static volatile boolean markerRequested;

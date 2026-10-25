@@ -27,6 +27,19 @@ public final class TestEnhancementCatalog {
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);
         check(upgraded!=null&&"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))&&"2".equals(upgraded.get(ConfigSchema.STATUSBAR_CLOCK_ROWS)),"upgrade preserves existing settings");
         check("0".equals(upgraded.get(GameOptions.QUICK_SWITCH))&&"0".equals(upgraded.get(LauncherOptions.KEEP_EMPTY)),"upgrade appends disabled features");
+        for(int mask=0;mask<8;mask++){
+            Map<String,String> launcher=new LinkedHashMap<>(previous);
+            String[] additions={LauncherOptions.WIDGET_RESIZE,LauncherOptions.DOCK_UNLIMITED,LauncherOptions.NEW_APPS_LAST_PAGE};
+            for(int i=0;i<additions.length;i++){
+                check("0".equals(upgraded.get(additions[i])),"upgrade leaves new launcher overrides disabled");
+                launcher.put(additions[i],(mask&(1<<i))==0?"0":"1");
+            }
+            ConfigSnapshot configured=ConfigSnapshot.create(4,12346,launcher);
+            ConfigSnapshot restored=configured==null?null:ConfigSnapshot.parse(configured.serialize());
+            check(restored!=null,"new launcher overrides survive snapshot serialization");
+            for(String key:additions)check(launcher.get(key).equals(restored.get(key)),"launcher switches remain independent: "+key);
+            check("1".equals(restored.get(ConfigSchema.AI_TRIGGER_ENABLED)),"new launcher overrides preserve existing settings");
+        }
         String screenshotCrop=SystemOptions.key("screenshot_crop_unlimited"),galleryCrop=SystemOptions.key("gallery_crop_unlimited");
         check("0".equals(upgraded.get(screenshotCrop))&&"0".equals(upgraded.get(galleryCrop)),"upgrade keeps both crop overrides disabled");
         Map<String,String> cropValues=new LinkedHashMap<>(previous);

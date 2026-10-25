@@ -7,7 +7,7 @@ import argparse, hashlib, json, os, subprocess, zipfile, uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE=ROOT/'tools/fixtures/island/IslandFixtureRunner.java'
-MANIFEST='''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ls.augment.regression.island" android:versionCode="1" android:versionName="island-lifecycle-r1">
+MANIFEST='''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ls.augment.regression.island" android:versionCode="1" android:versionName="island-lifecycle-r2-controls">
  <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="36"/>
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
  <instrumentation android:name="ls.augment.regression.island.IslandFixtureRunner" android:targetPackage="ls.augment.regression.island"/>
@@ -45,7 +45,7 @@ def main():
     run(build/'zipalign.exe','-f','4',unsigned,aligned)
     run(build/'apksigner.bat','sign','--ks',Path.home()/'.android/debug.keystore','--ks-pass','pass:android','--out',apk,aligned)
     run(build/'apksigner.bat','verify',apk)
-    (out/'build.json').write_text(json.dumps({'apk':str(apk),'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'source':str(SOURCE),'sourceSha256':source_hash,'sourceHashes':source_hashes,'manifestSha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),'fixtureRevision':'island-lifecycle-r1','mainManifestChanged':False},indent=2),encoding='utf-8')
+    (out/'build.json').write_text(json.dumps({'apk':str(apk),'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'source':str(SOURCE),'sourceSha256':source_hash,'sourceHashes':source_hashes,'manifestSha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),'fixtureRevision':'island-lifecycle-r2-controls','mainManifestChanged':False},indent=2),encoding='utf-8')
     print(apk)
 
 if __name__=='__main__':main()

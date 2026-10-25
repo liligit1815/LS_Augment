@@ -14,6 +14,9 @@ final class ScreenTimeoutHook {
 
     private ScreenTimeoutHook() { }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static int install(AugmentModule module,ClassLoader loader) {
         // The OEM summary calls this writer for values above ten minutes, even
         // when they are present in its own full values/entries arrays. Merely
@@ -64,6 +67,9 @@ final class ScreenTimeoutHook {
         return -1;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static boolean deoptimizeCallers(AugmentModule module,ClassLoader loader) {
         try {
             Class<?> type=Class.forName(CONTROLLER,false,loader);

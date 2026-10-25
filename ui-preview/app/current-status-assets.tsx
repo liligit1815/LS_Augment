@@ -23,7 +23,7 @@ import {
   ChevronRight,
   ImagePlus,
 } from 'lucide-react';
-import icons from './current-asset-icons.json';
+import icons from './current-status-icons.json';
 import { Button, Card, useModel } from './current-ui';
 import { LayoutNumber } from './current-status-sheet';
 import { NativeFold } from './current-native-controls';
@@ -36,16 +36,18 @@ type Binding = {
   y: number;
   opacity: number;
   mirror: boolean;
+  originalColor?: boolean;
 };
 type AssetPlan = {
   bindings: Record<string, Binding>;
   fonts: Record<string, string>;
+  visibility: Record<string, boolean>;
 };
-const empty = (): AssetPlan => ({ bindings: {}, fonts: {} });
+const empty = (): AssetPlan => ({ bindings: {}, fonts: {}, visibility: {} });
 const parse = (raw: string): AssetPlan => {
   try {
     const p = JSON.parse(raw);
-    return p?.bindings && p?.fonts ? p : empty();
+    return p?.bindings && p?.fonts ? {...p, visibility: p.visibility || {}} : empty();
   } catch {
     return empty();
   }
@@ -58,13 +60,16 @@ const Context = createContext<{
   discard: () => void;
   undo: () => void;
   canUndo: boolean;
+  redo: () => void;
+  canRedo: boolean;
 }>(null!);
 export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
   const m = useModel(),
     raw = m.values[ASSETS_KEY] || '';
   const [draft, setDraft] = useState(() => parse(raw)),
     [saved, setSaved] = useState(() => parse(raw)),
-    [history, setHistory] = useState<AssetPlan[]>([]);
+    [history, setHistory] = useState<AssetPlan[]>([]),
+    [future, setFuture] = useState<AssetPlan[]>([]);
   const latestDraft = useRef(draft);
   useEffect(() => {
     const next = parse(raw);
@@ -72,12 +77,14 @@ export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
     setDraft(next);
     latestDraft.current = next;
     setHistory([]);
+    setFuture([]);
   }, [raw]);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   const update = (next: AssetPlan | ((current: AssetPlan) => AssetPlan)) => {
     const current = latestDraft.current;
     const resolved = typeof next === 'function' ? next(current) : next;
     setHistory((h) => [...h.slice(-19), current]);
+    setFuture([]);
     latestDraft.current = resolved;
     setDraft(resolved);
   };
@@ -90,6 +97,7 @@ export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
     latestDraft.current = saved;
     setDraft(saved);
     setHistory([]);
+    setFuture([]);
   }, [saved]);
   useEffect(() => {
     m.registerNavigationGuard?.((next) => {
@@ -137,11 +145,19 @@ export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
         apply,
         discard,
         undo: () => {
+          setFuture([...future, draft]);
           latestDraft.current = history.at(-1)!;
           setDraft(history.at(-1)!);
           setHistory(history.slice(0, -1));
         },
         canUndo: history.length > 0,
+        redo: () => {
+          setHistory([...history, draft]);
+          latestDraft.current = future.at(-1)!;
+          setDraft(future.at(-1)!);
+          setFuture(future.slice(0, -1));
+        },
+        canRedo: future.length > 0,
       }}
     >
       {children}
@@ -192,6 +208,7 @@ function DraftActions() {
       <button disabled={!a.canUndo} onClick={a.undo}>
         撤销
       </button>
+      <button disabled={!a.canRedo} onClick={a.redo}>重做</button>
       <button disabled={!a.dirty} onClick={a.apply}>
         应用到状态栏
       </button>
@@ -202,7 +219,7 @@ const roles = [
   ['global', '统一字体'],
   ['clock', '时钟'],
   ['network', '网速'],
-  ['hardware', '硬件信息'],
+  ['metrics', '实时指标'],
   ['battery', '电量数字'],
   ['bluetooth', '蓝牙电量'],
   ['other', '其他状态栏文字'],
@@ -297,19 +314,22 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
     a = useContext(Context);
   const [tab, setTab] = useState('icons'),
     [query, setQuery] = useState(''),
-    [filter, setFilter] = useState('all'),
-    [position, setPosition] = useState('主屏');
+    [filter, setFilter] = useState('all');
+  const position = m.values['prototype:asset-surface'] || 'all';
+  const surfacePrefix = position === 'all' ? '' : position + '|';
+  const resolveFont = (role: string) => [a.draft.fonts[surfacePrefix + role], a.draft.fonts[surfacePrefix + 'global'], a.draft.fonts[role], a.draft.fonts.global].find(value => value && value !== 'inherit');
+  const surfacePicker = <label className="c-layout-select sd-asset-surface">显示位置<select aria-label="素材与字体显示位置" value={position} onChange={e => m.set('prototype:asset-surface', e.target.value)}>{[['all','共享方案'],['status','桌面／应用'],['keyguard','锁屏'],['notification','通知中心'],['control','控制中心']].map(([value,title]) => <option key={value} value={value}>{title}</option>)}</select></label>;
   const [state, setState] = useState('default'),
     [layer, setLayer] = useState('whole'),
     [error, setError] = useState('');
   const icon = icons.find((icon) => icon.id === id),
-    bindingKey = (id || '') + ':' + state + ':' + layer;
+    bindingKey = surfacePrefix + (id || '') + ':' + state + ':' + layer;
   const ownBinding = a.draft.bindings[bindingKey];
   const binding =
     ownBinding ||
     (state !== 'default'
-      ? a.draft.bindings[(id || '') + ':default:' + layer]
-      : undefined);
+      ? a.draft.bindings[surfacePrefix + (id || '') + ':default:' + layer]
+      : undefined) || a.draft.bindings[(id || '') + ':' + state + ':' + layer] || a.draft.bindings[(id || '') + ':default:' + layer];
   const patch = (next: Partial<Binding>) => {
     if (binding)
       a.update({
@@ -360,9 +380,10 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
     return (
       <>
         <p className="d-page-description">
-          {icon.group} · 外观仅覆盖主屏与锁屏顶部
+          {icon.group} · 按图标、状态与图层配置
         </p>
         <DraftActions />
+        {surfacePicker}
         <Card>
           <div className="d-asset-preview" aria-label="图标外观草稿预览">
             {binding ? (
@@ -372,6 +393,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
                 style={{
                   transform: `translate(${binding.x}px,${binding.y}px) scale(${binding.scale / 100}) scaleX(${binding.mirror ? -1 : 1})`,
                   opacity: binding.opacity / 100,
+                  filter: binding.originalColor ? undefined : 'grayscale(1)',
                 }}
               />
             ) : (
@@ -423,8 +445,9 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
             </label>
           </div>
           <p className="d-save-note">
-            未单独设置的状态使用默认素材；更换图片不会改变图标显隐规则。
+            未单独设置的状态继承默认素材，具体位置继承共享方案。
           </p>
+          <label className="c-layout-select">本地素材<select aria-label="复用本地素材" value="" onChange={e => {const source = a.draft.bindings[e.target.value]; if (source) a.update({...a.draft, bindings:{...a.draft.bindings, [bindingKey]:{...source}}});}}><option value="">选择已有图片或动画</option>{Object.entries(a.draft.bindings).map(([key,b]) => <option key={key} value={key}>{b.name}</option>)}</select></label>
           <label className="c-button c-upload">
             <ImagePlus size={16} />
             {binding ? '更换素材' : '选择图片或动画'}
@@ -447,12 +470,12 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
                     <LayoutNumber
                       key={key}
                       title={
-                        ['缩放百分比', '水平偏移', '垂直偏移', '透明度百分比'][
+                        ['缩放百分比', '左右偏移（dp）', '上下偏移（dp）', '不透明度百分比'][
                           i
                         ]
                       }
-                      min={i === 0 ? 10 : i === 3 ? 0 : -200}
-                      max={i === 0 ? 1000 : i === 3 ? 100 : 200}
+                      min={i === 0 ? 10 : i === 3 ? 0 : -64}
+                      max={i === 0 ? 400 : i === 3 ? 100 : 64}
                       value={binding[key]}
                       onChange={(value) => patch({ [key]: value })}
                     />
@@ -466,6 +489,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
                   />
                   水平镜像
                 </label>
+                <label className="c-check"><input type="checkbox" checked={!!binding.originalColor} onChange={e => patch({originalColor:e.target.checked})}/>保留素材原色</label>
               </NativeFold>
               <Button
                 secondary
@@ -476,7 +500,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
                   a.update({ ...a.draft, bindings: next });
                 }}
               >
-                恢复此状态原厂外观
+                清除当前位置状态图层
               </Button>
             </>
           )}
@@ -487,14 +511,8 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
           )}
         </Card>
         <Card>
-          <NativeFold title="现有显示设置">
-            <p className="d-page-description">
-              沿用现有的隐藏位置与附属元素规则。素材外观修改只覆盖顶部，不会自动隐藏原图标。
-            </p>
-            <Button onClick={() => m.go('status_layout')}>
-              返回状态栏显示设置
-            </Button>
-          </NativeFold>
+          <NativeFold title="图标显示与间距"><p className="c-native-note">显示规则和布局间距已归入图标管理；此处的偏移只改变素材内部位置。</p><Button onClick={()=>{m.set('prototype:status:surface',position);m.go('status_icon/'+id);}}>打开此图标设置</Button></NativeFold>
+          <Button secondary onClick={() => {const next=Object.fromEntries(Object.entries(a.draft.bindings).filter(([key]) => !key.split('|').at(-1)!.startsWith(id + ':'))); a.update({...a.draft,bindings:next});}}>清除此图标全部状态素材</Button>
         </Card>
       </>
     );
@@ -506,7 +524,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
       (filter === 'all' ||
         (filter === 'custom' &&
           Object.keys(a.draft.bindings).some((key) =>
-            key.startsWith(i.id + ':'),
+            key.startsWith(surfacePrefix + i.id + ':'),
           )) ||
         (filter === 'visible' && sampleVisible.has(i.id)) ||
         (filter === 'hidden' && !sampleVisible.has(i.id))),
@@ -517,6 +535,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
         识别系统图标、设置不同状态的素材与字体，预览后统一应用。
       </p>
       <DraftActions />
+      {surfacePicker}
       <div className="d-assets-tabs" role="tablist" aria-label="素材管理分类">
         {[
           ['icons', '图标总览'],
@@ -546,17 +565,6 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
           </div>
           <div className="c-layout-fields">
             <label className="c-layout-select">
-              观察位置
-              <select
-                aria-label="观察位置"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-              >
-                <option>主屏</option>
-                <option>锁屏</option>
-              </select>
-            </label>
-            <label className="c-layout-select">
               筛选
               <select
                 aria-label="图标筛选"
@@ -571,7 +579,7 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
             </label>
           </div>
           <p className="d-save-note">
-            {position}示例 · {matched.length} 项 · 显示状态不是当前设备实测
+            {matched.length} 项 · 显示状态为示例
           </p>
           <Card className="d-preference-group">
             {matched.map((i) => (
@@ -609,36 +617,31 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
               <strong>{title}</strong>
               <select
                 aria-label={title + '选择'}
-                value={a.draft.fonts[key] || 'inherit'}
+                value={a.draft.fonts[surfacePrefix + key] || 'inherit'}
                 onChange={(e) =>
                   a.update({
                     ...a.draft,
-                    fonts: { ...a.draft.fonts, [key]: e.target.value },
+                    fonts: { ...a.draft.fonts, [surfacePrefix + key]: e.target.value },
                   })
                 }
               >
                 <option value="inherit">
-                  {key === 'global' ? '默认（原厂字体）' : '跟随统一字体'}
+                  {key === 'global' ? position === 'all' ? '默认（原厂字体）' : '继承共享字体' : position === 'all' ? '跟随统一字体' : '继承共享与统一字体'}
                 </option>
                 <option value="native">原厂字体</option>
                 <option value="sans-serif">无衬线</option>
                 <option value="serif">衬线</option>
                 <option value="monospace">等宽</option>
-                {a.draft.fonts[key]?.startsWith('file:') && (
-                  <option value={a.draft.fonts[key]}>
-                    {a.draft.fonts[key].slice(5)}
+                {a.draft.fonts[surfacePrefix + key]?.startsWith('file:') && (
+                  <option value={a.draft.fonts[surfacePrefix + key]}>
+                    {a.draft.fonts[surfacePrefix + key].slice(5)}
                   </option>
                 )}
               </select>
               <span
                 className="d-font-sample"
                 style={{
-                  fontFamily: previewFont(
-                    key !== 'global' &&
-                      (!a.draft.fonts[key] || a.draft.fonts[key] === 'inherit')
-                      ? a.draft.fonts.global
-                      : a.draft.fonts[key],
-                  ),
+                  fontFamily: previewFont(resolveFont(key)),
                 }}
               >
                 12:34 · 128 KB/s · 88%
@@ -654,12 +657,13 @@ export function CurrentStatusAssets({ id }: { id?: string }) {
                     if (file && file.size <= 4 * 1024 * 1024)
                       a.update({
                         ...a.draft,
-                        fonts: { ...a.draft.fonts, [key]: 'file:' + file.name },
+                        fonts: { ...a.draft.fonts, [surfacePrefix + key]: 'file:' + file.name },
                       });
                     else m.tell('请选择4 MiB以内的字体文件');
                   }}
                 />
               </label>
+              <button className="d-font-import" disabled={!a.draft.fonts[surfacePrefix + key]} onClick={() => {const next={...a.draft.fonts}; delete next[surfacePrefix + key]; a.update({...a.draft,fonts:next});}}>移除覆盖</button>
             </div>
           ))}
           <p className="d-save-note">

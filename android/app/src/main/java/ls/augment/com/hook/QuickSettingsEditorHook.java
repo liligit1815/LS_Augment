@@ -15,13 +15,17 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 /** Native tile editor uses fixed-size frames and caches its adapter's column count. */
 final class QuickSettingsEditorHook {
     private static final String CONTROLLER="com.zte.controlcenter.CCCustomizerController";
-    private static final String TILE="com.android.systemui.qs.customize.CustomizeTileView";
+    private static String tileType="com.android.systemui.qs.customize.CustomizeTileView";
     private static final String P="ls_augment_rm_qs_";
     private static final Map<Object,State> STATES=new WeakHashMap<>();
     private static final Map<View,int[]> FRAMES=new WeakHashMap<>();
     private QuickSettingsEditorHook(){ }
 
     static int install(AugmentModule module,ClassLoader loader){
+        final String customize;
+        try{customize=SystemUiCompatibility.customizePackage(loader);tileType=customize+"CustomizeTileView";}
+        catch(ClassNotFoundException missing){module.logFeatureError("QS_EDITOR_CONTRACT",missing);return 0;}
+        module.logFeatureInfo("QS_EDITOR_ADAPTER "+customize);
         int count=hook(module,loader,CONTROLLER,"onViewAttached",0,null,(owner,args,result)->{
             Object root=field(owner,"mView"),adapter=field(owner,"mTileAdapter");
             Object list=call(root,"getRecyclerView");
@@ -33,7 +37,7 @@ final class QuickSettingsEditorHook {
         count+=hook(module,loader,CONTROLLER,"onViewDetached",0,null,(owner,args,result)->{
             State state=STATES.remove(owner);if(state!=null)state.detach();return PASS;
         });
-        count+=hook(module,loader,"com.android.systemui.qs.customize.TileAdapter","onCreateViewHolder",2,null,(owner,args,result)->{
+        count+=hook(module,loader,customize+"TileAdapter","onCreateViewHolder",2,null,(owner,args,result)->{
             Object frame=field(result,"itemView");
             if(frame instanceof ViewGroup&&args[0] instanceof ViewGroup)fitFrame((ViewGroup)frame,(ViewGroup)args[0]);
             return PASS;
@@ -48,7 +52,10 @@ final class QuickSettingsEditorHook {
         });
         return count;
     }
-    static boolean customTile(View view){return TILE.equals(view.getClass().getName())&&FeatureSettings.enabled(view.getContext(),P+"grid");}
+    static boolean customTile(View view){return tileType.equals(view.getClass().getName())&&FeatureSettings.enabled(view.getContext(),P+"grid");}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static int dimension(View view,String name){int id=view.getResources().getIdentifier(name,"dimen","com.android.systemui");return id==0?0:view.getResources().getDimensionPixelSize(id);}
     private static int cellWidth(ViewGroup list,int nativeWidth){
         boolean land=list.getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;
@@ -59,7 +66,7 @@ final class QuickSettingsEditorHook {
     }
     private static void fitFrame(ViewGroup frame,ViewGroup list){
         View tile=null;
-        for(int i=0;i<frame.getChildCount();i++)if(TILE.equals(frame.getChildAt(i).getClass().getName())){tile=frame.getChildAt(i);break;}
+        for(int i=0;i<frame.getChildCount();i++)if(tileType.equals(frame.getChildAt(i).getClass().getName())){tile=frame.getChildAt(i);break;}
         if(tile==null||frame.getLayoutParams()==null)return;
         if(!customTile(tile)){restoreFrame(frame);return;}
         int nativeWidth=dimension(tile,"mifavor_qs_tile_width"),nativeHeight=dimension(tile,"mifavor_qs_wide_tile_height");
@@ -76,7 +83,7 @@ final class QuickSettingsEditorHook {
         int[] saved=FRAMES.remove(frame);if(saved==null||frame.getLayoutParams()==null)return;
         ViewGroup.LayoutParams params=frame.getLayoutParams();params.width=saved[0];params.height=saved[1];frame.setLayoutParams(params);
         for(int i=0;i<frame.getChildCount();i++){
-            View tile=frame.getChildAt(i);if(TILE.equals(tile.getClass().getName())){
+            View tile=frame.getChildAt(i);if(tileType.equals(tile.getClass().getName())){
                 tile.setScaleX(1);tile.setScaleY(1);
                 // During off/rotation, native onMeasure can report its fixed
                 // outer size while its label was measured against the old small

@@ -18,6 +18,9 @@ import ls.augment.com.EntryVisibilityPolicy;
 
 /** Filters exact entries without changing PackageManager or minors-mode restrictions. */
 final class EntryVisibilityHook {
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static EntryVisibilityHook settings, launcher;
     private final AugmentModule module;
     private final String host;
@@ -171,6 +174,9 @@ final class EntryVisibilityHook {
         return false;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private int installLauncher(ClassLoader loader) {
         int count = 0;
         MinorsWorkspaceHook.install(module, loader);

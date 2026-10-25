@@ -24,10 +24,25 @@ def append_members(name, members):
 SOURCES.update({
     'ls/augment/com/hook/LauncherOwnedStateClient.java': '''package ls.augment.com.hook;import android.content.*;class LauncherOwnedStateClient {
         static boolean available=true;static int blockingCalls,readyCalls;
-        static void reset(){available=true;blockingCalls=0;readyCalls=0;}
+        static final java.util.List<Runnable> listeners=new java.util.ArrayList<>();
+        static void reset(){available=true;blockingCalls=0;readyCalls=0;listeners.clear();}
+        static boolean addReadyListener(Context c,String kind,Runnable listener){listeners.add(listener);if(available)new android.os.Handler(android.os.Looper.getMainLooper()).post(listener);return true;}
+        static void publishReady(){available=true;for(Runnable listener:new java.util.ArrayList<>(listeners))listener.run();}
         static boolean needsSave(SharedPreferences p){return false;}
         static SharedPreferences preferences(Context c,String kind){blockingCalls++;if(!available)throw new IllegalStateException("private state unavailable");return c.getSharedPreferences("ls_augment_launcher_pages",0);}
         static SharedPreferences readyPreferences(Context c,String kind){readyCalls++;return available?c.getSharedPreferences("ls_augment_launcher_pages",0):null;}}''',
+    'ls/augment/com/hook/LauncherDatabaseIdentity.java': r'''package ls.augment.com.hook;
+import android.content.Context;import java.util.concurrent.Callable;import java.util.function.Consumer;
+class LauncherDatabaseIdentity {
+ static long inode=77;static int uid=10055;static boolean exists=true,defer;static final java.util.ArrayList<Runnable> queue=new java.util.ArrayList<>();
+ static void reset(){inode=77;uid=10055;exists=true;defer=false;queue.clear();}
+ static String signature(){return "LDI1|"+uid+"|"+(uid/100000)+"|credential|launcher.db|"+"a".repeat(64)+"|9|"+inode;}
+ static class Snapshot {String basename="launcher.db",pathHash="a".repeat(64),storage="credential",error="";int uid=LauncherDatabaseIdentity.uid,user=uid/100000,display=5;long device=9,inode=LauncherDatabaseIdentity.inode,observedAt=123456;Object idp;boolean ownerMatches=true,exists=LauncherDatabaseIdentity.exists;
+ boolean valid(){return exists&&ownerMatches;}String signature(){return valid()?"LDI1|"+uid+"|"+user+"|"+storage+"|"+basename+"|"+pathHash+"|"+device+"|"+inode:"";}}
+ static Snapshot read(Context c,String name){Snapshot value=new Snapshot();value.basename=name;return value;}
+ static void request(Callable<Snapshot> reader,Consumer<Snapshot> result){Runnable work=()->{try{result.accept(reader.call());}catch(Exception e){throw new AssertionError(e);}};if(defer)queue.add(work);else work.run();}
+ static void drain(){for(Runnable task:new java.util.ArrayList<>(queue))task.run();queue.clear();}
+}''',
     'android/animation/LayoutTransition.java': 'package android.animation;public class LayoutTransition {}',
     'android/util/TypedValue.java': 'package android.util;public class TypedValue {public static final int COMPLEX_UNIT_PX=0,COMPLEX_UNIT_SP=2;public int data;}',
     'android/util/SparseArray.java': '''package android.util;
@@ -45,15 +60,16 @@ public class SharedPreferences {
     'android/graphics/Canvas.java': 'package android.graphics;public class Canvas {public void drawRoundRect(RectF r,float a,float b,Paint p){}public int save(){return 0;}public void restoreToCount(int n){}public void translate(float x,float y){}public void scale(float x,float y){}}',
     'android/graphics/Paint.java': 'package android.graphics;public class Paint {public float size=12;public static final int ANTI_ALIAS_FLAG=1;public Paint(){}public Paint(int flags){}public void setColor(int v){}public float measureText(String text,int start,int end){return (end-start)*size*.5f;}}',
     'ls/augment/com/ConfigSnapshot.java':'package ls.augment.com;public class ConfigSnapshot {public final long revision;public ConfigSnapshot(long r){revision=r;}}',
+    'ls/augment/com/BuildConfig.java':'package ls.augment.com;public final class BuildConfig {public static final int VERSION_CODE=20542;}',
     'ls/augment/com/hook/LauncherResetHook.java':'package ls.augment.com.hook;class LauncherResetHook {static void attach(android.content.Context c){}}',
     'android/graphics/RectF.java': 'package android.graphics;public class RectF {public RectF(float l,float t,float r,float b){}}',
     'android/view/DragEvent.java': 'package android.view;public class DragEvent {public static final int ACTION_DRAG_ENTERED=5,ACTION_DRAG_EXITED=6,ACTION_DRAG_ENDED=4,ACTION_DROP=3,ACTION_DRAG_LOCATION=2;public int getAction(){return 0;}public Object getLocalState(){return null;}public float getY(){return 0;}}',
     'android/view/ViewGroup.java': '''package android.view;
 import android.content.Context;import android.animation.LayoutTransition;import java.util.*;
 public class ViewGroup extends View {
-    public final List<View> children=new ArrayList<>();public LayoutTransition transition=new LayoutTransition();public ViewGroup(Context c){super(c);}
+    public static View failAddView;public final List<View> children=new ArrayList<>();public LayoutTransition transition=new LayoutTransition();public ViewGroup(Context c){super(c);}
     public static class LayoutParams {public static final int MATCH_PARENT=-1,WRAP_CONTENT=-2;public int width,height;public LayoutParams(int w,int h){width=w;height=h;}}
-    public void addView(View v){addView(v,children.size());}public void addView(View v,int i){if(v.parent!=null)throw new IllegalStateException("already parented");children.add(i,v);v.parent=this;if(v.params==null)v.params=new android.widget.FrameLayout.LayoutParams(-2,-2);}
+    public void addView(View v){addView(v,children.size());}public void addView(View v,int i){if(v==failAddView)throw new IllegalStateException("injected rollback view failure");if(v.parent!=null)throw new IllegalStateException("already parented");children.add(i,v);v.parent=this;if(v.params==null)v.params=new android.widget.FrameLayout.LayoutParams(-2,-2);}
     public void addView(View v,LayoutParams p){v.params=p;addView(v);}public void removeView(View v){children.remove(v);v.parent=null;}public void removeAllViews(){for(View v:new ArrayList<>(children))removeView(v);}
     public int getChildCount(){return children.size();}public View getChildAt(int i){return children.get(i);}public int indexOfChild(View v){return children.indexOf(v);}public void setLayoutTransition(LayoutTransition t){transition=t;}public LayoutTransition getLayoutTransition(){return transition;}
     public View findViewById(int id){View own=super.findViewById(id);if(own!=null)return own;for(View child:children){View result=child.findViewById(id);if(result!=null)return result;}return null;}
@@ -71,7 +87,7 @@ public class AlertDialog {public interface DismissListener {void dismissed(Alert
     'ls/augment/com/LauncherOptions.java': 'package ls.augment.com;public class LauncherOptions {public static final String KEEP_EMPTY="keep_empty",PAGE_REORDER="page_reorder";}',
     'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;
 import java.util.*;import android.content.Context;
-final class FeatureSettings {static long resetRevision=77;static ls.augment.com.ConfigSnapshot snapshot(Context c){return new ls.augment.com.ConfigSnapshot(resetRevision);}static final Map<String,Boolean> values=new HashMap<>();static final List<Runnable> listeners=new ArrayList<>();static boolean verified=true;static boolean enabled(Context c,String k){return values.getOrDefault(k,false);}static boolean hasVerifiedSnapshot(Context c){return verified;}static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}static void change(String k,boolean v){values.put(k,v);for(Runnable listener:new ArrayList<>(listeners))listener.run();}}
+    final class FeatureSettings {static long resetRevision=77;static ls.augment.com.ConfigSnapshot snapshot(Context c){return new ls.augment.com.ConfigSnapshot(resetRevision);}static final Map<String,Boolean> values=new HashMap<>();static final Map<String,String> diagnostics=new HashMap<>();static void diagnostic(Context c,String key,String value){diagnostics.put(key,value);}static final List<Runnable> listeners=new ArrayList<>();static boolean verified=true;static boolean enabled(Context c,String k){return values.getOrDefault(k,false);}static boolean hasVerifiedSnapshot(Context c){return verified;}static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}static void change(String k,boolean v){values.put(k,v);for(Runnable listener:new ArrayList<>(listeners))listener.run();}}
 ''',
     'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;
 import java.lang.reflect.*;import java.util.*;
@@ -87,7 +103,7 @@ public class x0 {public final List<Integer> values=new ArrayList<>();public int 
     'com/android/launcher3/util/z0.java': 'package com.android.launcher3.util;public class z0 {}',
     'com/android/launcher3/B4.java': 'package com.android.launcher3;public class B4 {public boolean j;}',
     'com/android/launcher3/N5.java': 'package com.android.launcher3;public class N5 {public static boolean j;}',
-    'com/android/launcher3/J3.java': 'package com.android.launcher3;import android.content.*;public class J3 {public static SharedPreferences m(Context c){return c.getSharedPreferences("native",0);}}',
+    'com/android/launcher3/J3.java': 'package com.android.launcher3;import android.content.*;public class J3 {public static SharedPreferences overridePreferences;public static SharedPreferences m(Context c){return overridePreferences!=null?overridePreferences:c.getSharedPreferences("native",0);}}',
     'com/android/launcher3/CellLayout.java': '''package com.android.launcher3;
 import android.content.Context;import android.widget.FrameLayout;import android.view.ViewGroup;
 public class CellLayout extends FrameLayout {public final FrameLayout contents;public final int stableId;public CellLayout(Context c,int id){super(c);stableId=id;contents=new FrameLayout(c);addView(contents);}public ViewGroup getShortcutsAndWidgets(){return contents;}}''',
@@ -106,8 +122,9 @@ public class Workspace extends V4 {
 }''',
     'com/android/launcher3/C2.java': '''package com.android.launcher3;
 import android.content.Context;import com.android.launcher3.util.*;
-public class C2 {public final Workspace workspace;public final B4 h=new B4();public x0 receivedBinding;public int binds,finishes;public final x1.Z util=new x1.Z();public C2(Context c){workspace=new Workspace(c);workspace.x=this;}public Workspace B2(){return workspace;}public void f(x0 ids){binds++;receivedBinding=ids;workspace.removeAllViews();workspace.n.clear();workspace.order.clear();for(int id:ids.A())workspace.v1(id,workspace.order.values.size());}public void h(z0 done){finishes++;}public x1.Z w2(){return util;}public StateManager getStateManager(){return new StateManager();}public static class StateManager {public Object C(){return "NORMAL";}}}''',
-    'com/android/launcher3/P2.java': 'package com.android.launcher3;import android.content.Context;public class P2 {public static final P2 value=new P2();public static P2 h(Context c){return value;}public D3 j(){return new D3();}}',
+public class C2 {public final Workspace workspace;public final B4 h=new B4();public x0 receivedBinding;public int binds,finishes;public boolean failBindOnce,failFinishOnce,incompleteMapping;public final x1.Z util=new x1.Z();public C2(Context c){workspace=new Workspace(c);workspace.x=this;}public Workspace B2(){return workspace;}public void f(x0 ids){binds++;receivedBinding=ids;workspace.removeAllViews();workspace.n.clear();workspace.order.clear();for(int id:ids.A()){workspace.v1(id,workspace.order.values.size());if(failBindOnce){failBindOnce=false;throw new IllegalStateException("injected partial native bind");}}android.content.SharedPreferences prefs=J3.m(workspace.context);if(prefs.contains("launcher.default_screen_id")&&!workspace.order.values.contains(prefs.getInt("launcher.default_screen_id",-1))&&!workspace.order.values.isEmpty()){int fallbackIndex=Math.max(0,Math.min(prefs.getInt("launcher.default_screen",0),workspace.order.values.size()-1));prefs.edit().putInt("launcher.default_screen_id",workspace.order.values.get(fallbackIndex)).putInt("launcher.default_screen",fallbackIndex).apply();}if(incompleteMapping&&ids.A().length>0)workspace.n.remove(ids.A()[ids.A().length-1]);}public void h(z0 done){finishes++;if(failFinishOnce){failFinishOnce=false;throw new IllegalStateException("injected native finish failure");}}public x1.Z w2(){return util;}public StateManager getStateManager(){return new StateManager();}public static class StateManager {public Object C(){return "NORMAL";}}}''',
+    'com/android/launcher3/F1.java': 'package com.android.launcher3;public class F1 {public String E1="launcher.db";}',
+    'com/android/launcher3/P2.java': 'package com.android.launcher3;import android.content.Context;public class P2 {public static final P2 value=new P2();public static P2 h(Context c){return value;}public static F1 profile=new F1();public static F1 e(Context c){return profile;}public D3 j(){return new D3();}}',
     'com/android/launcher3/D3.java': 'package com.android.launcher3;public class D3 {public z1.k2 m0(){return new z1.k2();}}',
     'z1/k2.java': '''package z1;
 import java.util.*;import ls.augment.com.hook.ModelQueue;
@@ -115,7 +132,7 @@ public class k2 {public static int nextId=100,allocations;public static boolean 
     'x1/Z.java': '''package x1;
 import com.android.launcher3.*;import android.content.SharedPreferences;
 /** Fixture OEM helper only: preserve the home ID and recompute its positional index. */
-public class Z {public static boolean failOnce;public static int refreshes;public void b(Workspace ws){refreshes++;SharedPreferences prefs=J3.m(ws.context);int home=prefs.getInt("launcher.default_screen_id",ws.order.values.get(0));int index=ws.order.values.indexOf(home);if(index<0){index=0;home=ws.order.values.get(0);}prefs.edit().putInt("launcher.default_screen_id",home).putInt("launcher.default_screen",index).apply();if(failOnce){failOnce=false;throw new IllegalStateException("injected OEM failure after home-index write");}}}''',
+public class Z {public static boolean failOnce,failAlways;public static android.view.View rollbackFailure;public static int refreshes;public void b(Workspace ws){refreshes++;SharedPreferences prefs=J3.m(ws.context);int home=prefs.getInt("launcher.default_screen_id",ws.order.values.get(0));int index=ws.order.values.indexOf(home);if(index<0){index=0;home=ws.order.values.get(0);}prefs.edit().putInt("launcher.default_screen_id",home).putInt("launcher.default_screen",index).apply();if(failOnce||failAlways){failOnce=false;if(rollbackFailure!=null)android.view.ViewGroup.failAddView=rollbackFailure;throw new IllegalStateException("injected OEM failure after home-index write");}}}''',
     'com/android/launcher3/menu/MenuContainer.java': 'package com.android.launcher3.menu;import android.content.Context;import android.widget.*;public class MenuContainer extends FrameLayout {public LinearLayout m;public Object g;public MenuContainer(Context c){super(c);m=new LinearLayout(c);}public void G(){}}',
     'com/android/launcher3/widget/custom/future/AIFutureWidgetUtils.java': 'package com.android.launcher3.widget.custom.future;import android.content.Context;public class AIFutureWidgetUtils {public static int l(Context c){return -1;}}',
     'ls/augment/com/hook/TestLauncherPagesLifecycle.java': '''package ls.augment.com.hook;
@@ -123,29 +140,29 @@ import android.content.*;import android.os.Handler;import android.view.*;import 
 public class TestLauncherPagesLifecycle {
     static int checks;static AugmentModule module;static Context context;static C2 launcher;static Workspace ws;
     static void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
-    static void setup()throws Exception {LauncherOwnedStateClient.reset();FeatureSettings.values.clear();FeatureSettings.listeners.clear();FeatureSettings.verified=true;Handler.clear();ModelQueue.reset();z1.k2.reset();LauncherPagesEditor.reset();android.widget.Toast.messages.clear();x1.Z.failOnce=false;Field installed=LauncherPagesHook.class.getDeclaredField("installed");installed.setAccessible(true);installed.setBoolean(null,false);module=new AugmentModule();context=new Context();launcher=new C2(context);ws=launcher.workspace;LauncherPagesHook.install(module,TestLauncherPagesLifecycle.class.getClassLoader());if(!module.errors.isEmpty())throw new AssertionError("installation failed",module.errors.get(0));check(module.hooks.size()==5,"all page lifecycle hooks installed");}
+    static void setup()throws Exception {LauncherOwnedStateClient.reset();LauncherDatabaseIdentity.reset();P2.profile=new F1();P2.profile.E1="launcher.db";FeatureSettings.values.clear();FeatureSettings.listeners.clear();FeatureSettings.verified=true;Handler.clear();ModelQueue.reset();z1.k2.reset();LauncherPagesEditor.reset();android.widget.Toast.messages.clear();x1.Z.failOnce=false;x1.Z.failAlways=false;x1.Z.rollbackFailure=null;ViewGroup.failAddView=null;J3.overridePreferences=null;Field installed=LauncherPagesHook.class.getDeclaredField("installed");installed.setAccessible(true);installed.setBoolean(null,false);module=new AugmentModule();context=new Context();launcher=new C2(context);ws=launcher.workspace;LauncherPagesHook.install(module,TestLauncherPagesLifecycle.class.getClassLoader());if(!module.errors.isEmpty())throw new AssertionError("installation failed",module.errors.get(0));check(module.hooks.size()==5,"all page lifecycle hooks installed");}
     static Object controller()throws Exception {Field field=LauncherPagesHook.class.getDeclaredField("controller");field.setAccessible(true);return field.get(null);}
     static void action(String name,Object...args)throws Throwable {Object c=controller();Class<?>[] types=new Class<?>[args.length];Arrays.fill(types,int.class);Method method=c.getClass().getDeclaredMethod(name,types);method.setAccessible(true);try{method.invoke(c,args);}catch(InvocationTargetException error){throw error.getCause();}}
     static void bind(int...ids)throws Throwable {module.call("f",launcher,new x0(ids));module.call("h",launcher,new z0());Handler.drain();}
     static void enable(){FeatureSettings.values.put(LauncherOptions.KEEP_EMPTY,true);FeatureSettings.values.put(LauncherOptions.PAGE_REORDER,true);}
     static View content(int pageId,String text){View child=new View(context);child.tag=text;ws.n(pageId).contents.addView(child);return child;}
     static void order(int...expected){check(Arrays.equals(expected,ws.order.A()),"page order "+Arrays.toString(ws.order.A()));check(ws.getChildCount()==expected.length&&ws.n.size()==expected.length,"page map/list/tree cardinalities match");for(int i=0;i<expected.length;i++)check(ws.getChildAt(i)==ws.n(expected[i]),"view retains stable screen ID "+expected[i]);}
-    static SharedPreferences own(){return context.getSharedPreferences("ls_augment_launcher_pages",0);}static SharedPreferences nativePrefs(){return J3.m(context);}
+    static String manual(String ids){String raw="";for(String id:ids.split(","))raw=ls.augment.com.LauncherPageOrigins.add(raw,LauncherDatabaseIdentity.signature(),Integer.parseInt(id));return raw;}static SharedPreferences own(){return context.getSharedPreferences("ls_augment_launcher_pages",0);}static SharedPreferences nativePrefs(){return J3.m(context);}
     static void home(int id,int index){nativePrefs().edit().putInt("launcher.default_screen_id",id).putInt("launcher.default_screen",index).apply();}
     static void expectRejected(String name,Object...args)throws Throwable {try{action(name,args);throw new AssertionError("operation unexpectedly accepted: "+name);}catch(IllegalStateException expected){checks++;}}
     public static void main(String[] args)throws Throwable {
         setup();x0 input=new x0(30,10,20);module.call("f",launcher,input);module.call("h",launcher,new z0());
         check(launcher.receivedBinding==input&&input.mutations==0,"first OFF passes native binding argument untouched");check(!own().contains("order"),"first OFF writes no module ordering state");order(30,10,20);
 
-        setup();own().edit().putString("order","10,30,20").putBoolean("keep_empty",true).apply();FeatureSettings.verified=false;input=new x0(10,20);module.call("f",launcher,input);module.call("h",launcher,new z0());
-        check(Arrays.equals(input.A(),new int[]{10,20})&&input.mutations==0,"saved order never mutates model-owned binding input");check(launcher.receivedBinding!=input,"restored binding uses copied ID list");order(10,30,20);module.call("i3",ws);check(ws.stripCalls==0,"unverified boot configuration cannot strip saved blank pages");check(own().getBoolean("keep_empty",false),"unverified snapshot keeps persisted protection");
+        setup();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();FeatureSettings.verified=false;input=new x0(10,20);module.call("f",launcher,input);module.call("h",launcher,new z0());
+        check(Arrays.equals(input.A(),new int[]{10,20})&&input.mutations==0,"saved order never mutates model-owned binding input");check(launcher.receivedBinding!=input,"restored binding uses copied ID list");order(10,20);module.call("i3",ws);check(ws.stripCalls==0,"unverified boot configuration cannot strip saved blank pages");check(own().getBoolean("keep_empty",false),"unverified snapshot keeps persisted protection");
 
         setup();enable();bind(10,20,-201);module.call("Q0",ws);check(ws.convertCalls==0,"keep-empty blocks native renaming of a stable page into a disposable placeholder");ws.dragging=true;android.os.SystemClock.now+=300;Handler.drain();check(ws.n(-201)!=null&&ws.cleanupCalls==0,"placeholder cleanup waits until dragging ends");ws.dragging=false;android.os.SystemClock.now+=300;Handler.drain();order(10,20);check(ws.cleanupCalls==1,"native placeholder cleanup runs after drag, preserving ordinary blank pages");FeatureSettings.values.put(LauncherOptions.KEEP_EMPTY,false);module.call("Q0",ws);check(ws.convertCalls==1,"OFF leaves native empty-page conversion available");
         setup();enable();bind(-201);android.os.SystemClock.now+=300;Handler.drain();order(-201);check(ws.cleanupCalls==0,"cleanup cannot remove the only remaining page");setup();enable();bind(99);action("delete",99);order(99);
 
         setup();enable();bind(10,20,30);content(10,"icon");content(20,"widget");module.call("f",launcher,new x0(10,20,30));
         expectRejected("delete",20);expectRejected("move",10,30);expectRejected("add",1000);order(10,20,30);
-        module.call("h",launcher,new z0());content(10,"icon");content(20,"widget");action("delete",20);order(10,20,30);check(ws.n(20).contents.getChildCount()==1,"nonempty widget page is never deleted");action("delete",30);order(10,20);check(ws.n(30)==null,"only selected empty page removed");
+        module.call("h",launcher,new z0());Handler.drain();content(10,"icon");content(20,"widget");action("delete",20);order(10,20,30);check(ws.n(20).contents.getChildCount()==1,"nonempty widget page is never deleted");action("delete",30);order(10,20);check(ws.n(30)==null,"only selected empty page removed");
 
         setup();enable();bind(10,20,30);View icon=content(10,"icon"),folder=content(10,"folder"),widget=content(30,"widget");CellLayout first=ws.n(10),last=ws.n(30);ws.setCurrentPage(0);home(10,0);LayoutTransition transition=ws.getLayoutTransition();
         action("move",10,30);order(20,30,10);check(ws.n(10)==first&&ws.n(30)==last,"moving retains entire CellLayout objects");check(first.contents.getChildAt(0)==icon&&first.contents.getChildAt(1)==folder&&last.contents.getChildAt(0)==widget,"icons folders widgets preserve identity and placement");check(ws.currentPage==2,"current page follows stable ID across move");check(nativePrefs().getInt("launcher.default_screen_id",-1)==10&&nativePrefs().getInt("launcher.default_screen",-1)==2,"default page keeps stable ID and updates index");check(ws.transition==transition,"native layout animation restored after success");check(own().getString("order","").equals("20,30,10"),"successful order is saved");
@@ -156,7 +173,7 @@ public class TestLauncherPagesLifecycle {
         x1.Z.failOnce=true;try{action("add",1000);throw new AssertionError("injected add failure not propagated");}catch(Exception expected){checks++;}check(ws.children.equals(beforeChildren)&&ws.order.values.equals(beforeOrder)&&ws.n.size()==beforeOrder.size(),"failed insert removes only new empty page and restores native map");
         x1.Z.failOnce=true;try{action("delete",20);throw new AssertionError("injected delete failure not propagated");}catch(Exception expected){checks++;}check(ws.children.equals(beforeChildren)&&ws.order.values.equals(beforeOrder)&&ws.n(20)==beforeChildren.get(0),"failed delete restores original empty page object");check(nativePrefs().values.equals(beforePrefs)&&ws.currentPage==beforeCurrent,"add/delete rollback restore home/current state");
         action("move",10,20);order(10,20,30);check(ws.n(10)==first,"editing works after one-shot failure recovery");
-        testMenuEntry();testEditorEntry();testMoveTargets();testPendingMutations();testAsyncAdd();testPrivateStateRecovery();
+        testMenuEntry();testEditorEntry();testMoveTargets();testPendingMutations();testAsyncAdd();testPrivateStateRecovery();testRecoveryBarriers();testFallbackHome();testInterleavedWorkspace();testEmptyOrigins();
         System.out.println("PASS LauncherPages lifecycle "+checks+" safety checks; Android/OEM/Xposed boundary doubles, no device");
     }
 }''',
@@ -176,11 +193,14 @@ SOURCES['android/widget/LinearLayout.java'] = SOURCES['android/widget/LinearLayo
     'public float weight;public LayoutParams(LayoutParams other){super(other.width,other.height);weight=other.weight;}')
 SOURCES['android/view/View.java'] = SOURCES['android/view/View.java'].replace(
     'public void setOnClickListener(OnClickListener l){}',
-    'public OnClickListener clickListener;public void setOnClickListener(OnClickListener l){clickListener=l;}public boolean performClick(){if(clickListener==null)return false;clickListener.onClick(this);return true;}')
+    'public Object getTag(){return tag;}public OnClickListener clickListener;public void setOnClickListener(OnClickListener l){clickListener=l;}public boolean performClick(){if(clickListener==null)return false;clickListener.onClick(this);return true;}')
 
 # Queue callbacks under a virtual clock, but execute model work on a real separate
 # thread. This verifies the database/UI boundary without relying on sleep timing.
 append_members('android/os/Handler.java', 'public static void clear(){synchronized(queue){queue.clear();}}')
+append_members('com/android/launcher3/C2.java', 'public Runnable duringFinish;')
+SOURCES['com/android/launcher3/C2.java'] = SOURCES['com/android/launcher3/C2.java'].replace(
+    'finishes++;if(failFinishOnce)', 'finishes++;if(duringFinish!=null){Runnable action=duringFinish;duringFinish=null;action.run();}if(failFinishOnce)')
 SOURCES['android/os/Looper.java'] = '''package android.os;
 public class Looper {static final Thread ui=Thread.currentThread();static final Looper MAIN=new Looper();public static Looper getMainLooper(){return MAIN;}public static Looper myLooper(){return Thread.currentThread()==ui?MAIN:null;}}'''
 SOURCES['android/widget/Toast.java'] = '''package android.widget;
@@ -217,16 +237,170 @@ append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', '''
         c().attach(ws);c().configurationChanged();
         check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==1&&LauncherOwnedStateClient.readyCalls>0,"later unavailable lifecycles never repeat blocking startup wait");
         check(own().writes==writes&&ws.stripCalls==strips,"unavailable retry cannot write saved order or strip pages");
-        LauncherOwnedStateClient.available=true;c().configurationChanged();
+        LauncherOwnedStateClient.publishReady();Handler.drain();
         check(c().prefs==own(),"normal configuration lifecycle receives the recovered private record");
-        order(10,20);check(ws.n(10)==first&&ws.n(20)==second,"record recovery preserves existing page views and item positions");
-        check(own().writes==writes&&own().getString("order","").equals("20,10")&&ws.stripCalls==strips,"recovery notification preserves migrated order without applying a layout change");
+        order(20,10);check(ws.n(10)==first&&ws.n(20)==second,"automatic recovery reuses existing page views and item positions");
+        check(own().writes==writes&&own().getString("order","").equals("20,10")&&ws.stripCalls==strips,"ready callback applies migrated order before any save");
         bind(10,20);order(20,10);check(LauncherOwnedStateClient.blockingCalls==1,"next normal native binding uses recovered order without another blocking read");
 
         setup();enable();LauncherOwnedStateClient.available=false;bind(10,20);
         LauncherOwnedStateClient.available=true;com.android.launcher3.menu.MenuContainer menu=new com.android.launcher3.menu.MenuContainer(context);menu.g=launcher;
         module.call("G",menu);check(c().prefs==own()&&menu.m.findViewWithTag("ls_augment.pages.entry")!=null,"normal edit menu attach also acquires a now-ready record");
-        check(LauncherOwnedStateClient.blockingCalls==1,"menu recovery remains nonblocking");order(10,20);
+        check(LauncherOwnedStateClient.blockingCalls==1,"menu recovery remains nonblocking");order(10,20);Handler.drain();
+    }
+    static void unavailableLayout()throws Throwable {
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();
+        LauncherOwnedStateClient.available=false;bind(10,20);
+    }
+    static void recoveryRecord() {check(own().getString("order","").equals("20,30,10"),"old record retains missing blank page and custom order");}
+    static void blockedLifecycles()throws Throwable {
+        int writes=own().writes,strips=ws.stripCalls,converts=ws.convertCalls;
+        c().save();c().configurationChanged();module.call("i3",ws);module.call("Q0",ws);
+        check(own().writes==writes&&ws.stripCalls==strips&&ws.convertCalls==converts,"unapplied record blocks saves and native stripping/conversion");
+        Result edit=new Result();c().perform(()->c().move(10,20),edit.done,edit.error);
+        Result allocation=new Result();c().addPage(allocation.done,allocation.error);
+        check(edit.successes==0&&allocation.successes==0&&ModelQueue.pending()==0,"unapplied record blocks editor mutation and ID allocation");
+        expectRejected("move",10,20);c().cancelPending();
+        recoveryRecord();
+    }
+    static void testRecoveryBarriers()throws Throwable {
+        // Private readiness alone cannot authorize persistence; a settings/menu callback
+        // may arrive before the asynchronous restoration runnable gets the UI thread.
+        unavailableLayout();View icon=content(10,"icon"),widget=content(20,"widget");CellLayout first=ws.n(10),second=ws.n(20);
+        ws.setCurrentPage(1);home(10,0);blockedLifecycles();order(10,20);
+        LauncherOwnedStateClient.available=true;
+        com.android.launcher3.menu.MenuContainer menu=new com.android.launcher3.menu.MenuContainer(context);menu.g=launcher;module.call("G",menu);
+        check(c().prefs==own()&&!c().restorationApplied(),"menu-acquired ready record remains unapplied until current layout is restored");
+        FeatureSettings.change("unrelated_gallery_setting",true);blockedLifecycles();order(10,20);
+        LauncherOwnedStateClient.publishReady();Handler.drain();order(20,30,10);recoveryRecord();
+        check(c().restorationApplied()&&ws.n(10)==first&&ws.n(20)==second&&first.contents.getChildAt(0)==icon&&second.contents.getChildAt(0)==widget,"late restoration inserts blank page while retaining existing page and item objects");
+        check(ws.currentPage==0&&nativePrefs().getInt("launcher.default_screen_id",-1)==10&&nativePrefs().getInt("launcher.default_screen",-1)==2,"late restoration keeps current/default stable IDs and updates their indices");
+        int writes=own().writes;FeatureSettings.change("second_unrelated_setting",true);module.call("i3",ws);Handler.drain();recoveryRecord();
+        check(own().writes==writes,"later unrelated settings and strip callbacks cannot save the original fallback layout");
+
+        // ready between bind and finish cannot release the barrier before native finish.
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();LauncherOwnedStateClient.available=false;
+        module.call("f",launcher,new x0(10,20));first=ws.n(10);icon=content(10,"icon");LauncherOwnedStateClient.publishReady();Handler.drain();
+        check(c().prefs==own()&&!c().ready&&!c().restorationApplied(),"ready arriving during native item binding does not count as applied");
+        blockedLifecycles();order(10,20);module.call("h",launcher,new z0());Handler.drain();order(20,30,10);recoveryRecord();
+        check(c().restorationApplied()&&ws.n(10)==first&&ws.n(10).contents.getChildAt(0)==icon,"successful finish applies between-bind-and-finish record without recreating items");
+
+        unavailableLayout();FeatureSettings.verified=false;LauncherOwnedStateClient.publishReady();Handler.drain();blockedLifecycles();ticks(8);order(10,20);
+        check(!c().restorationApplied(),"unverified configuration cannot apply or authorize a recovered layout");FeatureSettings.verified=true;ticks(7);order(20,30,10);recoveryRecord();
+
+        unavailableLayout();ws.dragging=true;LauncherOwnedStateClient.publishReady();Handler.drain();blockedLifecycles();order(10,20);
+        check(c().restoreCheck!=null,"busy drag retains a deferred restore without blocking the UI thread");ws.dragging=false;ticks(4);order(20,30,10);recoveryRecord();
+
+        unavailableLayout();ws.inTransition=true;LauncherOwnedStateClient.publishReady();Handler.drain();Runnable obsolete=c().restoreCheck;int oldGeneration=c().bindingGeneration;
+        module.call("f",launcher,new x0(10,20,40));module.call("h",launcher,new z0());Runnable successor=c().restoreCheck;obsolete.run();
+        check(c().bindingGeneration>oldGeneration&&c().restoreCheck==successor&&!c().restorationApplied(),"stale restore cannot clear its successor or authorize a newer binding");
+        recoveryRecord();ws.inTransition=false;ticks(4);order(20,30,10,40);check(c().restorationApplied()&&own().getString("order","").equals("20,30,10,40"),"new native pages merge only after newer binding successfully applies old record");
+
+        unavailableLayout();ws.inTransition=true;LauncherOwnedStateClient.publishReady();Handler.drain();obsolete=c().restoreCheck;Workspace oldWorkspace=ws;List<View> oldChildren=new ArrayList<>(ws.children);
+        launcher=new C2(context);ws=launcher.workspace;bind(10,20);obsolete.run();order(20,30,10);
+        check(oldWorkspace.children.equals(oldChildren)&&c().restorationApplied(),"workspace replacement cancels old restore without changing retired page objects");
+
+        unavailableLayout();ws.inTransition=true;LauncherOwnedStateClient.publishReady();Handler.drain();obsolete=c().restoreCheck;FeatureSettings.resetRevision=77;
+        check(LauncherPagesHook.pauseForReset(77),"reset accepts idle controller with deferred restoration");own().edit().remove("order").remove("keep_empty").apply();int resetWrites=own().writes;
+        obsolete.run();ws.inTransition=false;ticks(20);c().save();c().configurationChanged();
+        check(c().restoreCheck==null&&own().writes==resetWrites&&!own().contains("order"),"reset cancels queued recovery and prevents old record resurrection");
+        FeatureSettings.values.put(LauncherOptions.PAGE_REORDER,false);FeatureSettings.values.put(LauncherOptions.KEEP_EMPTY,false);FeatureSettings.resetRevision=78;c().configurationChanged();Handler.drain();
+        check(!c().resetPaused&&!own().contains("order"),"new default reset configuration releases pause without replaying old pages");
+
+        unavailableLayout();first=ws.n(10);second=ws.n(20);icon=content(10,"icon");home(10,0);List<View> beforeChildren=new ArrayList<>(ws.children);Map<String,Object> beforeNative=new HashMap<>(nativePrefs().values);LayoutTransition transition=ws.getLayoutTransition();
+        x1.Z.failOnce=true;LauncherOwnedStateClient.publishReady();Handler.drain();order(10,20);blockedLifecycles();
+        check(!c().restorationApplied()&&ws.children.equals(beforeChildren)&&ws.n(10)==first&&ws.n(20)==second&&first.contents.getChildAt(0)==icon,"failed restoration rolls back inserted page, tree and item identity while retaining barrier");
+        check(nativePrefs().values.equals(beforeNative)&&ws.getLayoutTransition()==transition,"failed restoration restores native home state and animation");ticks(13);order(20,30,10);recoveryRecord();
+        check(c().restorationApplied()&&ws.n(10)==first,"one-shot restore failure automatically retries safely");
+
+        unavailableLayout();int initialFailures=module.errors.size();x1.Z.failAlways=true;LauncherOwnedStateClient.publishReady();Handler.drain();int failures=module.errors.size();ticks(200);order(10,20);recoveryRecord();
+        check(failures==initialFailures+1&&module.errors.size()==failures&&!c().restorationApplied(),"persistent restore failures keep record and bound repeated error logging");
+
+        unavailableLayout();first=ws.n(10);x1.Z.failOnce=true;x1.Z.rollbackFailure=first;LauncherOwnedStateClient.publishReady();Handler.drain();
+        check(!c().ready&&!c().restorationApplied()&&c().restoreCheck==null,"failed rollback keeps all saving/editing blocked until a successful native rebind");blockedLifecycles();
+        ViewGroup.failAddView=null;x1.Z.rollbackFailure=null;bind(10,20);order(20,30,10);recoveryRecord();check(c().restorationApplied(),"full native rebind can recover after rollback failure");
+
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();launcher.incompleteMapping=true;module.call("f",launcher,new x0(10,20));module.call("h",launcher,new z0());Handler.drain();
+        check(!c().restorationApplied(),"ready record and successful API return cannot authorize incomplete native object mapping");blockedLifecycles();launcher.incompleteMapping=false;bind(10,20);order(20,30,10);recoveryRecord();
+
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();launcher.failBindOnce=true;
+        try{module.call("f",launcher,new x0(10,20));throw new AssertionError("partial bind must throw");}catch(IllegalStateException expected){checks++;}
+        module.call("h",launcher,new z0());Handler.drain();check(!c().ready&&!c().restorationApplied(),"partial failed bind is never authorized by a subsequent finish callback");blockedLifecycles();bind(10,20);order(20,30,10);
+
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();launcher.failFinishOnce=true;module.call("f",launcher,new x0(10,20));
+        try{module.call("h",launcher,new z0());throw new AssertionError("finish must throw");}catch(IllegalStateException expected){checks++;}
+        Handler.drain();check(!c().ready&&!c().restorationApplied(),"failed finish leaves current binding restoration barrier intact");blockedLifecycles();bind(10,20);order(20,30,10);
+
+        setup();enable();own().edit().putString("order","20,0,10").putBoolean("keep_empty",true).apply();launcher.h.j=true;bind(0,10,20);order(0,10,20);
+        check(!c().restorationApplied()&&own().getString("order","").equals("20,0,10"),"saved order cannot move a pinned fixed page or overwrite its recovery record");
+        module.call("i3",ws);module.call("Q0",ws);c().save();order(0,10,20);
+
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();ws.panels=2;bind(10,20);order(10,20);blockedLifecycles();
+        check(!c().restorationApplied(),"multiple native panels retain recovery record without automatic tree changes");ws.panels=1;ticks(13);order(20,30,10);recoveryRecord();
+
+        setup();ws.panels=2;bind(10,20);check(c().restorationApplied()&&!own().contains("order"),"dual-panel native defaults without saved record require no restoration mutation");
+        module.call("Q0",ws);module.call("i3",ws);check(ws.convertCalls==1&&ws.stripCalls==1,"OFF native dual-panel strip/conversion stay available after no-op restore verification");
+        setup();enable();ws.panels=2;own().edit().putString("order","10,20").putBoolean("keep_empty",true).apply();bind(10,20);order(10,20);
+        check(c().restorationApplied(),"dual-panel old record already represented by native tree releases restoration barrier without changing tree");
+    }
+    static void testFallbackHome()throws Throwable {
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==20,"OEM native fallback rewrites missing blank home ID using original index");
+        bind(10,20);ws.setCurrentPage(1);LauncherOwnedStateClient.publishReady();Handler.drain();order(10,30,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==30&&nativePrefs().getInt("launcher.default_screen",-1)==1&&ws.currentPage==2,"late restore preserves original blank default across repeated fallback binding and keeps current stable page");
+
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);home(10,0);
+        LauncherOwnedStateClient.publishReady();Handler.drain();order(10,30,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==10&&nativePrefs().getInt("launcher.default_screen",-1)==0,"user default selection made while recovery waits wins over captured original blank home");
+
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);x1.Z.failOnce=true;LauncherOwnedStateClient.publishReady();Handler.drain();order(10,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==20&&!c().restorationApplied(),"failed restore rolls back original-home attempt to native fallback while preserving barrier");ticks(13);order(10,30,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==30,"safe restore retry can still recover original blank home");
+
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);
+        launcher=new C2(context);ws=launcher.workspace;home(10,0);bind(10,20);LauncherOwnedStateClient.publishReady();Handler.drain();order(10,30,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==10,"replacement workspace does not inherit pending home when its native home state has changed");
+
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);
+        launcher=new C2(context);ws=launcher.workspace;bind(10,20);LauncherOwnedStateClient.publishReady();Handler.drain();order(10,30,20);
+        check(nativePrefs().getInt("launcher.default_screen_id",-1)==30&&nativePrefs().getInt("launcher.default_screen",-1)==1,"Activity workspace recreation with same native record carries only original-home evidence across fallback");
+
+        setup();enable();own().edit().putString("order","10,30,20").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();home(30,1);LauncherOwnedStateClient.available=false;bind(10,20);
+        SharedPreferences distinctNative=new SharedPreferences();distinctNative.edit().putInt("launcher.default_screen_id",20).putInt("launcher.default_screen",1).apply();J3.overridePreferences=distinctNative;
+        launcher=new C2(context);ws=launcher.workspace;bind(10,20);LauncherOwnedStateClient.publishReady();Handler.drain();order(10,30,20);
+        check(nativePrefs()==distinctNative&&nativePrefs().getInt("launcher.default_screen_id",-1)==20,"different native preference identity discards old workspace home evidence even with matching fallback fields");
+    }
+    static void nativeCall(String name,Object owner,Object...args) {try{module.call(name,owner,args);}catch(Throwable failure){throw new AssertionError(failure);}}
+    static void testInterleavedWorkspace()throws Throwable {
+        setup();enable();C2 previous=new C2(context);module.call("f",previous,new x0(90,80));module.call("h",previous,new z0());Handler.drain();
+        com.android.launcher3.menu.MenuContainer menu=new com.android.launcher3.menu.MenuContainer(context);menu.g=previous;module.call("G",menu);
+        View previousEntry=menu.m.findViewWithTag("ls_augment.pages.entry");check(previousEntry!=null,"old bound Workspace had no menu fixture");
+        own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();module.call("f",launcher,new x0(10,20));int generation=c().bindingGeneration;
+        launcher.duringFinish=()->{nativeCall("i3",previous.workspace);nativeCall("Q0",previous.workspace);};
+        module.call("h",launcher,new z0());Handler.drain();
+        check(c().workspace.get()==ws&&c().bindingGeneration==generation,"another Workspace cleanup stole current bind ownership during native finish");
+        check(c().ready&&c().restorationApplied(),"successful current Workspace finish stayed waiting_binding after unrelated cleanup");order(20,30,10);
+        check(previous.workspace.stripCalls==1&&previous.workspace.convertCalls==1,"unowned Workspace native cleanup was blocked");
+        check(own().getString("order","").equals("20,30,10"),"unowned Workspace overwrote current saved page order");
+        int editors=LauncherPagesEditor.opened;previousEntry.performClick();Handler.drain();check(LauncherPagesEditor.opened==editors,"stale menu entry edited a different current Workspace");
+        module.call("G",menu);check(c().workspace.get()==ws&&c().ready&&previousEntry.getVisibility()==View.GONE&&!previousEntry.performClick(),"old menu initialization stole ownership or retained an actionable stale entry");
+
+        int before=c().bindingGeneration;module.call("h",previous,new z0());Handler.drain();
+        check(c().workspace.get()==ws&&c().bindingGeneration==before&&c().ready&&c().restorationApplied(),"late old Workspace finish replaced current ownership");
+        previous.failFinishOnce=true;boolean threw=false;try{module.call("h",previous,new z0());}catch(IllegalStateException expected){threw=true;}
+        check(threw&&c().workspace.get()==ws&&c().ready&&c().restorationApplied(),"old Workspace finish failure invalidated current binding or was swallowed");
+
+        C2 successor=new C2(context);launcher.duringFinish=()->nativeCall("f",successor,new x0(10,20));
+        module.call("h",launcher,new z0());Handler.drain();
+        check(c().workspace.get()==successor.workspace&&!c().ready&&!c().restorationApplied(),"previous finish certified successor before its own native finish");
+        module.call("h",successor,new z0());Handler.drain();
+        check(c().workspace.get()==successor.workspace&&c().ready&&c().restorationApplied(),"successor native finish could not establish its own binding evidence");
+
+        module.call("f",launcher,new x0(10,20));int firstGeneration=c().bindingGeneration;
+        launcher.duringFinish=()->nativeCall("f",launcher,new x0(10,20,40));module.call("h",launcher,new z0());Handler.drain();
+        check(c().workspace.get()==ws&&c().bindingGeneration>firstGeneration&&!c().ready&&!c().restorationApplied(),"outer finish certified a reentrant same-Workspace bind generation");
+        module.call("h",launcher,new z0());Handler.drain();check(c().ready&&c().restorationApplied(),"new same-Workspace generation failed after its own finish");
+        System.out.println("PASS LauncherPages real hook ownership: foreign cleanup, old finish/throw, successor bind during finish and reentrant same-Workspace generation");
     }
     static class Result {int successes;final List<String> errors=new ArrayList<>();final Runnable done=()->successes++;final java.util.function.Consumer<String> error=errors::add;}
     static void ticks(int count){for(int i=0;i<count;i++){android.os.SystemClock.now+=80;Handler.drain();}}
@@ -257,7 +431,7 @@ append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', '''
 
         setup();enable();module.call("f",launcher,new x0(10,20));
         c().showEditor(context);Handler.drain();check(LauncherPagesEditor.opened==0,"entry waits for native binding completion");
-        module.call("h",launcher,new z0());ticks(1);check(LauncherPagesEditor.opened==1,"entry opens after native binding completes");
+        module.call("h",launcher,new z0());ticks(2);check(LauncherPagesEditor.opened==1,"entry opens after native binding and worker source verification complete");
 
         setup();enable();bind(10,20);ws.inTransition=true;c().showEditor(context);ticks(30);
         check(LauncherPagesEditor.opened==0,"entry never opens while the workspace remains busy");
@@ -378,6 +552,33 @@ append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', '''
     }
 ''')
 
+append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', r'''
+    static void testEmptyOrigins()throws Throwable {
+        setup();enable();own().edit().putString("order","20,30,10").putBoolean("keep_empty",true).apply();
+        x0 nativeIds=new x0(10,20);module.call("f",launcher,nativeIds);check(Arrays.equals(launcher.receivedBinding.A(),new int[]{20,10}),"legacy missing ID fabricated an empty page in native bind");module.call("h",launcher,new z0());Handler.drain();order(20,10);
+        check(own().getString("order","").contains("30")&&!own().contains("empty_origins"),"legacy missing ID lost or promoted to trusted manual provenance");
+        module.call("i3",ws);module.call("Q0",ws);Handler.drain();order(20,10);check(own().getString("order","").contains("30"),"strip/save erased unresolved original page intent");
+        bind(10,20);order(20,10);check(ws.n(30)==null,"second binding fabricated quarantined legacy page");
+        setup();enable();bind(10,20,30);order(10,20,30);check(ws.n(30)!=null,"existing native empty page was deleted");
+        setup();enable();bind(10,20);action("add",100);String original=own().getString("empty_origins","");check(ls.augment.com.LauncherPageOrigins.ids(original,c().sourceSignature()).contains(100),"explicit manual add failed to record current file origin");bind(10,20);order(10,20,100);action("delete",100);bind(10,20);order(10,20);check(!own().getString("order","").contains("100"),"explicitly deleted empty page returned");
+        setup();enable();bind(10,20);action("add",100);String savedOrigins=own().getString("empty_origins","");LauncherDatabaseIdentity.inode++;bind(10,20);order(10,20);
+        check(own().getString("empty_origins","").equals(savedOrigins)&&own().getString("order","").contains("100"),"database replacement erased old manual recovery intent");action("add",101);bind(10,20);order(10,20,101);check(ws.n(100)==null,"new DB add relabeled old DB page as current manual origin");
+        LauncherDatabaseIdentity.inode--;bind(10,20);order(10,20,100);check(ws.n(101)==null,"old DB restore accepted different generation manual page");
+        LauncherDatabaseIdentity.uid=110055;bind(10,20);order(10,20);check(ws.n(100)==null,"another Android user reused old empty-page provenance");
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();LauncherDatabaseIdentity.exists=false;bind(10,20);order(20,10);check(ws.n(30)==null&&own().getString("order","").contains("30"),"missing database fabricated or erased manual page");LauncherDatabaseIdentity.exists=true;ticks(13);order(20,30,10);check(c().restorationApplied(),"transient source unavailable permanently cached after file appeared");
+        setup();enable();LauncherDatabaseIdentity.defer=true;module.call("f",launcher,new x0(10,20));module.call("h",launcher,new z0());Handler.drain();check(!c().restorationApplied(),"source request falsely completed before worker result");Workspace old=ws;launcher=new C2(context);ws=launcher.workspace;module.call("f",launcher,new x0(40,50));module.call("h",launcher,new z0());Handler.drain();LauncherDatabaseIdentity.drain();Handler.drain();order(40,50);check(c().restorationApplied()&&old.n(40)==null,"stale source worker result modified successor Workspace");
+        setup();enable();LauncherDatabaseIdentity.defer=true;module.call("f",launcher,new x0(10,20));module.call("h",launcher,new z0());Handler.drain();check(c().sourcePending,"pending source reset fixture");check(LauncherPagesHook.pauseForReset(77),"reset rejected idle pending source");own().edit().remove("order").remove("keep_empty").remove("empty_origins").apply();LauncherDatabaseIdentity.drain();Handler.drain();FeatureSettings.resetRevision=78;c().configurationChanged();LauncherDatabaseIdentity.defer=false;Handler.drain();check(c().restorationApplied()&&!c().sourcePending,"reset left sourcePending latched or resurrected old empty page state");
+        setup();enable();bind(10,20,-201);Handler.drain();check(!own().getString("order","").contains("-201")&&!own().getString("empty_origins","").contains("-201"),"transient native drag placeholder became persistent manual page");
+        setup();enable();bind(10,20);action("add",100);LauncherDatabaseIdentity.inode++;bind(10,20,100);action("delete",100);bind(10,20);order(10,20);LauncherDatabaseIdentity.inode--;bind(10,20);order(10,20,100);check(ws.n(100)!=null,"deleting same numeric native page in new DB erased other DB explicit manual intent");
+        setup();enable();bind(10,20);StringBuilder full=new StringBuilder();for(int i=0;i<128;i++){if(i>0)full.append(',');full.append(i);}own().edit().putString("order",full.toString()).apply();int writes=own().writes;expectRejected("add",1000);order(10,20);check(own().writes==writes&&ws.n(1000)==null,"order capacity rejected only after creating an unpersisted page");
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();module.call("f",launcher,new x0(10,20));module.call("h",launcher,new z0());P2.profile=new F1();Handler.drain();order(20,10);check(ws.n(30)==null&&c().sourceSignature().isEmpty(),"worker result from replaced IDP restored missing page in old binding generation");ticks(15);order(20,10);bind(10,20);order(20,30,10);
+        setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();module.call("f",launcher,new x0(10,20));module.call("h",launcher,new z0());P2.profile.E1="other.db";Handler.drain();order(20,10);check(ws.n(30)==null&&c().sourceSignature().isEmpty(),"worker result with changed dbFile restored missing page under old source");
+        setup();enable();bind(10,20);Result changedDuringAdd=new Result();c().addPage(changedDuringAdd.done,changedDuringAdd.error);Handler.drain();ModelQueue.drain();P2.profile=new F1();Handler.drain();order(10,20);check(changedDuringAdd.successes==0&&changedDuringAdd.errors.size()==1,"post-allocation current IDP switch silently accepted old source");
+        setup();enable();bind(10,20);String confirmed=c().sourceSignature();LauncherDatabaseIdentity.inode++;Result fileChangedDuringAdd=new Result();c().addPage(fileChangedDuringAdd.done,fileChangedDuringAdd.error);Handler.drain();finishModel();order(10,20);check(fileChangedDuringAdd.successes==0&&fileChangedDuringAdd.errors.size()==1&&c().sourceSignature().equals(confirmed),"new inode from add worker silently relabeled existing bound model source");
+        System.out.println("PASS LauncherPages explicit origins: legacy quarantine, same DB restore, inode/user replacement, deletion, stale worker and placeholders");
+    }
+''')
+
 
 def main():
     with tempfile.TemporaryDirectory(prefix='lsa-launcher-pages-') as directory:
@@ -388,7 +589,7 @@ def main():
             path.write_text(text, encoding='utf-8')
         hooks = ROOT / 'android/app/src/main/java/ls/augment/com/hook'
         files = list(root.rglob('*.java')) + [hooks / name for name in (
-            'LauncherPagesHook.java', 'LauncherPageOrder.java', 'TargetReflection.java')]
+            'LauncherPagesHook.java', 'LauncherPageOrder.java', 'TargetReflection.java')] + [hooks.parent / 'LauncherPageOrigins.java']
         subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(root / 'classes'), *map(str, files)], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestLauncherPagesLifecycle'], check=True)
 

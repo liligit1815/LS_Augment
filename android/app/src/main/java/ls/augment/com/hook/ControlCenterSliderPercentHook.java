@@ -20,6 +20,7 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 /** Adds text to the upright native slider frame without changing its children or touch handling. */
 final class ControlCenterSliderPercentHook {
     private static final String BRIGHTNESS = "com.zte.controlcenter.view.CCToggleSliderView";
+    private static final String HORIZONTAL_BRIGHTNESS = "com.zte.controlcenter.view.ToggleSliderView";
     private static final String VOLUME = "com.zte.controlcenter.view.CCVolumeSliderView";
     private static final Map<View, State> STATES = new WeakHashMap<>();
 
@@ -30,6 +31,8 @@ final class ControlCenterSliderPercentHook {
                 (owner, args, result) -> { watch(owner, false); return PASS; });
         count += hook(module, loader, VOLUME, "onAttachedToWindow", 0, null,
                 (owner, args, result) -> { watch(owner, true); return PASS; });
+        count += hook(module, loader, HORIZONTAL_BRIGHTNESS, "onAttachedToWindow", 0, null,
+                (owner, args, result) -> { watch(owner, false); return PASS; });
         return count;
     }
 
@@ -45,11 +48,17 @@ final class ControlCenterSliderPercentHook {
         if (view.isAttachedToWindow()) state.attach();
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View child(View view, String name) {
         int id = view.getResources().getIdentifier(name, "id", "com.android.systemui");
         return id == 0 ? null : view.findViewById(id);
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static boolean named(View view, String name) {
         int id = view.getResources().getIdentifier(name, "id", "com.android.systemui");
         return id != 0 && view.getId() == id;
@@ -59,6 +68,7 @@ final class ControlCenterSliderPercentHook {
             ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> source;
         final boolean volume;
+        final boolean horizontal;
         final String key;
         final Runnable settingsChanged = this::refreshSafely;
         WeakReference<ViewGroup> frame = new WeakReference<>(null);
@@ -110,6 +120,7 @@ final class ControlCenterSliderPercentHook {
         State(View view, boolean volume) {
             source = new WeakReference<>(view);
             this.volume = volume;
+            horizontal = !volume && view.getClass().getName().equals(HORIZONTAL_BRIGHTNESS);
             key = volume ? SystemUiOptions.QS_VOLUME_PERCENT : SystemUiOptions.QS_BRIGHTNESS_PERCENT;
         }
 
@@ -119,14 +130,17 @@ final class ControlCenterSliderPercentHook {
             if (view == null) return;
             // The native SeekBars are rotated 270 degrees. Draw in their upright
             // FrameLayout, not on the SeekBar where text would rotate as well.
-            View holder = volume && view.getParent() instanceof View
+            View holder = horizontal ? view : volume && view.getParent() instanceof View
                     ? (View) view.getParent() : child(view, "slider_frame");
             View seek = volume ? view : child(view, "slider");
             if (!(holder instanceof ViewGroup) || !(seek instanceof SeekBar)) return;
             // Only the two top-panel controls; expanded volume dialogs keep their own UI.
             if (volume ? !named(holder, "volume_slider") : !named(view, "brightness_slider")) return;
             View symbol = child(holder, volume ? "volume_icon" : "toggle");
-            if (symbol == null) return;
+            if (!horizontal && symbol == null) return;
+            // The unified notification panel uses an unrotated native slider,
+            // with its automatic-brightness button beside the track.
+            if (horizontal && seek.getParent() != holder) return;
             frame = new WeakReference<>((ViewGroup) holder);
             slider = new WeakReference<>((SeekBar) seek);
             icon = new WeakReference<>(symbol);
@@ -137,6 +151,10 @@ final class ControlCenterSliderPercentHook {
             FeatureSettings.addSnapshotListener(view.getContext(), settingsChanged);
             if(volume)gainWatch=new AudioGainStateClient.Watch(view,this::gainArrived,this::captureRequest);
             refreshSafely();
+            if (!volume) FeatureSettings.diagnostic(view.getContext(),
+                    "ls_augment_rm_qs_brightness_percent_runtime", "bound;adapter="
+                            + view.getClass().getSimpleName() + ";orientation="
+                            + (horizontal ? "horizontal" : "vertical"));
         }
 
         void refreshSafely() {
@@ -155,7 +173,7 @@ final class ControlCenterSliderPercentHook {
             ViewGroup holder = frame.get();
             SeekBar seek = slider.get();
             View symbol = icon.get();
-            if (!attached || holder == null || seek == null || symbol == null) return;
+            if (!attached || holder == null || seek == null || !horizontal && symbol == null) return;
             String fullBrightness = volume ? null : FullBrightnessHook.label(seek);
             boolean percentEnabled=FeatureSettings.enabled(holder.getContext(),key);
             int stream=volume?liveStream():-1;
@@ -177,11 +195,12 @@ final class ControlCenterSliderPercentHook {
             // resize the first row on rotation. Leave enough room for 100%.
             // Some native configurations hide the automatic-brightness icon.
             // A GONE icon has no laid-out position; keep its percentage visible.
-            float bottom = symbol.getVisibility() != View.GONE && symbol.getHeight() > 0
+            float bottom = horizontal ? seek.getY() + seek.getHeight() / 2f
+                    : symbol.getVisibility() != View.GONE && symbol.getHeight() > 0
                     ? symbol.getY() - 6f * density : holder.getHeight() / 2f + 7f * density;
-            float available = bottom - 6f * density;
+            float available = horizontal ? seek.getHeight() - 8f * density : bottom - 6f * density;
             float size = Math.min(14f * holder.getResources().getDisplayMetrics().scaledDensity,
-                    Math.min(available / 1.4f, holder.getWidth() / 3.4f));
+                    Math.min(available / 1.4f, (horizontal ? seek.getWidth() : holder.getWidth()) / 3.4f));
             if (size < 8f * density) { hide(); return; }
             String text = fullBrightness == null ? percent + "%" : fullBrightness;
             if(liveWanted){
@@ -192,7 +211,8 @@ final class ControlCenterSliderPercentHook {
                 if(live.extended())text=live.percent()+"%";
             }
             if (text.length() > 5) size = Math.min(size,holder.getWidth()/(text.length()*0.65f));
-            label.update(text, holder.getWidth(), holder.getHeight(), bottom, size, density);
+            float center = horizontal ? seek.getX() + seek.getWidth() / 2f : holder.getWidth() / 2f;
+            label.update(text, holder.getWidth(), holder.getHeight(), center, bottom, size, density, horizontal);
             if (!added) { holder.getOverlay().add(label); added = true; }
         }
 
@@ -235,9 +255,10 @@ final class ControlCenterSliderPercentHook {
             paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         }
 
-        void update(String next, int width, int height, float bottom, float size, float density) {
+        void update(String next, int width, int height, float center, float bottom, float size, float density,
+                boolean verticallyCentered) {
             if (next.equals(text) && getBounds().width() == width && getBounds().height() == height
-                    && this.bottom == bottom && textSize == size && this.density == density) return;
+                    && x == center && this.bottom == bottom && textSize == size && this.density == density) return;
             text = next; this.bottom = bottom; textSize = size; this.density = density;
             paint.setTextSize(size);
             // The native fill stays white in night mode too. Match its dark
@@ -247,8 +268,10 @@ final class ControlCenterSliderPercentHook {
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(1.5f * density);
             outline.setColor(0xb0ffffff);
-            x = width / 2f;
-            baseline = bottom - paint.getFontMetrics().descent;
+            x = center;
+            Paint.FontMetrics metrics = paint.getFontMetrics();
+            baseline = verticallyCentered ? bottom - (metrics.ascent + metrics.descent) / 2f
+                    : bottom - metrics.descent;
             setBounds(0, 0, width, height);
             invalidateSelf();
         }

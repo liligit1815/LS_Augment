@@ -17,6 +17,9 @@ final class LauncherResetController {
     private static final String PACKAGE="com.zte.mifavor.launcher";
     private static final Set<String> ROLES=Set.of("grid","grid_bak","pages","pages_bak");
     private LauncherResetController() { }
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     static Result prepare(Context context) {
         Context appContext=context.getApplicationContext();
         int user=android.os.Process.myUid()/100000;

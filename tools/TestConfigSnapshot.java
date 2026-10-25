@@ -24,6 +24,21 @@ public final class TestConfigSnapshot {
         values.put(ConfigSchema.AI_TRIGGER_TEMPLATE_SCAN_MS, "80");
         values.put(ConfigSchema.TGK_RAPID_FIRE_COMPAT_TOKEN, "token-payload");
         ConfigSnapshot snapshot = ConfigSnapshot.create(42L, 123456L, values);
+        ConfigSnapshot.Reader reader = new ConfigSnapshot.Reader();
+        ConfigSnapshot.ParseResult firstRead = reader.read(snapshot.serialize());
+        for (int i = 0; i < 10000; i++) {
+            if (reader.read(new String(snapshot.serialize())) != firstRead)
+                throw new AssertionError("unchanged verified snapshot was decoded again");
+        }
+        ConfigSnapshot nextRead = ConfigSnapshot.create(43L, 123457L, values);
+        if (reader.read(nextRead.serialize()).snapshot.revision != 43L
+                || reader.read(snapshot.serialize()).snapshot.revision != 42L)
+            throw new AssertionError("reader must preserve reset/rollback bytes for authority checks");
+        String corruptedRead = snapshot.serialize().replaceFirst("LSA1", "LSA0");
+        if (reader.read(corruptedRead).snapshot != null || reader.read(null).snapshot != null
+                || reader.read("x".repeat(256 * 1024 + 1)).snapshot != null
+                || reader.read(snapshot.serialize()).snapshot == null)
+            throw new AssertionError("reader accepted invalid bytes or could not recover");
         if (snapshot == null) throw new AssertionError("snapshot creation failed");
         ConfigSnapshot parsed = ConfigSnapshot.parse(snapshot.serialize());
         verifyDiagnosticReasons(snapshot);
@@ -184,7 +199,52 @@ public final class TestConfigSnapshot {
         if(!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_BIG))
                 ||!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_SMALL)))
             throw new AssertionError("new stack modes must default disabled");
-        System.out.println("PASS TestConfigSnapshot (including legacy, LiftArc and notification stack upgrade compatibility)");
+        String beforeExtraction = withoutKeys(snapshot,"atomic_workbench_extraction_");
+        ConfigSnapshot extractionUpgrade = ConfigSnapshot.parse(beforeExtraction);
+        if (extractionUpgrade == null || !"0".equals(extractionUpgrade.get("atomic_workbench_extraction_enabled"))
+                || !"1".equals(extractionUpgrade.get("atomic_workbench_extraction_text"))
+                || !"0".equals(extractionUpgrade.get("atomic_workbench_extraction_landscape"))
+                || !"".equals(extractionUpgrade.get("atomic_workbench_extraction_blacklist"))
+                || !"1".equals(extractionUpgrade.get(ConfigSchema.AI_TRIGGER_ENABLED))
+                || !beforeExtraction.equals(extractionUpgrade.serialize()))
+            throw new AssertionError("extraction addition changed signed bytes, reset existing settings or enabled collection");
+        for (String key : new String[]{"atomic_workbench_extraction_enabled","atomic_workbench_extraction_text",
+                "atomic_workbench_extraction_landscape","atomic_workbench_extraction_blacklist"})
+            if (ConfigSnapshot.parse(withoutExactKeys(snapshot,key)) != null)
+                throw new AssertionError("partial extraction family was repaired: " + key);
+        if (!"a.b;c.d".equals(ConfigSchema.normalize("atomic_workbench_extraction_blacklist","c.d; a.b; c.d"))
+                || ConfigSchema.normalize("atomic_workbench_extraction_blacklist","not a package!") != null)
+            throw new AssertionError("extraction blacklist accepted malformed packages or lost canonical ordering");
+        verifyEntryParameters(snapshot);
+        System.out.println("PASS TestConfigSnapshot (including legacy, LiftArc, extraction, entry parameters and notification stack upgrade compatibility)");
+    }
+
+    private static void verifyEntryParameters(ConfigSnapshot snapshot) throws Exception {
+        String area=AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, sensitivity=AtomicWorkbenchConfig.CORNER_SENSITIVITY;
+        for(String key:new String[]{area,sensitivity}) {
+            if(!"100".equals(ConfigSchema.defaultValue(key))||!"100".equals(snapshot.get(key)))
+                throw new AssertionError("entry default changed: "+key);
+            if(ConfigSnapshot.parse(withoutExactKeys(snapshot,key))!=null)
+                throw new AssertionError("partially missing entry parameter pair accepted: "+key);
+        }
+        String old=withoutExactKeys(snapshot,area,sensitivity);
+        ConfigSnapshot upgraded=ConfigSnapshot.parse(old);
+        if(upgraded==null||!"100".equals(upgraded.get(area))||!"100".equals(upgraded.get(sensitivity))
+                ||!"1".equals(upgraded.get(ConfigSchema.AI_TRIGGER_ENABLED))||upgraded.revision!=snapshot.revision
+                ||!upgraded.serialize().equals(old)||!upgraded.checksum.equals(old.split("\\.",3)[1]))
+            throw new AssertionError("old entry snapshot lost its checksum, settings or defaults");
+        if(ConfigSnapshot.parse(withoutExactKeys(snapshot,area,sensitivity,ConfigSchema.AI_TRIGGER_ENABLED))!=null)
+            throw new AssertionError("entry upgrade repaired unrelated missing key");
+        for(String key:new String[]{area,sensitivity}) {
+            int minimum=key.equals(area)?50:60,maximum=key.equals(area)?120:160;
+            for(int value:new int[]{minimum,100,maximum}) {
+                String raw=String.valueOf(value);
+                ConfigSnapshot parsed=ConfigSnapshot.parse(withValue(snapshot,key,raw));
+                if(parsed==null||!raw.equals(parsed.get(key)))throw new AssertionError("entry endpoint rejected: "+key);
+            }
+            for(String invalid:new String[]{String.valueOf(minimum-1),String.valueOf(maximum+1),"100.0"," 100 ","0100"})
+                if(ConfigSnapshot.parse(withValue(snapshot,key,invalid))!=null)throw new AssertionError("invalid signed entry accepted: "+invalid);
+        }
     }
     private static void verifyDiagnosticReasons(ConfigSnapshot snapshot) throws Exception {
         String raw=snapshot.serialize();

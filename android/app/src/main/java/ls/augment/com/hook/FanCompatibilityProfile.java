@@ -26,11 +26,16 @@ final class FanCompatibilityProfile {
     static FanCompatibilityProfile resolve(String device, String product, String model,
             boolean hasMaxSpeed, boolean hasFullSpeed, boolean hasCancel, boolean hasNotify,
             Predicate<String> exists) {
+        return resolve(device,product,model,hasMaxSpeed,hasFullSpeed,hasCancel,hasNotify,exists,false);
+    }
+    static FanCompatibilityProfile resolve(String device, String product, String model,
+            boolean hasMaxSpeed, boolean hasFullSpeed, boolean hasCancel, boolean hasNotify,
+            Predicate<String> exists, boolean verifiedLoadedDriver) {
         boolean nx809j = named("NX809J", device, product, model);
         boolean nx769j = named("NX769J", device, product, model);
-        if (!nx809j && !nx769j) return unavailable("device_unverified");
+        if (!nx809j && !nx769j && !verifiedLoadedDriver) return unavailable("loaded_driver_contract_unverified");
         if (!hasCancel || !hasNotify) return unavailable("oem_restore_interface_missing");
-        if (nx809j) {
+        if (nx809j || verifiedLoadedDriver) {
             if (!hasMaxSpeed) return unavailable("oem_max_speed_interface_missing");
             if (!exists.test(KERNEL + "fan_enable") || !exists.test(KERNEL + "fan_speed_level")
                     || !exists.test(KERNEL + "fan_speed_count")) {

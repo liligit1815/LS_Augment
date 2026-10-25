@@ -15,7 +15,10 @@ final class MtpStartupHook {
     private static final WeakHashMap<Service, Pending> pending = new WeakHashMap<>();
 
     static int install(AugmentModule module, ClassLoader loader) {
-        int count = OemHooks.methods(module, loader, SERVICE, "onStartCommand", int.class, 3, "", chain -> {
+        return install(module,loader,SERVICE);
+    }
+    static int install(AugmentModule module, ClassLoader loader,String serviceClass) {
+        int count = OemHooks.methods(module, loader, serviceClass, "onStartCommand", int.class, 3, "", chain -> {
             Service owner = (Service) chain.getThisObject();
             Pending old = pending.get(owner);
             if (old != null && old.resuming) return chain.proceed();
@@ -27,13 +30,13 @@ final class MtpStartupHook {
             request.handler.post(request);
             // Matches this OEM's native result, preserving intent redelivery after process death.
             return Service.START_REDELIVER_INTENT;
-        });
-        count += OemHooks.methods(module, loader, SERVICE, "onDestroy", void.class, 0, "", chain -> {
+        },new Class<?>[]{Intent.class,int.class,int.class});
+        count += OemHooks.methods(module, loader, serviceClass, "onDestroy", void.class, 0, "", chain -> {
             Service owner = (Service) chain.getThisObject();
             Pending request = pending.get(owner);
             if (request != null) request.cancel(owner);
             return chain.proceed();
-        });
+        },new Class<?>[0]);
         return count;
     }
 

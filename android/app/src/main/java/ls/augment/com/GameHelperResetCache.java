@@ -22,6 +22,9 @@ final class GameHelperResetCache {
     }
 
     /** Upgrade retirement leaves the user configuration untouched and stops only an old writer. */
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     static Result retireLegacy(Context context) {
         Context appContext = context.getApplicationContext();
         int user = android.os.Process.myUid() / 100000;

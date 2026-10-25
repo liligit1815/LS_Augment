@@ -444,8 +444,7 @@ public final class HideRecoveryActivity extends Activity {
         historyButton.setTextColor(configuredOnly ? ui.muted : ui.accent);
         if (focusStatus != null) {
             focusStatus.setVisibility(focusPackage.isEmpty() ? Button.GONE : Button.VISIBLE);
-            focusStatus.setText("当前定位：" + focusPackage + " · 空间 " + focusUser + " · 序列号 " + focusSerial
-                    + "\n切换分类仍保留这个应用和空间；历史仅供查询；显示需要单独确认。");
+            focusStatus.setText(focusStatus.getContext().getString(R.string.status_hiderecoveryactivity_31 ,String.valueOf(focusPackage), String.valueOf(focusUser), String.valueOf(focusSerial)));
         }
         if (focusedShow != null) {
             boolean current = focusedTarget() != null;

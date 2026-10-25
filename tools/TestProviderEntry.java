@@ -3,7 +3,7 @@ package ls.augment.com;
 import android.os.Binder;
 import android.os.Bundle;
 
-/** Executes the current provider's extracted, unchanged call prefix and UID gate. */
+/** Executes the current provider's extracted, unchanged entry branches and UID gate. */
 public final class TestProviderEntry {
     public static void main(String[] args) {
         TestRuntimeStores.FakeContext context = new TestRuntimeStores.FakeContext();
@@ -47,7 +47,7 @@ public final class TestProviderEntry {
         check(Binder.uid == 0 && Binder.clears == 2 && Binder.restores == 2, "recovery restores caller identity"); checks++;
         BootJobService.accepted = false;
         check(!provider.call("recovery_refresh", null, null).getBoolean("ok"), "failed scheduling is not acknowledged"); checks++;
-        System.out.println("Provider entry checks: " + checks + " OK (actual source prefix/gate; host UID model)");
+        System.out.println("Provider entry checks: " + checks + " OK (actual source branches/gate; host UID model)");
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
 }

@@ -9,12 +9,12 @@ void check(bool value, const char* message) {
 bool inspect(const std::vector<uint32_t>& words, tgk_layout::Layout* layout) {
     return tgk_layout::inspect(reinterpret_cast<const uint8_t*>(words.data()), words.size() * 4, layout);
 }
-void verify(const uint32_t* words, size_t count, bool paired) {
+void verify(const uint32_t* words, size_t count, bool paired, int delta=0) {
     std::vector<uint32_t> original(words, words + count), changed(original);
     tgk_layout::Layout layout{};
     check(inspect(original, &layout) && layout.firstKey == 137 && layout.secondKey == 138
-            && layout.firstCount == 96 && layout.secondCount == 100 && layout.firstDown == 80
-            && layout.firstUp == 84 && layout.secondDown == 88 && layout.secondUp == 92, "complete layout");
+            && layout.firstCount == 96+delta && layout.secondCount == 100+delta && layout.firstDown == 80+delta
+            && layout.firstUp == 84+delta && layout.secondDown == 88+delta && layout.secondUp == 92+delta, "complete layout");
     changed.insert(changed.begin(), 0xd503245f);
     check(inspect(changed, &layout), "optional BTI");
     changed = original;
@@ -22,8 +22,8 @@ void verify(const uint32_t* words, size_t count, bool paired) {
     for (int i : {4, 7}) changed[i] += (20 << 10);
     if (paired) for (int i : {65, 85}) changed[i] += (0x80 / 4 << 15);
     else for (int i : {57, 58, 70, 71}) changed[i] += (0x80 << 5);
-    check(inspect(changed, &layout) && layout.firstKey == 157 && layout.firstCount == 224
-            && layout.firstDown == 208 && layout.secondUp == 220, "derive new fields and keys");
+    check(inspect(changed, &layout) && layout.firstKey == 157 && layout.firstCount == 224+delta
+            && layout.firstDown == 208+delta && layout.secondUp == 220+delta, "derive new fields and keys");
     if (paired) changed[85] = changed[65];
     else changed[57] -= (4 << 5);
     check(!inspect(changed, &layout), "overlapping fields rejected");
@@ -49,6 +49,7 @@ void verify(const uint32_t* words, size_t count, bool paired) {
     }
 }
 int main(int argc, char** argv) {
+    verify(tgk_layout::kCompactStorePattern, sizeof(tgk_layout::kCompactStorePattern)/4, false, -12);
     verify(tgk_layout::kPattern, sizeof(tgk_layout::kPattern) / 4, false);
     verify(tgk_layout::kPairedStorePattern, sizeof(tgk_layout::kPairedStorePattern) / 4, true);
     tgk_layout::Layout layout{};
@@ -64,5 +65,5 @@ int main(int argc, char** argv) {
         std::fclose(file);
         check(tgk_layout::inspect(bytes.data(), bytes.size(), &layout), "real OEM function accepted");
     }
-    std::puts("PASS native structural layouts: both templates, fixed-bit mutations and OEM functions");
+    std::puts("PASS native structural layouts: three templates, fixed-bit mutations and OEM functions");
 }

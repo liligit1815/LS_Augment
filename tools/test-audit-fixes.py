@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
 editor = (SRC / 'StatusBarEditorController.java').read_text(encoding='utf-8')
 save = editor[editor.index('    private void save()'):editor.index('    @Override protected void onPause()')]
+signal_refresh = editor[editor.index('    private void refreshStoredSignalModes()'):editor.index('    private void edit(String key, String label)')]
 assert 'static final ExecutorService worker' in editor
 assert 'worker.shutdown()' not in editor
 sources = {
@@ -34,6 +35,7 @@ interface Editor {Editor putString(String key,String value);void apply();}}''',
     'ls/augment/com/ConfigSchema.java': '''package ls.augment.com;final class ConfigSchema {
 static final String STATUSBAR_CLOCK_CUSTOM="custom";
 static final String SYSTEMUI_MASTER="systemui_master";
+static final String STATUSBAR_CONNECTIVITY_GROUP="three_in_one";
 static boolean truthy(String s){return "1".equals(s);}static String normalize(String k,String v){return v;}
 static boolean contains(String k){return "ls_augment_reserved".equals(k);}}''',
     'ls/augment/com/RuntimeEnvironment.java': '''package ls.augment.com;
@@ -41,9 +43,12 @@ final class RuntimeEnvironment {static final String LIFECYCLE="ls_augment_system
 static void record(android.content.Context context,int callerUid,String value){}}''',
     'ls/augment/com/AppConfig.java': '''package ls.augment.com;import java.util.*;
 final class AppConfig {static final String DIAGNOSTICS="diagnostics";
+String get(String key){return disk.get(key);}
 static Map<String,String> disk=new LinkedHashMap<>();static boolean succeed=true;
 static class SaveResult {boolean success;String message="failure";SaveResult(boolean s){success=s;}}
 SaveResult save(Map<String,String> values){if(succeed)disk.putAll(values);return new SaveResult(succeed);}}''',
+    'ls/augment/com/SystemUiOptions.java': '''package ls.augment.com;final class SystemUiOptions {
+static final String SIGNAL_DUAL="signal_dual",SIGNAL_DUAL_STYLE="signal_dual_style";}''',
     'ls/augment/com/FakeContext.java': '''package ls.augment.com;import java.util.*;import android.content.*;
 final class FakeContext extends Context {
 final Prefs prefs=new Prefs();public SharedPreferences getSharedPreferences(String name,int mode){return prefs;}
@@ -62,11 +67,13 @@ final class StatusBarSaveHarness extends SaveBase {
  final AppConfig config=new AppConfig();boolean dirty,saving,destroyed;int tab;
  Map<String,String> rawInputs=new LinkedHashMap<>();Main main=new Main();Runnable autoSave=()->save();
  Map<String,String> previewBackup,lastLayoutBackup;String selectedComponent="clock";
- boolean connectivityExpanded,nativeBatteryExpanded;UiKit.Fold connectivityFold,nativeBatteryFold;
+ boolean connectivityExpanded,nativeBatteryExpanded,dualAppearanceExpanded;UiKit.Fold connectivityFold,nativeBatteryFold,dualAppearanceFold;
  Map<String,UiKit.Fold> componentFolds=new LinkedHashMap<>();
  Map<String,View> advancedViews=new LinkedHashMap<>();
  Map<String,Boolean> expandedComponents=new LinkedHashMap<>(),advancedExpanded=new LinkedHashMap<>();
  Map<Integer,Integer> scrollPositions=new LinkedHashMap<>();Scroll configScroll=new Scroll();
+ Preview preview=new Preview();static class Preview {void invalidate(){}}
+ void renderKeepingScroll(){}
  // Android presentation boundaries; production save/state methods remain verbatim.
  static class View {static final int VISIBLE=0;int visibility;int getVisibility(){return visibility;}}
  static class Scroll {int y;int getScrollY(){return y;}}
@@ -79,7 +86,7 @@ final class StatusBarSaveHarness extends SaveBase {
  boolean positionSizeOnly(){return true;}Clock previewClock(){return new Clock();}
  void runOnUiThread(Runnable r){r.run();}boolean isDestroyed(){return destroyed;}
  StatusBarSaveHarness(){AppConfig.disk.forEach(draft::seed);}
-''' + save + '''
+''' + signal_refresh + save + '''
  static void verify(){
   AppConfig.disk.clear();AppConfig.disk.put("left","0");AppConfig.disk.put("right","0");
   StatusBarSaveHarness a=new StatusBarSaveHarness();a.draft.put("left","10");a.save();

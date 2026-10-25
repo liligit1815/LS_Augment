@@ -8,6 +8,9 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 /** Keep the OEM visibility model, but isolate its single-row animation coordinates. */
 final class StatusBarNativeIconHook {
     private StatusBarNativeIconHook() { }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader) {
         int count=0;
         try {

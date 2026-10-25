@@ -2,10 +2,12 @@ package ls.augment.com;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Handler;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,6 +43,8 @@ final class LauncherGridUiCases {
 
     private JSONObject run()throws Exception{
         Context context=test.getTargetContext();AppConfig config=new AppConfig(context);
+        require(context.getSystemService(PowerManager.class).isInteractive(),"Unlock the device and keep its screen on before inspecting the grid UI");
+        require(!context.getSystemService(KeyguardManager.class).isKeyguardLocked(),"Unlock the device before inspecting the grid UI");
         Map<String,String> before=new LinkedHashMap<>(config.snapshot());
         Map<String,?> rawBefore=new LinkedHashMap<>(context.getSharedPreferences(AppConfig.PREFS,0).getAll());
         Throwable failure=null;
@@ -49,12 +53,12 @@ final class LauncherGridUiCases {
                     .putExtra("target",HookAppCatalog.LAUNCHER).putExtra(ModuleNavigation.EXTRA_ROUTE,"group/launcher/launcher_grid").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));settle();
             onMain(()->{
                 View decor=activity.getWindow().getDecorView();
-                require(findText(decor,"桌面布局")!=null,"Real launcher page contains desktop layout section");
+                require(findText(decor,"桌面布局与页面")!=null,"Real launcher page uses the current desktop layout and pages title");
                 View toggle=decor.findViewWithTag("config:"+LauncherGridSpec.ENABLED);
                 require(toggle instanceof CompoundButton,"Real page exposes independent desktop-grid switch");
                 require(((CompoundButton)toggle).isChecked()==ConfigSchema.truthy(before.get(LauncherGridSpec.ENABLED)),"Opening the page preserves the existing grid toggle");
                 require(decor.findViewWithTag("launcher-grid-editor")!=null,"Real launcher section embeds the production grid editor");
-                View runtime=decor.findViewWithTag("launcher-grid-runtime");require(runtime!=null&&runtime.getVisibility()==View.VISIBLE,"Runtime result stays visible when the custom layout switch is off");
+                require(decor.findViewWithTag("launcher-grid-runtime")==null,"Custom layout does not leave a runtime description or hidden placeholder beneath the feature");
                 require(NativeFeatureGroups.forTarget(HookAppCatalog.LAUNCHER).get(0).id.equals("launcher_grid"),"Desktop layout is the first native launcher section");
                 return null;
             });

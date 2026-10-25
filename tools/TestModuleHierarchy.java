@@ -7,17 +7,25 @@ public final class TestModuleHierarchy {
     private static Set<String> keys(ModuleHierarchy.Section section){Set<String> result=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:section.features)result.addAll(f.allKeys());return result;}
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
-        String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,14,24,11,8,5,5,18,4,16,15,11,4};
+        String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","atomic_workbench","capture","gaming","cooling","connectivity","apps","system_settings","health"};
+        int[] counts={84,17,24,11,8,5,1,5,18,4,16,15,12,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
-        require(HookAppCatalog.targets().size()==19,"Runtime targets remain independent of the 13 display categories");
+        require(HookAppCatalog.targets().size()==19,"Runtime targets remain independent of the 14 display categories");
         for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
             actualIds.add(category.id);require(counts[index++]==category.featureCount,"Approved capability count for "+category.id);total+=category.featureCount;
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==219,"Presentation includes 219 capabilities in 13 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==224,"Presentation includes 224 capabilities in 14 ordered categories");
+        require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
+        require(ModuleHierarchy.path("atomic_workbench").equals(Arrays.asList("home","atomic_workbench")),"Workbench is a first-level category without an empty intermediate page");
+        require(ModuleHierarchy.path("atomic_workbench_session").equals(Arrays.asList("home","atomic_workbench","atomic_workbench_session")),"Running workspace retains its settings parent");
+        require("atomic_workbench".equals(ModuleHierarchy.categoryForRoute("atomic_workbench")),"Workbench search has the same first-level owner");
+        require("atomic_workbench".equals(ModuleHierarchy.categoryForRoute("atomic_workbench_session")),"Running workspace remains in the first-level workbench category");
+        require(ModuleHierarchy.path("competitive_key").equals(Arrays.asList("home","target-system_settings","competitive_key")),"Competitive key goes directly to the third-level page");
+        owner("ls_augment_competitive_key_enabled","competitive_key");
+        owner("ls_augment_rm_battery_preset","status_battery");
         require(ModulePresentationCatalog.find("statusbar")==null&&ModulePresentationCatalog.find("themes")==null,"Empty old categories are absent from Home");
         require("主题与锁屏".equals(ModulePresentationCatalog.find("lockscreen").title),"Theme and lock screen use the requested shared title");
         require("systemui".equals(ModulePresentationCatalog.find("notifications").restartScope),"Merged notification directory retains the former status-bar restart shortcut and default");
@@ -44,11 +52,17 @@ public final class TestModuleHierarchy {
             if(s.parentId!=null)require(!ModuleHierarchy.sections(s.target).contains(s),"Nested USB subpage is not repeated at category root");
         }
         for(NativeFeatureGroups.Feature f:ModuleHierarchy.statusBarFeatures())for(String key:f.allKeys()){require(covered.add(key),"Status controls have one home: "+key);require(ModuleHierarchy.featureRoute(key)!=null,"Status key has a direct search route");}
+        // This editor owns real catalog controls outside the generic section feature list.
+        for(EnhancementOption option:CompetitiveKeyOptions.options()){
+            require(covered.add(option.key),"Competitive-key editor keys have one owner: "+option.key);
+            owner(option.key,"competitive_key");
+        }
         Set<String> expected=new LinkedHashSet<>();for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Section s:HookAppCatalog.sections(target.id))for(EnhancementOption o:s.options)expected.add(o.key);
         Set<String> missing=new LinkedHashSet<>(expected);missing.removeAll(covered);Set<String> extra=new LinkedHashSet<>(covered);extra.removeAll(expected);
         require(missing.isEmpty()&&extra.isEmpty(),"Every existing catalog key remains reachable; missing="+missing+" extra="+extra);
         require(deviceKeys.equals(new HashSet<>(Arrays.asList("development_settings_enabled","adb_enabled","adb_install_enabled","lock_refresh_rate"))),"All four actual Android settings actions remain exactly once");
         routes.addAll(Arrays.asList(StatusBarPages.ROUTES));routes.addAll(Arrays.asList("status_layout","status_canvas","status_surfaces","asset/bluetooth","hide","hide_apps","automation","tile","tile_icon_crop","icon_crop","gesture_icon_crop","rapid_compatibility","scope","support","contributors"));
+        routes.add("atomic_workbench_session");
         for(String surface:StatusBarSurfaceSpec.SURFACES)routes.add("status_surface/"+surface);
         for(HookAppCatalog.Target target:HookAppCatalog.targets()){routes.add("target-"+target.id);for(NativeFeatureGroups.Section s:NativeFeatureGroups.forTarget(target.id))routes.add("group/"+target.id+"/"+s.id);}
         routes.addAll(Arrays.asList("group/systemui/primary_interaction","group/systemui/quicksettings_more","group/systemui/status_resources","group/update/update-link","group/theme/collab_audio","beautify","launcher_custom","audio_gain","signature_install","shoulder","combo_speed","super_resolution","diablo_coexist","freeform","rm:game"));
@@ -72,6 +86,10 @@ public final class TestModuleHierarchy {
         owner("ls_augment_rm_usb_mode_enabled","group/connectivity/usb_connection");owner("ls_augment_rm_notification_quiet_unlocked","group/notifications/notification_alerts");
         owner("ls_augment_rm_qs_volume_percent","group/audio/volume_panel");owner(BrightnessRange.ENABLED,"group/system_settings/display");
         owner("ls_augment_rm_third_party_launcher","group/desktop/default_launcher");owner("ls_augment_rm_third_party_recents_no_scrim","group/desktop/default_launcher");owner("ls_augment_rm_weather_time_period","group/desktop/desktop_clock");
+        owner(LauncherOptions.WIDGET_RESIZE,"group/desktop/desktop_clock");owner(LauncherOptions.DOCK_UNLIMITED,"group/desktop/dock_glass");
+        owner(LauncherOptions.NEW_APPS_LAST_PAGE,"group/desktop/launcher_grid");
+        require(ModuleHierarchy.group("group/desktop/launcher_grid").features.stream().noneMatch(f->f.allKeys().contains(LauncherOptions.DOCK_UNLIMITED)),"Dock capacity no longer belongs to desktop layout and pages");
+        require("桌面组件".equals(ModuleHierarchy.title("group/desktop/desktop_clock")),"Component page retains its bookmark with the requested title");
         owner(RecentsCardRadiusOptions.ENABLED,"group/desktop/recents");owner(RecentsCardRadiusOptions.OFFSET,"group/desktop/recents");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.OFFSET.equals(key)?"-24":"0")==0,"Stored radius parameters remain inactive while the switch is off");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.ENABLED.equals(key)?"1":"0")==1,"Recent-task radius is one separately counted feature");
@@ -106,6 +124,6 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==3,"Shoulder count includes two embedded controls and one generic control");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (13 categories, 219 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 224 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

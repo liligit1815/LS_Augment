@@ -162,11 +162,11 @@ final class AppUpdater {
         render();
         task = worker.submit(() -> {
             File temporary = null;
-            try {
+            try (UpdateApkProvider.DownloadLease lease=UpdateApkProvider.beginDownload(context,selected.sha256,selected.size)) {
                 File directory = UpdateApkProvider.directory(context);
                 if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException();
-                temporary = new File(directory, "download-" + UUID.randomUUID() + ".part");
-                File cached = new File(directory, "verified-" + selected.sha256 + ".apk");
+                temporary = lease.temporary;
+                File cached = lease.cached;
                 boolean reusable = false;
                 if (cached.isFile()) {
                     try { verifyFile(cached, selected, request); reusable = true; }

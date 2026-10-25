@@ -90,6 +90,9 @@ final class NotificationMediaCardHook {
     }
 
     /** Current NX809J firmware uses this native notification container, not the full-screen-island panel. */
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int installController(AugmentModule owner, ClassLoader loader) {
         List<HookHandle> handles = new ArrayList<>();
         try {

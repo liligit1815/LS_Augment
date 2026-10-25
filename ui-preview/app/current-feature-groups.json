@@ -1562,9 +1562,9 @@
               ],
               "features": [
                 {
-                  "id": "ls_augment_rm_lock_charge_hide_temperature",
-                  "title": "充电详情隐藏温度",
-                  "toggleKey": "ls_augment_rm_lock_charge_hide_temperature",
+                  "id": "ls_augment_rm_lock_charge_show_temperature",
+                  "title": "充电详情显示温度",
+                  "toggleKey": "ls_augment_rm_lock_charge_show_temperature",
                   "parameterKeys": [],
                   "features": [],
                   "activation": {
@@ -1575,13 +1575,13 @@
                   "objectGroup": "",
                   "destination": "",
                   "optionKeys": [
-                    "ls_augment_rm_lock_charge_hide_temperature"
+                    "ls_augment_rm_lock_charge_show_temperature"
                   ]
                 },
                 {
-                  "id": "ls_augment_rm_lock_charge_hide_current",
-                  "title": "充电详情隐藏电流",
-                  "toggleKey": "ls_augment_rm_lock_charge_hide_current",
+                  "id": "ls_augment_rm_lock_charge_show_current",
+                  "title": "充电详情显示电流",
+                  "toggleKey": "ls_augment_rm_lock_charge_show_current",
                   "parameterKeys": [],
                   "features": [],
                   "activation": {
@@ -1592,13 +1592,13 @@
                   "objectGroup": "",
                   "destination": "",
                   "optionKeys": [
-                    "ls_augment_rm_lock_charge_hide_current"
+                    "ls_augment_rm_lock_charge_show_current"
                   ]
                 },
                 {
-                  "id": "ls_augment_rm_lock_charge_hide_voltage",
-                  "title": "充电详情隐藏电压",
-                  "toggleKey": "ls_augment_rm_lock_charge_hide_voltage",
+                  "id": "ls_augment_rm_lock_charge_show_voltage",
+                  "title": "充电详情显示电压",
+                  "toggleKey": "ls_augment_rm_lock_charge_show_voltage",
                   "parameterKeys": [],
                   "features": [],
                   "activation": {
@@ -1609,13 +1609,13 @@
                   "objectGroup": "",
                   "destination": "",
                   "optionKeys": [
-                    "ls_augment_rm_lock_charge_hide_voltage"
+                    "ls_augment_rm_lock_charge_show_voltage"
                   ]
                 },
                 {
-                  "id": "ls_augment_rm_lock_charge_hide_power",
-                  "title": "充电详情隐藏功率",
-                  "toggleKey": "ls_augment_rm_lock_charge_hide_power",
+                  "id": "ls_augment_rm_lock_charge_show_power",
+                  "title": "充电详情显示功率",
+                  "toggleKey": "ls_augment_rm_lock_charge_show_power",
                   "parameterKeys": [],
                   "features": [],
                   "activation": {
@@ -1626,7 +1626,7 @@
                   "objectGroup": "",
                   "destination": "",
                   "optionKeys": [
-                    "ls_augment_rm_lock_charge_hide_power"
+                    "ls_augment_rm_lock_charge_show_power"
                   ]
                 }
               ],

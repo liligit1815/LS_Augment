@@ -152,6 +152,9 @@ final class NotificationAppearanceHook {
     }
     /** Weather must not apply the old whole-header width to an owned date row. */
     static boolean ownsWeather(TextView text){for(HeaderState state:HEADERS.values())if(state.applied&&state.weather==text)return true;return false;}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View nativeChild(View view,String id){int key=view.getResources().getIdentifier(id,"id","com.android.systemui");return key==0?null:view.findViewById(key);}
     private static View findStack(View source){
         for(android.view.ViewParent p=source.getParent();p instanceof View;p=p.getParent())if(STACK.equals(p.getClass().getName()))return (View)p;

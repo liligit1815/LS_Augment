@@ -59,6 +59,14 @@ final class LauncherOwnedStateClient {
         Record value=record(context,kind);
         return value.failed?null:value;
     }
+    /** One-shot readiness delivery; callers post UI work to their owning thread. */
+    static boolean addReadyListener(Context context,String kind,Runnable listener){
+        if(context==null||listener==null||!("pages".equals(kind)||"grid".equals(kind)))return false;
+        Context app=context.getApplicationContext();if(app==null)app=context;
+        if(!LauncherResetPolicy.PACKAGE.equals(app.getPackageName()))return false;
+        record(app,kind).addReadyListener(listener);
+        return true;
+    }
     static boolean needsSave(SharedPreferences prefs){return prefs instanceof Record&&((Record)prefs).dirty;}
     static boolean clearPagesForReset(Context context,LauncherResetPolicy.Request request){
         try{return await(()->{
@@ -162,10 +170,23 @@ final class LauncherOwnedStateClient {
     }
     private static final class Record implements SharedPreferences {
         final Context context;final String kind;final CountDownLatch ready=new CountDownLatch(1);
+        final List<Runnable> readyListeners=new ArrayList<>();
         volatile Map<String,Object> memory=Collections.emptyMap();volatile boolean failed=true,dirty;
         String phase="queued";int attempts;
         String confirmed="{}";long sequence,epoch;
         Record(Context context,String kind){this.context=context;this.kind=kind;}
+        void addReadyListener(Runnable listener){
+            synchronized(this){if(failed){readyListeners.add(listener);return;}}
+            dispatchReady(listener);
+        }
+        void dispatchReady(Runnable listener){
+            IO.execute(()->{
+                if(!current(this)||failed)return;
+                try{listener.run();}
+                catch(Throwable failure){throwIfFatal(failure);
+                    android.util.Log.i("LS_Augment","LauncherPrivateState ready_listener_failed:"+failure.getClass().getSimpleName());}
+            });
+        }
         void load(){
             if(!current(this)||!failed)return;
             attempts++;
@@ -177,8 +198,11 @@ final class LauncherOwnedStateClient {
                 String value=read(context,kind);
                 value=migrate(context,kind,value,this);
                 phase="ready";
-                synchronized(this){confirmed=value;memory=LauncherOwnedStateData.decode(kind,value);failed=false;}
+                List<Runnable> listeners;
+                synchronized(this){confirmed=value;memory=LauncherOwnedStateData.decode(kind,value);failed=false;
+                    listeners=new ArrayList<>(readyListeners);readyListeners.clear();}
                 publish("ready","");
+                for(Runnable listener:listeners)dispatchReady(listener);
             }catch(Throwable failure){
                 failed=true;throwIfFatal(failure);
                 // Backoff is bounded, not the lifetime of a locked user's wait.

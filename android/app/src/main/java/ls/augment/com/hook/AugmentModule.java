@@ -175,6 +175,7 @@ public final class AugmentModule extends RootEarlyModule {
     private volatile boolean moduleLoaded;
     private volatile boolean systemServerProcess;
     private volatile boolean packageReady;
+    private volatile String fanSourcePath;
     private volatile boolean adapterClassFound;
     private volatile SettingsEntryHooks settingsEntryHooks;
     private volatile boolean rebuildHookInstalled;
@@ -218,6 +219,7 @@ public final class AugmentModule extends RootEarlyModule {
     protected void onModuleLoadedAfterEarly(ModuleLoadedParam param, RootEarlyModule.Result rootResult) {
         FeatureSettings.attachFramework(this);
         processName = param.getProcessName();
+        if(SYSTEMUI_PACKAGE.equals(processName))SystemUiCrashCapture.install(this);
         HookTelemetry.loaded(processName,getFrameworkName()+"/"+getFrameworkVersion());
         FeatureSettings.rememberDiagnosticProcess(processName);
         systemServerProcess = param.isSystemServer();
@@ -243,6 +245,20 @@ public final class AugmentModule extends RootEarlyModule {
 
     @Override
     public void onPackageLoaded(PackageLoadedParam param) {
+        if(FAN_PACKAGE.equals(param.getPackageName())&&param.getApplicationInfo()!=null)fanSourcePath=param.getApplicationInfo().sourceDir;
+        if(SYSTEMUI_PACKAGE.equals(processName)&&SYSTEMUI_PACKAGE.equals(param.getPackageName())){
+            ls.augment.com.SystemUiCrashJournal.prepare(param.getApplicationInfo());
+            recordStartup("SYSTEMUI_CRASH_JOURNAL",ls.augment.com.SystemUiCrashJournal.status(),null);
+        }
+        recordStartup("PACKAGE_LOADED_BEGIN", param.getPackageName(), null);
+        try { dispatchPackageLoaded(param); recordStartup("PACKAGE_LOADED_RETURNED", param.getPackageName(), null); }
+        catch(RuntimeException|Error error){recordStartup("PACKAGE_LOADED_FAILED", param.getPackageName(), error);throw error;}
+    }
+
+
+    // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+    //noinspection ObsoleteSdkInt
+    private void dispatchPackageLoaded(PackageLoadedParam param) {
         // Persistent fingerprint components can be entered before the ready callback.
         // Register only the two explicit fingerprint scopes against their package loader.
         if(!systemServerProcess&&("com.zte.fingerprints".equals(param.getPackageName())
@@ -272,6 +288,12 @@ public final class AugmentModule extends RootEarlyModule {
 
     @Override
     public void onPackageReady(PackageReadyParam param) {
+        recordStartup("PACKAGE_READY_BEGIN", param.getPackageName()+";first="+param.isFirstPackage(), null);
+        try { dispatchPackageReady(param); recordStartup("PACKAGE_READY_RETURNED", param.getPackageName(), null); }
+        catch(RuntimeException|Error error){recordStartup("PACKAGE_READY_FAILED", param.getPackageName(), error);throw error;}
+    }
+
+    private void dispatchPackageReady(PackageReadyParam param) {
         String callbackPackageName = param.getPackageName();
         if (systemServerProcess) {
             // system_server can publish PackageReady events for framework
@@ -303,7 +325,7 @@ public final class AugmentModule extends RootEarlyModule {
         }
         readyPackageName = callbackPackageName;
         if ("com.android.systemui".equals(readyPackageName) || "com.android.settings".equals(readyPackageName))
-            FullBrightnessHook.install(this,param.getClassLoader());
+            installPackageStage("full_brightness", () -> FullBrightnessHook.install(this,param.getClassLoader()));
         HookTelemetry.ready(readyPackageName);
         logInfo("PACKAGE_READY_TARGET package=" + readyPackageName
                 + " process=" + processName + " first=" + param.isFirstPackage());
@@ -313,12 +335,14 @@ public final class AugmentModule extends RootEarlyModule {
         // the normal diagnostics and is harmless when no context is available.
         writePackageReadyWitness(readyPackageName);
 
-        OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName);
-        ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName);
-        GameExtrasHook.install(this, param.getClassLoader(), readyPackageName);
-        CollabUnlockHook.install(this, param.getClassLoader(), readyPackageName);
-        CollabRenderHook.install(this, param.getClassLoader(), readyPackageName);
-        EntryVisibilityHook.install(this, param.getClassLoader(), readyPackageName);
+        installPackageStage("workbench_source_drag", () -> AtomicWorkbenchSourceDragHook.install(this));
+
+        installPackageStage("oem_extras", () -> OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("connections", () -> ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("game_extras", () -> GameExtrasHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("collab_unlock", () -> CollabUnlockHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("collab_render", () -> CollabRenderHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("entry_visibility", () -> EntryVisibilityHook.install(this, param.getClassLoader(), readyPackageName));
         if ("cn.nubia.neostore".equals(readyPackageName)) { StoreDownloadHook.install(this,param.getClassLoader()); return; }
         if (GAME_SPACE_PACKAGE.equals(readyPackageName)) {
             installGameSpaceShoulderHooks(param.getClassLoader());
@@ -363,12 +387,21 @@ public final class AugmentModule extends RootEarlyModule {
             MiHealthHook.install(this, param.getClassLoader());
             return;
         }
+        if ("com.autonavi.minimap".equals(readyPackageName)) {
+            if ("com.autonavi.minimap".equals(processName))
+                AtomicWorkbenchAmapHook.install(this, param.getClassLoader());
+            return;
+        }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            AtomicWorkbenchQuickstepHook.install(this, param.getClassLoader());
             LauncherResetHook.install(this);
             LauncherGridHook.install(this, param.getClassLoader());
             LauncherCustomizationHook.install(this, param.getClassLoader());
             LauncherPagesHook.install(this, param.getClassLoader());
+            LauncherWidgetResizeHook.install(this, param.getClassLoader());
+            LauncherDockCapacityHook.install(this, param.getClassLoader());
+            LauncherNewAppsLastPageHook.install(this, param.getClassLoader());
             ThirdPartyRecentsBackgroundHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
             LauncherRecentsCardRadiusHook.install(this, param.getClassLoader());
@@ -412,6 +445,13 @@ public final class AugmentModule extends RootEarlyModule {
         }
     }
 
+    private void installPackageStage(String name,Runnable install) {
+        if(!SYSTEMUI_PACKAGE.equals(readyPackageName)){install.run();return;}
+        recordStartup("SYSTEMUI_PREPARE_BEGIN",name,null);
+        try{install.run();recordStartup("SYSTEMUI_PREPARE_RETURNED",name,null);}
+        catch(RuntimeException|Error error){recordStartup("SYSTEMUI_PREPARE_FAILED",name,error);throw error;}
+    }
+
     private HookBuilder observedHook(java.lang.reflect.Executable method) { return HookTelemetry.observe(hook(method),method); }
 
     HookBuilder prepareFeatureHook(Method method, String id, boolean beforeOriginal) {
@@ -426,20 +466,25 @@ public final class AugmentModule extends RootEarlyModule {
     }
 
     void logFeatureInfo(String message) {
+        HookTelemetry.atomicWorkbench("INFO",message,null);
         LiftArcLog.stageInfo(message);
         logInfo("FEATURE_" + message);
     }
 
     void logFeatureError(String message, Throwable error) {
+        recordStartup("FEATURE_ERROR", message, error);
+        HookTelemetry.atomicWorkbench("ERROR",message,error);
         LiftArcLog.stageError(message,error);
         logError("FEATURE_" + message, error);
     }
 
     private synchronized void installSystemUiFeatureHooks(ClassLoader classLoader) {
-        if (systemUiHooksInstalled) return;
+        if (systemUiHooksInstalled) { recordStartup("SYSTEMUI_INSTALL_SKIPPED", "already_attempted", null); return; }
+        recordStartup("SYSTEMUI_INSTALL_BEGIN", "", null);
         // One optional adapter must never prevent the other SystemUI features loading.
         installSystemUiStage("power", () -> PowerMenuModesHook.install(this, classLoader));
         installSystemUiStage("core", () -> SystemUiHook.install(this, classLoader));
+        installSystemUiStage("workbench_decor_transparency", () -> AtomicWorkbenchDecorTransparency.install(this, classLoader));
         installSystemUiStage("liftarc", () -> LiftArcHooks.install(this, classLoader));
         installSystemUiStage("tile_icon", () -> OwnTileIconHook.install(this, classLoader));
         installSystemUiStage("fan_tile", () -> FanTileHook.install(this, classLoader));
@@ -457,11 +502,18 @@ public final class AugmentModule extends RootEarlyModule {
         installSystemUiStage("notification_summary", () -> StatusBarNotificationSummaryHook.install(this, classLoader));
         installSystemUiStage("carrier_text", () -> CarrierTextHook.install(this, classLoader));
         systemUiHooksInstalled = true;
+        recordStartup("SYSTEMUI_INSTALL_RETURNED", "all stages attempted; inspect individual stages and registrations", null);
+        ls.augment.com.SystemUiCrashJournal.stage("runtime");
     }
 
     private void installSystemUiStage(String name, Runnable install) {
-        try { install.run(); }
+        ls.augment.com.SystemUiCrashJournal.stage("install:"+name);
+        recordStartup("SYSTEMUI_STAGE_BEGIN", name, null);
+        int before=HookTelemetry.registrationCount();
+        try { install.run(); recordStartup("SYSTEMUI_STAGE_RETURNED", name+";registeredDelta="+(HookTelemetry.registrationCount()-before)
+                +";meaning=installer_return_not_business_success", null); }
         catch (RuntimeException | LinkageError error) {
+            recordStartup("SYSTEMUI_STAGE_FAILED", name, error);
             logFeatureError("SYSTEMUI_INSTALL_" + name, error);
             FeatureSettings.diagnosticError(FeatureSettings.from(null),
                     "ls_augment_systemui_install_" + name, "registration", error);
@@ -492,7 +544,7 @@ public final class AugmentModule extends RootEarlyModule {
     private synchronized void installFanControlHooks(ClassLoader classLoader) {
         if (fanControlHooksInstalled) return;
         int installed = FanControlHook.install(this, classLoader);
-        installed += FanScreenOffHook.install(this, classLoader);
+        installed += FanScreenOffHook.install(this, classLoader,fanSourcePath);
         fanControlHooksInstalled = installed > 0;
         logInfo("FAN_CONTROL_READY installed=" + installed);
     }
@@ -537,9 +589,13 @@ public final class AugmentModule extends RootEarlyModule {
      * owns services.jar. Every feature has a retry-safe installation guard, so
      * early callbacks cannot create duplicate hooks or use an app ClassLoader.
      */
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private void installSystemServerHooks(ClassLoader classLoader, String source) {
         if (!systemServerProcess) return;
         ExtraDimHook.install(this,classLoader);
+        WifiSampleThreadHook.install(this,classLoader);
         // Constructor-only options use the framework's boot copy. Never wait inside AudioService.
         FeatureSettings.awaitBootSnapshot();
         // PackageReady may later be delivered for framework packages hosted in
@@ -560,6 +616,15 @@ public final class AugmentModule extends RootEarlyModule {
             installSignatureMismatchInstallHooks(classLoader);
             AudioGainHook.install(this, classLoader);
             SystemRulesHook.install(this, classLoader);
+            CompetitiveKeyHook.install(this, classLoader);
+            AtomicWorkbenchImeHook.install(this, classLoader);
+            AtomicWorkbenchFocusWindowHook.install(this, classLoader);
+            AtomicWorkbenchEditorEvidenceHook.install(this, classLoader);
+            AtomicWorkbenchGestureHook.install(this, classLoader);
+            AtomicWorkbenchTaskOperationHook.install(this, classLoader);
+            AtomicWorkbenchExtractionEvidenceHook.install(this, classLoader);
+            AtomicWorkbenchNotificationEvidenceHook.install(this, classLoader);
+            AtomicWorkbenchMediaSessionEvidenceHook.install(this, classLoader);
             updateSystemServerLifecycle(source, true, "");
         } catch (Throwable error) {
             String detail = error.getClass().getSimpleName() + ":" + safeMessage(error);
@@ -581,7 +646,8 @@ public final class AugmentModule extends RootEarlyModule {
 
     private boolean systemServerHooksReady() {
         return freeformHooksInstalled && tgkRapidFireSystemHooksInstalled
-                && signatureMismatchInstallHooksInstalled;
+                && signatureMismatchInstallHooksInstalled && AtomicWorkbenchImeHook.isInstalled()
+                && AtomicWorkbenchFocusWindowHook.isInstalled();
     }
 
     /** Publish a bounded boot witness; diagnostics never enable a feature. */
@@ -2749,8 +2815,12 @@ public final class AugmentModule extends RootEarlyModule {
         }
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private synchronized void installSettingsHooks(ClassLoader classLoader) {
         if (rebuildHookInstalled || removeHookInstalled || adapterClassFound) return;
+        SettingsSignalEntryHook.install(this, classLoader);
 
         final Class<?> adapter;
         try {
@@ -2962,6 +3032,10 @@ public final class AugmentModule extends RootEarlyModule {
         }
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
+    //noinspection DiscouragedPrivateApi,PrivateApi
     private static Context currentApplicationContext() {
         try {
             Class<?> at = Class.forName("android.app.ActivityThread");

@@ -1,0 +1,837 @@
+[
+  {
+    "key": "ls_augment_rm_privacy_hide",
+    "title": "隐藏隐私小绿点",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏状态栏隐私绿点和使用提醒胶囊，权限设置和访问记录保持原样。",
+    "summary": "隐藏状态栏隐私绿点和使用提醒胶囊，权限设置和访问记录保持原样。"
+  },
+  {
+    "key": "ls_augment_rm_signal_dual",
+    "title": "双排信号图标",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "展开可选择荣耀双排或 iOS双排。荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；单卡自动使用单排图标，双卡上下两排。每张卡的网络类型显示在对应信号行左侧，是否显示由隐藏移动网络类型开关独立控制。开启前须先关闭三合一图标。",
+    "summary": "展开可选择荣耀双排或 iOS双排。荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；单卡自动使用单排图标，双卡上下两排。每张卡的网络类型显示在对应信号行左侧，是否显示由隐藏移动网络类型开关独立控制。开启前须先关闭三合一图标。"
+  },
+  {
+    "key": "ls_augment_rm_signal_dual_style",
+    "title": "信号样式",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "荣耀双排",
+      "iOS双排"
+    ],
+    "help": "荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；两种样式都按实际 SIM 和信号状态显示。  可选：荣耀双排、iOS双排。默认：荣耀双排。",
+    "summary": "荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；两种样式都按实际 SIM 和信号状态显示。  可选：荣耀双排、iOS双排。默认：荣耀双排。"
+  },
+  {
+    "key": "ls_augment_rm_hide_wifi_activity",
+    "title": "隐藏 Wi-Fi 收发箭头",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏 Wi-Fi 图标旁表示上传、下载活动的箭头，保留 Wi-Fi 信号图标；不会停止联网或数据传输。",
+    "summary": "隐藏 Wi-Fi 图标旁表示上传、下载活动的箭头，保留 Wi-Fi 信号图标；不会停止联网或数据传输。"
+  },
+  {
+    "key": "ls_augment_rm_hide_wifi_standard",
+    "title": "隐藏 Wi-Fi 标准数字",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏 Wi-Fi 图标上表示 Wi-Fi 标准的数字，例如 6 或 7，保留信号强度显示。带“+”的 Wi-Fi 7 多链路图标暂时保留原厂显示。",
+    "summary": "隐藏 Wi-Fi 图标上表示 Wi-Fi 标准的数字，例如 6 或 7，保留信号强度显示。带“+”的 Wi-Fi 7 多链路图标暂时保留原厂显示。"
+  },
+  {
+    "key": "ls_augment_rm_hide_mobile_activity",
+    "title": "隐藏移动网络收发箭头",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏移动信号旁表示上传、下载活动的箭头，保留移动信号图标；不会关闭移动数据。",
+    "summary": "隐藏移动信号旁表示上传、下载活动的箭头，保留移动信号图标；不会关闭移动数据。"
+  },
+  {
+    "key": "ls_augment_rm_hide_mobile_type",
+    "title": "隐藏移动网络类型",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏移动信号旁的网络制式文字，例如 4G、5G，保留信号强度和实际网络连接。与双排信号独立设置；关闭隐藏时，每张卡的网络类型显示在对应信号行左侧。",
+    "summary": "隐藏移动信号旁的网络制式文字，例如 4G、5G，保留信号强度和实际网络连接。与双排信号独立设置；关闭隐藏时，每张卡的网络类型显示在对应信号行左侧。"
+  },
+  {
+    "key": "ls_augment_rm_hide_hd_small",
+    "title": "隐藏信号旁的 HD 小图标",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏移动信号旁的 HD 小图标。仅改变图标显示，不关闭高清语音通话能力。",
+    "summary": "隐藏移动信号旁的 HD 小图标。仅改变图标显示，不关闭高清语音通话能力。"
+  },
+  {
+    "key": "ls_augment_rm_hide_hd_large",
+    "title": "隐藏信号旁的 HD 大图标",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏状态栏信号旁独立显示的大号 HD 图标，包含双卡 HD1/HD2 标记。与 HD 小图标独立控制；关闭后恢复系统显示，不关闭高清语音通话能力。",
+    "summary": "隐藏状态栏信号旁独立显示的大号 HD 图标，包含双卡 HD1/HD2 标记。与 HD 小图标独立控制；关闭后恢复系统显示，不关闭高清语音通话能力。"
+  },
+  {
+    "key": "ls_augment_rm_hide_sim1",
+    "title": "隐藏卡 1 信号",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏卡 1 的信号图标，不停用 SIM 卡，也不改变通话或移动数据设置。",
+    "summary": "隐藏卡 1 的信号图标，不停用 SIM 卡，也不改变通话或移动数据设置。"
+  },
+  {
+    "key": "ls_augment_rm_hide_sim2",
+    "title": "隐藏卡 2 信号",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏卡 2 的信号图标，不停用 SIM 卡。没有第二张卡时不会产生新的信号图标。",
+    "summary": "隐藏卡 2 的信号图标，不停用 SIM 卡。没有第二张卡时不会产生新的信号图标。"
+  },
+  {
+    "key": "ls_augment_rm_ignore_system_icon_hide",
+    "title": "忽略系统图标隐藏限制",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "忽略原厂系统图标隐藏名单和已适配容器的屏蔽规则，重新显示被这些规则隐藏的系统图标。原厂名单不被删除，关闭后重新按原名单处理。",
+    "summary": "忽略原厂系统图标隐藏名单和已适配容器的屏蔽规则，重新显示被这些规则隐藏的系统图标。原厂名单不被删除，关闭后重新按原名单处理。"
+  },
+  {
+    "key": "ls_augment_rm_hide_wifi_scope",
+    "title": "隐藏 Wi-Fi 图标的位置",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "遵循原厂",
+      "主屏状态栏",
+      "锁屏状态栏",
+      "通知栏头部",
+      "通知栏内控制中心",
+      "独立控制中心",
+      "全部位置"
+    ],
+    "help": "选择需要隐藏 Wi-Fi 图标的界面位置，可单独指定主屏、锁屏、下拉通知区域或控制中心。“遵循原厂”不额外隐藏，“全部位置”应用到已适配的所有位置。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。",
+    "summary": "选择需要隐藏 Wi-Fi 图标的界面位置，可单独指定主屏、锁屏、下拉通知区域或控制中心。“遵循原厂”不额外隐藏，“全部位置”应用到已适配的所有位置。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。"
+  },
+  {
+    "key": "ls_augment_rm_hide_hotspot_scope",
+    "title": "隐藏热点图标的位置",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "遵循原厂",
+      "主屏状态栏",
+      "锁屏状态栏",
+      "通知栏头部",
+      "通知栏内控制中心",
+      "独立控制中心",
+      "全部位置"
+    ],
+    "help": "选择需要隐藏热点图标的界面位置。只隐藏所选位置的图标，不关闭热点，也不改变已连接设备。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。",
+    "summary": "选择需要隐藏热点图标的界面位置。只隐藏所选位置的图标，不关闭热点，也不改变已连接设备。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。"
+  },
+  {
+    "key": "ls_augment_rm_hide_mobile_scope",
+    "title": "隐藏移动网络图标的位置",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "遵循原厂",
+      "主屏状态栏",
+      "锁屏状态栏",
+      "通知栏头部",
+      "通知栏内控制中心",
+      "独立控制中心",
+      "全部位置"
+    ],
+    "help": "选择需要隐藏移动信号图标的界面位置。只影响所选位置的显示，SIM 卡、移动数据和通话继续正常工作。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。",
+    "summary": "选择需要隐藏移动信号图标的界面位置。只影响所选位置的显示，SIM 卡、移动数据和通话继续正常工作。  可选：遵循原厂、主屏状态栏、锁屏状态栏、通知栏头部、通知栏内控制中心、独立控制中心、全部位置。默认：遵循原厂。"
+  },
+  {
+    "key": "ls_augment_rm_hidden_icon_slots",
+    "title": "其他隐藏图标",
+    "defaultValue": "",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "开启后，在本页展开的清单中勾选需要隐藏的系统图标。未勾选时不隐藏图标；收起清单不影响已选项生效。关闭后恢复原有显示规则并记住选择，再次开启沿用上次选择。只隐藏图标，不关闭相应服务。",
+    "summary": "开启后，在本页展开的清单中勾选需要隐藏的系统图标。未勾选时不隐藏图标；收起清单不影响已选项生效。关闭后恢复原有显示规则并记住选择，再次开启沿用上次选择。只隐藏图标，不关闭相应服务。"
+  },
+  {
+    "key": "ls_augment_rm_battery_preset",
+    "title": "电池预设样式",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "原生样式",
+      "ios样式"
+    ],
+    "help": "ios样式随电量、数字显示、充电、省电、性能模式和图标明暗自动切换对应素材。  可选：原生样式、ios样式。默认：原生样式。",
+    "summary": "ios样式随电量、数字显示、充电、省电、性能模式和图标明暗自动切换对应素材。  可选：原生样式、ios样式。默认：原生样式。"
+  },
+  {
+    "key": "ls_augment_rm_battery_style",
+    "title": "电池显示方式",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "遵循原厂",
+      "电池内显示数字",
+      "电池后显示数字",
+      "数字后显示电池",
+      "仅电池图标",
+      "仅电量数字",
+      "隐藏电池"
+    ],
+    "help": "选择电池数字的位置或隐藏方式，与所选电池预设样式共同生效。  可选：遵循原厂、电池内显示数字、电池后显示数字、数字后显示电池、仅电池图标、仅电量数字、隐藏电池。默认：遵循原厂。",
+    "summary": "选择电池数字的位置或隐藏方式，与所选电池预设样式共同生效。  可选：遵循原厂、电池内显示数字、电池后显示数字、数字后显示电池、仅电池图标、仅电量数字、隐藏电池。默认：遵循原厂。"
+  },
+  {
+    "key": "ls_augment_rm_battery_hide_percent",
+    "title": "隐藏电量百分号",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "去掉电量数字后面的 % 符号，保留电量数字。电池图形和数字的位置由“电池样式”控制。",
+    "summary": "去掉电量数字后面的 % 符号，保留电量数字。电池图形和数字的位置由“电池样式”控制。"
+  },
+  {
+    "key": "ls_augment_rm_battery_width_dp",
+    "title": "电池固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 120,
+    "choices": [],
+    "help": "设置状态栏电池图形与外置电量数字合计使用的固定宽度，单位 dp。0 使用原厂宽度；其他电池样式和显示位置保持当前选择。  可设置范围：0～120。默认值：0。",
+    "summary": "设置状态栏电池图形与外置电量数字合计使用的固定宽度，单位 dp。0 使用原厂宽度；其他电池样式和显示位置保持当前选择。  可设置范围：0～120。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_battery_alpha_percent",
+    "title": "电池图标不透明度（%）",
+    "defaultValue": "100",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 100,
+    "choices": [],
+    "help": "设置状态栏电池图标的不透明度，100 表示使用原厂不透明度，0 为透明。此值与自定义电池颜色本身的透明度共同生效。  可设置范围：0～100。默认值：100。",
+    "summary": "设置状态栏电池图标的不透明度，100 表示使用原厂不透明度，0 为透明。此值与自定义电池颜色本身的透明度共同生效。  可设置范围：0～100。默认值：100。"
+  },
+  {
+    "key": "ls_augment_rm_battery_colors",
+    "title": "按电量设置电池圆环颜色",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "根据当前电量分别使用本页设置的四档电池颜色；充电时优先使用“充电时电池颜色”。关闭后按原厂配色显示。",
+    "summary": "根据当前电量分别使用本页设置的四档电池颜色；充电时优先使用“充电时电池颜色”。关闭后按原厂配色显示。"
+  },
+  {
+    "key": "ls_augment_rm_battery_color_0",
+    "title": "0–19% 电池圆环颜色",
+    "defaultValue": "#FFFF5252",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "开启“按电量设置电池颜色”后，电量处于 0–19% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFF5252。",
+    "summary": "开启“按电量设置电池颜色”后，电量处于 0–19% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFF5252。"
+  },
+  {
+    "key": "ls_augment_rm_battery_color_1",
+    "title": "20–50% 电池圆环颜色",
+    "defaultValue": "#FFFFB74D",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "开启“按电量设置电池颜色”后，电量处于 20–50% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFFB74D。",
+    "summary": "开启“按电量设置电池颜色”后，电量处于 20–50% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFFB74D。"
+  },
+  {
+    "key": "ls_augment_rm_battery_color_2",
+    "title": "51–79% 电池圆环颜色",
+    "defaultValue": "#FF81C784",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "开启“按电量设置电池颜色”后，电量处于 51–79% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF81C784。",
+    "summary": "开启“按电量设置电池颜色”后，电量处于 51–79% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF81C784。"
+  },
+  {
+    "key": "ls_augment_rm_battery_color_3",
+    "title": "80–100% 电池圆环颜色",
+    "defaultValue": "#FF4CAF50",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "开启“按电量设置电池颜色”后，电量处于 80–100% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF4CAF50。",
+    "summary": "开启“按电量设置电池颜色”后，电量处于 80–100% 电池圆环颜色 时使用此颜色。充电中的颜色由“充电时电池颜色”单独控制。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF4CAF50。"
+  },
+  {
+    "key": "ls_augment_rm_battery_charging_color",
+    "title": "充电时电池圆环颜色",
+    "defaultValue": "#FF34C759",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "三合一圆环和原厂电池图标使用此配色。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF34C759。",
+    "summary": "三合一圆环和原厂电池图标使用此配色。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF34C759。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_colors",
+    "title": "按电量设置电量字体颜色",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "根据剩余电量，分别设置三合一图标中电量数字的四档颜色；充电时使用“充电时电量字体颜色”。此开关只控制电量数字，插头颜色在三合一高级设置中独立配置，圆环颜色由“按电量设置电池圆环颜色”独立控制。关闭后电量文字跟随状态栏文字颜色。",
+    "summary": "根据剩余电量，分别设置三合一图标中电量数字的四档颜色；充电时使用“充电时电量字体颜色”。此开关只控制电量数字，插头颜色在三合一高级设置中独立配置，圆环颜色由“按电量设置电池圆环颜色”独立控制。关闭后电量文字跟随状态栏文字颜色。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_color_0",
+    "title": "0–19% 电量字体颜色",
+    "defaultValue": "#FFFF5252",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFF5252。",
+    "summary": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFF5252。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_color_1",
+    "title": "20–50% 电量字体颜色",
+    "defaultValue": "#FFFFB74D",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFFB74D。",
+    "summary": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FFFFB74D。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_color_2",
+    "title": "51–79% 电量字体颜色",
+    "defaultValue": "#FF81C784",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF81C784。",
+    "summary": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF81C784。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_color_3",
+    "title": "80–100% 电量字体颜色",
+    "defaultValue": "#FF4CAF50",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF4CAF50。",
+    "summary": "只修改三合一图标内的电量数字；格式 #AARRGGBB。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF4CAF50。"
+  },
+  {
+    "key": "ls_augment_rm_battery_text_charging_color",
+    "title": "充电时电量字体颜色",
+    "defaultValue": "#FF34C759",
+    "kind": "COLOR",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "#RRGGBB",
+      "#AARRGGBB"
+    ],
+    "help": "只修改三合一图标内的电量数字；插头颜色在三合一高级设置中独立配置。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF34C759。",
+    "summary": "只修改三合一图标内的电量数字；插头颜色在三合一高级设置中独立配置。  输入 #RRGGBB 或 #AARRGGBB；AA 表示不透明度，FF 为完全不透明，00 为透明。默认：#FF34C759。"
+  },
+  {
+    "key": "ls_augment_rm_statusbar_double_tap_sleep",
+    "title": "双击状态栏锁屏",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "在状态栏区域连续轻点两次可熄屏锁定手机。普通单击、拖动与下拉手势仍由系统处理；关闭后恢复原厂触摸行为。",
+    "summary": "在状态栏区域连续轻点两次可熄屏锁定手机。普通单击、拖动与下拉手势仍由系统处理；关闭后恢复原厂触摸行为。"
+  },
+  {
+    "key": "ls_augment_rm_statusbar_hide",
+    "title": "隐藏状态栏内容",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏已适配的主屏状态栏内容，减少顶部显示的信息；锁屏顶部状态栏可通过“隐藏锁屏顶部状态栏”单独控制。",
+    "summary": "隐藏已适配的主屏状态栏内容，减少顶部显示的信息；锁屏顶部状态栏可通过“隐藏锁屏顶部状态栏”单独控制。"
+  },
+  {
+    "key": "ls_augment_rm_notification_native",
+    "title": "恢复原生通知图标",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "让已适配的状态栏和通知模板使用通知提供的小图标，减少原厂用完整应用图标替换的行为，并保留适合当前背景的着色。",
+    "summary": "让已适配的状态栏和通知模板使用通知提供的小图标，减少原厂用完整应用图标替换的行为，并保留适合当前背景的着色。"
+  },
+  {
+    "key": "ls_augment_rm_statusbar_restore_font",
+    "title": "恢复状态栏原生字体",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "让已适配的状态栏时钟、电池和网速文字使用系统默认字体。启用模块自定义时钟字体时，自定义时钟设置仍优先。",
+    "summary": "让已适配的状态栏时钟、电池和网速文字使用系统默认字体。启用模块自定义时钟字体时，自定义时钟设置仍优先。"
+  },
+  {
+    "key": "ls_augment_rm_cutout_always",
+    "title": "挖孔黑圈常显",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "在原厂挖孔黑色遮罩组件中保持黑圈显示。只调整已适配的挖孔显示层，不改变摄像头硬件、可用屏幕尺寸或截图分辨率。",
+    "summary": "在原厂挖孔黑色遮罩组件中保持黑圈显示。只调整已适配的挖孔显示层，不改变摄像头硬件、可用屏幕尺寸或截图分辨率。"
+  },
+  {
+    "key": "ls_augment_rm_clock_milliseconds_refresh",
+    "title": "启用时钟毫秒刷新",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "按本页的毫秒间隔刷新状态栏自定义时钟，配合时钟格式中的 S 显示毫秒。没有加入毫秒格式时不会自动添加毫秒；熄屏时暂停高频刷新。",
+    "summary": "按本页的毫秒间隔刷新状态栏自定义时钟，配合时钟格式中的 S 显示毫秒。没有加入毫秒格式时不会自动添加毫秒；熄屏时暂停高频刷新。"
+  },
+  {
+    "key": "ls_augment_rm_clock_refresh_ms",
+    "title": "时钟刷新间隔（毫秒）",
+    "defaultValue": "100",
+    "kind": "INTEGER",
+    "minimum": 16,
+    "maximum": 1000,
+    "choices": [],
+    "help": "配合现有时钟自定义格式中的 S 使用；屏幕关闭时暂停高频刷新。  可设置范围：16～1000。默认值：100。",
+    "summary": "配合现有时钟自定义格式中的 S 使用；屏幕关闭时暂停高频刷新。  可设置范围：16～1000。默认值：100。"
+  },
+  {
+    "key": "ls_augment_rm_network_custom",
+    "title": "网速显示高级设置",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "为已有状态栏网速显示启用本页的低速隐藏阈值、精度、单位、/s 后缀与固定宽度。需先在状态栏编辑器中启用网速显示。",
+    "summary": "为已有状态栏网速显示启用本页的低速隐藏阈值、精度、单位、/s 后缀与固定宽度。需先在状态栏编辑器中启用网速显示。"
+  },
+  {
+    "key": "ls_augment_rm_network_hide_below_kb",
+    "title": "低速隐藏阈值（KB/s）",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 10240,
+    "choices": [],
+    "help": "上下行都低于阈值时隐藏；0 不隐藏。  可设置范围：0～10240。默认值：0。",
+    "summary": "上下行都低于阈值时隐藏；0 不隐藏。  可设置范围：0～10240。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_network_digits",
+    "title": "网速有效位数",
+    "defaultValue": "3",
+    "kind": "INTEGER",
+    "minimum": 1,
+    "maximum": 5,
+    "choices": [],
+    "help": "设置状态栏网速数值保留的有效位数，用于在精度与显示长度之间取舍。需开启“网速显示高级设置”；不会改变网速统计的真实数据。  可设置范围：1～5。默认值：3。",
+    "summary": "设置状态栏网速数值保留的有效位数，用于在精度与显示长度之间取舍。需开启“网速显示高级设置”；不会改变网速统计的真实数据。  可设置范围：1～5。默认值：3。"
+  },
+  {
+    "key": "ls_augment_rm_network_unit",
+    "title": "网速单位",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "自动 K/M",
+      "固定 KB",
+      "固定 MB"
+    ],
+    "help": "设置状态栏网速使用自动 K/M、固定 KB 或固定 MB，统计口径保持每秒传输的字节数。需开启“网速显示高级设置”。  可选：自动 K/M、固定 KB、固定 MB。默认：自动 K/M。",
+    "summary": "设置状态栏网速使用自动 K/M、固定 KB 或固定 MB，统计口径保持每秒传输的字节数。需开启“网速显示高级设置”。  可选：自动 K/M、固定 KB、固定 MB。默认：自动 K/M。"
+  },
+  {
+    "key": "ls_augment_rm_network_per_second",
+    "title": "网速显示 /s",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "在状态栏网速单位后增加 /s，例如 KB/s。需开启“网速显示高级设置”；只改变后缀，不改变速度统计口径。",
+    "summary": "在状态栏网速单位后增加 /s，例如 KB/s。需开启“网速显示高级设置”；只改变后缀，不改变速度统计口径。"
+  },
+  {
+    "key": "ls_augment_rm_network_width_dp",
+    "title": "网速固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "为状态栏网速文字保留固定宽度，单位 dp，减少数值变化时的横向跳动。需开启“网速显示高级设置”；0 表示宽度随内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "为状态栏网速文字保留固定宽度，单位 dp，减少数值变化时的横向跳动。需开启“网速显示高级设置”；0 表示宽度随内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_metrics_custom",
+    "title": "温度与电量信息高级设置",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "为状态栏已有的 CPU、GPU、电池温度、电流和功率启用本页的前缀、单位、固定宽度及充电条件。需先在状态栏编辑器中打开对应信息显示。",
+    "summary": "为状态栏已有的 CPU、GPU、电池温度、电流和功率启用本页的前缀、单位、固定宽度及充电条件。需先在状态栏编辑器中打开对应信息显示。"
+  },
+  {
+    "key": "ls_augment_rm_metrics_hide_units",
+    "title": "温度与电量信息隐藏单位",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "隐藏状态栏温度、电流和功率文字中的单位符号，保留数字与自定义前缀。需开启“温度与电量信息高级设置”。",
+    "summary": "隐藏状态栏温度、电流和功率文字中的单位符号，保留数字与自定义前缀。需开启“温度与电量信息高级设置”。"
+  },
+  {
+    "key": "ls_augment_rm_metrics_charging_only",
+    "title": "仅充电时显示电流和功率",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "让状态栏电流和功率仅在手机充电时显示，拔下充电器后隐藏这两项。需开启“温度与电量信息高级设置”；温度项目不受此项影响。",
+    "summary": "让状态栏电流和功率仅在手机充电时显示，拔下充电器后隐藏这两项。需开启“温度与电量信息高级设置”；温度项目不受此项影响。"
+  },
+  {
+    "key": "ls_augment_rm_metric_prefix_cpu",
+    "title": "CPU 温度前缀",
+    "defaultValue": "C:",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "设置状态栏“CPU 温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。",
+    "summary": "设置状态栏“CPU 温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。"
+  },
+  {
+    "key": "ls_augment_rm_metric_width_cpu",
+    "title": "CPU 温度固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "设置状态栏“CPU 温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "设置状态栏“CPU 温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_metric_prefix_gpu",
+    "title": "GPU 温度前缀",
+    "defaultValue": "G:",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "设置状态栏“GPU 温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。",
+    "summary": "设置状态栏“GPU 温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。"
+  },
+  {
+    "key": "ls_augment_rm_metric_width_gpu",
+    "title": "GPU 温度固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "设置状态栏“GPU 温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "设置状态栏“GPU 温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_metric_prefix_battery_temp",
+    "title": "电池温度前缀",
+    "defaultValue": "B:",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "设置状态栏“电池温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。",
+    "summary": "设置状态栏“电池温度”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。"
+  },
+  {
+    "key": "ls_augment_rm_metric_width_battery_temp",
+    "title": "电池温度固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "设置状态栏“电池温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "设置状态栏“电池温度”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_metric_prefix_current",
+    "title": "电流前缀",
+    "defaultValue": "I:",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "设置状态栏“电流”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。",
+    "summary": "设置状态栏“电流”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。"
+  },
+  {
+    "key": "ls_augment_rm_metric_width_current",
+    "title": "电流固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "设置状态栏“电流”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "设置状态栏“电流”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_rm_metric_prefix_power",
+    "title": "功率前缀",
+    "defaultValue": "P:",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "设置状态栏“功率”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。",
+    "summary": "设置状态栏“功率”数值前面的文字。需开启“温度与电量信息高级设置”及对应信息显示；留空只去掉前缀，不停止采集数值。"
+  },
+  {
+    "key": "ls_augment_rm_metric_width_power",
+    "title": "功率固定宽度",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 180,
+    "choices": [],
+    "help": "设置状态栏“功率”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。",
+    "summary": "设置状态栏“功率”文字区域的固定宽度，单位 dp。需开启“温度与电量信息高级设置”；0 表示宽度随文字内容变化。  可设置范围：0～180。默认值：0。"
+  },
+  {
+    "key": "ls_augment_statusbar_icon_spacing_v1",
+    "title": "每个图标边界间距",
+    "defaultValue": "",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "各图标的四边额外留白参与真实排列；按位置保存，动态状态共用，0 保留原厂间距。",
+    "summary": "各图标的四边额外留白参与真实排列；按位置保存，动态状态共用，0 保留原厂间距。"
+  },
+  {
+    "key": "ls_augment_statusbar_hint_priority",
+    "title": "系统提示图标优先级",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "空间不足时优先保留所选系统提示，并使用独立数量上限；仍遵守原厂显示条件与隐藏规则。",
+    "summary": "空间不足时优先保留所选系统提示，并使用独立数量上限；仍遵守原厂显示条件与隐藏规则。"
+  },
+  {
+    "key": "ls_augment_statusbar_hint_limit",
+    "title": "系统提示图标上限",
+    "defaultValue": "0",
+    "kind": "INTEGER",
+    "minimum": 0,
+    "maximum": 20,
+    "choices": [],
+    "help": "0 跟随原厂；不计入通知图标、Wi-Fi、移动信号和电池。  可设置范围：0～20。默认值：0。",
+    "summary": "0 跟随原厂；不计入通知图标、Wi-Fi、移动信号和电池。  可设置范围：0～20。默认值：0。"
+  },
+  {
+    "key": "ls_augment_statusbar_hint_order",
+    "title": "系统提示保留顺序",
+    "defaultValue": "",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "只改变拥挤时的保留优先级，正常显示位置沿用系统顺序。",
+    "summary": "只改变拥挤时的保留优先级，正常显示位置沿用系统顺序。"
+  },
+  {
+    "key": "ls_augment_notification_summary_enabled",
+    "title": "通知区域汇总",
+    "defaultValue": "0",
+    "kind": "BOOLEAN",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "存在可显示的通知时，用一个符号、短文字或图片代替通知图标。保留所有原通知；无通知时消失，图片不可用时恢复原生图标。",
+    "summary": "存在可显示的通知时，用一个符号、短文字或图片代替通知图标。保留所有原通知；无通知时消失，图片不可用时恢复原生图标。"
+  },
+  {
+    "key": "ls_augment_notification_summary_mode",
+    "title": "汇总样式",
+    "defaultValue": "0",
+    "kind": "CHOICE",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [
+      "符号",
+      "文字",
+      "图片"
+    ],
+    "help": "只改变桌面与应用顶部状态栏的通知区域。  可选：符号、文字、图片。默认：符号。",
+    "summary": "只改变桌面与应用顶部状态栏的通知区域。  可选：符号、文字、图片。默认：符号。"
+  },
+  {
+    "key": "ls_augment_notification_summary_symbol",
+    "title": "符号",
+    "defaultValue": "♥",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "符号样式使用，最多12个字符。",
+    "summary": "符号样式使用，最多12个字符。"
+  },
+  {
+    "key": "ls_augment_notification_summary_text",
+    "title": "短文字",
+    "defaultValue": "有新通知",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "文字样式使用，最多12个字符；空间不足时省略。",
+    "summary": "文字样式使用，最多12个字符；空间不足时省略。"
+  },
+  {
+    "key": "ls_augment_notification_summary_asset",
+    "title": "汇总图片",
+    "defaultValue": "",
+    "kind": "TEXT",
+    "minimum": 0,
+    "maximum": 0,
+    "choices": [],
+    "help": "图片样式使用，支持 PNG、JPEG、WebP、GIF；按实际通知显隐，关闭时保留图片。",
+    "summary": "图片样式使用，支持 PNG、JPEG、WebP、GIF；按实际通知显隐，关闭时保留图片。"
+  },
+  {
+    "key": "ls_augment_notification_summary_size",
+    "title": "内容大小（dp）",
+    "defaultValue": "18",
+    "kind": "INTEGER",
+    "minimum": 8,
+    "maximum": 40,
+    "choices": [],
+    "help": "同时受当前状态栏高度与可用宽度限制。  可设置范围：8～40。默认值：18。",
+    "summary": "同时受当前状态栏高度与可用宽度限制。  可设置范围：8～40。默认值：18。"
+  }
+]

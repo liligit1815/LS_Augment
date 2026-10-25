@@ -150,11 +150,33 @@ public final class TestNotificationStackPolicy {
         changed.removeIf(item->"a-new".equals(item.key));visible(NotificationStackPolicy.plan(changed,false,true,open(APP_A)),"new-alert","s-old","s-latest");
     }
     public static void main(String[] args){
+        nativeBundles();
         for(String suite:args.length==0?new String[]{"native","small","big","both","profiles","events"}:args)switch(suite){
             case "native":nativeMode();break;case "small":smallMode();break;case "big":bigMode();break;
             case "both":combinedMode();break;case "profiles":profilesAndSingletons();break;case "events":postsAndRemoval();break;
             default:throw new IllegalArgumentException("Unknown test case: "+suite);
         }
         System.out.println("Notification grouped stack policy "+checks+" checks passed: four switch combinations, native order, direct app expansion, category/profile isolation and clear/post");
+    }
+    static void nativeBundles(){
+        NotificationStackPolicy.Item<String> barrier=new NotificationStackPolicy.Item<>("bundle","bundle",null,false,0,true);
+        List<NotificationStackPolicy.Item<String>> mixed=Arrays.asList(item("before-old","0:app.a",false,1),item("before-new","0:app.a",false,2),barrier,item("after-old","0:app.a",true,3),item("after-new","0:app.a",true,4));
+        for(boolean big:new boolean[]{false,true})for(boolean small:new boolean[]{false,true}){
+            NotificationStackPolicy.Plan<String> p=NotificationStackPolicy.plan(mixed,big,small,open());
+            if(big||small)visible(p,"before-new","bundle","after-new");else visible(p,"before-old","before-new","bundle","after-old","after-new");
+            check(!p.hiddenKeys.contains("bundle"),"bundle remains visible for every switch combination");
+            for(NotificationStackPolicy.Node<String> n:p.nodes)if(n.item==barrier)check(n.expanded&&n.count==1&&n.groupKey.isEmpty(),"bundle keeps native gesture ownership");
+            for(List<NotificationStackPolicy.Item<String>> group:p.groups.values())check(!group.contains(barrier),"bundle never enters Duo group/clear metadata");
+            conservation(p,mixed);
+        }
+        String before=NotificationStackPolicy.groupKeyFor(mixed,mixed.get(0),NotificationStackPolicy.MERGED);
+        String after=NotificationStackPolicy.groupKeyFor(mixed,mixed.get(3),NotificationStackPolicy.MERGED);
+        check(!before.equals(after),"expansion keys do not cross native bundle boundary");
+        visible(NotificationStackPolicy.plan(mixed,true,false,open(before)),"before-old","before-new","bundle","after-new");
+        visible(NotificationStackPolicy.plan(mixed,true,false,open(after)),"before-new","bundle","after-old","after-new");
+        NotificationStackPolicy.Plan<String> small=NotificationStackPolicy.plan(mixed,false,true,open());
+        check(small.nodes.stream().anyMatch(n->n.item==null&&NotificationStackPolicy.SILENT.equals(n.sectionKey)),"namespaced silent category retains semantic label");
+        visible(NotificationStackPolicy.plan(Arrays.asList(barrier,new NotificationStackPolicy.Item<>("b2","b2",null,false,0,true)),true,true,open()),"bundle","b2");
+        check(NotificationStackPolicy.groupKeyFor(MIXED,MIXED.get(0),APP_A).equals(APP_A),"old firmware retains expansion keys");
     }
 }

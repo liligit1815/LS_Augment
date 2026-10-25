@@ -3,6 +3,7 @@ import groups from './current-feature-groups.json';
 import editorData from './current-editor-data.json';
 import { navigationTargets } from './current-navigation';
 import type { Feature } from './current-feature-row';
+import { statusDesignTitles } from './current-status-navigation';
 
 export type ApplicationTarget = (typeof navigationTargets)[number];
 export type ApplicationSection = {
@@ -79,7 +80,7 @@ const sectionTitles: Record<string, string> = {
   'update-link': '更新链接',
 };
 const sectionCopy: Record<string, string> = {
-  statusbar: '表格布局、时钟、通知、硬件网速、图标与电池',
+  statusbar: '状态栏自身、系统图标、通知图标、图标素材与字体',
   status_resources: '图标总览、分状态素材、统一字体与分享包',
   freeform: '小窗数量、应用范围与跨应用跳转',
   audio: '音量档数、增益与按键规则',
@@ -143,12 +144,6 @@ export function applicationSections(
     section.entries.push(entry.route);
   }
   if (target.id === 'systemui') {
-    sections.push({
-      id: 'status_resources',
-      title: sectionTitles.status_resources,
-      features: [],
-      entries: ['status_assets'],
-    });
     const center = sections.find((s) => s.id === 'quicksettings'),
       glass = sections.find((s) => s.id === 'glass');
     if (center && glass) {
@@ -252,6 +247,7 @@ export const groupRoute = (target: string, section: string) =>
   `group/${target}/${section}`;
 /** A single navigation child is opened directly; functional settings stay visible. */
 export function singleChildRoute(route: string): string | undefined {
+  if (route === 'group/systemui/statusbar') return 'status_layout';
   if (route === 'group/systemui/lockscreen') return 'group/theme/lockscreen';
   if (route === 'group/systemui/aod') return 'group/theme/aod';
   if (embeddedEditorRoutes[route]) return embeddedEditorRoutes[route];
@@ -344,6 +340,10 @@ export function activeFeatureCount(
   }, 0);
 }
 function immediateParent(route: string): string {
+  if (route === 'status_layout') return 'target-systemui';
+  if (route.startsWith('status_icon/')) return 'status_icons';
+  if (['status_clock', 'status_network', 'status_metrics', 'status_native_battery', 'status_battery_text'].includes(route)) return 'status_icons';
+  if (statusDesignTitles[route]) return 'status_layout';
   if (embeddedEditorRoutes[route]) return 'target-' + embeddedEditorRoutes[route].split('/')[1];
   if (route === 'rapid_compatibility') return groupRoute('game', 'shoulder');
   if (gameSectionRoute(route)) return 'target-game';

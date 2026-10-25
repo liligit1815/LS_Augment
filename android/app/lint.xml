@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Toolchain upgrade advisory only. Keep the tested, locally cached release toolchain;
+         upgrading Gradle/AGP is a separate change, not a crash or compatibility fix. -->
+    <issue id="AndroidGradlePluginVersion">
+        <ignore path="../gradle/wrapper/gradle-wrapper.properties" />
+    </issue>
+</lint>

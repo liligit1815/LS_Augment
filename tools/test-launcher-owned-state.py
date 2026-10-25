@@ -59,9 +59,12 @@ STUBS.update({
  public class LauncherClientAccess {
  public static SharedPreferences prefs(Context c,String kind){return LauncherOwnedStateClient.preferences(c,kind);}
  public static SharedPreferences ready(Context c,String kind){return LauncherOwnedStateClient.readyPreferences(c,kind);}
+ public static boolean listen(Context c,String kind,Runnable listener){return LauncherOwnedStateClient.addReadyListener(c,kind,listener);}
  public static void preload(Context c){LauncherOwnedStateClient.preload(c);}
  public static void drain()throws Exception{var f=LauncherOwnedStateClient.class.getDeclaredField("IO");f.setAccessible(true);((ExecutorService)f.get(null)).submit(()->{}).get(5,TimeUnit.SECONDS);}
  public static void reset()throws Exception{drain();var f=LauncherOwnedStateClient.class.getDeclaredField("RECORDS");f.setAccessible(true);((java.util.Map<?,?>)f.get(null)).clear();FeatureSettings.revision=77;LauncherResetHook.reject=false;FeatureSettings.diagnostics.clear();}
+ public static void forget()throws Exception{var f=LauncherOwnedStateClient.class.getDeclaredField("RECORDS");f.setAccessible(true);synchronized(LauncherOwnedStateClient.class){((java.util.Map<?,?>)f.get(null)).clear();}}
+ public static void blockIO(CountDownLatch entered,CountDownLatch release)throws Exception{var f=LauncherOwnedStateClient.class.getDeclaredField("IO");f.setAccessible(true);((ExecutorService)f.get(null)).execute(()->{entered.countDown();try{release.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}});if(!entered.await(5,TimeUnit.SECONDS))throw new AssertionError("IO gate startup");}
  public static String diagnostic(String kind){return FeatureSettings.diagnostics.get("ls_augment_launcher_private_state_"+kind);}
  public static void retryNow(String kind)throws Exception{var r=LauncherOwnedStateClient.class.getDeclaredField("RECORDS");r.setAccessible(true);Object record=((java.util.Map<?,?>)r.get(null)).get(kind);var method=record.getClass().getDeclaredMethod("load");method.setAccessible(true);var e=LauncherOwnedStateClient.class.getDeclaredField("IO");e.setAccessible(true);((ExecutorService)e.get(null)).submit(()->{try{method.invoke(record);}catch(Exception failure){throw new RuntimeException(failure);}}).get(5,TimeUnit.SECONDS);}
  public static boolean fatal(Throwable value)throws Exception{var m=LauncherOwnedStateClient.class.getDeclaredMethod("throwIfFatal",Throwable.class);m.setAccessible(true);try{m.invoke(null,value);return false;}catch(java.lang.reflect.InvocationTargetException failure){return failure.getCause()==value;}}
@@ -74,6 +77,7 @@ STUBS.update({
 
 HARNESS = r'''package ls.augment.com;
 import android.content.*;import android.content.pm.*;import android.os.*;import java.nio.file.*;import java.util.*;
+import java.util.concurrent.*;import java.util.concurrent.atomic.*;
 import org.json.*;import ls.augment.com.hook.LauncherClientAccess;
 public class TestLauncherOwnedState {
  static int checks;static List<String> events=new ArrayList<>();
@@ -129,11 +133,18 @@ public class TestLauncherOwnedState {
  static Map<String,Object> grid(){return Map.of("original_rows",6,"original_columns",4,"effective_rows",7,"effective_columns",5,"owned",true,"migration_pending",false);}
  static void seed(App a,String name,Map<String,?> values){Prefs p=a.getSharedPreferences(name,0);p.memory.putAll(values);check(p.edit().commit(),"seed legacy");}
  static boolean exists(App a,String name){return Files.exists(a.path.resolve("shared_prefs/"+name+".xml"));}
+ static String disk(Fixture f,String kind,String key)throws Exception{String name=kind.equals("grid")?LauncherOwnedStateStore.GRID_PREFS:LauncherOwnedStateStore.PAGES_PREFS;
+  Path path=f.module.path.resolve("shared_prefs/"+name+".xml");if(!Files.exists(path))return null;return new JSONObject(Files.readString(path)).optString(key,null);}
  public static void main(String[] args)throws Exception {
-  Path root=Path.of(args[1]);String grid=LauncherOwnedStateData.encode("grid",grid()),pages="{\"order\":\"20,10\",\"keep_empty\":true}";
+  Path root=Path.of(args[1]);String grid=LauncherOwnedStateData.encode("grid",grid()),pages=LauncherOwnedStateData.encode("pages",Map.of("order","20,10","keep_empty",true));
+  String origin=LauncherPageOrigins.add("","LDI1|12000|0|credential|launcher.db|"+"a".repeat(64)+"|9|77",30);
   Fixture f=new Fixture(root.resolve(args[0]));
-  if(args[0].equals("seed")){check(put(f,"grid","{}",grid),"persist grid");return;}
-  if(args[0].equals("restart")){Fixture saved=new Fixture(root.resolve("seed"));check(get(saved,"grid").equals(grid),"new JVM keeps module private originals");System.out.println("PASS launcher new-JVM persistence "+checks);return;}
+  if(args[0].equals("seed")){check(put(f,"grid","{}",grid),"persist grid");check(put(f,"pages","{}",pages),"persist imported page baseline");
+   check(put(f,"pages",pages,LauncherOwnedStateData.encode("pages",Map.of("order","10,20,30","empty_origins",origin))),"persist later page edit with manual provenance");return;}
+  if(args[0].equals("restart")){Fixture saved=new Fixture(root.resolve("seed"));check(get(saved,"grid").equals(grid),"new JVM keeps module private originals");
+   check(disk(saved,"grid",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"grid read and write preserve original scope without an additional backup");
+   check(LauncherOwnedStateData.decode("pages",get(saved,"pages")).get("order").equals("10,20,30"),"new JVM uses latest page state");check(LauncherOwnedStateData.decode("pages",get(saved,"pages")).get("empty_origins").equals(origin),"new JVM preserves explicit file-scoped manual origins");
+   check(disk(saved,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"new JVM keeps immutable original page recovery copy");System.out.println("PASS launcher new-JVM persistence "+checks);return;}
   check(get(f,"grid").equals("{}"),"empty record");
   for(int uid:new int[]{0,1000,10055,112000}){Binder.uid=uid;check(!ok(route(f,"launcher_owned_read",readArgs("grid"))),"unauthorized UID");}Binder.uid=12000;
   f.module.provider.caller="android";check(!ok(route(f,"launcher_owned_read",readArgs("grid"))),"wrong package");f.module.provider.caller="com.zte.mifavor.launcher";
@@ -148,6 +159,9 @@ public class TestLauncherOwnedState {
   check(put(f,"pages","{}",pages),"independent page state");ResetWriteFence.begin();try{
    check(!put(f,"pages",get(f,"pages"),"{}"),"ordinary page clear forbidden in reset");check(!put(f,"grid",grid,grid),"grid takeover forbidden in reset");
    check(LauncherOwnedStateStore.clearPagesForReset(f.module),"trusted reset clears pages");check(get(f,"grid").equals(grid),"reset preserves grid original");
+   check(disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"page reset also removes original recovery copy");
+   check(!ok(route(f,"launcher_owned_import",writeArgs("pages","{}",pages,true))),"reset rejects page reimport after clear");
+   check(!ok(route(f,"launcher_owned_import",writeArgs("grid",grid,grid,true))),"reset rejects idempotent import ACK before source deletion");
    Map<String,Object> restored=new LinkedHashMap<>(grid());restored.put("effective_rows",6);restored.put("effective_columns",4);
    check(put(f,"grid",grid,LauncherOwnedStateData.encode("grid",restored)),"native geometry recovery progress allowed during reset");
   }finally{ResetWriteFence.end();}
@@ -158,18 +172,40 @@ public class TestLauncherOwnedState {
   check(!exists(f.host,"ls_augment_launcher_grid_state")&&!exists(f.de,"ls_augment_launcher_grid_state")&&!exists(f.host,"ls_augment_launcher_pages"),"CE DE exact legacy files deleted");
   check(exists(f.host,"native"),"native launcher prefs never deleted");
   check(events.indexOf("commit:"+LauncherOwnedStateStore.GRID_PREFS+".xml")<events.indexOf("delete:ls_augment_launcher_grid_state"),"private durability before source deletion");
+  check(disk(f,"grid",LauncherOwnedStateStore.RECOVERY_RECORD)==null&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"legacy page deletion retains immutable original without adding grid backup");
   f.host.resolver.lost=1;check(gridPrefs.edit().putBoolean("migration_pending",true).commit(),"client retries lost private commit ACK");
   check(!exists(f.host,"ls_augment_launcher_grid_state"),"subsequent recovery writes cannot recreate host file");
   pagePrefs.edit().putString("order","10,20").apply();check(pagePrefs.getString("order","").equals("10,20"),"page edits immediately in memory");LauncherClientAccess.drain();
   check(LauncherOwnedStateData.decode("pages",get(f,"pages")).get("order").equals("10,20"),"page state asynchronously committed privately");
+  check(disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"later page save preserves imported original copy");
   AppConfig.revision=78;pagePrefs.edit().putString("order","20,10").apply();LauncherClientAccess.drain();
   check(LauncherClientAccess.dirty(pagePrefs)&&LauncherOwnedStateData.decode("pages",get(f,"pages")).get("order").equals("10,20"),"rejected stale revision keeps pending page intent");
   LauncherClientAccess.revision(78);pagePrefs.edit().putString("order","20,10").apply();LauncherClientAccess.drain();
   check(!LauncherClientAccess.dirty(pagePrefs)&&LauncherOwnedStateData.decode("pages",get(f,"pages")).get("order").equals("20,10"),"next verified lifecycle can commit same intended page order");
   ResetWriteFence.begin();try{check(LauncherClientAccess.clear(f.host),"client paused pages reset clears provider and memory");check(pagePrefs.getAll().isEmpty(),"same cached view sees reset");}finally{ResetWriteFence.end();}
   check(LauncherOwnedStateStore.pendingGrid(f.module)&&!LauncherOwnedStateStore.pagesHistory(f.module),"grid restore responsibility independent from page reset");
+  check(disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD)==null&&disk(f,"grid",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"reset removes page recovery without adding persistent grid backup");
+  f=new Fixture(root.resolve("existing-private-read"));seed(f.module,LauncherOwnedStateStore.PAGES_PREFS,Map.of("record",pages));
+  Prefs existing=f.module.getSharedPreferences(LauncherOwnedStateStore.PAGES_PREFS,0);existing.fail=true;
+  Bundle preservation=route(f,"launcher_owned_read",readArgs("pages"));check(!ok(preservation)&&preservation.getString("reason").equals("storage_failed"),"old private record read requires durable original preservation before ACK");
+  check(disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD)==null&&disk(f,"pages","record").equals(pages),"failed backup commit cannot use optimistic memory or alter original disk state");
+  check(get(f,"pages").equals(pages)&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"retry durably protects preexisting private record");
+  f=new Fixture(root.resolve("existing-private-write"));seed(f.module,LauncherOwnedStateStore.PAGES_PREFS,Map.of("record",pages));
+  String edited="{\"order\":\"10,20\"}";
+  check(!put(f,"pages","{}",edited)&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"stale CAS neither changes current record nor claims a recovery copy");
+  existing=f.module.getSharedPreferences(LauncherOwnedStateStore.PAGES_PREFS,0);existing.fail=true;
+  check(!put(f,"pages",pages,edited)&&disk(f,"pages","record").equals(pages)&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"failed first edit cannot ACK either replacement or backup");
+  check(put(f,"pages",pages,edited)&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"first later edit preserves old private record instead of replacement");
+  check(put(f,"pages",edited,"{}")&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"ordinary clear retains recovery copy until trusted reset");
+  check(LauncherOwnedStateStore.pagesHistory(f.module),"page history includes recovery copy even when latest layout is empty");
+  for(Object bad:new Object[]{42,"{}","{\"order\":\"1,1\"}","{\"native_key\":1}"}){
+   f=new Fixture(root.resolve("invalid-recovery-"+checks));seed(f.module,LauncherOwnedStateStore.PAGES_PREFS,Map.of("record",pages,LauncherOwnedStateStore.RECOVERY_RECORD,bad));
+   Bundle invalid=route(f,"launcher_owned_read",readArgs("pages"));check(!ok(invalid)&&invalid.getString("reason").equals("storage_invalid"),"malformed recovery metadata blocks read without substituting empty state");
+   check(!put(f,"pages",pages,edited)&&disk(f,"pages","record").equals(pages),"malformed recovery metadata cannot be overwritten by a later save");
+  }
   f=new Fixture(root.resolve("save-failure"));seed(f.host,"ls_augment_launcher_grid_state",grid());f.module.getSharedPreferences(LauncherOwnedStateStore.GRID_PREFS,0).fail=true;final Fixture saveFailure=f;
   fail(()->LauncherClientAccess.prefs(saveFailure.host,"grid"),"legacy migration fails if private disk fails");check(exists(f.host,"ls_augment_launcher_grid_state"),"failed import source retained");
+  check(disk(f,"grid","record")==null&&disk(f,"grid",LauncherOwnedStateStore.RECOVERY_RECORD)==null,"failed import commits neither latest record nor immutable backup");
   f=new Fixture(root.resolve("legacy-conflict"));seed(f.host,"ls_augment_launcher_pages",Map.of("order","1,2"));seed(f.de,"ls_augment_launcher_pages",Map.of("order","2,1"));final Fixture conflict=f;
   fail(()->LauncherClientAccess.prefs(conflict.host,"pages"),"different CE DE records not silently overwritten");check(exists(f.host,"ls_augment_launcher_pages")&&exists(f.de,"ls_augment_launcher_pages"),"conflicting sources retained");
   f=new Fixture(root.resolve("delete-failure"));seed(f.host,"ls_augment_launcher_pages",Map.of("order","1,2"));f.host.deleteFails=true;final Fixture deletion=f;
@@ -181,17 +217,34 @@ public class TestLauncherOwnedState {
   check(LauncherClientAccess.prefs(f.host,"grid").getAll().isEmpty(),"late read may serve next safe lifecycle without fabricating migration");
   f=new Fixture(root.resolve("provider-recovery"));seed(f.de,"ls_augment_launcher_pages",Map.of("order","20,10","keep_empty",true));
   f.host.resolver.unavailable=true;final Fixture recovering=f;
+  AtomicInteger readyCalls=new AtomicInteger();AtomicReference<String> readyOrder=new AtomicReference<>();AtomicReference<String> readyThread=new AtomicReference<>();CountDownLatch delivered=new CountDownLatch(1);
+  long listenerStart=System.nanoTime();check(LauncherClientAccess.listen(f.host,"pages",()->{readyCalls.incrementAndGet();readyOrder.set(LauncherClientAccess.ready(recovering.host,"pages").getString("order",""));readyThread.set(Thread.currentThread().getName());delivered.countDown();}),"pending record accepts one-shot listener");
+  check((System.nanoTime()-listenerStart)/1000000<100,"ready listener registration never waits for provider startup");
   long readyStart=System.nanoTime();check(LauncherClientAccess.ready(f.host,"pages")==null,"nonblocking lifecycle rejects a not-yet-loaded record");
   check((System.nanoTime()-readyStart)/1000000<100,"ready accessor never waits for provider startup");
   fail(()->LauncherClientAccess.prefs(recovering.host,"pages"),"first unavailable provider is explicitly failed, not an empty ready state");
   check(exists(f.de,"ls_augment_launcher_pages")&&f.host.resolver.calls==2,"unavailable private ACK preserves DE source and bounded immediate attempts");
+  check(readyCalls.get()==0,"failed initial load never emits a ready callback");
   check(LauncherClientAccess.diagnostic("pages").contains("state=waiting_retry")&&LauncherClientAccess.diagnostic("pages").contains("phase=private_read"),"transient failure diagnostic includes kind and phase");
   f.host.resolver.unavailable=false;Thread.sleep(450);LauncherClientAccess.drain();
   check(LauncherClientAccess.prefs(f.host,"pages").getString("order","").equals("20,10"),"real scheduled retry loads original pages without restarting process");
   check(LauncherClientAccess.ready(f.host,"pages").getString("order","").equals("20,10"),"later nonblocking lifecycle can obtain real recovered record");
   check(!exists(f.de,"ls_augment_launcher_pages")&&LauncherClientAccess.diagnostic("pages").contains("state=ready"),"successful durable retry deletes DE only after ACK and reports ready");
+  check(delivered.await(5,TimeUnit.SECONDS)&&readyCalls.get()==1&&readyOrder.get().equals("20,10")&&readyThread.get().equals("LSA-LauncherPrivateState"),"actual retry dispatches exactly one callback on IO with original data");
+  check(disk(f,"pages","record").equals(pages)&&disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(pages),"ready callback does not overwrite latest record or original recovery copy");
   int callsAfterReady=f.host.resolver.calls;Thread.sleep(1100);LauncherClientAccess.drain();
   check(f.host.resolver.calls==callsAfterReady,"successful load stops all retries");
+  check(readyCalls.get()==1,"later lifecycles do not redeliver the original listener");
+  CountDownLatch gateEntered=new CountDownLatch(1),gateRelease=new CountDownLatch(1),lateDelivered=new CountDownLatch(1);
+  LauncherClientAccess.blockIO(gateEntered,gateRelease);AtomicInteger lateCalls=new AtomicInteger();
+  check(LauncherClientAccess.listen(f.host,"pages",()->{lateCalls.incrementAndGet();lateDelivered.countDown();})&&lateCalls.get()==0,"already-ready registration dispatches asynchronously");
+  gateRelease.countDown();check(lateDelivered.await(5,TimeUnit.SECONDS)&&lateCalls.get()==1,"already-ready listener receives one callback");
+  CountDownLatch afterBad=new CountDownLatch(1);check(LauncherClientAccess.listen(f.host,"pages",()->{throw new IllegalStateException("listener detail omitted");}),"bad listener registration");
+  check(LauncherClientAccess.listen(f.host,"pages",afterBad::countDown)&&afterBad.await(5,TimeUnit.SECONDS),"throwing listener does not prevent independent notification");
+  gateEntered=new CountDownLatch(1);gateRelease=new CountDownLatch(1);LauncherClientAccess.blockIO(gateEntered,gateRelease);AtomicInteger oldCalls=new AtomicInteger(),newCalls=new AtomicInteger();CountDownLatch newDelivered=new CountDownLatch(1);
+  LauncherClientAccess.listen(f.host,"pages",oldCalls::incrementAndGet);LauncherClientAccess.forget();
+  check(LauncherClientAccess.listen(f.host,"pages",()->{newCalls.incrementAndGet();newDelivered.countDown();}),"replacement record accepts a new listener");
+  gateRelease.countDown();check(newDelivered.await(5,TimeUnit.SECONDS)&&oldCalls.get()==0&&newCalls.get()==1,"late callback of discarded record cannot notify replacement record");
   f=new Fixture(root.resolve("user-unlock"));seed(f.de,"ls_augment_launcher_pages",Map.of("order","4,3"));f.host.users.unlocked=false;final Fixture locked=f;
   fail(()->LauncherClientAccess.prefs(locked.host,"pages"),"locked CE is not mistaken for an empty store");
   check(f.host.resolver.calls==0&&exists(f.de,"ls_augment_launcher_pages"),"locked user does not invoke CE provider or alter DE source");
@@ -216,6 +269,9 @@ public class TestLauncherOwnedState {
   check(exists(f.de,"ls_augment_launcher_pages"),"private write failure keeps old source until durable retry");
   Thread.sleep(450);LauncherClientAccess.drain();
   check(LauncherClientAccess.prefs(f.host,"pages").getString("order","").equals("8,6")&&!exists(f.de,"ls_augment_launcher_pages"),"bounded retry confirms persistence before deleting source");
+  f=new Fixture(root.resolve("origins"));String legacy=LauncherOwnedStateData.encode("pages",Map.of("order","20,30,10","keep_empty",true));check(put(f,"pages","{}",legacy),"legacy page record remains accepted");
+  SharedPreferences op=LauncherClientAccess.prefs(f.host,"pages");op.edit().putString("empty_origins",origin).apply();LauncherClientAccess.drain();check(LauncherOwnedStateData.decode("pages",get(f,"pages")).get("empty_origins").equals(origin),"real client/provider/store retains manual origins");check(disk(f,"pages",LauncherOwnedStateStore.RECOVERY_RECORD).equals(legacy),"adding provenance never rewrites immutable original legacy recovery copy");
+  for(String bad:new String[]{"bad",origin+";"+origin,origin.replace("=30","=-201"),origin.replace("=30","=30,30"),origin+"/private/path"}){boolean rejected=false;try{LauncherOwnedStateData.encode("pages",Map.of("empty_origins",bad));}catch(Exception invalid){rejected=true;}check(rejected,"malformed/unbounded manual origin rejected");}
   System.out.println("PASS launcher production private store/client: "+checks+" checks");
  }
 }
@@ -231,7 +287,7 @@ def main():
       final Context context;String caller="com.zte.mifavor.launcher";ProviderEntry(Context c){context=c;}Context getContext(){return context;}
       String getCallingPackage(){return caller;}Bundle call(String method,String arg,Bundle extras){Bundle result=new Bundle();''' + route + 'return result;}}'
     files['ls/augment/com/TestLauncherOwnedState.java'] = HARNESS
-    for name in ('LauncherOwnedStateData.java', 'LauncherOwnedStateStore.java', 'LauncherResetPolicy.java', 'DurablePreferences.java', 'ResetWriteFence.java', 'hook/LauncherOwnedStateClient.java'):
+    for name in ('LauncherOwnedStateData.java', 'LauncherPageOrigins.java', 'LauncherOwnedStateStore.java', 'LauncherResetPolicy.java', 'DurablePreferences.java', 'ResetWriteFence.java', 'hook/LauncherOwnedStateClient.java'):
         files['ls/augment/com/' + name] = (MAIN / name).read_text(encoding='utf-8')
     dependency = BASE['json_dependency']()
     with tempfile.TemporaryDirectory(prefix='launcher-private-') as directory:

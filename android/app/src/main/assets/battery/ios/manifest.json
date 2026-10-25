@@ -1,0 +1,145 @@
+{
+  "source": "User-supplied raw-xxhdpi-iOS",
+  "assets": [
+    {
+      "name": "stat_sys_battery.png",
+      "sha256": "4d608618140db10e9ef190c9d97e0d0902e2ce95f3389b23a1256bf002603a29",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_charge.png",
+      "sha256": "5fdf996ce81eb3aaa64cb4fd3bea25d28d885763a75687a25da083f08add09b1",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_charge_darkmode.png",
+      "sha256": "6c9689f28cf40d981f5f8abb01690baccec1dde95291a79fe6be224044825e2a",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_charge_digit.png",
+      "sha256": "a71bbdc93cf84fcb4f8c79c3c83e1256dafb4f47c3abe32d34591c435b536038",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_charge_digit_darkmode.png",
+      "sha256": "7e88639161e7e6a7759f3687e0c9f474a2ceb5507c2f6efc4834e5742b1c51aa",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_darkmode.png",
+      "sha256": "a02534d4c2d4ea075323e8b1a35845c7daead6dafe2d77c7b547482d2190c629",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_digital.png",
+      "sha256": "59a34a3dc29ac2e1ccd9068c0e9057e9003802df3c2d990f2b1d59dc36f80b9e",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_digital_darkmode.png",
+      "sha256": "1f4fcf7388c9e8fee173dca5330f74a8ec5a3d65fbd834d05f2c73b1ff33f042",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_performance_mode.png",
+      "sha256": "fe7711cd06d0159f3c9ce637522d5ac43a53298f7c9602522f74c5ce65a6f73a",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_performance_mode_darkmode.png",
+      "sha256": "5fd74ffde9bace29f0d7bd72af46d447cdb4c371be10b57b50382e0412cfe6ea",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_performance_mode_digit.png",
+      "sha256": "b82ab504e2268feb15f283d62e2a0bb636723c22331292969a3263f1199c3834",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_performance_mode_digit_darkmode.png",
+      "sha256": "e898427e5d051a0f3120b2bc59de7d2aac99a8af191fbd30e7703b6a8a92b719",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save.png",
+      "sha256": "d3e8a7b3b238e57a101f9d1c42f656bc1bce9a9d7bc17ce97d3fd3b377e192a9",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save_charge.png",
+      "sha256": "ae189629894bdd05be0a19ef0a21b01850341578a9d6bf8648290feeba3fe0ae",
+      "width": 92,
+      "frameHeight": 60,
+      "frames": 10
+    },
+    {
+      "name": "stat_sys_battery_power_save_charge_darkmode.png",
+      "sha256": "d555d72da3e57c1d28d6e01f11bcd204afde15fe340d6bf8731bec844712c6b6",
+      "width": 92,
+      "frameHeight": 60,
+      "frames": 10
+    },
+    {
+      "name": "stat_sys_battery_power_save_darkmode.png",
+      "sha256": "6c035b933d80fe7392bef855393299534d36da42fb8b986d01321c27940312d3",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save_digit.png",
+      "sha256": "f26451d6a414ea1fda5e5382b948a58bd46ae82388849ab8462ae331dee46042",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save_digit_charge.png",
+      "sha256": "61bd64219ac6073189e6f3640853c4ab9d9702d7cb7761a8077c823799186b93",
+      "width": 91,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save_digit_charge_darkmode.png",
+      "sha256": "dadc044758aa8e3f7a0ae2ad9798f49bf9d26f2fdef7b2ca4fc8ffe441ab30cc",
+      "width": 91,
+      "frameHeight": 60,
+      "frames": 100
+    },
+    {
+      "name": "stat_sys_battery_power_save_digit_darkmode.png",
+      "sha256": "fa85986e07d543a8a33f0d609b3dc3077d7a20eb96816626e2843312d82c57ca",
+      "width": 82,
+      "frameHeight": 60,
+      "frames": 100
+    }
+  ]
+}

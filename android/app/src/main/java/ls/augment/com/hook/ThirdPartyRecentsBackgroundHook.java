@@ -14,6 +14,9 @@ final class ThirdPartyRecentsBackgroundHook {
 
     private ThirdPartyRecentsBackgroundHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized void install(AugmentModule module, ClassLoader loader) {
         if (installed) return;
         try {

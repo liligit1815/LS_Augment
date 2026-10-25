@@ -73,7 +73,8 @@ final class RecentsParticleEffect {
         final Spark[] sparks=new Spark[504];
         Card(View view,Matrix matrix){
             source=view;transform=matrix;width=view.getWidth();height=view.getHeight();
-            Random r=new Random(0x43484950L+view.getId());
+            // Resource IDs identify resource entries, not numerical entropy. Keep one stable pattern per live card.
+            Random r=new Random(0x43484950L+System.identityHashCode(view));
             for(int i=0;i<sparks.length;i++){
                 float x=((i%18)+.5f)*width/18,y=((i/18)+.5f)*height/28;
                 sparks[i]=new Spark(x,y,(x-width*.5f)*(.6f+r.nextFloat())+(r.nextFloat()-.5f)*width*.22f,

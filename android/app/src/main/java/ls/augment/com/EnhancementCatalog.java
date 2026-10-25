@@ -18,6 +18,7 @@ public final class EnhancementCatalog {
         all.addAll(NotificationSummaryOptions.options());
         all.addAll(CarrierTextOptions.options());
         all.addAll(LiftArcOptions.options());
+        all.addAll(CompetitiveKeyOptions.options());
         return Collections.unmodifiableList(all);
     }
     public static String title(String group) {

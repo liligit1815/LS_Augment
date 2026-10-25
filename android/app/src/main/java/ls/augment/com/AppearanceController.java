@@ -57,7 +57,7 @@ final class AppearanceController {
         backdrop = new Background(ui);
         backdrop.setTag("about-motion-background");
         backdrop.setAlpha(backdropEmphasis);
-        glassScene = new GlassScene(backdrop, blur && Build.VERSION.SDK_INT>=31 ? Math.round(ui.dp(24)/(float)GlassScene.SCALE) : 1);
+        glassScene = new GlassScene(backdrop, blur ? Math.round(ui.dp(24)/(float)GlassScene.SCALE) : 1);
         layers.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
         content.setBackground(null);
         layers.addView(content, new FrameLayout.LayoutParams(-1, -1));
@@ -65,9 +65,7 @@ final class AppearanceController {
     }
     void addStatus(UiKit ui, LinearLayout body, String title) {
         if (title == null || !title.contains("外观")) return;
-        status = ui.text(blur ? (Build.VERSION.SDK_INT < 31
-                ? "当前系统不支持背景模糊，已使用普通背景与遮罩。"
-                : "模糊仅作用于背景层，文字和按钮保持清晰。")
+        status = ui.text(blur ? (("模糊仅作用于背景层，文字和按钮保持清晰。"))
                 : "当前保持普通背景；修改外观后重新进入页面生效。", 12, ui.muted, false);
         body.addView(status, ui.margins(0, 0, 0, 10));
     }
@@ -80,6 +78,7 @@ final class AppearanceController {
         private final UiKit ui;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Rect capturedBounds = new Rect();
+        private final android.graphics.PorterDuffColorFilter darkFilter = new android.graphics.PorterDuffColorFilter(0xff193b61,android.graphics.PorterDuff.Mode.MULTIPLY);
         private boolean supported;
         private android.graphics.drawable.Drawable art;
         Background(UiKit ui) { super(activity); this.ui = ui; setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO); }
@@ -107,7 +106,7 @@ final class AppearanceController {
             if(art==null)art=activity.getDrawable(R.drawable.duo_ice_background);
             if(art!=null){
                 art.setBounds(0,0,getWidth(),getHeight());
-                if(dark)art.setColorFilter(new android.graphics.PorterDuffColorFilter(0xff193b61,android.graphics.PorterDuff.Mode.MULTIPLY));
+                if(dark)art.setColorFilter(darkFilter);
                 art.draw(canvas);
             }else canvas.drawColor(ui.background);
             if (!blur) return;

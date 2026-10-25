@@ -74,6 +74,9 @@ public final class ManagedFont {
     private static String digest(byte[] bytes)throws Exception {
         StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(Locale.ROOT,"%02x",b&255));return value.toString();
     }
+
+    // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+    //noinspection ObsoleteSdkInt
     public static void validate(byte[] data)throws IOException {
         if(data==null||data.length<12||data.length>MAX_BYTES)throw new IOException("字体文件无效");
         int magic=((data[0]&255)<<24)|((data[1]&255)<<16)|((data[2]&255)<<8)|(data[3]&255);

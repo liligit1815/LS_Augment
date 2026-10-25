@@ -135,19 +135,13 @@ final class LiftArcSettingsEditor {
         LinearLayout row=numeric?ui.parameterInputGroup():(LinearLayout)host.input(option);row.setTag("liftarc-input:"+suffix);
         if(numeric){
             row.addView(ui.featureTitle(option.title,help(suffix)),ui.wrap());
-            SeekBar slider=new SeekBar(activity);slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));slider.setContentDescription(option.title);slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
+            SeekBar slider=ui.slider();slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));slider.setContentDescription(option.title);slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
             int ticks=suffix.equals("hint_weight")?8:1000;slider.setMax(ticks);slider.setTag("liftarc-slider:"+suffix);sliders.put(suffix,slider);
             TextView label=ui.text("",12,ui.muted,false);label.setTag("liftarc-value:"+suffix);numericLabels.put(suffix,label);row.addView(label,ui.wrap());row.addView(slider,ui.wrap());
             slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}public void onProgressChanged(SeekBar s,int progress,boolean user){if(!user)return;
                 String raw=sliderValue(suffix,progress);
                 if(option.normalize(raw)!=null)host.change(option.key,raw,s);
             }});
-        }
-        if(option.kind==EnhancementOption.Kind.COLOR){
-            LinearLayout colorLine=new LinearLayout(activity);colorLine.setGravity(Gravity.CENTER_VERTICAL);
-            View sample=new View(activity);sample.setContentDescription(option.title+"预览");colorSamples.put(suffix,sample);LinearLayout.LayoutParams sampleParams=new LinearLayout.LayoutParams(ui.dp(36),ui.dp(36));sampleParams.rightMargin=ui.dp(12);colorLine.addView(sample,sampleParams);
-            Button pick=ui.tonalButton("选择颜色");sizeAction(pick);colorLine.addView(pick,new LinearLayout.LayoutParams(0,-2,1));row.addView(colorLine,ui.margins(0,8,0,0));
-            pick.setOnClickListener(v->colorDialog=ColorEditorDialog.show(activity,ui,option.title,value(suffix),hex->{host.change(option.key,hex,pick);host.refresh(option.key,hex);}));
         }
         return row;
     }
@@ -180,9 +174,9 @@ final class LiftArcSettingsEditor {
         refreshing=true;
         boolean requested=enabled("enabled"),ready=capability("enabled"),paused="paused".equals(runtime.optString("state"));
         boolean effective=requested&&ready&&"ready".equals(runtime.optString("state"));
-        Switch master=switches.get("enabled");master.setChecked(effective);master.setEnabled(ready&&(requested||runtimeCurrent));masterFold.sync();cancelRequest.setVisibility(requested&&!effective?View.VISIBLE:View.GONE);
+        Switch master=switches.get("enabled");master.setChecked(effective);master.setEnabled(ready&&(requested||runtimeCurrent));masterFold.sync(false);cancelRequest.setVisibility(requested&&!effective?View.VISIBLE:View.GONE);
         for(Map.Entry<String,Switch> entry:switches.entrySet())if(!entry.getKey().equals("enabled")){
-            String suffix=entry.getKey();boolean available=capability(suffix);entry.getValue().setChecked(enabled(suffix)&&available);entry.getValue().setEnabled(available);UiKit.Fold fold=folds.get(suffix);if(fold!=null)fold.sync();
+            String suffix=entry.getKey();boolean available=capability(suffix);entry.getValue().setChecked(enabled(suffix)&&available);entry.getValue().setEnabled(available);UiKit.Fold fold=folds.get(suffix);if(fold!=null)fold.sync(false);
             Button cancel=cancelEffects.get(suffix);if(cancel!=null)cancel.setVisibility(enabled(suffix)&&!available?View.VISIBLE:View.GONE);
         }
         String status=runtime.optString("state"),reason=runtime.optString("reason");
@@ -199,7 +193,7 @@ final class LiftArcSettingsEditor {
         for(String suffix:new String[]{"arc_dim","dim_upper"}){View row=conditional.get(suffix.equals("arc_dim")?"mode":"position");Spinner choice=(Spinner)((ViewGroup)row).getChildAt(1);choice.setSelection(enabled(suffix)?1:0);}
         for(Map.Entry<String,SeekBar> entry:sliders.entrySet()){
             String suffix=entry.getKey();EnhancementOption option=LiftArcOptions.option(suffix);double n=number(suffix);entry.getValue().setProgress((int)Math.round((n-option.minimum)/(option.maximum-option.minimum)*entry.getValue().getMax()));
-            numericLabels.get(suffix).setText(formatValue(suffix,n)+" · 范围 "+formatValue(suffix,option.minimum)+"～"+formatValue(suffix,option.maximum));
+            numericLabels.get(suffix).setText(numericLabels.get(suffix).getContext().getString(R.string.status_liftarcsettingseditor_35 ,String.valueOf(formatValue(suffix,n)), String.valueOf(formatValue(suffix,option.minimum)), String.valueOf(formatValue(suffix,option.maximum))));
         }
         for(Map.Entry<String,View> sample:colorSamples.entrySet())try{sample.getValue().setBackground(ui.roundStroke(Color.parseColor(value(sample.getKey())),8,ui.outline,1));}catch(IllegalArgumentException ignored){}
         if(preview!=null){String text=value("hint_text");preview.setText(text);preview.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);previewTitle.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);preview.setTextSize((float)number("hint_size"));preview.setTextColor(Color.parseColor(value("hint_color")));String[] families={"sans-serif","serif","monospace","cursive","sans-serif-condensed"};int font=(int)number("hint_font");int weight=Math.max(100,Math.min(900,Math.round((float)number("hint_weight")/100)*100));preview.setTypeface(Typeface.create(Typeface.create(families[Math.max(0,Math.min(4,font))],Typeface.NORMAL),weight,false));}

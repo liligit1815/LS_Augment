@@ -6,46 +6,72 @@ import { FeatureTitle, useModel, useDisclosure } from './current-ui';
 
 export function NativeFold({
   title,
+  help,
   children,
 }: {
   title: string;
+  help?: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useDisclosure('fold:' + title), bodyId = useId();
+  const [open, setOpen] = useDisclosure('fold:' + title),
+    bodyId = useId();
   return (
     <div
       className="c-native-fold"
       data-native-path={'fold:' + title}
       data-ui-label={title}
     >
-      <button
-        className="c-native-fold-head"
-        aria-label={(open ? '收起' : '展开') + title}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => setOpen(!open)}
-      >
-        <IceIcon title={title}/><strong>{title}</strong>
-        <span className="c-disclosure-slot" aria-hidden="true">
-          <ChevronDown
-            size={18}
-            style={{ transform: open ? 'rotate(180deg)' : undefined }}
-          />
-        </span>
-      </button>
-      <div id={bodyId} className="d-disclosure-body" hidden={!open}>{children}</div>
+      {help ? (
+        <div className="c-toggle-row">
+          <FeatureTitle title={title} help={help} />
+          <button
+            className="c-fold-arrow"
+            aria-label={(open ? '收起' : '展开') + title}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setOpen(!open)}
+          >
+            <ChevronDown
+              size={18}
+              style={{ transform: open ? 'rotate(180deg)' : undefined }}
+            />
+          </button>
+        </div>
+      ) : (
+        <button
+          className="c-native-fold-head"
+          aria-label={(open ? '收起' : '展开') + title}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => setOpen(!open)}
+        >
+          <IceIcon title={title} />
+          <strong>{title}</strong>
+          <span className="c-disclosure-slot" aria-hidden="true">
+            <ChevronDown
+              size={18}
+              style={{ transform: open ? 'rotate(180deg)' : undefined }}
+            />
+          </span>
+        </button>
+      )}
+      <div id={bodyId} className="d-disclosure-body" hidden={!open}>
+        {children}
+      </div>
     </div>
   );
 }
 export function NativeSelect({
   name,
   title,
+  help,
   choices,
   initial = '0',
   presentation = 'select',
 }: {
   name: string;
   title: string;
+  help?: string;
   choices: string[] | [string, string][];
   initial?: string;
   presentation?: 'select' | 'buttons';
@@ -63,7 +89,7 @@ export function NativeSelect({
     >
       <FeatureTitle
         title={title}
-        help={'选择' + title + '，修改后自动保存。'}
+        help={help || '选择' + title + '，修改后自动保存。'}
       />
       {presentation === 'buttons' ? (
         <fieldset className="c-native-select-buttons" aria-label={title}>
@@ -79,20 +105,19 @@ export function NativeSelect({
             </button>
           ))}
         </fieldset>
-      ) : <select
-        aria-label={title}
-        value={selected}
-        onChange={(e) => m.set(name, e.target.value)}
-      >
-        {options.map(([value, label]) => (
-          <option
-            key={value}
-            value={value}
-          >
-            {label}
-          </option>
-        ))}
-      </select>}
+      ) : (
+        <select
+          aria-label={title}
+          value={selected}
+          onChange={(e) => m.set(name, e.target.value)}
+        >
+          {options.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -133,7 +158,10 @@ export const latestSample: Record<string, string> = {
     ].flatMap((id, i) => [
       ['status:' + id + ':on', '1'],
       ['status:' + id + ':zone', String([2, 0, 6, 8, 1, 1, 1, 7, 7, 8][i])],
-      ['status:' + id + ':size', String([10, 12, 12, 28, 10, 10, 10, 10, 10, 10][i])],
+      [
+        'status:' + id + ':size',
+        String([10, 12, 12, 28, 10, 10, 10, 10, 10, 10][i]),
+      ],
       [
         'status:' + id + ':order',
         String([0, 10, 0, 90, 20, 40, 30, 10, 20, 30][i]),

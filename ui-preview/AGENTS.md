@@ -10,7 +10,7 @@
 
 ## 当前代码与目录边界
 
-Android 源码版本为 test20542。网页入口为 `app/current-prototype.tsx`，已同步当前 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
+Android 源码版本以 `../android/version.properties` 为准。网页入口为 `app/current-prototype.tsx`，已同步 13 分类导航及部分编辑界面；`current-catalog.json`、`current-editor-data.json`、`current-editor-help.json` 和 `current-scope.json` 含历史源码快照，不能代表全部当前手机功能。当前功能见[最新版功能说明](../docs/最新版功能说明.md)。
 
 `scripts/ExportCurrent.java` 和 `scripts/sync-current.mjs` 维护目录数据。后续改版继续在现有原型迭代，不重新导入旧目录覆盖确认的修改。`native-pages.json` 和 `layout-overrides.ts` 保存历史实测控件与覆盖，保留作设计上下文。截图、逐次标注及过程记录留在本地，不作为源码仓库必需文件。
 
@@ -19,6 +19,7 @@ Android 源码版本为 test20542。网页入口为 `app/current-prototype.tsx`�
 - 以当前手机截图、Android 页面源码及实测控件为依据，不凭印象简化，不套用新的设计风格。
 - 页面文字、字体、图标、位置、尺寸、卡片结构、分页、滚动边界和展开状态均属于还原范围。
 - 用户标注引起的布局变化优先落实到当前页面；需要数据覆盖时使用 `app/layout-overrides.ts`，不要重新导入基准覆盖已经确认的修改。
+- 状态栏界面重分组、简化布局时必须逐项对照《红魔Duo状态栏功能清单》保留功能与参数入口，严禁遗漏。用户列举主要功能不等于授权删除其他功能；只有明确要求删除的具体控件才可移除。功能共用全局设置时提供明确归属和可达入口，清单与源码不一致时记录差异，不以精简为由删除真实功能。
 - 保留 `data-native-path` 和 `data-ui-label`，用于将标注对应到真实控件。
 - 网页是独立原型，开关、输入和应用操作不得调用手机或执行实际 Root、隐藏、重启、健康数据等操作。
 - 保留已有 Sites/Vinext 项目结构，不重新初始化、创建第二个 Site 或更改访问范围。

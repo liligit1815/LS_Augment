@@ -17,6 +17,9 @@ final class GoldFingerprintHook {
     static boolean enter(boolean gold){boolean old=SCOPE.get();SCOPE.set(gold);return old;}
     static void leave(boolean previous){SCOPE.set(previous);}
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     static boolean append(Context c,ClassLoader loader,List<Object> items){
         for(Object item:items)if(FLAG.equals(field(item,"fingerprintStyleFlag")))return true;
         Resources res=c.getResources();

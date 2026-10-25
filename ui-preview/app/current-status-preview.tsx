@@ -2,18 +2,35 @@
 import { useEffect, useRef } from 'react';
 import { formatClock } from './current-validation';
 import { drawConnectivity } from './current-connectivity-preview';
+import {
+  componentNames,
+  placementItems,
+  placementKey,
+  readPlacement,
+  effectiveZone,
+} from './current-status-placement';
+import {
+  effectiveStatusValues,
+  layoutIsSingle,
+  resolveSpacing,
+  hiddenReason,
+  notificationSampleCount,
+} from './current-status-policy';
 export function CurrentStatusPreview({
-  values: v,
+  values: saved,
   onSelect,
+  individual = false,
 }: {
   values: Record<string, string>;
   onSelect?: (id: string) => void;
+  individual?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const hits = useRef<
     { id: string; x: number; y: number; width: number; height: number }[]
   >([]);
   useEffect(() => {
+    const v = effectiveStatusValues(saved);
     let live = true;
     void document.fonts.ready.then(() => {
       if (!live || !canvas.current) return;
@@ -32,8 +49,10 @@ export function CurrentStatusPreview({
       c.strokeStyle = '#c7d9ea';
       c.lineWidth = 0.4;
       c.beginPath();
-      c.moveTo(0, 31);
-      c.lineTo(w, 31);
+      if (!layoutIsSingle(v)) {
+        c.moveTo(0, 31);
+        c.lineTo(w, 31);
+      }
       for (let i = 1; i < 3; i++) {
         c.moveTo((w * i) / 3, 0);
         c.lineTo((w * i) / 3, 62);
@@ -46,13 +65,13 @@ export function CurrentStatusPreview({
         on = (key: string, d = false) =>
           (v['ls_augment_statusbar_' + key] ?? (d ? '1' : '0')) === '1';
       const rows = n('clock_rows', 2),
-        network = [1, 2, 3, 4].includes(n('network_display'))
+        network = [0, 1, 2, 3, 4].includes(n('network_display'))
           ? n('network_display')
           : on('network_two_rows', true)
             ? 4
             : 3,
         custom = on('clock_custom'),
-        count = n('notification_max') || 4;
+        count = notificationSampleCount(v);
       const format = (s: string) => formatClock(s);
       const clock = custom
         ? [
@@ -74,24 +93,106 @@ export function CurrentStatusPreview({
             Math.min(3, n(id + '_decimals', id === 'current' ? 0 : 1)),
           ),
         );
+      const summary =
+        v.ls_augment_notification_summary_enabled === '1' &&
+        ['all', 'status'].includes(v['prototype:status:surface'] || 'all');
+      const summaryText =
+        v.ls_augment_notification_summary_mode === '1'
+          ? v.ls_augment_notification_summary_text || '有新通知'
+          : v.ls_augment_notification_summary_mode === '2'
+            ? v.ls_augment_notification_summary_asset
+              ? '▣'
+              : ''
+            : v.ls_augment_notification_summary_symbol || '♥';
+      const sampleIds = [
+        'wifi',
+        'mobile1',
+        'mobile2',
+        'dual_signal',
+        'bluetooth',
+        'alarm_clock',
+        'vpn',
+      ];
+      const systemSamples = placementItems(v).filter(
+        (i) =>
+          (i.id !== 'dual_signal' || v.ls_augment_rm_signal_dual === '1') &&
+          !(i.id in componentNames) &&
+          (sampleIds.includes(i.id) ||
+            v['prototype:placement:focus'] === i.id) &&
+          !hiddenReason(v, v['prototype:status:surface'] || 'all', i.id),
+      );
+      const glyphs: Record<string, string> = {
+        wifi: '≋',
+        secondary_wifi: '≋',
+        mobile1: '▥',
+        mobile2: '▥',
+        dual_signal: '▥▥',
+        bluetooth: '♧',
+        alarm_clock: '◷',
+        vpn: '◇',
+      };
+      const metricsAdvanced = v.ls_augment_rm_metrics_custom === '1';
+      const metric = (
+        id: string,
+        value: number,
+        prefix: string,
+        unit: string,
+      ) =>
+        (metricsAdvanced
+          ? (v['ls_augment_rm_metric_prefix_' + id] ?? prefix)
+          : prefix) +
+        decimal(id, value) +
+        (metricsAdvanced && v.ls_augment_rm_metrics_hide_units === '1'
+          ? ''
+          : unit);
+      const up = v.ls_augment_statusbar_network_upload_mark ?? '↑',
+        down = v.ls_augment_statusbar_network_download_mark ?? '↓';
       const labels: Record<string, string> = {
         clock,
-        notifications: on('notification_two_rows', true)
-          ? '● '.repeat(Math.ceil(count / 2)).trim() +
-            '\n' +
-            '● '.repeat(Math.floor(count / 2)).trim()
-          : '● '.repeat(count).trim(),
-        system_icons: on('system_two_rows', true) ? '◉\n◇' : '◉◇',
-        battery: '100%',
-        cpu: 'C:' + decimal('cpu', 37) + '°',
-        gpu: 'G:' + decimal('gpu', 36) + '°',
-        battery_temp: 'B:' + decimal('battery_temp', 33.5) + '°',
-        current: 'I:' + decimal('current', 600) + 'mA',
-        power: 'P:' + decimal('power', 2.4) + 'W',
-        network: ['', '↑12K', '↓36K', '↑12K ↓36K', '↑12K\n↓36K'][network] || '',
+        notifications:
+          summary && summaryText
+            ? summaryText
+            : on('notification_two_rows', true)
+              ? '●'.repeat(Math.ceil(count / 2)).trim() +
+                '\n' +
+                '●'.repeat(Math.floor(count / 2)).trim()
+              : '●'.repeat(count).trim(),
+        battery: '73%',
+        cpu: metric('cpu', 37, 'C:', '°'),
+        gpu: metric('gpu', 36, 'G:', '°'),
+        battery_temp: metric('battery_temp', 33.5, 'B:', '°'),
+        current: metric('current', 600, 'I:', 'mA'),
+        power: metric('power', 2.4, 'P:', 'W'),
+        network:
+          [
+            '36KB/s',
+            up + '12K',
+            down + '36K',
+            up + '12K ' + down + '36K',
+            up + '12K\n' + down + '36K',
+          ][network] || '',
       };
+      if (individual && v['status:system_icons:on'] !== '0')
+        systemSamples.forEach((i) => {
+          labels[i.id] = glyphs[i.id] || i.title.slice(0, 2);
+        });
+      if (!individual) {
+        const text = systemSamples
+          .map((i) => glyphs[i.id] || i.title.slice(0, 1))
+          .join('');
+        labels.system_icons = on('system_two_rows')
+          ? text.slice(0, 2) + '\n' + text.slice(2)
+          : text;
+      }
+      if (
+        hiddenReason(
+          v,
+          v['prototype:status:surface'] || 'all',
+          on('connectivity_group') ? 'connectivity' : 'battery',
+        )
+      )
+        delete labels.battery;
       const ids = Object.keys(labels),
-        defaults = [2, 2, 8, 8, 1, 1, 4, 7, 7, 5],
         nodes: {
           id: string;
           zone: number;
@@ -101,24 +202,76 @@ export function CurrentStatusPreview({
           weight: number;
           spacing: number;
           lines: number;
+          iconGap: number;
         }[] = [];
       ids.forEach((id, i) => {
-        if (on('position_size_only') && i >= 4) return;
-        if ((v['status:' + id + ':on'] ?? (i < 4 ? '1' : '0')) !== '1') return;
-        let size = Number(v['status:' + id + ':size'] ?? (i < 4 ? 13 : 9));
+        const ordinary = !(id in componentNames) && id !== 'system_icons';
+        if (
+          on('position_size_only') &&
+          ['cpu', 'gpu', 'battery_temp', 'current', 'power'].includes(id)
+        )
+          return;
+        if (
+          !ordinary &&
+          (v['status:' + id + ':on'] ??
+            (['clock', 'notifications', 'battery'].includes(id)
+              ? '1'
+              : '0')) !== '1'
+        )
+          return;
+        if (
+          metricsAdvanced &&
+          v.ls_augment_rm_metrics_charging_only === '1' &&
+          ['current', 'power'].includes(id) &&
+          !['1', '2'].includes(v['ui:charging-preview'])
+        )
+          return;
+        let size = Number(
+          v['status:' + (ordinary ? 'system_icons' : id) + ':size'] ??
+            (ordinary ? 13 : 9),
+        );
+        if (id === 'notifications' && summary && summaryText)
+          size = Number(v.ls_augment_notification_summary_size || 18);
         if (id === 'battery' && on('connectivity_group'))
           size = n('connectivity_size_dp', 26);
         if (id === 'clock' && custom && n('clock_size_sp') > 0)
           size = n('clock_size_sp');
         const item = {
           id,
-          zone: Number(v['status:' + id + ':zone'] ?? defaults[i]),
-          order: Number(v['status:' + id + ':order'] ?? i),
+          zone:
+            id === 'system_icons'
+              ? Number(v['status:system_icons:zone'] || 8)
+              : ordinary &&
+                  on('system_two_rows') &&
+                  !layoutIsSingle(v) &&
+                  !v[placementKey(id, 'zone')]
+                ? Math.floor(effectiveZone(v, id) / 3) * 3 +
+                  (systemSamples.findIndex((x) => x.id === id) % 2)
+                : effectiveZone(v, id),
+          order:
+            id === 'system_icons'
+              ? Number(v['status:system_icons:order'] || 2)
+              : readPlacement(v, id).order,
           size,
           text: labels[id],
           weight: id === 'clock' && custom ? n('clock_weight', 400) : 400,
           spacing: id === 'clock' && custom ? n('clock_letter_spacing') : 0,
           lines: labels[id].split('\n').length,
+          iconGap:
+            (id === 'notifications' && !(summary && summaryText)) ||
+            id === 'system_icons'
+              ? Math.max(
+                  0,
+                  4 +
+                    resolveSpacing(
+                      v,
+                      v['prototype:status:surface'] || 'all',
+                      id === 'system_icons' ? 'system-default' : id,
+                    )
+                      .filter((_, i) => i === 0 || i === 2)
+                      .reduce((a, b) => a + b, 0),
+                )
+              : 0,
         };
         if (
           ['clock', 'network', 'system_icons', 'notifications'].includes(id) &&
@@ -134,23 +287,34 @@ export function CurrentStatusPreview({
           );
         } else nodes.push(item);
       });
-      const barHeight = Math.max(12, 33 + n('height_dp')),
+      const barHeight =
+          n('height_dp') <= 0
+            ? Math.max(12, 33 + n('height_dp'))
+            : Math.max(33, n('height_dp')),
         left = 4 + n('left_margin_dp'),
         right = 4 + n('right_margin_dp'),
         top = n('top_margin_dp'),
         bottom = n('bottom_margin_dp'),
         usable = w - left - right,
         usableH = Math.max(2, barHeight - top - bottom),
-        gap = Math.min(n('dual_row_gap_dp'), usableH / 4),
+        gap = layoutIsSingle(v)
+          ? 0
+          : Math.max(0, Math.min(n('dual_row_gap_dp'), usableH / 4)),
         rowH = (usableH - gap) / 2;
       const scale = Math.min(1, (h - 8) / barHeight);
       c.save();
       c.translate((w - w * scale) / 2, (h - barHeight * scale) / 2);
       c.scale(scale, scale);
       for (let col = 0; col < 3; col++) {
-        const emptyMiddle = !nodes.some(n => Math.floor(n.zone / 3) === 1);
+        const emptyMiddle = !nodes.some((n) => Math.floor(n.zone / 3) === 1);
         const available = emptyMiddle && col !== 1 ? usable / 2 : usable / 3,
-          start = left + (col === 2 ? usable - available : col === 1 ? (usable - available) / 2 : 0),
+          start =
+            left +
+            (col === 2
+              ? usable - available
+              : col === 1
+                ? (usable - available) / 2
+                : 0),
           cursor = [0, 0],
           items: {
             node: (typeof nodes)[number];
@@ -187,15 +351,27 @@ export function CurrentStatusPreview({
                 .map(
                   (t) =>
                     c.measureText(t).width +
-                    Math.max(0, t.length - 1) * node.spacing * node.size,
+                    Math.max(0, t.length - 1) *
+                      (node.spacing * node.size + node.iconGap),
                 ),
             );
             if (node.id === 'clock' && custom)
-              width = Math.max(width,...clock.split('\n').map(t=>c.measureText(t).width));
+              width = Math.max(
+                width,
+                ...clock.split('\n').map((t) => c.measureText(t).width),
+              );
             if (node.id === 'battery' && on('connectivity_group'))
               width = node.size;
             if (node.id === 'clock' && custom && n('clock_width_dp'))
               width = n('clock_width_dp');
+            const edges = resolveSpacing(
+              v,
+              v['prototype:status:surface'] || 'all',
+              node.id === 'battery' && on('connectivity_group')
+                ? 'connectivity'
+                : node.id,
+            );
+            width = Math.max(1, width + edges[0] + edges[2]);
             const fit = Math.min(1, (span ? usableH : rowH) / height),
               x = span ? Math.max(...cursor) : cursor[row];
             items.push({
@@ -206,8 +382,12 @@ export function CurrentStatusPreview({
               fit,
               row: span ? -1 : row,
             });
-            if (span) cursor[0] = cursor[1] = x + width * fit + 1;
-            else cursor[row] = x + width * fit + 1;
+            const componentGap = Math.max(
+              0,
+              8 + Number(v['prototype:component-gap:' + node.id] || 0),
+            );
+            if (span) cursor[0] = cursor[1] = x + width * fit + componentGap;
+            else cursor[row] = x + width * fit + componentGap;
           });
         const used = Math.max(...cursor) - 1,
           fit = Math.min(1, available / Math.max(1, used)),
@@ -247,7 +427,12 @@ export function CurrentStatusPreview({
             return;
           }
           node.text.split('\n').forEach((text, i) => {
-            let xx = origin + item.x * fit;
+            const edges = resolveSpacing(
+              v,
+              v['prototype:status:surface'] || 'all',
+              node.id,
+            );
+            let xx = origin + item.x * fit + edges[0] * fit;
             const align =
               v['ls_augment_statusbar_clock_text_align'] || 'center';
             if (node.id === 'clock' && custom) {
@@ -259,12 +444,12 @@ export function CurrentStatusPreview({
                     ? (item.width * fit - tw) / 2
                     : 0;
             }
-            if (node.spacing && node.id === 'clock') {
+            if ((node.spacing && node.id === 'clock') || node.iconGap) {
               for (const char of text) {
                 c.fillText(char, xx, y + ((i + 0.82) * hh) / node.lines);
                 xx +=
                   c.measureText(char).width +
-                  node.spacing * node.size * item.fit * fit;
+                  (node.spacing * node.size + node.iconGap) * item.fit * fit;
               }
             } else c.fillText(text, xx, y + ((i + 0.82) * hh) / node.lines);
           });
@@ -275,12 +460,14 @@ export function CurrentStatusPreview({
     return () => {
       live = false;
     };
-  }, [v]);
+  }, [saved, individual]);
   return (
     <canvas
       ref={canvas}
       className="c-live-status"
-      aria-label="状态栏实时预览，左中右各分上下两排"
+      aria-label={
+        layoutIsSingle(saved) ? '状态栏布局预览，单排' : '状态栏布局预览，双排'
+      }
       data-native-path="StatusBarGridPreview"
       data-ui-label="状态栏实时预览"
       onClick={(e) => {

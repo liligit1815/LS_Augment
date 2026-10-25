@@ -19,9 +19,14 @@ final class DiagnosticExport {
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
             .append("callbackThrows 为传播异常总数；moduleCallbackThrows 是模块处理异常，proceedChainThrows 是继续调用链传回的异常。最后回调时间不等于错误发生时间，须查看 lastErrorAt 和来源。\n")
-            .append("AI/肩键详细记录仅包含开启后的有界窗口；肩键快捷切换必要状态/错误和锁屏上滑运行日志始终纳入采集。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、原始肩键数据、自定义锁屏提示文字全文或壁纸内容。\n");
+            .append("AI/肩键详细记录仅包含开启后的有界窗口；肩键快捷切换必要状态/错误、锁屏上滑及工作台 HOME/Quickstep/壁纸状态日志始终纳入采集。工作台 Hook 日志通过手机端异步队列保存，seq/session 属于各发出进程，模块版本/PID/启动时间用于区分历史记录；进程退出可能丢失尚未送达的队列，文件保留不代表画面首帧或业务成功。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、原始肩键数据、自定义锁屏提示文字全文或壁纸内容。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
+        source(out,"BACKLIGHT_INTERFACES read-only; capability evidence, not calibration",
+                RootShell.run("for n in /sys/class/backlight/*; do [ -d \"$n\" ] || continue; echo node=$n; "
+                    +"for f in max_brightness brightness actual_brightness bl_power; do if [ -r \"$n/$f\" ]; then echo field=$f; cat \"$n/$f\"; fi; done; done",null,5,16384),16384);
+        source(out,"COLOR_DISPLAY live controller and matrix readback",RootShell.run("dumpsys color_display",null,5,49152),49152);
+        source(out,"DISPLAY_BRIGHTNESS native state at export",RootShell.run("dumpsys display | grep -E 'BrightnessInfo|mScreenBrightness|mBrightness|mDisplayState|mReduceBright'",null,5,32768),32768);
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
         source(out,"PROCESS_LIST",processes,256*1024);
         Map<Integer,String> live=processNames(processes);
@@ -80,14 +85,22 @@ final class DiagnosticExport {
             out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
         out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
+        file(out,context,"STARTUP_RUNTIME; session/sequence identify retries; retained history is not current execution proof",
+                StartupDiagnostics.FILE,2*1024*1024,"startup");
         appendLiftArcLog(out,context);
         appendShoulderSwitchLog(out,context);
+        appendAtomicWorkbenchLog(out,context);
+        appendAppCrashLog(out,context);
+        BootEvidenceCapture.appendForExport(out,context);
         // Cleanup failures need process death and graphics evidence even when AI /
         // shoulder detail switches are off. Read buffers without clearing them.
         source(out,"LAUNCHER_EXIT_INFO; historical entries must be matched to reproduction time",
                 RootShell.run("dumpsys activity exit-info com.zte.mifavor.launcher",null,6,128*1024),128*1024);
+        appendLauncherCrashHistory(out,context);
         source(out,"SYSTEMUI_EXIT_INFO; historical entries must be matched to reproduction time",
                 RootShell.run("dumpsys activity exit-info com.android.systemui",null,6,128*1024),128*1024);
+        source(out,"DUO_EXIT_INFO; app process only, not complete app_process Root death evidence; match reproduction time",
+                RootShell.run("dumpsys activity exit-info ls.augment.com",null,6,128*1024),128*1024);
         appendLogcat(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT",DiagnosticLogcat.cleanup(start,
                 (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
@@ -95,15 +108,61 @@ final class DiagnosticExport {
         {
             appendLogcat(out,"LOGCAT module tags",DiagnosticLogcat.module(start,ai,shoulder,
                     (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
-            RootShell.Result listing=RootShell.run("ls -1 /data/adb/lspd/log",null,5,8192);
-            if(!listing.isSuccess())source(out,"LSPOSED_CURRENT_LOG_DIRECTORY",listing,8192);
-            else {int files=0;for(String name:listing.output.split("\\r?\\n")){
-                name=name.trim();if(!name.matches("[A-Za-z0-9_.-]+")||files++>=6)continue;
-                RootShell.Result log=RootShell.run("tail -c 524288 "+RootShell.quote("/data/adb/lspd/log/"+name),null,8,512*1024);
-                filteredSource(out,"LSPOSED "+name+"; module-only lines in latest 512 KiB; historical window may precede this reproduction",log,512*1024,ai,shoulder,true);
-            }if(files==0)out.append("LSPOSED: NO_FILES; framework log is not collected\n");}
+            appendFrameworkLogs(out,ai,shoulder);
         }
         out.append("\ncollectionFinished=").append(System.currentTimeMillis()).append("\n");return out.toString();
+    }
+    private static void appendFrameworkLogs(StringBuilder out,boolean ai,boolean shoulder) {
+        RootShell.Result listing=RootShell.run("ls -1 /data/adb/lspd/log",null,5,8192);
+        // Report capture proof without exporting the successful directory listing body.
+        source(out,"LSPOSED_CURRENT_LOG_DIRECTORY",new RootShell.Result(listing.exitCode,
+                listing.isSuccess()?"":listing.output,listing.timedOut,listing.capture),8192);
+        if(!listing.isSuccess()||listing.capture==null||!listing.capture.reliable()) {
+            out.append("LSPOSED: UNKNOWN; listed=UNKNOWN eligible=UNKNOWN attempted=0 rejected=UNKNOWN capSkipped=UNKNOWN readSuccess=0 readFailed=0 readUnknown=0; directory listing is not reliable; framework log is not collected\n");
+            return;
+        }
+        int listed=0,eligible=0,attempted=0,rejected=0,capSkipped=0,readSuccess=0,readFailed=0,readUnknown=0;
+        // Raw capture retains name boundaries that legacy Result.output.trim() removes.
+        String names=listing.capture.text();
+        for(String name:names.split("\\r?\\n")) {
+            if(name.isEmpty())continue;
+            listed++;
+            if(name.equals(".")||name.equals("..")||!name.matches("[A-Za-z0-9_.:-]+")) {rejected++;continue;}
+            eligible++;
+            if(attempted>=6) {capSkipped++;continue;}
+            attempted++;
+            RootShell.Result log=RootShell.run("tail -c 524288 "+RootShell.quote("/data/adb/lspd/log/"+name),null,8,512*1024);
+            if(!log.isSuccess())readFailed++;
+            else if(log.capture==null||!log.capture.reliable())readUnknown++;
+            else readSuccess++;
+            filteredSource(out,"LSPOSED "+name+"; module and safety lines in latest 512 KiB; historical window may precede this reproduction",log,512*1024,ai,shoulder,true);
+        }
+        out.append("LSPOSED: ").append(names.isEmpty()?"NO_FILES":eligible==0?"NO_ELIGIBLE_FILES":"ATTEMPTED")
+                .append("; listed=").append(listed).append(" eligible=").append(eligible)
+                .append(" attempted=").append(attempted).append(" rejected=").append(rejected)
+                .append(" capSkipped=").append(capSkipped).append(" readSuccess=").append(readSuccess)
+                .append(" readFailed=").append(readFailed).append(" readUnknown=").append(readUnknown)
+                .append("; readSuccess means reliable bounded capture, not matching content or complete history\n");
+    }
+    private static void appendAppCrashLog(StringBuilder out,Context context) {
+        out.append(AppCrashDiagnostics.readForExport(context));
+    }
+
+    private static void appendLauncherCrashHistory(StringBuilder out,Context context) {
+        try {
+            int user = android.os.Process.myUid() / 100000;
+            int uid = context.getPackageManager().getApplicationInfo(LauncherNativeCrashEvidence.PACKAGE,0).uid;
+            if(uid / 100000 != user)throw new SecurityException("launcher user mismatch");
+            String command = "CLASSPATH="+RootShell.quote(context.getApplicationInfo().sourceDir)
+                    +" exec /system/bin/app_process /system/bin ls.augment.com.LauncherNativeCrashEvidence "+user+" "+uid;
+            RootShell.Result raw=RootShell.run(command,null,8,16*1024);
+            String safe=LauncherNativeCrashEvidence.sanitizeOutput(raw.output,user,uid);
+            source(out,"LAUNCHER_NATIVE_CRASH_SUMMARIES; sanitized protocol only; ROM may self-kill after Java failure; retained history only",
+                    new RootShell.Result(raw.exitCode,safe,raw.timedOut,raw.capture),16*1024);
+        } catch(Exception error) {
+            out.append("\n===== SOURCE LAUNCHER_NATIVE_CRASH_SUMMARIES =====\nstatus=UNAVAILABLE;error=")
+                    .append(error.getClass().getSimpleName()).append('\n');
+        }
     }
     static Map<Integer,String> processNames(RootShell.Result processes){
         Map<Integer,String> live=new HashMap<>();
@@ -148,8 +207,11 @@ final class DiagnosticExport {
     }
     private static RootShell.Result filter(RootShell.Result source,boolean ai,boolean shoulder,boolean moduleOnly){StringBuilder out=new StringBuilder();
         if(!source.isSuccess())return source;
-        for(String line:source.output.split("\\r?\\n")){
-            if(moduleOnly&&!line.contains("LS_Augment"))continue;
+        String input=moduleOnly?FrameworkDiagnosticFilter.retain(source.output):source.output;
+        for(String line:input.split("\\r?\\n")){
+            if(line.contains("DUO_STARTUP")||line.contains("DuoStartup")||moduleOnly&&FrameworkDiagnosticFilter.continuation(line)){
+                out.append(line).append('\n');continue;
+            }
             String u=line.toUpperCase(Locale.ROOT);if(!ai&&(u.contains("AI_STAGE")||u.contains("AI_TRIGGER")||u.contains("FEATURE_AI")))continue;
             boolean necessaryShoulder=ShoulderSwitchLogPolicy.necessaryLine(line);
             if(!shoulder&&(u.contains("TGK")||u.contains("SHOULDER")||u.contains("RAPID")||u.contains("LS_AUGMENTNATIVE"))&&!necessaryShoulder)continue;
@@ -202,7 +264,7 @@ final class DiagnosticExport {
         for(String line:raw.split("\\r*\\n")){
             int equals=line.indexOf('=');if(equals<=0)continue;
             String key=line.substring(0,equals);
-            if(!key.matches("ls_augment_[A-Za-z0-9_]+"))continue;
+            if(!DiagnosticWritePolicy.validKey(key))continue;
             appendDiagnosticValue(out,key,line.substring(equals+1));
         }
         return out.toString();
@@ -231,6 +293,14 @@ final class DiagnosticExport {
     }
     static void appendShoulderSwitchLog(StringBuilder out,Context context){
         file(out,context,"SHOULDER_SWITCH_RUNTIME INFO/WARN/ERROR",DiagnosticStore.SHOULDER_SWITCH_FILE,DiagnosticStore.DETAIL_MAX_BYTES,ShoulderSwitchLogPolicy.FEATURE);
+    }
+    static void appendAtomicWorkbenchLog(StringBuilder out,Context context){
+        out.append("\natomicWorkbenchWriteState=").append(AtomicWorkbenchDiagnostics.writeState(context)).append('\n');
+        out.append("atomicWorkbenchSessionEvidence=").append(AtomicWorkbenchDiagnostics.sessionSummary(context)).append('\n');
+        file(out,context,"ATOMIC_WORKBENCH; task state is not first-frame proof",AtomicWorkbenchDiagnostics.FILE_NAME,
+                AtomicWorkbenchDiagnostics.MAX_BYTES,AtomicWorkbenchDiagnostics.STAT);
+        file(out,context,"ATOMIC_WORKBENCH_HOOK_RUNTIME; retained history, not current/first-frame proof",
+                AtomicWorkbenchLogPolicy.FILE,DiagnosticStore.DETAIL_MAX_BYTES,AtomicWorkbenchLogPolicy.FEATURE);
     }
     private static void file(StringBuilder out,Context context,String label,String name,int limit,String stat){try{
         File file=new File(context.getFilesDir(),name);out.append("\n===== SOURCE ").append(label).append(" ").append(name).append(" =====\n");

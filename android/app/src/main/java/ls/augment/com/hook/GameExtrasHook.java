@@ -139,6 +139,9 @@ final class GameExtrasHook {
                 ? true : chain.proceed();
     }
 
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private void assist(){
         GamePerformanceMonitorHook.install(module,loader);
         // Resolve k/l or readable aliases independently of GameSpace's four-argument route.

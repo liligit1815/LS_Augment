@@ -28,6 +28,9 @@ final class HealthResetController {
      * user's real health login/database. Caller clears HEALTH_ACCOUNT, HEALTH_SINCE
      * and HEALTH_PLAN when committing final module defaults.
      */
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     static Result clearModuleRecords(Context context, boolean runtimeSynced) {
         if (context == null) return failure(null, "健康清理缺少应用上下文");
         Context app = context.getApplicationContext();
@@ -89,6 +92,9 @@ final class HealthResetController {
         return new Result(true, files, ledger == 1 || privateLedger, history, history ? HISTORY_LIMITATION : "");
     }
 
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     private static Result absentPackage(Context context, int user, long serial, boolean configured) {
         String base = "/data/user/" + user + "/" + PACKAGE;
         // NameNotFound is not proof of an empty sandbox (a hidden app is one

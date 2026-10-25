@@ -20,7 +20,13 @@ final class FanScreenOffHook {
     private FanScreenOffHook() { }
 
     static int install(AugmentModule module, ClassLoader loader) {
-        if (!FanScreenOffPolicy.supportedDevice(Build.DEVICE, Build.PRODUCT, Build.MODEL)) return 0;
+        return install(module,loader,null);
+    }
+    static int install(AugmentModule module,ClassLoader loader,String source) {
+        if (!FanScreenOffPolicy.supportedDevice(Build.DEVICE, Build.PRODUCT, Build.MODEL)&&!FanOemContract.screenGate(source)) {
+            FeatureSettings.diagnostic(FeatureSettings.from(null),INSTALLED,"");
+            module.logFeatureInfo("FAN_SCREEN_OFF_UNAVAILABLE capability=oem_screen_predicate_order");return 0;
+        }
         try {
             Class<?> type = Class.forName("cn.nubia.fan.policy.FanControllerImpl", false, loader);
             Class<?> stateType = Class.forName("cn.nubia.fan.bean.FanState", false, loader);
@@ -86,10 +92,11 @@ final class FanScreenOffHook {
                 if (method.getName().startsWith("notify")) module.deoptimize(method);
             }
             FeatureSettings.diagnostic(FeatureSettings.from(null), INSTALLED,
-                    "hooks=2;device=" + Build.DEVICE + ";scope=running_session;fan_enable_writes=0");
+                    "hooks=2;device=" + Build.DEVICE + ";scope=running_session;fan_enable_writes=0;hardware_identity="+ls.augment.com.FanHardwareIdentity.current());
             FeatureSettings.diagnostic(FeatureSettings.from(null), ERROR, "");
             return 2;
         } catch (Throwable error) {
+            FeatureSettings.diagnostic(FeatureSettings.from(null),INSTALLED,"");
             FeatureSettings.diagnostic(FeatureSettings.from(null), ERROR,
                     "install:" + error.getClass().getSimpleName());
             module.logFeatureError("FAN_SCREEN_OFF_INSTALL", error);
@@ -99,14 +106,15 @@ final class FanScreenOffHook {
 
     private static Method method(Class<?> type, String name, Class<?> result) throws Exception {
         Method method = type.getDeclaredMethod(name);
-        if (method.getReturnType() != result) throw new NoSuchMethodException(name);
+        if (method.getReturnType() != result || java.lang.reflect.Modifier.isStatic(method.getModifiers())
+                || java.lang.reflect.Modifier.isAbstract(method.getModifiers())) throw new NoSuchMethodException(name);
         method.setAccessible(true);
         return method;
     }
 
     private static Field field(Class<?> type, String name, Class<?> valueType) throws Exception {
         Field field = type.getDeclaredField(name);
-        if (field.getType() != valueType) throw new NoSuchFieldException(name);
+        if (field.getType() != valueType || java.lang.reflect.Modifier.isStatic(field.getModifiers())) throw new NoSuchFieldException(name);
         field.setAccessible(true);
         return field;
     }
@@ -146,7 +154,7 @@ final class FanScreenOffHook {
             if (context == null || listening) return;
             lastEnabled = enabled();
             FeatureSettings.diagnostic(context, INSTALLED,
-                    "hooks=2;device=" + Build.DEVICE + ";scope=running_session;fan_enable_writes=0");
+                    "hooks=2;device=" + Build.DEVICE + ";scope=running_session;fan_enable_writes=0;hardware_identity="+ls.augment.com.FanHardwareIdentity.current());
             listening = FeatureSettings.addSnapshotListener(context, () -> {
                 boolean next = enabled();
                 if (lastEnabled == next) return;

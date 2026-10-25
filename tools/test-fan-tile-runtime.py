@@ -120,7 +120,7 @@ public void setProgressDrawable(android.graphics.drawable.Drawable d){}public vo
 public void setProgressTintList(android.content.res.ColorStateList c){}public void setThumbTintList(android.content.res.ColorStateList c){}}""",
 "android/widget/Toast.java": "package android.widget;public class Toast {public static final int LENGTH_SHORT=0;public static Toast makeText(android.content.Context c,String s,int n){return new Toast();}public void show(){}}",
 "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;import android.content.Context;import ls.augment.com.ConfigSchema;
-public class FeatureSettings {public static boolean active,fixedActive;public static int fixedLevel=1,invalidations;public static long configRevision=10;public static final java.util.Set<Runnable> listeners=new java.util.HashSet<>();
+public class FeatureSettings {public static String evidence="";static String diagnosticValue(Context c,String k){return evidence;}public static boolean active,fixedActive;public static int fixedLevel=1,invalidations;public static long configRevision=10;public static final java.util.Set<Runnable> listeners=new java.util.HashSet<>();
 static boolean enabled(Context c,String k,boolean fallback){return ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED.equals(k)?active:ConfigSchema.FAN_FIXED_ENABLED.equals(k)?fixedActive:true;}
 static int integer(Context c,String k,int d,int min,int max){return ConfigSchema.FAN_FIXED_LEVEL.equals(k)?fixedLevel:d;}
 static String text(Context c,String k,String d){return d;}static boolean hasVerifiedSnapshot(Context c){return true;}
@@ -182,6 +182,15 @@ static boolean enabled(Object s)throws Exception {return ((View)get(s,"fixed")).
 static String status(Object s)throws Exception {return ((android.widget.TextView)get(s,"status")).text;}
 static void awaitReady(Object s)throws Exception {await(()->((Bundle)uncheckedGet(s,"snapshot")).getBoolean("ok")&&!((Boolean)uncheckedGet(s,"reading"))&&((Boolean)uncheckedGet(s,"enhanced")));}
 public static void main(String[] args)throws Throwable {
+class Base {public void update(){}public android.widget.CheckedTextView control;}class Derived extends Base {}
+class Wrong {public static void update(){}public String control;}
+check(FanTileHook.checkedMethod(Derived.class,"update").getDeclaringClass()==Base.class,"inherited OEM method resolves");
+check(FanTileHook.checkedField(Derived.class,"control",android.widget.CheckedTextView.class).getDeclaringClass()==Base.class,"inherited typed OEM field resolves");
+boolean rejected=false;try{FanTileHook.checkedMethod(Wrong.class,"update");}catch(IllegalStateException expected){rejected=true;}check(rejected,"static method cannot impersonate instance hook");
+rejected=false;try{FanTileHook.checkedField(Wrong.class,"control",android.widget.CheckedTextView.class);}catch(IllegalStateException expected){rejected=true;}check(rejected,"wrong field type rejected");
+ClassLoader missing=new ClassLoader(TestFanTileRuntime.class.getClassLoader()){protected Class<?> loadClass(String n,boolean resolve)throws ClassNotFoundException {
+if(n.equals("com.zte.qs.tiles.CoolingFanTile"))throw new ClassNotFoundException(n);return super.loadClass(n,resolve);}};
+AugmentModule partial=new AugmentModule();try{FanTileHook.install(partial,missing);}catch(AssertionError expected){}check(partial.hooks.isEmpty(),"missing tile contract rejected before any panel hook");
 Context context=new Context();CoolingFanPanel root=new CoolingFanPanel(context);root.id=context.getResources().getIdentifier("qs_detail_container","id","com.android.systemui");
 QSDetail detail=new QSDetail(context);QsDetailModule.RoundCornerDrawable bg=new QsDetailModule.RoundCornerDrawable();android.graphics.Rect original=new android.graphics.Rect(1,2,100,150);bg.setBounds(original);detail.background=bg;detail.addView(root);
 AugmentModule module=new AugmentModule();check(FanTileHook.install(module,TestFanTileRuntime.class.getClassLoader())>0,"hooks installed");
@@ -279,6 +288,13 @@ check(status(s).contains("暂时不可用"),"temporary provider failure reports 
 context.resolver.failRead=false;call(s,"read");awaitReady(s);check(enabled(s),"provider recovery makes existing controls usable again without reopening");
 FeatureSettings.set(false);Build.DEVICE=Build.MODEL=Build.PRODUCT="NX769J";context.resolver.supported=true;reads=context.resolver.reads;FeatureSettings.set(true);Handler.drain();
 check(root.mEditContainer.children.size()==2&&context.resolver.reads==reads,"unverified device cannot show controls or access fan provider");
+Build.DEVICE=Build.MODEL=Build.PRODUCT="NX819J";
+FeatureSettings.evidence="hardware_identity=firmware-other;capability=verified_levels_1_5;level_writes=1;fan_enable_writes=0";FeatureSettings.publish();Handler.drain();
+check(root.mEditContainer.children.size()==2&&context.resolver.reads==reads,"stale firmware evidence keeps native controls");
+FeatureSettings.evidence=FeatureSettings.evidence.replace("firmware-other","firmware-test");FeatureSettings.publish();awaitReady(s);
+check(root.mEditContainer.children.size()==5&&enabled(s),"new device uses verified runtime evidence for controls and commands");
+FeatureSettings.evidence="";FeatureSettings.publish();Handler.drain();
+check(root.mEditContainer.children.size()==2,"revoked capability restores native panel");
 root.detach();check(FeatureSettings.listeners.isEmpty(),"all panel listeners released");
 Build.DEVICE=Build.MODEL=Build.PRODUCT="NX809J";FeatureSettings.fixedActive=true;FeatureSettings.fixedLevel=3;
 Context initialContext=new Context();initialContext.resolver.selected=3;initialContext.resolver.remembered=3;initialContext.resolver.manual=true;initialContext.resolver.enabled=1;
@@ -311,6 +327,8 @@ schema_constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{schema_constants[name]}";' for name in constants) + "}"
 FILES["ls/augment/com/FanTilePolicy.java"] = policy
+FILES["ls/augment/com/FanCapabilityEvidence.java"] = (SRC / "FanCapabilityEvidence.java").read_text(encoding="utf-8")
+FILES["ls/augment/com/FanHardwareIdentity.java"]='package ls.augment.com;public class FanHardwareIdentity {public static String current(){return "firmware-test";}}'
 FILES["ls/augment/com/FanCalibrationData.java"] = (SRC / "FanCalibrationData.java").read_text(encoding="utf-8")
 FILES["ls/augment/com/hook/FanTileHook.java"] = hook
 

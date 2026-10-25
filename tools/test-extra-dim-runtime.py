@@ -85,6 +85,29 @@ public class TestExtraDimControl{
  }
 }''',
 }
+# The supplied NX789J service maps the UI percentage to 25..65 before setMatrix.
+# Exercise a real internal-level controller rather than an identity-mapping facade.
+files['android/content/res/Resources.java']='''package android.content.res;public class Resources{
+public int getIdentifier(String n,String t,String p){return n.endsWith("Min")?1:n.endsWith("Max")?2:0;}
+public static int minimum=25,maximum=65;public int getInteger(int id){return id==1?minimum:maximum;}}'''
+files['android/content/Context.java']=files['android/content/Context.java'].replace('public final ContentResolver',
+    'public android.content.res.Resources getResources(){return new android.content.res.Resources();}public final ContentResolver')
+files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace('c.strength==80','c.strength==57').replace('c.strength==20','c.strength==33')
+files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace(
+    'ExtraDimRuntime.Snapshot proof=',
+    '''check(c.strength==57,"UI 80 maps to native 57 on NX789J");
+  s.context.resolver.settings.put("0:reduce_bright_colors_level","100");m.invoke(s,"applyTint",c,true);
+  check(c.strength==65&&ExtraDimRuntime.parse(dump(m,s)).strength==100,"100 percent never bypasses native 65 maximum, readback retains requested percentage");
+  c.strength=100;check(!ExtraDimRuntime.parse(dump(m,s)).transform,"raw 100 cannot be falsely acknowledged as calibrated 100 percent");
+  s.context.resolver.settings.put("0:reduce_bright_colors_level","80");m.invoke(s,"applyTint",c,true);
+  ExtraDimRuntime.Snapshot proof=''')
+files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace(
+    'System.out.println("PASS ExtraDimHook:',
+    '''s.mCurrentUser=0;ExtraDimOwnershipClient.owned.add(0);s.context.resolver.settings.put("0:reduce_bright_colors_level","80");s.context.resolver.settings.put("0:reduce_bright_colors_activated","1");
+  for(int[] range:new int[][]{{0,100},{25,65},{10,90}}){android.content.res.Resources.minimum=range[0];android.content.res.Resources.maximum=range[1];m.invoke(s,"applyTint",c,true);
+   check(c.strength==(int)(range[0]+(range[1]-range[0])*.8f),"each ROM supplies its own native dim calibration");
+   check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"percentage readback stays consistent across native ranges");}
+  System.out.println("PASS ExtraDimHook:''')
 with tempfile.TemporaryDirectory(prefix='duo-extra-dim-') as folder:
     work=Path(folder);sources=[]
     for name,source in files.items():

@@ -1,0 +1,306 @@
+/* Uses the shared phone, card, disclosure, input and navigation styles. */
+.c-phone .sd-page .d-application-section > .c-group {
+  margin-left: 6px !important;
+}
+.c-phone .sd-page .c-card {
+  margin-bottom: 10px;
+}
+.c-phone .sd-overview .c-toggle-row {
+  min-height: 44px;
+}
+.c-phone .sd-overview .d-preference-group > .c-toggle-row,
+.c-phone .sd-overview .d-preference-group > [data-native-path^='config:'] {
+  border-bottom: 1px solid var(--duo-divider);
+}
+.c-phone .sd-overview .d-preference-copy small {
+  font-size: 10.5px;
+}
+.c-phone .sd-overview .sd-inline-features {
+  border-top: 1px solid var(--duo-divider);
+}
+.c-phone .sd-inline-features > div + div {
+  border-top: 1px solid var(--duo-divider);
+}
+.c-phone .sd-editor .c-card {
+  padding: 1px 16px;
+}
+.c-phone .sd-editor .c-card > div + div {
+  border-top: 1px solid var(--duo-divider);
+}
+.c-phone .sd-editor .c-fold-body {
+  border: 0;
+  padding: 0 0 10px;
+}
+.c-phone .sd-editor select,
+.c-phone
+  .sd-editor
+  input:not([type='range']):not([type='checkbox']):not([type='file']),
+.c-phone .sd-inline-features select,
+.c-phone
+  .sd-inline-features
+  input:not([type='range']):not([type='checkbox']):not([type='file']) {
+  min-height: 48px;
+  font-size: 14px;
+}
+.c-phone .sd-editor .c-native-select {
+  flex-wrap: wrap;
+}
+.c-phone .sd-editor .c-native-select select {
+  max-width: 100%;
+}
+.c-phone .sd-preview {
+  padding: 12px 0 4px;
+}
+.c-phone .sd-preview > small {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--duo-secondary);
+  font-size: 11px;
+}
+.c-phone .sd-preview canvas,
+.c-phone .sd-preset-draft canvas {
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 344 / 62;
+  display: block;
+}
+.c-phone .sd-actions,
+.c-phone .sd-presets {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+}
+.c-phone .sd-actions > button,
+.c-phone .sd-presets > button {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+}
+.c-phone .sd-preset-draft {
+  padding: 10px 0;
+}
+.c-phone .sd-summary-sample {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  min-height: 48px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--duo-text);
+}
+.c-phone .sd-summary-sample > .sd-summary-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.c-phone .sd-summary-sample > small {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--duo-secondary);
+}
+.c-phone .sd-summary-sample img {
+  flex-shrink: 0;
+  max-width: 100%;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+.c-phone .sd-order-list > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+}
+.c-phone .sd-order-list span {
+  flex: 1;
+}
+.c-phone .sd-order-list button {
+  min-width: 48px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--duo-accent);
+}
+.c-phone .sd-paused {
+  margin-bottom: 12px;
+}
+.c-phone .sd-asset-surface {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.c-phone .sd-asset-surface select,
+.c-phone .d-font-row select {
+  min-height: 48px;
+  font-size: 14px;
+}
+.c-phone .sd-style-sample {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.c-phone .sd-style-sample > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+}
+.c-phone .sd-style-sample > span[data-style='1'] {
+  border: 1px solid currentColor;
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+.c-phone .sd-style-sample > span[data-style='2'] {
+  border: 1px solid currentColor;
+  padding: 6px;
+  border-radius: 50%;
+}
+.c-phone .sd-style-sample > small {
+  color: var(--duo-secondary);
+  font-size: 11px;
+}
+.c-phone .sd-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.c-phone .sd-fieldset:disabled {
+  opacity: 0.6;
+}
+.c-phone .sd-search {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 0;
+  font-size: 13px;
+}
+.c-phone .sd-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.c-phone .sd-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--duo-text);
+  padding: 8px 0;
+}
+.c-phone .sd-icon-row > svg:first-child {
+  flex-shrink: 0;
+  color: var(--duo-accent);
+}
+.c-phone .sd-icon-row > span {
+  flex: 1;
+  min-width: 0;
+}
+.c-phone .sd-icon-row strong {
+  display: block;
+  font-size: 13px;
+}
+.c-phone .sd-icon-row small {
+  display: block;
+  font-size: 11px;
+  color: var(--duo-secondary);
+  margin-top: 3px;
+}
+.c-phone .sd-icon-row + .sd-icon-row {
+  border-top: 1px solid var(--duo-divider);
+}
+.c-phone .sd-spacing-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  overflow: hidden;
+  color: var(--duo-accent);
+}
+.c-phone .sd-spacing-sample > div {
+  display: flex;
+  align-items: center;
+}
+.c-phone .sd-spacing-sample svg {
+  flex-shrink: 0;
+}
+.c-phone .sd-editor .c-native-note {
+  overflow-wrap: anywhere;
+}
+.c-phone .sd-placement-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+}
+.c-phone .sd-placement-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--duo-text);
+  padding: 10px 0;
+}
+.c-phone .sd-placement-name strong,
+.c-phone .sd-placement-name small {
+  display: block;
+}
+.c-phone .sd-placement-name small {
+  color: var(--duo-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+}
+.c-phone .sd-placement-row > .c-button {
+  width: auto;
+  min-width: 48px;
+  margin: 0;
+}
+.c-phone .sd-placement-item + .sd-placement-item {
+  border-top: 1px solid var(--duo-divider);
+}
+.c-phone .sd-hide-choice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  color: var(--duo-text);
+  font-size: 13px;
+}
+.c-phone .sd-hide-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--duo-accent);
+}
+.c-phone .sd-format-example {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--duo-divider);
+  text-align: left;
+  color: var(--duo-text);
+}
+.c-phone .sd-format-example code {
+  overflow-wrap: anywhere;
+}
+.c-phone .sd-format-example small,
+.c-phone .sd-format-example span {
+  display: block;
+  color: var(--duo-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+}
+.c-phone .sd-format-example span {
+  color: var(--duo-accent);
+}

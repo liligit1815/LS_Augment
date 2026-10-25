@@ -36,6 +36,12 @@ public final class TestFanCompatibilityProfile {
         check(!resolve("NX769J", false, true, true, false, all).supported(), "no acquire without restoration");
         check(!resolve("NX769J", false, true, true, true, new HashSet<>()).supported(), "must observe OEM enable");
         check(!resolve("unknown", true, true, true, true, all).supported(), "similar nodes do not verify a new driver");
+        check(FanCompatibilityProfile.resolve("unknown","unknown","unknown",true,true,true,true,all::contains,true)
+                .allowsLevelWrites(),"loaded audited driver admits capabilities independently of model label");
+        check(!FanCompatibilityProfile.resolve("NX819J","NX819J","NX819J",true,true,true,false,all::contains,true)
+                .supported(),"driver proof cannot replace the OEM restore interface");
+        check(!FanCompatibilityProfile.resolve("NX819J","NX819J","NX819J",true,true,true,true,kernel::contains,true)
+                .supported(),"driver proof cannot replace RPM node validation");
         FanCompatibilityProfile product = FanCompatibilityProfile.resolve("nubia", "NX769J", "REDMAGIC",
                 false, true, true, true, all::contains);
         check(product.supported() && !product.allowsLevelWrites(), "product identity supported with bounded capability");

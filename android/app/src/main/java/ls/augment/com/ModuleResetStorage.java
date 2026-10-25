@@ -8,14 +8,19 @@ import java.util.Set;
 /** Used only after external restoration: clears module-owned state, never another app's data. */
 final class ModuleResetStorage {
     private ModuleResetStorage() { }
-    static void clear(Context app) throws IOException {
+    static void clear(Context app) throws IOException { clear(app,null); }
+    static void clear(Context app,android.os.Bundle workbench) throws IOException {
+        AtomicWorkbenchReset.requireClearSafe(app,workbench);
+        AtomicWorkbenchExtractionPresentation.clear();
         LegacyRootStorageMigration.requireResetSafe(app);
+        AtomicWorkbenchTransferStore.clearForReset(app);
         if (!RuntimeStateStore.clearForReset(app) || !CrashFuseStore.clearForReset(app))
             throw new IOException("运行状态未能清除，请重试重置");
         // The cached durable stores have their own reset APIs; all other prefs use Android's cached editor.
         // A native recovery journal is not disposable cache. The runtime removes
         // its contents only after native recovery has been verified.
-        Set<String> handled = Set.of(AppConfig.PREFS, "ls_augment_runtime_v2", "ls_augment_crash_fuse_v2",
+        if(!NativeIslandRecoveryStore.clearForReset(app))throw new IOException("录音恢复状态未清理完成");
+        Set<String> handled = Set.of(AppConfig.PREFS, NativeIslandRecoveryStore.PREFS, "ls_augment_runtime_v2", "ls_augment_crash_fuse_v2",
                 GfrcRecoveryStore.PREFS, LauncherOwnedStateStore.GRID_PREFS);
         File folder = new File(app.getDataDir(), "shared_prefs");
         if (java.nio.file.Files.isSymbolicLink(folder.toPath())) throw new IOException("模块偏好目录无效");
@@ -31,7 +36,8 @@ final class ModuleResetStorage {
             if (!handled.contains(name) && !app.getSharedPreferences(name,0).edit().clear().commit())
                 throw new IOException("偏好未能清除：" + name);
         }
-        OwnedFileCleaner.clear(app.getFilesDir());
+        AtomicWorkbenchReset.clearFiles(app,workbench);
+        AtomicWorkbenchSettingsActivity.onStorageReset();
         HidePrivateStorage.clearedForReset();
         OwnedFileCleaner.clear(app.getCacheDir());
         OwnedFileCleaner.clear(app.getCodeCacheDir());

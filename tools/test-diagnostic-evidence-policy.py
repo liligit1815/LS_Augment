@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,6 +36,9 @@ public final class TestInventoryRetryQueue {
     static class Bundle {
         final Map<String,Object> values = new HashMap<>();
         void putString(String key, String value) { values.put(key, value); }
+        String getString(String key,String fallback) { Object v=values.get(key);return v instanceof String?(String)v:fallback; }
+        int getInt(String key,int fallback) { Object v=values.get(key);return v instanceof Integer?(Integer)v:fallback; }
+        long getLong(String key,long fallback) { Object v=values.get(key);return v instanceof Long?(Long)v:fallback; }
         boolean getBoolean(String key, boolean fallback) {
             Object value = values.get(key); return value instanceof Boolean ? (Boolean)value : fallback;
         }
@@ -67,6 +71,7 @@ public final class TestInventoryRetryQueue {
     // Admission itself executes against real production code in
     // test-config-bridge-readiness-runtime.py; this suite isolates queue ordering.
     static class ConfigBridgeReadiness {
+        static String callFailure(Exception failure){return failure.getClass().getSimpleName();}
         static class Result {String state="READY",error="",probeError="";boolean ready(){return true;}boolean waiting(){return false;}}
         Result check(Context context){return new Result();}
     }
@@ -142,7 +147,7 @@ def inventory_harness():
     end = source.index("private static final ThreadPoolExecutor SURFACE_READER", start)
     reporter = source[start:end]
     publication = member(source, "private static final class InventoryPublication")
-    publish = member(source, "private static void publishInventory")
+    publish = member(source, "private static void publishInventory") + "\n" + member(source, "private static String inventoryRejection")
     schedule = member(source, "private static void scheduleInventoryRetry")
     start = source.index("synchronized(INVENTORY_SUBMISSION)", source.index("private static void publish()"))
     end = source.index("for(String surface:observedSurfaces)", start)
@@ -155,6 +160,7 @@ FEATURE_HARNESS = r'''
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 public final class TestFeatureDiagnosticAdapters {
     static class SystemClock { static long now = 100_000; static long elapsedRealtime() { return now; } }
     static class Bundle {
@@ -163,6 +169,7 @@ public final class TestFeatureDiagnosticAdapters {
         void putLong(String key,long value) { values.put(key,value); }
         boolean getBoolean(String key,boolean fallback) { return true; }
         long getLong(String key,long fallback) { return fallback; }
+        String getString(String key,String fallback) { Object v=values.get(key);return v instanceof String?(String)v:fallback; }
     }
     static class Context {
         Bundle sent;
@@ -170,12 +177,19 @@ public final class TestFeatureDiagnosticAdapters {
         Bundle call(String provider,String method,String key,Bundle extras) { sent=extras;return new Bundle(); }
     }
     static class ConfigSchema { static boolean truthy(String value) { return "1".equals(value); } }
+    static class ConfigReadRetry {static String failure(Throwable error){return error.getClass().getSimpleName();}}
     static class Snapshot {
         final Map<String,String> values=new HashMap<>();
         String get(String key) { return values.get(key); }
     }
     static class FeatureSettings {
-        static final String PROVIDER="provider";static final long CACHE_MS=1000;
+        static final String PROVIDER="provider";static final long CACHE_MS=PRODUCTION_CACHE_MS;
+        static final Object DIAGNOSTIC_QUEUE_LOCK=new Object();
+        static final Map<String,PendingDiagnostic> DIAGNOSTICS=new ConcurrentHashMap<>();
+        static final Map<String,String> DIAGNOSTIC_VALUES=new ConcurrentHashMap<>();
+        static final AtomicLong diagnosticAccepted=new AtomicLong(),diagnosticRejected=new AtomicLong(),diagnosticRetries=new AtomicLong();
+        static long diagnosticLastAcceptedAt,diagnosticLastFailureAt,diagnosticLastDropAt;
+        static String startupWriteFailureState="",diagnosticLastFailureType="",diagnosticLastFailureReason="",diagnosticLastFailureKey="",diagnosticLastDropReason="",diagnosticLastDropKey="";
         static volatile String diagnosticProcessName="";
         static volatile boolean verifiedSnapshot;
         static long cachedAt;static Snapshot cachedSnapshot=new Snapshot();
@@ -245,7 +259,7 @@ public final class TestFeatureDiagnosticAdapters {
         yes("native".equals(module.callback.intercept(cold))&&cold.nativeCalls==1,"cold startup preserves native value");
         yes(FeatureSettings.ownerLookups==1&&FeatureSettings.remembered==owner,"cold startup still binds owner context");
         for(boolean enabled:new boolean[]{false,true,false,true}) {
-            FeatureSettings.verifiedSnapshot=true;FeatureSettings.cachedAt=SystemClock.now-1000;
+            FeatureSettings.verifiedSnapshot=true;FeatureSettings.cachedAt=SystemClock.now-FeatureSettings.CACHE_MS;
             FeatureSettings.cachedSnapshot.values.put("feature",enabled?"1":"0");
             FeatureSettings.ownerLookups=FeatureSettings.refreshes=body[0]=0;
             Chain chain=new Chain(owner,!enabled);Object result=module.callback.intercept(chain);
@@ -269,13 +283,16 @@ def feature_harness():
     oem = (JAVA / "hook/OemHooks.java").read_text(encoding="utf-8")
     settings_members = "\n".join(member(settings, signature) for signature in (
         "static boolean verifiedDisabled", "static void rememberDiagnosticProcess",
-        "private static String diagnosticProcess", "private static boolean writeDiagnostic"))
+        "private static String diagnosticProcess", "private static boolean writeDiagnostic",
+        "private static void startupWriteFailure", "private static String diagnosticReason", "private static String safeDiagnosticKey"))
     signature = ("static int methods(AugmentModule module, ClassLoader loader, String className, String name,\n"
                  "            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes)")
     oem_members = member(oem, signature) + "\n" + member(oem, "static Context context(Object owner,List<Object> args)")
     module = (JAVA / "hook/AugmentModule.java").read_text(encoding="utf-8")
     assert "FeatureSettings.rememberDiagnosticProcess(processName);" in member(module, "protected void onModuleLoadedAfterEarly"), "module load must publish real process"
-    return FEATURE_HARNESS.replace("// PRODUCTION_SETTINGS", settings_members).replace("// PRODUCTION_OEM", oem_members)
+    cache_ms = re.search(r"private static final long CACHE_MS\s*=\s*([^;]+);", settings).group(1)
+    return (FEATURE_HARNESS.replace("// PRODUCTION_SETTINGS", settings_members).replace("// PRODUCTION_OEM", oem_members)
+            .replace("PRODUCTION_CACHE_MS", cache_ms))
 
 HARNESS = r'''
 import ls.augment.com.DiagnosticEvidencePolicy;
@@ -398,6 +415,7 @@ def main():
         feature = directory / "TestFeatureDiagnosticAdapters.java"
         feature.write_text(feature_harness(), encoding="utf-8")
         stubs = {
+            "ls/augment/com/StartupDiagnostics.java": 'package ls.augment.com;public class StartupDiagnostics {public static void record(String event,String detail,Throwable error){}}',
             "android/app/Application.java": '''package android.app;public class Application {
 public static String current;public static boolean fail;
 public static String getProcessName(){if(fail)throw new RuntimeException("unavailable");return current;}}''',

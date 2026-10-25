@@ -1,6 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="ls.augment.com" />
+    </queries>
     <application>
+        <!-- Owned, removable workbench smoke target. Never included in the main APK. -->
+        <activity
+            android:name="ls.augment.com.AtomicWorkbenchFixtureActivity"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:launchMode="singleTask"
+            android:label="原子工作台验收样本"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <!-- Test APK only. A notification from the target package must be able to open it. -->
         <activity
             android:name="ls.augment.com.C17RuntimeFixtureCases$ContentActivity"

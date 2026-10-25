@@ -7,6 +7,9 @@ import ls.augment.com.ConfigSchema;
 
 /** Uses the app's existing bound data service, without a module foreground notification. */
 final class HealthBackgroundHook {
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static HealthBackgroundHook instance;
     private static final long CHECK_INTERVAL_MS=60_000;
     Context context;final Handler worker;

@@ -14,6 +14,9 @@ import android.view.TextureView;
 import android.widget.FrameLayout;
 
 /** A bounded, muted platform decoder for the device's original boot-animation frames. */
+
+// Code-only view requires UiKit/state/callbacks; it is never inflated from XML. A partial XML constructor is invalid.
+//noinspection ViewConstructor
 final class FirstStartAnimationView extends FrameLayout implements TextureView.SurfaceTextureListener {
     private final TextureView texture;
     private final Handler main = new Handler(Looper.getMainLooper());

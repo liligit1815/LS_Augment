@@ -42,6 +42,9 @@ final class LauncherRecentsMemoryHook {
     });
     private static boolean installed;
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized void install(AugmentModule module, ClassLoader loader) {
         if (installed) return;
         try {
@@ -155,6 +158,9 @@ final class LauncherRecentsMemoryHook {
             }
         }
 
+
+        // Physical screen/driver/stock-layout coordinates, not logical reading order; changing LEFT/RIGHT would change geometry.
+        //noinspection RtlHardcoded
         void render() throws ReflectiveOperationException {
             View view = owner.get();
             if (view == null || !view.isAttachedToWindow()) { hide(); report("detached"); return; }
@@ -195,9 +201,9 @@ final class LauncherRecentsMemoryHook {
             int defaultHeight = landscape ? 60 : 65;
             int height = FeatureSettings.integer(context, PREFIX + orientation + "height",
                     defaultHeight, 24, landscape ? 200 : 240);
-            int top = FeatureSettings.integer(context, PREFIX + orientation + "top", 5, 0, LauncherOptions.RECENTS_MEMORY_MAX_TOP_DP);
-            int left = FeatureSettings.integer(context, PREFIX + orientation + "left", 16, 0, 2000);
-            int content = FeatureSettings.integer(context, PREFIX + "content", 0, 0, 5);
+            int top = FeatureSettings.integer(context, PREFIX + orientation + "top", landscape?28:50, 0, LauncherOptions.RECENTS_MEMORY_MAX_TOP_DP);
+            int left = FeatureSettings.integer(context, PREFIX + orientation + "left", landscape?660:220, 0, 2000);
+            int content = FeatureSettings.integer(context, PREFIX + "content", 5, 0, 5);
             label.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
             String text = LauncherMemoryPresentation.format(totalBytes, availableBytes, detailed ? 1 : 0, content);
             if (!text.contentEquals(label.getText())) label.setText(text);
@@ -351,6 +357,9 @@ final class LauncherRecentsMemoryHook {
             }
         }
 
+
+        // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+        //noinspection DiscouragedApi
         void findNativeViews(FrameLayout host) {
             if (nativeContainer != null && nativeContainer.getRootView() == host.getRootView()) return;
             restoreNative();
@@ -363,7 +372,7 @@ final class LauncherRecentsMemoryHook {
         }
 
         ColorStateList color(View view) {
-            int mode = FeatureSettings.integer(context, PREFIX + "color_mode", 0, 0, 2);
+            int mode = FeatureSettings.integer(context, PREFIX + "color_mode", 1, 0, 2);
             boolean dark = (view.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
             int fallback = dark ? Color.WHITE : Color.BLACK;

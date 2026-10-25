@@ -12,10 +12,11 @@ assert 'Settings.Global.' not in source, 'Global settings configuration transpor
 assert 'BootConfigMirror' not in source
 assert '/data/system' not in source
 assert 'getRemotePreferences(RemoteConfig.GROUP)' in source
-assert 'publishSnapshot(providerSnapshot(context), true)' in source
+assert 'publishSnapshot(authoritative, true)' in source
 constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', source)))
 
 SOURCES = {
+    'ls/augment/com/StartupDiagnostics.java': '''package ls.augment.com;public final class StartupDiagnostics{public static final java.util.List<String> events=new java.util.concurrent.CopyOnWriteArrayList<>();public static void record(String s,String d,Throwable e){events.add(s+":"+d+(e==null?"":":"+e.getClass().getName()));}}''',
     'android/net/Uri.java': '''package android.net; public final class Uri { public final String value; private Uri(String v){value=v;} public static Uri parse(String v){return new Uri(v);} }''',
     'android/os/SystemClock.java': '''package android.os; public final class SystemClock { public static volatile long offset; public static long elapsedRealtime(){return System.nanoTime()/1000000+offset;} }''',
     'android/os/UserHandle.java': '''package android.os;public final class UserHandle {public final int id;private UserHandle(int id){this.id=id;}public static UserHandle getUserHandleForUid(int uid){return new UserHandle(uid/100000);}public boolean equals(Object o){return o instanceof UserHandle&&((UserHandle)o).id==id;}public int hashCode(){return id;}}''',
@@ -31,7 +32,7 @@ SOURCES = {
     'android/app/Application.java': '''package android.app; public class Application extends android.content.Context {public static String getProcessName(){return "test.fixture";}}''',
     'android/util/Log.java': '''package android.util;public final class Log {public static String getStackTraceString(Throwable error){return error.toString();}}''',
     'org/json/JSONObject.java': '''package org.json;public final class JSONObject {private final java.util.Map<?,?> values;public JSONObject(java.util.Map<?,?> values){this.values=values;}public String toString(){return values.toString();}}''',
-    'android/content/SharedPreferences.java': '''package android.content;public interface SharedPreferences {java.util.Map<String,?> getAll();void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l);interface OnSharedPreferenceChangeListener {void onSharedPreferenceChanged(SharedPreferences p,String key);}}''',
+    'android/content/SharedPreferences.java': '''package android.content;public interface SharedPreferences {java.util.Map<String,?> getAll();void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l);default void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l){}interface OnSharedPreferenceChangeListener {void onSharedPreferenceChanged(SharedPreferences p,String key);}}''',
     'io/github/libxposed/api/XposedInterface.java': '''package io.github.libxposed.api;public interface XposedInterface {long PROP_CAP_REMOTE=1L;long getFrameworkProperties();android.content.SharedPreferences getRemotePreferences(String name);interface Hooker {Object intercept(Chain chain)throws Throwable;}interface Chain {Object proceed()throws Throwable;Object getThisObject();java.util.List<Object> getArgs();}interface HookHandle {}interface HookBuilder {HookHandle intercept(Hooker hooker);}}''',
     'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.*;final class AugmentModule {final Map<Method,Hooker> hooks=new HashMap<>();HookBuilder prepareFeatureHook(Method target,String id,boolean protect){return h->{hooks.put(target,h);return new HookHandle(){};};}void registerFeatureHook(HookHandle handle){}void logFeatureError(String message,Throwable error){throw new AssertionError(message,error);}}''',
     'ls/augment/com/hook/OemHooks.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/OemHooks.java').read_text(encoding='utf-8'),
@@ -43,7 +44,7 @@ SOURCES = {
     'ls/augment/com/hook/SettingsEntryBindings.java': (ROOT / 'android/app/src/main/java/ls/augment/com/hook/SettingsEntryBindings.java').read_text(encoding='utf-8'),
     'ls/augment/com/hook/TestSettingsTargetMatcher.java': (ROOT / 'tools/TestSettingsTargetMatcher.java').read_text(encoding='utf-8'),
     'ls/augment/com/ConfigSchema.java': 'package ls.augment.com; public final class ConfigSchema {' + ''.join(f'public static final String {key}="{key}";' for key in constants) + 'public static boolean isRuntimeKey(String key){return "flag".equals(key);}public static boolean truthy(String value){return "1".equals(value)||"true".equalsIgnoreCase(value)||"yes".equalsIgnoreCase(value)||"on".equalsIgnoreCase(value);} }',
-    'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com; public final class ConfigSnapshot {public final int schemaVersion=1;public final String scope="device",checksum;public final long revision,updatedAt;private final String flag;private ConfigSnapshot(long r,String f,long t){revision=r;updatedAt=t;flag=f;checksum=r+":"+f+(t==r?"":":"+t);}public static ConfigSnapshot parse(String raw){if(raw==null)return null;String[] p=raw.split(":");long r=Long.parseLong(p[0]);return new ConfigSnapshot(r,p[1],p.length>2?Long.parseLong(p[2]):r);}public static ConfigSnapshot safeDefaults(){return parse("1:0");}public String get(String key){return flag;} }''',
+    'ls/augment/com/ConfigSnapshot.java': '''package ls.augment.com; public final class ConfigSnapshot {public final int schemaVersion=1;public final String scope="device",checksum;public final long revision,updatedAt;private final String flag;private ConfigSnapshot(long r,String f,long t){revision=r;updatedAt=t;flag=f;checksum=r+":"+f+(t==r?"":":"+t);}public static ConfigSnapshot parse(String raw){if(raw==null)return null;String[] p=raw.split(":");long r=Long.parseLong(p[0]);return new ConfigSnapshot(r,p[1],p.length>2?Long.parseLong(p[2]):r);}public static final class ParseResult{public final ConfigSnapshot snapshot;public final String error;ParseResult(ConfigSnapshot s){snapshot=s;error=s==null?"invalid":"";}}public static ParseResult parseDetailed(String raw){return new ParseResult(parse(raw));}public static ConfigSnapshot safeDefaults(){return parse("1:0");}public String get(String key){return flag;} }''',
     'ls/augment/com/hook/HookTelemetry.java': '''package ls.augment.com.hook;final class HookTelemetry {static void event(String message){} }''',
     'ls/augment/com/hook/FeatureSettings.java': source,
     'ls/augment/com/hook/TestFeatureSettingsAsync.java': r'''
@@ -57,26 +58,33 @@ public final class TestFeatureSettingsAsync {
     static volatile String remoteValue="2:1";
     static volatile String providerHidden="999:com.private.app";
     static volatile String remoteHidden="0:com.stale.app";
-    static volatile boolean badMetadata, runtimeUnavailable;
+    static volatile boolean badMetadata, runtimeUnavailable, runtimeThrows;
     static final ConcurrentHashMap<String,String> writes=new ConcurrentHashMap<>();
+    static final ConcurrentHashMap<String,Long> writtenObserved=new ConcurrentHashMap<>();
+    static final AtomicInteger rapidRouteCalls=new AtomicInteger();
     static final ConcurrentHashMap<String,AtomicInteger> diagnosticCalls=new ConcurrentHashMap<>();
     static volatile String failedDiagnosticKey,failedDiagnosticValue;
+    static volatile String rejectedDiagnosticKey;
+    static volatile String rejectionReason="invalid";
+    static volatile boolean rejectionRetryable;
     static volatile String throttledDiagnosticKey;
     static volatile long throttledUntil;
     static volatile CountDownLatch thirdFailureEntered,thirdFailureRelease;
+    static volatile CountDownLatch homeFailureEntered,homeFailureRelease;
     static final AtomicInteger diagnosticFailures=new AtomicInteger();
     static final List<String> observed=Collections.synchronizedList(new ArrayList<>());
     static final AtomicInteger wrongThread=new AtomicInteger();
-    static final AtomicInteger providerSnapshotCalls=new AtomicInteger();
+    static final AtomicInteger providerSnapshotCalls=new AtomicInteger(), snapshotOutages=new AtomicInteger(), observerRegistrations=new AtomicInteger();
     static void io(){String n=Thread.currentThread().getName();if(!n.equals("LSA-ConfigReader")&&!n.equals("LSA-ConfigWriter"))wrongThread.incrementAndGet();}
     static void await(CountDownLatch gate){try{if(!gate.await(5,TimeUnit.SECONDS))throw new AssertionError("blocked test double timed out");}catch(InterruptedException e){throw new AssertionError(e);}}
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     interface Condition{boolean get();}
     static void until(Condition condition){long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(!condition.get()){if(System.nanoTime()>end)throw new AssertionError("condition timed out; observed="+observed);try{Thread.sleep(5);}catch(InterruptedException e){throw new AssertionError(e);}}}
     static final class Remote implements SharedPreferences {
-        int registrations;OnSharedPreferenceChangeListener listener;
-        public Map<String,?> getAll(){io();REMOTE_ENTERED.countDown();await(REMOTE_GATE);return Map.of(RemoteConfig.SNAPSHOT,remoteValue,RemoteConfig.HIDDEN,remoteHidden);}
+        int registrations, removals;volatile boolean failing;OnSharedPreferenceChangeListener listener;
+        public Map<String,?> getAll(){io();REMOTE_ENTERED.countDown();await(REMOTE_GATE);if(failing)throw new IllegalStateException("dead remote");return Map.of(RemoteConfig.SNAPSHOT,remoteValue,RemoteConfig.HIDDEN,remoteHidden);}
         public void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l){io();registrations++;listener=l;}
+        public void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l){io();if(listener==l){removals++;listener=null;}}
         void changed(){listener.onSharedPreferenceChanged(this,RemoteConfig.SNAPSHOT);}
     }
     static final class Framework implements io.github.libxposed.api.XposedInterface {
@@ -86,27 +94,33 @@ public final class TestFeatureSettingsAsync {
     }
     static final class Resolver extends ContentResolver {
         public Bundle call(Uri uri,String method,String key,Bundle extras){io();
-            if(method.equals("snapshot")){providerSnapshotCalls.incrementAndGet();providerEntered.countDown();await(providerGate);ConfigSnapshot s=ConfigSnapshot.parse(providerValue);Bundle out=new Bundle();out.putBoolean("ok",true);out.putString("snapshot",providerValue);out.putInt("schemaVersion",1);out.putLong("revision",s.revision);out.putLong("updatedAt",s.updatedAt);out.putString("scope","device");out.putString("checksum",badMetadata?"invalid":s.checksum);return out;}
-            if(method.equals("runtime_snapshot")){Bundle out=new Bundle();out.putBoolean("ok",!runtimeUnavailable);out.putString(RemoteConfig.HIDDEN,providerHidden);return out;}
+            if(method.equals("snapshot")){providerSnapshotCalls.incrementAndGet();if(snapshotOutages.getAndUpdate(n->Math.max(0,n-1))>0)throw new IllegalArgumentException("Unknown authority ls.augment.com.config");providerEntered.countDown();await(providerGate);ConfigSnapshot s=ConfigSnapshot.parse(providerValue);Bundle out=new Bundle();out.putBoolean("ok",true);out.putString("snapshot",providerValue);out.putInt("schemaVersion",1);out.putLong("revision",s.revision);out.putLong("updatedAt",s.updatedAt);out.putString("scope","device");out.putString("checksum",badMetadata?"invalid":s.checksum);return out;}
+            if(method.equals("runtime_snapshot")){if(runtimeThrows)throw new IllegalArgumentException("Unknown authority ls.augment.com.config");Bundle out=new Bundle();out.putBoolean("ok",!runtimeUnavailable);out.putString(RemoteConfig.HIDDEN,providerHidden);return out;}
             if(method.equals("diagnostic")){
                 await(WRITE_GATE);diagnosticCalls.computeIfAbsent(key,k->new AtomicInteger()).incrementAndGet();
                 String value=extras.getString("value");
+                if(key.equals(rejectedDiagnosticKey)){
+                    Bundle out=new Bundle();out.putBoolean("ok",false);out.putString("reason",rejectionReason);
+                    out.putBoolean("retryable",rejectionRetryable);return out;
+                }
                 if(key.equals(throttledDiagnosticKey)&&android.os.SystemClock.elapsedRealtime()<throttledUntil){
                     Bundle out=new Bundle();out.putBoolean("ok",false);
                     out.putLong("retryAfterMs",throttledUntil-android.os.SystemClock.elapsedRealtime());return out;
                 }
                 if(key.equals(failedDiagnosticKey)&&value.equals(failedDiagnosticValue)){
+                    if(homeFailureEntered!=null){homeFailureEntered.countDown();await(homeFailureRelease);}
                     if(diagnosticFailures.incrementAndGet()==3&&thirdFailureEntered!=null){thirdFailureEntered.countDown();await(thirdFailureRelease);}
                     throw new IllegalStateException("Provider not ready during boot");
                 }
-                writes.put(key,value);Bundle out=new Bundle();out.putBoolean("ok",true);return out;
+                writtenObserved.put(key,extras.getLong("observedElapsed",-1));writes.put(key,value);Bundle out=new Bundle();out.putBoolean("ok",true);return out;
             }
+            if(method.equals("rapid_route")){rapidRouteCalls.incrementAndGet();return new Bundle();}
             if(method.equals("diagnostic_get")){Bundle out=new Bundle();out.putString("value",writes.getOrDefault(key,""));return out;}
             return new Bundle();
         }
         public String getGlobal(String key){throw new AssertionError("Global configuration read returned");}
         public boolean putGlobal(String k,String v){throw new AssertionError("Global configuration write returned");}
-        public void registerContentObserver(Uri u,boolean d,ContentObserver o){io();}
+        public void registerContentObserver(Uri u,boolean d,ContentObserver o){io();observerRegistrations.incrementAndGet();}
     }
     static void readerIdle()throws Exception {
         Field field=FeatureSettings.class.getDeclaredField("refreshPending");field.setAccessible(true);
@@ -202,45 +216,155 @@ public final class TestFeatureSettingsAsync {
     static Map<?,?> internalMap(String name)throws Exception {
         Field field=FeatureSettings.class.getDeclaredField(name);field.setAccessible(true);return (Map<?,?>)field.get(null);
     }
+    static void writerTask(Runnable task)throws Exception {
+        Field worker=FeatureSettings.class.getDeclaredField("WRITE_WORKER");worker.setAccessible(true);
+        ((ScheduledExecutorService)worker.get(null)).submit(task).get(3,TimeUnit.SECONDS);
+    }
+    static void drainNow()throws Exception {
+        java.lang.reflect.Method drain=FeatureSettings.class.getDeclaredMethod("drainWrites");drain.setAccessible(true);
+        writerTask(()->{try{drain.invoke(null);}catch(Exception error){throw new AssertionError(error);}});
+    }
+    static long observed(Object pending)throws Exception {
+        Field field=pending.getClass().getDeclaredField("observedElapsed");field.setAccessible(true);return field.getLong(pending);
+    }
+    static void expireOld(String key,Object old)throws Exception {
+        java.lang.reflect.Method expire=FeatureSettings.class.getDeclaredMethod("expireDiagnostic",String.class,old.getClass());expire.setAccessible(true);
+        writerTask(()->{try{expire.invoke(null,key,old);}catch(Exception error){throw new AssertionError(error);}});
+    }
     static void diagnosticRetry()throws Exception {
         WRITE_GATE.countDown();providerGate.countDown();
         Context context=new Context(new Resolver());
-        String key="ls_augment_tgk_rapid_fire_system_installed";
-        String descriptor="bridge|module=current|schema=1|pid=1234";
+        String key="ls_augment_launcher_grid_runtime";
+        String descriptor="phase=applied|revision=7|rows=8|columns=6";
         failedDiagnosticKey=key;failedDiagnosticValue=descriptor;
         FeatureSettings.diagnostic(context,key,descriptor);
         Map<?,?> pending=internalMap("DIAGNOSTICS"),cached=internalMap("DIAGNOSTIC_VALUES");
-        until(()->diagnosticFailures.get()==3&&!pending.containsKey(key));
-        check(!writes.containsKey(key),"failed boot publication was reported as delivered");
-        check(!cached.containsKey(key),"undelivered installation witness remained permanently deduplicated");
-        failedDiagnosticKey=null;
-        FeatureSettings.diagnostic(context,key,descriptor);
-        until(()->descriptor.equals(writes.get(key)));
+        Object first=pending.get(key);long firstObserved=observed(first);
+        until(()->diagnosticFailures.get()>=1);
+        FeatureSettings.recordRapidRoute(context,"session","up",1,2);
+        // Execute the real writer after a 20-second monotonic outage. The clock
+        // is advanced instead of making the offline regression sleep 20 seconds.
+        android.os.SystemClock.offset+=20_000L;drainNow();
+        check(pending.containsKey(key)&&descriptor.equals(cached.get(key))&&!writes.containsKey(key),"20-second Provider outage discarded pending complete grid state");
+        check(android.os.SystemClock.elapsedRealtime()-firstObserved>=20_000L,"outage regression did not cover fifteen seconds");
+        failedDiagnosticKey=null;android.os.SystemClock.offset+=31_000L;drainNow();
+        check(descriptor.equals(writes.get(key))&&writtenObserved.get(key)==firstObserved,"recovery did not deliver original observation/generation");
+        check(rapidRouteCalls.get()==1,"diagnostic retries replayed a functional route call");
         int publishedCalls=diagnosticCalls.get(key).get();
         FeatureSettings.diagnostic(context,key,descriptor);Thread.sleep(350);
-        check(diagnosticCalls.get(key).get()==publishedCalls,"successful witness no longer deduplicates");
+        check(diagnosticCalls.get(key).get()==publishedCalls,"successful observation no longer deduplicates");
 
-        // A previous value exhausting its retry budget must not remove a
-        // replacement queued while the last Provider call is in flight.
+        String expiredKey="ls_augment_expired_witness";failedDiagnosticKey=expiredKey;failedDiagnosticValue="ready";diagnosticFailures.set(0);
+        FeatureSettings.diagnostic(context,expiredKey,"ready");Object expired=pending.get(expiredKey);
+        until(()->diagnosticFailures.get()>=1);android.os.SystemClock.offset+=300_001L;drainNow();
+        check(!pending.containsKey(expiredKey)&&!cached.containsKey(expiredKey),"expired undelivered value stayed queued or permanently deduplicated");
+        check(FeatureSettings.diagnosticWriterState().contains("expired=1")&&FeatureSettings.diagnosticWriterState().contains("lastDropReason=retry_window_expired"),"retry-window loss has no local explicit evidence");
+        failedDiagnosticKey=null;FeatureSettings.diagnostic(context,expiredKey,"ready");until(()->"ready".equals(writes.get(expiredKey)));
+
+        // An older in-flight failure cannot erase a newer queued generation.
         final String replacementKey="ls_augment_tgk_rapid_fire_installed";
         failedDiagnosticKey=replacementKey;failedDiagnosticValue="old";diagnosticFailures.set(0);
         thirdFailureEntered=new CountDownLatch(1);thirdFailureRelease=new CountDownLatch(1);
-        FeatureSettings.diagnostic(context,replacementKey,"old");await(thirdFailureEntered);
+        FeatureSettings.diagnostic(context,replacementKey,"old");await(thirdFailureEntered);Object old=pending.get(replacementKey);
         FeatureSettings.diagnostic(context,replacementKey,"new");thirdFailureRelease.countDown();
         until(()->"new".equals(writes.get(replacementKey)));
-        check("new".equals(cached.get(replacementKey)),"failed older witness evicted replacement cache");
+        expireOld(replacementKey,old);
+        check("new".equals(cached.get(replacementKey)),"failed/expired older observation evicted replacement cache");
+
+        // Returning to the original text still owns a different pending object.
+        final String abaKey="ls_augment_generation_aba";failedDiagnosticKey=abaKey;failedDiagnosticValue="old";diagnosticFailures.set(0);
+        thirdFailureEntered=new CountDownLatch(1);thirdFailureRelease=new CountDownLatch(1);
+        FeatureSettings.diagnostic(context,abaKey,"old");await(thirdFailureEntered);Object abaOld=pending.get(abaKey);
+        FeatureSettings.diagnostic(context,abaKey,"middle");FeatureSettings.diagnostic(context,abaKey,"old");Object abaNew=pending.get(abaKey);
+        check(abaNew!=abaOld,"same text rebound to obsolete pending generation");failedDiagnosticKey=null;thirdFailureRelease.countDown();
+        expireOld(abaKey,abaOld);until(()->"old".equals(writes.get(abaKey)));
+        check("old".equals(cached.get(abaKey))&&writtenObserved.get(abaKey)==observed(abaNew),"obsolete expiry removed/replaced same-text newer generation");
+
         throttledDiagnosticKey="ls_augment_throttled_witness";
         throttledUntil=android.os.SystemClock.elapsedRealtime()+1400;
         FeatureSettings.diagnostic(context,throttledDiagnosticKey,"ready");
         until(()->diagnosticCalls.containsKey(throttledDiagnosticKey));Thread.sleep(350);
         check(diagnosticCalls.get(throttledDiagnosticKey).get()==1,"throttled diagnostic repeatedly called Provider");
-        check(pending.containsKey(throttledDiagnosticKey),"rate limit discarded installation witness");
+        check(pending.containsKey(throttledDiagnosticKey),"rate limit discarded observation");
         FeatureSettings.diagnostic(context,"ls_augment_unthrottled","other");
         until(()->"other".equals(writes.get("ls_augment_unthrottled")));
         until(()->"ready".equals(writes.get(throttledDiagnosticKey)));
-        check(diagnosticCalls.get(throttledDiagnosticKey).get()==2,"throttled witness did not recover once");
+        check(diagnosticCalls.get(throttledDiagnosticKey).get()==2,"throttled observation did not recover once");
+        rejectedDiagnosticKey="ls_augment_terminal_witness";
+        FeatureSettings.diagnostic(context,rejectedDiagnosticKey,"private payload never in writer state");
+        until(()->FeatureSettings.diagnosticWriterState().contains("rejected=1"));
+        check(!pending.containsKey(rejectedDiagnosticKey)&&!writes.containsKey(rejectedDiagnosticKey),"permanent rejection was accepted or left retrying");
+        String rejectedState=FeatureSettings.diagnosticWriterState();
+        check(rejectedState.contains("lastFailureKey="+rejectedDiagnosticKey)&&rejectedState.contains("lastFailureReason=invalid")&&rejectedState.contains("lastDropReason=provider_terminal"),"permanent rejection lost safe key/reason evidence");
+        check(!rejectedState.contains("private payload"),"writer diagnostics leaked rejected value");
+        int calls=diagnosticCalls.get(rejectedDiagnosticKey).get();android.os.SystemClock.offset+=300_001L;drainNow();
+        check(diagnosticCalls.get(rejectedDiagnosticKey).get()==calls,"permanent rejection retried for five minutes");
+        rejectedDiagnosticKey="ls_augment_capacity_witness";rejectionReason="full";rejectionRetryable=true;
+        FeatureSettings.diagnostic(context,rejectedDiagnosticKey,"recoverable");until(()->diagnosticCalls.containsKey(rejectedDiagnosticKey));
+        check(pending.containsKey(rejectedDiagnosticKey)&&!writes.containsKey(rejectedDiagnosticKey),"storage capacity failure was silently accepted or discarded");
+        String fullKey=rejectedDiagnosticKey;rejectedDiagnosticKey=null;android.os.SystemClock.offset+=31_000L;drainNow();
+        check("recoverable".equals(writes.get(fullKey)),"capacity failure did not recover with original value");
         check(wrongThread.get()==0,"retry performed Provider I/O on the caller thread");
-        System.out.println("FeatureSettings: failed boot witness retries, deduplication, in-flight replacement and Provider rate-limit backoff passed");
+        check(ls.augment.com.StartupDiagnostics.events.stream().anyMatch(s->s.startsWith("LAST_VALUE_DELIVERY_FAILED:"))
+                &&ls.augment.com.StartupDiagnostics.events.stream().anyMatch(s->s.startsWith("LAST_VALUE_DELIVERY_ACCEPTED:")),"real writer failures and later acceptance are independently observable");
+        System.out.println("PASS FeatureSettings real writer: >15s outage recovery, five-minute expiry/drop evidence, original observation time, newer/ABA generations, deduplication, quota backoff and no functional replay");
+    }
+    static void diagnosticQueueFull()throws Exception {
+        providerGate.countDown();Context context=new Context(new Resolver());
+        FeatureSettings.diagnostic(context,"ls_augment_block_writer","ready");
+        Map<?,?> pending=internalMap("DIAGNOSTICS"),cached=internalMap("DIAGNOSTIC_VALUES");
+        Object sample=pending.get("ls_augment_block_writer");java.lang.reflect.Constructor<?> constructor=sample.getClass().getDeclaredConstructor(Context.class,String.class,boolean.class);constructor.setAccessible(true);
+        @SuppressWarnings("unchecked") Map<String,Object> raw=(Map<String,Object>)pending;
+        int fake=0;while(raw.size()<512)raw.put("ls_augment_fake_"+fake++,constructor.newInstance(context,"ready",false));
+        String rejected="ls_augment_queue_overflow";FeatureSettings.diagnostic(context,rejected,"ready");
+        check(!pending.containsKey(rejected)&&!cached.containsKey(rejected),"full queue permanently deduplicated value that was never admitted");
+        check(FeatureSettings.diagnosticWriterState().contains("queueFull=")&&!FeatureSettings.diagnosticWriterState().contains("queueFull=0"),"full queue has no visible counter");
+        for(int index=0;index<fake;index++)raw.remove("ls_augment_fake_"+index);
+        WRITE_GATE.countDown();FeatureSettings.diagnostic(context,rejected,"ready");until(()->"ready".equals(writes.get(rejected)));
+        check(wrongThread.get()==0,"queue recovery performed IPC on caller");
+        System.out.println("PASS FeatureSettings full queue is bounded, visible, and permits re-submitting the same unadmitted value");
+    }
+    static long pendingLong(Object pending,String name)throws Exception {Field f=pending.getClass().getDeclaredField(name);f.setAccessible(true);return f.getLong(pending);}
+    static void homeReadinessPriority()throws Exception {
+        WRITE_GATE.countDown();providerGate.countDown();Context context=new Context(new Resolver());
+        String key="ls_augment_atomic_home_readiness_88";
+        String old="HR1|20567|88|unique-88|72|1000|false|false|false||1000|0|0|1000000000";
+        String fresh="HR1|20567|88|unique-88|72|1001|true|true|true||1000|1001|1001|1000000000";
+        FeatureSettings.diagnosticHomeReadiness(context,key,old);Thread.sleep(40);
+        check(!diagnosticCalls.containsKey(key),"non-system host accessed HR1 priority lane");
+        android.os.Process.uid=1000;
+        FeatureSettings.diagnosticHomeReadiness(context,"ls_augment_other",old);
+        FeatureSettings.diagnosticHomeReadiness(context,key,"unverified");
+        check(internalMap("DIAGNOSTICS").isEmpty(),"priority lane admitted unrelated keys or untyped state");
+        long start=System.nanoTime();FeatureSettings.diagnosticHomeReadiness(context,key,old);FeatureSettings.diagnosticHomeReadiness(context,key,fresh);
+        until(()->fresh.equals(writes.get(key)));
+        check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<200,"HR1 retained the ordinary 250ms delivery delay");
+        check(diagnosticCalls.get(key).get()==1,"rapid HR1 observations did not coalesce to latest state");
+        FeatureSettings.diagnosticHomeReadiness(context,key,fresh);Thread.sleep(40);
+        check(diagnosticCalls.get(key).get()==1,"unchanged delivered HR1 was replayed");
+
+        String retryKey="ls_augment_atomic_home_readiness_89";
+        failedDiagnosticKey=retryKey;failedDiagnosticValue=old;diagnosticFailures.set(0);
+        homeFailureEntered=new CountDownLatch(1);homeFailureRelease=new CountDownLatch(1);
+        FeatureSettings.diagnosticHomeReadiness(context,retryKey,old);await(homeFailureEntered);
+        Map<?,?> pending=internalMap("DIAGNOSTICS");Object first=pending.get(retryKey);long retryStart=pendingLong(first,"retryStartedElapsed");
+        FeatureSettings.diagnosticHomeReadiness(context,retryKey,fresh);Object replacement=pending.get(retryKey);
+        homeFailureRelease.countDown();homeFailureEntered=null;
+        until(()->{try{return pendingLong(replacement,"retryAt")>android.os.SystemClock.elapsedRealtime();}catch(Exception e){throw new AssertionError(e);}});
+        drainNow();Thread.sleep(40);
+        check(diagnosticCalls.get(retryKey).get()==1&&!writes.containsKey(retryKey),"new WM generation bypassed an in-flight Provider failure backoff");
+        check(pendingLong(replacement,"retryStartedElapsed")==retryStart,"new WM observation reset failed delivery's retry window");
+        failedDiagnosticKey=null;android.os.SystemClock.offset+=31_000L;drainNow();
+        check(fresh.equals(writes.get(retryKey))&&writtenObserved.get(retryKey)==observed(replacement),"failure recovery lost latest actual observation");
+
+        String expiredKey="ls_augment_atomic_home_readiness_90";failedDiagnosticKey=expiredKey;failedDiagnosticValue=old;diagnosticFailures.set(0);
+        FeatureSettings.diagnosticHomeReadiness(context,expiredKey,old);until(()->diagnosticFailures.get()>0);
+        android.os.SystemClock.offset+=300_001L;FeatureSettings.diagnosticHomeReadiness(context,expiredKey,fresh);drainNow();
+        check(!pending.containsKey(expiredKey)&&!internalMap("DIAGNOSTIC_VALUES").containsKey(expiredKey),"new timestamps prolonged failed HR1 delivery beyond five minutes");
+        check(FeatureSettings.diagnosticWriterState().contains("lastDropReason=retry_window_expired"),"HR1 expiry had no truthful loss evidence");
+        failedDiagnosticKey=null;FeatureSettings.diagnosticHomeReadiness(context,expiredKey,fresh);until(()->fresh.equals(writes.get(expiredKey)));
+        check(wrongThread.get()==0,"HR1 priority performed IPC on a callback or UI thread");
+        System.out.println("PASS FeatureSettings HR1 priority: system-only narrow lane, actual <200ms/coalesced delivery, dedup, in-flight failure/new generation backpressure, fresh recovery and fixed five-minute expiry");
     }
     public static final class GuardOwner {
         private final Context held;
@@ -309,6 +433,50 @@ public final class TestFeatureSettingsAsync {
         System.out.println("FeatureSettings/OemHooks actual guard: unverified refresh, 4000 fresh off callbacks without IPC/owner lookup, 4000 expired off callbacks with blocked worker refresh, enable/disable changes passed");
     }
     public static void main(String[] args)throws Throwable {
+        if(args.length>0&&args[0].equals("auxiliary_outage_observer")) {
+            REMOTE_GATE.countDown();providerGate.countDown();WRITE_GATE.countDown();runtimeThrows=true;
+            remoteValue="7:1";providerValue="8:1";Framework observerFramework=new Framework();FeatureSettings.attachFramework(observerFramework);
+            Context observerContext=new Context(new Resolver());FeatureSettings.invalidateSnapshot();FeatureSettings.snapshot(observerContext);
+            until(()->FeatureSettings.verifiedSnapshot(observerContext)!=null&&FeatureSettings.verifiedSnapshot(observerContext).revision==8);readerIdle();
+            check(observerRegistrations.get()==1&&FeatureSettings.enabled(observerContext,"flag"),"auxiliary outage blocked observer or discarded verified configuration");
+            until(()->writes.getOrDefault("ls_augment_config_read_state","").contains("runtime=provider_unavailable"));
+            String state=writes.get("ls_augment_config_read_state");check(state.contains("provider=ready")&&state.contains("retained=false")&&state.contains("revision=8"),"auxiliary outage mislabeled successful authoritative configuration stale or failed");
+            check(ls.augment.com.StartupDiagnostics.events.stream().anyMatch(s->s.startsWith("CONFIG_RUNTIME_FAILED:")),"auxiliary read exception has no independent startup record");
+            runtimeThrows=false;refresh();check(observerRegistrations.get()==1,"auxiliary recovery duplicated observer");
+            check(wrongThread.get()==0,"observer recovery ran IPC on caller");
+            System.out.println("PASS valid configuration installs observer through auxiliary-provider outage, retains state and avoids duplicate observer");return;
+        }
+
+        if(args.length>0&&args[0].equals("launcher_publication_wait")) {
+            REMOTE_GATE.countDown();remoteValue="7:1";Framework delayedFramework=new Framework();delayedFramework.remote.failing=true;
+            FeatureSettings.attachFramework(delayedFramework);await(REMOTE_ENTERED);readerIdle();
+            FeatureSettings.awaitBootSnapshot();check(FeatureSettings.verifiedSnapshot(null)==null,"failed attempt was mistaken for verified publication");
+            Thread delayedPublisher=new Thread(()->{try{Thread.sleep(350);delayedFramework.remote.failing=false;}catch(Exception error){throw new AssertionError(error);}});delayedPublisher.start();
+            long started=System.nanoTime();FeatureSettings.awaitLauncherGridSnapshot();long waited=System.nanoTime()-started;
+            delayedPublisher.join();check(FeatureSettings.verifiedSnapshot(null).revision==7&&waited>=TimeUnit.MILLISECONDS.toNanos(250)&&waited<TimeUnit.SECONDS.toNanos(2),"launcher used exhausted attempt latch or missed delayed verified publication");
+            check(wrongThread.get()==0,"launcher publication wait moved IPC to installer");
+            System.out.println("PASS launcher waits for real verified publication after failed initial attempt, without installer IPC");return;
+        }
+
+        if(args.length>0&&args[0].equals("provider_recovery")) {
+            REMOTE_GATE.countDown();providerGate.countDown();WRITE_GATE.countDown();
+            remoteValue="7:1";providerValue="8:1";snapshotOutages.set(2);
+            Framework recoveryFramework=new Framework();FeatureSettings.attachFramework(recoveryFramework);
+            until(()->FeatureSettings.verifiedSnapshot(null)!=null);
+            Context recoveryContext=new Context(new Resolver());
+            check(FeatureSettings.verifiedSnapshot(recoveryContext).revision==7,"verified mirror is atomic before Provider recovers");
+            until(()->providerSnapshotCalls.get()>=2);readerIdle();
+            check(FeatureSettings.verifiedSnapshot(recoveryContext).revision==7,"outage replaced verified enabled state with defaults");
+            until(()->FeatureSettings.verifiedSnapshot(recoveryContext).revision==8);readerIdle();
+            check(providerSnapshotCalls.get()>=3,"brief read outage did not get a prompt recovery check");
+            recoveryFramework.remote.failing=true;providerValue="9:1";refresh();
+            check(recoveryFramework.remote.removals==1&&FeatureSettings.verifiedSnapshot(recoveryContext).revision==9,"failed mirror connection kept its stale listener or discarded valid Provider data");
+            recoveryFramework.remote.failing=false;refresh();
+            check(recoveryFramework.connections==2&&recoveryFramework.remote.registrations==2&&recoveryFramework.remote.removals==1,"mirror reconnect duplicated listener ownership");
+            check(wrongThread.get()==0,"recovery IPC moved to a caller thread");
+            System.out.println("PASS atomic verified publication, Provider outage retention/recovery, remote listener cleanup and worker-only IPC");return;
+        }
+
         if(args.length>0&&args[0].equals("verified_off_guard")){verifiedOffGuard();return;}
         if(args.length>0&&args[0].equals("boot_startup")){
             remoteValue="7:1";REMOTE_GATE.countDown();FeatureSettings.attachFramework(new Framework());
@@ -318,6 +486,8 @@ public final class TestFeatureSettingsAsync {
             System.out.println("FeatureSettings private framework startup publication passed");return;
         }
         if(args.length>0&&args[0].equals("diagnostic_retry")){diagnosticRetry();return;}
+        if(args.length>0&&args[0].equals("diagnostic_queue_full")){diagnosticQueueFull();return;}
+        if(args.length>0&&args[0].equals("home_readiness_priority")){homeReadinessPriority();return;}
         if(args.length>0&&args[0].equals("hidden_binding")){hiddenBindings();return;}
         if(args.length>0&&args[0].equals("provider_only")) {
             Framework fallback=new Framework();fallback.remoteSupported=false;providerGate.countDown();WRITE_GATE.countDown();
@@ -414,6 +584,15 @@ public final class TestFeatureSettingsAsync {
 ''',
 }
 
+SOURCES['ls/augment/com/hook/ConfigReadRetry.java'] = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/ConfigReadRetry.java').read_text(encoding='utf-8')
+# Keep the production per-transport cache around the controlled snapshot parser.
+# The parser double models authority/revision races; real serialization has its
+# separate checksum/corruption suite.
+snapshot_source = (ROOT / 'android/app/src/main/java/ls/augment/com/ConfigSnapshot.java').read_text(encoding='utf-8')
+reader_start = snapshot_source.index('    public static final class Reader {')
+reader_end = snapshot_source.index('    public static ConfigSnapshot parse(', reader_start)
+SOURCES['ls/augment/com/ConfigSnapshot.java'] = SOURCES['ls/augment/com/ConfigSnapshot.java'].rsplit('}', 1)[0] + 'public String serialize(){return checksum;}' + snapshot_source[reader_start:reader_end] + '}'
+
 with tempfile.TemporaryDirectory(prefix='ls-feature-settings-async-') as directory:
     temporary = Path(directory)
     files = []
@@ -425,5 +604,5 @@ with tempfile.TemporaryDirectory(prefix='ls-feature-settings-async-') as directo
     classes = temporary / 'classes'
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes), *files], check=True)
     subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestSettingsTargetMatcher'], check=True, timeout=20)
-    for case in ('remote', 'provider_only', 'hidden_binding', 'diagnostic_retry', 'verified_off_guard', 'boot_startup'):
+    for case in ('remote', 'provider_only', 'hidden_binding', 'diagnostic_retry', 'verified_off_guard', 'boot_startup', 'provider_recovery', 'launcher_publication_wait', 'auxiliary_outage_observer', 'diagnostic_queue_full', 'home_readiness_priority'):
         subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestFeatureSettingsAsync', case], check=True, timeout=20)

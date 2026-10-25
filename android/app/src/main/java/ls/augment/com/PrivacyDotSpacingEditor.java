@@ -45,10 +45,10 @@ final class PrivacyDotSpacingEditor {
             if(initial.explicit(scope,"privacy.dot")==null&&!"all".equals(scope))form.addView(ui.text("当前继承共享方案；调整任意一边后单独保存此位置。",12,ui.muted,false),ui.margins(0,4,0,0));
             String[] titles={"起始边距","顶部边距","末尾边距","底部边距"};int[] values={edge.start,edge.top,edge.end,edge.bottom};
             SeekBar[] bars=new SeekBar[4];TextView[] labels=new TextView[4];
-            Runnable sync=()->{for(int i=0;i<4;i++){int max=measured.maximum(i,values[(i+2)%4]);bars[i].setMax(max);bars[i].setProgress(values[i]);bars[i].setEnabled(max>0);labels[i].setText(titles[i]+" · "+values[i]+" / "+max+" dp");}};
+            Runnable sync=()->{for(int i=0;i<4;i++){int max=measured.maximum(i,values[(i+2)%4]);bars[i].setMax(max);bars[i].setProgress(values[i]);bars[i].setEnabled(max>0);labels[i].setText(labels[i].getContext().getString(R.string.status_privacydotspacingeditor_36 ,String.valueOf(titles[i]), String.valueOf(values[i]), String.valueOf(max)));}};
             for(int i=0;i<4;i++){
                 final int index=i;labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));
-                SeekBar bar=new SeekBar(context);bars[i]=bar;bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":privacy.dot");form.addView(bar,ui.wrap());
+                SeekBar bar=ui.slider();bars[i]=bar;bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":privacy.dot");form.addView(bar,ui.wrap());
             }
             sync.run();
             for(int i=0;i<4;i++){final int index=i;bars[i].setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){

@@ -14,19 +14,25 @@ public final class NotificationStackPolicy {
     public static final class Item<T> {
         public final T value;
         public final String key,appUserKey;
-        public final boolean silent;
+        public final boolean silent,nativeContainer;
         public final long postTime;
         public Item(T value,String key,String appUserKey,boolean silent,long postTime) {
-            this.value=value;this.key=key;this.appUserKey=appUserKey;this.silent=silent;this.postTime=postTime;
+            this(value,key,appUserKey,silent,postTime,false);
+        }
+        public Item(T value,String key,String appUserKey,boolean silent,long postTime,boolean nativeContainer) {
+            this.value=value;this.key=key;this.appUserKey=appUserKey;this.silent=silent;this.postTime=postTime;this.nativeContainer=nativeContainer;
         }
     }
     public static final class Node<T> {
         public final Item<T> item;
-        public final String groupKey,label;
+        public final String groupKey,label,sectionKey;
         public final boolean expanded;
         public final int count;
         private Node(Item<T> item,String groupKey,String label,boolean expanded,int count) {
-            this.item=item;this.groupKey=groupKey;this.label=label;this.expanded=expanded;this.count=count;
+            this(item,groupKey,label,expanded,count,item==null&&(ALERTING.equals(groupKey)||SILENT.equals(groupKey))?groupKey:"");
+        }
+        private Node(Item<T> item,String groupKey,String label,boolean expanded,int count,String sectionKey) {
+            this.item=item;this.groupKey=groupKey;this.label=label;this.expanded=expanded;this.count=count;this.sectionKey=sectionKey;
         }
     }
     public static final class Plan<T> {
@@ -35,6 +41,35 @@ public final class NotificationStackPolicy {
         public final Map<String,List<Item<T>>> groups=new LinkedHashMap<>();
     }
     public static <T> Plan<T> plan(List<Item<T>> items,boolean big,boolean small,Set<String> expanded) {
+        for(Item<T> item:items)if(item.nativeContainer&&(big||small))return segmented(items,big,small,expanded);
+        return ordinary(items,big,small,expanded);
+    }
+    /** Native containers are indivisible barriers. Never infer their app, user or privacy. */
+    private static <T> Plan<T> segmented(List<Item<T>> items,boolean big,boolean small,Set<String> expanded) {
+        Plan<T> result=new Plan<>();List<Item<T>> segment=new ArrayList<>();String anchor="";
+        for(Item<T> item:items) {
+            if(!item.nativeContainer){segment.add(item);continue;}
+            appendSegment(result,segment,anchor,big,small,expanded);segment.clear();
+            result.nodes.add(new Node<>(item,"","",true,1));anchor=item.key;
+        }
+        appendSegment(result,segment,anchor,big,small,expanded);return result;
+    }
+    private static String prefix(String anchor){return "segment:"+anchor.length()+":"+anchor+":";}
+    private static <T> void appendSegment(Plan<T> result,List<Item<T>> items,String anchor,boolean big,boolean small,Set<String> expanded) {
+        String prefix=prefix(anchor);Set<String> local=new LinkedHashSet<>();
+        for(String key:expanded)if(key.startsWith(prefix))local.add(key.substring(prefix.length()));
+        Plan<T> part=ordinary(items,big,small,local);
+        for(Node<T> node:part.nodes)result.nodes.add(new Node<>(node.item,node.groupKey.isEmpty()?"":prefix+node.groupKey,node.label,node.expanded,node.count,node.sectionKey));
+        result.hiddenKeys.addAll(part.hiddenKeys);
+        for(Map.Entry<String,List<Item<T>>> group:part.groups.entrySet())result.groups.put(prefix+group.getKey(),group.getValue());
+    }
+    /** Use the same namespace for native expansion and user expansion. Legacy keys stay unchanged. */
+    public static <T> String groupKeyFor(List<Item<T>> items,Item<T> target,String localKey) {
+        boolean segmented=false;String anchor="",targetAnchor="";
+        for(Item<T> item:items){if(item==target)targetAnchor=anchor;if(item.nativeContainer){segmented=true;anchor=item.key;}}
+        return segmented?prefix(targetAnchor)+localKey:localKey;
+    }
+    private static <T> Plan<T> ordinary(List<Item<T>> items,boolean big,boolean small,Set<String> expanded) {
         Plan<T> result=new Plan<>();
         if(!big&&!small) {
             // Native mode must keep its own order, section labels and grouping.

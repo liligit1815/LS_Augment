@@ -20,6 +20,9 @@ final class LauncherCleanupBombHook {
     private static final Map<View,Blast> FRAGMENT_VIEWS=new WeakHashMap<>();
     private static final Map<ImageView,IconBinding> ICONS=new WeakHashMap<>();
     private static final Paint ICON_PAINT=new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static void install(AugmentModule module,ClassLoader loader){
         try{
             Class<?> recents=Class.forName("com.android.quickstep.views.RecentsView",false,loader);
@@ -135,6 +138,9 @@ final class LauncherCleanupBombHook {
             }
         }catch(ClassNotFoundException optional){}catch(Throwable error){module.logFeatureError("CLEANUP_ICON_UNAVAILABLE "+name,error);}
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static void bindIcon(View root,String id){
         View child=null;
         try{Field field=root.getClass().getDeclaredField("mClearAllButton");field.setAccessible(true);Object value=field.get(root);if(value instanceof ImageView)child=(View)value;}

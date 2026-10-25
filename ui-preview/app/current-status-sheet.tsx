@@ -821,7 +821,7 @@ export function StatusSheetEditor({
             onChange={(offsetX) => patch({ offsetX })}
           />
           <LayoutNumber
-            title="垂直偏移"
+            title="上下偏移"
             value={cell.offsetY}
             min={-40}
             max={40}

@@ -85,6 +85,9 @@ public final class TestAuditFixes {
         check(DiagnosticWritePolicy.fits(stored,"a","small"),"old oversized store cannot shrink");
         check(!DiagnosticWritePolicy.fits(stored,"a","中".repeat(180001)),"old oversized store can grow");
         check(DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(2001)).length()==2000,"per-value limit changed");
+        String grid="{\"events\":\""+"x".repeat(12000)+"\"}";
+        check(DiagnosticWritePolicy.normalize("ls_augment_launcher_grid_runtime",grid).equals(grid),"grid stage JSON must survive the ordinary 2KiB limit");
+        check(DiagnosticWritePolicy.valueLimit("ls_augment_launcher_grid_runtime")==16384,"grid-specific budget remains bounded");
         String truncated=DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1999)+"😀");
         check(truncated.endsWith(DiagnosticWritePolicy.TRUNCATION_MARKER)&&truncated.length()<=2000,"truncation missing marker or exceeded value budget");
         String boundary=DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(1987)+"😀"+"x".repeat(20));
@@ -93,6 +96,23 @@ public final class TestAuditFixes {
     private static void provider() {
         FakeContext context=new FakeContext();
         android.os.SystemClock.now=100_000;
+        for(String pkg:new String[]{"com.android.settings","com.android.systemui","com.android.packageinstaller",
+                "com.android.ztescreenshot","com.android.nfc","com.zte.zdm","cn.nubia.filebrowser","android"}) {
+            String key="ls_augment_rm_support_"+pkg;
+            check(ProviderDiagnostics.record(context,101,key,"{registered:true}")==ProviderDiagnostics.Result.ACCEPTED,
+                    "actual OEM support package rejected: "+pkg);
+            check("{registered:true}".equals(context.prefs.values.get(key)),"support acceptance did not publish value");
+        }
+        for(String key:new String[]{"ls_augment_arbitrary.dot","ls_augment_rm_support_com..android",
+                "ls_augment_rm_support_.android","ls_augment_rm_support_com.android/secret","ls_augment_rm_support_"+"x".repeat(150)})
+            check(ProviderDiagnostics.record(context,101,key,"x")==ProviderDiagnostics.Result.INVALID,"invalid key accepted: "+key);
+        for(ProviderDiagnostics.Result outcome:ProviderDiagnostics.Result.values()){
+            android.os.Bundle reply=ProviderDiagnostics.reply(outcome);
+            check(Boolean.valueOf(outcome==ProviderDiagnostics.Result.ACCEPTED).equals(reply.data.get("ok")),"reply forged acceptance");
+            check(outcome.name().toLowerCase(java.util.Locale.ROOT).equals(reply.data.get("reason")),"reply lost rejection reason");
+            check(Boolean.valueOf(outcome==ProviderDiagnostics.Result.THROTTLED||outcome==ProviderDiagnostics.Result.FULL).equals(reply.data.get("retryable")),"reply lost permanent rejection contract");
+        }
+        context.prefs.values.clear();
         ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_last_error","grid_layout:failure;stack=location");
         check(AuditLog.events.size()==1&&AuditLog.events.get(0).contains("stack=location"),"failure transition must retain useful evidence");
         ProviderDiagnostics.record(context,103,"ls_augment_statusbar_phone_last_error","grid_layout:failure;stack=location");

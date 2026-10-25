@@ -181,7 +181,7 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
                 for(String key:Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS,AppConfig.FREEFORM_UNLIMITED,AppConfig.FREEFORM_ALL_APPS))checkSavedSwitch(page,key,before);
                 FeatureEditorController editor=featureEditor(page,spec[3]);
                 Map<?,?> inputs=(Map<?,?>)get(editor,"inputs");
-                require(inputs.containsKey(ConfigSchema.FREEFORM_GAME_APPS)&&inputs.containsKey(AppConfig.FREEFORM_EXCLUDED_APPS),"Both original per-app small-window lists remain editable");
+                require(!inputs.containsKey(ConfigSchema.FREEFORM_GAME_APPS)&&inputs.containsKey(AppConfig.FREEFORM_EXCLUDED_APPS),"Login has no game list; native-window exceptions remain editable");
             }else if("audio_gain".equals(spec[3])){
                 checkSavedSwitch(page,ConfigSchema.AUDIO_GAIN_ENABLED,before);
                 Map<?,?> sliders=(Map<?,?>)get(featureEditor(page,spec[3]),"sliders");

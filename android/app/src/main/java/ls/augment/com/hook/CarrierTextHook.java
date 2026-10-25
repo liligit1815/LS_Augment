@@ -181,6 +181,9 @@ final class CarrierTextHook {
             reference=new WeakReference<>(view);boundary=new WeakReference<>(owner);this.panel=panel;
             nativeText=copy(view.getText());rememberStyle(view);
         }
+
+        // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+        //noinspection ObsoleteSdkInt
         void attach(){
             TextView view=reference.get();if(view==null||attached)return;
             attached=true;nativeText=copy(view.getText());rememberStyle(view);snapshot=null;

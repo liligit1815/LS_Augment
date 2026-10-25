@@ -8,7 +8,6 @@ import android.provider.Settings;
 import ls.augment.com.AudioGainState;
 import ls.augment.com.BuildConfig;
 import ls.augment.com.ConfigSnapshot;
-import android.database.ContentObserver;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.audiofx.LoudnessEnhancer;
@@ -25,10 +24,16 @@ final class AudioGainHook {
     private static boolean installed;
     private static final ThreadLocal<Boolean> INTERNAL = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Adjustment> PENDING = new ThreadLocal<>();
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Controller controller;
     private static final java.util.concurrent.ExecutorService READ_REGISTRATION=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"LS-audio-state-register");t.setDaemon(true);return t;});
     private static final class Adjustment { int stream, requested; boolean authorized, dndAllowed; String route; }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized void install(AugmentModule module, ClassLoader loader) {
         if (installed) return;
         try {
@@ -133,6 +138,7 @@ final class AudioGainHook {
         final Map<Integer, LoudnessEnhancer> effects = new HashMap<>();
         final Map<Integer, String> publishedScales = new ConcurrentHashMap<>();
         List<?> players = Collections.emptyList(); String lastError = "", lastDiagnostic = "";
+        boolean observingConfig;
         final Binder readEndpoint=new Binder(){
             @Override protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException{
                 if(code!=IBinder.FIRST_CALL_TRANSACTION)return super.onTransact(code,data,reply,flags);
@@ -192,18 +198,23 @@ final class AudioGainHook {
         Controller(Object service, Context context) {
             this.service = service; this.context = context;
             HandlerThread t = new HandlerThread("LS-audio-gain", android.os.Process.THREAD_PRIORITY_BACKGROUND); t.start(); handler = new Handler(t.getLooper());
-            handler.post(() -> { try { context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"), true, new ContentObserver(handler) {
-                @Override public void onChange(boolean selfChange) { FeatureSettings.invalidateSnapshot(); if (!enabled()) extras.clear(); apply(); for(int s:new int[]{3,2,4}) notifyPanel(s,0); }
-            }); } catch (RuntimeException unavailable) { /* The periodic worker still refreshes. */ } });
+            handler.post(() -> {
+                // React after the verified snapshot is published, not before its async read.
+                observingConfig = FeatureSettings.addSnapshotListener(context, () -> handler.post(() -> {
+                    if (!enabled()) extras.clear();
+                    apply();
+                    for (int stream : new int[]{3,2,4}) notifyPanel(stream,0);
+                }));
+                apply();
+            });
             handler.post(()->{
                 // A wake-only discovery cannot query audio or change it; the provider authenticates registration.
                 try{context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){registerReadEndpoint();}},
                         new IntentFilter(AudioGainState.REDISCOVER),null,handler,Context.RECEIVER_EXPORTED);}catch(RuntimeException ignored){}
                 registerReadEndpoint();
             });
-            handler.postDelayed(tick, 1000);
         }
-        final Runnable tick = new Runnable() { public void run() { apply(); handler.postDelayed(this, 1000); } };
+        final Runnable tick = this::apply;
         boolean enabled() { return FeatureSettings.enabled(context, ConfigSchema.AUDIO_GAIN_ENABLED); }
         int step() { return FeatureSettings.integer(context, ConfigSchema.AUDIO_GAIN_STEP, 5, 1, 20); }
         int limit(String route, int stream) { return FeatureSettings.integer(context, AudioGainPolicy.key(route, stream), 100, 100, 300); }
@@ -220,6 +231,9 @@ final class AudioGainHook {
             boolean old=INTERNAL.get(); INTERNAL.set(true);
             try { return (Integer)invoke(service,method,stream); }catch(Throwable e){return -1;}finally{INTERNAL.set(old);}
         }
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         String route(int stream) {
             try {
                 int device=(Integer)invoke(service,"getDeviceForStream",stream);
@@ -263,6 +277,10 @@ final class AudioGainHook {
             String diagnostic="enabled="+enabled()+";active_sessions="+applied+";extra="+extras+";error="+lastError;
             if(!diagnostic.equals(lastDiagnostic)){lastDiagnostic=diagnostic;
                 FeatureSettings.diagnostic(context,"ls_augment_audio_gain_runtime",diagnostic);}
+            handler.removeCallbacks(tick);
+            // Active DSP still checks route/control changes. Disabled state needs no timer
+            // once the shared configuration listener can wake it; retain observer-failure recovery.
+            if (enabled() || !observingConfig) handler.postDelayed(tick,1000);
         }
     }
 }

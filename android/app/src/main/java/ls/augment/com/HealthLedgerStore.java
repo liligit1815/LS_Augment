@@ -15,7 +15,8 @@ import java.util.concurrent.*;
 
 /** One private SQLite owner thread; authenticated health clients never receive database paths. */
 final class HealthLedgerStore {
-    private static final ExecutorService WORKER=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"LSA-HealthLedger");t.setDaemon(true);return t;});
+    private static final ThreadPoolExecutor WORKER=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(64),r->{Thread t=new Thread(r,"LSA-HealthLedger");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
     private static HealthLedgerDatabase database;
     private static Session owner;
     private static boolean transaction;
@@ -48,11 +49,26 @@ final class HealthLedgerStore {
         Session(int uid,int pid,String token,String account,IBinder binder){this.uid=uid;this.pid=pid;this.token=token;this.account=account;this.binder=binder;generation=ResetWriteFence.generation();}
     }
     private HealthLedgerStore(){}
+    private static <T>T await(Callable<T> action,long seconds)throws Exception {
+        Future<T> task=WORKER.submit(()->{
+            reapDeadOwner();
+            try{return action.call();}finally{reapDeadOwner();}
+        });
+        try{return task.get(seconds,TimeUnit.SECONDS);}
+        catch(InterruptedException interrupted){cancelQueued(task);Thread.currentThread().interrupt();throw interrupted;}
+        catch(TimeoutException timeout){cancelQueued(task);throw timeout;}
+    }
+    private static void cancelQueued(Future<?> task){
+        // Never interrupt an in-flight SQLite transaction. Remove waiting work so an expired
+        // request cannot retain its Bundle/context or start mutating storage after its timeout.
+        task.cancel(false);WORKER.remove((Runnable)task);
+    }
+    private static void reapDeadOwner(){if(owner!=null&&!owner.binder.isBinderAlive())drop(owner);}
     private static HealthLedgerDatabase db(Context c){if(database==null)database=new HealthLedgerDatabase(c);return database;}
     static Bundle call(Context context,Bundle request,int uid,int pid){
         if(request==null)return failure("invalid_request");
         Bundle input=new Bundle(request);
-        try{return WORKER.submit(()->execute(context.getApplicationContext(),input,uid,pid)).get(10,TimeUnit.SECONDS);}
+        try{return await(()->execute(context.getApplicationContext(),input,uid,pid),10);}
         catch(InterruptedException interrupted){Thread.currentThread().interrupt();return failure("ledger_unavailable");}
         catch(Exception unavailable){return failure("ledger_unavailable");}
     }
@@ -84,8 +100,15 @@ final class HealthLedgerStore {
                 int boot=bootCount(context);Lease lease=Lease.read(ledger);
                 if(lease!=null&&!lease.matches(uid,pid,token)&&!lease.ended(boot))return failure("busy");
                 if(lease!=null&&lease.matches(uid,pid,token)&&!lease.account.equals(account))return failure("inactive_binding");
+                ledger.maintain(System.currentTimeMillis()/1000);
                 Session session=new Session(uid,pid,token,account,binder);
-                session.death=()->WORKER.execute(()->drop(session));
+                session.death=()->{
+                    try{WORKER.execute(()->drop(session));}
+                    catch(RejectedExecutionException full){
+                        // A full queue already has a running/queued operation that reaps dead
+                        // owners before and after execution, even if waiting callers time out.
+                    }
+                };
                 binder.linkToDeath(session.death,0);
                 try{new Lease(boot,uid,pid,token,account).save(ledger);owner=session;}
                 catch(RuntimeException failure){binder.unlinkToDeath(session.death,0);throw failure;}
@@ -127,7 +150,8 @@ final class HealthLedgerStore {
                     result.putParcelableArrayList("rows",rows);break;
                 }
                 case "admitted":{
-                    ArrayList<Bundle> rows=new ArrayList<>();try(Cursor cursor=sql.rawQuery("SELECT time,SUM(steps) FROM events WHERE account=? AND admitted=1 GROUP BY time ORDER BY time LIMIT 512 OFFSET ?",new String[]{account,""+offset(input)})){
+                    long start=Math.max(ledger.retiredBefore(),input.getLong("start",0)),end=input.getLong("end",Long.MAX_VALUE);
+                    ArrayList<Bundle> rows=new ArrayList<>();try(Cursor cursor=sql.rawQuery("SELECT time,SUM(steps) FROM events WHERE account=? AND admitted=1 AND time>=? AND time<? GROUP BY time ORDER BY time LIMIT 512 OFFSET ?",new String[]{account,""+start,""+end,""+offset(input)})){
                         while(cursor.moveToNext()){Bundle row=new Bundle();row.putLong("time",cursor.getLong(0));row.putInt("steps",cursor.getInt(1));rows.add(row);}
                     }result.putParcelableArrayList("rows",rows);break;
                 }
@@ -151,33 +175,33 @@ final class HealthLedgerStore {
         try{if(transaction&&database!=null)database.getWritableDatabase().endTransaction();if(database!=null)Lease.clear(database);}
         finally{transaction=false;owner=null;try{session.binder.unlinkToDeath(session.death,0);}catch(RuntimeException ignored){}}
     }
-    static boolean ready(Context context){try{return WORKER.submit(()->db(context).ready()).get(10,TimeUnit.SECONDS);}catch(Exception e){return false;}}
+    static boolean ready(Context context){try{return await(()->db(context).ready(),10);}catch(Exception e){return false;}}
     static boolean importLegacy(Context context,File source){
-        try{return WORKER.submit(()->{
+        try{return await(()->{
             HealthLedgerDatabase ledger=db(context);if(ledger.ready())return source==null;
             if(owner!=null)return false;
             return HealthLedgerMigration.importDatabase(ledger,source);
-        }).get(30,TimeUnit.SECONDS);}catch(Exception unavailable){return false;}
+        },30);}catch(Exception unavailable){return false;}
     }
     static boolean finishMigration(Context context){
-        try{return WORKER.submit(()->{if(db(context).ready())return true;if(owner!=null)return false;db(context).markReady();return db(context).ready();}).get(10,TimeUnit.SECONDS);}
+        try{return await(()->{if(db(context).ready())return true;if(owner!=null)return false;db(context).markReady();return db(context).ready();},10);}
         catch(Exception unavailable){return false;}
     }
     static boolean clearPrivate(Context context){
-        try{return WORKER.submit(()->{
+        try{return await(()->{
             if(owner!=null&&owner.binder.isBinderAlive())return false;
             if(owner!=null)drop(owner);
             if(database!=null){database.close();database=null;}
             return !context.getDatabasePath(HealthLedgerDatabase.NAME).exists()||context.deleteDatabase(HealthLedgerDatabase.NAME);
-        }).get(10,TimeUnit.SECONDS);}catch(Exception unavailable){return false;}
+        },10);}catch(Exception unavailable){return false;}
     }
     static boolean hasRecords(Context context){
         if(!context.getDatabasePath(HealthLedgerDatabase.NAME).exists())return false;
-        try{return WORKER.submit(()->{
+        try{return await(()->{
             try(Cursor c=db(context).getReadableDatabase().rawQuery("SELECT EXISTS(SELECT 1 FROM records UNION ALL SELECT 1 FROM plans UNION ALL SELECT 1 FROM events UNION ALL SELECT 1 FROM plan_awards)",null)){
                 return !c.moveToFirst()||c.getInt(0)!=0;
             }
-        }).get(10,TimeUnit.SECONDS);}catch(Exception unavailable){return true;}
+        },10);}catch(Exception unavailable){return true;}
     }
     private static Bundle success(){Bundle b=new Bundle();b.putBoolean("ok",true);return b;}
     private static Bundle failure(String reason){Bundle b=new Bundle();b.putBoolean("ok",false);b.putString("state",reason);return b;}

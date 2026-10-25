@@ -43,7 +43,8 @@ files.update({
 'android/view/animation/DecelerateInterpolator.java':'package android.view.animation;public class DecelerateInterpolator{}',
 'android/view/View.java':'''package android.view;
  public class View implements ViewParent{public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}
- public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public int id,visibility,nativeWidth=400,nativeHeight=100;public float x,y,alpha=1;public boolean attached=true,clickable;
+ public static final int NO_ID=-1,VISIBLE=0,INVISIBLE=4,GONE=8,LAYOUT_DIRECTION_RTL=1;public int id,visibility,nativeWidth=400,nativeHeight=100,direction;public Object tag;public float x,y,alpha=1;public boolean attached=true,clickable;
+ public Object getTag(){return tag;}public void setTag(Object value){tag=value;}public int getLayoutDirection(){return direction;}
  public ViewGroup parent;public Runnable click;public android.graphics.drawable.Drawable background;public ViewGroup.LayoutParams lp=new ViewGroup.LayoutParams(-1,100);
  final android.content.Context context=new android.content.Context();final android.content.res.Resources resources=new android.content.res.Resources();final ViewTreeObserver tree=new ViewTreeObserver();
  public android.content.Context getContext(){return context;}public android.content.res.Resources getResources(){return resources;}public ViewParent getParent(){return parent;}

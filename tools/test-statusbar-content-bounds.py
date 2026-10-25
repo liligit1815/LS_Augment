@@ -46,7 +46,7 @@ public class Matrix {
 public class Drawable {private final android.graphics.Rect bounds=new android.graphics.Rect();public android.graphics.Rect getBounds(){return bounds;}public void setBounds(int l,int t,int r,int b){bounds.set(l,t,r,b);}}''',
     'android/view/View.java': '''package android.view;
 public class View {
- public static final int VISIBLE=0,INVISIBLE=4,GONE=8; public View parent;public int id;public View getParent(){return parent;}public int getId(){return id;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}
+ public static final int NO_ID=-1,VISIBLE=0,INVISIBLE=4,GONE=8; public View parent;public int id;public View getParent(){return parent;}public int getId(){return id;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}
  private int visibility=VISIBLE,left,top,width,height,paddingLeft,paddingTop,scrollX,scrollY;
  private float alpha=1,transitionAlpha=1;private final android.graphics.Matrix matrix=new android.graphics.Matrix();
  public void layout(int l,int t,int r,int b){left=l;top=t;width=r-l;height=b-t;}

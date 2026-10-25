@@ -50,7 +50,7 @@ public final class TestModuleFeatureSearch {
         require(search("definitely-no-such-duo-feature",false).isEmpty(),"Unknown query returns no fabricated result");
         for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
             List<ModuleFeatureSearch.Result> results=search(category.title,false);
-            require(!results.isEmpty(),"All 13 category titles are searchable: "+category.title);
+            require(!results.isEmpty(),"All 14 category titles are searchable: "+category.title);
             require(results.get(0).title.equals(category.title)&&results.get(0).route.equals(ModuleHierarchy.resolve(category.route())),"Exact category title ranks first and uses its current canonical route: "+category.title);
         }
         destination("MTP","group/connectivity/usb_mtp","connectivity");
@@ -66,6 +66,9 @@ public final class TestModuleFeatureSearch {
             require(!"锁定刷新率（原厂开关）".equals(result.title),"USB aliases must not attach to refresh-rate action");
         }
         exactFeature("开发者选项","group/system_settings/developer","system_settings");
+        exactFeature("自定义竞技键","competitive_key","system_settings");
+        destination("shell","competitive_key","system_settings");
+        exactFeature("电池预设样式","status_battery","notifications");
         exactFeature("锁定刷新率（原厂开关）","group/system_settings/display","system_settings");
         exactFeature("截图隐藏状态栏","group/capture/capture","capture");
         exactFeature("录屏隐藏状态栏","group/capture/capture","capture");
@@ -75,6 +78,10 @@ public final class TestModuleFeatureSearch {
         exactFeature("隐藏锁屏顶部状态栏","group/lockscreen/lock_display","lockscreen");
         exactFeature("锁屏上滑效果","group/lockscreen/liftarc","lockscreen");
         exactFeature("最近任务卡片圆角调节","group/desktop/recents","desktop");
+        exactFeature("允许修改小组件大小","group/desktop/desktop_clock","desktop");
+        exactFeature("解除Dock栏应用数量限制","group/desktop/dock_glass","desktop");
+        exactFeature("强制新装APP图标显示在桌面末页","group/desktop/launcher_grid","desktop");
+        destination("桌面组件","group/desktop/desktop_clock","desktop");
         destination("圆角偏移","group/desktop/recents","desktop");
         for(String query:Arrays.asList("LiftArc","小白条","锁屏玻璃","上甩解锁","提示文字"))
             destination(query,"group/lockscreen/liftarc","lockscreen");
@@ -110,6 +117,9 @@ public final class TestModuleFeatureSearch {
         for(String query:Arrays.asList("状态栏","通知","控制中心","桌面","锁屏","主题","音量","手势","小窗","截图","游戏","风扇","连接","应用","系统","步数","字体","图标","隐藏","安装","usb","MTP","Wi-Fi","刷新率")){
             search(query,false);search(query,true);
         }
-        System.out.println("V2.0 feature search: OK (13 titles, task queries, hidden-session transitions, "+checkedResults+" validated results)");
+        destination("原子工作台","atomic_workbench","atomic_workbench");
+        destination("VANSTEP","atomic_workbench","atomic_workbench");
+        destination("任务恢复","atomic_workbench","atomic_workbench");
+        System.out.println("V2.0 feature search: OK (14 titles, task queries, hidden-session transitions, "+checkedResults+" validated results)");
     }
 }

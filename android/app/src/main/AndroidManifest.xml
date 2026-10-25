@@ -6,8 +6,14 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="com.autonavi.minimap.permission.NAVIGATION_SERVICE" />
 
     <queries>
         <package android:name="io.github.lsf.augment" />
@@ -38,17 +44,39 @@
         <activity android:name=".ModuleScopeActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ContributorsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".SupportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".ModuleLicensesActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
 
         <activity android:name=".HideMenuActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ExtraDimSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".LogExportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ConfigTransferActivity" android:theme="@style/Theme.LSAugment.ConfigAction" android:exported="false" />
         <activity android:name=".EnhancementSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".CompetitiveKeySettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".AtomicWorkbenchSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".AtomicWorkbenchAppsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".AtomicWorkbenchExtractionActivity" android:exported="false"
+            android:excludeFromRecents="true" android:taskAffinity=""
+            android:theme="@style/Theme.LSAugment.Floating" />
+        <!-- Portrait is part of the workbench input/display coordinate contract.
+             Runtime size/rotation checks still reject unsupported host geometry. -->
+        <activity android:name=".AtomicWorkbenchActivity" android:theme="@style/Theme.LSAugment.Settings"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi"
+            android:screenOrientation="portrait" android:launchMode="singleTask"
+            android:taskAffinity="ls.augment.com.atomic_workbench" android:autoRemoveFromRecents="true"
+            android:resizeableActivity="true" android:exported="false" />
+        <activity android:name=".AtomicWorkbenchShareActivity" android:theme="@style/Theme.LSAugment.Settings"
+            android:label="红魔Duo · 流转" android:exported="true" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <activity android:name=".LauncherCompatibilityActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.LSAugment.Settings">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -122,6 +150,17 @@
             </intent-filter>
         </service>
 
+        <service android:name=".AtomicWorkbenchPasteService"
+            android:exported="true"
+            android:label="@string/atomic_workbench_paste_service"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice"
+                android:resource="@xml/atomic_workbench_accessibility" />
+        </service>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -137,12 +176,25 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <receiver android:name=".DiagnosticBootReceiver" android:exported="false"
+            android:directBootAware="true" android:process=":boot_diagnostics">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".DiagnosticCaptureService" android:exported="false"
+            android:directBootAware="true" android:process=":boot_diagnostics"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <provider
             android:name=".UpdateApkProvider"
             android:authorities="${applicationId}.updates"
             android:exported="false"
-            android:grantUriPermissions="true">
-            <grant-uri-permission android:pathPrefix="/" />
+            android:grantUriPermissions="false">
+            <grant-uri-permission android:pathPrefix="/verified/" />
         </provider>
 
         <provider
@@ -151,5 +203,11 @@
             android:exported="true"
             android:grantUriPermissions="false"
             tools:ignore="ExportedContentProvider" />
+        <provider android:name=".AtomicWorkbenchProvider"
+            android:authorities="ls.augment.com.workbench" android:exported="true"
+            android:grantUriPermissions="false" tools:ignore="ExportedContentProvider" />
+        <provider android:name=".AtomicWorkbenchTransferProvider"
+            android:authorities="${applicationId}.workbench.transfer" android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -20,6 +20,30 @@ final class GlassIcon extends Drawable {
         Rect b = getBounds(); canvas.save(); canvas.translate(b.left, b.top);
         canvas.scale(b.width()/24f, b.height()/24f);
         switch (kind) {
+            case "refresh":
+                canvas.drawArc(4,4,20,20,35,285,false,paint);path(canvas,20,3,20,9,14,9);break;
+            case "back": path(canvas,14,5,7,12,14,19); break;
+            case "exit":
+                path(canvas,9,3,4,3,4,21,9,21);path(canvas,10,12,22,12);path(canvas,16,6,22,12,16,18);break;
+            case "music":
+                path(canvas,8,17,8,5,20,2,20,14);path(canvas,8,9,20,6);
+                canvas.drawOval(2,15,8,21,paint);canvas.drawOval(14,12,20,18,paint);break;
+            case "navigation": path(canvas,12,2,21,21,12,16,3,21,12,2);break;
+            case "turn-left": path(canvas,18,21,18,12,17,9,14,7,4,7);path(canvas,9,2,4,7,9,12);break;
+            case "turn-right": path(canvas,6,21,6,12,7,9,10,7,20,7);path(canvas,15,2,20,7,15,12);break;
+            case "turn-straight": path(canvas,12,22,12,3);path(canvas,6,9,12,3,18,9);break;
+            case "turn-slight-left": path(canvas,17,22,17,16,7,4);path(canvas,7,12,7,4,15,4);break;
+            case "turn-slight-right": path(canvas,7,22,7,16,17,4);path(canvas,9,4,17,4,17,12);break;
+            case "turn-sharp-left": path(canvas,17,22,17,7,14,5,10,6,4,14);path(canvas,4,7,4,14,11,14);break;
+            case "turn-sharp-right": path(canvas,7,22,7,7,10,5,14,6,20,14);path(canvas,13,14,20,14,20,7);break;
+            case "turn-uturn-left": path(canvas,18,22,18,8,16,4,12,3,8,4,6,8,6,15);path(canvas,1,10,6,15,11,10);break;
+            case "turn-uturn-right": path(canvas,6,22,6,8,8,4,12,3,16,4,18,8,18,15);path(canvas,13,10,18,15,23,10);break;
+            case "turn-roundabout": canvas.drawOval(5,5,19,19,paint);path(canvas,12,23,12,19);path(canvas,12,5,17,5,17,1);break;
+            case "turn-destination": path(canvas,5,22,5,3,19,3,16,8,19,13,5,13);break;
+            case "play": path(canvas,7,4,20,12,7,20,7,4); break;
+            case "pause": path(canvas,7,4,7,20);path(canvas,17,4,17,20);break;
+            case "previous": path(canvas,5,4,5,20);path(canvas,19,4,7,12,19,20,19,4);break;
+            case "next": path(canvas,19,4,19,20);path(canvas,5,4,17,12,5,20,5,4);break;
             case "card-corners":
                 path(canvas,4,9,4,4,9,4);path(canvas,15,4,20,4,20,9);
                 path(canvas,20,15,20,20,15,20);path(canvas,9,20,4,20,4,15);break;

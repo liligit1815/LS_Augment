@@ -69,6 +69,7 @@ public class TestPackageReadyDispatch {
     }
     void detach() { detached = true; }
     void logInfo(String value) { logs.add(value); }
+    void recordStartup(String stage,String detail,Throwable error) { logs.add(stage+":"+detail); }
     void writePackageReadyWitness(String name) { calls.add("provider-witness:" + name); }
     void installSystemServerHooks(ClassLoader loader, String source) {
         check(systemServerProcess, "server hook without lifecycle authorization");
@@ -157,12 +158,20 @@ public class TestPackageReadyDispatch {
         check(settings.packageReady && settings.calls.contains("settings") && settings.calls.contains("settings-witness"),
                 "Settings-specific hooks or application witness regressed");
 
+        TestPackageReadyDispatch map = module("com.autonavi.minimap");
+        deliver(map, target("com.autonavi.minimap"));
+        check(map.calls.contains("AtomicWorkbenchAmapHook"), "Amap main process lost live navigation hook");
+        TestPackageReadyDispatch mapRemote = module("com.autonavi.minimap:locationservice");
+        deliver(mapRemote, target("com.autonavi.minimap"));
+        check(!mapRemote.calls.contains("AtomicWorkbenchAmapHook"), "Amap secondary process installed main-process hook");
+
         for (String pkg : HookTargetRegistry.packages()) {
             if ("system".equals(pkg)) continue;
             TestPackageReadyDispatch scoped = module("arbitrary-oem-process-alias");
             deliver(scoped, target(pkg));
             check(scoped.calls.contains("provider-witness:" + pkg), "registered target lost witness: " + pkg);
             check(scoped.calls.contains("OemAppExtrasHook:" + pkg), "registered app was not dispatched: " + pkg);
+            check(scoped.calls.contains("AtomicWorkbenchSourceDragHook"), "registered source lost native drag hook: " + pkg);
             check(!scoped.systemPackageReadySeen, "registered app entered server branch: " + pkg);
         }
         System.out.println("PackageReady dispatch regression: " + assertions + " assertions passed");
@@ -176,16 +185,27 @@ def main():
     constants = '\n'.join(re.findall(r'private static final String \w+\s*=\s*"[^"\n]*";', source))
     methods = '\n'.join(source_block(source, marker) for marker in (
         'public void onPackageReady(',
+        'private void dispatchPackageReady(',
+        'private void installPackageStage(',
         'private static boolean isSystemServerPackage(',
         'private static String safePackageName(',
         'private static String safeDiagnostic(',
     ))
     stubs = []
-    for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook'):
+    for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook',
+                 'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l, String p) {{ m.feature("{name}:" + p, l); }} }}')
-    for name in ('StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'LauncherCustomizationHook',
-                 'LauncherPagesHook', 'LauncherRecentsMemoryHook'):
+    for name in ('StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
+                 'LauncherPagesHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
+                 'ShoulderMacroSwitchHook', 'AtomicWorkbenchQuickstepHook', 'LauncherGridHook',
+                 'LauncherWidgetResizeHook', 'LauncherDockCapacityHook', 'LauncherNewAppsLastPageHook',
+                 'ThirdPartyRecentsBackgroundHook', 'LauncherRecentsCardRadiusHook',
+                 'LauncherCleanupBombHook', 'LiquidGlassDockHook'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l) {{ m.feature("{name}", l); }} }}')
+    stubs.append('static final class FeatureSettings { static void awaitBootSnapshot() {} }')
+    stubs.append('static final class AtomicWorkbenchSourceDragHook { static void install(TestPackageReadyDispatch m) { m.calls.add("AtomicWorkbenchSourceDragHook"); } }')
+    stubs.append('static final class LauncherResetHook { static void install(TestPackageReadyDispatch m) { m.calls.add("LauncherResetHook"); } }')
+    stubs.append('static final class AudioGainUiHook { static void installSettings(TestPackageReadyDispatch m, ClassLoader l) { m.feature("AudioGainUiHook", l); } }')
     java = HARNESS.replace('// PRODUCTION_CONSTANTS', constants).replace('// PRODUCTION_METHODS', methods)
     java = java.replace('// FEATURE_STUBS', '\n'.join(stubs))
     with tempfile.TemporaryDirectory(prefix='lsa-package-dispatch-') as directory:

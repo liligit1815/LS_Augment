@@ -32,14 +32,13 @@ public final class LogExportActivity extends Activity {
             String name=state==null?null:state.getString("file");
             if(name==null||!name.matches("duo-log-[a-f0-9-]+\\.txt"))name="duo-log-"+UUID.randomUUID()+".txt";
             job=new Job(getApplicationContext(),new File(getCacheDir(),name));
-            if(pickerOpen&&job.file.isFile())job.phase=1;
-            else {pickerOpen=false;job.collect();}
+            job.collect(pickerOpen);
         }
         job.owner=this;render();
     }
     @Override public Object onRetainNonConfigurationInstance(){return job;}
     @Override protected void onSaveInstanceState(Bundle state){state.putBoolean("picker",pickerOpen);state.putString("file",job.file.getName());super.onSaveInstanceState(state);}
-    @Override protected void onDestroy(){if(job!=null){job.owner=null;if(isFinishing())job.discard=true;}super.onDestroy();}
+    @Override protected void onDestroy(){if(job!=null){job.owner=null;if(isFinishing()){job.discard=true;if(job.phase!=0&&job.phase!=2)job.release();}}super.onDestroy();}
     private void render(){
         if(isFinishing()||isDestroyed())return;
         if(job.phase==1&&!pickerOpen){
@@ -48,29 +47,35 @@ public final class LogExportActivity extends Activity {
                     .setType("text/plain").putExtra(Intent.EXTRA_TITLE,"红魔Duo-logs-"+System.currentTimeMillis()+".txt"),SAVE);}
             catch(RuntimeException error){job.fail("无法打开文件保存位置");}
         }else if(job.phase==2)status.setText("正在保存日志…");
-        else if(job.phase==3||job.phase==4){Toast.makeText(this,job.message,Toast.LENGTH_LONG).show();job.file.delete();finish();}
+        else if(job.phase==3||job.phase==4){Toast.makeText(this,job.message,Toast.LENGTH_LONG).show();job.release();finish();}
     }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(request!=SAVE)return;
         pickerOpen=false;
-        if(result!=RESULT_OK||data==null||data.getData()==null){job.file.delete();finish();return;}
+        if(result!=RESULT_OK||data==null||data.getData()==null){job.discard=true;if(job.phase!=0)job.release();finish();return;}
         job.save(data.getData());render();
     }
     private static final class Job {
-        final Context context;final File file;final Handler main=new Handler(Looper.getMainLooper());
-        volatile boolean discard;int phase;String message="";LogExportActivity owner;
+        final Context context;File file;final Handler main=new Handler(Looper.getMainLooper());
+        volatile boolean discard;boolean leased;int phase;String message="";LogExportActivity owner;Uri pendingSave;
         Job(Context context,File file){this.context=context;this.file=file;}
-        void collect(){new Thread(()->{try{
-            Files.write(file.toPath(),DiagnosticExport.build(context).getBytes(StandardCharsets.UTF_8));
-            main.post(()->{if(discard){file.delete();return;}phase=1;notifyOwner();});
+        void collect(boolean resume){new Thread(()->{try{
+            file=LogExportCache.acquire(context.getCacheDir(),file.getName(),System.currentTimeMillis());leased=true;
+            if(!resume||!file.isFile()){
+                byte[] bytes=DiagnosticExport.build(context).getBytes(StandardCharsets.UTF_8);
+                if(bytes.length>LogExportCache.MAX_FILE_BYTES)throw new IOException("export_size_limit");
+                Files.write(file.toPath(),bytes);
+            }
+            main.post(()->{if(discard){release();return;}phase=1;if(pendingSave!=null){Uri uri=pendingSave;pendingSave=null;save(uri);}notifyOwner();});
         }catch(Exception error){main.post(()->fail("日志收集失败："+error.getClass().getSimpleName()));}},"duo-log-collect").start();}
-        void save(Uri uri){phase=2;new Thread(()->{try(InputStream input=new FileInputStream(file);OutputStream output=context.getContentResolver().openOutputStream(uri,"wt")){
+        void save(Uri uri){if(phase==0){pendingSave=uri;return;}if(phase!=1)return;phase=2;new Thread(()->{try(InputStream input=new FileInputStream(file);OutputStream output=context.getContentResolver().openOutputStream(uri,"wt")){
             if(output==null)throw new IOException("no_output");byte[] bytes=new byte[8192];int count;
             while((count=input.read(bytes))!=-1)output.write(bytes,0,count);output.flush();
         }catch(Exception error){main.post(()->fail("日志保存失败："+error.getClass().getSimpleName()));return;}
-            main.post(()->{phase=3;message="日志已导出";file.delete();notifyOwner();});},"duo-log-save").start();}
-        void fail(String error){phase=4;message=error;file.delete();notifyOwner();}
+            main.post(()->{phase=3;message="日志已导出";release();notifyOwner();});},"duo-log-save").start();}
+        void release(){if(leased){leased=false;File released=file;new Thread(()->LogExportCache.release(released),"duo-log-cleanup").start();}}
+        void fail(String error){phase=4;message=error;release();notifyOwner();}
         void notifyOwner(){if(owner!=null)owner.render();}
     }
 }

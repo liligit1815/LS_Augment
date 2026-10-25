@@ -19,7 +19,13 @@ import org.json.JSONObject;
 /** ADB-only test APK. No test entry point is included in the delivered application. */
 public final class DeviceRegressionRunner extends Instrumentation {
     private Bundle arguments;
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); this.arguments = arguments; start(); }
+    private long deathObserverCreatedUptime = -1L;
+    @Override public void onCreate(Bundle arguments) {
+        if (arguments != null && ("atomic-workbench-death-observe".equals(arguments.getString("operation", ""))
+                || "atomic-workbench-death-held-observe".equals(arguments.getString("operation", ""))))
+            deathObserverCreatedUptime = android.os.SystemClock.uptimeMillis();
+        super.onCreate(arguments); this.arguments = arguments; start();
+    }
     @Override public void onStart() {
         Bundle result = new Bundle();
         JSONObject report = new JSONObject();
@@ -28,6 +34,28 @@ public final class DeviceRegressionRunner extends Instrumentation {
             String operation = arguments.getString("operation", "snapshot");
             // Enumeration diagnostics must not initialize or migrate configuration.
             AppConfig config = "package-enumeration".equals(operation) || "ui-navigation".equals(operation)
+                    || "resource-boundaries".equals(operation) || "resource-endurance".equals(operation)
+                    || "health-queue-pressure".equals(operation)
+                    || "atomic-workbench-input".equals(operation) || "atomic-workbench-smoke".equals(operation)
+                    || "atomic-workbench-workspace".equals(operation)
+                    || "atomic-workbench-binding".equals(operation)
+                    || "atomic-workbench-ui-input".equals(operation)
+                    || "atomic-workbench-physical".equals(operation)
+                    || "atomic-workbench-death-prepare".equals(operation)
+                    || "atomic-workbench-death-observe".equals(operation)
+                    || "atomic-workbench-death-cleanup".equals(operation)
+                    || "atomic-workbench-death-held-prepare".equals(operation)
+                    || "atomic-workbench-death-held-observe".equals(operation)
+                    || "atomic-workbench-death-held-cleanup".equals(operation)
+                    || "atomic-workbench-content".equals(operation)
+                    || "atomic-workbench-content-restore".equals(operation)
+                    || "atomic-workbench-text-core".equals(operation)
+                    || "atomic-workbench-initialization".equals(operation)
+                    || "atomic-workbench-recovery-status".equals(operation)
+                    || "atomic-workbench-ui".equals(operation)
+                    || "atomic-workbench-entry-ui".equals(operation)
+                    || "apps-licenses-ui".equals(operation)
+                    || "atomic-workbench-interaction".equals(operation)
                     || "ui-preview".equals(operation) || "prototype-navigation".equals(operation)
                     || "dialog-ui".equals(operation) || "ui-standards".equals(operation)
                     || "rapid-certification".equals(operation)
@@ -39,6 +67,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "total-reset-inspect".equals(operation)
                     || "total-reset-root-paths".equals(operation)
                     || "private-storage-verify".equals(operation)
+                    || "atomic-workbench-capacity-seven".equals(operation)
+                    || "atomic-workbench-reset-delete-primitive".equals(operation)
                     || "owned-file-cleaner-fixture".equals(operation)
                     || "log-repair-fixture".equals(operation)
                     || "log-repair-export".equals(operation)
@@ -55,6 +85,7 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "statusbar-icon-style-ui".equals(operation)
                     || "island-settings-ui".equals(operation)
                     || "launcher-grid-ui".equals(operation)
+                    || "launcher-features-ui".equals(operation)
                     || "fan-settings-ui".equals(operation)
                     || "game-settings-ui".equals(operation)
                     || "game-performance-monitor-ui".equals(operation)
@@ -65,8 +96,213 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "launcher-grid-drag".equals(operation)
                     ? null : new AppConfig(context);
             report.put("operation", operation).put("moduleVersion", BuildConfig.VERSION_CODE)
+                    .put("installedModuleVersion", context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode())
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "health-queue-pressure": {
+                    JSONObject queue=ResourceHealthQueueDeviceCases.run(this);
+                    report.put("healthQueue",queue);result.putString("healthQueue",queue.toString());
+                    break;
+                }
+                case "resource-endurance": {
+                    JSONObject endurance=ResourceEnduranceDeviceCases.run(this,arguments);
+                    report.put("resourceEndurance",endurance);result.putString("resourceEndurance",endurance.toString());
+                    break;
+                }
+                case "resource-boundaries": {
+                    JSONObject boundaries=ResourceBoundaryDeviceCases.run(this);
+                    report.put("resourceBoundaries",boundaries);result.putString("resourceBoundaries",boundaries.toString());
+                    if(!boundaries.getBoolean("success"))throw new AssertionError(boundaries.toString());
+                    break;
+                }
+                case "competitive-key-layout":
+                    report.put("uiConsistency",UiConsistencyDeviceCases.runCompetitive(this));
+                    result.putString("uiConsistency",report.getJSONObject("uiConsistency").toString());
+                    break;
+                case "ui-consistency":
+                    report.put("uiConsistency",UiConsistencyDeviceCases.run(this));
+                    result.putString("uiConsistency",report.getJSONObject("uiConsistency").toString());
+                    break;
+                case "atomic-workbench-interaction": {
+                    JSONObject workbench = AtomicWorkbenchInteractionDeviceCases.run(this, arguments);
+                    report.put("atomicWorkbenchInteraction", workbench);
+                    result.putString("atomicWorkbenchInteraction", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-transfer": {
+                    JSONObject workbench=AtomicWorkbenchTransferDeviceCases.run(this);
+                    report.put("atomicWorkbenchTransfer",workbench);
+                    result.putString("atomicWorkbenchTransfer",workbench.toString());
+                    break;
+                }
+                case "apps-licenses-ui": {
+                    JSONObject ui=AppsLicensesUiDeviceCases.run(this);
+                    report.put("appsLicensesUi",ui);result.putString("appsLicensesUi",ui.toString());
+                    if(!ui.getBoolean("success"))throw new AssertionError(ui.toString());
+                    break;
+                }
+                case "apps-management-ui": {
+                    JSONObject ui=AppsLicensesUiDeviceCases.runManagement(this);
+                    report.put("appsManagementUi",ui);result.putString("appsManagementUi",ui.toString());
+                    if(!ui.getBoolean("success"))throw new AssertionError(ui.toString());
+                    break;
+                }
+                case "apps-management-recover": {
+                    JSONObject recovery=AppsLicensesUiDeviceCases.recoverManagement(this,arguments.getString("evidenceId"));
+                    report.put("appsManagementRecovery",recovery);result.putString("appsManagementRecovery",recovery.toString());
+                    break;
+                }
+                case "apps-management-drag-observe": {
+                    JSONObject observation=AppsLicensesUiDeviceCases.observeManagementDrag(this);
+                    report.put("appsManagementDragObservation",observation);result.putString("appsManagementDragObservation",observation.toString());
+                    if(!observation.getBoolean("success"))throw new AssertionError(observation.toString());
+                    break;
+                }
+                case "atomic-workbench-ui": {
+                    JSONObject workbench=AtomicWorkbenchUiDeviceCases.run(this);
+                    report.put("atomicWorkbenchUi",workbench);
+                    result.putString("atomicWorkbenchUi",workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-entry-ui": {
+                    JSONObject entry=AtomicWorkbenchEntryUiDeviceCases.run(this);
+                    report.put("atomicWorkbenchEntryUi",entry);
+                    result.putString("atomicWorkbenchEntryUi",entry.toString());
+                    if(!entry.getBoolean("success"))throw new AssertionError(entry.toString());
+                    break;
+                }
+                case "atomic-workbench-input": {
+                    JSONObject workbench=AtomicWorkbenchInputDeviceCases.run();
+                    boolean denied=false;
+                    try { context.getContentResolver().call(android.net.Uri.parse("content://"+AtomicWorkbenchProtocol.AUTHORITY),
+                            AtomicWorkbenchProtocol.REGISTER,null,new Bundle()); }
+                    catch(SecurityException expected){denied=true;}
+                    if(!denied)throw new AssertionError("Non-root workbench registration was not rejected");
+                    workbench.put("nonRootRegistrationRejected",true);
+                    report.put("atomicWorkbenchInput",workbench);
+                    result.putString("atomicWorkbenchInput",workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-smoke": {
+                    JSONObject workbench=AtomicWorkbenchSmokeDeviceCases.run(this,arguments);
+                    report.put("atomicWorkbenchSmoke",workbench);
+                    if(!workbench.getBoolean("success"))throw new AssertionError(workbench.toString());
+                    result.putString("atomicWorkbenchSmoke",workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-workspace": {
+                    JSONObject workbench=AtomicWorkbenchWorkspaceDeviceCases.run(this);
+                    report.put("atomicWorkbenchWorkspace",workbench);
+                    if(!workbench.getBoolean("success"))throw new AssertionError(workbench.toString());
+                    result.putString("atomicWorkbenchWorkspace",workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-binding": {
+                    JSONObject workbench = AtomicWorkbenchBindingDeviceCases.run(this);
+                    report.put("atomicWorkbenchBinding", workbench);
+                    result.putString("atomicWorkbenchBinding", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-ui-input": {
+                    JSONObject workbench = AtomicWorkbenchUiInputDeviceCases.run(this);
+                    report.put("atomicWorkbenchUiInput", workbench);
+                    result.putString("atomicWorkbenchUiInput", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-physical": {
+                    JSONObject workbench = AtomicWorkbenchUiInputDeviceCases.runPhysical(this, arguments);
+                    report.put("atomicWorkbenchPhysical", workbench);
+                    result.putString("atomicWorkbenchPhysical", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-death-held-prepare": {
+                    JSONObject death = AtomicWorkbenchDeathDeviceCases.prepareHeldHost(this, arguments);
+                    report.put("atomicWorkbenchHeldDeath", death);
+                    result.putString("atomicWorkbenchHeldDeath", death.toString());
+                    break;
+                }
+                case "atomic-workbench-death-held-observe": {
+                    JSONObject death = AtomicWorkbenchDeathDeviceCases.observeHeldHostDeath(this, arguments, deathObserverCreatedUptime);
+                    report.put("atomicWorkbenchHeldDeath", death);
+                    result.putString("atomicWorkbenchHeldDeath", death.toString());
+                    break;
+                }
+                case "atomic-workbench-death-held-cleanup": {
+                    JSONObject death = AtomicWorkbenchDeathDeviceCases.cleanupHeldHostAfterRelease(this, arguments);
+                    report.put("atomicWorkbenchHeldDeath", death);
+                    result.putString("atomicWorkbenchHeldDeath", death.toString());
+                    break;
+                }
+                case "atomic-workbench-death-prepare": {
+                    JSONObject death = AtomicWorkbenchDeathDeviceCases.prepare(this, arguments);
+                    report.put("atomicWorkbenchDeath", death);
+                    result.putString("atomicWorkbenchDeath", death.toString());
+                    break;
+                }
+                case "atomic-workbench-death-cleanup": {
+                    JSONObject cleanup = AtomicWorkbenchDeathDeviceCases.cleanupAfterRelease(this, arguments);
+                    report.put("atomicWorkbenchDeathCleanup", cleanup);
+                    result.putString("atomicWorkbenchDeathCleanup", cleanup.toString());
+                    break;
+                }
+                case "atomic-workbench-death-observe": {
+                    JSONObject death = AtomicWorkbenchDeathDeviceCases.observeHostDeath(this, arguments, deathObserverCreatedUptime);
+                    report.put("atomicWorkbenchDeath", death);
+                    result.putString("atomicWorkbenchDeath", death.toString());
+                    break;
+                }
+                case "atomic-workbench-content": {
+                    JSONObject workbench = AtomicWorkbenchContentDeviceCases.run(this, arguments);
+                    report.put("atomicWorkbenchContent", workbench);
+                    result.putString("atomicWorkbenchContent", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "atomic-workbench-text-core": {
+                    JSONObject workbench = AtomicWorkbenchTextSegmenterDeviceCases.run(this, arguments);
+                    report.put("atomicWorkbenchTextCore", workbench);
+                    result.putString("atomicWorkbenchTextCore", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError("PHONE_TEXT_CORE_FAILED");
+                    break;
+                }
+                case "atomic-workbench-content-restore": {
+                    JSONObject workbench = AtomicWorkbenchContentDeviceCases.restorePrivate(this, arguments);
+                    report.put("atomicWorkbenchContentRestore", workbench);
+                    result.putString("atomicWorkbenchContentRestore", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError("PRIVATE_CONTENT_RECOVERY_FAILED");
+                    break;
+                }
+                case "atomic-workbench-initialization": {
+                    JSONObject initialization = AtomicWorkbenchInitializationDeviceCases.run(this, arguments);
+                    report.put("atomicWorkbenchInitialization", initialization);
+                    result.putString("atomicWorkbenchInitialization", initialization.toString());
+                    break;
+                }
+                case "atomic-workbench-recovery-status": {
+                    JSONObject workbench = AtomicWorkbenchRecoveryDeviceCases.run(context);
+                    report.put("atomicWorkbenchRecovery", workbench);
+                    result.putString("atomicWorkbenchRecovery", workbench.toString());
+                    if (!workbench.getBoolean("success")) throw new AssertionError(workbench.toString());
+                    break;
+                }
+                case "native-signal-popup":
+                    report.put("nativeSignalPopup",NativeSignalPopupDeviceCases.run(this,arguments));
+                    if(!report.getJSONObject("nativeSignalPopup").getBoolean("success"))throw new AssertionError(report.getJSONObject("nativeSignalPopup").toString());
+                    result.putString("nativeSignalPopup",report.getJSONObject("nativeSignalPopup").toString());
+                    break;
+                case "ios-battery-runtime":
+                    report.put("iosBatteryRuntime",IosBatteryRuntimeDeviceCases.run(context));
+                    if(!report.getJSONObject("iosBatteryRuntime").getBoolean("success"))throw new AssertionError(report.getJSONObject("iosBatteryRuntime").toString());
+                    result.putString("iosBatteryRuntime",report.getJSONObject("iosBatteryRuntime").toString());
+                    break;
+                case "new-customization-ui":
+                    report.put("newCustomizationUi",NewCustomizationUiCases.run(this));
+                    result.putString("newCustomizationUi",report.getJSONObject("newCustomizationUi").toString());
+                    break;
                 case "liftarc-log-fixture":
                     report.put("liftArcLog",LiftArcLogDeviceCases.run(context));
                     result.putString("liftArcLog",report.getJSONObject("liftArcLog").toString());
@@ -181,6 +417,36 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("totalResetFixture",TotalResetFixtureDeviceCases.seed(context));
                     result.putString("totalResetFixture",report.getJSONObject("totalResetFixture").toString());
                     break;
+                case "atomic-workbench-capacity-seven": {
+                    JSONObject capacity=AtomicWorkbenchCapacityDeviceCases.run(this);
+                    report.put("atomicWorkbenchCapacity",capacity);
+                    result.putString("atomicWorkbenchCapacity",capacity.toString());
+                    break;
+                }
+                case "atomic-workbench-placement": {
+                    JSONObject placement=AtomicWorkbenchCapacityDeviceCases.runPlacement(this);
+                    report.put("atomicWorkbenchPlacement",placement);
+                    result.putString("atomicWorkbenchPlacement",placement.toString());
+                    break;
+                }
+                case "atomic-workbench-browser-search": {
+                    JSONObject search=AtomicWorkbenchBrowserSearchDeviceCases.run(this);
+                    report.put("atomicWorkbenchBrowserSearch",search);result.putString("atomicWorkbenchBrowserSearch",search.toString());break;
+                }
+                case "atomic-workbench-drop-receive": {
+                    JSONObject receive=AtomicWorkbenchDropReceiveDeviceCases.run(this);
+                    report.put("atomicWorkbenchDropReceive",receive);result.putString("atomicWorkbenchDropReceive",receive.toString());break;
+                }
+                case "atomic-workbench-source-drag": {
+                    JSONObject source=AtomicWorkbenchSourceDragDeviceCases.run(this,arguments);
+                    report.put("atomicWorkbenchSourceDrag",source);result.putString("atomicWorkbenchSourceDrag",source.toString());break;
+                }
+                case "atomic-workbench-reset-delete-primitive": {
+                    JSONObject primitive=AtomicWorkbenchResetDeleteDeviceCases.run(context);
+                    report.put("atomicWorkbenchResetDeletePrimitive",primitive);
+                    result.putString("atomicWorkbenchResetDeletePrimitive",primitive.toString());
+                    break;
+                }
                 case "owned-file-cleaner-fixture": {
                     TestOwnedFileCleaner.Report fixture=TestOwnedFileCleaner.run(context.getCacheDir(),true);
                     report.put("ownedFileCleaner",new JSONObject().put("passed",fixture.passed).put("unsupported",fixture.unsupported)
@@ -217,6 +483,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("launcherGridUi", LauncherGridUiCases.run(this));
                     result.putString("launcherGridUi", report.getJSONObject("launcherGridUi").toString());
                     break;
+                case "launcher-features-ui":
+                    report.put("launcherFeaturesUi",LauncherFeaturesUiCases.run(this));
+                    result.putString("launcherFeaturesUi",report.getJSONObject("launcherFeaturesUi").toString());
+                    break;
                 case "launcher-grid-runtime":
                     report.put("launcherGrid", LauncherGridDeviceCases.runtime(context,arguments));
                     result.putString("launcherGrid", report.getJSONObject("launcherGrid").toString());
@@ -240,6 +510,14 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 case "statusbar-icon-style-ui":
                     report.put("statusbarIconStyleUi",StatusBarIconStyleUiCases.run(this,arguments));
                     result.putString("statusbarIconStyleUi",report.getJSONObject("statusbarIconStyleUi").toString());
+                    break;
+                case "island-orientation":
+                    report.put("islandOrientation",IslandOrientationDeviceCases.run(this));
+                    result.putString("islandOrientation",report.getJSONObject("islandOrientation").toString());
+                    break;
+                case "native-island-settings":
+                    report.put("nativeIslandSettings",NativeIslandSettingsDeviceCases.run(this));
+                    result.putString("nativeIslandSettings",report.getJSONObject("nativeIslandSettings").toString());
                     break;
                 case "island-settings-ui":
                     report.put("islandSettingsUi",IslandSettingsUiCases.run(this));
@@ -608,6 +886,29 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 passed = report.getJSONObject("totalResetInspect").getBoolean("success");
             if ("total-reset-root-paths".equals(operation))
                 passed = report.getJSONObject("totalResetRootPaths").getBoolean("success");
+            if ("atomic-workbench-initialization".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchInitialization").getBoolean("success");
+            // Finite observer facts alone never certify all Task/HOME/journal recovery.
+            if ("atomic-workbench-death-prepare".equals(operation)
+                    || "atomic-workbench-death-observe".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchDeath").optBoolean("automaticRecoveryConfirmed", false);
+            if ("atomic-workbench-death-cleanup".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchDeathCleanup").getBoolean("success");
+            if ("atomic-workbench-death-held-prepare".equals(operation)
+                    || "atomic-workbench-death-held-observe".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchHeldDeath").optBoolean("automaticRecoveryConfirmed", false);
+            if ("atomic-workbench-death-held-cleanup".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchHeldDeath").getBoolean("success");
+            if ("atomic-workbench-reset-delete-primitive".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchResetDeletePrimitive").getBoolean("success");
+            if ("atomic-workbench-capacity-seven".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchCapacity").getBoolean("success");
+            if ("atomic-workbench-placement".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchPlacement").getBoolean("success");
+            if ("atomic-workbench-browser-search".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchBrowserSearch").getBoolean("success");
+            if ("atomic-workbench-drop-receive".equals(operation))
+                passed = report.getJSONObject("atomicWorkbenchDropReceive").getBoolean("success");
             report.put("status", passed ? "pass" : "fail");
             File directory = new File(context.getFilesDir(), "device-regression-results");
             directory.mkdirs();

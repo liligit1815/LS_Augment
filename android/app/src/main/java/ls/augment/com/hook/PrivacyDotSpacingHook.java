@@ -45,6 +45,9 @@ final class PrivacyDotSpacingHook {
     private static State state(Object owner){State s=STATES.get(owner);if(s==null){s=new State(owner);STATES.put(owner,s);}return s;}
     private static Object invoke(Object target,String method,Object...args){try{return call(target,method,args);}catch(ReflectiveOperationException ignored){return null;}}
     private static int number(Object value,int fallback){return value instanceof Number?((Number)value).intValue():fallback;}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View dot(View root){
         int id=root.getResources().getIdentifier("privacy_dot","id",root.getContext().getPackageName());return id==0?null:root.findViewById(id);
     }
@@ -106,6 +109,9 @@ final class PrivacyDotSpacingHook {
         Corner(View root){this.root=root;}
         boolean restore(){return margins!=null&&child!=null&&margins.restore(child);}
         void unavailable(String reason){Display display=root.getDisplay();if(display!=null)publish(display,display.getRotation(),root.getResources().getConfiguration().getLayoutDirection()==View.LAYOUT_DIRECTION_RTL,reason);}
+
+        // Physical screen/driver/stock-layout coordinates, not logical reading order; changing LEFT/RIGHT would change geometry.
+        //noinspection RtlHardcoded
         boolean apply(boolean rtl,int rotation,String surface){
             View found=dot(root);if(found!=child){restore();child=found;margins=null;signature="";}
             if(child==null||child.getParent()!=root||!(child.getLayoutParams() instanceof FrameLayout.LayoutParams))return restore();

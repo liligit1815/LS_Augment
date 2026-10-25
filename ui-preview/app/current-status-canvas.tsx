@@ -573,7 +573,7 @@ export function CurrentStatusCanvas() {
               onChange={(x) => commit({ ...sheet, x })}
             />
             <LayoutNumber
-              title="整体垂直偏移"
+              title="整体上下偏移"
               min={-1000}
               max={1000}
               value={sheet.y}
@@ -689,7 +689,7 @@ export function CurrentStatusCanvas() {
                   <LayoutNumber
                     key={key}
                     title={
-                      ['水平留白', '垂直留白', '格内水平偏移', '格内垂直偏移'][
+                      ['水平留白', '上下留白', '格内水平偏移', '格内上下偏移'][
                         i
                       ]
                     }

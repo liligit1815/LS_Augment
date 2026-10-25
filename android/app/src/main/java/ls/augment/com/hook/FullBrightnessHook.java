@@ -31,6 +31,9 @@ final class FullBrightnessHook {
     static String label(SeekBar bar) {
         State s = state(bar); return s != null && s.expanded ? BrightnessRange.label(s.position) : null;
     }
+
+    // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
+    //noinspection DiscouragedPrivateApi
     static int install(AugmentModule module,ClassLoader loader) {
         if (installed) return 0; installed = true;
         int count = 0;
@@ -38,14 +41,17 @@ final class FullBrightnessHook {
             List<Class<?>> bars=new ArrayList<>();bars.add(SeekBar.class);
             try {bars.add(Class.forName("com.zte.mifavor.widget.ColorSeekBarZTE",false,loader));}catch(ClassNotFoundException ignored) { }
             for(Class<?> barType:bars) {
-            Method listener = barType.getDeclaredMethod("setOnSeekBarChangeListener",SeekBar.OnSeekBarChangeListener.class);
+            Method listener;
+            try{listener=barType.getDeclaredMethod("setOnSeekBarChangeListener",SeekBar.OnSeekBarChangeListener.class);}
+            catch(NoSuchMethodException inherited){continue;}
             module.registerFeatureHook(module.prepareFeatureHook(listener,"brightness.listener."+barType.getName(),false).intercept(chain -> {
                 SeekBar bar = (SeekBar) chain.getThisObject(); Object supplied = chain.getArg(0);
                 if (supplied instanceof State) return chain.proceed();
                 State s = state(bar);
                 String name = supplied == null ? "" : supplied.getClass().getName();
                 boolean match = name.startsWith("com.zte.settings.display.brightness.BrightSeekPreference")
-                        || name.equals("com.zte.controlcenter.view.CCToggleSliderView$mSeekListener$1");
+                        || name.equals("com.zte.controlcenter.view.CCToggleSliderView$mSeekListener$1")
+                        || name.equals("com.zte.controlcenter.view.ToggleSliderView$2");
                 if (s == null && match) {
                     s = new State(bar); STATES.put(bar,new WeakReference<>(s));
                     bar.addOnAttachStateChangeListener(s);
@@ -97,6 +103,9 @@ final class FullBrightnessHook {
             for(Method method:color.getDeclaredMethods()) {
                 String name=method.getName();
                 if(!name.equals("getProgress")&&!name.equals("setRange")&&!name.equals("setProgress")&&!name.equals("invalidateProgress"))continue;
+                Class<?>[] parameters=method.getParameterTypes();
+                if(name.equals("setRange")&&(parameters.length!=2||parameters[0]!=float.class||parameters[1]!=float.class))continue;
+                if((name.equals("setProgress")||name.equals("invalidateProgress"))&&(parameters.length==0||parameters[0]!=float.class))continue;
                 method.setAccessible(true);
                 module.registerFeatureHook(module.prepareFeatureHook(method,"brightness.color."+name+"."+method.getParameterCount(),false).intercept(chain -> {
                     State s=state(chain.getThisObject());if(s==null||s.internal)return chain.proceed();
@@ -122,10 +131,20 @@ final class FullBrightnessHook {
             }
         }catch(ClassNotFoundException ignored) { }catch(Throwable error){module.logFeatureError("FULL_BRIGHTNESS_COLOR",error);}
         // OEM animator starting values must be read in the OEM coordinate space.
-        String[] types = {"com.zte.settings.display.brightness.BrightSeekPreference", "com.zte.settings.display.brightness.BrightSeekPreferenceSToT", "com.zte.controlcenter.view.CCToggleSliderView"};
+        // The unified panel constructs its slider in the constructor. Bind from
+        // its own attach callback as well, even if the framework setter was inlined.
+        for(String type:new String[]{"com.zte.controlcenter.view.ToggleSliderView","com.zte.controlcenter.view.CCToggleSliderView"})
+            count += SystemUiAdapter.hookNamed(module,loader,"full_brightness",type,"onAttachedToWindow",0,null,
+                    (owner,args,result) -> { bindHorizontal(owner); return SystemUiAdapter.PASS; });
+        for(String type:new String[]{"com.zte.settings.display.brightness.BrightSeekPreference","com.zte.settings.display.brightness.BrightSeekPreferenceSToT"})
+            count += SystemUiAdapter.hookNamed(module,loader,"full_brightness",type,"onBindViewHolder",1,null,
+                    (owner,args,result) -> { bindHorizontal(owner); return SystemUiAdapter.PASS; });
+        String[] types = {"com.zte.settings.display.brightness.BrightSeekPreference", "com.zte.settings.display.brightness.BrightSeekPreferenceSToT", "com.zte.controlcenter.view.CCToggleSliderView", "com.zte.controlcenter.view.ToggleSliderView", "com.zte.controlcenter.view.ToggleSliderView$1"};
         for (String type : types) try {
             for (Method method : Class.forName(type,false,loader).getDeclaredMethods()) {
-                if (!method.getName().equals("updateSlider") && !method.getName().equals("getValue")) continue;
+                if (!method.getName().equals("updateSlider") && !method.getName().equals("getValue")
+                        && !method.getName().equals("getMax") && !method.getName().equals("setMirror")
+                        && !method.getName().equals("onCheckedChanged")) continue;
                 method.setAccessible(true);
                 module.registerFeatureHook(module.prepareFeatureHook(method,"brightness.native."+type+"."+method.getName(),false).intercept(chain -> {
                     NATIVE.set(NATIVE.get()+1);
@@ -135,11 +154,25 @@ final class FullBrightnessHook {
         } catch (ClassNotFoundException ignored) { } catch (Throwable error) { module.logFeatureError("FULL_BRIGHTNESS_NATIVE",error); }
         module.logFeatureInfo("FULL_BRIGHTNESS_READY hooks="+count); return count;
     }
+    private static void bindHorizontal(Object owner) {
+        Object slider=SystemUiAdapter.field(owner,"mSlider"),listener=SystemUiAdapter.field(owner,"mSeekListener");
+        if(!(slider instanceof SeekBar))slider=SystemUiAdapter.field(owner,"mSeekBar");
+        if(slider instanceof SeekBar&&!(listener instanceof SeekBar.OnSeekBarChangeListener))listener=SystemUiAdapter.field(slider,"mOnSeekBarChangeListener");
+        if(listener instanceof State)return;
+        if (!(slider instanceof SeekBar) || !(listener instanceof SeekBar.OnSeekBarChangeListener)) return;
+        SeekBar bar=(SeekBar)slider;
+        State s=state(bar);
+        if(s==null){s=new State(bar);STATES.put(bar,new WeakReference<>(s));bar.addOnAttachStateChangeListener(s);}
+        s.original=(SeekBar.OnSeekBarChangeListener)listener;
+        bar.setOnSeekBarChangeListener(s);
+        if(bar.isAttachedToWindow())s.attach();
+    }
     private static void read(Context context) {
         if (reading) return; reading=true;
         IO.execute(() -> {
-            try { Bundle b=context.getContentResolver().call(URI,"brightness_read",null,null); if (b!=null) snapshot=b; }
-            catch (RuntimeException ignored) { snapshot=new Bundle(); }
+            try { Bundle b=context.getContentResolver().call(URI,"brightness_read",null,null);
+                if(b==null){b=new Bundle();b.putString("error","bridge_empty_result");}snapshot=b; }
+            catch (RuntimeException failure) { Bundle failed=new Bundle();failed.putString("error","bridge_"+failure.getClass().getSimpleName());snapshot=failed; }
             finally { reading=false; }
         });
     }
@@ -156,11 +189,21 @@ final class FullBrightnessHook {
         final Runnable send=this::send;
         final Label overlay = new Label();
         String decorated="";
+        String reported="";
         State(SeekBar bar) {
-            reference=new WeakReference<>(bar);color=bar.getClass().getName().equals("com.zte.mifavor.widget.ColorSeekBarZTE");
+            reference=new WeakReference<>(bar);color=isColor(bar);
             nativeMin=bar.getMin();nativeMax=bar.getMax();
             if(color){Object min=SystemUiAdapter.field(bar,"mMin"),max=SystemUiAdapter.field(bar,"mMax");
                 if(min instanceof Float && max instanceof Float){nativeMin=Math.round((Float)min);nativeMax=Math.round((Float)max);}}
+        }
+        static boolean isColor(SeekBar bar){
+            for(Class<?> type=bar.getClass();type!=null;type=type.getSuperclass())
+                if(type.getName().equals("com.zte.mifavor.widget.ColorSeekBarZTE")){
+                    try{bar.getClass().getMethod("setRange",float.class,float.class);
+                        bar.getClass().getMethod("setProgress",float.class,boolean.class,boolean.class);return true;}
+                    catch(ReflectiveOperationException|SecurityException nativeSeekBar){return false;}
+                }
+            return false;
         }
         void range(SeekBar bar,int min,int max) {
             if(color)try{bar.getClass().getMethod("setRange",float.class,float.class).invoke(bar,(float)min,(float)max);}
@@ -206,6 +249,15 @@ final class FullBrightnessHook {
                 }
             }
             decorate();
+            String result = "requested="+requested+";ready="+snapshot.getBoolean("ready")
+                    +";expanded="+expanded+";nativeRange="+nativeMin+":"+nativeMax
+                    +";adapter="+bar.getClass().getSimpleName()+";checked="+snapshot.getBoolean("checked")
+                    +";probe="+snapshot.getString("probeState")+";driverMaximum="+snapshot.getString("driverMaximum")
+                    +";error="+snapshot.getString("error");
+            if(!reported.equals(result)){
+                reported=result;
+                FeatureSettings.diagnostic(bar.getContext(),"ls_augment_rm_full_brightness_runtime",result);
+            }
         }
         void decorate() {
             SeekBar bar=reference.get();if(bar==null)return;

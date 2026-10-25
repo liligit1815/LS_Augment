@@ -33,6 +33,23 @@ public final class TestLauncherCompatibility {
         expect(LauncherCompatibility.Status.MISMATCH,checkVersion("other",260000,"modified"));
         expect(LauncherCompatibility.Status.MISMATCH,checkVersion(modified+"-other",260000,"modified"));
         expect(LauncherCompatibility.Status.MISMATCH,checkVersion(null,260000,"modified"));
-        System.out.println("PASS launcher preflight: original baseline, modified version and incremented build remain unverified, mismatched versions, unknown ROM/model/signature, missing package/permissions/ABI and read failures");
+        String original12=LauncherCompatibility.REDMAGIC12_VERSION;
+        String modified12=LauncherCompatibility.REDMAGIC12_MODIFIED_VERSION;
+        String cert12=LauncherCompatibility.REDMAGIC12_OEM_CERT;
+        // Even the accepted 11 device/ROM tuple must never validate a 12 package.
+        expect(LauncherCompatibility.Status.UNVERIFIED,checkVersion(original12,170000,cert12));
+        expect(LauncherCompatibility.Status.UNVERIFIED,checkVersion(original12,170000,cert));
+        expect(LauncherCompatibility.Status.UNVERIFIED,checkVersion(modified12,270001,"modified"));
+        expect(LauncherCompatibility.Status.UNVERIFIED,checkVersion(modified12,270002,cert12));
+        expect(LauncherCompatibility.Status.MISMATCH,checkVersion(modified12,270000,"modified"));
+        expect(LauncherCompatibility.Status.MISMATCH,checkVersion(original12,270001,cert12));
+        expect(LauncherCompatibility.Status.MISMATCH,checkVersion(modified12+"-other",270001,"modified"));
+        expect(LauncherCompatibility.Status.UNVERIFIED,LauncherCompatibility.evaluate("unknown",37,true,"unknown",true,true,original12,170000,cert12,true,"").status);
+        expect(LauncherCompatibility.Status.MISMATCH,LauncherCompatibility.evaluate("unknown",37,true,"unknown",true,true,modified12,270001,"modified",false,"").status);
+        expect(LauncherCompatibility.Status.MISMATCH,LauncherCompatibility.evaluate("unknown",37,true,"unknown",true,false,original12,170000,cert12,true,"").status);
+        expect(LauncherCompatibility.Status.MISMATCH,LauncherCompatibility.evaluate("unknown",37,false,"unknown",true,true,original12,170000,cert12,true,"").status);
+        LauncherCompatibility.Result recognized12=LauncherCompatibility.evaluate("unknown",37,true,"unknown",true,true,original12,170000,cert12,true,"");
+        if(recognized12.reasons.isEmpty()||!recognized12.reasons.get(0).contains("尚无实机验证"))throw new AssertionError("12 verification boundary missing");
+        System.out.println("PASS launcher compatibility: 11 baseline retained; OEM12 and 270001+ recognized but unverified; version, permission, system and ABI mismatches rejected");
     }
 }

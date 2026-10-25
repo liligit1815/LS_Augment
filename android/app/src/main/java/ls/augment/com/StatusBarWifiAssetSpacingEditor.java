@@ -73,7 +73,7 @@ final class StatusBarWifiAssetSpacingEditor {
         TextView status=ui.text("",12,ui.muted,false);status.setTag("icon-spacing-asset-capacity:"+scope+":"+id);form.addView(status,ui.margins(0,8,0,0));
         if(scope.equals("all"))form.addView(ui.text("共享设置只修改仍在继承的页面。主状态栏、锁屏、通知中心和控制中心分别核验；已有单独设置保持优先。尚未观察的位置不会借用其他页面的上限。",12,ui.muted,false),ui.margins(0,4,0,0));
         String[] titles={"起始边距","顶部边距","末尾边距","底部边距"};SeekBar[] bars=new SeekBar[4];TextView[] labels=new TextView[4];
-        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=new SeekBar(context);bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setMinimumHeight(ui.dp(48));bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
+        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setMinimumHeight(ui.dp(48));bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
         Runnable sync=()->{
             StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)spec=StatusBarIconSpacingSpec.empty();StatusBarIconSpacingSpec.Insets edge=spec.resolve(scope,id);int[] values={edge.start,edge.top,edge.end,edge.bottom};
             Budget limits=budget(context,scope,id);
@@ -89,10 +89,10 @@ final class StatusBarWifiAssetSpacingEditor {
             if(!limits.accepts(spec))description.append("\n当前组合空间未知或不足，手机保留原厂显示；恢复和继承仍可使用。");
             status.setText(description.toString());
             for(int i=0;i<4;i++){int maximum=-1;for(int candidate=0;candidate<=StatusBarIconSpacingSpec.MAX_DP;candidate++){int[] next=values.clone();next[i]=candidate;if(limits.accepts(spec.with(scope,id,new StatusBarIconSpacingSpec.Insets(next[0],next[1],next[2],next[3]))))maximum=candidate;}
-                bars[i].setMax(Math.max(values[i],Math.max(0,maximum)));bars[i].setProgress(values[i]);bars[i].setEnabled(maximum>=0&&(maximum>0||values[i]>0));labels[i].setText(titles[i]+" · "+values[i]+" dp"+(maximum>=0?" / 当前最多 "+maximum+" dp":" / 等待可用空间"));}
+                bars[i].setMax(Math.max(values[i],Math.max(0,maximum)));bars[i].setProgress(values[i]);bars[i].setEnabled(maximum>=0&&(maximum>0||values[i]>0));labels[i].setText(labels[i].getContext().getString(R.string.status_statusbariconspacingeditor_44 ,String.valueOf(titles[i]), String.valueOf(values[i]), String.valueOf((maximum>=0?" / 当前最多 "+maximum+" dp":" / 等待可用空间"))));}
         };
         for(int i=0;i<4;i++){final int index=i;bars[i].setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar bar,int progress,boolean user){if(user)labels[index].setText(titles[index]+" · "+progress+" dp");}
+            public void onProgressChanged(SeekBar bar,int progress,boolean user){if(user)labels[index].setText(labels[index].getContext().getString(R.string.status_statusbariconspacingeditor_45 ,String.valueOf(titles[index]), String.valueOf(progress)));}
             public void onStartTrackingTouch(SeekBar bar){}
             public void onStopTrackingTouch(SeekBar bar){StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)return;StatusBarIconSpacingSpec.Insets edge=spec.resolve(scope,id);int[] next={edge.start,edge.top,edge.end,edge.bottom};next[index]=bar.getProgress();StatusBarIconSpacingSpec candidate=spec.with(scope,id,new StatusBarIconSpacingSpec.Insets(next[0],next[1],next[2],next[3]));
                 if(accepts(context,scope,id,candidate))write.accept(candidate.serialize());else Toast.makeText(context,"当前组合空间已变化，本次未保存。请显示对应页面后刷新。",Toast.LENGTH_LONG).show();sync.run();}

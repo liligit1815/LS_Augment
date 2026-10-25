@@ -3,7 +3,6 @@ package ls.augment.com.hook;
 import android.content.ContentProviderClient;
 import android.content.ContentResolver;
 import android.content.Context;
-import android.content.pm.ProviderInfo;
 import android.net.Uri;
 import android.os.IBinder;
 import android.os.IInterface;
@@ -26,6 +25,9 @@ final class ConfigBridgeReadiness {
         boolean waiting(){return state.startsWith("WAITING_FOR_");}
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     Result check(Context context) {
         String probeError="";
         try {
@@ -52,12 +54,9 @@ final class ConfigBridgeReadiness {
                 }
             }
             if(content==null||!content.isBinderAlive())return unavailable("WAITING_FOR_SERVICE","content_service_unavailable",probeError);
-            // Both PackageManager and ContentResolver are bound to this Context's
-            // user. Do not resolve user 0 then call a provider in another user.
-            ProviderInfo declared=context.getPackageManager().resolveContentProvider(AUTHORITY,0);
-            if(declared==null)return unavailable("WAITING_FOR_PROVIDER","module_provider_unavailable",probeError);
-            // A manifest entry alone does not prove AMS can acquire the provider
-            // yet. Acquire and release a real client before admitting any IPC.
+            // PackageManager queries can hide a package from a hooked host even
+            // when its exported provider is callable. The resolver belongs to
+            // this Context's user; only real acquisition decides availability.
             try(ContentProviderClient client=context.getContentResolver().acquireUnstableContentProviderClient(PROVIDER)){
                 if(client==null)return unavailable("WAITING_FOR_PROVIDER","module_provider_not_acquirable",probeError);
             }catch(IllegalArgumentException unavailable){

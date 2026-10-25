@@ -92,7 +92,8 @@ sources = {
  void award(String a,long t,int r,int allow){writes++;}
  void admit(StepPlan p,long now){writes++;}
  Map<Long,Integer> admitted(String a){reads++;return Collections.emptyMap();}
- static void reset(){created=guards=reads=writes=deleted=0;}}
+ static final java.util.List<long[]> ranges=new java.util.ArrayList<>();Map<Long,Integer> admitted(String a,long start,long end){ranges.add(new long[]{start,end});return admitted(a);}
+ static void reset(){created=guards=reads=writes=deleted=0;ranges.clear();}}
 ''',
  'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;import java.util.*;import ls.augment.com.*;
  final class FeatureSettings {
@@ -173,7 +174,7 @@ sources = {
  reset();FeatureSettings.current=on("a".repeat(64));c=controller();setController(c);Handler.drain();insert(nativeRows);untouched("account mismatch");done("account-mismatch-native-pass-through");
  reset();FeatureSettings.current=config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_ACCOUNT,id,ConfigSchema.HEALTH_PLAN_ENABLED,"1");c=controller();Handler.drain();untouched("invalid plan");check(AccountManager.reads==0&&Handler.queue.isEmpty(),"invalid plan did work");done("invalid-plan-no-ledger");
  StepPlan plan=new StepPlan("b".repeat(32),id,"Asia/Shanghai",LocalDate.now(),540,1080,1,1,127,1);
- reset();FeatureSettings.current=config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_ACCOUNT,id,ConfigSchema.HEALTH_PLAN_ENABLED,"1",ConfigSchema.HEALTH_PLAN,plan.serialize());c=controller();Handler.drain();check(StepLedger.created==1&&StepLedger.writes==1,"valid plan admission stopped");done("valid-plan-admission-preserved");
+ reset();FeatureSettings.current=config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_ACCOUNT,id,ConfigSchema.HEALTH_PLAN_ENABLED,"1",ConfigSchema.HEALTH_PLAN,plan.serialize());c=controller();Handler.drain();check(StepLedger.created==1&&StepLedger.writes==1,"valid plan admission stopped");check(StepLedger.ranges.size()==6&&StepLedger.ranges.stream().allMatch(r->r[1]>r[0]&&r[1]-r[0]<=90000),"reconciliation must use three bounded day windows, including DST allowance");done("valid-plan-admission-preserved");
  old=c.ledger();reads=StepLedger.reads;writes=StepLedger.writes;int guards=StepLedger.guards;
  FeatureSettings.current=on(id);FeatureSettings.changed();Handler.drain();c.reconcile();c.reconcileLocked();
  check(!c.reconcileBucket(id,0,200,Collections.singletonMap(0L,200),null),"Disabled plan wrote a pending bucket");

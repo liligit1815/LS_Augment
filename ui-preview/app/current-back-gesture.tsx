@@ -2,7 +2,6 @@
 'use client';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Toggle, Range, useModel } from './current-ui';
-import { NativeSelect } from './current-native-controls';
 import native from './current-native-data.json';
 const fields = [
   'mode',
@@ -51,11 +50,7 @@ export function BackGestureSettings() {
         <div key={side} className="c-gesture-side">
           <h3>{i === 0 ? '左边缘 → 向右滑' : '右边缘 ← 向左滑'}</h3>
           <p className="c-native-note">修改此侧不会联动另一侧</p>
-          <NativeSelect
-            name={key(side, 'mode')}
-            title="图标来源"
-            choices={['原厂图标', '自定义图片']}
-          />
+          <p className="c-native-note">当前：{v[key(side, 'mode')] === '1' ? '自定义图片' : '原厂图标'}</p>
           <div
             className={'c-gesture-preview ' + side}
             aria-label={i === 0 ? '左侧自定义图片预览' : '右侧自定义图片预览'}

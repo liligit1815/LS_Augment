@@ -45,10 +45,30 @@ final class FanTileHook {
     static int install(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> type = Class.forName(PANEL, false, loader);
+            if(!ViewGroup.class.isAssignableFrom(type))throw new NoSuchFieldException(PANEL+":ViewGroup");
+            checkedField(type,"mModeCheck1",CheckedTextView.class);
+            checkedField(type,"mModeCheck2",CheckedTextView.class);
+            checkedField(type,"mEditContainer",LinearLayout.class);
+            checkedField(type,"mEmptyDesc",View.class);
+            Method[] updates={checkedMethod(type,"onFinishInflate"),
+                    checkedMethod(type,"updatePanel",String.class,java.util.List.class,boolean.class),
+                    checkedMethod(type,"updateDataSwitch"),checkedMethod(type,"updateSwitchVisibility",boolean.class)};
+            Method click=checkedMethod(type,"onClick",View.class);
+            Class<?> tile = Class.forName("com.zte.qs.tiles.CoolingFanTile", false, loader);
+            Method listening=checkedMethod(tile,"handleSetListening",boolean.class);
+            checkedMethod(tile,"onChanged");checkedField(tile,"mContext",Context.class);
+            Method labelMethod=null;
+            for(Method candidate:tile.getDeclaredMethods()){
+                Class<?>[] args=candidate.getParameterTypes();
+                if(!candidate.getName().equals("handleUpdateState")||candidate.isBridge()||args.length!=2||args[1]!=Object.class)continue;
+                checkedField(args[0],"value",boolean.class);checkedField(args[0],"label",CharSequence.class);
+                if(labelMethod!=null)throw new NoSuchMethodException("ambiguous CoolingFanTile.handleUpdateState");
+                labelMethod=checkedMethod(tile,candidate.getName(),args);
+            }
+            if(labelMethod==null)throw new NoSuchMethodException("CoolingFanTile.handleUpdateState(state,Object):void");
             int count = 0;
-            for (String name : new String[]{"onFinishInflate", "updatePanel", "updateDataSwitch", "updateSwitchVisibility"}) {
-                for (Method method : type.getDeclaredMethods()) {
-                    if (!name.equals(method.getName())) continue;
+            for (Method method:updates) {
+                    String name=method.getName();
                     method.setAccessible(true);
                     module.registerFeatureHook(module.prepareFeatureHook(method, "fan.tile." + name, false).intercept(chain -> {
                         Object result = chain.proceed();
@@ -67,9 +87,7 @@ final class FanTileHook {
                         return result;
                     }));
                     count++;
-                }
             }
-            Method click = type.getDeclaredMethod("onClick", View.class);
             module.registerFeatureHook(module.prepareFeatureHook(click, "fan.tile.native_mode", true).intercept(chain -> {
                 Panel panel = panel((View) chain.getThisObject());
                 if (panel == null || panel.bypass || !panel.isEnhanced()
@@ -84,8 +102,6 @@ final class FanTileHook {
                 return null;
             }));
             count++;
-            Class<?> tile = Class.forName("com.zte.qs.tiles.CoolingFanTile", false, loader);
-            Method listening = tile.getDeclaredMethod("handleSetListening", boolean.class);
             module.registerFeatureHook(module.prepareFeatureHook(listening, "fan.tile.listening", false).intercept(chain -> {
                 Object result = chain.proceed();
                 Object owner = chain.getThisObject();
@@ -104,8 +120,7 @@ final class FanTileHook {
                 return result;
             }));
             count++;
-            for (Method method : tile.getDeclaredMethods()) {
-                if (!"handleUpdateState".equals(method.getName()) || method.isBridge()) continue;
+            for (Method method : new Method[]{labelMethod}) {
                 module.registerFeatureHook(module.prepareFeatureHook(method, "fan.tile.label", false).intercept(chain -> {
                     Object result = chain.proceed();
                     try {
@@ -141,14 +156,35 @@ final class FanTileHook {
         } catch (Throwable e) { module.logFeatureError("FAN_TILE_INSTALL", e); return 0; }
     }
 
+    static Method checkedMethod(Class<?> type,String name,Class<?>...args)throws ReflectiveOperationException {
+        for(Class<?> current=type;current!=null;current=current.getSuperclass())try{
+            Method method=current.getDeclaredMethod(name,args);
+            int modifiers=method.getModifiers();
+            if(method.getReturnType()!=void.class||java.lang.reflect.Modifier.isStatic(modifiers)
+                    ||java.lang.reflect.Modifier.isAbstract(modifiers))throw new IllegalStateException(method.toString());
+            method.setAccessible(true);return method;
+        }catch(NoSuchMethodException absent){}
+        throw new NoSuchMethodException(type.getName()+"."+name);
+    }
+    static Field checkedField(Class<?> type,String name,Class<?> expected)throws ReflectiveOperationException {
+        Field field=findField(type,name);
+        if(!expected.isAssignableFrom(field.getType())||java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+            throw new IllegalStateException(type.getName()+"."+name+":"+field.getType().getName());
+        return field;
+    }
+
     private static Panel panel(View root) { Object p = root.getTag(TAG); return p instanceof Panel ? (Panel) p : null; }
     private static final class TileLabel {
         final Object nativeLabel;
         final String enhanced;
         TileLabel(Object nativeLabel, String enhanced) { this.nativeLabel = nativeLabel; this.enhanced = enhanced; }
     }
+    private static boolean levelCapability(Context context) {
+        return FanTilePolicy.supportedDevice(Build.DEVICE,Build.MODEL,Build.PRODUCT)
+                ||ls.augment.com.FanCapabilityEvidence.levels(FeatureSettings.diagnosticValue(context,"ls_augment_fan_control_installed"),ls.augment.com.FanHardwareIdentity.current());
+    }
     private static boolean enhancementRequested(Context context) {
-        return FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
+        return levelCapability(context)
                 && FeatureSettings.enabled(context, ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED, false);
     }
     private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
@@ -176,6 +212,7 @@ final class FanTileHook {
         final java.util.Map<android.graphics.drawable.Drawable, Rect> nativeBackgroundBounds = new java.util.WeakHashMap<>();
         final android.view.ViewTreeObserver.OnPreDrawListener resizeBackground = () -> { resizeNativeBackground(); return true; };
         Bundle snapshot = new Bundle();
+        final Runnable capabilityRetry=this::retryCapability;
         boolean reading, sending, bypass, dragging, requested, enhanced, restoring;
         boolean nativeFirstChecked, nativeSecondChecked;
         boolean nativeSwitchOn;
@@ -186,6 +223,9 @@ final class FanTileHook {
         long pendingSince;
         long configurationRevision = -1;
 
+
+        // Physical screen/driver/stock-layout coordinates, not logical reading order; changing LEFT/RIGHT would change geometry.
+        //noinspection RtlHardcoded
         Panel(ViewGroup root) throws ReflectiveOperationException {
             this.root = root; context = root.getContext();
             first = (CheckedTextView) field(root, "mModeCheck1");
@@ -224,6 +264,9 @@ final class FanTileHook {
             slider.setThumbOffset(dp(10));
             slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override public void onStartTrackingTouch(SeekBar bar) { dragging = true; }
+
+                // Injected host view uses the host Resources; module R IDs are invalid there. Preserve these short built-in Chinese labels.
+                //noinspection SetTextI18n
                 @Override public void onProgressChanged(SeekBar bar, int progress, boolean user) {
                     chosenLevel.setText(NAMES[progress] + "档");
                     bar.setStateDescription("固定" + NAMES[progress] + "档");
@@ -257,6 +300,7 @@ final class FanTileHook {
             generation++; reading = false; sending = false;
             MAIN.removeCallbacks(poll);
             FeatureSettings.removeSnapshotListener(configurationListener);
+            MAIN.removeCallbacks(capabilityRetry);
             setEnhanced(false);
         }
 
@@ -281,10 +325,14 @@ final class FanTileHook {
             if (enhanced) render();
         }
 
+        void retryCapability() { if(root.isAttachedToWindow())reconcileRequested(); }
         void reconcileRequested() {
             ConfigSnapshot config = FeatureSettings.snapshot(context);
-            boolean next = FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
+            boolean next = levelCapability(context)
                     && "1".equals(config.get(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED));
+            if(!next&&"1".equals(config.get(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED))&&root.isAttachedToWindow()) {
+                MAIN.removeCallbacks(capabilityRetry);MAIN.postDelayed(capabilityRetry,1200);
+            }else MAIN.removeCallbacks(capabilityRetry);
             boolean changed = next != requested;
             if (changed) {
                 requested = next; generation++; reading = false; sending = false;
@@ -383,6 +431,9 @@ final class FanTileHook {
             root.requestLayout();
         }
 
+
+        // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+        //noinspection DiscouragedApi
         void resizeNativeBackground() {
             if (!isEnhanced() || !root.isShown()) return;
             for (android.view.ViewParent p = root.getParent(); p instanceof ViewGroup; p = p.getParent()) {
@@ -468,6 +519,9 @@ final class FanTileHook {
             });
         }
 
+
+        // Injected host view uses the host Resources; module R IDs are invalid there. Preserve these short built-in Chinese labels.
+        //noinspection SetTextI18n
         void render() {
             if (!isEnhanced()) return;
             int selected = pending >= 0 ? pending : snapshot.getInt("selected", 0);

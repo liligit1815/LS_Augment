@@ -93,6 +93,12 @@ public final class IslandFixtureRunner extends Instrumentation {
         cover=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(cover);canvas.drawColor(0xff007f75);
         Paint p=new Paint(3);p.setColor(Color.WHITE);p.setTextSize(55);canvas.drawText("D",27,68,p);
         session=new MediaSession(context,"DuoIsland-"+runId);released=false;
+        session.setCallback(new MediaSession.Callback(){
+            @Override public void onPlay(){if(!closed&&!released){playback(PlaybackState.STATE_PLAYING);phase="playing";event("transport_play");}}
+            @Override public void onPause(){if(!closed&&!released){playback(PlaybackState.STATE_PAUSED);phase="paused";event("transport_pause");}}
+            @Override public void onSkipToNext(){if(!closed&&!released)event("transport_next");}
+            @Override public void onSkipToPrevious(){if(!closed&&!released)event("transport_previous");}
+        },main);
         session.setSessionActivity(sourceIntent("media"));
         session.setMetadata(new MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_MEDIA_ID,runId)
                 .putString(MediaMetadata.METADATA_KEY_TITLE,"DuoIsland "+runId)
@@ -120,7 +126,8 @@ public final class IslandFixtureRunner extends Instrumentation {
     }
     private void requireSession(){if(session==null||released)throw new IllegalStateException("Session released");}
     private void requireReleased(){if(!released)throw new IllegalStateException("Notification proof requires released fixture media");}
-    private void playback(int state){playback=state;session.setPlaybackState(new PlaybackState.Builder().setActions(0)
+    private void playback(int state){playback=state;session.setPlaybackState(new PlaybackState.Builder().setActions(
+            PlaybackState.ACTION_PLAY|PlaybackState.ACTION_PAUSE|PlaybackState.ACTION_PLAY_PAUSE|PlaybackState.ACTION_SKIP_TO_NEXT|PlaybackState.ACTION_SKIP_TO_PREVIOUS)
             .setState(state,0,state==PlaybackState.STATE_PLAYING?1:0,SystemClock.elapsedRealtime()).build());}
     private PendingIntent sourceIntent(String kind){
         Intent i=new Intent(context,ContentActivity.class).setData(Uri.parse("duo-island://"+runId+"/"+kind))
@@ -144,7 +151,7 @@ public final class IslandFixtureRunner extends Instrumentation {
     private void persist()throws Exception{
         if(progress==null)return;JSONArray ids=new JSONArray();
         if(notifications!=null)for(android.service.notification.StatusBarNotification n:notifications.getActiveNotifications())if(tag.equals(n.getTag()))ids.put(n.getId());
-        JSONObject report=new JSONObject().put("schema",1).put("fixtureRevision","island-lifecycle-r1").put("package",PACKAGE)
+        JSONObject report=new JSONObject().put("schema",1).put("fixtureRevision","island-lifecycle-r2-controls").put("package",PACKAGE)
                 .put("runId",runId).put("pid",android.os.Process.myPid()).put("startedElapsed",started).put("deadlineElapsed",deadline)
                 .put("observedElapsed",SystemClock.elapsedRealtime()).put("phase",phase).put("sequence",sequence)
                 .put("playbackState",playback).put("sessionReleased",released).put("sessionToken",session==null?JSONObject.NULL:session.getSessionToken().toString())

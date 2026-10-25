@@ -33,6 +33,12 @@ final class UiKit {
     final boolean angularCards;
     final AppearanceController appearance;
     boolean flatCards;
+    private Runnable backAction;
+    private final AtomicWorkbenchHostDialogs hostDialogs = new AtomicWorkbenchHostDialogs();
+    void setHostInputObserver(java.util.function.Consumer<Boolean> observer) { hostDialogs.setObserver(observer); }
+    void closeHostDialogs() { hostDialogs.close(); }
+
+    void setBackAction(Runnable action) { backAction = action; }
 
     // Sky blue + ice white roles. Cards remain translucent over the quiet gradient.
     final int background, backgroundEnd, rail, card, cardHigh, text, muted, accent,
@@ -66,22 +72,22 @@ final class UiKit {
         window.setSoftInputMode((window.getAttributes().softInputMode
                 & ~android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
                 | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
+        window.setDecorFitsSystemWindows(false);
         boolean configurationAction=activity instanceof ConfigTransferActivity;
         window.setStatusBarColor(configurationAction?Color.TRANSPARENT:background);
         window.setNavigationBarColor(configurationAction?Color.TRANSPARENT:backgroundEnd);
-        if (Build.VERSION.SDK_INT >= 26) {
+        {
             window.getDecorView().setSystemUiVisibility(
                     dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                             | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
             window.setNavigationBarDividerColor(configurationAction?Color.TRANSPARENT:backgroundEnd);
         }
-        if (Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null) {
+        if (window.getInsetsController() != null) {
             int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                     | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
             window.getInsetsController().setSystemBarsAppearance(dark ? 0 : lightBars, lightBars);
         }
-        if (Build.VERSION.SDK_INT >= 29) {
+        {
             window.setStatusBarContrastEnforced(false);
             window.setNavigationBarContrastEnforced(false);
         }
@@ -95,19 +101,19 @@ final class UiKit {
                 | android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
         window.setStatusBarColor(host.getStatusBarColor());
         window.setNavigationBarColor(host.getNavigationBarColor());
-        if (Build.VERSION.SDK_INT >= 26) window.setNavigationBarDividerColor(host.getNavigationBarDividerColor());
-        if (Build.VERSION.SDK_INT >= 29) {
+        window.setNavigationBarDividerColor(host.getNavigationBarDividerColor());
+        {
             window.setStatusBarContrastEnforced(host.isStatusBarContrastEnforced());
             window.setNavigationBarContrastEnforced(host.isNavigationBarContrastEnforced());
         }
-        if (Build.VERSION.SDK_INT >= 26) {
+        {
             int lightBars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                     | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
             View decor = window.getDecorView();
             decor.setSystemUiVisibility((decor.getSystemUiVisibility() & ~lightBars)
                     | (host.getDecorView().getSystemUiVisibility() & lightBars));
         }
-        if (Build.VERSION.SDK_INT >= 30 && window.getInsetsController() != null
+        if (window.getInsetsController() != null
                 && host.getInsetsController() != null) {
             int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                     | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
@@ -235,6 +241,7 @@ final class UiKit {
             case "status_notifications":return R.drawable.ice_bell;
             case "status_metrics":return R.drawable.ice_heart_pulse;
             case "status_network":return R.drawable.ice_signal;
+            case "competitive_key":return R.drawable.ice_gamepad2;
             case "status_battery":return R.drawable.ice_battery_full;
             case "status_icons":return R.drawable.ice_layers;
             case "primary_interaction":return R.drawable.ice_power;
@@ -301,20 +308,20 @@ final class UiKit {
     }
 
     private void installGestureInset(View view, int extraBottomDp, boolean includeKeyboard) {
-        if (Build.VERSION.SDK_INT < 20) return;
+        {}
         final int originalBottom = view.getPaddingBottom(), originalTop = view.getPaddingTop();
         final int originalLeft = view.getPaddingLeft(), originalRight = view.getPaddingRight();
         view.setOnApplyWindowInsetsListener((target, insets) -> {
             int bottom,top,left,right;
-            if(Build.VERSION.SDK_INT>=30){
+            {
                 android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
                 bottom=bars.bottom;top=bars.top;left=bars.left;right=bars.right;
                 if(includeKeyboard)bottom=Math.max(bottom,insets.getInsets(WindowInsets.Type.ime()).bottom);
-            }else{bottom=insets.getSystemWindowInsetBottom();top=insets.getSystemWindowInsetTop();left=insets.getSystemWindowInsetLeft();right=insets.getSystemWindowInsetRight();}
+            }
             int nextBottom=originalBottom+bottom+dp(extraBottomDp);
             boolean changed=target.getPaddingBottom()!=nextBottom;
             target.setPadding(originalLeft+left, originalTop+top, originalRight+right, nextBottom);
-            if(includeKeyboard&&changed&&Build.VERSION.SDK_INT>=30&&insets.isVisible(WindowInsets.Type.ime()))
+            if(includeKeyboard&&changed&&insets.isVisible(WindowInsets.Type.ime()))
                 target.post(()->{
                     View focused=target.findFocus();
                     if(focused instanceof EditText){
@@ -340,7 +347,10 @@ final class UiKit {
             button.setPadding(dp(11), dp(11), dp(11), dp(11));
             button.setBackground(pressable(controlGlass(button,22,IceGlassControlDrawable.NEUTRAL)));
             button.setContentDescription("返回上一页");
-            button.setOnClickListener(view -> activity.onBackPressed());
+            button.setOnClickListener(view -> {
+                if (backAction != null) backAction.run();
+                else activity.onBackPressed();
+            });
             row.addView(button, new LinearLayout.LayoutParams(dp(44), dp(44)));
             LinearLayout.LayoutParams spacer = new LinearLayout.LayoutParams(dp(6), 1);
             row.addView(new View(activity), spacer);
@@ -388,8 +398,8 @@ final class UiKit {
         LinearLayout value = new LiquidGlassLayout(this, 4, true);
         value.setOrientation(LinearLayout.VERTICAL);
         value.setPadding(dp(16), dp(12), dp(16), dp(12));
-        if (Build.VERSION.SDK_INT >= 21) value.setElevation(dp(3));
-        if (Build.VERSION.SDK_INT >= 28) {
+        value.setElevation(dp(3));
+        {
             value.setOutlineSpotShadowColor(0x203c86b8);
             value.setOutlineAmbientShadowColor(0x203c86b8);
         }
@@ -459,7 +469,7 @@ final class UiKit {
     /** Dialog content samples the real page beneath it; native opaque panels are omitted. */
     android.app.Dialog glassDialog(String title, View content, String positive,
             Runnable action, String negative) {
-        android.app.Dialog dialog = new android.app.Dialog(activity);
+        android.app.Dialog dialog = hostDialogs.create(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LiquidGlassLayout body = new LiquidGlassLayout(this, 4);
         body.setTag("liquid-glass-dialog");
@@ -543,7 +553,7 @@ final class UiKit {
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setDimAmount(dark ? .28f : .12f);
-            if(Build.VERSION.SDK_INT>=30){
+            {
                 window.setDecorFitsSystemWindows(false);
                 android.view.WindowManager.LayoutParams attributes=window.getAttributes();
                 attributes.setFitInsetsTypes(0);
@@ -606,8 +616,30 @@ final class UiKit {
             java.util.function.IntFunction<View> preview) {
         android.widget.Spinner spinner = new android.widget.Spinner(activity) {
             private android.app.Dialog selectionDialog;
+            private final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.Path arrow=new android.graphics.Path();
+            @Override protected void onLayout(boolean changed,int left,int top,int right,int bottom) {
+                super.onLayout(changed,left,top,right,bottom);
+                View selected=getSelectedView();
+                if(selected instanceof TextView){
+                    TextView label=(TextView)selected;label.setTextColor(text);
+                    label.setTextSize(compactTextSize(14));label.setPadding(0,0,dp(24),0);
+                }
+            }
+            @Override protected void onDraw(android.graphics.Canvas canvas) {
+                super.onDraw(canvas);
+                paint.setColor(muted);paint.setStrokeWidth(dp(2));paint.setStyle(android.graphics.Paint.Style.STROKE);
+                float x=getWidth()-dp(19),y=getHeight()/2f;
+                arrow.reset();
+                arrow.moveTo(x-dp(4),y-dp(2));arrow.lineTo(x,y+dp(2));arrow.lineTo(x+dp(4),y-dp(2));canvas.drawPath(arrow,paint);
+            }
+
+            // Custom Spinner sends the click accessibility event and sound itself; super.performClick would also open the unwanted native popup.
+            //noinspection ClickableViewAccessibility
             @Override public boolean performClick() {
                 if (!isEnabled() || getAdapter() == null || getAdapter().getCount() == 0) return true;
+                sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_CLICKED);
+                playSoundEffect(android.view.SoundEffectConstants.CLICK);
                 String[] names = new String[getAdapter().getCount()];
                 for (int i = 0; i < names.length; i++)
                     names[i] = String.valueOf(getAdapter().getItem(i)) + (i == getSelectedItemPosition() ? " · 当前" : "");
@@ -619,7 +651,8 @@ final class UiKit {
             }
         };
         spinner.setMinimumHeight(dp(48));
-        spinner.setBackgroundTintList(ColorStateList.valueOf(accent));
+        spinner.setPadding(dp(13),dp(8),dp(13),dp(8));
+        spinner.setBackground(controlGlass(spinner,16,IceGlassControlDrawable.NEUTRAL));
         return spinner;
     }
 
@@ -644,7 +677,22 @@ final class UiKit {
     static float compactTextSize(float size) { return Math.max(10f, size * .86f); }
 
     TextView text(String value, float size, int color, boolean bold) {
-        TextView view = new TextView(activity);
+        return styleText(new TextView(activity), value, size, color, bold);
+    }
+
+    /** Keep framework context-menu, keyboard and accessibility actions in the same ownership fence. */
+    TextView guardedText(String value, float size, int color, boolean bold, java.util.function.BooleanSupplier guard) {
+        TextView view = new TextView(activity) {
+            private boolean allowed() { try { return guard.getAsBoolean(); } catch (RuntimeException unavailable) { return false; } }
+            @Override public boolean onTextContextMenuItem(int id) { return allowed() && super.onTextContextMenuItem(id); }
+            @Override public boolean performAccessibilityAction(int action, android.os.Bundle arguments) {
+                return allowed() && super.performAccessibilityAction(action, arguments);
+            }
+        };
+        return styleText(view, value, size, color, bold);
+    }
+
+    private TextView styleText(TextView view, String value, float size, int color, boolean bold) {
         view.setText(value);
         view.setTextSize(compactTextSize(size));
         view.setTextColor(color);
@@ -755,6 +803,48 @@ final class UiKit {
         input.setBackground(controlGlass(input,16,IceGlassControlDrawable.NEUTRAL));
     }
 
+    /** The download-count slider is the common slider for every parameter editor. */
+    android.widget.SeekBar slider() {
+        android.widget.SeekBar slider = new android.widget.SeekBar(activity);
+        slider.setMinHeight(dp(48));
+        slider.setMinimumHeight(dp(48));
+        slider.setKeyProgressIncrement(1);
+        slider.setProgressTintList(ColorStateList.valueOf(accent));
+        slider.setThumbTintList(ColorStateList.valueOf(accent));
+        return slider;
+    }
+
+    /** Keep exact HEX entry and the visual picker on the same editing surface. */
+    View colorInput(EditText field, String title) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(field, new LinearLayout.LayoutParams(0, -2, 1));
+        Button pick = tonalButton("选色");
+        pick.setContentDescription(title + "，选择颜色");
+        pick.setTag("color-picker:" + title);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(72), dp(48));
+        params.setMarginStart(dp(8));
+        row.addView(pick, params);
+        Runnable preview = () -> {
+            try {
+                int color = Color.parseColor(field.getText().toString());
+                GradientDrawable swatch = roundStroke(color, 6, outline, 1);
+                swatch.setBounds(0, 0, dp(16), dp(16));
+                pick.setCompoundDrawablesRelative(swatch, null, null, null);
+                pick.setCompoundDrawablePadding(dp(4));
+            } catch (IllegalArgumentException ignored) { }
+        };
+        field.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
+            public void onTextChanged(CharSequence s,int start,int before,int count) { preview.run(); }
+            public void afterTextChanged(android.text.Editable text) { }
+        });
+        pick.setOnClickListener(v -> ColorEditorDialog.show(activity, this, title,
+                field.getText().toString(), field::setText));
+        preview.run();
+        return row;
+    }
+
     /** Shared feature header. The arrow slot also aligns non-expandable switches. */
     LinearLayout featureRow(String title, String description, Switch control) {
         LinearLayout row = new LinearLayout(activity){
@@ -815,8 +905,11 @@ final class UiKit {
             foldValues.put(key,()->content.getVisibility()==View.VISIBLE);foldSetters.put(key,this::show);
         }
         void sync() {
+            sync(true);
+        }
+        void sync(boolean expandOnEnable) {
             boolean enabled = control.isChecked();
-            if (enabled != wasEnabled) show(enabled);
+            if (enabled != wasEnabled) show(enabled && expandOnEnable);
             wasEnabled = enabled;
             arrow.setEnabled(control.isEnabled() && (accessibleWhileOff || enabled));
             arrow.setAlpha(arrow.isEnabled() ? 1f : .34f);
@@ -865,7 +958,7 @@ final class UiKit {
         head.addView(featureTitle(title,description,14.5f),new LinearLayout.LayoutParams(0,-2,1));
         ImageButton arrow=new ImageButton(activity);arrow.setImageResource(R.drawable.ic_expand_more);arrow.setColorFilter(muted);
         arrow.setBackground(pressable(round(Color.TRANSPARENT,12)));head.addView(arrow,new LinearLayout.LayoutParams(dp(25),dp(44)));
-        outer.addView(head,wrap());outer.addView(content,wrap());content.setVisibility(initiallyExpanded?View.VISIBLE:View.GONE);
+        outer.addView(head,wrap());outer.addView(content,wrap());content.setVisibility(View.GONE);
         Runnable update=()->{boolean open=content.getVisibility()==View.VISIBLE;arrow.setRotation(open?180:0);arrow.setContentDescription((open?"收起":"展开")+title);};
         View.OnClickListener toggle=v->{content.setVisibility(content.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);update.run();};
         arrow.setOnClickListener(toggle);head.setOnClickListener(toggle);update.run();
@@ -893,7 +986,6 @@ final class UiKit {
 
     private int iceIcon(String title){
         if("液态玻璃控制中心".equals(title))return R.drawable.ice_layout_grid;
-        if("通知堆叠".equals(title))return R.drawable.ice_bell;
         if("面板日期、天气与时钟".equals(title))return R.drawable.ice_clock;
         if("电源菜单高级重启".equals(title))return R.drawable.ice_power;
         if("自定义侧滑返回图标".equals(title))return R.drawable.ice_undo2;
@@ -911,7 +1003,7 @@ final class UiKit {
     }
 
     Drawable pressable(Drawable content) {
-        if (Build.VERSION.SDK_INT < 21) return content;
+        {}
         return new RippleDrawable(ColorStateList.valueOf(Color.argb(38,
                 Color.red(accent), Color.green(accent), Color.blue(accent))), content, null);
     }

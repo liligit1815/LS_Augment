@@ -16,6 +16,10 @@ final class ConfigResetController {
         Context app=context.getApplicationContext();
         try {
             ResetWriteFence.begin(); fenced=true;
+            progress.accept("正在恢复原子工作台的应用任务…");
+            android.os.Bundle workbench=AtomicWorkbenchReset.restore(app);
+            if(!workbench.getBoolean("success")||workbench.getBoolean("recovery_pending"))
+                return failure(app,false,false,workbench.getString("message","工作台任务恢复尚未确认"));
             progress.accept("正在取消启动任务和旧执行队列…");
             BootJobService.ResetResult boot=BootJobService.cancelForReset(app);
             if(!boot.success)return failure(app,false,false,boot.message);
@@ -71,7 +75,7 @@ final class ConfigResetController {
             if(!saved.success)return failure(app,false,false,saved.message);
             defaultsWritten=true;
             HiddenEntrySession.lock();
-            ModuleResetStorage.clear(app);
+            ModuleResetStorage.clear(app,workbench);
             RecentsCardRadiusStore.onStorageReset(app);
             ModuleRuntimeReset.Result notifications=ModuleRuntimeReset.clearNotifications(app);
             if(!notifications.success)return failure(app,true,false,notifications.message);

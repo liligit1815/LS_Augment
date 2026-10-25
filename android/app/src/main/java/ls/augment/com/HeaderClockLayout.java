@@ -1,5 +1,6 @@
 package ls.augment.com;
 
+import android.graphics.text.LineBreaker;
 import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
@@ -33,6 +34,13 @@ public final class HeaderClockLayout {
     public static int vertical(View view){ViewGroup.LayoutParams p=view.getLayoutParams();return p instanceof ViewGroup.MarginLayoutParams?((ViewGroup.MarginLayoutParams)p).topMargin+((ViewGroup.MarginLayoutParams)p).bottomMargin:0;}
     public static int naturalWidth(View view){
         if(!present(view))return 0;
+        ViewGroup.LayoutParams allocation=view.getLayoutParams();
+        // Dual SIM retains the second native subtree for restoration, but gives
+        // its outer cell an explicit zero width. Descendants are no longer
+        // occupied header space. A zero-width weighted status container still
+        // owns its children's cells through LinearLayout's weight allocation.
+        if(allocation!=null&&allocation.width==0
+                &&(!(allocation instanceof LinearLayout.LayoutParams)||((LinearLayout.LayoutParams)allocation).weight<=0))return 0;
         if(view instanceof TextView){TextView text=(TextView)view;return (int)Math.ceil(Layout.getDesiredWidth(text.getText(),text.getPaint()))+text.getCompoundPaddingLeft()+text.getCompoundPaddingRight();}
         if(view instanceof ViewGroup){
             ViewGroup group=(ViewGroup)view;boolean row=view instanceof LinearLayout&&((LinearLayout)view).getOrientation()==LinearLayout.HORIZONTAL||view.getClass().getName().endsWith("StatusIconContainer");
@@ -79,7 +87,7 @@ public final class HeaderClockLayout {
         int inner=Math.max(1,width-text.getCompoundPaddingLeft()-text.getCompoundPaddingRight());
         StaticLayout layout=StaticLayout.Builder.obtain(text.getText(),0,text.length(),text.getPaint(),inner)
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(text.getIncludeFontPadding())
-                .setLineSpacing(text.getLineSpacingExtra(),text.getLineSpacingMultiplier()).setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE).build();
+                .setLineSpacing(text.getLineSpacingExtra(),text.getLineSpacingMultiplier()).setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE).build();
         int explicit=1;for(int i=0;i<text.length();i++)if(text.getText().charAt(i)=='\n')explicit++;
         if(!canWrap&&layout.getLineCount()!=explicit)return null;
         float widest=0;for(int i=0;i<layout.getLineCount();i++)widest=Math.max(widest,layout.getLineWidth(i));
@@ -135,7 +143,8 @@ public final class HeaderClockLayout {
         int iconWidth=naturalWidth(icons)+(ip==null?0:ip.leftMargin+ip.rightMargin);
         int belowHeight=0;if(below!=null)for(Below item:below)belowHeight=Math.max(belowHeight,item.extent());
         HeaderClockGeometry.Plan plan=HeaderClockGeometry.place(width,limit,Math.max(0,nativeTop)+Math.max(0,offsetY),iconBottom,accessoryBottom,
-                iconWidth,cw,ch,dw,dh,footerWidth,footerHeight,gap,dateGap,belowHeight,expanded);
+                iconWidth,cw,ch,dw,dh,footerWidth,footerHeight,gap,dateGap,belowHeight,
+                expanded||hasPeriod(clock.getText()));
         if(!plan.valid)return plan;
         size(clock,cb[0],cb[1]);size(date,db[0],db[1]);
         if(weather!=null){
@@ -161,6 +170,16 @@ public final class HeaderClockLayout {
         return plan;
     }
     private static int aligned(int align,int width,int child,int inset,int offset){return Math.max(inset,Math.min(Math.max(inset,width-inset-child),Math.round(NotificationLayoutPolicy.alignedX(align,width,child,inset,offset))));}
+    // Period formatting has a trailing semantic field (possibly on its own line).
+    // Reserve the icon band from the first frame, including while Bluetooth is GONE.
+    // A radio state or a proportional time digit must not move the clock/list.
+    private static boolean hasPeriod(CharSequence value){
+        String text=value.toString().trim();
+        for(int i=text.length()-1;i>=0;i--){char c=text.charAt(i);
+            if(c==' '||c=='\n')return i+1<text.length()&&!Character.isDigit(text.charAt(i+1))&&text.charAt(i+1)!=':';
+        }
+        return false;
+    }
     private static void multiline(TextView text){
         if(text.isSingleLine())text.setSingleLine(false);
         if(text.isHorizontallyScrollable())text.setHorizontallyScrolling(false);

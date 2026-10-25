@@ -92,6 +92,13 @@ import android.net.Uri;import java.util.*;public class Intent {
  public Handler(){}public Handler(Looper l){}public boolean post(Runnable r){android.app.Activity.main.add(r);return true;}
  public void removeCallbacksAndMessages(Object token){}
 }''',
+    "android/window/OnBackInvokedCallback.java": "package android.window;public interface OnBackInvokedCallback {void onBackInvoked();}",
+    "android/window/OnBackInvokedDispatcher.java": r'''package android.window;import java.util.*;public class OnBackInvokedDispatcher {
+ public static final int PRIORITY_DEFAULT=0;public final Set<OnBackInvokedCallback> callbacks=new LinkedHashSet<>();public int registrations,unregistrations;
+ public void registerOnBackInvokedCallback(int priority,OnBackInvokedCallback callback){registrations++;if(!callbacks.add(callback))throw new AssertionError("duplicate native Back callback");}
+ public void unregisterOnBackInvokedCallback(OnBackInvokedCallback callback){unregistrations++;if(!callbacks.remove(callback))throw new AssertionError("unregistered native Back callback");}
+ public boolean invoke(){if(callbacks.isEmpty())return false;callbacks.iterator().next().onBackInvoked();return true;}
+}''',
     "android/app/Activity.java": r'''package android.app;
 import android.content.*;import android.os.*;import java.util.*;
 public class Activity extends Context {
@@ -99,6 +106,8 @@ public class Activity extends Context {
  public static final ArrayDeque<Runnable> main=new ArrayDeque<>();
  public final List<Intent> launched=new ArrayList<>(),pickers=new ArrayList<>();public final List<Integer> requests=new ArrayList<>();
  public Intent intent=new Intent();public boolean finished,destroyed,failPicker,failNavigation,changing;public int finishCalls,contentViews,backCalls;public Object retained;
+ public final android.window.OnBackInvokedDispatcher dispatcher=new android.window.OnBackInvokedDispatcher();public android.window.OnBackInvokedDispatcher getOnBackInvokedDispatcher(){return dispatcher;}
+ public void hardwareBack(){if(!dispatcher.invoke())onBackPressed();}
  public void onCreate(Bundle b){}protected void onSaveInstanceState(Bundle b){}protected void onActivityResult(int r,int s,Intent d){}
  protected void onDestroy(){destroyed=true;}public void onBackPressed(){backCalls++;finish();}
  public Intent getIntent(){return intent;}public void setIntent(Intent i){intent=i;}
@@ -295,7 +304,11 @@ public final class TestTransferActionHost {
   for(boolean cancel:new boolean[]{false,true})test("reset confirmation cancellation returns settings: "+cancel,()->{var a=host("reset",null);flush(a);AlertDialog d=dialog("重置配置？");check(a.pickers.isEmpty()&&!a.isFinishing(),"reset did not wait for confirmation");if(cancel)d.cancel();else d.negative();flush(a);returned(a);a.onDestroy();});
   test("reset confirmation is restored after recreation",()->{var a=host("reset",null);flush(a);dialog("重置配置？");var next=recreate(a,"reset");dialog("重置配置？").negative();flush(next);returned(next);check(a.launched.isEmpty(),"destroyed host navigated");next.onDestroy();});
   test("reset confirmation is restored after process death without resetting",()->{var a=host("reset",null);flush(a);var next=processDeath(a,"reset");dialog("重置配置？").negative();flush(next);returned(next);next.onDestroy();});
-  test("Back from reset confirmation returns module",()->{var a=host("reset",null);flush(a);a.onBackPressed();flush(a);returned(a);a.onDestroy();});
+  test("hardware Back from reset confirmation returns module",()->{var a=host("reset",null);flush(a);a.hardwareBack();flush(a);returned(a);a.onDestroy();});
+  test("native gesture Back shares default return without duplicate finish",()->{var a=host("reset",null);flush(a);check(a.dispatcher.registrations==1&&a.dispatcher.callbacks.size()==1,"native Back callback absent or duplicated");check(a.dispatcher.invoke(),"native Back was not dispatched");a.dispatcher.invoke();returned(a);check(a.backCalls==1&&a.finishCalls==1,"native return recursed or finished twice");a.onDestroy();check(a.dispatcher.callbacks.isEmpty()&&a.dispatcher.unregistrations==1&&!a.dispatcher.invoke(),"destroyed host retained Back callback");});
+  test("native gesture Back preserves running reset guard",()->{seedReset(null);var a=host("reset",null);flush(a);a.dispatcher.invoke();check(!a.isFinishing()&&a.launched.isEmpty()&&a.backCalls==0,"native Back escaped running reset");check(Toast.messages.contains("重置正在进行，请稍候"),"reset guard feedback lost");a.onDestroy();});
+  test("native gesture Back after reset completion reopens module once",()->{seedReset(new ConfigResetController.Result(true,false,"offline report"));var a=host("reset",null);flush(a);a.dispatcher.invoke();returned(a);check(a.launched.size()==1&&a.finishCalls==1&&a.backCalls==0,"completed reset native Back repeated navigation");a.onDestroy();});
+  test("recreation unregisters old native Back callback and registers new owner once",()->{seedReset(null);var a=host("reset",null);flush(a);var next=recreate(a,"reset");check(a.dispatcher.callbacks.isEmpty()&&!a.dispatcher.invoke(),"obsolete Activity owns native Back");check(next.dispatcher.callbacks.size()==1&&next.dispatcher.registrations==1,"recreated callback duplicated");next.dispatcher.invoke();check(!next.isFinishing()&&next.backCalls==0,"recreated reset lost native Back guard");next.onDestroy();check(next.dispatcher.callbacks.isEmpty(),"recreated host did not unregister");});
   test("import preview recreation retains validated payload without provider replay",()->{var a=host("import",null);flush(a);document(a,doc(new JSONObject().put(ConfigSchema.HIDE_TARGETS,"v3:10:42:"+PKG)));picked(a,72);flush(a);dialog("导入配置");check(a.resolver.reads==1&&RootHideManager.validations==1,"initial validation missing");var next=recreate(a,"import");check(next.pickers.isEmpty()&&next.resolver.reads==1&&RootHideManager.validations==1,"rotation replayed provider I/O/validation");dialog("导入配置").negative();flush(next);returned(next);next.onDestroy();});
   test("provider changes cannot replace already validated retained preview",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);flush(a);String preview=dialog("导入配置").message;document(a,doc(new JSONObject().put("unknown","1")));var next=recreate(a,"import");check(next.resolver.reads==1&&dialog("导入配置").message.equals(preview),"rotation swapped validated payload from provider");dialog("导入配置").negative();flush(next);returned(next);next.onDestroy();});
   test("import read queued before rotation delivers only to new host",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);Bundle state=save(a);Object retained=a.onRetainNonConfigurationInstance();a.changing=true;a.onDestroy();queues.get(a).drain();Activity.drainMain();check(a.launched.isEmpty()&&AlertDialog.shown.stream().noneMatch(d->d.showing),"old read displayed UI");var next=host("import",state,retained,a.resolver);flush(next);dialog("导入配置").negative();flush(next);returned(next);check(next.resolver.reads==1,"rotation restarted queued provider read");next.onDestroy();});
@@ -311,12 +324,12 @@ public final class TestTransferActionHost {
   test("reset fence rejects a confirmed stale import before any write",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);flush(a);ResetWriteFence.invalidated=true;dialog("导入配置").positive();flush(a);returned(a);check(AuditLog.events.contains("CONFIG_IMPORT_FAILED")&&!RootHideManager.ACTION_LOCK.isLocked(),"stale import was not rejected/unlocked");a.onDestroy();});
   test("rotation during failed confirmed import keeps completion on new owner",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);flush(a);ResetWriteFence.invalidated=true;dialog("导入配置").positive();var next=recreate(a,"import");returned(next);check(a.launched.isEmpty()&&!a.isFinishing()&&Toast.messages.size()==1&&next.resolver.reads==1,"confirmed import failure used old owner or replayed read");next.onDestroy();});
   test("process death during confirmed import exits without retry",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);flush(a);ResetWriteFence.invalidated=true;dialog("导入配置").positive();var next=processDeath(a,"import");returned(next);check(next.resolver.reads==1&&!AuditLog.events.contains("CONFIG_IMPORT_FAILED"),"process-death import retried applying job");next.onDestroy();});
-  test("synthetic reset progress survives rotation and blocks Back",()->{Object job=seedReset(null);var a=host("reset",null);flush(a);check(!dialog("正在重置配置").cancelable,"reset progress cancelable");var next=recreate(a,"reset");dialog("正在重置配置");next.onBackPressed();check(!next.isFinishing()&&!Toast.messages.isEmpty(),"Back abandoned running reset");resetResult(job,new ConfigResetController.Result(false,false,"offline failure"));check(AlertDialog.shown.stream().noneMatch(d->d.showing&&d.title.equals("正在重置配置")),"progress was not dismissed on completion");dialog("重置未完成").negative();returned(next);check((next.launched.get(0).flags&Intent.FLAG_ACTIVITY_CLEAR_TASK)!=0,"reset completion did not reopen fresh module task");next.onDestroy();});
+  test("synthetic reset progress survives rotation and blocks hardware Back",()->{Object job=seedReset(null);var a=host("reset",null);flush(a);check(!dialog("正在重置配置").cancelable,"reset progress cancelable");var next=recreate(a,"reset");dialog("正在重置配置");next.hardwareBack();check(!next.isFinishing()&&!Toast.messages.isEmpty(),"Back abandoned running reset");resetResult(job,new ConfigResetController.Result(false,false,"offline failure"));check(AlertDialog.shown.stream().noneMatch(d->d.showing&&d.title.equals("正在重置配置")),"progress was not dismissed on completion");dialog("重置未完成").negative();returned(next);check((next.launched.get(0).flags&Intent.FLAG_ACTIVITY_CLEAR_TASK)!=0,"reset completion did not reopen fresh module task");next.onDestroy();});
   for(boolean success:new boolean[]{false,true})test("synthetic reset report survives rotation: "+success,()->{seedReset(new ConfigResetController.Result(success,false,"offline report"));var a=host("reset",null);flush(a);String title=success?"重置完成":"重置未完成";dialog(title);var next=recreate(a,"reset");AlertDialog report=dialog(title);check(report.positive==null,"unsynced reset offered device restart");report.cancel();returned(next);check(a.launched.isEmpty(),"old reset report owner navigated");next.onDestroy();});
-  test("synthetic completed reset Back reopens fresh module task",()->{seedReset(new ConfigResetController.Result(false,false,"offline report"));var a=host("reset",null);flush(a);a.onBackPressed();returned(a);a.onDestroy();});
+  test("synthetic completed reset hardware Back reopens fresh module task",()->{seedReset(new ConfigResetController.Result(false,false,"offline report"));var a=host("reset",null);flush(a);a.hardwareBack();returned(a);a.onDestroy();});
   test("closing synthetic restart chooser returns to module without device restart",()->{seedReset(new ConfigResetController.Result(true,true,"offline report"));var a=host("reset",null);flush(a);dialog("重置完成").positive();check(ScopeRestartDialog.last!=null&&ScopeRestartDialog.last.isShowing()&&!a.isFinishing(),"restart chooser did not wait");ScopeRestartDialog.last.dismiss();returned(a);a.onDestroy();});
-  test("late export completion after Back does not reopen or display toast",()->{var a=host("export",null);flush(a);picked(a,71);a.onBackPressed();Activity.drainMain();returned(a);int toasts=Toast.messages.size(),launches=a.launched.size();queues.get(a).drain();Activity.drainMain();check(a.launched.size()==launches&&Toast.messages.size()==toasts,"closed export emitted stale UI");a.onDestroy();});
-  test("late import completion after Back has no confirmation or second navigation",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);a.onBackPressed();Activity.drainMain();returned(a);int launches=a.launched.size();queues.get(a).drain();Activity.drainMain();check(AlertDialog.shown.isEmpty()&&a.launched.size()==launches,"closed import emitted stale UI");a.onDestroy();});
+  test("late export completion after hardware Back does not reopen or display toast",()->{var a=host("export",null);flush(a);picked(a,71);a.hardwareBack();Activity.drainMain();returned(a);int toasts=Toast.messages.size(),launches=a.launched.size();queues.get(a).drain();Activity.drainMain();check(a.launched.size()==launches&&Toast.messages.size()==toasts,"closed export emitted stale UI");a.onDestroy();});
+  test("late import completion after hardware Back has no confirmation or second navigation",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,72);a.hardwareBack();Activity.drainMain();returned(a);int launches=a.launched.size();queues.get(a).drain();Activity.drainMain();check(AlertDialog.shown.isEmpty()&&a.launched.size()==launches,"closed import emitted stale UI");a.onDestroy();});
   test("unknown activity result never writes provider or opens import",()->{var a=host("import",null);flush(a);document(a,valid());picked(a,99);flush(a);check(a.resolver.reads==0&&a.resolver.writes==0&&AlertDialog.shown.isEmpty(),"unrelated activity result dispatched I/O");a.onDestroy();});
   test("import retains pending identities without binding current space",()->{var a=host("import",null);flush(a);prepare(a,doc(new JSONObject().put(ConfigSchema.HIDE_TARGETS,"v3:10:42:"+PKG+";0:"+PKG)));check(RootHideManager.validations==1&&RootHideManager.lastTargets.size()==2&&RootHideManager.lastTargets.stream().noneMatch(t->t.isBound()),"import auto-bound saved user IDs");check(RootHideManager.lastTargets.stream().anyMatch(t->t.userSerial==42),"source serial discarded");dialog("导入配置").negative();flush(a);returned(a);a.onDestroy();});
   for(String raw:new String[]{"v9:10:42:"+PKG,"10:"+PKG+";bad"," v3:10:42:"+PKG,"x".repeat(65537)})test("malformed target import is rejected length="+raw.length(),()->{var a=host("import",null);flush(a);rejects(a,doc(new JSONObject().put(ConfigSchema.HIDE_TARGETS,raw)));a.onDestroy();});
@@ -428,6 +441,29 @@ static String normalize(String key,String value){return key.equals("flag")&&!val
             print("REPORT " + str(args.report.resolve()))
     return returncode
 
+
+
+# New app-document dependencies. This original suite forbids every confirmed write.
+for _name in ['AtomicWorkbenchAppListModel.java','AtomicWorkbenchAppPreferences.java','AtomicWorkbenchAppPreferencesTransfer.java']:
+    STUBS['ls/augment/com/'+_name]=(SRC/_name).read_text(encoding='utf-8')
+STUBS['android/os/Process.java']='package android.os;public class Process{public static int myUid(){return 10001;}}'
+STUBS['android/util/AtomicFile.java']=r"""package android.util;import java.io.*;public class AtomicFile{
+ final File file;public AtomicFile(File file){this.file=file;}public FileInputStream openRead()throws IOException{return new FileInputStream(file);}
+ public FileOutputStream startWrite(){throw new AssertionError("media write forbidden");}public void finishWrite(FileOutputStream stream){}public void failWrite(FileOutputStream stream){}}
+"""
+_before='static int saves;static boolean failSnapshot;'
+assert BOUNDARIES.count(_before)==1
+BOUNDARIES=BOUNDARIES.replace(_before,'static final String HIDE_TARGETS=ConfigSchema.HIDE_TARGETS;'+_before,1)
+_before='RootHideManager(Context c){}'
+assert BOUNDARIES.count(_before)==1
+BOUNDARIES=BOUNDARIES.replace(_before,_before+'OperationResult refreshTargets(){throw new AssertionError("confirmed target refresh forbidden in action/cancel suite");}',1)
+BOUNDARIES+=r"""
+final class HideTargetStore{
+ enum ReadStatus{OK,UNAVAILABLE}static class Record{boolean managed,bound;int userId;long userSerial;String packageName;}
+ static class Snapshot{java.util.List<Record>records;}static class ReadResult{ReadStatus status;Snapshot snapshot;}
+ ReadResult read(){throw new AssertionError("confirmed target readback forbidden in action/cancel suite");}
+}
+"""
 
 if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):

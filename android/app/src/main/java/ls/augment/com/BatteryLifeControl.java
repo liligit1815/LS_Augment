@@ -33,6 +33,9 @@ final class BatteryLifeControl {
         } catch (java.util.concurrent.RejectedExecutionException unavailable) { ticket.close(); completion.run(); }
     }
     static boolean cancelPendingForReset() throws InterruptedException { return RUNS.cancelAndAwait(22_000L); }
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     static synchronized RootShell.Result restore(Context context) {
         if (ResetWriteFence.blocked()) return new RootShell.Result(130, "正在重置，旧恢复任务已停止", false);
         long generation = ResetWriteFence.generation();

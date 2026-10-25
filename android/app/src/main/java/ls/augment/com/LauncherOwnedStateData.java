@@ -40,6 +40,9 @@ public final class LauncherOwnedStateData {
         }else if("pages".equals(kind)){
             for(Map.Entry<String,?> item:values.entrySet())switch(item.getKey()){
                 case "keep_empty":if(!(item.getValue() instanceof Boolean))throw new IllegalArgumentException("pages_flag");break;
+                case "empty_origins":
+                    if(!(item.getValue() instanceof String))throw new IllegalArgumentException("pages_origins");
+                    LauncherPageOrigins.validate((String)item.getValue());break;
                 case "order":
                     if(!(item.getValue() instanceof String))throw new IllegalArgumentException("pages_order");
                     String order=(String)item.getValue();Set<Integer> ids=new java.util.HashSet<>();

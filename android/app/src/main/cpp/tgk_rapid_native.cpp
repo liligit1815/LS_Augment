@@ -32,8 +32,8 @@ struct NativeAPIEntries {
 namespace {
 
 constexpr char kLogTag[] = "LS_Augment/TgkNative";
-constexpr char kInputReaderLibrary[] = "libinputreader.so";
-constexpr char kInputReaderPath[] = "/system/lib64/libinputreader.so";
+constexpr const char* kInputLibraries[] = {"/system/lib64/libinputreader.so", "/system/lib64/libinputflinger.so"};
+const char* g_inputLibraryPath = nullptr;
 constexpr char kRapidDataSymbol[] =
         "_ZN7android13EventProducer22updateTgkRapidFireDataEi";
 
@@ -267,6 +267,7 @@ bool rangeWithin(size_t offset, size_t length, size_t total) {
 }
 
 struct LoadedSymbolLookup {
+    const char* path;
     uintptr_t symbolValue;
     size_t symbolSize;
     void* address;
@@ -274,8 +275,8 @@ struct LoadedSymbolLookup {
 
 int findLoadedInputReader(dl_phdr_info* info, size_t, void* opaque) {
     auto* lookup = static_cast<LoadedSymbolLookup*>(opaque);
-    if (info == nullptr || lookup == nullptr
-            || !endsWith(info->dlpi_name, "/libinputreader.so")) {
+    if (info == nullptr || lookup == nullptr || info->dlpi_name == nullptr
+            || std::strcmp(info->dlpi_name, lookup->path) != 0) {
         return 0;
     }
     const uintptr_t loadBase = static_cast<uintptr_t>(info->dlpi_addr);
@@ -296,8 +297,11 @@ int findLoadedInputReader(dl_phdr_info* info, size_t, void* opaque) {
     return 0;
 }
 
-void* resolveSymbolFromVerifiedElf(const char* wanted=kRapidDataSymbol,bool inspectLayout=true) {
-    int fd = open(kInputReaderPath, O_RDONLY | O_CLOEXEC);
+void* resolveSymbolFromVerifiedElf(const char* wanted=kRapidDataSymbol,bool inspectLayout=true,
+        const char* path=nullptr,bool diskOnly=false) {
+    if(path==nullptr)path=g_inputLibraryPath;
+    if(path==nullptr)return nullptr;
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) return nullptr;
     struct stat status{};
     if (fstat(fd, &status) != 0 || status.st_size <= 0
@@ -407,7 +411,8 @@ void* resolveSymbolFromVerifiedElf(const char* wanted=kRapidDataSymbol,bool insp
     munmap(mapped, fileSize);
     if (malformed || !found) return nullptr;
 
-    LoadedSymbolLookup lookup{symbolValue, verifiedSize, nullptr};
+    if(diskOnly)return reinterpret_cast<void*>(1);
+    LoadedSymbolLookup lookup{path, symbolValue, verifiedSize, nullptr};
     dl_iterate_phdr(findLoadedInputReader, &lookup);
     if (lookup.address == nullptr || std::memcmp(lookup.address, verifiedCode, verifiedSize) != 0) return nullptr;
     if(inspectLayout){
@@ -422,6 +427,13 @@ void* resolveSymbolFromVerifiedElf(const char* wanted=kRapidDataSymbol,bool insp
 void* resolveRapidDataSymbol() {
     // Verify the full ELF function, derive its fields, and compare every live
     // instruction before installing. dlsym alone is not structural evidence.
+    const char* selected=nullptr;
+    for(const char* path:kInputLibraries) {
+        if(resolveSymbolFromVerifiedElf(kRapidDataSymbol,true,path,true)==nullptr)continue;
+        if(selected!=nullptr)return nullptr; // Same ambiguity policy as Java certification.
+        selected=path;
+    }
+    g_inputLibraryPath=selected;
     return resolveSymbolFromVerifiedElf();
 }
 
@@ -463,7 +475,8 @@ Java_ls_augment_com_hook_TgkRapidFireNative_nativeInstall(
     void* target = resolveRapidDataSymbol();
     Dl_info symbolInfo{};
     if (target == nullptr || dladdr(target, &symbolInfo) == 0
-            || !endsWith(symbolInfo.dli_fname, "/libinputreader.so")) {
+            || (g_inputLibraryPath==nullptr || symbolInfo.dli_fname==nullptr
+                || std::strcmp(symbolInfo.dli_fname,g_inputLibraryPath)!=0)) {
         setState("incompatible|stage=live_function_structure", nullptr);
         __android_log_print(ANDROID_LOG_ERROR, kLogTag,
                 "NATIVE_FALLBACK stage=resolve_symbol");
@@ -509,7 +522,7 @@ Java_ls_augment_com_hook_TgkRapidFireNative_nativeInstall(
             g_nativeApiVersion.load(std::memory_order_acquire),
             g_discoveredProfile.name);
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
-            "NATIVE_INSTALLED library=%s symbol=%s", kInputReaderLibrary,
+            "NATIVE_INSTALLED library=%s symbol=%s", g_inputLibraryPath,
             kRapidDataSymbol);
     return stateString(env);
 }

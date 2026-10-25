@@ -34,6 +34,9 @@ final class TgkRapidFireHook {
 
     private TgkRapidFireHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader classLoader) {
         try {
             Class<?> proxy = Class.forName(PROXY, false, classLoader);

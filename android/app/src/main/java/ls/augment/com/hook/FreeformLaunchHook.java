@@ -19,8 +19,11 @@ final class FreeformLaunchHook {
     private static final ThreadLocal<Launch> ACTIVE=new ThreadLocal<>();
     private static Method markWindowReply;
     private static volatile ConfigSnapshot cached;
-    private static volatile Set<String> games=java.util.Collections.emptySet(),excluded=java.util.Collections.emptySet();
+    private static volatile Set<String> excluded=java.util.Collections.emptySet();
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader){
         try{
             Class<?> starter=Class.forName(STARTER,false,loader);
@@ -79,7 +82,6 @@ final class FreeformLaunchHook {
         boolean external=ConfigSchema.truthy(snapshot.get(ConfigSchema.FREEFORM_EXTERNAL_APPS));
         if(!login&&!external)return null;
         if(snapshot!=cached){
-            games=AppPackageSet.parse(snapshot.get(ConfigSchema.FREEFORM_GAME_APPS));
             excluded=AppPackageSet.parse(snapshot.get(ConfigSchema.FREEFORM_EXCLUDED_APPS));cached=snapshot;
         }
         Object target=args[0],source=args[1];if(target==null)return null;
@@ -108,7 +110,7 @@ final class FreeformLaunchHook {
                 Boolean.TRUE.equals(call(source,"isVisibleRequested")),
                 Boolean.TRUE.equals(call(source,"isActivityTypeStandard")),
                 Boolean.TRUE.equals(call(target,"isActivityTypeStandardOrUndefined")),thirdParty,
-                isGame(from),isGame(to),FreeformLaunchPolicy.loginTarget(to.packageName,to.name),
+                false,isNativeGame(to),FreeformLaunchPolicy.loginTarget(to.packageName,to.name),
                 excluded.contains(to.packageName)||excluded.contains(from.packageName),to.packageName.equals(returnPackage)))return skip(context,target,"policy;source="+from.packageName
                         +";visible="+call(source,"isVisibleRequested")+";source_standard="+call(source,"isActivityTypeStandard")
                         +";target_standard_or_undefined="+call(target,"isActivityTypeStandardOrUndefined")+";third_party="+thirdParty);
@@ -137,9 +139,9 @@ final class FreeformLaunchHook {
         return null;
     }
     @SuppressWarnings("deprecation")
-    private static boolean isGame(ActivityInfo info){
+    private static boolean isNativeGame(ActivityInfo info){
         return info.applicationInfo.category==ApplicationInfo.CATEGORY_GAME
-                ||(info.applicationInfo.flags&ApplicationInfo.FLAG_IS_GAME)!=0||games.contains(info.packageName);
+                ||(info.applicationInfo.flags&ApplicationInfo.FLAG_IS_GAME)!=0;
     }
     private static final class Launch{
         final Object starter;final boolean resultExpected;

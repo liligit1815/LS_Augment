@@ -22,4 +22,9 @@ public final class LiquidGlassDockPolicy {
         int left=(cellWidth-drawableWidth)/2;
         return new int[]{left,paddingTop,left+drawableWidth,paddingTop+drawableHeight};
     }
+
+    /** OEM preview/compound bounds are view-local and must fit their measured cell. */
+    public static boolean visibleBounds(int width,int height,int left,int top,int right,int bottom){
+        return width>0&&height>0&&left>=0&&top>=0&&right>left&&bottom>top&&right<=width&&bottom<=height;
+    }
 }

@@ -65,4 +65,20 @@ final class ConfigEditDraft {
             queued.remove(edit.getKey(), edit.getValue());
         }
     }
+    /** Reject only the submitted edit; a later edit must keep its own value and admission. */
+    boolean reconcile(Batch batch, String key, String canonical) {
+        Long submitted = batch.revisions.get(key);
+        if (submitted == null || !submitted.equals(edits.get(key))) return false;
+        boolean changed = !Objects.equals(values.get(key), canonical);
+        values.put(key, canonical);
+        edits.remove(key, submitted);
+        queued.remove(key, submitted);
+        return changed;
+    }
+    /** Refresh derived or externally changed values without replacing unfinished edits. */
+    boolean refresh(String key, String canonical) {
+        if (edits.containsKey(key) || Objects.equals(values.get(key), canonical)) return false;
+        values.put(key, canonical);
+        return true;
+    }
 }

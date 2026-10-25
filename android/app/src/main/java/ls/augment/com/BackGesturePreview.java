@@ -5,11 +5,15 @@ import android.graphics.*;
 import android.view.View;
 
 /** Composes the actual pair; transforms affect artwork, never the settings card itself. */
+
+// Code-only view requires UiKit/state/callbacks; it is never inflated from XML. A partial XML constructor is invalid.
+//noinspection ViewConstructor
 final class BackGesturePreview extends View {
     private final int side;
     private final UiKit ui;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final RectF rect=new RectF();
+    private final Path wave=new Path();
     private final int[] bounds=new int[4];
     private GestureArtwork iconArtwork,backgroundArtwork;
     private Bitmap icon,background;
@@ -33,7 +37,7 @@ final class BackGesturePreview extends View {
             int save=canvas.save();if(side==1)canvas.scale(-1,1,rect.centerX(),rect.centerY());
             canvas.drawBitmap(background,null,rect,paint);canvas.restoreToCount(save);
         }else{
-            Path wave=new Path();float inward=side==0?depth:-depth;
+            wave.reset();float inward=side==0?depth:-depth;
             wave.moveTo(edge,center-height/2);wave.cubicTo(edge,center-height/5,edge+inward*2,center-height/6,edge+inward,center);
             wave.cubicTo(edge+inward*2,center+height/6,edge,center+height/5,edge,center+height/2);wave.close();
             paint.setColor(0x44354150);canvas.drawPath(wave,paint);

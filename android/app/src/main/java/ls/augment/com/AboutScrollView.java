@@ -158,6 +158,9 @@ public final class AboutScrollView extends ScrollView {
         return super.onInterceptTouchEvent(event);
     }
 
+
+    // Gesture observer/forwarder retains native click handling or its separate accessible actions; do not synthesize a second click.
+    //noinspection ClickableViewAccessibility
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (!ownsGesture && startPull) beginPull(event);
         if (!ownsGesture) return super.onTouchEvent(event);

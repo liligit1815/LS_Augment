@@ -74,7 +74,7 @@ DIRECT = re.compile(r'\b(?:android\.provider\.)?Settings\.(System|Secure|Global)
                     r'(put\w*|set\w*)\s*\(')
 NATIVE_DIRECT = {('System', 'adb_install_enabled'), ('Global', 'game_gfrc_mode')}
 LEGACY_GFRC = 'redmagic_duo_native_gfrc_recovery_v1'
-DIRECT_FILES = {'hook/ConnectionExtrasHook.java', 'hook/SuperResolutionRuntimeHook.java'}
+DIRECT_FILES = {'hook/ConnectionExtrasHook.java', 'hook/SuperResolutionRuntimeHook.java', 'hook/NativeIslandSettingsHook.java'}
 SHELL_FILES = {'ModuleSystemSettings.java', 'ModuleExternalReset.java'}
 
 
@@ -98,7 +98,8 @@ def permitted_direct(write):
     namespace, key, value, method = write
     # putString(null) can retain a Settings row with a null value on the device.
     # Legacy retirement must use the exact provider delete boundary below.
-    return (namespace, key) in NATIVE_DIRECT and method in ('putInt', 'putString')
+    return ((namespace, key) in NATIVE_DIRECT and method in ('putInt', 'putString')
+            or (namespace,key,method,value)==('System','dynamic_island_switch_state','putInt','0'))
 
 
 PROVIDER_OPERATION = re.compile(r'\.(query|delete|insert|update|bulkInsert)\s*\(')
@@ -143,6 +144,10 @@ for name, text in sources.items():
         observed_direct.add(name)
         require(name in DIRECT_FILES and permitted_direct(write),
                 f'Unaudited Settings write in {name}: {write}')
+        if write[1]=='dynamic_island_switch_state':
+            require(name=='hook/NativeIslandSettingsHook.java' and 'if(ok)' in text
+                    and 'if(generation!=GENERATION.get())return;' in text,
+                    'OEM island rollback must remain confined to the failed current selection')
     provider = provider_operations(text)
     for operation in provider:
         require(name == 'hook/GfrcRecoveryClient.java' and permitted_provider(operation),
@@ -179,13 +184,23 @@ require({method for method, args in provider_operations(gfrc)} == {'query', 'del
 
 # Native settings are a closed set in the only generic shell write adapter.
 system = sources['ModuleSystemSettings.java']
+# This key is the OEM System setting that selects the physical competitive key's
+# original operation. Clearing it to 0 and restoring the owned original value are
+# native device operations; the feature configuration and recovery record remain
+# in module-private preferences, never in this Settings row.
 expected = {'global', 'system', 'secure', 'development_settings_enabled', 'adb_enabled',
             'adb_install_enabled', 'lock_refresh_rate', 'reduce_bright_colors_activated',
-            'reduce_bright_colors_level', 'ls_augment_extra_dim_owned'}
+            'reduce_bright_colors_level', 'ls_augment_extra_dim_owned',
+            'fourth_physical_key_function_value'}
 allowed_start = system.index('boolean allowed(')
 allowed_end = system.index('\n    }', allowed_start)
 require(set(literals(system[allowed_start:allowed_end])) == expected,
         'Settings address allowlist changed; classify the new key before admitting it')
+requested_start = system.index('boolean validRequested(')
+requested_end = system.index('\n        }', requested_start)
+require(re.search(r'if\s*\(\s*address\.key\.equals\("fourth_physical_key_function_value"\)\s*\)\s*return\s+value\.equals\("0"\)\s*;',
+                  system[requested_start:requested_end]),
+        'Competitive-key requests may only clear the OEM operation; owned recovery restores the original')
 root_io = system[system.index('class RootIo'):]
 require(re.search(r'if\s*\(\s*address\.metadata\(\)\s*&&\s*value\s*!=\s*null\s*\)\s*return\s+false\s*;', root_io),
         'Generic RootIo must reject every non-null legacy metadata write')
@@ -234,6 +249,8 @@ require(not list((MAIN / 'java').rglob('*.kt')), 'Add Kotlin Settings sink scann
 # Negative controls prove the policy checks reject direct, split-shell, and
 # metadata-write variants rather than merely finding current source strings.
 for sample in (
+        'Settings.System.putInt(resolver, "dynamic_island_switch_state", 1);',
+        'Settings.System.putInt(resolver, "dynamic_island_switch_state", enabled);',
         'Settings.Global.putString(resolver, "ls_augment_test", value);',
         'Settings.Secure.putInt(resolver, dynamicKey(), 1);',
         'final String K="redmagic_duo_native_gfrc_recovery_v1"; Settings.Global.putString(r, K, payload);',

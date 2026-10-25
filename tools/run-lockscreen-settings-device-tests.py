@@ -63,8 +63,8 @@ try:
     toggle('自定义充电动画','charging_animation',0,True)
     toggle('锁屏显示充电详情','lock_charge_details')
     for key,title in [('temperature','温度'),('current','电流'),('voltage','电压'),('power','功率')]:
-        toggle('充电详情隐藏'+title,'lock_charge_hide_'+key)
-        toggle('充电详情隐藏'+title,'lock_charge_hide_'+key,0)
+        toggle('充电详情显示'+title,'lock_charge_show_'+key)
+        toggle('充电详情显示'+title,'lock_charge_show_'+key,0)
     entry('充电详情字号','lock_charge_text_size',18)
     entry('充电详情行间距','lock_charge_line_gap',10)
     entry('充电详情刷新间隔（秒）','lock_charge_interval',5)

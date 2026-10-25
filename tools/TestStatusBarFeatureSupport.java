@@ -8,7 +8,9 @@ public final class TestStatusBarFeatureSupport {
     private TestStatusBarFeatureSupport() { }
 
     public static void main(String[] args) {
-        Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"), Locale.CHINA);
+        checkClockTimeZones();
+        // The formatter follows the phone's default zone, independently of its language.
+        Calendar calendar = Calendar.getInstance(Locale.CHINA);
         calendar.set(2026, Calendar.AUGUST, 13, 19, 5, 6);
         calendar.set(Calendar.MILLISECOND, 0);
         String value = StatusBarClockFormatter.format(
@@ -188,6 +190,26 @@ public final class TestStatusBarFeatureSupport {
         require(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,"32").equals("32"),"native network font upper bound accepted");
         require(ls.augment.com.ConfigSchema.normalize(ls.augment.com.ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,"33")==null,"native network font out of range rejected");
         System.out.println("Status bar feature support checks: OK");
+    }
+
+    private static void checkClockTimeZones() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            for (String zone : new String[]{"Asia/Shanghai", "America/Los_Angeles", "UTC"}) {
+                TimeZone.setDefault(TimeZone.getTimeZone(zone));
+                Calendar local = Calendar.getInstance(Locale.CHINA);
+                local.set(2026, Calendar.AUGUST, 13, 19, 5, 6);
+                local.set(Calendar.MILLISECOND, 0);
+                String text = StatusBarClockFormatter.format(local.getTimeInMillis(), Locale.CHINA,
+                        true, true, true, false, "");
+                require(text.contains("19:05:06") && text.contains("傍晚"), "local clock and period in " + zone);
+                StatusBarClockFormatter.FormatResult custom = StatusBarClockFormatter.formatDetailed(
+                        local.getTimeInMillis(), Locale.CHINA, true, false, false, false, "HH:mm:ss", "");
+                require(custom.valid && custom.text.equals("19:05:06"), "custom clock in " + zone);
+            }
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     private static void require(boolean value, String name) {

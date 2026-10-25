@@ -58,6 +58,9 @@ final class TgkRapidFireSystemHook {
 
     private TgkRapidFireSystemHook() { }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module, ClassLoader classLoader) {
         try {
             moduleReference = module;
@@ -210,6 +213,9 @@ final class TgkRapidFireSystemHook {
         }
     }
 
+
+    // Shared or injected code retains the earlier framework API branch; module minSdk does not replace host capability handling.
+    //noinspection ObsoleteSdkInt
     private static int[] readRapidFireParcel(Object parcelValue) {
         if (!(parcelValue instanceof Parcel)) return null;
         Parcel source = (Parcel) parcelValue;
@@ -562,6 +568,9 @@ final class TgkRapidFireSystemHook {
         beginNativeObservation(context, session);
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static boolean replayRapidFireCall(int keyCode) {
         if (keyCode <= 0 || keyCode > 65535) return false;
         try {

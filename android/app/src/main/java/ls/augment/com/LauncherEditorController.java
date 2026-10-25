@@ -30,6 +30,9 @@ final class LauncherEditorController extends NativeEditorController {
     private final Runnable autoSave=this::save;
     private boolean loading=true;
     private List<RootHideManager.UserRecord> users=Collections.emptyList();
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     @Override public void onCreate(Bundle state){
         super.onCreate(state);ui=editorUi();config=new AppConfig(this);
         pendingStore=getSharedPreferences("native_launcher_drafts",0);gateMemory=getSharedPreferences("native_value_overrides",0);
@@ -121,6 +124,9 @@ final class LauncherEditorController extends NativeEditorController {
     private void setStatus(String text){status.setText(text);status.setVisibility(text.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);}
     private void gateFailed(String message){if(isDestroyed())return;String value=config.get(ConfigSchema.LAUNCHER_OVERRIDES);LauncherOverrides actual=LauncherOverrides.parse(value);bindingGate=true;overrideControl.setChecked(actual!=null&&!actual.entries().isEmpty());bindingGate=false;overrideFold.sync();setStatus("未保存："+message);}
     private void save(){save(false);}
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     private void save(boolean beforeDisable){main.removeCallbacks(autoSave);
         if(!gateReady)return;
         for(LauncherEditQueue.Draft draft:editQueue.snapshot())if(draft.entry()==null)WRITES.execute(()->pendingStore.edit().putString(draft.key(),LauncherEditQueue.encode(draft)).commit());

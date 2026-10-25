@@ -78,11 +78,15 @@ final class RedMagicAdvancedUiHook {
         count+=hook(module,loader,"com.android.systemui.doze.DozeUi","roundToNextMinute",1,
                 (o,a,r)->on(o,"aod_seconds")&&a[0] instanceof Long?((Long)a[0]/1000+1)*1000:PASS,null);
         // Retain DozeUi's own lifecycle, wake-lock and cancellation handling; only its next tick boundary changes.
-        for(String type:new String[]{"android.widget.TextClock","com.zte.mifavor.views.TextClock","com.zte.feature.doze.AodClock.nubia.NubiaAodTextClock"})
+        for(String type:new String[]{"android.widget.TextClock","com.zte.mifavor.views.TextClock","com.zte.feature.doze.AodClock.nubia.NubiaAodTextClock"}){
             count+=hook(module,loader,type,"onTimeChanged",0,null,(o,a,r)->{aodClock(o);return PASS;});
-        for(String name:new String[]{"AodLockScreenClockDefault","AodLockScreenClockArtword","AodLockScreenClockHorizen","AodLockScreenClockVertical"})
+            count+=hook(module,loader,type,"onAttachedToWindow",0,null,(o,a,r)->{aodClock(o);return PASS;});
+        }
+        count+=hook(module,loader,"com.zte.mifavor.keyguard.clock.AnimatableClockView","refreshTime",0,null,(o,a,r)->{aodClock(o);return PASS;});
+        for(String name:new String[]{"AodLockScreenClockDefault","AodLockScreenClockArtword","AodLockScreenClockHorizen","AodLockScreenClockVertical",
+                "AodLockScreenClockBigFont","AodLockScreenClockClip","AodLockScreenClockDual"})
             count+=hook(module,loader,"com.zte.feature.doze.AodClock.KeyguardAodClockStyle."+name,"dozeTimeTick",0,
-                    null,(o,a,r)->{Object view=field(o,"mClockView");if(view instanceof TextView)aodClock(view);return PASS;});
+                    null,(o,a,r)->{AodClockHook.changedTree(o);return PASS;});
         count+=hook(module,loader,"com.android.systemui.statusbar.KeyguardIndicationController","setIndicationArea",1,
                 null,(o,a,r)->{if(a[0] instanceof View)attachCharging((View)a[0],o);return PASS;});
         count+=hook(module,loader,"com.android.systemui.statusbar.KeyguardIndicationController","setVisible",1,
@@ -123,6 +127,9 @@ final class RedMagicAdvancedUiHook {
         WeakReference<Object> reference=NATIVE_NOTIFICATION_CONTRAST.get(view);
         return reference==null?null:reference.get();
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static int notificationGrayscaleTag(View view){
         return view.getResources().getIdentifier("icon_is_grayscale","id","com.android.systemui");
     }
@@ -174,6 +181,9 @@ final class RedMagicAdvancedUiHook {
             return false;
         }finally{state.refreshing=false;}
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static void notificationMethods(View view)throws ReflectiveOperationException{
         if(notificationBackground!=null)return;
         ClassLoader loader=view.getClass().getClassLoader();
@@ -271,7 +281,7 @@ final class RedMagicAdvancedUiHook {
         String amperes=current==Integer.MIN_VALUE?"—":String.format(Locale.ROOT,"%.0fmA",Math.abs(current/1000d));
         String power=current==Integer.MIN_VALUE||millivolts<=0?"—":String.format(Locale.ROOT,"%.2fW",Math.abs(current/1_000_000d)*millivolts/1000d);
         StringBuilder result=new StringBuilder();String[] keys={"temperature","current","voltage","power"},values={temperature,amperes,voltage,power};
-        for(int i=0;i<keys.length;i++)if(!on(owner,"lock_charge_hide_"+keys[i])){if(result.length()>0)result.append("  ");result.append(values[i]);}
+        for(int i=0;i<keys.length;i++)if(on(owner,"lock_charge_show_"+keys[i])){if(result.length()>0)result.append("  ");result.append(values[i]);}
         return result.toString();
     }
     private static void attachCharging(View view,Object controller){

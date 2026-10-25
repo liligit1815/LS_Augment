@@ -18,12 +18,14 @@ final class PowerMenuLifecycleHook {
                     "com.zte.feature.globalaction.MfvGlobalActionsDialog$MFVActionsDialog", false, loader);
             if (!Dialog.class.isAssignableFrom(dialogType)) throw new NoSuchMethodException("OEM dialog");
             Field owner = field(dialogType, "this$0");
-            Field current = field(owner.getType(), "mDialog");
+            CurrentDialog current = new CurrentDialog(owner.getType());
             Field manager = field(owner.getType(), "mWindowManagerFuncs");
             Field dismissMessage = field(Dialog.class, "mDismissMessage");
-            if (!Dialog.class.isAssignableFrom(current.getType()) || dismissMessage.getType() != Message.class)
+            if (dismissMessage.getType() != Message.class)
                 throw new NoSuchFieldException("OEM dismissal contract");
             Method hidden = manager.getType().getMethod("onGlobalActionsHidden");
+            if (hidden.getReturnType() != void.class || java.lang.reflect.Modifier.isStatic(hidden.getModifiers()))
+                throw new NoSuchMethodException("onGlobalActionsHidden must return void");
             hidden.setAccessible(true);
             Method start = dialogType.getDeclaredMethod("onStart");
             module.registerFeatureHook(module.prepareFeatureHook(start, "power.lifecycle.dismiss", false)
@@ -68,12 +70,13 @@ final class PowerMenuLifecycleHook {
         private final AugmentModule module;
         private final Dialog dialog;
         private final Object owner, manager;
-        private final Field current, dismissMessage;
+        private final CurrentDialog current;
+        private final Field dismissMessage;
         private final Method hidden;
         private boolean delivered;
 
         HiddenListener(AugmentModule module, Dialog dialog, Object owner, Object manager,
-                       Field current, Field dismissMessage, Method hidden) {
+                       CurrentDialog current, Field dismissMessage, Method hidden) {
             this.module = module; this.dialog = dialog; this.owner = owner; this.manager = manager;
             this.current = current; this.dismissMessage = dismissMessage; this.hidden = hidden;
         }
@@ -96,6 +99,29 @@ final class PowerMenuLifecycleHook {
                 module.logFeatureError("POWER_MENU_LIFECYCLE_NOTIFY", error);
                 record(dialog, "hidden_notify_failed");
             }
+        }
+    }
+
+    /** New OEM controllers move the current dialog into a replaceable delegate. */
+    private static final class CurrentDialog {
+        final Field delegate, dialog;
+        CurrentDialog(Class<?> controller) throws NoSuchFieldException {
+            Field direct;
+            try { direct = field(controller, "mDialog"); }
+            catch (NoSuchFieldException absent) { direct = null; }
+            if (direct != null) {
+                delegate = null; dialog = direct;
+            } else {
+                delegate = field(controller, "mDelegate");
+                dialog = field(delegate.getType(), "mCurrentDialog");
+            }
+            if (!Dialog.class.isAssignableFrom(dialog.getType()) || java.lang.reflect.Modifier.isStatic(dialog.getModifiers())
+                    || (delegate != null && java.lang.reflect.Modifier.isStatic(delegate.getModifiers())))
+                throw new NoSuchFieldException("Current global-actions dialog is not a Dialog");
+        }
+        Object get(Object controller) throws IllegalAccessException {
+            Object target = delegate == null ? controller : delegate.get(controller);
+            return target == null ? null : dialog.get(target);
         }
     }
 

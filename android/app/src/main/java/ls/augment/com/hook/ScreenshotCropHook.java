@@ -28,6 +28,9 @@ final class ScreenshotCropHook {
                 + " area=" + overlay + " long=" + longer + "; awaiting enabled execution");
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int editor(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> type = Class.forName("com.android.ztescreenshot.edit.event.CropEvent", false, loader);
@@ -166,6 +169,9 @@ final class ScreenshotCropHook {
                 && Float.isFinite(rect.right) && Float.isFinite(rect.bottom);
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int overlay(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> base = Class.forName("com.android.ztescreenshot.cropimage.CropBase", false, loader);
@@ -267,6 +273,9 @@ final class ScreenshotCropHook {
         }
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int longCrop(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> type = Class.forName("com.android.ztescreenshot.longcapture.supersnap.model.LongSnapModel", false, loader);

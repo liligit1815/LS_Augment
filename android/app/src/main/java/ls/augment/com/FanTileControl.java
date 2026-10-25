@@ -20,7 +20,7 @@ final class FanTileControl {
                 .getString("ls_augment_fan_control_installed", "");
         // The application UID cannot stat this sysfs directory under SELinux.
         // Capability is probed in the OEM fan process, where hardware access lives.
-        boolean supported = FanTilePolicy.supportedDevice(Build.DEVICE, Build.MODEL, Build.PRODUCT)
+        boolean supported = FanFeatureAvailability.levels(context)
                 && installed.contains("capability=verified_levels_1_5");
         if (!config.getBoolean(ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED)) {
             result.putBoolean("ok", false);

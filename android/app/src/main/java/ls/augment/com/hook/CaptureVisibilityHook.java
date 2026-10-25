@@ -45,7 +45,10 @@ final class CaptureVisibilityHook {
     private static final AtomicBoolean REGISTER_PENDING=new AtomicBoolean();
     private static final AtomicBoolean REPAIR_PENDING=new AtomicBoolean();
     private static final AtomicLong observationSequence=new AtomicLong();
-    private static volatile Handler main;private static volatile Context context;private static SurfaceController controller;
+    private static volatile Handler main;
+    // Only application context is retained; individual captured views and their roots use weak references.
+    //noinspection StaticFieldLeak
+    private static volatile Context context;private static SurfaceController controller;
     private CaptureVisibilityHook() { }
     static void install(AugmentModule m,ClassLoader l,String pkg) {
         if("com.android.systemui".equals(pkg)) {
@@ -84,7 +87,7 @@ final class CaptureVisibilityHook {
         }
     }
     private static void attach(View view) {
-        context=view.getContext();if(main==null)main=new Handler(Looper.getMainLooper());
+        context=view.getContext().getApplicationContext();if(main==null)main=new Handler(Looper.getMainLooper());
         if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->attach(view));return;}
         ViewEntry known=null;for(ViewEntry entry:VIEWS)if(entry.view.get()==view)known=entry;
         if(known==null){known=new ViewEntry(view);VIEWS.add(known);view.addOnAttachStateChangeListener(known);}
@@ -224,6 +227,9 @@ final class CaptureVisibilityHook {
         void bindObserver(View view){android.view.ViewTreeObserver next=view.getViewTreeObserver(),previous=observer.get();
             if(previous==next)return;if(previous!=null&&previous.isAlive())previous.removeOnPreDrawListener(draw);
             next.addOnPreDrawListener(draw);observer=new WeakReference<>(next);}
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         void bindRoot(Object next){
             if(root.get()==next)return;unbindRoot();root=new WeakReference<>(next);if(next==null)return;
             try{Class<?> contract=Class.forName("android.view.ViewRootImpl$SurfaceChangedCallback");

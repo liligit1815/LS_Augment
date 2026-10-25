@@ -282,6 +282,9 @@ final class SuperResolutionRuntimeHook {
         ownerRevision = serialized;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static String getProperty(String key) throws Exception {
         if (propertyGet == null) propertyGet = Class.forName("android.os.SystemProperties").getMethod("get", String.class);
         return (String) propertyGet.invoke(null, key);
@@ -349,6 +352,9 @@ final class SuperResolutionRuntimeHook {
         return capabilities;
     }
 
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static void setProperty(String key, String value) throws Exception {
         if (!DESIRED.containsKey(key)) throw new IllegalArgumentException("unmanaged_property");
         if (propertySet == null) propertySet = Class.forName("android.os.SystemProperties")

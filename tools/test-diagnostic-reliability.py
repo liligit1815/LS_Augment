@@ -44,9 +44,16 @@ public static int e(String tag,String message){failures++;return 0;}}""",
     "ls/augment/com/BuildConfig.java": """package ls.augment.com;final class BuildConfig {static final String VERSION_NAME="test20507";}""",
     "ls/augment/com/LiftArcOptions.java": """package ls.augment.com;final class LiftArcOptions {static String key(String value){return "ls_augment_liftarc_"+value;}}""",
     "ls/augment/com/ResetWriteFence.java": """package ls.augment.com;final class ResetWriteFence {static boolean blocked(){return false;}}""",
-    "ls/augment/com/AppConfig.java": """package ls.augment.com;final class AppConfig {static boolean synced=true,throwsOnMirror,shoulderDetail,aiDetail;static int attempts;
+    "ls/augment/com/ConfigSnapshot.java": """package ls.augment.com;final class ConfigSnapshot {final long revision;private final java.util.Map<String,Object> stored;
+ConfigSnapshot(long r,java.util.Map<String,Object> v){revision=r;stored=java.util.Map.copyOf(v);}java.util.Map<String,Object> values(){return stored;}}""",
+    "ls/augment/com/FrameworkConfigSync.java": """package ls.augment.com;final class FrameworkConfigSync {static long publishedRevision=10;static java.util.Map<String,Object> publishedValues=java.util.Map.of();
+static boolean isPublished(ConfigSnapshot s){return s!=null&&s.revision==publishedRevision&&s.values().equals(publishedValues);}}""",
+    "ls/augment/com/AppConfig.java": """package ls.augment.com;final class AppConfig {static boolean synced=true,throwsOnMirror,shoulderDetail,aiDetail;static int attempts,publishAfter;
+static long revision=10;static java.util.Map<String,Object> currentValues=java.util.Map.of("grid_enabled",true,"rows",7,"columns",4);
 AppConfig(Object c){}boolean getBoolean(String key){return key.equals(ConfigSchema.SHOULDER_DIAGNOSTICS)?shoulderDetail:aiDetail;}
-RootShell.Result mirrorAll(){attempts++;if(throwsOnMirror)throw new IllegalStateException("test");return new RootShell.Result(synced?0:1,"",false);}}""",
+RootShell.Result mirrorAll(){attempts++;if(throwsOnMirror)throw new IllegalStateException("test");if(synced&&attempts>=publishAfter){FrameworkConfigSync.publishedRevision=revision;FrameworkConfigSync.publishedValues=java.util.Map.copyOf(currentValues);}return new RootShell.Result(synced?0:1,"",false);}
+ConfigSnapshot configSnapshot(){return new ConfigSnapshot(revision,currentValues);}
+static void traceLauncherGrid(android.content.Context c,String stage,java.util.Map<String,Object> values,long rev,String detail){AuditLog.write(c,"LAUNCHER_GRID", "stage="+stage+";revision="+rev+";values="+values+";"+detail);}}""",
     "ls/augment/com/ConfigSchema.java": """package ls.augment.com;final class ConfigSchema {static final String SHOULDER_DIAGNOSTICS="shoulder_detail",AI_TRIGGER_DIAGNOSTICS="ai_detail";}""",
     "ls/augment/com/FakeContext.java": """package ls.augment.com;import android.content.*;import java.util.*;
 public class FakeContext extends Context {public java.io.File files;public boolean prefsUnavailable;public final Map<String,Prefs> stores=new HashMap<>();
@@ -104,6 +111,14 @@ public final class TestDiagnosticReliability {
   yes(oldDelivery.getLong("droppedDetailEvents")==1,"export does not change recorded loss count");
   JSONObject freshDelivery=new JSONObject().put("detailDelivery",new JSONObject().put("pendingEvents",0)).put("hooks",new JSONArray());DiagnosticExportHarness.compactHooks(freshDelivery,true);
   yes(!freshDelivery.has("detailDeliveryEvidence")&&freshDelivery.getJSONObject("detailDelivery").getInt("pendingEvents")==0,"current structured delivery metadata is preserved");
+  JSONObject historicalGrid=new JSONObject().put("pid",321).put("launcherGridRuntimeEvidence","CURRENT_PROCESS_CACHE")
+    .put("launcherGridRuntime",new JSONObject().put("pid",321).put("enabled",true).put("effectiveRows",7).put("effectiveColumns",4).put("events",new JSONArray().put("BOUND")))
+    .put("diagnosticWriterState","pending=0;expired=0").put("hooks",new JSONArray().put(new JSONObject().put("registration","REGISTERED").put("callbackThrows",0)));
+  DiagnosticExportHarness.compactHooks(historicalGrid,false);
+  yes(historicalGrid.getJSONArray("hooks").isEmpty()&&historicalGrid.getInt("omittedHistoricalSuccessfulHooks")==1,"historical successful hook lists still use the existing omission policy");
+  yes(historicalGrid.getJSONObject("launcherGridRuntime").getBoolean("enabled")&&historicalGrid.getJSONObject("launcherGridRuntime").getInt("effectiveRows")==7
+    &&historicalGrid.getJSONObject("launcherGridRuntime").getJSONArray("events").getString(0).equals("BOUND")
+    &&historicalGrid.getString("launcherGridRuntimeEvidence").equals("CURRENT_PROCESS_CACHE")&&historicalGrid.getString("diagnosticWriterState").contains("pending=0"),"historical export preserves each process's grid outcome and writer state after a later process disables layout");
  }
  static void captures(){
   String empty=DiagnosticExportHarness.describe(raw(0,"",true,false,false),true,true);yes(empty.contains("status=READ")&&empty.contains("filterState=EMPTY_INPUT")&&empty.contains("lines=0"),"empty input is readable, not one metadata event");
@@ -115,6 +130,62 @@ public final class TestDiagnosticReliability {
   yes(DiagnosticExportHarness.describe(raw(0,"LS_Augment normal",false,true,false),false,false).contains("upstreamReadFailed=true"),"capture read failure remains visible despite command exit zero");
   String synthetic=DiagnosticExportHarness.describe(new RootShell.Result(0,"",false),false,false);yes(synthetic.contains("captureState=UNVERIFIED")&&synthetic.contains("upstreamTruncated=UNKNOWN"),"synthetic results do not invent capture completeness");
   String matches=DiagnosticExportHarness.describe(raw(0,"LS_Augment normal\nLS_Augment SHOULDER detail\nother",true,false,false),true,true);yes(matches.contains("filterState=MATCHES")&&matches.contains("lines=1")&&!matches.contains("SHOULDER detail"),"feature filter removes excluded detail and counts events only");
+ }
+ static final class FrameworkReader implements RootShell.Transport {
+  final RootShell.Result listing;final Queue<RootShell.Result> tails=new ArrayDeque<>();final List<String> commands=new ArrayList<>();
+  FrameworkReader(RootShell.Result listing,RootShell.Result... tails){this.listing=listing;this.tails.addAll(Arrays.asList(tails));}
+  public RootShell.Result read(String command,String input,long timeout,int limit){
+   commands.add(command);yes(input==null,"framework collector never writes stdin");
+   if(commands.size()==1){yes(command.equals("ls -1 /data/adb/lspd/log")&&timeout==5&&limit==8192,"fixed bounded directory read");return listing;}
+   yes(command.startsWith("tail -c 524288 '")&&timeout==8&&limit==512*1024,"fixed bounded quoted tail");
+   return tails.isEmpty()?raw(0,"LS_Augment framework witness\n",true,false,false):tails.remove();
+  }
+ }
+ static String framework(FrameworkReader reader){
+  yes(RootShell.transport==null,"framework fixture starts without transport");RootShell.transport=reader;
+  try{return DiagnosticExportHarness.framework();}finally{RootShell.transport=null;}
+ }
+ static void frameworkLogs(){
+  String modules="modules_2026-10-18T19:35:35.75724.log",verbose="verbose_2026-10-18T19:35:35.75706.log";
+  for(String newline:new String[]{"\n","\r\n"}){
+   String[] names={"kmsg.log",modules,"props.txt",verbose};
+   FrameworkReader reader=new FrameworkReader(raw(0,String.join(newline,names)+newline,true,false,false));String report=framework(reader);
+   for(String name:names)yes(Collections.frequency(reader.commands,"tail -c 524288 '/data/adb/lspd/log/"+name+"'")==1,"exact colon basename reaches a quoted tail once: "+name);
+   yes(reader.commands.size()==5&&report.contains("listed=4 eligible=4 attempted=4 rejected=0 capSkipped=0 readSuccess=4 readFailed=0 readUnknown=0"),"actual four-file inventory has four successful bounded reads");
+   yes(report.contains("SOURCE LSPOSED "+modules+";")&&report.contains("SOURCE LSPOSED "+verbose+";")&&!report.contains("NO_FILES"),"real source sections are reached for LF and CRLF listings");
+  }
+  FrameworkReader empty=new FrameworkReader(raw(0,"",true,false,false));String report=framework(empty);
+  yes(empty.commands.size()==1&&report.contains("LSPOSED: NO_FILES; listed=0 eligible=0 attempted=0 rejected=0 capSkipped=0"),"only reliable empty directory reports NO_FILES");
+  FrameworkReader blank=new FrameworkReader(raw(0,"\n\r\n",true,false,false));report=framework(blank);
+  yes(blank.commands.size()==1&&report.contains("LSPOSED: NO_ELIGIBLE_FILES;")&&!report.contains("LSPOSED: NO_FILES;"),"nonempty blank records cannot prove an empty directory");
+  String[] rejected={".","..","../outside.log","sub/file.log","back\\slash.log"," leading.log","trailing.log ","semi;colon.log","quote'.log","$value.log","tick`.log"};
+  FrameworkReader unsafe=new FrameworkReader(raw(0,String.join("\n",rejected)+"\n",true,false,false));report=framework(unsafe);
+  yes(unsafe.commands.size()==1&&report.contains("LSPOSED: NO_ELIGIBLE_FILES; listed=11 eligible=0 attempted=0 rejected=11 capSkipped=0")&&!report.contains("LSPOSED: NO_FILES;"),"unsupported basenames are counted without path or shell use");
+  yes(!report.contains("outside.log")&&!report.contains("quote'.log"),"rejected names are not added to export content");
+  FrameworkReader mixed=new FrameworkReader(raw(0,"../outside.log\n"+modules+"\n leading.log\n",true,false,false));report=framework(mixed);
+  yes(mixed.commands.size()==2&&report.contains("listed=3 eligible=1 attempted=1 rejected=2 capSkipped=0"),"rejected entries do not consume the six-file allowance");
+  String[] seven={"one.log","two.log","three.log","four.log","five.log","six.log","seven.log"};
+  FrameworkReader capped=new FrameworkReader(raw(0,String.join("\n",seven),true,false,false));report=framework(capped);
+  yes(capped.commands.size()==7&&report.contains("eligible=7 attempted=6 rejected=0 capSkipped=1"),"framework collector caps real tail attempts at six");
+  yes(!capped.commands.contains("tail -c 524288 '/data/adb/lspd/log/seven.log'"),"seventh eligible file is not read");
+  RootShell.Result[] badListings={raw(1,"denied",true,false,false),new RootShell.Result(-1,"timeout",true,new RootShell.CapturedOutput(new byte[0],true,false,false)),
+   raw(0,modules.substring(0,20),true,false,true),raw(0,modules.substring(0,20),false,false,false),raw(0,modules.substring(0,20),true,true,false),new RootShell.Result(0,modules,false)};
+  String[] states={"COMPLETE","COMPLETE","TRUNCATED","INCOMPLETE","FAILED","UNVERIFIED"};
+  for(int i=0;i<badListings.length;i++){
+   FrameworkReader unreadable=new FrameworkReader(badListings[i]);report=framework(unreadable);
+   yes(unreadable.commands.size()==1&&report.contains("LSPOSED: UNKNOWN; listed=UNKNOWN eligible=UNKNOWN attempted=0")&&!report.contains("NO_FILES")&&!report.contains("NO_ELIGIBLE_FILES"),"unreliable directory cannot parse a partial basename or claim empty: "+i);
+   yes(report.contains("captureState="+states[i]),"directory capture status remains explicit: "+i);
+   if(badListings[i].isSuccess())yes(!report.contains(modules.substring(0,20)),"successful listing body and partial names are not exported");
+  }
+  FrameworkReader outcomes=new FrameworkReader(raw(0,"one.log\ntwo.log\nthree.log\nfour.log\nfive.log\n",true,false,false),
+   raw(0,"LS_Augment normal\n",true,false,false),raw(1,"tail: Permission denied",true,false,false),raw(0,"LS_Augment FEATURE_AI hidden",true,false,true),
+   raw(0,"LS_Augment normal",false,false,false),new RootShell.Result(0,"LS_Augment normal",false));report=framework(outcomes);
+  yes(report.contains("attempted=5 rejected=0 capSkipped=0 readSuccess=1 readFailed=1 readUnknown=3"),"tail counts distinguish reliable capture, command failure and unknown capture");
+  yes(report.contains("status=READ_FAILED")&&report.contains("Permission denied")&&report.contains("captureState=TRUNCATED")&&report.contains("captureState=INCOMPLETE")&&report.contains("captureState=UNVERIFIED"),"per-file original read and capture evidence retained");
+  yes(report.contains("upstreamTruncated=true")&&report.contains("filterState=NO_MATCHES")&&!report.contains("FEATURE_AI hidden"),"filtered-to-empty tail still reports original truncation");
+  FrameworkReader filtering=new FrameworkReader(raw(0,modules+"\n",true,false,false),raw(0,"LS_Augment retained\nframework ls.augment.com.hook.AugmentModule loading failure\njava.lang.IllegalStateException: registration\n\tat Fixture.SHOULDER_frame(Fixture.java:70)\nCaused by: java.io.IOException: complete\nLS_Augment SHOULDER optional\nLS_Augment FEATURE_AI optional\n",true,false,false));report=framework(filtering);
+  yes(report.contains("LS_Augment retained")&&report.contains("loading failure")&&!report.contains("SHOULDER optional")&&!report.contains("FEATURE_AI optional"),"collector keeps package-owned framework failures and optional content policies");
+  yes(report.contains("SHOULDER_frame")&&report.contains("Caused by:"),"optional shoulder switch must not erase a loading exception's adjacent stack");
  }
  static void limits(){
   yes(DiagnosticWritePolicy.normalize("ls_augment_test","x".repeat(2000)).length()==2000,"exact limit remains complete");
@@ -230,14 +301,26 @@ public final class TestDiagnosticReliability {
   FakeContext unavailable=new FakeContext(invalid.toFile());unavailable.prefsUnavailable=true;AuditLog.write(unavailable,"FAILED","metadata failure");yes(AuditLog.failureStatus(unavailable).contains("failureMetadata=UNAVAILABLE"),"unavailable metadata has in-process evidence");
  }
  static void restart(Path dir)throws Exception{
-  AppConfig.synced=true;AppConfig.throwsOnMirror=false;RootShell.calls=0;
-  android.app.Activity successful=new android.app.Activity(dir.toFile());RootShell.inspection=()->yes(AuditLog.read(successful).contains("[SCOPE_RESTART_COMMAND]"),"command issue audit exists before RootShell");
+  AppConfig.synced=true;AppConfig.throwsOnMirror=false;AppConfig.attempts=0;AppConfig.publishAfter=0;RootShell.calls=0;
+  android.app.Activity successful=new android.app.Activity(dir.toFile());RootShell.inspection=()->{
+   String beforeKill=AuditLog.read(successful);yes(beforeKill.contains("[SCOPE_RESTART_COMMAND]"),"command issue audit exists before RootShell");
+   yes(beforeKill.contains("stage=RESTART_READY;revision=10")&&beforeKill.contains("desktopApplied=UNCONFIRMED"),"exact published layout intent is recorded before killing launcher without claiming application");
+  };
   ScopeRestartHarness.run(successful,"launcher");yes(successful.finished.await(5,TimeUnit.SECONDS),"restart completed");
   String events=AuditLog.read(successful);yes(RootShell.calls==1&&events.contains("[SCOPE_RESTART_REQUEST]")&&events.contains("[SCOPE_RESTART_COMMAND_RESULT]")&&events.contains("command_return_not_process_restart_proof"),"manual request and command result logged with evidence boundary");
   AppConfig.synced=false;AppConfig.attempts=0;RootShell.calls=0;android.app.Activity blocked=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(blocked,"systemui");yes(blocked.finished.await(5,TimeUnit.SECONDS),"blocked restart completed");yes(RootShell.calls==0&&AppConfig.attempts==25&&AuditLog.read(blocked).contains("[SCOPE_RESTART_BLOCKED]"),"unsynced configuration cannot issue restart");
+  AppConfig.synced=true;AppConfig.attempts=0;AppConfig.publishAfter=Integer.MAX_VALUE;FrameworkConfigSync.publishedRevision=9;RootShell.calls=0;
+  android.app.Activity stale=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(stale,"launcher");yes(stale.finished.await(5,TimeUnit.SECONDS),"stale publication check completed");
+  yes(RootShell.calls==0&&AppConfig.attempts==25,"a successful mirror result for an older published revision cannot restart launcher");
+  AppConfig.attempts=0;AppConfig.revision=11;AppConfig.publishAfter=3;RootShell.calls=0;
+  android.app.Activity delayed=new android.app.Activity(dir.toFile());RootShell.inspection=()->{
+   yes(FrameworkConfigSync.isPublished(new ConfigSnapshot(11,AppConfig.currentValues)),"exact latest revision and values are published before restart");
+   yes(AuditLog.read(delayed).contains("stage=RESTART_READY;revision=11"),"latest grid revision has pre-restart evidence");
+  };ScopeRestartHarness.run(delayed,"launcher");yes(delayed.finished.await(5,TimeUnit.SECONDS),"delayed publish restart completed");
+  yes(RootShell.calls==1&&AppConfig.attempts==3,"restart waits for exact publication and then issues one command");
   AppConfig.throwsOnMirror=true;android.app.Activity thrown=new android.app.Activity(dir.toFile());ScopeRestartHarness.run(thrown,"settings");yes(thrown.finished.await(5,TimeUnit.SECONDS),"restart exception reported");yes(AuditLog.read(thrown).contains("[SCOPE_RESTART_ERROR]"),"restart exception has audit evidence");
  }
- public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();limits();logcat();shoulderRuntime(dir);audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
+ public static void main(String[] args)throws Exception{Path dir=Files.createTempDirectory("duo-diagnostic-boundaries-");try{injection(dir);attribution();captures();frameworkLogs();limits();logcat();shoulderRuntime(dir);audit(dir);restart(dir);System.out.println("PASS diagnostic reliability: "+checks+" checks (production methods; no root/device commands)");}finally{try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}}
 }
 '''
 
@@ -246,6 +329,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jdk", type=Path, help="JDK root directory; defaults to JAVA_HOME or javac/java on PATH")
     parser.add_argument("--json-jar", type=Path, help="Existing org.json jar; defaults to JSON_JAR")
+    parser.add_argument("--negative-controls", action="store_true", help="Compile collector mutants and require the real-path assertions to reject them")
     args = parser.parse_args()
     jdk = args.jdk or (Path(os.environ["JAVA_HOME"]) if os.environ.get("JAVA_HOME") else None)
     suffix = ".exe" if os.name == "nt" else ""
@@ -265,15 +349,16 @@ def main():
     if not json_jar.is_file():
         parser.error(f"org.json jar not found: {json_jar}; pass --json-jar /path/to/json.jar or set JSON_JAR")
     export = (SRC / "DiagnosticExport.java").read_text(encoding="utf-8")
+    assert member(export, "static String build").count("appendFrameworkLogs(out,ai,shoulder);") == 1, "build must execute the tested production collector"
     telemetry = (SRC / "hook/HookTelemetry.java").read_text(encoding="utf-8")
     root_shell = (SRC / "RootShell.java").read_text(encoding="utf-8")
     restart = (SRC / "ScopeRestartDialog.java").read_text(encoding="utf-8")
     sources = dict(STUBS)
     sources["ls/augment/com/RootShell.java"] = """package ls.augment.com;import java.nio.charset.StandardCharsets;
-final class RootShell {static int calls;static Runnable inspection;static Result run(String c,String i,long t,int m){calls++;if(inspection!=null)inspection.run();return new Result(0,"",false);}
+final class RootShell {interface Transport{Result read(String c,String i,long t,int m);}static Transport transport;static int calls;static Runnable inspection;static Result run(String c,String i,long t,int m){calls++;if(inspection!=null)inspection.run();return transport==null?new Result(0,"",false):transport.read(c,i,t,m);}
 """ + member(root_shell, "static String quote") + member(root_shell, "static final class CapturedOutput") + member(root_shell, "static final class Result") + "}"
     signatures = ("static Map<Integer,String> processNames", "static String systemPid", "static Set<String> currentPackages",
-                  "private static RootShell.Result filter", "private static void filteredSource", "private static void appendLogcat",
+                  "private static RootShell.Result filter", "private static void filteredSource", "private static void appendLogcat", "private static void appendFrameworkLogs",
                   "static String diagnosticValue", "static void appendDiagnosticValue", "static void compactHooks",
                   "private static void source(StringBuilder out,String name,RootShell.Result result,int limit)",
                   "private static void source(StringBuilder out,String name,RootShell.Result result,int limit,boolean values,boolean filtered)", "private static int lineCount",
@@ -281,6 +366,7 @@ final class RootShell {static int calls;static Runnable inspection;static Result
     sources["ls/augment/com/DiagnosticExportHarness.java"] = """package ls.augment.com;import java.util.*;import java.nio.charset.StandardCharsets;import org.json.*;import android.content.Context;import java.io.File;
 final class DiagnosticExportHarness {private static String diagnosticValues(String raw){return raw;}
 static String shoulderRuntime(android.content.Context context){StringBuilder out=new StringBuilder();appendShoulderSwitchLog(out,context);return out.toString();}
+static String framework(){StringBuilder out=new StringBuilder();appendFrameworkLogs(out,false,false);return out.toString();}
 static String filtered(String raw,boolean shoulder){return filter(new RootShell.Result(0,raw,false),false,shoulder,false).output;}
 static String describe(RootShell.Result raw,boolean filtered,boolean moduleOnly){StringBuilder out=new StringBuilder();source(out,"TEST",filtered?filter(raw,false,false,moduleOnly):raw,1024,false,filtered);return out.toString();}
 static RootShell.CapturedOutput filterIdentity(RootShell.Result raw){return filter(raw,false,false,true).capture;}
@@ -288,14 +374,14 @@ static String logcat(DiagnosticLogcat.Collection collection,boolean ai,boolean s
 static String value(String key,String value){StringBuilder out=new StringBuilder();appendDiagnosticValue(out,key,value);return out.toString();}
 """ + "\n".join(member(export, s) for s in signatures) + "}"
     sources["ls/augment/com/HookPackagesHarness.java"] = """package ls.augment.com;import java.util.*;import java.util.concurrent.*;import org.json.*;
-final class HookPackagesHarness {static String process="unknown",pkg="unknown";private static final Set<String> packages=ConcurrentHashMap.newKeySet();static JSONArray names(){return packageNames();}
+final class HookPackagesHarness {static void requestPublish(long delay){}static String process="unknown",pkg="unknown";private static final Set<String> packages=ConcurrentHashMap.newKeySet();static JSONArray names(){return packageNames();}
 """ + member(telemetry, "static void ready") + member(telemetry, "private static JSONArray packageNames") + "}"
     sources["ls/augment/com/HookShoulderHarness.java"] = """package ls.augment.com;import java.util.concurrent.*;import java.util.concurrent.atomic.*;import android.os.SystemClock;
-final class HookShoulderHarness {static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);static boolean shoulder,ai;
+final class HookShoulderHarness {static void requestPublish(long delay){}static final ArrayBlockingQueue<String[]> trace=new ArrayBlockingQueue<>(256);static boolean shoulder,ai;
 static final AtomicLong sequence=new AtomicLong(),dropped=new AtomicLong();static final ConcurrentHashMap<String,AtomicLong> dropReasons=new ConcurrentHashMap<>();
 static long lastDropAt;static String lastDropReason="";
 """ + member(telemetry, "static void shoulderSwitch") + member(telemetry, "static void detail") + member(telemetry, "private static boolean hasRuntimeEvents").replace("private static", "static") + member(telemetry, "private static void recordDrop") + "}"
-    constants = """static final String SETTINGS="settings",SYSTEM_UI="systemui",LAUNCHER="launcher",DEVICE="device",APPS="apps",GAMES="games",FAN="fan";"""
+    constants = """static final String SETTINGS="settings",SYSTEM_UI="systemui",LAUNCHER="launcher",DEVICE="device",APPS="apps",GAMES="games",FAN="fan",AMAP="amap";"""
     sources["ls/augment/com/ScopeRestartHarness.java"] = """package ls.augment.com;import android.app.Activity;import android.widget.Toast;import java.util.concurrent.*;
 final class ScopeRestartHarness {""" + constants + "static void run(Activity a,String scope){restart(a,scope);}" + member(restart, "private static void restart") + member(restart, "private static String command") + "}"
     sources["ls/augment/com/TestDiagnosticReliability.java"] = TEST
@@ -307,9 +393,24 @@ final class ScopeRestartHarness {""" + constants + "static void run(Activity a,S
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             files.append(path)
-        files += [SRC / (name + ".java") for name in ("RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "DiagnosticStore", "ShoulderSwitchLogPolicy", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
+        files += [SRC / (name + ".java") for name in ("FrameworkDiagnosticFilter", "RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "DiagnosticStore", "ShoulderSwitchLogPolicy", "AtomicWorkbenchLogPolicy", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
         subprocess.run([javac, "-encoding", "UTF-8", "--release", "17", "-cp", str(json_jar), "-d", str(directory), *map(str, files)], check=True)
         subprocess.run([java, "-cp", str(directory) + os.pathsep + str(json_jar), "ls.augment.com.TestDiagnosticReliability"], check=True, timeout=30)
+        if args.negative_controls:
+            harness = sources["ls/augment/com/DiagnosticExportHarness.java"]
+            for label, before, after, expected in (
+                ("old-basename-regex", '[A-Za-z0-9_.:-]+', '[A-Za-z0-9_.-]+', "exact colon basename reaches a quoted tail once"),
+                ("removed-file-cap", 'if(attempted>=6)', 'if(false)', "framework collector caps real tail attempts at six"),
+            ):
+                assert harness.count(before) == 1, (label, "mutation anchor changed")
+                mutated = directory / label
+                path = mutated / "ls/augment/com/DiagnosticExportHarness.java"
+                path.parent.mkdir(parents=True)
+                path.write_text(harness.replace(before, after, 1), encoding="utf-8")
+                subprocess.run([javac, "-encoding", "UTF-8", "--release", "17", "-cp", str(directory) + os.pathsep + str(json_jar), "-d", str(mutated), str(path)], check=True)
+                result = subprocess.run([java, "-cp", os.pathsep.join(map(str, (mutated, directory, json_jar))), "ls.augment.com.TestDiagnosticReliability"], capture_output=True, text=True, encoding="utf-8", timeout=30)
+                assert result.returncode != 0 and expected in result.stderr, (label, result.returncode, result.stdout, result.stderr)
+                print("PASS compiled negative control " + label + ": " + result.stderr.splitlines()[0], flush=True)
 
 
 if __name__ == "__main__":

@@ -22,11 +22,17 @@ final class StatusBarWindowSizingHook {
     private static final java.util.List<ProviderSizes> PROVIDER_SIZES=new java.util.ArrayList<>();
     private static final ThreadLocal<Boolean> NATIVE_DIMENSION=ThreadLocal.withInitial(()->false);
     private static final ThreadLocal<Boolean> WINDOW_DIMENSION=ThreadLocal.withInitial(()->false);
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int nativeHeight(Context context){
         boolean previous=NATIVE_DIMENSION.get();NATIVE_DIMENSION.set(true);
         try{return ((Number)TargetReflection.call(Class.forName("com.android.internal.policy.SystemBarUtils"),"getStatusBarHeight",context)).intValue();}
         catch(Exception unavailable){return 0;}finally{NATIVE_DIMENSION.set(previous);}
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     private static int nativeHeight(Context context,int rotation)throws ReflectiveOperationException{
         boolean previous=NATIVE_DIMENSION.get();NATIVE_DIMENSION.set(true);
         try{return ((Number)TargetReflection.call(Class.forName("com.android.internal.policy.SystemBarUtils"),"getStatusBarHeightForRotation",context,rotation)).intValue();}
@@ -115,6 +121,9 @@ final class StatusBarWindowSizingHook {
             TargetReflection.call(provider,"setInsetsSizeOverrides",values);
         }
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static int install(AugmentModule module,ClassLoader loader){
         int installed=0;
         try{

@@ -20,6 +20,7 @@ final class ScopeRestartDialog {
     static final String APPS = "apps";
     static final String GAMES = "games";
     static final String FAN = "fan";
+    static final String AMAP = "amap";
 
     private static final String[] LABELS = {
             "隐藏列表（系统设置）",
@@ -29,10 +30,11 @@ final class ScopeRestartDialog {
             "应用增强（安装兼容、双开与主题商店）",
             "游戏增强（游戏空间与风扇）",
             "散热风扇（风扇服务与控制中心）",
+            "高德地图（退出后重新打开）",
             "全部作用域（重启手机）"
     };
     private static final String[] IDS = {
-            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, "all"
+            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, AMAP, "all"
     };
 
     private ScopeRestartDialog() { }
@@ -88,19 +90,24 @@ final class ScopeRestartDialog {
             try {
                 AppConfig config=new AppConfig(activity);
                 RootShell.Result synced=config.mirrorAll();
+                ConfigSnapshot restartSnapshot=config.configSnapshot();
                 // Saving is asynchronous. Allow the committed snapshot to reach the framework
                 // before replacing the process that will read it during startup.
-                for (int attempt=0; !synced.isSuccess() && attempt<24; attempt++) {
+                for (int attempt=0; (!synced.isSuccess() || !FrameworkConfigSync.isPublished(restartSnapshot)) && attempt<24; attempt++) {
                     android.os.SystemClock.sleep(125);
                     synced=config.mirrorAll();
+                    restartSnapshot=config.configSnapshot();
                 }
-                if(!synced.isSuccess()){
+                if(!synced.isSuccess() || !FrameworkConfigSync.isPublished(restartSnapshot)){
                     AuditLog.write(activity,"SCOPE_RESTART_BLOCKED","request="+request+";scope="+scope+";reason=configuration_not_synced;exit="+synced.exitCode+";timeout="+synced.timedOut);
                     activity.runOnUiThread(()->Toast.makeText(activity,
                             "启动配置仍在等待 LSPosed 框架同步，请稍后再重启作用域。",
                             Toast.LENGTH_LONG).show());
                     return;
                 }
+                if(LAUNCHER.equals(scope) || APPS.equals(scope) || DEVICE.equals(scope) || "all".equals(scope))
+                    AppConfig.traceLauncherGrid(activity,"RESTART_READY",restartSnapshot.values(),restartSnapshot.revision,
+                            "request="+request+";scope="+scope+";frameworkSync=SYNCED;desktopApplied=UNCONFIRMED");
                 AuditLog.writeDurable(activity,"SCOPE_RESTART_COMMAND","request="+request+";scope="+scope+";source=manual;version="+BuildConfig.VERSION_NAME);
                 RootShell.Result result = RootShell.run(command(scope), null, 15, 16 * 1024);
                 AuditLog.write(activity,"SCOPE_RESTART_COMMAND_RESULT","request="+request+";scope="+scope
@@ -119,6 +126,8 @@ final class ScopeRestartDialog {
         switch (scope) {
             case SETTINGS:
                 return "am force-stop com.android.settings";
+            case AMAP:
+                return "am force-stop com.autonavi.minimap";
             case SYSTEM_UI:
                 return "killall com.android.systemui";
             case LAUNCHER:
@@ -129,7 +138,7 @@ final class ScopeRestartDialog {
                 return "am force-stop cn.nubia.neostore; am force-stop com.mi.health; am force-stop com.zte.cn.doubleapp; am force-stop com.zte.beautify; "
                         + "am force-stop com.zte.beautifyadapter; am force-stop com.android.packageinstaller; "
                         + "am force-stop com.zte.zdm; am force-stop com.zte.mifavor.weather; "
-                        + "am force-stop com.android.permissioncontroller; am force-stop cn.nubia.filebrowser; "
+                        + "am force-stop com.android.permissioncontroller; am force-stop cn.nubia.filebrowser; am force-stop com.android.mtp; "
                         + "am force-stop com.android.ztescreenshot; am force-stop cn.nubia.photoeditor; killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
             case GAMES:
                 return "am force-stop cn.nubia.gamelauncher; am force-stop cn.nubia.gameassist; "

@@ -21,6 +21,9 @@ final class LegacySettingsMigration {
         });
     }
 
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     static RootShell.Result runIfAuthorized(Context context) {
         synchronized (LOCK) {
             SharedPreferences diagnostics = context.getSharedPreferences(AppConfig.DIAGNOSTICS, 0);

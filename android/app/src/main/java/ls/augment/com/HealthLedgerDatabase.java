@@ -11,18 +11,45 @@ import java.util.*;
 /** Module-private durable health intents, isolated by account and source. */
 final class HealthLedgerDatabase extends SQLiteOpenHelper {
     static final String NAME="health-step-ledger-v1.db";
-    HealthLedgerDatabase(Context c){super(c.getApplicationContext(),NAME,null,3);if(!"ls.augment.com".equals(c.getPackageName()))throw new IllegalArgumentException("module context required");setWriteAheadLoggingEnabled(true);}
+    static final long MAX_BYTES=256L*1024*1024, RETENTION_SECONDS=400L*86400;
+    HealthLedgerDatabase(Context c){super(c.getApplicationContext(),NAME,null,4);if(!"ls.augment.com".equals(c.getPackageName()))throw new IllegalArgumentException("module context required");setWriteAheadLoggingEnabled(true);}
     @Override public void onCreate(SQLiteDatabase d){
         d.execSQL("CREATE TABLE records(account TEXT NOT NULL,sid TEXT NOT NULL,time INTEGER NOT NULL,raw TEXT NOT NULL,output TEXT NOT NULL,token TEXT NOT NULL,generated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,sid,time))");
         d.execSQL("CREATE TABLE plans(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,spec TEXT NOT NULL,PRIMARY KEY(account,id,day))");
         d.execSQL("CREATE TABLE events(account TEXT NOT NULL,id TEXT NOT NULL,day TEXT NOT NULL,time INTEGER NOT NULL,steps INTEGER NOT NULL,admitted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account,id,day,time))");
         createAwards(d);
         createMeta(d);
+        createIndexes(d);
     }
     @Override public void onUpgrade(SQLiteDatabase d,int old,int next){
-        if(old<1||old>2||next!=3)throw new IllegalStateException("unknown step ledger schema");
-        if(old==1)createAwards(d);createMeta(d);
+        if(old<1||old>3||next!=4)throw new IllegalStateException("unknown step ledger schema");
+        if(old==1)createAwards(d);if(old<3)createMeta(d);createIndexes(d);
     }
+    private static void createIndexes(SQLiteDatabase d){
+        d.execSQL("CREATE INDEX IF NOT EXISTS records_by_time ON records(account,time,sid)");
+        d.execSQL("CREATE INDEX IF NOT EXISTS events_by_time ON events(account,admitted,time)");
+        d.execSQL("CREATE INDEX IF NOT EXISTS events_by_plan ON events(account,id,admitted,time)");
+    }
+    long retiredBefore(){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM migration WHERE key='retired_before'",null)){return c.moveToFirst()?Long.parseLong(c.getString(0)):0;}}
+    /** Archive only outside the old 366-day catch-up window, plus a timezone/retry margin.
+     * The tombstone is committed with deletion: old clients fail closed instead of treating
+     * a deleted intent as a new reading. Native health data is never deleted or rewritten. */
+    void maintain(long now){
+        SQLiteDatabase d=getWritableDatabase();long before=Math.max(0,(now-RETENTION_SECONDS)/86400*86400);
+        if(before>retiredBefore()){
+            d.beginTransaction();
+            try{
+                d.execSQL("INSERT OR REPLACE INTO migration(key,value) VALUES('retired_before',?)",new Object[]{""+before});
+                for(String table:new String[]{"records","events","plan_awards"})d.execSQL("DELETE FROM "+table+" WHERE time<?",new Object[]{before});
+                // Plans are keyed by their original timezone day, including overnight events.
+                String day=Instant.ofEpochSecond(before).atZone(ZoneOffset.UTC).toLocalDate().minusDays(2).toString();
+                d.execSQL("DELETE FROM plans WHERE day<?",new Object[]{day});
+                d.setTransactionSuccessful();
+            }finally{d.endTransaction();}
+        }
+        d.setMaximumSize(MAX_BYTES);
+    }
+    void requireRecent(long time){if(time<retiredBefore())throw new IllegalStateException("历史记录已归档，本次保留原生步数");}
     private static void createMeta(SQLiteDatabase d){d.execSQL("CREATE TABLE migration(key TEXT PRIMARY KEY,value TEXT NOT NULL)");}
     boolean ready(){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM migration WHERE key='legacy_imported'",null)){return c.moveToFirst()&&"1".equals(c.getString(0));}}
     void markReady(){getWritableDatabase().execSQL("INSERT OR REPLACE INTO migration(key,value) VALUES('legacy_imported','1')");}
@@ -49,22 +76,26 @@ final class HealthLedgerDatabase extends SQLiteOpenHelper {
         Award(int requested,int allowed){this.requested=requested;this.allowed=allowed;}
     }
     Award award(String account,long time){
+        requireRecent(time);
         try(Cursor c=getReadableDatabase().rawQuery("SELECT requested,allowed FROM plan_awards WHERE account=? AND time=?",new String[]{account,""+time})){
             return c.moveToFirst()?new Award(c.getInt(0),c.getInt(1)):null;
         }
     }
     void award(String account,long time,int requested,int allowed){
+        requireRecent(time);
         if(allowed<0||allowed>requested)throw new IllegalArgumentException("invalid plan award");
         ContentValues v=new ContentValues();v.put("account",account);v.put("time",time);v.put("requested",requested);v.put("allowed",allowed);
         if(getWritableDatabase().insertWithOnConflict("plan_awards",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)
             throw new IllegalStateException("无法保存计划步数上限判断");
     }
     Record get(String account,String sid,long time){
+        requireRecent(time);
         try(Cursor c=getReadableDatabase().rawQuery("SELECT raw,output,token,generated FROM records WHERE account=? AND sid=? AND time=?",new String[]{account,sid,""+time})){
             return c.moveToFirst()?new Record(c.getString(0),c.getString(1),c.getString(2),c.getInt(3)!=0):null;
         }
     }
     void put(String account,String sid,long time,Record r){
+        requireRecent(time);
         ContentValues v=new ContentValues();v.put("account",account);v.put("sid",sid);v.put("time",time);
         v.put("raw",r.raw);v.put("output",r.output);v.put("token",r.token);v.put("generated",r.generated?1:0);
         if(getWritableDatabase().insertWithOnConflict("records",null,v,SQLiteDatabase.CONFLICT_REPLACE)<0)
@@ -73,9 +104,22 @@ final class HealthLedgerDatabase extends SQLiteOpenHelper {
     void admit(StepPlan p,long now){
         SQLiteDatabase d=getWritableDatabase();d.beginTransaction();
         try{
+            // Seal v1 generated minutes before any plan can add new requests to
+            // the same minute. This also works when callers reconcile by day.
+            try(Cursor sealed=d.rawQuery("SELECT value FROM migration WHERE key='awards_sealed'",null)){
+                if(!sealed.moveToFirst()){
+                    d.execSQL("INSERT OR IGNORE INTO plan_awards(account,time,requested,allowed) SELECT e.account,e.time,SUM(e.steps),SUM(e.steps) FROM events e WHERE e.admitted=1 AND EXISTS(SELECT 1 FROM records r WHERE r.account=e.account AND r.generated=1 AND r.time>=e.time AND r.time<e.time+60) GROUP BY e.account,e.time");
+                    d.execSQL("INSERT INTO migration(key,value) VALUES('awards_sealed','1')");
+                }
+            }
             LocalDate today=Instant.ofEpochSecond(now).atZone(ZoneId.of(p.zone)).toLocalDate();
             // An old configuration cannot silently schedule years of missed work.
             LocalDate first=p.startDate.isBefore(today.minusDays(366))?today.minusDays(366):p.startDate;
+            try(Cursor existing=d.rawQuery("SELECT MAX(day) FROM plans WHERE account=? AND id=?",new String[]{p.account,p.id})){
+                if(existing.moveToFirst()&&!existing.isNull(0)){
+                    LocalDate last=LocalDate.parse(existing.getString(0));if(last.isAfter(first))first=last;
+                }
+            }
             for(LocalDate day=first;!day.isAfter(today);day=day.plusDays(1)){
                 if(!p.repeat&&!day.equals(p.startDate))continue;
                 ContentValues plan=new ContentValues();plan.put("account",p.account);plan.put("id",p.id);plan.put("day",day.toString());plan.put("spec",p.serialize());
@@ -85,7 +129,7 @@ final class HealthLedgerDatabase extends SQLiteOpenHelper {
                         d.insertOrThrow("events",null,v);
                     }
             }
-            d.execSQL("UPDATE events SET admitted=1 WHERE account=? AND id=? AND time<=?",new Object[]{p.account,p.id,now});
+            d.execSQL("UPDATE events SET admitted=1 WHERE account=? AND id=? AND admitted=0 AND time<=?",new Object[]{p.account,p.id,now});
             d.setTransactionSuccessful();
         }finally{d.endTransaction();}
     }

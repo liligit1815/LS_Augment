@@ -26,17 +26,23 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 import ls.augment.com.LauncherOptions;
+import ls.augment.com.LauncherPageOrigins;
 
-/** Shared stock/260005 implementation, verified against both launcher DEX files. */
+/** Shared page lifecycle for the verified Android 15 named and Android 16 obfuscated launchers. */
 final class LauncherPagesHook {
     private static final String ENTRY_TAG = "ls_augment.pages.entry";
     private static boolean installed;
+
+    // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
+    //noinspection StaticFieldLeak
     private static Controller controller;
 
     static boolean pauseForReset(long revision){
         if(Looper.myLooper()!=Looper.getMainLooper()||controller==null||controller.binding||controller.mutating)return false;
         Controller c=controller;c.resetPaused=true;c.resetRevision=revision;
-        c.cancelPending();c.bindingGeneration++;c.main.removeCallbacks(c.cleanup);
+        c.cancelPending();c.cancelRestoration();c.bindingGeneration++;c.invalidateSource();c.main.removeCallbacks(c.cleanup);
+        c.pendingHome=null;c.fallbackHome=null;c.pendingHomePreferences=null;c.homeChangedByUser=false;
+        c.restoreDiagnostic("reset_paused", "");
         if(c.editor!=null){c.editor.dismiss();c.editor=null;}
         return true;
     }
@@ -50,36 +56,76 @@ final class LauncherPagesHook {
             module.registerFeatureHook(module.prepareFeatureHook(targets.bind, "launcher.pages.bind", true)
                     .intercept(chain -> {
                         Controller c = controller;
-                        ViewGroup workspace = (ViewGroup) targets.workspace.invoke(chain.getThisObject());
+                        ViewGroup workspace = (ViewGroup) targets.workspace.invoke(targets.bindOwner(chain.getThisObject()));
                         c.attach(workspace);
-                        c.ready = false;
-                        c.binding = true;
-                        c.bindingGeneration++;
+                        c.capturePendingHome();
+                        c.beginBinding();
+                        int generation = c.bindingGeneration;
                         if (c.editor != null) c.editor.dismiss();
                         try {
                             List<Integer> saved = c.saved();
-                            if (saved.isEmpty()) return chain.proceed();
-                            // Modify this binding's IntArray, never the model's stable IDs.
-                            Object ids = targets.listClone.invoke(chain.getArg(0));
-                            List<Integer> merged = LauncherPageOrder.merge(targets.ids(ids), saved, c.keepEmpty());
-                            targets.replaceIds(ids, merged);
-                            return chain.proceed(new Object[]{ids});
-                        } finally { c.binding = false; }
+                            Object replacement = null;
+                            if (!saved.isEmpty() && (Integer) targets.panelCount.invoke(workspace) == 1) {
+                                // Modify this binding's IntArray, never the model's stable IDs.
+                                Object ids = targets.listClone.invoke(chain.getArg(0));
+                                // A legacy order is not proof that an absent native screen is
+                                // a user-created empty page. Bind only the native model IDs;
+                                // provenance-checked empty restoration runs after native finish.
+                                List<Integer> merged = LauncherPageOrder.merge(targets.ids(ids), saved, false);
+                                boolean safe = true;
+                                try { c.checkFixedOrder(targets.ids(ids), merged); }
+                                catch (PageUnavailable unsafeOrder) {
+                                    c.restorationFailed(unsafeOrder);
+                                    safe = false;
+                                }
+                                if (safe) {
+                                    targets.replaceIds(ids, merged);
+                                    replacement = ids;
+                                }
+                            }
+                            Object result = replacement == null ? chain.proceed() : chain.proceed(new Object[]{replacement});
+                            if (generation == c.bindingGeneration && c.workspace.get() == workspace) {
+                                c.bindingSucceeded = true;
+                                c.rememberFallbackHome();
+                            }
+                            return result;
+                        } finally { if (generation == c.bindingGeneration) c.binding = false; }
                     }));
             module.registerFeatureHook(module.prepareFeatureHook(targets.finished, "launcher.pages.bound", true)
                     .intercept(chain -> {
-                        Object result = chain.proceed();
                         Controller c = controller;
-                        c.attach((ViewGroup) targets.workspace.invoke(chain.getThisObject()));
-                        c.ready = true;
-                        c.scheduleCleanup();
-                        c.save();
+                        ViewGroup expected = (ViewGroup) targets.workspace.invoke(chain.getThisObject());
+                        int generation = c.bindingGeneration;
+                        boolean ownsBinding = c.workspace.get() == expected;
+                        if (ownsBinding) c.checkPendingHomeChange();
+                        Object result;
+                        try { result = chain.proceed(); }
+                        catch (Throwable error) {
+                            if (ownsBinding && c.workspace.get() == expected && generation == c.bindingGeneration) {
+                                c.ready = false;
+                                c.bindingSucceeded = false;
+                                c.cancelPending();
+                                c.cancelRestoration();
+                                c.restoreDiagnostic("waiting_binding", "finish_failed");
+                            }
+                            throw error;
+                        }
+                        // A delayed finish from an old Launcher, or a reentrant
+                        // bind during this native finish, cannot certify another
+                        // Workspace/generation. Only bind may transfer ownership.
+                        if (!ownsBinding || c.workspace.get() != expected || generation != c.bindingGeneration) return result;
+                        c.ready = c.bindingSucceeded;
+                        c.rememberFallbackHome();
+                        c.cancelRestoration();
+                        c.restoreWhenIdle(c.workspace.get(), c.bindingGeneration);
                         return result;
                     }));
             module.registerFeatureHook(module.prepareFeatureHook(targets.strip, "launcher.pages.keep_empty", true)
                     .intercept(chain -> {
                         Controller c = controller;
+                        if (c.workspace.get() != chain.getThisObject()) return chain.proceed();
                         c.attach((ViewGroup) chain.getThisObject());
+                        if (!c.restorationApplied()) { c.requestRestoration(0); return null; }
                         if (c.keepEmpty()) {
                             // G2 still removes real drag placeholders; Q0 must not rename a
                             // user's stable empty page to -201 before that cleanup runs.
@@ -94,7 +140,9 @@ final class LauncherPagesHook {
             module.registerFeatureHook(module.prepareFeatureHook(targets.convertEmpty, "launcher.pages.stable_empty", true)
                     .intercept(chain -> {
                         Controller c = controller;
+                        if (c.workspace.get() != chain.getThisObject()) return chain.proceed();
                         c.attach((ViewGroup) chain.getThisObject());
+                        if (!c.restorationApplied()) { c.requestRestoration(0); return null; }
                         return c.keepEmpty() ? null : chain.proceed();
                     }));
             module.registerFeatureHook(module.prepareFeatureHook(targets.menuInit, "launcher.pages.menu", true)
@@ -109,64 +157,113 @@ final class LauncherPagesHook {
 
     /** Exact native signatures; an unrelated launcher is never modified by guesswork. */
     static final class Targets {
+        final String adapter, stateValue;
         final Class<?> launcher, state, future;
         final Method bind, finished, strip, convertEmpty, removeExtra, workspace, menuInit, screenOrder, insert, pageAtId;
         final Method listClear, listAdd, listArray, listClone, currentPage, setCurrentPage, shortCuts, panelCount;
         final Method stateGet, modelGet, databaseGet, nextId, screenUtil, refreshDefault, updateIndicator, nativePrefs;
-        final Field screens, launcherField, menuItems, firstScreen, bindingModel, vendorFirstScreen;
+        final Field screens, launcherField, menuItems, menuOwner, firstScreen, bindingModel, vendorFirstScreen;
+        final Field callbackLauncher;
+        final boolean callbackBinding;
+        final String futureMethod;
         final Executor modelExecutor;
+        final Method idpGet;
+        final Field databaseName;
 
+
+        // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+        //noinspection PrivateApi
         Targets(ClassLoader loader) throws Exception {
             Class<?> ws = Class.forName("com.android.launcher3.Workspace", false, loader);
-            launcher = Class.forName("com.android.launcher3.C2", false, loader);
-            Class<?> list = Class.forName("com.android.launcher3.util.x0", false, loader);
-            Class<?> finishedList = Class.forName("com.android.launcher3.util.z0", false, loader);
+            Class<?> owner; boolean named;
+            try { owner = Class.forName("com.android.launcher3.C2", false, loader); named = false; }
+            catch (ClassNotFoundException absent) { owner = Class.forName("com.android.launcher3.Launcher", false, loader); named = true; }
+            launcher = owner;
+            stateValue = named ? "getState" : "C";
+            // Resolve one complete ROM contract before registering any hook. Never mix
+            // missing obfuscated members with the named family from another launcher.
+            Class<?> list = Class.forName(named ? "com.android.launcher3.util.IntArray" : "com.android.launcher3.util.x0", false, loader);
+            Class<?> finishedList = Class.forName(named ? "com.android.launcher3.util.IntSet" : "com.android.launcher3.util.z0", false, loader);
             Class<?> menu = Class.forName("com.android.launcher3.menu.MenuContainer", false, loader);
             Class<?> cell = Class.forName("com.android.launcher3.CellLayout", false, loader);
-            Class<?> paged = Class.forName("com.android.launcher3.V4", false, loader);
-            state = Class.forName("com.android.launcher3.P2", false, loader);
-            Class<?> model = Class.forName("com.android.launcher3.D3", false, loader);
-            Class<?> db = Class.forName("z1.k2", false, loader);
-            Class<?> util = Class.forName("x1.Z", false, loader);
-            future = Class.forName("com.android.launcher3.widget.custom.future.AIFutureWidgetUtils", false, loader);
-            bind = method(launcher, "f", list);
-            finished = method(launcher, "h", finishedList);
-            workspace = method(launcher, "B2");
-            strip = method(ws, "i3");
-            convertEmpty = method(ws, "Q0");
-            removeExtra = method(ws, "G2", int.class, boolean.class, Runnable.class);
+            Class<?> paged = Class.forName(named ? "com.android.launcher3.PagedView" : "com.android.launcher3.V4", false, loader);
+            state = Class.forName(named ? "com.android.launcher3.LauncherAppState" : "com.android.launcher3.P2", false, loader);
+            Class<?> model = Class.forName(named ? "com.android.launcher3.LauncherModel" : "com.android.launcher3.D3", false, loader);
+            Class<?> db = Class.forName(named ? "com.android.launcher3.model.ModelDbController" : "z1.k2", false, loader);
+            Class<?> util = Class.forName(named ? "com.android.launcher3.mfvUtil.ScreenUtil" : "x1.Z", false, loader);
+            // The audited Android 15 launcher has no AI Future page owner.
+            Method binding;Field callbackOwner=null;
+            try{binding=method(launcher,named?"bindScreens":"f",list);}
+            catch(NoSuchMethodException moved){
+                if(!named)throw moved;
+                Class<?> callbacks=Class.forName("com.android.launcher3.ModelCallbacks",false,loader);
+                binding=method(callbacks,"bindScreens",list);
+                callbackOwner=field(callbacks,"launcher");
+                if(callbackOwner.getType()!=launcher)throw new IllegalStateException("页面绑定所有者类型不匹配");
+            }
+            bind=binding;callbackLauncher=callbackOwner;callbackBinding=callbackOwner!=null;
+            adapter=callbackBinding?"named_callback_binding":named?"android15_named":"android16_obfuscated";
+            future = named&&!callbackBinding ? null : Class.forName("com.android.launcher3.widget.custom.future.AIFutureWidgetUtils", false, loader);
+            futureMethod=callbackBinding?"getAIFutureScreenId":"l";
+            if(future!=null&&method(future,futureMethod,Context.class).getReturnType()!=int.class)
+                throw new IllegalStateException("原厂专用页面接口不匹配");
+            finished = method(launcher, named ? "finishBindingItems" : "h", finishedList);
+            workspace = method(launcher, named ? "getWorkspace" : "B2");
+            strip = method(ws, named ? "stripEmptyScreens" : "i3");
+            convertEmpty = method(ws, named ? "convertFinalScreenToEmptyScreenIfNecessary" : "Q0");
+            removeExtra = method(ws, named ? "removeExtraEmptyScreenDelayed" : "G2", int.class, boolean.class, Runnable.class);
             screenOrder = method(ws, "getScreenOrder");
-            insert = method(ws, "v1", int.class, int.class);
-            pageAtId = method(ws, "n", int.class);
+            insert = method(ws, named ? "insertNewWorkspaceScreen" : "v1", int.class, int.class);
+            pageAtId = method(ws, named ? "getScreenWithId" : "n", int.class);
             panelCount = method(ws, "getPanelCount");
             currentPage = method(paged, "getCurrentPage");
             setCurrentPage = method(paged, "setCurrentPage", int.class);
             updateIndicator = method(paged, "updatePageIndicator");
             shortCuts = method(cell, "getShortcutsAndWidgets");
-            menuInit = method(menu, "G");
+            menuInit = method(menu, named ? "setupHomeMenu" : "G");
             listClear = method(list, "clear");
-            listAdd = method(list, "m", int.class);
-            listArray = method(list, "A");
-            listClone = method(list, "q");
-            screens = field(ws, "n");
-            launcherField = field(ws, "x");
-            menuItems = field(menu, "m");
-            bindingModel = field(launcher, "h");
-            firstScreen = field(Class.forName("com.android.launcher3.B4", false, loader), "j");
-            vendorFirstScreen = field(Class.forName("com.android.launcher3.N5", false, loader), "j");
-            stateGet = method(state, "h", Context.class);
-            modelGet = method(state, "j");
-            databaseGet = method(model, "m0");
-            nextId = method(db, "F");
-            screenUtil = method(launcher, "w2");
-            refreshDefault = method(util, "b", ws);
-            nativePrefs = method(Class.forName("com.android.launcher3.J3", false, loader), "m", Context.class);
-            modelExecutor = (Executor) field(Class.forName("com.android.launcher3.util.m0", false, loader), "h").get(null);
-            if (screenOrder.getReturnType() != list || insert.getReturnType() != cell
+            listAdd = method(list, named ? "add" : "m", int.class);
+            listArray = method(list, named ? "toArray" : "A");
+            listClone = method(list, named ? "clone" : "q");
+            screens = field(ws, named ? "mWorkspaceScreens" : "n");
+            launcherField = field(ws, named ? "mLauncher" : "x");
+            menuItems = field(menu, named ? "mHomeMenuLinearLayout" : "m");
+            menuOwner = field(menu, named ? "mActivity" : "g");
+            bindingModel = callbackBinding?null:field(launcher, named ? "mModelCallbacks" : "h");
+            firstScreen = callbackBinding?null:field(Class.forName(named ? "com.android.launcher3.ModelCallbacks" : "com.android.launcher3.B4", false, loader), named ? "isFirstPagePinnedItemEnabled" : "j");
+            vendorFirstScreen = callbackBinding?null:field(Class.forName(named ? "com.android.launcher3.Utilities" : "com.android.launcher3.N5", false, loader), named ? "SHOULD_SHOW_FIRST_PAGE_WIDGET" : "j");
+            stateGet = method(state, named ? "getInstance" : "h", Context.class);
+            Method sourceGet = null; Field sourceName = null;
+            try {
+                Class<?> idp = Class.forName(named ? "com.android.launcher3.InvariantDeviceProfile" : "com.android.launcher3.F1", false, loader);
+                sourceGet = method(state, named ? "getIDP" : "e", Context.class);
+                sourceName = field(idp, named ? "dbFile" : "E1");
+                if (sourceGet.getReturnType() != idp || sourceName.getType() != String.class) { sourceGet = null; sourceName = null; }
+            } catch (ReflectiveOperationException unsupportedSource) { /* Existing-ID ordering remains available. */ }
+            idpGet = sourceGet; databaseName = sourceName;
+            modelGet = method(state, named ? "getModel" : "j");
+            databaseGet = method(model, named ? "getModelDbController" : "m0");
+            nextId = method(db, named ? "getNewScreenId" : "F");
+            screenUtil = method(launcher, named ? "getScreenUtil" : "w2");
+            refreshDefault = method(util, named ? "bindDefaultPage" : "b", ws);
+            nativePrefs = method(Class.forName(named ? "com.android.launcher3.LauncherPrefs" : "com.android.launcher3.J3", false, loader), named ? "getPrefs" : "m", Context.class);
+            modelExecutor = (Executor) field(Class.forName(named ? "com.android.launcher3.util.Executors" : "com.android.launcher3.util.m0", false, loader), named ? "MODEL_EXECUTOR" : "h").get(null);
+            if (bind.getReturnType() != void.class || finished.getReturnType() != void.class
+                    || workspace.getReturnType() != ws || screenOrder.getReturnType() != list || insert.getReturnType() != cell
+                    || pageAtId.getReturnType() != cell || listClone.getReturnType() != list || listArray.getReturnType() != int[].class
+                    || modelGet.getReturnType() != model || databaseGet.getReturnType() != db
+                    || (!callbackBinding&&(firstScreen.getType() != boolean.class || vendorFirstScreen.getType() != boolean.class))
+                    || !LinearLayout.class.isAssignableFrom(menuItems.getType())
                     || nextId.getReturnType() != int.class || strip.getReturnType() != void.class
                     || !SparseArray.class.isAssignableFrom(screens.getType())) {
                 throw new IllegalStateException("桌面页面接口不匹配");
             }
+        }
+
+        Object bindOwner(Object receiver)throws Exception{return callbackLauncher==null?receiver:callbackLauncher.get(receiver);}
+        boolean firstPageFixed(Object owner)throws Exception{
+            // The new native bindScreens unconditionally moves ID 0 to index 0.
+            return callbackBinding||(firstScreen.getBoolean(bindingModel.get(owner))&&!vendorFirstScreen.getBoolean(null));
         }
 
         static Method method(Class<?> type, String name, Class<?>... args) throws Exception {
@@ -184,6 +281,25 @@ final class LauncherPagesHook {
             listClear.invoke(value);
             for (int id : ids) listAdd.invoke(value, id);
         }
+        LauncherDatabaseIdentity.Snapshot source(Context context) throws Exception {
+            if (idpGet == null || databaseName == null) {
+                LauncherDatabaseIdentity.Snapshot missing = new LauncherDatabaseIdentity.Snapshot();
+                missing.error = "source_contract"; return missing;
+            }
+            Object idp = idpGet.invoke(null, context);
+            String name = (String) databaseName.get(idp);
+            LauncherDatabaseIdentity.Snapshot snapshot = LauncherDatabaseIdentity.read(context, name);
+            snapshot.idp = idp;
+            if (idpGet.invoke(null, context) != idp || !java.util.Objects.equals(name, databaseName.get(idp))) {
+                snapshot.ownerMatches = false; snapshot.error = "source_changed";
+            }
+            return snapshot;
+        }
+        boolean currentSource(Context context, LauncherDatabaseIdentity.Snapshot source) throws Exception {
+            if (source == null || source.idp == null || idpGet == null || databaseName == null) return false;
+            Object current = idpGet.invoke(null, context);
+            return current == source.idp && java.util.Objects.equals(source.basename, databaseName.get(current));
+        }
     }
 
     static final class Controller {
@@ -194,13 +310,25 @@ final class LauncherPagesHook {
         WeakReference<ViewGroup> menu = new WeakReference<>(null);
         Context context;
         SharedPreferences prefs;
-        boolean ready, binding, mutating, subscribed;
+        boolean ready, binding, mutating, subscribed, privateSubscribed, bindingSucceeded;
         boolean pending;
         volatile int requestToken;
         int bindingGeneration;
+        int appliedGeneration = -1, restoreFailures, lastRestoreErrorGeneration = -1;
+        int sourceGeneration = -1, sourceRequest, sourceAttempts;
+        boolean sourcePending;
+        Runnable sourceRetry;
+        LauncherDatabaseIdentity.Snapshot databaseSource;
+        Object bindingSourceIdp;
+        String bindingSourceName = "";
+        SharedPreferences appliedPreferences;
+        HomeState pendingHome, fallbackHome;
+        SharedPreferences pendingHomePreferences;
+        boolean homeChangedByUser;
         volatile boolean resetPaused;
         long resetRevision;
         Runnable pendingCheck;
+        Runnable restoreCheck;
         LauncherPagesEditor editor;
         final WeakHashMap<View, LinearLayout.LayoutParams> menuLayouts = new WeakHashMap<>();
         final Runnable cleanup = this::cleanupPlaceholders;
@@ -209,11 +337,30 @@ final class LauncherPagesHook {
         void attach(ViewGroup view) {
             if (view == null) return;
             if (workspace.get() != view) {
+                boolean carryHome = false;
+                try {
+                    Context next = view.getContext().getApplicationContext();
+                    if (next == null) next = view.getContext();
+                    SharedPreferences nativeRecord = (SharedPreferences) t.nativePrefs.invoke(null, next);
+                    carryHome = pendingHome != null && fallbackHome != null && !homeChangedByUser
+                            && pendingHomePreferences == nativeRecord && fallbackHome.matches(nativeRecord);
+                } catch (Throwable ignored) { }
                 cancelPending();
+                cancelRestoration();
                 if (editor != null) { editor.dismiss(); editor = null; }
                 workspace = new WeakReference<>(view);
                 ready = false;
+                bindingSucceeded = false;
+                // An Activity recreation may replace only the View tree. Carry scalar
+                // home evidence only while the same native record still has our fallback.
+                if (!carryHome) {
+                    pendingHome = null;
+                    fallbackHome = null;
+                    pendingHomePreferences = null;
+                    homeChangedByUser = false;
+                }
                 bindingGeneration++;
+                invalidateSource();
             }
             if (context == null) {
                 context = view.getContext().getApplicationContext();
@@ -225,6 +372,248 @@ final class LauncherPagesHook {
             LauncherResetHook.attach(context);
             if (!subscribed) {
                 subscribed = FeatureSettings.addSnapshotListener(context, () -> main.post(this::configurationChanged));
+            }
+            if (!privateSubscribed) {
+                privateSubscribed = LauncherOwnedStateClient.addReadyListener(context, "pages",
+                        () -> main.post(this::configurationChanged));
+            }
+            requestRestoration(0);
+            if (prefs == null) restoreDiagnostic("waiting_record", "");
+        }
+        void beginBinding() {
+            cancelPending();
+            cancelRestoration();
+            main.removeCallbacks(cleanup);
+            ready = false;
+            bindingSucceeded = false;
+            binding = true;
+            bindingGeneration++;
+            invalidateSource();
+            bindingSourceIdp = null; bindingSourceName = "";
+            try {
+                if (t.idpGet != null) {
+                    bindingSourceIdp = t.idpGet.invoke(null, workspace.get().getContext());
+                    bindingSourceName = (String) t.databaseName.get(bindingSourceIdp);
+                }
+            } catch (Exception unavailable) { /* No absent-page creation without source evidence. */ }
+            restoreFailures = 0;
+            lastRestoreErrorGeneration = -1;
+            restoreDiagnostic("waiting_binding", "");
+        }
+        void invalidateSource() {
+            sourceRequest++; sourcePending = false; sourceGeneration = -1; sourceAttempts = 0; databaseSource = null;
+            if (sourceRetry != null) main.removeCallbacks(sourceRetry); sourceRetry = null;
+        }
+        void requestSource(ViewGroup expected, int generation) {
+            if (sourcePending) return;
+            sourcePending = true; sourceAttempts++;
+            int request = ++sourceRequest;
+            Context sourceContext = expected.getContext();
+            LauncherDatabaseIdentity.request(() -> t.source(sourceContext), value -> main.post(() -> {
+                if (resetPaused || workspace.get() != expected || generation != bindingGeneration || request != sourceRequest) return;
+                try {
+                    if (value.valid() && (!matchesBindingSource(value) || !t.currentSource(sourceContext, value))) {
+                        value.ownerMatches = false; value.error = "binding_source_changed_after_read";
+                    }
+                } catch (Exception changed) { value.ownerMatches = false; value.error = "source_recheck_failed"; }
+                sourcePending = false; sourceGeneration = generation; databaseSource = value;
+                // A transient missing/startup database may appear after native binding.
+                // Retry metadata only, with a bounded backoff; a confirmed different file
+                // is a real new source and never gets old empty IDs relabeled as current.
+                if (value.valid() && restorationApplied()) appliedGeneration = -1;
+                requestRestoration(0);
+                if (!value.valid() && !"binding_source_changed_after_read".equals(value.error)
+                        && t.idpGet != null && !origins().isEmpty() && sourceAttempts < 5) {
+                    long[] delays = {1000, 3000, 10000, 30000};
+                    sourceRetry = () -> {
+                        sourceRetry = null;
+                        if (!resetPaused && workspace.get() == expected && bindingGeneration == generation
+                                && request == sourceRequest && !sourcePending) requestSource(expected, generation);
+                    };
+                    main.postDelayed(sourceRetry, delays[Math.min(sourceAttempts - 1, delays.length - 1)]);
+                }
+            }));
+        }
+        String sourceSignature() {
+            return sourceGeneration == bindingGeneration && matchesBindingSource(databaseSource) ? databaseSource.signature() : "";
+        }
+        boolean matchesBindingSource(LauncherDatabaseIdentity.Snapshot source) {
+            return source != null && bindingSourceIdp != null && source.idp == bindingSourceIdp
+                    && java.util.Objects.equals(source.basename, bindingSourceName);
+        }
+        String origins() { return prefs == null ? "" : prefs.getString("empty_origins", ""); }
+        List<Integer> recoveredOrder(List<Integer> live) {
+            List<Integer> allowed = keepEmpty() ? LauncherPageOrigins.ids(origins(), sourceSignature()) : Collections.emptyList();
+            ArrayList<Integer> trusted = new ArrayList<>();
+            for (int id : saved()) if (live.contains(id) || allowed.contains(id)) trusted.add(id);
+            return LauncherPageOrder.merge(live, trusted, keepEmpty());
+        }
+        SharedPreferences nativePreferences() throws Exception {
+            return (SharedPreferences) t.nativePrefs.invoke(null, context);
+        }
+        void checkPendingHomeChange() {
+            try {
+                if (fallbackHome != null && !fallbackHome.matches(nativePreferences())) homeChangedByUser = true;
+            } catch (Throwable error) { restorationFailed(error); }
+        }
+        void capturePendingHome() {
+            checkPendingHomeChange();
+            try {
+                if (pendingHome == null && !homeChangedByUser) {
+                    SharedPreferences nativeRecord = nativePreferences();
+                    HomeState original = new HomeState(nativeRecord);
+                    if (original.hasId) { pendingHome = original; pendingHomePreferences = nativeRecord; }
+                }
+            } catch (Throwable error) { restorationFailed(error); }
+        }
+        void rememberFallbackHome() {
+            try {
+                if (pendingHome != null && !homeChangedByUser
+                        && (fallbackHome != null || !order().contains(pendingHome.id)))
+                    fallbackHome = new HomeState(nativePreferences());
+            } catch (Throwable error) { restorationFailed(error); }
+        }
+        boolean restorationApplied() {
+            return !resetPaused && prefs != null && appliedPreferences == prefs
+                    && appliedGeneration == bindingGeneration && FeatureSettings.hasVerifiedSnapshot(context);
+        }
+        void cancelRestoration() {
+            if (restoreCheck != null) main.removeCallbacks(restoreCheck);
+            restoreCheck = null;
+        }
+        void requestRestoration(long delay) {
+            ViewGroup ws = workspace.get();
+            if (resetPaused || restorationApplied() || prefs == null || ws == null || restoreCheck != null) return;
+            int generation = bindingGeneration;
+            restoreCheck = new Runnable() {
+                @Override public void run() {
+                    if (restoreCheck != this) return;
+                    restoreCheck = null;
+                    restoreWhenIdle(ws, generation);
+                }
+            };
+            main.postDelayed(restoreCheck, delay);
+        }
+        void restorationFailed(Throwable error) {
+            restoreDiagnostic("blocked", error instanceof PageUnavailable ? error.getMessage() : error.getClass().getSimpleName());
+            if (lastRestoreErrorGeneration != bindingGeneration) {
+                lastRestoreErrorGeneration = bindingGeneration;
+                failed(error);
+            }
+        }
+        void restoreDiagnostic(String state, String reason) {
+            if (context == null) return;
+            int live = -1;
+            try { live = order().size(); } catch (Throwable ignored) { }
+            int saved = prefs == null ? -1 : LauncherPageOrder.parse(prefs.getString("order", "")).size();
+            FeatureSettings.diagnostic(context, "ls_augment_launcher_pages_restore",
+                    "state=" + state + "|generation=" + bindingGeneration + "|savedPageCount=" + saved
+                            + "|livePageCount=" + live + "|version=" + ls.augment.com.BuildConfig.VERSION_CODE
+                            + "|sourceVerified=" + !sourceSignature().isEmpty()
+                            + "|source=" + (databaseSource == null ? "pending" : databaseSource.basename)
+                            + "|sourcePathHash=" + (databaseSource == null ? "" : databaseSource.pathHash)
+                            + "|sourceStorage=" + (databaseSource == null ? "unknown" : databaseSource.storage)
+                            + "|sourceUid=" + (databaseSource == null ? -1 : databaseSource.uid)
+                            + "|sourceUser=" + (databaseSource == null ? -1 : databaseSource.user)
+                            + "|sourceDisplay=" + (databaseSource == null ? -1 : databaseSource.display)
+                            + "|sourceDevice=" + (databaseSource == null ? 0 : databaseSource.device)
+                            + "|sourceInode=" + (databaseSource == null ? 0 : databaseSource.inode)
+                            + "|sourceError=" + (databaseSource == null ? "" : databaseSource.error)
+                            + "|sourceObservedAt=" + (databaseSource == null ? 0 : databaseSource.observedAt)
+                            + "|sourceEvidence=worker_file_metadata_and_current_idp"
+                            + "|reason=" + reason);
+        }
+        void checkFixedOrder(List<Integer> before, List<Integer> after) throws Exception {
+            for (int id : before) {
+                if (id == -200 || id == -201 || !fixed(id)) continue;
+                int from = before.indexOf(id), to = after.indexOf(id);
+                if (from != to) throw new PageUnavailable("固定桌面页面位置已改变，保留原恢复记录");
+                for (int other : before) {
+                    if (other != id && (before.indexOf(other) < from) != (after.indexOf(other) < to))
+                        throw new PageUnavailable("恢复顺序不能跨越固定桌面页面，保留原恢复记录");
+                }
+            }
+        }
+        void checkPageTree(ViewGroup ws, List<Integer> ids) throws Exception {
+            if (ids.size() != ws.getChildCount() || ((SparseArray<?>) t.screens.get(ws)).size() != ids.size())
+                throw new PageUnavailable("桌面页面尚未完整绑定，保留原恢复记录");
+            for (int i = 0; i < ids.size(); i++) {
+                if (t.pageAtId.invoke(ws, ids.get(i)) != ws.getChildAt(i))
+                    throw new PageUnavailable("桌面页面映射尚未就绪，保留原恢复记录");
+            }
+        }
+        void restoreWhenIdle(ViewGroup expected, int generation) {
+            if (resetPaused || restorationApplied() || prefs == null || expected == null
+                    || workspace.get() != expected || generation != bindingGeneration || !expected.isAttachedToWindow()
+                    || !ready || !bindingSucceeded || binding || mutating) return;
+            try {
+                if (!FeatureSettings.hasVerifiedSnapshot(context)) {
+                    restoreDiagnostic("waiting_configuration", ""); requestRestoration(500); return;
+                }
+                if ((Boolean) TargetReflection.call(expected, "getIsDragOccuring")
+                        || (Boolean) TargetReflection.call(expected, "isPageInTransition")) {
+                    restoreDiagnostic("waiting_busy", "");
+                    requestRestoration(250);
+                    return;
+                }
+                List<Integer> live = order();
+                checkPageTree(expected, live);
+                if (sourceGeneration != generation) {
+                    restoreDiagnostic("waiting_database_source", ""); requestSource(expected, generation); return;
+                }
+                if (databaseSource != null && databaseSource.valid() && !t.currentSource(expected.getContext(), databaseSource)) {
+                    invalidateSource(); restoreDiagnostic("waiting_database_source", "current_idp_changed");
+                    requestSource(expected, generation); return;
+                }
+                List<Integer> recovered = recoveredOrder(live);
+                checkFixedOrder(live, recovered);
+                boolean changedOrder = !live.equals(recovered);
+                boolean restoreHome = pendingHome != null && fallbackHome != null && !homeChangedByUser
+                        && recovered.contains(pendingHome.id) && fallbackHome.matches(nativePreferences());
+                if (changedOrder || restoreHome) {
+                    if (changedOrder && (Integer) t.panelCount.invoke(expected) != 1)
+                        throw new PageUnavailable("多屏桌面模式暂不自动恢复页面，保留原恢复记录");
+                    Snapshot before = new Snapshot(this);
+                    mutating = true;
+                    try {
+                        expected.setLayoutTransition(null);
+                        if (changedOrder) {
+                            for (int i = 0; i < recovered.size(); i++) {
+                                int id = recovered.get(i);
+                                if (!live.contains(id)) t.insert.invoke(expected, id, i);
+                            }
+                            ArrayList<View> children = new ArrayList<>();
+                            for (int id : recovered) children.add((View) t.pageAtId.invoke(expected, id));
+                            for (View child : children) expected.removeView(child);
+                            t.replaceIds(t.screenOrder.invoke(expected), recovered);
+                            for (int i = 0; i < children.size(); i++) expected.addView(children.get(i), i);
+                        }
+                        if (restoreHome) before.nativePreferences.edit().putInt("launcher.default_screen_id", pendingHome.id)
+                                .putInt("launcher.default_screen", recovered.indexOf(pendingHome.id)).apply();
+                        refresh(before.currentId);
+                        checkPageTree(expected, recovered);
+                        if (!order().equals(recovered)) throw new IllegalStateException("桌面恢复顺序未生效");
+                    } catch (Throwable error) {
+                        before.restore(this, true);
+                        throw error;
+                    } finally { expected.setLayoutTransition(before.transition); mutating = false; }
+                }
+                if (workspace.get() != expected || generation != bindingGeneration || resetPaused || !ready) return;
+                appliedPreferences = prefs;
+                appliedGeneration = generation;
+                pendingHome = null;
+                fallbackHome = null;
+                pendingHomePreferences = null;
+                homeChangedByUser = false;
+                cancelRestoration();
+                restoreFailures = 0;
+                restoreDiagnostic("applied", recovered.containsAll(saved()) ? "" : "unproven_missing_pages_retained_in_record");
+                scheduleCleanup();
+                configurationChanged();
+            } catch (Throwable error) {
+                restorationFailed(error);
+                long[] delays = {1000, 3000, 10000, 30000};
+                if (ready) requestRestoration(delays[Math.min(restoreFailures++, delays.length - 1)]);
             }
         }
         boolean enabled(String key) { return !resetPaused && context != null && prefs != null && FeatureSettings.enabled(context, key); }
@@ -239,11 +628,11 @@ final class LauncherPagesHook {
         }
         void scheduleCleanup() {
             main.removeCallbacks(cleanup);
-            if (!resetPaused && ready && !binding && !mutating && keepEmpty()) main.postDelayed(cleanup, 250);
+            if (restorationApplied() && ready && !binding && !mutating && keepEmpty()) main.postDelayed(cleanup, 250);
         }
         void cleanupPlaceholders() {
             ViewGroup ws = workspace.get();
-            if (resetPaused || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating || !keepEmpty()) return;
+            if (!restorationApplied() || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating || !keepEmpty()) return;
             try {
                 List<Integer> order = order();
                 if (!order.contains(-201) && !order.contains(-200)) return;
@@ -269,10 +658,12 @@ final class LauncherPagesHook {
                 ViewGroup menuView = menu.get();
                 if (menuView != null) attachMenu(menuView);
                 ViewGroup ws = workspace.get();
-                if (ws == null || !ready || binding || mutating || !FeatureSettings.hasVerifiedSnapshot(context)) return;
-                // Receiving a recovered record must not rewrite it with the fallback
-                // layout; normal binding/editing applies the existing page policy.
-                if(awaitingPrivate || prefs==null)return;
+                if (ws == null || !ready || binding || mutating) {
+                    if (prefs != null && !restorationApplied()) restoreDiagnostic("waiting_binding", "");
+                    return;
+                }
+                // Acquiring a record never grants permission to save the native fallback.
+                if (!restorationApplied()) { requestRestoration(0); return; }
                 boolean before = prefs.getBoolean("keep_empty", false);
                 boolean after = enabled(LauncherOptions.KEEP_EMPTY);
                 if (before && !after) {
@@ -285,22 +676,50 @@ final class LauncherPagesHook {
             } catch (Throwable error) { failed(error); }
         }
         void save() {
-            if (resetPaused || prefs == null || !ready || binding || mutating) return;
+            save(null, -1);
+        }
+        void save(String nextOrigins, int deletedId) {
+            if (!restorationApplied() || !ready || binding || mutating) return;
             if (!prefs.contains("order") && !enabled(LauncherOptions.PAGE_REORDER) && !enabled(LauncherOptions.KEEP_EMPTY)) return;
             try {
                 boolean keep = keepEmpty();
-                String order = LauncherPageOrder.encode(order());
-                if (!order.equals(prefs.getString("order", "")) || keep != prefs.getBoolean("keep_empty", false)
+                // Unproven old IDs are quarantined, not erased or promoted to manual
+                // origins by an ordinary native bind/drag/strip callback.
+                List<Integer> current = order();
+                List<Integer> original = new ArrayList<>(saved());
+                if (deletedId >= 0 && !LauncherPageOrigins.referencedByOtherSource(
+                        nextOrigins == null ? origins() : nextOrigins, sourceSignature(), deletedId)) original.remove(Integer.valueOf(deletedId));
+                List<Integer> retained = LauncherPageOrder.retainMissing(current, original);
+                if (retained.size() > LauncherPageOrder.MAX_PAGES) {
+                    restoreDiagnostic("record_preserved", "order_capacity"); return;
+                }
+                String order = LauncherPageOrder.encode(retained);
+                if (nextOrigins != null || !order.equals(prefs.getString("order", "")) || keep != prefs.getBoolean("keep_empty", false)
                         ||LauncherOwnedStateClient.needsSave(prefs)) {
-                    prefs.edit().putString("order", order).putBoolean("keep_empty", keep).apply();
+                    SharedPreferences.Editor edit = prefs.edit().putString("order", order).putBoolean("keep_empty", keep);
+                    if (nextOrigins != null) edit.putString("empty_origins", nextOrigins);
+                    edit.apply();
                 }
             } catch (Throwable error) { failed(error); }
         }
         void attachMenu(ViewGroup container) {
-            menu = new WeakReference<>(container);
             try {
-                Object owner = TargetReflection.field(container, "g");
-                if (t.launcher.isInstance(owner)) attach((ViewGroup) t.workspace.invoke(owner));
+                Object owner = t.menuOwner.get(container);
+                if (t.launcher.isInstance(owner)) {
+                    ViewGroup expected = (ViewGroup) t.workspace.invoke(owner);
+                    if (workspace.get() != null && workspace.get() != expected) {
+                        LinearLayout oldRow = (LinearLayout) t.menuItems.get(container);
+                        if (oldRow != null) for (int i = 0; i < oldRow.getChildCount(); i++) {
+                            View child = oldRow.getChildAt(i);
+                            if (ENTRY_TAG.equals(child.getTag())) { child.setVisibility(View.GONE); child.setOnClickListener(null); }
+                            LinearLayout.LayoutParams original = menuLayouts.remove(child);
+                            if (original != null) child.setLayoutParams(original);
+                        }
+                        return;
+                    }
+                    attach(expected);
+                }
+                menu = new WeakReference<>(container);
                 LinearLayout row = (LinearLayout) t.menuItems.get(container);
                 if (row == null) return;
                 TextView entry = row.findViewWithTag(ENTRY_TAG);
@@ -314,10 +733,14 @@ final class LauncherPagesHook {
                     entry.setPadding(dp(4), dp(4), dp(4), dp(4));
                     entry.setTextSize(12);
                     entry.setContentDescription("管理桌面页面");
-                    entry.setOnClickListener(view -> showEditor(container.getContext()));
                     row.addView(entry, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
                 }
                 if (entry == null) return;
+                final ViewGroup entryWorkspace = workspace.get();
+                entry.setOnClickListener(view -> {
+                    if (workspace.get() != entryWorkspace) { notifyUser("桌面已刷新，请重新打开页面管理"); return; }
+                    showEditor(container.getContext());
+                });
                 TextView reference = null;
                 for (int i = 0; i < row.getChildCount(); i++) {
                     View child = row.getChildAt(i);
@@ -369,9 +792,9 @@ final class LauncherPagesHook {
             if (id < 0) return true;
             ViewGroup ws = workspace.get();
             Object launcher = t.launcherField.get(ws);
-            if (id == 0 && t.firstScreen.getBoolean(t.bindingModel.get(launcher)) && !t.vendorFirstScreen.getBoolean(null)) return true;
+            if (id == 0 && t.firstPageFixed(launcher)) return true;
             // AIFutureWidgetUtils owns this page and always inserts it at the first position.
-            Object futureId = TargetReflection.call(t.future, "l", context);
+            Object futureId = t.future == null ? null : TargetReflection.call(t.future, t.futureMethod, context);
             return futureId instanceof Integer && (Integer) futureId > 0 && id == (Integer) futureId;
         }
         boolean empty(int id) throws Exception {
@@ -380,7 +803,7 @@ final class LauncherPagesHook {
         }
         void checkEditable() throws Exception {
             ViewGroup ws = workspace.get();
-            if (resetPaused || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating
+            if (!restorationApplied() || ws == null || !ws.isAttachedToWindow() || !ready || binding || mutating
                     || (Boolean) TargetReflection.call(ws, "getIsDragOccuring")
                     || (Boolean) TargetReflection.call(ws, "isPageInTransition")) {
                 throw new PageUnavailable("桌面正在更新，请稍后再试");
@@ -433,7 +856,13 @@ final class LauncherPagesHook {
             List<Integer> order = order();
             if (order.stream().filter(value -> value >= 0).count() >= LauncherPageOrder.MAX_PAGES)
                 throw new PageUnavailable("桌面页面已达到上限");
+            java.util.HashSet<Integer> retainedIds = new java.util.HashSet<>(saved());
+            for (int existing : order) if (existing >= 0) retainedIds.add(existing);
+            if (retainedIds.size() >= LauncherPageOrder.MAX_PAGES) throw new PageUnavailable("页面恢复记录已达到上限，请先处理已有页面");
             if (id < 0 || order.contains(id) || saved().contains(id)) throw new PageUnavailable("页面已更新，请重新新增");
+            String source = sourceSignature();
+            if (source.isEmpty() || !t.currentSource(workspace.get().getContext(), databaseSource)) throw new PageUnavailable("尚未确认桌面数据来源，请稍后再试");
+            String nextOrigins = LauncherPageOrigins.add(origins(), source, id);
             int index = order.size();
             while (index > 0 && order.get(index - 1) < 0) index--;
             ViewGroup ws = workspace.get();
@@ -447,7 +876,7 @@ final class LauncherPagesHook {
                 before.restore(this);
                 throw error;
             } finally { ws.setLayoutTransition(before.transition); mutating = false; }
-            save();
+            save(nextOrigins, -1);
         }
         void delete(int id) throws Exception {
             checkEditable();
@@ -474,7 +903,7 @@ final class LauncherPagesHook {
                 before.restore(this);
                 throw error;
             } finally { ws.setLayoutTransition(before.transition); mutating = false; }
-            save();
+            save(LauncherPageOrigins.remove(origins(), sourceSignature(), id), id);
         }
         void refresh(int selectedId) throws Exception {
             ViewGroup ws = workspace.get();
@@ -482,7 +911,7 @@ final class LauncherPagesHook {
             t.refreshDefault.invoke(t.screenUtil.invoke(launcher), ws);
             int index = LauncherPageOrder.selectedIndex(order(), selectedId, 0);
             t.setCurrentPage.invoke(ws, index);
-            Object nativeState = TargetReflection.call(TargetReflection.call(launcher, "getStateManager"), "C");
+            Object nativeState = TargetReflection.call(TargetReflection.call(launcher, "getStateManager"), t.stateValue);
             TargetReflection.call(ws, "setState", nativeState);
             t.updateIndicator.invoke(ws);
             ws.requestLayout();
@@ -503,6 +932,9 @@ final class LauncherPagesHook {
         /** One pending intent; wait for native animations, never retry an applied mutation. */
         void perform(Action action, Runnable onSuccess, Consumer<String> onFailure) {
             if(resetPaused){onFailure.accept("模块正在重置，请稍候");return;}
+            if (!restorationApplied() && !(prefs != null && !ready && (binding || bindingSucceeded))) {
+                requestRestoration(0); onFailure.accept("页面恢复尚未完成，请稍后再试"); return;
+            }
             if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
             pending = true;
             int token = ++requestToken;
@@ -513,6 +945,9 @@ final class LauncherPagesHook {
         }
         void addPage(Runnable onSuccess, Consumer<String> onFailure) {
             if(resetPaused){onFailure.accept("模块正在重置，请稍候");return;}
+            if (!restorationApplied() && !(prefs != null && !ready && (binding || bindingSucceeded))) {
+                requestRestoration(0); onFailure.accept("页面恢复尚未完成，请稍后再试"); return;
+            }
             if (pending) { onFailure.accept("正在处理页面，请稍候"); return; }
             if (!enabled(LauncherOptions.KEEP_EMPTY)) { onFailure.accept("请先开启允许空白桌面"); return; }
             pending = true;
@@ -527,9 +962,16 @@ final class LauncherPagesHook {
                         if(resetPaused||token!=requestToken||!pending)return;
                         Object state = t.stateGet.invoke(null, context);
                         Object model = t.modelGet.invoke(state);
+                        LauncherDatabaseIdentity.Snapshot source = t.source(expected.getContext());
+                        if (!source.valid()) throw new PageUnavailable("尚未确认桌面数据来源，请稍后再试");
                         int minimum = (Integer) t.nextId.invoke(t.databaseGet.invoke(model));
                         main.post(() -> awaitEditable(token, expected, generation, 0, () -> {
                             if (!enabled(LauncherOptions.KEEP_EMPTY)) throw new PageUnavailable("允许空白桌面已关闭");
+                            if (!matchesBindingSource(source) || !t.currentSource(expected.getContext(), source)) throw new PageUnavailable("桌面数据来源已改变，请重新新增");
+                            String confirmedSource = sourceSignature();
+                            if (!confirmedSource.isEmpty() && !confirmedSource.equals(source.signature()))
+                                throw new PageUnavailable("桌面数据文件已更换，请等待桌面重新加载后再新增");
+                            databaseSource = source; sourceGeneration = generation;
                             int id = LauncherPageOrder.nextAvailableId(minimum, order(), saved());
                             if (id < 0) throw new PageUnavailable("无法分配新的页面编号");
                             add(id);
@@ -551,7 +993,7 @@ final class LauncherPagesHook {
                 if (expected == null || workspace.get() != expected || !expected.isAttachedToWindow()
                         || generation != bindingGeneration) throw new PageUnavailable("桌面已刷新，请重新打开页面管理");
                 if ((Integer) t.panelCount.invoke(expected) != 1) throw new PageUnavailable("请在单屏桌面模式下管理页面");
-                boolean busy = !ready || binding || mutating
+                boolean busy = !restorationApplied() || !ready || binding || mutating
                         || (Boolean) TargetReflection.call(expected, "getIsDragOccuring")
                         || (Boolean) TargetReflection.call(expected, "isPageInTransition");
                 if (busy) {
@@ -593,6 +1035,24 @@ final class LauncherPagesHook {
         PageUnavailable(String message) { super(message); }
     }
 
+    /** Remember an OEM fallback only in this workspace; later user home choices win. */
+    private static final class HomeState {
+        final boolean hasId, hasIndex;
+        final int id, index;
+        HomeState(SharedPreferences preferences) {
+            hasId = preferences.contains("launcher.default_screen_id");
+            hasIndex = preferences.contains("launcher.default_screen");
+            id = preferences.getInt("launcher.default_screen_id", -1);
+            index = preferences.getInt("launcher.default_screen", -1);
+        }
+        boolean matches(SharedPreferences preferences) {
+            return hasId == preferences.contains("launcher.default_screen_id")
+                    && hasIndex == preferences.contains("launcher.default_screen")
+                    && id == preferences.getInt("launcher.default_screen_id", -1)
+                    && index == preferences.getInt("launcher.default_screen", -1);
+        }
+    }
+
     /** Roll back native page objects as well as IDs if a launcher callback rejects a mutation. */
     private static final class Snapshot {
         final List<Integer> order;
@@ -617,43 +1077,47 @@ final class LauncherPagesHook {
             homeId = nativePreferences.getInt("launcher.default_screen_id", -1);
             homeIndex = nativePreferences.getInt("launcher.default_screen", -1);
         }
-        @SuppressWarnings("unchecked") void restore(Controller c) {
+        void restore(Controller c) { restore(c, false); }
+        void report(Controller c, Throwable error, boolean recovery) {
+            if (recovery) c.restorationFailed(error); else c.failed(error);
+        }
+        @SuppressWarnings("unchecked") void restore(Controller c, boolean recovery) {
             ViewGroup ws = c.workspace.get();
             if (ws == null) { c.ready = false; return; }
             // A failing view callback must not prevent restoration of the remaining pages.
             ArrayList<View> liveChildren = new ArrayList<>();
             for (int i = 0; i < ws.getChildCount(); i++) liveChildren.add(ws.getChildAt(i));
             for (View child : liveChildren) {
-                try { ws.removeView(child); } catch (Throwable error) { c.failed(error); }
+                try { ws.removeView(child); } catch (Throwable error) { report(c, error, recovery); }
             }
             try {
                 SparseArray<Object> live = (SparseArray<Object>) c.t.screens.get(ws);
                 live.clear();
                 for (int i = 0; i < pages.size(); i++) live.put(pages.keyAt(i), pages.valueAt(i));
-            } catch (Throwable error) { c.failed(error); }
+            } catch (Throwable error) { report(c, error, recovery); }
             try {
                 c.t.replaceIds(c.t.screenOrder.invoke(ws), order);
-            } catch (Throwable error) { c.failed(error); }
+            } catch (Throwable error) { report(c, error, recovery); }
             for (int i = 0; i < children.size(); i++) {
                 View child = children.get(i);
                 try {
                     if (child.getParent() == ws && ws.indexOfChild(child) != i) ws.removeView(child);
                     if (child.getParent() == null) ws.addView(child, Math.min(i, ws.getChildCount()));
-                } catch (Throwable error) { c.failed(error); }
+                } catch (Throwable error) { report(c, error, recovery); }
             }
             try {
                 SharedPreferences.Editor edit = nativePreferences.edit();
                 if (hasHomeId) edit.putInt("launcher.default_screen_id", homeId); else edit.remove("launcher.default_screen_id");
                 if (hasHomeIndex) edit.putInt("launcher.default_screen", homeIndex); else edit.remove("launcher.default_screen");
                 edit.apply();
-            } catch (Throwable error) { c.failed(error); }
+            } catch (Throwable error) { report(c, error, recovery); }
             try {
                 // Restore the current page even if the optional visual refresh fails again.
                 c.t.setCurrentPage.invoke(ws, LauncherPageOrder.selectedIndex(order, currentId, 0));
                 ws.requestLayout();
                 ws.invalidate();
-                try { c.refresh(currentId); } catch (Exception error) { c.failed(error); }
-            } catch (Throwable error) { c.failed(error); }
+                try { c.refresh(currentId); } catch (Exception error) { report(c, error, recovery); }
+            } catch (Throwable error) { report(c, error, recovery); }
             try {
                 if (!order.equals(c.order()) || ws.getChildCount() != children.size()) throw new IllegalStateException("页面顺序未恢复");
                 SparseArray<Object> live = (SparseArray<Object>) c.t.screens.get(ws);
@@ -662,7 +1126,7 @@ final class LauncherPagesHook {
                 for (int i = 0; i < pages.size(); i++) if (live.get(pages.keyAt(i)) != pages.valueAt(i)) throw new IllegalStateException("页面身份未恢复");
             } catch (Throwable error) {
                 c.ready = false;
-                c.failed(error);
+                report(c, error, recovery);
                 c.notifyUser("页面恢复未完成，请重新启动桌面后再操作");
             }
         }

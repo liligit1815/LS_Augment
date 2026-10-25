@@ -28,6 +28,7 @@ public final class HookAppCatalog {
     public static final String INSTALLER = "installer";
     public static final String UPDATE = "update";
     public static final String HEALTH = "health";
+    public static final String AMAP = "amap";
     public static final String WEATHER = "weather";
     public static final String NFC = "nfc";
     public static final String FILES = "files";
@@ -99,9 +100,10 @@ public final class HookAppCatalog {
                     "com.android.packageinstaller"),
             target(UPDATE, "系统更新", "更新安装、更新链接与设备信息", "apps", "com.zte.zdm"),
             target(HEALTH, "小米运动健康", "步数倍速、增步计划与每日上限", "apps", "com.mi.health"),
+            target(AMAP, "高德地图", "原子工作台的实时导航路线", "amap", "com.autonavi.minimap"),
             target(WEATHER, "天气", "天气时间中的中文时段", "apps", "com.zte.mifavor.weather"),
             target(NFC, "NFC 服务", "识别提示音与息屏识别", "device", "com.android.nfc"),
-            target(FILES, "MTP传输", "电脑端存储名称与 MTP 浏览", "apps", "cn.nubia.filebrowser"),
+            target(FILES, "MTP传输", "电脑端存储名称与 MTP 浏览", "apps", "cn.nubia.filebrowser", "com.android.mtp"),
             target(PERMISSIONS, "权限管理", "第三方默认桌面选择", "apps", "com.android.permissioncontroller"),
             target(SCREENSHOT, "截图与录屏", "截图裁剪与捕获画面的状态栏显示", "apps", "com.android.ztescreenshot"),
             target(GALLERY, "相册图片编辑", "图片编辑中的裁剪尺寸限制", "apps", "cn.nubia.photoeditor")
@@ -137,6 +139,7 @@ public final class HookAppCatalog {
         add(DOUBLE_APP, "double_app", "扩展应用双开", "双开候选应用与低内存限制");
         add(STORE, "store_download", "同时下载数量", "设置应用中心允许同时下载的数量");
         add(HEALTH, "mi_health", "小米运动健康", "步数倍速、账户绑定、计划与每日上限");
+        add(AMAP, "atomic_workbench", "原子工作台", "顶栏显示高德地图当前的实际导航指引");
         add(MODULE, "launcher_icon", "模块桌面图标", "隐藏或恢复 红魔Duo 的桌面入口");
         add(MODULE, "config_transfer", "备份、还原与重置", "导出配置、导入备份或恢复默认设置");
         add(MODULE, "log_export", "导出日志", "设备与模块版本、功能配置、Hook 与异常记录");
@@ -153,6 +156,7 @@ public final class HookAppCatalog {
         ROUTES.put("tile", MODULE);
         ROUTES.put("tile_setup", MODULE);
         ROUTES.put("device_settings", SETTINGS);
+        ROUTES.put("competitive_key", SYSTEM);
     }
 
     private HookAppCatalog() { }
@@ -291,7 +295,9 @@ public final class HookAppCatalog {
         }
         if (LAUNCHER.equals(targetId)) {
             if (suffix.startsWith("launcher_grid_")) return "launcher_grid";
-            if (suffix.startsWith("desktop_clock_")) return "desktop_clock";
+            if (LauncherOptions.DOCK_UNLIMITED.equals(option.key) || GlassOptions.DOCK.equals(option.key)
+                    || GlassOptions.DOCK_REDUCE_TRANSPARENCY.equals(option.key) || GlassOptions.DOCK_REDUCE_MOTION.equals(option.key)) return "dock_glass";
+            if (suffix.startsWith("desktop_clock_") || LauncherOptions.WIDGET_RESIZE.equals(option.key)) return "desktop_clock";
             if (suffix.startsWith("recents_")) return "recents";
         }
         if (GAME.equals(targetId)) {
@@ -313,7 +319,7 @@ public final class HookAppCatalog {
             case SYSTEM: return new String[]{"system", "audio", "connections", "installer"};
             case SYSTEM_UI: return new String[]{"statusbar", "quicksettings", "notification_clock", "notification_stack", "notification_clear", "lockscreen", "aod", "volume_panel", "interaction", "usb"};
             case SETTINGS: return new String[]{"display_time", "usb"};
-            case LAUNCHER: return new String[]{"launcher_grid", "launcher", "desktop_clock", "recents"};
+            case LAUNCHER: return new String[]{"launcher_grid", "launcher", "dock_glass", "desktop_clock", "recents"};
             case GAME: return new String[]{"shoulder", "combo", "performance", "plugins", "game_capture"};
             default: return new String[0];
         }
@@ -336,7 +342,8 @@ public final class HookAppCatalog {
             case "interaction": return "手势、单手模式与剪贴板";
             case "launcher": return "桌面页面";
             case "launcher_grid": return "桌面布局";
-            case "desktop_clock": return "桌面时钟";
+            case "dock_glass": return "Dock";
+            case "desktop_clock": return "桌面组件";
             case "recents": return "最近任务";
             case "shoulder": return "肩键方案";
             case "combo": return "连招录制与循环";

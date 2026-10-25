@@ -21,7 +21,7 @@ STUBS = {
  public void putInt(String k,int v){values.put(k,v);}public int getInt(String k,int d){Object v=values.get(k);return v instanceof Integer?(Integer)v:d;}
 }''',
 'android/content/Context.java': '''package android.content; public class Context {
- public ContentResolver getContentResolver(){return new ContentResolver();}
+ public Context getApplicationContext(){return this;} public ContentResolver getContentResolver(){return new ContentResolver();}
  public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}
 }''',
 'android/os/SystemClock.java': 'package android.os; public class SystemClock { public static long elapsedRealtime(){return System.nanoTime()/1000000;} }',
@@ -103,7 +103,7 @@ public class TestRapidAsync {
     yes(!((Boolean)field(TgkRapidFireNative.class,"attempted")),"temporary miss must remain retryable");
     FuseProvider.block=false;FuseProvider.release.countDown();until(()->RapidFireCrashFuse.beforeInstall(c),2000,"marker recovery");
     fast(()->TgkRapidFireNative.ensureInstalled(new AugmentModule(),c));
-    until(()->RapidFireNativeLayout.calls==1,2000,"background native retry");
+    until(()->RapidFireNativeLayout.calls==2,2000,"background native retry");
     until(()->FuseProvider.values.getOrDefault(RapidFireCrashFuse.PENDING,-1)==0,2000,"failed preflight clears marker");break;
    case "marker_failure":
     FuseProvider.failMarker=true;request();Thread.sleep(150);
@@ -166,7 +166,7 @@ with tempfile.TemporaryDirectory(prefix='ls-rapid-async-') as folder:
     work=Path(folder)
     for name, source in STUBS.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(source,encoding='utf-8')
-    for name in ['ls/augment/com/hook/RapidFireCrashFuse.java','ls/augment/com/hook/TgkRapidFireNative.java','ls/augment/com/RapidFireCompatibility.java','ls/augment/com/RapidFireLifecyclePolicy.java']:
+    for name in ['ls/augment/com/hook/RapidFireCrashFuse.java','ls/augment/com/hook/TgkRapidFireNative.java','ls/augment/com/RapidFireCompatibility.java','ls/augment/com/RapidFireLifecyclePolicy.java','ls/augment/com/OwnedNativeLibrary.java']:
         p=work/name;p.write_text((JAVA/name).read_text(encoding='utf-8'),encoding='utf-8')
     subprocess.run(['javac','-encoding','UTF-8','-d',folder]+[str(p) for p in work.rglob('*.java')],check=True)
     def run(case):

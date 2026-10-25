@@ -23,6 +23,12 @@ public final class TestLiquidGlassDockPolicy {
         // 1216px/520dpi fixture: five native icons remain above the host's gesture margin.
         expect(new int[]{33,8,207,182},LiquidGlassDockPolicy.iconBounds(240,260,174,174,8));
         expect(new int[]{2,5,1214,257},LiquidGlassDockPolicy.bounds(1216,352,41,44,1175,218,39,117,585));
+        require(LiquidGlassDockPolicy.visibleBounds(240,364,33,18,207,192),"folder preview fits its taller native cell");
+        require(!LiquidGlassDockPolicy.visibleBounds(240,364,-1,18,207,192),"reject native preview outside the viewport");
+        require(!LiquidGlassDockPolicy.visibleBounds(240,364,33,18,241,192),"reject right overflow");
+        require(!LiquidGlassDockPolicy.visibleBounds(240,364,33,18,207,365),"reject bottom overflow");
+        require(!LiquidGlassDockPolicy.visibleBounds(240,364,207,18,33,192),"reject inverted preview");
+        require(!LiquidGlassDockPolicy.visibleBounds(0,364,0,0,0,192),"reject unmeasured preview");
         System.out.println("Dock material geometry passed");
     }
     private static void expect(int[] expected,int[] actual){require(Arrays.equals(expected,actual),"bounds "+Arrays.toString(actual));}

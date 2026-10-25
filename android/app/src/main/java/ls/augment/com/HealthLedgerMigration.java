@@ -23,6 +23,9 @@ final class HealthLedgerMigration {
         {"account","time","requested","allowed"}
     };
     private HealthLedgerMigration(){}
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     static synchronized Result migrate(Context context){
         Context app=context.getApplicationContext();
         if(state==null)state=new DurablePreferences(app.getSharedPreferences(PREFS,Context.MODE_PRIVATE));
@@ -75,6 +78,9 @@ final class HealthLedgerMigration {
             if(stage.exists())discardStage(app,user,stage);
         }
     }
+
+    // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
+    //noinspection SdCardPath
     private static void discardStage(Context context,int user,File stage){
         try(java.io.InputStream input=context.getAssets().open("health_ledger_migrate.sh")){
             int uid=Process.myUid();

@@ -1,0 +1,117 @@
+{
+  "upstream": "https://github.com/yanyiwu/cppjieba",
+  "upstreamRevision": "Not recorded by source vendor; no upstream commit inferred",
+  "sourceRepository": "E:/VANSTEP",
+  "sourceCommit": "3b27964c6b9b9e37e6465788b2ac2d372bf9f04d",
+  "vendorLastChangeCommit": "80211dc6f1d03665b6a779e885b92bf0b9b8117b",
+  "license": "MIT; complete source NOTICE retained",
+  "copied": "Only cppjieba vendor headers and dict assets; no application JNI copied",
+  "localPatch": "Utils.hpp Logger only: discard every log stream; fatal throws fixed exception instead of abort, preserving an active exception during unwinding; no segmentation algorithm changes",
+  "files": [
+    {
+      "source": "app/src/main/cpp/include/cppjieba/DictTrie.hpp",
+      "sha256": "ed1d7ae92291a3d707a51a7bc31a1ec0c2b1a6053359b570f4a7ce4cfdb0f898",
+      "bytes": 9964
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/FullSegment.hpp",
+      "sha256": "6f8de54ec1601e93574569647ad630cd3929cdb99146629c420f1d620cae3a3f",
+      "bytes": 2636
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/HMMModel.hpp",
+      "sha256": "144e67162c3726836558304a389ac6e0a6952047f53fdac95c50f65be6b08cf2",
+      "bytes": 3421
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/HMMSegment.hpp",
+      "sha256": "a7fe00055b7b8705bc90829398c045212eb78dd968b47dc7cd94617dd6b74fd1",
+      "bytes": 6256
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/Jieba.hpp",
+      "sha256": "6e163b65457618b4c0e0ecc5e126e6a3bc192df846d66e3094e628ee1264cee2",
+      "bytes": 4988
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/KeywordExtractor.hpp",
+      "sha256": "8fb65af271c327cc390de8577e4eeb3c0333204f53d52bc60cdf199b5d66622a",
+      "bytes": 4717
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/MixSegment.hpp",
+      "sha256": "a9f45e178646960e0749af1339ab2c7815390116efcdbaa9d1775ebd944aea19",
+      "bytes": 3084
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/MPSegment.hpp",
+      "sha256": "fc78171c8b8be2a68d5bd13750a319a2f1ee35ff3710525bb5d520606a4a4dc0",
+      "bytes": 3768
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/PosTagger.hpp",
+      "sha256": "ed88e72414495453235e1f4b7f8be07e7e7d5273aa3a3a9cece903fbd796e560",
+      "bytes": 1939
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/PreFilter.hpp",
+      "sha256": "c7877ae122397e581f1fee13e6293f97649b3d5254a3be5421cc3ba7e670180b",
+      "bytes": 1271
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/QuerySegment.hpp",
+      "sha256": "5b0a30c62fbd812d45d011999ac41ca3ea17f8356ecc30fa128a828648749f6f",
+      "bytes": 2709
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/SegmentBase.hpp",
+      "sha256": "a3e506bed1b8287fb7fe183f558cbd2547d8ae95d873d2e821c26d55f82786bf",
+      "bytes": 1038
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/SegmentTagged.hpp",
+      "sha256": "3dbea4ea5a641bb3f0014cd34940207121765dc311223fc0cd014cb0b7b42e7b",
+      "bytes": 455
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/TextRankExtractor.hpp",
+      "sha256": "4febd371725fa71f0aeaefdc23e9f6475a22a74093dba0bc5c97f6da7a728ee3",
+      "bytes": 6386
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/Trie.hpp",
+      "sha256": "5c32c963467175bf4e2c6ed9b8c6d6f05d113e6b629624ae13bfb6d5bb4b2090",
+      "bytes": 5532
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/Unicode.hpp",
+      "sha256": "574e2f6ea40480f5c51b70d766be5023bd8cd66c82a34fe4d897abe49c665c30",
+      "bytes": 6581
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/UnicodeFile.hpp",
+      "sha256": "bbf0547b07f75a5d0254277fd5df56f638ab676d7fb81aa65958a6130250aece",
+      "bytes": 1434
+    },
+    {
+      "source": "app/src/main/cpp/include/cppjieba/Utils.hpp",
+      "sha256": "d4e4b5e1fb1aa891e8d6ba82ea801d6c6dffe89c1104e76df490e882f617f747",
+      "bytes": 7485
+    },
+    {
+      "source": "app/src/main/assets/dict/hmm_model.utf8",
+      "sha256": "c2781984c4c6be66862ff1bc9aace264256bcd174cd900d7f3725debe6c71255",
+      "bytes": 519773
+    },
+    {
+      "source": "app/src/main/assets/dict/jieba.dict.utf8",
+      "sha256": "2eed8a617b330a0d1117f78312f122d37373cd9db29b5515ca5098fcfa608de7",
+      "bytes": 5420189
+    },
+    {
+      "source": "app/src/main/assets/dict/user.dict.utf8",
+      "sha256": "cef393d44bf2a7ca792819309cde4a30adf89ad1da808763443aa9476cf3c561",
+      "bytes": 39
+    }
+  ]
+}

@@ -8,6 +8,9 @@ final class ExternalStorageMigration {
     private static boolean retiredBattery;
     private static long completedGeneration=-1;
     private ExternalStorageMigration() { }
+
+    // Durable migration/reset/ownership boundary: completion must precede subsequent process/transaction steps; retain commit.
+    //noinspection ApplySharedPref
     static RootShell.Result run(Context context) {
         RootHideManager.ACTION_LOCK.lock();
         try {

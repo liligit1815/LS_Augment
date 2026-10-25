@@ -265,7 +265,7 @@ final class StatusBarWifiAssetSpacingHook {
     /** Only resource/class/layout metadata, never text, descriptions, tags or artwork. */
     private static String budgetView(View view){
         if(view==null)return null;
-        String resource="none";try{if(view.getId()>0)resource=view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){}
+        String resource="none";try{if(view.getId()!=View.NO_ID&&view.getId()!=0)resource=view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){}
         ViewGroup.LayoutParams params=view.getLayoutParams();
         String result="class="+view.getClass().getName()+",resource="+resource+",visibility="+view.getVisibility()
                 +",local="+view.getLeft()+","+view.getTop()+","+view.getRight()+","+view.getBottom()

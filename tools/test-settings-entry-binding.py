@@ -101,10 +101,11 @@ public final class Hooks {
  public interface Interceptor {Object call(Chain chain) throws Throwable;}
  public static final Map<Method,Interceptor> hooks=new ConcurrentHashMap<>();
  public static final Map<Method,Integer> originals=new ConcurrentHashMap<>();
- public static final class Chain {
+ public static final class Chain implements io.github.libxposed.api.XposedInterface.Chain {
   final Object owner;final Object[] args;final Method method;final Original original;int proceeded;
   Chain(Object o,Object[] a,Method m,Original p){owner=o;args=a;method=m;original=p;}
   public Object getThisObject(){return owner;}public Object getArg(int n){return args[n];}
+  public java.util.List<Object> getArgs(){return java.util.Arrays.asList(args);}
   public Object proceed()throws Throwable{if(++proceeded!=1)throw new AssertionError("original repeated: "+method);originals.merge(method,1,Integer::sum);return original.call();}
  }
  public static final class Builder {
@@ -358,6 +359,7 @@ public final class TestSettingsEntryIntegration {
 
 def main():
     sources = fixture_sources()
+    sources['ls/augment/com/hook/ConfigReadRetry.java'] = (PACKAGE/'hook/ConfigReadRetry.java').read_text(encoding='utf-8')
     sources['ls/augment/com/ConfigSchema.java'] = sources['ls/augment/com/ConfigSchema.java'].replace(
         'return "flag".equals(key);', 'return "flag".equals(key)||HIDE_MASTER.equals(key);')
     sources.update({

@@ -21,6 +21,8 @@ public final class TestNativeFeatureGroups {
             require(targetExpected.equals(targetActual),"target ownership differs: "+target.id+" missing="+missing+" extra="+extra);
         }
         require(expected.equals(seen),"native options must be covered exactly once");
+        require(NativeFeatureGroups.forTarget("launcher").stream().filter(s->s.id.equals("dock_glass")).flatMap(s->s.features.stream()).anyMatch(f->f.toggleKey.equals(LauncherOptions.DOCK_UNLIMITED)),"Dock capacity switch belongs to the native Dock section");
+        require(NativeFeatureGroups.forTarget("launcher").stream().filter(s->s.id.equals("launcher_grid")||s.id.equals("launcher")).flatMap(s->s.features.stream()).noneMatch(f->f.allKeys().contains(LauncherOptions.DOCK_UNLIMITED)),"Desktop layout and page sections do not duplicate the Dock capacity switch");
         require(!seen.contains(SystemOptions.key("thermal_notifications")),"retired thermal control must be absent");
         Set<String> destinations=new HashSet<>();
         for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget("systemui"))if(section.id.equals("statusbar"))

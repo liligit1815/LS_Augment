@@ -78,6 +78,9 @@ final class ControlCenterGridHook {
 
     private static View gridOwner(Object adapter){Object owner=field(adapter,"mOwner");return owner instanceof View?(View)owner:null;}
     private static boolean active(View view){return view!=null&&regular(view)&&FeatureSettings.enabled(view.getContext(),P+"grid");}
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static int dimension(View view,String name){
         int resource=view.getResources().getIdentifier(name,"dimen","com.android.systemui");
         return resource==0?0:view.getResources().getDimensionPixelSize(resource);
@@ -114,7 +117,7 @@ final class ControlCenterGridHook {
         tile.setScaleX(saved[0]);tile.setScaleY(saved[1]);tile.setPivotX(saved[2]);tile.setPivotY(saved[3]);
     }
     private static boolean regular(View view){String name=id(view);return "control_center_all_tiles".equals(name)||"tile_page".equals(name);}
-    private static String id(View view){try{return view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){return "";}}
+    private static String id(View view){if(view.getId()==View.NO_ID||view.getId()==0)return "";try{return view.getResources().getResourceEntryName(view.getId());}catch(Exception ignored){return "";}}
     private static boolean land(View view){return view.getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;}
 
     /** The merged shade caches its pages. Refresh their native resources and

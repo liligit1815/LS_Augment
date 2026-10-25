@@ -20,6 +20,9 @@ final class ModuleNavigation {
         Intent intent=owner.getIntent();String route=intent.getStringExtra(EXTRA_ROUTE);
         if(route!=null)return route;
         if(owner instanceof StatusBarSettingsActivity)return "status_layout";
+        if(owner instanceof CompetitiveKeySettingsActivity)return "competitive_key";
+        if(owner instanceof AtomicWorkbenchSettingsActivity)return "atomic_workbench";
+        if(owner instanceof AtomicWorkbenchActivity)return "atomic_workbench_session";
         if(owner instanceof StatusBarAssetsActivity)return "status_assets";
         if(owner instanceof EnhancementSettingsActivity){
             String target=intent.getStringExtra("target");
@@ -76,6 +79,9 @@ final class ModuleNavigation {
             owner.startActivity(new Intent(owner,StatusBarAssetsActivity.class).putExtra(EXTRA_ROUTE,route));return;
         }
         switch (route) {
+            case "atomic_workbench":destination=AtomicWorkbenchSettingsActivity.class;break;
+            case "atomic_workbench_apps":case "atomic_workbench_app_sort":destination=AtomicWorkbenchAppsActivity.class;break;
+            case "competitive_key":destination=CompetitiveKeySettingsActivity.class;break;
             case "home":case "settings":case "about":
                 owner.startActivity(new Intent(owner,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("tab",route));return;
             case "status_layout":destination=StatusBarSettingsActivity.class;break;
@@ -83,6 +89,7 @@ final class ModuleNavigation {
             case "extra_dim":destination=ExtraDimSettingsActivity.class;break;
             case "support":destination=SupportActivity.class;break;
             case "contributors":destination=ContributorsActivity.class;break;
+            case "licenses":destination=ModuleLicensesActivity.class;break;
             case "launcher_custom": destination = LauncherCustomizationActivity.class; break;
             case "launcher_compatibility": destination = LauncherCompatibilityActivity.class; break;
             case "mi_health": destination = HealthSettingsActivity.class; break;

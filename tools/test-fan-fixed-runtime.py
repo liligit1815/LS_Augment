@@ -38,7 +38,7 @@ public boolean getBoolean(String key){return Boolean.TRUE.equals(get(key));}}
     "android/os/HandlerThread.java": 'package android.os;public class HandlerThread {public HandlerThread(String name){}public void start(){}public Looper getLooper(){return Looper.WORKER;}public void quitSafely(){}}',
     "android/os/Handler.java": 'package android.os;public class Handler {private final Looper looper;public Handler(Looper l){looper=l;}public Looper getLooper(){return looper;}public void post(Runnable r){}public void postDelayed(Runnable r,long delay){}public void removeCallbacks(Runnable r){}}',
     "android/provider/Settings.java": '''package android.provider;public class Settings {public static class System {
-public static int mode=1,manual=2;public static int getInt(android.content.ContentResolver resolver,String key){return key.equals("fan_state_of_mode")?mode:manual;}}}
+public static int mode=1,manual=2;public static String failKey="";public static int getInt(android.content.ContentResolver resolver,String key){if(key.equals(failKey))throw new IllegalStateException("private exception text");return key.equals("fan_state_of_mode")?mode:manual;}}}
 ''',
     "io/github/libxposed/api/XposedInterface.java": 'package io.github.libxposed.api;public class XposedInterface {public interface HookHandle {}}',
     "ls/augment/com/FanHardwareIdentity.java": 'package ls.augment.com;public class FanHardwareIdentity {public static String current(){return "a".repeat(64);}}',
@@ -171,6 +171,17 @@ public static void main(String[] args)throws Exception {
  tick();check(Nodes.writes==handoffWrites&&Nodes.level==4,"an unchanged old request cannot reacquire an OEM handoff");
  FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"0");create(false);tick();
  check(owner.maximum==0&&Nodes.writes==0,"old OEM-only maximum feature remains inactive");
+ // Missing OEM state must identify the failing key without taking hardware ownership.
+ FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"1");
+ for(String key:new String[]{"fan_state_of_mode","fan_state_of_manual"}){
+  create(true);Settings.System.failKey=key;tick();
+  check(field("sessionLocked").equals(true)&&Nodes.writes==0,"vendor read failure preserves safe session lock");
+  String evidence=FeatureSettings.diagnostics.get("ls_augment_fan_last_vendor_read_error");
+  check(evidence.contains("key="+key+";error=IllegalStateException;ts="),"failed OEM key and exception type recorded");
+  check(!evidence.contains("private exception text"),"vendor evidence excludes arbitrary exception text");
+  Settings.System.failKey="";tick();
+  check(field("sessionLocked").equals(true)&&Nodes.writes==0,"successful reread cannot steal OEM ownership after session lock");
+ }
  System.out.println("PASS production FanControlHook fixed runtime: "+checks+" checks (facade; physical RPM/timing unverified)");
 }}
 ''',
@@ -182,7 +193,7 @@ constants = sorted(set(re.findall(r"ConfigSchema\.([A-Z][A-Z0-9_]+)", hook + FIL
 schema_constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)";', schema))
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{schema_constants[name]}";' for name in constants) + "}"
-for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanPowerLease.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java", "hook/FanRpmStartup.java"]:
+for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanDriverContract.java", "hook/FanPowerLease.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java", "hook/FanRpmStartup.java"]:
     FILES["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
 

@@ -161,6 +161,11 @@ public class TestLiquidGlassDrawable {
   for(int i=0;i<strength.length;i++){f.glass.setMaterialTint(0xff2080e0,strength[i]);Canvas.Command tinted=optical(draw(f.glass));
    near(uniform(tinted,"tintAmount"),expected[i],"tint strength clamps finite values and rejects nonfinite input");float[] rgb=tinted.uniforms.get("tint");
    check(rgb!=null&&rgb.length==3,"RGB tint uses 3 components");near(rgb[0],32/255f,"red tint");near(rgb[1],128/255f,"green tint");near(rgb[2],224/255f,"blue tint");}
+  f.glass.setMaterialGradient(0xff1677d2,0xff725bc9,2,.85f);f.glass.setRadiusDp(0);
+  Canvas.Command gradient=optical(draw(f.glass));near(uniform(gradient,"tintAmount"),.85f,"explicit user gradient opacity is preserved");near(uniform(gradient,"tintDirection"),2,"user diagonal gradient direction is retained");near(gradient.rx,0,"user square corner preference applies to optical body");
+  check(gradient.uniforms.get("tintEnd")[0]!=gradient.uniforms.get("tint")[0],"optical shader receives both custom gradient endpoints");
+  int unchanged=f.view.invalidations;for(int i=0;i<100;i++){f.glass.setMaterialGradient(0xff1677d2,0xff725bc9,2,.85f);f.glass.setRadiusDp(0);}check(f.view.invalidations==unchanged,"steady combined style never schedules redundant redraws");
+  f.glass.setMaterialTint(Color.WHITE,0);Canvas.Command nativeTint=optical(draw(f.glass));near(uniform(nativeTint,"tintAmount"),0,"inactive/native tint clears prior custom gradient strength");check(java.util.Arrays.equals(nativeTint.uniforms.get("tint"),nativeTint.uniforms.get("tintEnd")),"returning to native tint clears both gradient endpoints");
   check(f.source.samples==1,"changing optical uniforms never recaptures backdrop");f.glass.release();}
  static void cacheAndStaleFrames(){Fixture f=new Fixture();check(f.glass.prepare(),"first generation prepares");int bitmaps=Bitmap.creations;
   check(f.source.samples==1,"first preparation samples once");for(int i=0;i<4;i++){SystemClock.now+=2000;check(f.glass.prepare(),"same shared revision stays prepared");optical(draw(f.glass));}
@@ -200,6 +205,8 @@ public class TestLiquidGlassDrawable {
   check(dark.commands.get(0).color==0xff202126&&f.source.samples==0,"opaque body respects white-label contrast and never samples");
   f.glass.setForegroundIsLight(false);Canvas light=draw(f.glass);check(light.commands.get(0).color==0xfff1f2f4,"dark-label opaque body is light");
   check("reduced_transparency".equals(f.glass.failureReason()),"opaque preference has explicit diagnostic");
+  f.glass.setMaterialGradient(0xff1677d2,0xff725bc9,1,.85f);Canvas opaqueGradient=draw(f.glass);check(opaqueGradient.commands.size()==3&&opaqueGradient.commands.get(0).alpha==255&&opaqueGradient.commands.get(1).shader instanceof LinearGradient&&f.source.samples==0,"reduced transparency keeps opaque base while honoring custom gradient without capture");
+  f.glass.setBounds(20,30,420,230);check(f.glass.prepare(),"opaque material prepares resized bounds without capture");Canvas resizedGradient=draw(f.glass);near(((LinearGradient)resizedGradient.commands.get(1).shader).y1,200,"opaque custom gradient uses resized material bounds on the first frame");
   f.glass.updatePreferences(false,false);check(!f.glass.prepare()&&!f.glass.isReady(),"returning to transparency requires valid backdrop");f.glass.release();}
  static void rejectionAndFaults(){Fixture f=new Fixture();f.source.drawResult=false;check(!f.glass.prepare()&&!f.glass.isReady(),"source declining its draw prevents ready texture");
   check(draw(f.glass).commands.isEmpty(),"source draw failure cannot expose empty bitmap");f.source.drawResult=true;f.source.color=0x40ffffff;
@@ -265,7 +272,14 @@ public class TestLiquidGlassDrawable {
   ((WindowManager.LayoutParams)parent.params).flags=WindowManager.LayoutParams.FLAG_SECURE;refuse(f,"scaled control cannot bypass secure-window exclusion");
   ((WindowManager.LayoutParams)parent.params).flags=0;f.view.shown=false;refuse(f,"hidden scaled control cannot paint");f.view.shown=true;
   parent.scaleX=parent.scaleY=1;check(f.glass.prepare()&&f.source.samples==1,"stable geometry begins verified capture normally");
-  parent.scaleX=.94f;check(draw(f.glass).commands.isEmpty(),"scaled control cannot reuse a previously valid optical texture");f.glass.release();}
+  parent.scaleX=.94f;check(draw(f.glass).commands.isEmpty(),"scaled control cannot reuse a previously valid optical texture");f.glass.release();
+  Fixture dock=new Fixture();View dockParent=new View();dock.view.parent=dockParent;dockParent.scaleX=dockParent.scaleY=.94f;
+  check(!dock.glass.drawFallback(new Canvas()),"ordinary sources retain strict unit-scale fallback gate");
+  dock.glass.setAnimatedFallback(true);check(dock.glass.drawFallback(new Canvas()),"Dock opt-in draws only a capture-free gradient during native 2-D scale");
+  check(!dock.glass.prepare()&&dock.source.samples==0,"Dock opt-in cannot admit a scaled optical source");
+  dockParent.rotationY=1;check(!dock.glass.drawFallback(new Canvas()),"Dock animation fallback still rejects 3-D transforms");dockParent.rotationY=0;
+  ((WindowManager.LayoutParams)dockParent.params).flags=WindowManager.LayoutParams.FLAG_SECURE;
+  check(!dock.glass.drawFallback(new Canvas()),"Dock animation fallback still rejects secure windows");dock.glass.release();}
  static void mappedControlScale(){Fixture f=new Fixture();f.glass.setControlSurface(true);f.glass.updatePreferences(false,true);
   f.source.mappedScale=true;f.view.scaleX=f.view.scaleY=.94f;
   check(f.glass.prepare(),"verified mapped control remains optical during press scale");optical(draw(f.glass));

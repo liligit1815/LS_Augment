@@ -35,7 +35,7 @@ import {
   FileText,
 } from 'lucide-react';
 import catalog from './current-catalog.json';
-import assetIcons from './current-asset-icons.json';
+import assetIcons from './current-status-icons.json';
 import device from './current-device.json';
 import themeIcons from './current-theme-icons.json';
 import { navigationTargets } from './current-navigation';
@@ -63,6 +63,8 @@ import {
 import { canonicalParent, resolveGroup, resolveDestination, navigationLevel, singleChildRoute } from './current-hierarchy';
 import { DetailBreadcrumb } from './current-detail-navigation';
 import { CurrentStatusCanvas } from './current-status-canvas';
+import { StatusDesignPage } from './current-status-design';
+import { isStatusDesignRoute, statusDesignTitles } from './current-status-navigation';
 import {
   AssetWorkspaceProvider,
   CurrentStatusAssets,
@@ -126,9 +128,9 @@ const aliases: Record<string, string> = {
   'target-collab': 'target-theme',
   'home-unlocked': 'home',
   'status-layout': 'status_layout',
-  'status-clock': 'status_layout',
-  'status-hardware': 'status_layout',
-  'status-icons': 'status_layout',
+  'status-clock': 'status_clock',
+  'status-hardware': 'status_metrics',
+  'status-icons': 'status_icons',
   health: 'mi_health',
   launcher: 'launcher_custom',
   'hide-menu': 'hide',
@@ -315,7 +317,9 @@ export default function CurrentPrototype() {
     approvedNavigation.current = next;
     // Canonical parents cannot be overwritten by upward breadcrumb navigation.
     parents.current[next] =
-      canonicalParent(next) === 'home' && !next.startsWith('target-')
+      route === 'status_arrangement' && isStatusDesignRoute(next) && next !== 'status_layout'
+        ? route
+        : canonicalParent(next) === 'home' && !next.startsWith('target-')
         ? route
         : canonicalParent(next);
     setModal(null);
@@ -367,7 +371,8 @@ export default function CurrentPrototype() {
   const editorOwner = targets.find((t) =>
     t.entries.some((e) => e.route === route),
   );
-  const pageOwner = target || group?.target || editorOwner;
+  const pageOwner = target || group?.target || editorOwner ||
+    ((isStatusDesignRoute(route) || route === 'status_assets' || route.startsWith('asset/')) ? targets.find(t => t.id === 'systemui') : undefined);
   const restart = () =>
     model.dialog(
       '重启作用域',
@@ -414,9 +419,9 @@ export default function CurrentPrototype() {
     if (
       q &&
       t.id === 'systemui' &&
-      '状态栏表格 excel 单元格 行高 列宽'.includes(q)
+      '状态栏自定义 组件排列 高度 留白 系统图标 通知图标 素材 字体'.includes(q)
     )
-      return [{ t, i, copy: '包含：状态栏表格编辑' }];
+      return [{ t, i, copy: '包含：状态栏自定义' }];
     if (
       !q ||
       [t.title, t.summary, ...t.packages].join(' ').toLowerCase().includes(q)
@@ -646,6 +651,8 @@ export default function CurrentPrototype() {
         section={group.section}
       />
     );
+  } else if (isStatusDesignRoute(route)) {
+    content = <StatusDesignPage route={route}/>;
   } else if (route === 'extra_dim') {
     content = <ExtraDimEditor />;
   } else if (route === 'status_canvas') {
@@ -669,6 +676,7 @@ export default function CurrentPrototype() {
     );
   const isMain = main.includes(route),
     title =
+      statusDesignTitles[route] ||
       target?.title ||
       group?.section.title ||
       (route === 'extra_dim' ? '极暗与快捷磁贴' : '') ||
@@ -773,8 +781,7 @@ export default function CurrentPrototype() {
                     (route === 'home' ? 'c-home-scroll ' : '') +
                     (route === 'settings' ? 'c-module-scroll ' : '') +
                     (route === 'about' ? 'c-about-scroll' : '') +
-                    (target ? ' c-target-scroll' : '') +
-                    (route === 'status_layout' ? ' c-status-scroll' : '')
+                    (target ? ' c-target-scroll' : '')
                   }
                   onScroll={(e) => {
                     positions.current[route] = e.currentTarget.scrollTop;

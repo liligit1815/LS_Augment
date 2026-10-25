@@ -73,6 +73,19 @@ public final class ConfigSnapshot {
 
     private static ParseResult invalid(String reason) { return new ParseResult(null, reason); }
 
+    /** One transport's last verified bytes. Metadata/authority checks remain the caller's job. */
+    public static final class Reader {
+        private ParseResult previous;
+
+        public ParseResult read(String serialized) {
+            if (previous != null && previous.snapshot.serialize().equals(serialized)) return previous;
+            ParseResult result = parseDetailed(serialized);
+            // Invalid input is never a cached authorization, nor retained as an unbounded string.
+            previous = result.snapshot == null ? null : result;
+            return result;
+        }
+    }
+
     public static ConfigSnapshot parse(String serialized) { return parseDetailed(serialized).snapshot; }
 
     public static ParseResult parseDetailed(String serialized) {
@@ -132,6 +145,16 @@ public final class ConfigSnapshot {
                 if (normalized == null || (!normalized.equals(value) && !legacyLabel && !legacyFanLevel && !retiredSheetMode)) return invalid("value_invalid;line="+i);
                 values.put(key, legacyFanLevel || retiredSheetMode ? normalized : value);
             }
+            // These two entry parameters were added together. Older signed snapshots
+            // keep their original bytes/checksum and receive only the unchanged 100% defaults.
+            boolean hasEntryArea = values.containsKey(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE);
+            boolean hasEntrySensitivity = values.containsKey(AtomicWorkbenchConfig.CORNER_SENSITIVITY);
+            if (hasEntryArea != hasEntrySensitivity)
+                return invalid("keys_incomplete;actual="+values.size()+";expected="+ConfigSchema.runtimeKeys().size());
+            if (!hasEntryArea) {
+                values.put(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, "100");
+                values.put(AtomicWorkbenchConfig.CORNER_SENSITIVITY, "100");
+            }
             // A snapshot predating the two stack modes keeps its original checksum
             // and settings. Only an entirely absent pair receives disabled defaults;
             // a partially present family remains invalid.
@@ -140,6 +163,13 @@ public final class ConfigSnapshot {
                 values.put(NotificationAppearanceOptions.STACK_BIG, "0");
                 values.put(NotificationAppearanceOptions.STACK_SMALL, "0");
             }
+            // Older complete snapshots have none of this family. Keep their signed bytes
+            // and existing settings; a partial family is still rejected below.
+            boolean hasExtraction = false;
+            for (String key : values.keySet())
+                if (key.startsWith("atomic_workbench_extraction_")) { hasExtraction = true; break; }
+            if (!hasExtraction) for (Map.Entry<String, String> entry : ConfigSchema.runtimeDefaults().entrySet())
+                if (entry.getKey().startsWith("atomic_workbench_extraction_")) values.put(entry.getKey(), entry.getValue());
             // Before LiftArc existed, a complete signed snapshot had none of this
             // family. Preserve its bytes/checksum and existing settings while
             // supplying the new, disabled-by-default feature. A partially missing

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="status_atomicworkbenchactivity_1">"%1$s / %2$s"</string>
+    <string name="status_atomicworkbenchappsactivity_2">"%1$s已保存模式：%2$s；本次有效顺序：%3$s。\n%4$s\n只管理当前用户真实可启动的 Launcher 入口。"</string>
+    <string name="status_atomicworkbenchextractioncontrols_3">"排除应用 · %1$s"</string>
+    <string name="status_atomicworkbenchnotificationcards_4">"查看记录（%1$s）"</string>
+    <string name="status_atomicworkbenchtexttool_5" formatted="false">"文字过长，最多支持 32768 个文字单元"</string>
+    <string name="status_atomicworkbenchtexttool_6">"已选 %1$s 项 · %2$s"</string>
+    <string name="status_backgestureiconeditor_7">"%1$s：%2$s%3$s"</string>
+    <string name="status_coloreditordialog_8">"色相：%1$s°"</string>
+    <string name="status_coloreditordialog_9">"不透明度：%1$s%%"</string>
+    <string name="status_coloreditordialog_10" formatted="false">"请输入6位RGB或8位ARGB颜色"</string>
+    <string name="status_enhancementsettingsactivity_11">"✓ 已设置 %1$s 项"</string>
+    <string name="status_enhancementsettingsactivity_12">"当前字体：%1$s%2$s"</string>
+    <string name="status_enhancementsettingsactivity_13">"圆角偏移 %1$s"</string>
+    <string name="status_enhancementsettingsactivity_14">"%1$s；%2$s"</string>
+    <string name="status_extradimactivity_15">"强度 %1$s%%"</string>
+    <string name="status_featureeditorcontroller_16">"正在采集%1$s肩键…"</string>
+    <string name="status_featureeditorcontroller_17">"%1$s（%2$s 个）"</string>
+    <string name="status_featureeditorcontroller_18">"当前：%1$s"</string>
+    <string name="status_healtheditorcontroller_19">"当前：%1$s 倍"</string>
+    <string name="status_healtheditorcontroller_20">"周%1$s"</string>
+    <string name="status_healtheditorcontroller_21">"开始  %1$s"</string>
+    <string name="status_healtheditorcontroller_22">"%1$s–%2$s%3$s · %4$s\n每日计划 %5$s 步"</string>
+    <string name="status_healtheditorcontroller_23">"一次性计划 · %1$s · %2$s 步"</string>
+    <string name="status_healtheditorcontroller_24" formatted="false">"保留原有一次性计划；修改后按所选星期重复。"</string>
+    <string name="status_hideappsactivity_25">"用户空间不可用：%1$s"</string>
+    <string name="status_hideappsactivity_26">"无法可靠识别当前用户：%1$s。仍可手动选择已验证空间；已保留自动隐藏范围，“仅当前用户”模式暂停执行。"</string>
+    <string name="status_hideappsactivity_27">"当前用户已核验：空间 %1$s"</string>
+    <string name="status_hideappsactivity_28">"%1$s ▾"</string>
+    <string name="status_hideappsactivity_29">"正在读取%1$s的应用与隐藏状态…"</string>
+    <string name="status_hideappsactivity_30">"配置 %1$s · 隐藏 %2$s"</string>
+    <string name="status_hiderecoveryactivity_31">"当前定位：%1$s · 空间 %2$s · 序列号 %3$s\n切换分类仍保留这个应用和空间；历史仅供查询；显示需要单独确认。"</string>
+    <string name="status_launchergrideditor_32">"%1$s 列 × %2$s 行 · 每页 %3$s 格"</string>
+    <string name="status_launchergrideditor_33">"%1$s 行 ▾"</string>
+    <string name="status_launchergrideditor_34">"%1$s 列 ▾"</string>
+    <string name="status_liftarcsettingseditor_35">"%1$s · 范围 %2$s～%3$s"</string>
+    <string name="status_privacydotspacingeditor_36">"%1$s · %2$s / %3$s dp"</string>
+    <string name="status_settingsactivity_37" formatted="false">"正在读取 LSP 与 ROOT 状态…"</string>
+    <string name="status_statusbarassetsactivity_38">"%1$s\n%2$s"</string>
+    <string name="status_statusbarassetsactivity_39">"状态暂时无法读取：%1$s\n可继续配置素材。"</string>
+    <string name="status_statusbarassetsactivity_40">"%1$s\n%2$s%3$s\n%4$s"</string>
+    <string name="status_statusbarassetsactivity_41">"%1$s · %2$s%3$s"</string>
+    <string name="status_statusbarassetsactivity_42">"实际字体：%1$s"</string>
+    <string name="status_statusbarassetsactivity_43" formatted="false">"字体暂时无法读取，当前示例使用系统字体。"</string>
+    <string name="status_statusbariconspacingeditor_44">"%1$s · %2$s dp%3$s"</string>
+    <string name="status_statusbariconspacingeditor_45">"%1$s · %2$s dp"</string>
+    <string name="workbench_status_enabled">"已保存启用；%1$s"</string>
+    <string name="workbench_status_disabled">"已关闭；%1$s"</string>
+    <string name="plan_end_next_day">"次日  %1$s"</string>
+    <string name="plan_end_today">"结束  %1$s"</string>
+</resources>

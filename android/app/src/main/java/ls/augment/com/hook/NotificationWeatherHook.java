@@ -69,6 +69,9 @@ final class NotificationWeatherHook {
             Thread thread = new Thread(task, name); thread.setDaemon(true); return thread;
         });
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View child(View root, String name) {
         int id = root.getResources().getIdentifier(name, "id", "com.android.systemui");
         return id == 0 ? null : root.findViewById(id);

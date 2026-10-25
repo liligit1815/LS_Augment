@@ -129,7 +129,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
     @Override public void onBackPressed() { requestLeave(() -> super.finish()); }
 
     private void registerSystemBackCallback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        {}
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 () -> requestLeave(() -> super.finish()));
@@ -526,14 +526,13 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         if (userStatus == null) return;
         userStatus.setVisibility(!directory.success||!currentUser.resolved?View.VISIBLE:View.GONE);
         if (!directory.success) {
-            userStatus.setText("用户空间不可用：" + directory.message);
+            userStatus.setText(userStatus.getContext().getString(R.string.status_hideappsactivity_25 ,String.valueOf(directory.message)));
             userStatus.setTextColor(ui.danger);
         } else if (!currentUser.resolved) {
-            userStatus.setText("无法可靠识别当前用户：" + currentUser.message
-                    + "。仍可手动选择已验证空间；已保留自动隐藏范围，“仅当前用户”模式暂停执行。");
+            userStatus.setText(userStatus.getContext().getString(R.string.status_hideappsactivity_26 ,String.valueOf(currentUser.message)));
             userStatus.setTextColor(ui.danger);
         } else {
-            userStatus.setText("当前用户已核验：空间 " + currentUser.userId);
+            userStatus.setText(userStatus.getContext().getString(R.string.status_hideappsactivity_27 ,String.valueOf(currentUser.userId)));
             userStatus.setTextColor(ui.muted);
         }
     }
@@ -563,7 +562,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
 
     private void renderSpaceSelector() {
         if (spaceSelector == null) return;
-        spaceSelector.setText(spaceLabel() + " ▾");
+        spaceSelector.setText(spaceSelector.getContext().getString(R.string.status_hideappsactivity_28 ,String.valueOf(spaceLabel())));
         spaceSelector.setContentDescription("选择应用空间：" + spaceLabel());
         styleActionButton(spaceSelector, !loading && !operating && !userRecords.isEmpty());
         styleActionButton(refreshAppsButton, !loading && !operating);
@@ -643,7 +642,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         }
         loading = true;
         loaded.clear();
-        summary.setText("正在读取" + spaceLabel() + "的应用与隐藏状态…");
+        summary.setText(summary.getContext().getString(R.string.status_hideappsactivity_29 ,String.valueOf(spaceLabel())));
         renderApps();
         Set<RootHideManager.Target> checked = stateTargets(userId, serial);
         executor.execute(() -> {
@@ -729,7 +728,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         order=sortByInstall?order.thenComparing((AppItem item)->item.record.installedAt,Comparator.reverseOrder())
                 :order.thenComparing(item->item.record.label,String.CASE_INSENSITIVE_ORDER);
         visible.sort(order.thenComparing(item->item.record.target.packageName).thenComparingInt(item->item.record.target.userId));
-        summary.setText("配置 "+configured+" · 隐藏 "+hidden);
+        summary.setText(summary.getContext().getString(R.string.status_hideappsactivity_30 ,String.valueOf(configured), String.valueOf(hidden)));
         if(appConfigBody.getVisibility()!=View.VISIBLE)return;
         if(visible.isEmpty()){
             LinearLayout empty=new LinearLayout(this);empty.setOrientation(LinearLayout.VERTICAL);

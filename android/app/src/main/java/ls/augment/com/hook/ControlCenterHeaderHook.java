@@ -45,6 +45,9 @@ final class ControlCenterHeaderHook {
         if(state==null){state=new State((ViewGroup)owner);STATES.put((View)owner,state);}
         return state;
     }
+
+    // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
+    //noinspection DiscouragedApi
     private static View child(View view,String id){
         int resource=view.getResources().getIdentifier(id,"id","com.android.systemui");
         return resource==0?null:view.findViewById(resource);

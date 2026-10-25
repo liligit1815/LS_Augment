@@ -8,7 +8,7 @@ public final class DualSignalSpacingObservation {
     public final StatusBarHeaderSpacingObservation profile;
     public final String surface,environmentKey,reason;
     public final long generation;
-    public final boolean activityEnabled,wholeConsumes;
+    public final boolean activityEnabled,wholeConsumes,ios;
     public final int activityRow;
     public final int[] rowSlots;
     public final float[][] badgeAspects;
@@ -18,6 +18,13 @@ public final class DualSignalSpacingObservation {
     public DualSignalSpacingObservation(StatusBarHeaderSpacingObservation profile,String surface,String environmentKey,
             String reason,long generation,int[] slots,float[][] aspects,int activityRow,boolean activityEnabled,
             boolean wholeConsumes,float referenceHeight,float glyphScale,float left,float top,int maxWidth,int maxHeight){
+        this(profile,surface,environmentKey,reason,generation,slots,aspects,activityRow,activityEnabled,wholeConsumes,
+                referenceHeight,glyphScale,left,top,maxWidth,maxHeight,false);
+    }
+    public DualSignalSpacingObservation(StatusBarHeaderSpacingObservation profile,String surface,String environmentKey,
+            String reason,long generation,int[] slots,float[][] aspects,int activityRow,boolean activityEnabled,
+            boolean wholeConsumes,float referenceHeight,float glyphScale,float left,float top,int maxWidth,int maxHeight,boolean ios){
+        this.ios=ios;
         this.profile=profile;this.surface=surface;this.environmentKey=environmentKey;this.reason=reason;this.generation=generation;
         this.rowSlots=slots.clone();this.badgeAspects=new float[aspects.length][];for(int i=0;i<aspects.length;i++)this.badgeAspects[i]=aspects[i].clone();
         this.activityRow=activityRow;this.activityEnabled=activityEnabled;this.wholeConsumes=wholeConsumes;
@@ -30,7 +37,7 @@ public final class DualSignalSpacingObservation {
     public DualSignalLayout plan(StatusBarIconSpacingSpec spec){
         if(!measured())return null;
         try{return DualSignalLayout.spaced(referenceHeight,activityEnabled,rowSlots,badgeAspects,activityRow,
-                (slot,part)->wholeConsumes||reason.equals("disabled")||reason.equals("native_hidden")?StatusBarIconSpacingSpec.ZERO:spec.resolve(surface,"mobile"+(slot+1)+"."+part),units(),profile.rtl==1);}
+                (slot,part)->wholeConsumes||reason.equals("disabled")||reason.equals("native_hidden")?StatusBarIconSpacingSpec.ZERO:spec.resolve(surface,"mobile"+(slot+1)+"."+part),units(),profile.rtl==1,ios);}
         catch(IllegalArgumentException malformed){return null;}
     }
     public int[] required(StatusBarIconSpacingSpec spec){
@@ -70,10 +77,16 @@ public final class DualSignalSpacingObservation {
     private static int maximum(int low,int high,OneFits fits){while(low<high){int mid=low+(high-low+1)/2;if(fits.test(mid))low=mid;else high=mid-1;}return low;}
     public String serialize(){
         StringBuilder rows=new StringBuilder();for(int i=0;i<rowSlots.length;i++){if(i>0)rows.append('/');rows.append(rowSlots[i]);for(float a:badgeAspects[i])rows.append(',').append(a);}
-        return "DSS1;"+surface+";"+environmentKey+";"+reason+";"+generation+";"+rows+";"+activityRow+";"+(activityEnabled?1:0)+";"+(wholeConsumes?1:0)+";"+referenceHeight+";"+glyphScale+";"+left+";"+top+";"+maxWidth+";"+maxHeight+";"+profile.serialize();
+        return "DSS2;"+surface+";"+environmentKey+";"+reason+";"+generation+";"+rows+";"+activityRow+";"+(activityEnabled?1:0)+";"+(wholeConsumes?1:0)+";"+referenceHeight+";"+glyphScale+";"+left+";"+top+";"+maxWidth+";"+maxHeight+";"+(ios?1:0)+";"+profile.serialize();
     }
     public static DualSignalSpacingObservation parse(String raw){
         if(raw==null||raw.length()>1000)return null;String[] v=raw.split(";",-1);
+        boolean ios=false;
+        if(v.length==17&&v[0].equals("DSS2")){
+            if(!v[15].matches("[01]"))return null;
+            ios=v[15].equals("1");String[] previous=new String[16];System.arraycopy(v,0,previous,0,15);
+            previous[0]="DSS1";previous[15]=v[16];v=previous;
+        }
         if(v.length!=16||!v[0].equals("DSS1")||!StatusBarSurfaceSpec.valid(v[1])||!v[2].matches("[a-f0-9]{64}")
                 ||!Arrays.asList("ok","capacity","whole_covered","awaiting_layout","slot_unknown","tint_unknown","disabled","native_hidden","grid_pending").contains(v[3]))return null;
         try{
@@ -87,7 +100,7 @@ public final class DualSignalSpacingObservation {
             if(generation<0||ar< -1||ar>=rows.length||!v[7].matches("[01]")||!v[8].matches("[01]")||mw<0||mh<0||mw>32768||mh>32768)return null;
             if(!Float.isFinite(h)||h<0||h>4096||!Float.isFinite(s)||s<=0||s>100||!Float.isFinite(l)||!Float.isFinite(t)||Math.abs(l)>4096||Math.abs(t)>4096)return null;
             float units=profile.densityMilli/1000f/s;if(!Float.isFinite(units)||units<=0)return null;
-            DualSignalSpacingObservation result=new DualSignalSpacingObservation(profile,v[1],v[2],v[3],generation,slots,aspects,ar,v[7].equals("1"),v[8].equals("1"),h,s,l,t,mw,mh);
+            DualSignalSpacingObservation result=new DualSignalSpacingObservation(profile,v[1],v[2],v[3],generation,slots,aspects,ar,v[7].equals("1"),v[8].equals("1"),h,s,l,t,mw,mh,ios);
             if((v[3].equals("ok")||v[3].equals("capacity")||v[3].equals("whole_covered"))&&!result.measured())return null;
             return result;
         }catch(IllegalArgumentException malformed){return null;}

@@ -12,11 +12,15 @@ import android.widget.LinearLayout;
  * Capture excludes glass surfaces to avoid feedback. Text and controls are drawn
  * afterwards at full resolution. No screen recording permission or external data.
  */
+
+// Code-only view requires UiKit/state/callbacks; it is never inflated from XML. A partial XML constructor is invalid.
+//noinspection ViewConstructor
 final class LiquidGlassLayout extends LinearLayout {
     private static boolean capturing;
     private int surfaceTint;
     void setSurfaceTint(int color) { surfaceTint=color; invalidate(); }
     private final UiKit ui;
+    private final GlassWindowBackdrop windowBackdrop;
     private final boolean contentSurface;
     private final boolean navigationLens;
     private final float density, radius;
@@ -39,6 +43,7 @@ final class LiquidGlassLayout extends LinearLayout {
     private int[] pixels, scratch;
     private int generation, selected = -1;
     private int capturedWidth, capturedHeight;
+    private int captureRequest, capturedConfiguration;
     private long signature;
     private float selectionPosition = -1, stretch, lightX = .22f, pressure;
     private float downX, downY, lastX;
@@ -61,6 +66,7 @@ final class LiquidGlassLayout extends LinearLayout {
     }
     LiquidGlassLayout(UiKit ui, int radiusDp, boolean contentSurface, boolean navigationLens) {
         super(ui.activity); this.ui=ui; this.contentSurface=contentSurface; this.navigationLens=navigationLens;
+        windowBackdrop = new GlassWindowBackdrop(ui.activity, this);
         density=getResources().getDisplayMetrics().density;
         touchSlop=ViewConfiguration.get(getContext()).getScaledTouchSlop();
         // Navigation is a continuous control; the card-corner setting still governs every content card.
@@ -80,7 +86,11 @@ final class LiquidGlassLayout extends LinearLayout {
     static boolean capturingBackdrop() { return capturing; }
     long backdropSignature() { return signature; }
     boolean opticalEffectActive() { return optics != null && !failed && generation > 0 && isHardwareAccelerated(); }
-    void refreshBackdrop() { dirty=true; invalidate(); }
+    void refreshBackdrop() {
+        ++captureRequest;
+        if(windowBackdrop!=null)windowBackdrop.cancel();
+        dirty=true; invalidate();
+    }
     private boolean inActivityWindow() { return getRootView()==ui.activity.getWindow().getDecorView(); }
     private void onBackdropScroll() {
         // A dialog's document scrolls in a different window from its backdrop.
@@ -91,7 +101,7 @@ final class LiquidGlassLayout extends LinearLayout {
     private void onBackdropLayout() {
         if(contentSurface || inActivityWindow()) { refreshBackdrop(); return; }
         int[] location=new int[2];getLocationOnScreen(location);
-        if(bitmap==null || capturedWidth!=getWidth() || capturedHeight!=getHeight()
+        if((bitmap==null && !windowBackdrop.pending() && !captureDisabled) || capturedWidth!=getWidth() || capturedHeight!=getHeight()
                 || location[0]!=ownLocation[0] || location[1]!=ownLocation[1])refreshBackdrop();
     }
     void setNavigationListener(java.util.function.IntConsumer listener) { navigationListener=listener; }
@@ -141,6 +151,9 @@ final class LiquidGlassLayout extends LinearLayout {
         }
         return super.onInterceptTouchEvent(event);
     }
+
+    // Gesture observer/forwarder retains native click handling or its separate accessible actions; do not synthesize a second click.
+    //noinspection ClickableViewAccessibility
     @Override public boolean onTouchEvent(MotionEvent event) {
         if(!navigationLens || !dragging) return super.onTouchEvent(event);
         if(event.getActionMasked()==MotionEvent.ACTION_MOVE) {
@@ -187,13 +200,16 @@ final class LiquidGlassLayout extends LinearLayout {
         if(observer!=null && observer.isAlive()) { observer.removeOnPreDrawListener(beforeDraw);
             observer.removeOnScrollChangedListener(scrolled); observer.removeOnGlobalLayoutListener(laidOut); }
         observer=null;
+        ++captureRequest; windowBackdrop.cancel();
         if(selectionAnimator!=null) selectionAnimator.cancel();
         if(lightAnimator!=null) lightAnimator.cancel();
         // Let the render thread release a submitted bitmap before GC reclaims it.
         bitmap=null; bitmapCanvas=null; texture=null; optics=null; lensOptics=null; pixels=null; scratch=null; dirty=true; captureDisabled=false;
         super.onDetachedFromWindow();
     }
-    @Override protected void onSizeChanged(int w,int h,int oldW,int oldH) { super.onSizeChanged(w,h,oldW,oldH); dirty=true; }
+    @Override protected void onSizeChanged(int w,int h,int oldW,int oldH) {
+        super.onSizeChanged(w,h,oldW,oldH); refreshBackdrop();
+    }
     @Override public void draw(Canvas canvas) {
         // Navigation's pre-draw can run before a newly attached card's listener.
         // Sample its current position before drawing it into the navigation lens.
@@ -202,13 +218,47 @@ final class LiquidGlassLayout extends LinearLayout {
     }
 
     private void captureIfNeeded() {
+        if(!contentSurface && GlassWindowBackdrop.secure(ui.activity)) {
+            if(!captureDisabled || texture!=null)captureFallback("blocked","secure_window");
+            return;
+        }
+        int configuration=getResources().getConfiguration().hashCode();
+        if(capturedConfiguration!=0 && capturedConfiguration!=configuration) {
+            refreshBackdrop(); bitmap=null; bitmapCanvas=null; texture=null; optics=null; captureDisabled=false;
+        }
+        capturedConfiguration=configuration;
         if(!dirty || captureDisabled || capturing || getWidth()==0 || getHeight()==0 || !getGlobalVisibleRect(visibleBounds)) return;
         if(contentSurface) { updateSharedBackdrop(); prepareOptics(); return; }
         View source=ui.activity.findViewById(android.R.id.content);
         if(source==null || source==this) return;
         int gutter=ui.dp(18);
+        getLocationOnScreen(ownLocation);
+        Rect sample=new Rect(ownLocation[0]-gutter,ownLocation[1]-gutter,
+                ownLocation[0]+getWidth()+gutter,ownLocation[1]+getHeight()+gutter);
+        if(GlassWindowBackdrop.needsWindow(source,sample)) {
+            if(windowBackdrop.pending())return;
+            int request=++captureRequest;
+            capturedWidth=getWidth();capturedHeight=getHeight();dirty=false;
+            windowBackdrop.diagnostic("activity_window_pixel_copy","requested","visible_surface");
+            windowBackdrop.capture(gutter,ui.background,(captured,reason)->{
+                if(request!=captureRequest || !isAttachedToWindow()) {
+                    if(captured!=null)captured.recycle();return;
+                }
+                if(captured==null) { captureFallback("activity_window_pixel_copy",reason);return; }
+                try {
+                    bitmap=captured;bitmapCanvas=null;
+                    finishCapture(gutter);
+                    windowBackdrop.diagnostic("activity_window_pixel_copy","ready","none");
+                    invalidate();
+                } catch(RuntimeException | OutOfMemoryError failure) {
+                    captureFallback("activity_window_pixel_copy","processing_failed");
+                }
+            });
+            return;
+        }
         // Half resolution preserves app icon/color detail with a small reusable strip.
         int w=(getWidth()+gutter*2+1)/2, h=(getHeight()+gutter*2+1)/2;
+        if((long)w*h>GlassWindowBackdrop.MAX_PIXELS) { captureFallback("view_tree_software","size_limit");return; }
         try {
             // The software navigation capture must see the same prepared page backdrop.
             if(ui.appearance.glassScene!=null) ui.appearance.glassScene.bitmap();
@@ -225,18 +275,33 @@ final class LiquidGlassLayout extends LinearLayout {
             bitmapCanvas.translate(sourceLocation[0]-ownLocation[0]+gutter,sourceLocation[1]-ownLocation[1]+gutter);
             capturing=true;
             try { source.draw(bitmapCanvas); } finally { capturing=false; bitmapCanvas.restore(); }
-            signature=1469598103934665603L;
-            for(int y=2;y<h;y+=7) for(int x=2;x<w;x+=7) signature=(signature ^ bitmap.getPixel(x,y))*1099511628211L;
-            bitmap.getPixels(pixels,0,w,0,0,w,h);
-            GlassBackdropBlur.blur(pixels,scratch,w,h,Math.max(1,Math.round((navigationLens?1.1f:2f)*density)));
-            bitmap.setPixels(pixels,0,w,0,0,w,h);
-            capturedWidth=getWidth();capturedHeight=getHeight();generation++; dirty=false;
+            finishCapture(gutter);
+            windowBackdrop.diagnostic("view_tree_software","ready","none");
         } catch (RuntimeException | OutOfMemoryError failure) {
-            captureDisabled=true; bitmap=null; bitmapCanvas=null; texture=null; pixels=null; scratch=null;
-            dirty=false; optics=null;
-            android.util.Log.w("LS_AugmentGlass","Backdrop unavailable; using a readable tinted surface",failure);
+            captureFallback("view_tree_software","processing_failed");
         }
         prepareOptics();
+    }
+
+    private void finishCapture(int gutter) {
+        int w=bitmap.getWidth(),h=bitmap.getHeight();
+        if(pixels==null || pixels.length!=w*h) { pixels=new int[w*h];scratch=new int[w*h]; }
+        signature=1469598103934665603L;
+        for(int y=2;y<h;y+=7)for(int x=2;x<w;x+=7)signature=(signature^bitmap.getPixel(x,y))*1099511628211L;
+        bitmap.getPixels(pixels,0,w,0,0,w,h);
+        GlassBackdropBlur.blur(pixels,scratch,w,h,Math.max(1,Math.round((navigationLens?1.1f:2f)*density)));
+        bitmap.setPixels(pixels,0,w,0,0,w,h);
+        texture=new BitmapShader(bitmap,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);
+        textureMatrix.setScale(2,2);textureMatrix.postTranslate(-gutter,-gutter);texture.setLocalMatrix(textureMatrix);
+        // Optics retain the previous shader input; configure the new one on the next draw.
+        capturedWidth=getWidth();capturedHeight=getHeight();generation++;dirty=false;
+        prepareOptics();
+    }
+
+    private void captureFallback(String source,String reason) {
+        captureDisabled=true;bitmap=null;bitmapCanvas=null;texture=null;pixels=null;scratch=null;
+        dirty=false;optics=null;lensOptics=null;
+        windowBackdrop.diagnostic(source,"theme_fallback",reason);invalidate();
     }
 
     private void updateSharedBackdrop() {
@@ -253,7 +318,7 @@ final class LiquidGlassLayout extends LinearLayout {
     }
 
     private void prepareOptics() {
-        if(Build.VERSION.SDK_INT>=33 && !failed && !captureDisabled && texture!=null && optics==null) try {
+        if(!failed && !captureDisabled && texture!=null && optics==null) try {
             optics=new Optics();
         } catch (RuntimeException failure) {
             failed=true; optics=null; dirty=false;
@@ -265,7 +330,7 @@ final class LiquidGlassLayout extends LinearLayout {
         prepareRims();
         bounds.set(.6f*density,(navigationLens?6f:.6f)*density,getWidth()-.6f*density,getHeight()-(navigationLens?6f:.6f)*density);
         paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE);
-        boolean optical=Build.VERSION.SDK_INT>=33 && optics!=null && canvas.isHardwareAccelerated();
+        boolean optical=optics!=null && canvas.isHardwareAccelerated();
         if(texture!=null) {
             if(optical) {
                 optics.configure(texture,getWidth(),getHeight(),radius,density,ui.dark,lightX,contentSurface,
@@ -303,7 +368,7 @@ final class LiquidGlassLayout extends LinearLayout {
             if(selectedFill==null || fillTop!=getPaddingTop() || fillBottom!=getHeight()-getPaddingBottom()) {
                 fillTop=getPaddingTop(); fillBottom=getHeight()-getPaddingBottom();
                 selectedFill=new LinearGradient(0,fillTop,0,fillBottom,
-                        ui.dark?new int[]{0x4078b8f0,0x3029598b}:new int[]{0x5090c9fa,0x2875b5eb},null,Shader.TileMode.CLAMP);
+                        ui.dark?0x4078b8f0:0x5090c9fa,ui.dark?0x3029598b:0x2875b5eb,Shader.TileMode.CLAMP);
             }
             paint.setShader(selectedFill);
             canvas.drawRoundRect(selection,Math.min(radius,selection.height()/2),Math.min(radius,selection.height()/2),paint); paint.setShader(null);

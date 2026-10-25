@@ -22,6 +22,10 @@ public class PackageManager {public static final int COMPONENT_ENABLED_STATE_DEF
  public void setComponentEnabledSetting(android.content.ComponentName c,int s,int f){ls.augment.com.TestHideRecoveryReset.event("launcher-alias");}}''',
     'android/service/quicksettings/TileService.java': '''package android.service.quicksettings;
 public class TileService {public static void requestListeningState(android.content.Context c,android.content.ComponentName n){ls.augment.com.TestHideRecoveryReset.event("tile:"+n.name);}}''',
+    'android/os/Bundle.java': '''package android.os;
+public class Bundle {private final java.util.Map<String,Object> values=new java.util.HashMap<>();
+ public void putBoolean(String key,boolean value){values.put(key,value);}public boolean getBoolean(String key){return Boolean.TRUE.equals(values.get(key));}
+ public void putString(String key,String value){values.put(key,value);}public String getString(String key,String fallback){Object value=values.get(key);return value instanceof String?(String)value:fallback;}}''',
 }
 TEST = r'''
 package ls.augment.com;
@@ -30,18 +34,18 @@ import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 class Fixture {
  static final List<String> trace=new ArrayList<>();
- static String fail="",throwsAt="";static boolean review,history,grid,page;
+ static String fail="",throwsAt="";static boolean review,history,grid,page,workbenchPending;
  static int hideClears,healthCalls,storageCalls;static Map<String,String> paused;
  static final String TARGETS="v3:0:0:org.example.same;v3:12:44:org.example.same",ACCOUNT="a".repeat(64),TOKEN="fixture-token";
  static void event(String stage){
-  if(stage.equals("boot-cancel")||stage.equals("rapid-capture")){
+  if(stage.equals("workbench")||stage.equals("boot-cancel")||stage.equals("rapid-capture")){
    if(RootHideManager.ACTION_LOCK.isHeldByCurrentThread())throw new AssertionError("drain waits must not hold action lock: "+stage);
   }else if(!stage.startsWith("audit:")&&!RootHideManager.ACTION_LOCK.isHeldByCurrentThread())throw new AssertionError("missing lock: "+stage);
   if(ResetWriteFence.blocked())throw new AssertionError("reset owner incorrectly blocked");trace.add(stage);
   if(stage.equals(throwsAt))throw new IllegalStateException("injected "+stage);
  }
  static boolean phase(String stage){event(stage);return !stage.equals(fail);}
- static void reset(){trace.clear();fail=throwsAt="";review=history=grid=page=false;hideClears=healthCalls=storageCalls=0;paused=null;
+ static void reset(){trace.clear();fail=throwsAt="";review=history=grid=page=workbenchPending=false;hideClears=healthCalls=storageCalls=0;paused=null;
   HiddenEntrySession.lock();
   AppConfig.values=new LinkedHashMap<>(ConfigSchema.defaults());
   for(String key:TestHideRecoveryReset.expectedBooleans())AppConfig.values.put(key,"1");
@@ -84,6 +88,10 @@ class HideResetController {
 class ScreenAutomation {static void sync(Context c){Fixture.event(Fixture.trace.contains("defaults")?"automation-final":"automation-pause");}}
 class BootJobService {static class ResetResult {final boolean success;final String message="boot cancel result";ResetResult(boolean s){success=s;}}
  static ResetResult cancelForReset(Context c){return new ResetResult(Fixture.phase("boot-cancel"));}}
+class AtomicWorkbenchReset {static android.os.Bundle restore(Context c){
+ if(!ResetWriteFence.owns())throw new AssertionError("workbench recovery has no reset ownership");
+ android.os.Bundle result=new android.os.Bundle();result.putBoolean("success",Fixture.phase("workbench"));
+ result.putBoolean("recovery_pending",Fixture.workbenchPending);result.putString("message","workbench recovery unconfirmed");return result;}}
 class RapidCaptureReset {static class Result {final boolean success,reviewRequired;final String message="capture reset result";final int count=1;
  Result(boolean s){success=s;reviewRequired=Fixture.review;}}
  static Result stopAndAwait(Context c){return new Result(Fixture.phase("rapid-capture"));}}
@@ -112,6 +120,7 @@ class LauncherResetController {static class Result {final boolean success,pendin
  static Result prepare(Context c){return new Result(Fixture.phase("launcher"));}}
 class ModuleResetStorage {static void clear(Context c)throws java.io.IOException {Fixture.storageCalls++;Fixture.event("storage");
  if(Fixture.fail.equals("storage"))throw new java.io.IOException("storage failed");}}
+class RecentsCardRadiusStore {static void onStorageReset(Context c){Fixture.event("recents-storage");}}
 class AugmentTileService {} class ExtraDimTileService {}
 class AuditLog {static void write(Context c,String event,String message){Fixture.event("audit:"+event);}}
 public class TestHideRecoveryReset {
@@ -137,12 +146,22 @@ public class TestHideRecoveryReset {
  static void test(String name,Runnable body){Fixture.reset();try{body.run();tests++;System.out.println("PASS total reset: "+name);}
   catch(Throwable e){failed++;System.out.println("FAIL total reset: "+name+": "+e);}}
  public static void main(String[] args){
-  for(String stage:List.of("boot-cancel","rapid-capture","pause","remote-pause","show","game-cache","system","battery","retired-root","health","external","launcher","clear-hidden"))
+  for(String stage:List.of("workbench","boot-cancel","rapid-capture","pause","remote-pause","show","game-cache","system","battery","retired-root","health","external","launcher","clear-hidden"))
    test(stage+" failure preserves recovery records and health credentials",()->{Fixture.fail=stage;var r=run();
     check(!r.success&&!r.settingsReset&&!r.runtimeSynced,"failure reported completed");preserved();
-    if(!stage.equals("pause")&&!stage.equals("boot-cancel")&&!stage.equals("rapid-capture"))check("0".equals(AppConfig.values.get(ConfigSchema.HIDE_MASTER))&&"0".equals(AppConfig.values.get(ConfigSchema.AUTOMATION_ENABLED)),"automatic hiding not paused");});
-  for(String stage:List.of("boot-cancel","rapid-capture","pause","remote-pause","show","game-cache","system","battery","retired-root","health","external","launcher","clear-hidden"))
+    if(!stage.equals("workbench")&&!stage.equals("pause")&&!stage.equals("boot-cancel")&&!stage.equals("rapid-capture"))check("0".equals(AppConfig.values.get(ConfigSchema.HIDE_MASTER))&&"0".equals(AppConfig.values.get(ConfigSchema.AUTOMATION_ENABLED)),"automatic hiding not paused");});
+  for(String stage:List.of("workbench","boot-cancel","rapid-capture","pause","remote-pause","show","game-cache","system","battery","retired-root","health","external","launcher","clear-hidden"))
    test(stage+" exception preserves recovery records and releases fence",()->{Fixture.throwsAt=stage;var r=run();check(!r.success&&!r.settingsReset,"exception reported completed");preserved();});
+  test("workbench failure stops before boot cancellation, pause, or any reset write",()->{
+   Map<String,String> before=new LinkedHashMap<>(AppConfig.values);Fixture.fail="workbench";var result=run();
+   check(!result.success&&!result.settingsReset&&result.message.contains("workbench recovery unconfirmed"),"recovery failure receipt lost");
+   check(AppConfig.values.equals(before),"configuration changed before workbench recovery");
+   check(!Fixture.trace.contains("boot-cancel")&&!Fixture.trace.contains("rapid-capture")&&Fixture.healthCalls==0,"continued other recovery phases");preserved();});
+  test("workbench success with pending recovery cannot authorize destructive reset",()->{
+   Map<String,String> before=new LinkedHashMap<>(AppConfig.values);Fixture.workbenchPending=true;var result=run();
+   check(!result.success&&!result.settingsReset&&!result.runtimeSynced,"pending restoration accepted as complete");
+   check(AppConfig.values.equals(before)&&Fixture.paused==null&&Fixture.healthCalls==0,"pending workbench permitted reset writes");
+   check(!Fixture.trace.contains("boot-cancel")&&!Fixture.trace.contains("recents-storage"),"continued after pending restoration");preserved();});
   test("default write failure retains private binding and reports incomplete",()->{Fixture.fail="defaults";var r=run();
    check(!r.success&&!r.settingsReset&&Fixture.hideClears==1,"defaults failure status");
    check(Fixture.ACCOUNT.equals(AppConfig.values.get(ConfigSchema.HEALTH_ACCOUNT))&&Fixture.TOKEN.equals(AppConfig.values.get(ConfigSchema.TGK_RAPID_FIRE_COMPAT_TOKEN)),"failed default write erased credentials");
@@ -159,7 +178,7 @@ public class TestHideRecoveryReset {
   test("capture shutdown review reaches coordinator before action lock",()->{Fixture.fail="rapid-capture";Fixture.review=true;var r=run();check(r.reviewRequired&&!r.settingsReset,"capture review reason lost");preserved();});
   test("full success restores before clearing and removes all lists and binding",()->{var r=run();check(r.success&&r.settingsReset&&r.runtimeSynced&&!r.reviewRequired,"success status");
    for(String restoration:List.of("show","game-cache","system","battery","retired-root","health","external","launcher"))order(restoration,"clear-hidden");
-   order("boot-cancel","rapid-capture");order("rapid-capture","pause");order("show","game-cache");order("game-cache","system");order("storage","notifications");order("notifications","launcher-alias");
+   order("workbench","boot-cancel");order("workbench","defaults");order("boot-cancel","rapid-capture");order("rapid-capture","pause");order("show","game-cache");order("game-cache","system");order("storage","recents-storage");order("recents-storage","notifications");order("notifications","launcher-alias");
    order("battery","retired-root");order("retired-root","health");
    order("pause","automation-pause");order("automation-pause","remote-pause");order("remote-pause","show");order("clear-hidden","defaults");order("defaults","storage");order("storage","remote-final");
    check(AppConfig.values.equals(ConfigSchema.defaults()),"retired keys survived complete store replacement");

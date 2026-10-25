@@ -112,7 +112,7 @@ public final class FeatureHelp {
     public static String forEntry(HookAppCatalog.Entry entry) {
         if (entry == null) return "";
         switch (entry.route) {
-            case "freeform": return "设置小窗数量、支持范围和例外名单。可分别开启游戏登录跳转小窗、前台应用打开其他第三方应用时使用小窗；游戏识别不全时可补充游戏名单。桌面启动和系统界面保持原厂行为。最小化和关闭仍使用系统原有操作。";
+            case "freeform": return "设置小窗数量、支持范围和例外名单。可分别开启全应用登录跳转小窗、前台应用打开其他第三方应用时使用小窗。桌面启动和系统界面保持原厂行为。最小化和关闭仍使用系统原有操作。";
             case "audio_gain": return "按输出设备分别设置媒体、铃声和闹钟的软件增益上限。超过 100% 时会在基础档数后追加增强档位，因此会改变音量总档数；通知和通话不追加。"
                     + "\n\n" + audioGainStages()
                     + "\n\n关闭增强或将对应上限设为 100% 时，不追加档位。"
@@ -156,7 +156,7 @@ public final class FeatureHelp {
         values.put("hide_wifi_standard", "隐藏 Wi-Fi 图标上表示 Wi-Fi 标准的数字，例如 6 或 7，保留信号强度显示。带“+”的 Wi-Fi 7 多链路图标暂时保留原厂显示。");
         values.put("hide_mobile_activity", "隐藏移动信号旁表示上传、下载活动的箭头，保留移动信号图标；不会关闭移动数据。");
         values.put("hide_mobile_type", "隐藏移动信号旁的网络制式文字，例如 4G、5G，保留信号强度和实际网络连接。与双排信号独立设置；关闭隐藏时，每张卡的网络类型显示在对应信号行左侧。");
-        values.put("signal_dual", "采用上下等宽对齐的圆角信号柱，收发箭头嵌在下排左上方；仅插入一张 SIM 卡时只显示下排。每张卡的网络类型显示在对应信号行左侧，是否显示由隐藏移动网络类型开关独立控制。");
+        values.put("signal_dual", "展开可选择荣耀双排或 iOS双排。荣耀双排沿用现有圆角信号柱，iOS双排使用提供的 iOS 信号素材；单卡自动使用单排图标，双卡上下两排。每张卡的网络类型显示在对应信号行左侧，是否显示由隐藏移动网络类型开关独立控制。开启前须先关闭三合一图标。");
         values.put("hide_hd_small", "隐藏移动信号旁的 HD 小图标。仅改变图标显示，不关闭高清语音通话能力。");
         values.put("hide_hd_large", "隐藏状态栏信号旁独立显示的大号 HD 图标，包含双卡 HD1/HD2 标记。与 HD 小图标独立控制；关闭后恢复系统显示，不关闭高清语音通话能力。");
         values.put("hide_sim1", "隐藏卡 1 的信号图标，不停用 SIM 卡，也不改变通话或移动数据设置。");
@@ -198,7 +198,7 @@ public final class FeatureHelp {
         values.put("qs_clock_period", "在已适配的下拉面板时钟旁显示凌晨、上午、下午等中文时段，不修改手机的实际时间。");
         values.put("lock_charge_details", "在充电中的锁屏提示区域显示电池温度、电流、电压和功率。本页可分别隐藏其中的数值，并设置字号、间距与刷新间隔。");
         for (String[] metric : new String[][]{{"temperature","温度"},{"current","电流"},{"voltage","电压"},{"power","功率"}})
-            values.put("lock_charge_hide_"+metric[0], "从锁屏充电详情中隐藏"+metric[1]+"这一项。需要先开启“锁屏显示充电详情”；其他未隐藏数据继续显示，不影响实际充电。");
+            values.put("lock_charge_show_"+metric[0], "在锁屏充电详情中显示"+metric[1]+"这一项。需要先开启“锁屏显示充电详情”；未开启的数据不显示，不影响实际充电。");
         values.put("lock_charge_interval", "设置锁屏充电详情重新读取温度、电流、电压和功率的间隔，单位秒。仅在充电详情显示时使用；间隔越短，刷新越频繁。");
         values.put("lock_charge_text_size", "设置锁屏充电详情的字号，单位 sp，会跟随系统字体缩放。需要开启“锁屏显示充电详情”；只调整详情文字，不改变原厂解锁提示字号。");
         values.put("aod_period_scale", "调整息屏时钟旁中文时段的文字大小，数值相对于时钟字号：例如 0.6 表示时钟字号的 60%。需要开启“息屏时钟显示中文时段”。");

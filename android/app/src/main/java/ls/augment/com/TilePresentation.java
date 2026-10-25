@@ -35,8 +35,8 @@ final class TilePresentation {
         String stateText = stateDescription(state);
         tile.setIcon(icon(context));
         tile.setLabel(label);
-        if (Build.VERSION.SDK_INT >= 29) tile.setSubtitle(description);
-        if (Build.VERSION.SDK_INT >= 30) tile.setStateDescription(stateText);
+        tile.setSubtitle(description);
+        tile.setStateDescription(stateText);
         String content = description.isEmpty()
                 ? label + "，" + stateText
                 : label + "，" + description + "，" + stateText;

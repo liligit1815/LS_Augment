@@ -50,6 +50,9 @@ final class AudioGainUiHook {
     private static boolean customSteps(Context context,int stream){
         String key=stepsKey(stream);return !key.isEmpty()&&FeatureSettings.enabled(context,key);
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static synchronized void installSettings(AugmentModule module,ClassLoader loader){
         if(settingsInstalled)return;
         try{
@@ -86,6 +89,9 @@ final class AudioGainUiHook {
         slider.getClass().getMethod("setRange",float.class,float.class).invoke(slider,minimum,maximum);
         invoke(volumizer,"updateSeekBar");
     }
+
+    // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
+    //noinspection PrivateApi
     static void install(AugmentModule module, ClassLoader loader) {
         try {
             Class<?> controller=Class.forName("com.android.systemui.volume.VolumeDialogControllerImpl",false,loader);
@@ -106,7 +112,7 @@ final class AudioGainUiHook {
         }catch(Throwable e){module.logFeatureError("AUDIO_GAIN_PANEL_RANGE_INSTALL",e);}
         // Range adaptation must not prevent the independent percentage feature
         // from installing when a ROM changes its controller implementation.
-        for(String name:new String[]{"com.android.systemui.volume.VolumeDialogImpl","com.zte.feature.volume.MfvVolumeDialogImpl","com.zte.feature.volume.VertuVolumeDialogImpl"})try {
+        for(String name:new String[]{"com.android.systemui.volume.VolumeDialogImpl","com.zte.feature.volume.MfvVolumeDialogImpl","com.zte.feature.volume.VertuVolumeDialogImpl","com.zte.feature.volume.VolumeDialogImpl"})try {
             Class<?> dialog=Class.forName(name,false,loader);
             for(Method m:dialog.getDeclaredMethods())if((m.getName().equals("updateVolumeRowH")&&m.getParameterCount()==1)
                     ||m.getName().equals("showH")||m.getName().equals("updateRowsH")||m.getName().equals("updateExpandedH")){

@@ -11,6 +11,10 @@ public final class LauncherCompatibility {
     public static final String MODIFIED_VERSION = "26.9.260.908.2609081608";
     public static final long MODIFIED_MIN_VERSION_CODE = 260000;
     public static final String OEM_CERT = "d7bb72ea42adfcadf52c3d641b2b40181d6a36932a81c93207db172811ca46b7";
+    public static final String REDMAGIC12_VERSION = "17.0.000.000.2609231706";
+    public static final String REDMAGIC12_MODIFIED_VERSION = "27.0.000.000.2609231706";
+    public static final long REDMAGIC12_MODIFIED_MIN_VERSION_CODE = 270001;
+    public static final String REDMAGIC12_OEM_CERT = "85fe217eaf539fc32bdf12d74d432c348b0bd0fddffd0ba79e89889b195bb19b";
     public enum Status { BASELINE_MATCH, MISMATCH, UNVERIFIED }
     public static final class Result {
         public final Status status;
@@ -32,8 +36,16 @@ public final class LauncherCompatibility {
         if(installed&&!permissions)reasons.add("当前桌面缺少最近任务必需的系统权限。");
         boolean originalVersion=VERSION.equals(version)&&code==160000;
         boolean modifiedVersion=MODIFIED_VERSION.equals(version)&&code>=MODIFIED_MIN_VERSION_CODE;
-        if(installed&&!originalVersion&&!modifiedVersion)reasons.add("桌面版本不在当前记录中：原厂底包为 "+VERSION+"（160000），修改版为 "+MODIFIED_VERSION+"（"+MODIFIED_MIN_VERSION_CODE+" 起）。");
+        boolean original12=REDMAGIC12_VERSION.equals(version)&&code==170000;
+        boolean modified12=REDMAGIC12_MODIFIED_VERSION.equals(version)&&code>=REDMAGIC12_MODIFIED_MIN_VERSION_CODE;
+        if(installed&&!originalVersion&&!modifiedVersion&&!original12&&!modified12)reasons.add("桌面版本不在当前记录中：红魔11原厂为 "+VERSION+"（160000），修改版为 "+MODIFIED_VERSION+"（"+MODIFIED_MIN_VERSION_CODE+" 起）；红魔12原厂为 "+REDMAGIC12_VERSION+"（170000），修改版为 "+REDMAGIC12_MODIFIED_VERSION+"（"+REDMAGIC12_MODIFIED_MIN_VERSION_CODE+" 起）。");
         if(!reasons.isEmpty())return new Result(Status.MISMATCH,reasons);
+        if(original12||modified12){
+            reasons.add("已识别红魔12系列"+(modified12?"修改版":"原厂")+"桌面版本；该系列尚无实机验证记录，不能沿用红魔11的验收结论。");
+            if(modified12)reasons.add("版本标识本身不能证明安装包内容、系统集成及兼容性。");
+            if(!REDMAGIC12_OEM_CERT.equals(certificate))reasons.add("当前桌面不是已记录的红魔12原厂签名；已安装修改版也属于此情况。");
+            return new Result(Status.UNVERIFIED,reasons);
+        }
         if(!"NX809J".equals(model))reasons.add("此机型尚无本项目的匹配验证记录。");
         if(sdk!=36||!"RedMagicOS11.5.7MR1".equals(rom))reasons.add("此系统版本尚未验证；同一机型的 MR2 等更新不能沿用 MR1 的结论。");
         if(modifiedVersion)reasons.add("已识别修改版桌面版本标识；标识本身不能证明安装包内容与兼容性，仍需实际验证。");

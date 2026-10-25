@@ -12,13 +12,13 @@ public final class FreeformLaunchPolicy {
         return name.contains("oauth")||name.contains("authorize")||name.contains("authactivity")
                 ||name.contains("loginactivity")||name.endsWith(".ssoactivity");
     }
-    public static boolean shouldOpen(boolean gameLogin,boolean external,String source,String target,
+    public static boolean shouldOpen(boolean login,boolean external,String source,String target,
             boolean visibleSource,boolean standardSource,boolean standardTarget,boolean thirdPartyTarget,
             boolean sourceGame,boolean targetGame,boolean loginTarget,boolean excluded,boolean returning){
         if(!visibleSource||!standardSource||!standardTarget||!thirdPartyTarget||excluded||returning
                 ||source==null||target==null||source.equals(target))return false;
-        // Login providers returning to the game must not pull the game into a window.
+        // Keep the OEM task when a provider returns to a game without a result linkage.
         if(targetGame&&loginTarget(source,""))return false;
-        return external||(gameLogin&&sourceGame&&loginTarget);
+        return external||(login&&loginTarget);
     }
 }

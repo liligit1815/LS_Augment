@@ -100,13 +100,25 @@ files.update({
       }''',
 })
 files['ls/augment/com/hook/PowerMenuLifecycleHook.java'] = (SRC / 'PowerMenuLifecycleHook.java').read_text(encoding='utf-8')
-with tempfile.TemporaryDirectory(prefix='lsa-power-lifecycle-') as directory:
-    sources = []
-    for name, source in files.items():
-        path = Path(directory) / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(source, encoding='utf-8')
-        sources.append(str(path))
-    subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, *sources], check=True)
-    subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestPowerMenuLifecycle',
-                    *(['without-fix'] if '--without-fix' in sys.argv else [])], check=True)
+for profile in ['legacy', 'delegate', 'missing', 'wrong_type']:
+    current=dict(files)
+    controller='com/android/systemui/globalactions/GlobalActionsDialogLite.java'
+    test='ls/augment/com/hook/TestPowerMenuLifecycle.java'
+    if profile=='delegate':
+        current[controller]=current[controller].replace('public android.app.Dialog mDialog;', 'public Delegate mDelegate=new Delegate();public static class BaseDelegate {public android.app.Dialog mCurrentDialog;}public static class Delegate extends BaseDelegate {}')
+        current[test]=current[test].replace('owner.mDialog', 'owner.mDelegate.mCurrentDialog')
+        current[test]=current[test].replace('MFVActionsDialog replacement=b.open();', 'b.owner.mDelegate=new com.android.systemui.globalactions.GlobalActionsDialogLite.Delegate();MFVActionsDialog replacement=b.open();')
+    if profile in ('missing','wrong_type'):
+        current[controller]=current[controller].replace('public android.app.Dialog mDialog;', 'public Object mDialog;' if profile=='wrong_type' else '')
+        current[test]='''package ls.augment.com.hook;public class TestPowerMenuLifecycle {public static void main(String[] args){AugmentModule m=new AugmentModule();AugmentModule.active=m;PowerMenuLifecycleHook.install(m,TestPowerMenuLifecycle.class.getClassLoader());if(!m.hooks.isEmpty())throw new AssertionError("Unknown dialog contract must remain native");System.out.println("PASS unavailable dialog contract preserves native lifecycle");}}'''
+    with tempfile.TemporaryDirectory(prefix='lsa-power-lifecycle-') as directory:
+        sources = []
+        for name, source in current.items():
+            path = Path(directory) / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source, encoding='utf-8')
+            sources.append(str(path))
+        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, *sources], check=True)
+        print('Profile:',profile,flush=True)
+        subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestPowerMenuLifecycle',
+                        *(['without-fix'] if '--without-fix' in sys.argv else [])], check=True)

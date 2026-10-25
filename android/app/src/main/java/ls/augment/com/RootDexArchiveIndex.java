@@ -81,7 +81,8 @@ final class RootDexArchiveIndex {
             // read-ahead was already hashed below it; continue that SAME hash stream.
             while(source.read(scratch)!=-1) { }
             String observed=source.finish();
-            if(!expectedHash.equals(observed))throw invalid("whole archive SHA256 mismatch");
+            if(!expectedHash.equals(observed))throw invalid("whole archive SHA256 mismatch: archive="+path.getFileName()
+                    +" expected="+expectedHash+" observed="+observed+"; profile admission remains denied");
             if(indices.isEmpty() || !indices.containsKey("classes.dex"))throw invalid("missing primary DEX");
             for(int i=2;i<=indices.size();i++)if(!indices.containsKey("classes"+i+".dex"))throw invalid("noncontiguous DEX sequence");
             return new RootDexArchiveIndex(observed,indices);

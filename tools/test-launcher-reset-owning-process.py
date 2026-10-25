@@ -226,7 +226,7 @@ def run_pages_reset():
     classes.mkdir(parents=True, exist_ok=True)
     hooks = JAVA / 'hook'
     subprocess.run([str(JDK / 'bin/javac.exe'), '-encoding', 'UTF-8', '-d', str(classes),
-                    *source_files, *[str(hooks / name) for name in ('LauncherPagesHook.java','LauncherPageOrder.java','TargetReflection.java')]], check=True)
+                    *source_files, *[str(hooks / name) for name in ('LauncherPagesHook.java','LauncherPageOrder.java','TargetReflection.java')], str(JAVA / 'LauncherPageOrigins.java')], check=True)
     result = subprocess.run([str(JDK / 'bin/java.exe'), '-cp', str(classes), 'ls.augment.com.hook.TestLauncherPagesTotalReset'],
                             text=True, capture_output=True, check=True)
     return json.loads(result.stdout.strip())
