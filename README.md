@@ -2,9 +2,9 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20636`，内部版本号 `20636`。** 以 [android/version.properties](android/version.properties) 为准。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。源码版本与已发布安装包版本分别维护，公开下载和在线更新以以下入口为准。
+**当前源码版本：`2.0.0-alpha1-test20636`，内部版本号 `20636`。** 以 [android/version.properties](android/version.properties) 为准。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。[本版更新说明](docs/releases/v2.0.0-alpha1-test20636.md)记录本次发布内容；安装包与在线更新已同步发布。
 
-当前在线版本为 test20632：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20632/redmagic-duo-20632.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20632)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
+当前在线版本为 test20636：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20636/redmagic-duo-20636.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20636)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
@@ -22,13 +22,12 @@
 
 ## 当前版本要点
 
-- 展开配置使用统一分组边界与层级标识，明确参数所属功能。
-- 缩小滑条上下留白，合并参数名与当前数值，支持点按精确输入。
-- “系统设置”新增电池健康度检测，显示估算健康度、满充容量、设计容量和循环次数。
-- 性能监测增加电池、CPU、GPU 温度与功耗；性能监测和肩键方案浮窗可长按固定位置。
-- 星云岛支持分别选择场景，完善录音状态恢复与控制接口识别。
-- 安装界面精简选项覆盖备案、纯净模式和风险提醒，保留手动安装确认。
-- 应用隐藏明确区分未安装和状态读取异常，保留原有选择与历史记录。
+- 统一展开配置的分组边界与层级标识，让参数归属更清晰。
+- 缩小滑条上下留白，合并参数名与当前值，支持点按精确输入。
+- 新增电池健康度检测，查看估算健康度、容量与循环次数。
+- 性能监测新增电池、CPU、GPU 温度与功耗，支持性能监测和肩键方案浮窗长按固定位置。
+- 新增星云岛场景选择，改善录音状态恢复与控制，星云岛是红魔系统自带的岛，但被阉割太多，部分场景开机也无效。
+- 完善安装界面精简选项，隐藏备案、纯净模式和风险提醒，保留手动安装确认。
 
 ## 功能概览
 
@@ -107,7 +106,7 @@ Windows 也可直接构建：
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
 
 
-目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20632)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
+目录按需生成。安装包及校验值通过 [lispacerelease 的 Release 附件](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20636)分发，不提交源码仓库；本地源码压缩包仅作为打包输出。`build-module.sh` 为调试包入口，检查 Xposed 元数据、编译后的 Manifest 和 APK 对齐；存在 `apksigner` 时追加签名验证。构建不会自动改号。
 
 签名通过 `LS_AUGMENT_KEYSTORE`、`LS_AUGMENT_STORE_PASSWORD`、`LS_AUGMENT_KEY_ALIAS`、`LS_AUGMENT_KEY_PASSWORD` 环境变量或被忽略的本地配置注入。Release 构建使用 `:app:assembleRelease`，正式打包使用 `tools/build-release.py` 校验证书、版本与对齐。公开 `.pem` 不能代替私钥。当前发布证书 SHA-256 为 `4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb`，覆盖更新需要相同证书。
 
