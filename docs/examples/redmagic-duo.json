@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20542,
-    "versionName": "2.0.0-alpha1-test20542",
+    "versionCode": 20632,
+    "versionName": "2.0.0-alpha1-test20632",
     "minSdk": 35,
-    "publishedAt": "2026-10-14T07:34:49Z",
-    "notes": "- 支持红魔系列Android15设备桌面自定义布局。\n- 新增去除剪辑图片时裁剪尺寸限制。\n- 新增去除截图图片裁剪尺寸限制。\n- 新增部分功能不支持提示。",
+    "publishedAt": "2026-10-25T07:41:54Z",
+    "notes": "- 新增红魔Step，集中管理多窗口、常用应用、素材与历史内容。\n- 新增竞技键自定义、iOS 电池与双排信号样式，完善状态栏布局和显示。\n- 优化桌面布局、Dock 图标缩放与页面管理，增加新装应用末页显示。\n- 改善灵动岛录音状态恢复及通知、控制中心的显示与交互。\n- 统一模块私有配置与数据管理，完善旧数据迁移和旧版接口兼容。\n- 限制日志、更新缓存及后台任务队列，优化长时间运行的内存与存储占用。\n- 修复健康账本超时任务积压，完善记录保存与异常恢复。\n- 优化在线更新下载、安装链接兼容和临时文件清理。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20542/redmagic-duo-20542.apk",
-      "size": 8471545,
-      "sha256": "2335fef7353103bbf0633052c4736f0f6fa007d233864293ab532c6715595857",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20632/redmagic-duo-20632.apk",
+      "size": 13990191,
+      "sha256": "4643345fce9f6a298cc9dd5e5105ec6dd5cdfeef532cd883b407164c2ea7ac06",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
