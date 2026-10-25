@@ -11,7 +11,7 @@ public final class TestModuleHierarchy {
         int[] counts={84,17,24,11,8,5,1,5,18,4,16,15,12,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
-        require(HookAppCatalog.targets().size()==19,"Runtime targets remain independent of the 14 display categories");
+        require(HookAppCatalog.targets().size()==20&&HookAppCatalog.find(HookAppCatalog.AMAP)!=null,"Runtime targets include the navigation source independently of the 14 display categories");
         for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
             actualIds.add(category.id);require(counts[index++]==category.featureCount,"Approved capability count for "+category.id);total+=category.featureCount;
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
@@ -19,6 +19,7 @@ public final class TestModuleHierarchy {
         }
         require(actualIds.equals(Arrays.asList(ids))&&total==224,"Presentation includes 224 capabilities in 14 ordered categories");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
+        require("atomic_workbench".equals(ModuleHierarchy.resolve("target-amap")),"Navigation source opens the existing Step editor");
         require(ModuleHierarchy.path("atomic_workbench").equals(Arrays.asList("home","atomic_workbench")),"Workbench is a first-level category without an empty intermediate page");
         require(ModuleHierarchy.path("atomic_workbench_session").equals(Arrays.asList("home","atomic_workbench","atomic_workbench_session")),"Running workspace retains its settings parent");
         require("atomic_workbench".equals(ModuleHierarchy.categoryForRoute("atomic_workbench")),"Workbench search has the same first-level owner");

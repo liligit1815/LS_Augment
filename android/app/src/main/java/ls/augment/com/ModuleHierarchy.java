@@ -61,7 +61,7 @@ public final class ModuleHierarchy {
         entry(section("multitasking","freeform_rules","跨应用跳转规则"),"freeform_rules");
         entry(section("multitasking","freeform_limits","小窗数量与应用范围"),"freeform_limits");
         add(section("multitasking","overlay_touch","悬浮窗触摸"),"ls_augment_rm_untrusted_touch_allow");
-        entry(section("atomic_workbench","workspace","原子工作台"),"atomic_workbench");
+        entry(section("atomic_workbench","workspace","红魔Step"),"atomic_workbench");
         source(section("capture","capture","捕获画面"),"screenshot","capture");
         source(section("capture","image_edit","图片编辑"),"gallery","image_edit");
         add(section("capture","secure_capture","窗口捕获限制"),"ls_augment_rm_secure_capture");
@@ -109,6 +109,7 @@ public final class ModuleHierarchy {
         for(String[] pair:values)alias("target-"+pair[0],"target-"+pair[1]);
         alias("target-ai_trigger","ai_trigger");alias("target-files","group/connectivity/usb_mtp");alias("target-nfc","group/connectivity/nfc");alias("target-weather","group/desktop/desktop_clock");alias("target-permissions","group/desktop/default_launcher");alias("target-update","group/system_settings/update");alias("target-installer","group/apps/installer_ui");alias("target-store","store_download");alias("target-doubleapp","double_app");
         alias("target-gallery","group/capture/image_edit");
+        alias("target-amap","atomic_workbench");
     }
     private static void legacySections(){
         String[][] values={
@@ -192,7 +193,7 @@ public final class ModuleHierarchy {
     public static List<String> path(String route){LinkedList<String> path=new LinkedList<>();Set<String> visited=new HashSet<>();String next=resolve(route);while(visited.add(next)){path.addFirst(next);if(Arrays.asList("home","settings","about").contains(next))break;next=parent(next);}return path;}
     public static String categoryForRoute(String route){for(String item:path(route)){if(item.startsWith("target-"))return item.substring(7);Section s=group(item);if(s!=null)return s.target;Section owner=group(ENTRY_PARENTS.get(item));if(owner!=null)return owner.target;}Section s=group(ENTRY_PARENTS.get(resolve(route)));return s==null?null:s.target;}
     public static String title(String route){
-        if("atomic_workbench".equals(route))return "原子工作台";
+        if("atomic_workbench".equals(route))return "红魔Step";
         if("atomic_workbench_session".equals(route))return "运行工作台";
         if("atomic_workbench_apps".equals(route))return "应用列表显示";
         if("atomic_workbench_app_sort".equals(route))return "应用列表排序";

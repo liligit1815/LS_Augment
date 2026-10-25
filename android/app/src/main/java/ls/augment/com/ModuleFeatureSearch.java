@@ -69,7 +69,7 @@ final class ModuleFeatureSearch {
     private static String normalize(String text){return text==null?"":text.toLowerCase(Locale.ROOT).replaceAll("[\\s/\\-·]+","");}
     private static String entryAliases(String route){
         switch(route){
-            case "atomic_workbench":return "原子工作台 Van Step VANSTEP 一步 全局手势 桌面 应用内进入 主区 侧槽 实时侧窗 主侧交换 多应用 虚拟显示 应用选择 任务恢复";
+            case "atomic_workbench":return "红魔Step 原子工作台 Van Step VANSTEP 一步 全局手势 桌面 应用内进入 主区 侧槽 实时侧窗 主侧交换 多应用 虚拟显示 应用选择 任务恢复";
             case "competitive_key":return "竞技键 滑块 上推 下拉 指定app 静音 响铃 省电 自定义shell命令";
             case "ai_trigger":return "AI触发器 极速响应 模板 识图 点击冷却 游戏助手";
             case "fan_control":return "散热风扇 固定转速 本机测量 息屏运转 磁贴";

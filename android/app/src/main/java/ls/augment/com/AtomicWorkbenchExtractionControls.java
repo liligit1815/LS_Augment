@@ -102,7 +102,7 @@ final class AtomicWorkbenchExtractionControls extends LinearLayout implements Au
             try {
                 if (closed || ticket != sequence || ResetWriteFence.stale(generation)) throw new IllegalStateException("配置已变化，请重新打开本页。");
                 if (enabling) {
-                    if (!target.getBoolean(AtomicWorkbenchConfig.ENABLED)) throw new IllegalStateException("请先启用原子工作台。");
+                    if (!target.getBoolean(AtomicWorkbenchConfig.ENABLED)) throw new IllegalStateException("请先启用红魔Step。");
                     if (!AtomicWorkbenchPasteService.available()) throw new IllegalStateException("请先在手机无障碍设置启用红魔Duo的文字服务。");
                     FutureTask<Boolean> query = new FutureTask<>(AtomicWorkbenchExtractionSystemBridge::checkReady);
                     try { CHECK.execute(query); if (!query.get(4, TimeUnit.SECONDS)) throw new IllegalStateException("手机提取接入尚未就绪，请核对无障碍服务及LSPosed系统框架作用域，重启手机后重试。"); }

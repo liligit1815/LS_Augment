@@ -16,7 +16,7 @@ final class ConfigResetController {
         Context app=context.getApplicationContext();
         try {
             ResetWriteFence.begin(); fenced=true;
-            progress.accept("正在恢复原子工作台的应用任务…");
+            progress.accept("正在恢复红魔Step的应用任务…");
             android.os.Bundle workbench=AtomicWorkbenchReset.restore(app);
             if(!workbench.getBoolean("success")||workbench.getBoolean("recovery_pending"))
                 return failure(app,false,false,workbench.getString("message","工作台任务恢复尚未确认"));

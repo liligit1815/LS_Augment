@@ -2,7 +2,7 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20631`，内部版本号 `20631`。** 以 [android/version.properties](android/version.properties) 为准。[本版更新说明](docs/releases/v2.0.0-alpha1-test20631.md)为待审核草案，安装包将在审核后发布。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
+**当前源码版本：`2.0.0-alpha1-test20632`，内部版本号 `20632`。** 以 [android/version.properties](android/version.properties) 为准。[本版更新说明](docs/releases/v2.0.0-alpha1-test20632.md)为待审核草案，安装包将在审核后发布。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
 
 当前在线版本为 test20542：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20542/redmagic-duo-20542.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20542)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
@@ -22,7 +22,7 @@
 
 ## 当前版本要点
 
-- “原子工作台”提供全局手势入口、主区与侧窗、顶栏状态卡、应用列表及“素材与历史”管理；实际接入能力由手机系统接口决定。
+- “红魔Step”提供全局手势入口、主区与侧窗、顶栏状态卡、应用列表及“素材与历史”管理；实际接入能力由手机系统接口决定。
 - 原生电池展开新增原生／ios 预设样式，按实时电量、充电、省电、性能及明暗选择素材。
 - 系统设置新增自定义竞技键，上推、下拉独立配置 app、响铃、省电或多行 shell 动作。
 - 原厂状态栏图标页提供“双卡信号样式”，在原厂弹窗中通过左右并排图示与文字选择平铺／荣耀双排／iOS双排，与模块双排信号同步，并统一三合一互斥。
@@ -43,7 +43,7 @@
 | 声音与音量 | 本机联名音频、音量档数、软件增益和面板百分比 |
 | 操作与手势 | 侧滑图标与背景、高级重启、助理、单手模式和剪贴板 |
 | 小窗与多任务 | 跨应用跳转、小窗数量与应用范围、触摸规则 |
-| 原子工作台 | 全局手势、原生桌面、主区与侧窗、音乐卡和应用栏、主侧交换及任务恢复；需手机 Root、系统框架和系统桌面作用域 |
+| 红魔Step | 全局手势、原生桌面、主区与侧窗、音乐卡和应用栏、主侧交换及任务恢复；需手机 Root、系统框架和系统桌面作用域 |
 | 截图与录屏 | 捕获画面的状态栏隐藏、窗口限制、截图与相册编辑裁剪解限 |
 | 游戏空间 | 肩键、极速连点、连招、超分、性能监测、AI 触发器及游戏录制 |
 | 散热风扇 | 固定一至五档、本机转速测量、原厂磁贴增强及息屏延续 |
@@ -104,7 +104,7 @@ Windows 也可直接构建：
 | 输出 | 位置 |
 |---|---|
 | Gradle 调试 APK | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| 当前版本本地 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20631-release.apk` |
+| 当前版本本地 Release APK | `out/RedMagicDuo-v2.0.0-alpha1-test20632-release.apk` |
 | 脚本整理调试 APK | `out/LS_Augment-v<versionName>.apk` |
 | 源码包 | `out/LS_Augment-v<versionName>-source.zip` |
 | 校验值 | 整理产物旁的 `.sha256` 文件 |
@@ -138,7 +138,7 @@ npm ci
 npm run dev -- --host 127.0.0.1 --port 3000
 ```
 
-打开 `http://localhost:3000/#home`，需要 Node.js `>=22.13.0`。原型保留此前 13 分类导航和部分编辑界面，尚未加入手机端新增的“原子工作台”，配置数据仍包含历史快照。它只改变浏览器样例状态，不执行手机 Root、重启、应用隐藏、风扇或健康数据操作；当前手机功能以 Android 源码和[功能说明](docs/最新版功能说明.md)为准。
+打开 `http://localhost:3000/#home`，需要 Node.js `>=22.13.0`。原型保留此前 13 分类导航和部分编辑界面，尚未加入手机端新增的“红魔Step”，配置数据仍包含历史快照。它只改变浏览器样例状态，不执行手机 Root、重启、应用隐藏、风扇或健康数据操作；当前手机功能以 Android 源码和[功能说明](docs/最新版功能说明.md)为准。
 
 ## 维护边界
 

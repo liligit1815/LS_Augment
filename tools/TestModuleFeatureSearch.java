@@ -117,7 +117,12 @@ public final class TestModuleFeatureSearch {
         for(String query:Arrays.asList("状态栏","通知","控制中心","桌面","锁屏","主题","音量","手势","小窗","截图","游戏","风扇","连接","应用","系统","步数","字体","图标","隐藏","安装","usb","MTP","Wi-Fi","刷新率")){
             search(query,false);search(query,true);
         }
+        exactFeature("红魔Step","atomic_workbench","atomic_workbench");
+        destination("红魔 step","atomic_workbench","atomic_workbench");
         destination("原子工作台","atomic_workbench","atomic_workbench");
+        for(ModuleFeatureSearch.Result result:search("原子工作台",false)){
+            require(!result.title.contains("原子工作台")&&!result.path.contains("原子工作台"),"Legacy search must display the current RedMagic Step name");
+        }
         destination("VANSTEP","atomic_workbench","atomic_workbench");
         destination("任务恢复","atomic_workbench","atomic_workbench");
         System.out.println("V2.0 feature search: OK (14 titles, task queries, hidden-session transitions, "+checkedResults+" validated results)");

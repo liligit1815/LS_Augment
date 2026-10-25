@@ -299,7 +299,7 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         toolbar.addView(desktopButton, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
         reloadMain = iconTool("重载当前应用画面", "refresh", "atomic-workbench-reload", this::reloadMainOutput);
         toolbar.addView(reloadMain, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-        TextView heading = ui.text("原子工作台", 16, ui.text, true);
+        TextView heading = ui.text("红魔Step", 16, ui.text, true);
         heading.setGravity(Gravity.CENTER); heading.setMaxLines(1); heading.setEllipsize(TextUtils.TruncateAt.END);
         heading.setAccessibilityHeading(true);
         toolbar.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1531,7 +1531,7 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
     }
 
     static void showPasteSetup(UiKit hostUi, java.util.function.Consumer<String> failure) {
-        hostUi.glassDialog("启用文字填入", "请在系统无障碍设置中启用“原子工作台文字填入”，然后重新拖入。素材会继续保留。",
+        hostUi.glassDialog("启用文字填入", "请在系统无障碍设置中启用“红魔Step文字填入”，然后重新拖入。素材会继续保留。",
                 "打开设置", () -> {
                     try { hostUi.activity.startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
                     catch (RuntimeException unavailable) { failure.accept("无法打开系统无障碍设置，请从手机设置进入。"); }

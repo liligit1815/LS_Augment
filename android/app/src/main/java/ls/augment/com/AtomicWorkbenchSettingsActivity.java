@@ -67,14 +67,14 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         Object retained = getLastNonConfigurationInstance();
         session = retained instanceof Session ? (Session) retained : new Session();
         session.owner = new WeakReference<>(this);
-        LinearLayout body = ui.detailPage("原子工作台", "device");
+        LinearLayout body = ui.detailPage("红魔Step", "device");
         ui.addDetailSectionTitle(body, "全局手势");
         LinearLayout card = ui.preferenceCard();
         body.addView(card, ui.wrap());
         enabled = new Switch(this);
         enabled.setTag("config:" + AtomicWorkbenchConfig.ENABLED);
         enabled.setChecked(on());
-        card.addView(ui.featureRow("启用原子工作台",
+        card.addView(ui.featureRow("启用红魔Step",
                 "开启后，在桌面或应用中从屏幕左上侧、右上侧向内下方斜滑，进入工作台。需要手机 Root 授权，并在 LSPosed 为红魔Duo勾选系统框架和系统桌面；首次安装或更新后需重启手机。", enabled), ui.wrap());
         status = ui.text("", 12, ui.muted, false);
         status.setTag("atomic-workbench-settings-status");

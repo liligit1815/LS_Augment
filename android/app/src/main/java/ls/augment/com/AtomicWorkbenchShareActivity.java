@@ -60,7 +60,7 @@ public final class AtomicWorkbenchShareActivity extends Activity {
                 .putExtra(AtomicWorkbenchTransfer.EXTRA_DELIVERY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         ActivityOptions options = ActivityOptions.makeBasic(); options.setLaunchDisplayId(0);
         try { startActivity(workbench, options.toBundle()); finish(); }
-        catch (RuntimeException unavailable) { failed("素材已保存，请重新进入原子工作台继续流转"); }
+        catch (RuntimeException unavailable) { failed("素材已保存，请重新进入红魔Step继续流转"); }
     }
     @Override public Object onRetainNonConfigurationInstance() { return session; }
     private void handleBack() {

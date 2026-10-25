@@ -117,7 +117,7 @@ design-qa.md
 !/docs/examples/redmagic-duo.json
 !/docs/releases/
 /docs/releases/*
-!/docs/releases/v2.0.0-alpha1-test20631.md
+!/docs/releases/v2.0.0-alpha1-test20632.md
 
 # 图标提取原件留在本地，仓库保留实际使用的图标及来源记录
 /contributors-site/icons/liftarc-original-vector.xml
