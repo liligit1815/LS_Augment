@@ -17,7 +17,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.CheckBox;
-import android.widget.EditText;
+import android.widget.SeekBar;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.ImageButton;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -40,7 +41,7 @@ import org.json.JSONObject;
 final class GamePerformanceMonitorUiCases implements Application.ActivityLifecycleCallbacks {
     private static final String ROUTE=ModuleHierarchy.resolve("group/game/plugins");
     private static final String DIRECTORY_ROUTE=ModuleHierarchy.resolve("target-game");
-    private static final String[] KEYS={GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_ITEMS,GameOptions.MONITOR_TRANSPARENCY};
+    private static final String[] KEYS={GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_ITEMS,GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_PIN,GameOptions.QUICK_SWITCH,GameOptions.SHOULDER_PIN};
     private final Instrumentation test;
     private final Context context;
     private final boolean layoutOnly,landscape;
@@ -51,6 +52,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
     private Map<String,String> before;
     private int checks,selectionCases,validTransparencyCases,invalidTransparencyCases;
     private boolean recreated;
+    private final JSONObject sensorReadings=new JSONObject();
 
     private GamePerformanceMonitorUiCases(Instrumentation test,boolean layoutOnly,boolean landscape){
         this.test=test;context=test.getTargetContext();this.layoutOnly=layoutOnly;this.landscape=landscape;
@@ -74,6 +76,9 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
             Activity page=await(ROUTE,null);
             if(landscape)page=landscapePage(page);
+            else if(page.getResources().getConfiguration().orientation!=Configuration.ORIENTATION_PORTRAIT){
+                Activity previous=page;onMain(()->{previous.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);return null;});page=await(ROUTE,previous);
+            }
             settle();checkOriginal(page);checkLayout(page,"original");capture("01-original");
             if(!layoutOnly)exerciseControls(page);
             previewExpanded(page);settle();checkLayout(page,"expanded");capture("02-expanded-top");
@@ -86,6 +91,11 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
             Activity directoryPage=await(DIRECTORY_ROUTE,null);settle();
             onMain(()->{require(tag(directoryPage,"navigation:"+ROUTE)!=null,"Directory exposes the monitor's existing plugin group");require(tag(directoryPage,"navigation:"+ROUTE).performClick(),"Plugin group reopens through its directory row");return null;});
             Activity returned=await(ROUTE,null);settle();checkOriginal(returned);
+            checkShoulderPin();
+            Method sample=Class.forName("ls.augment.com.hook.MonitorTelemetry").getDeclaredMethod("sample",Context.class,String.class);sample.setAccessible(true);
+            double[] readings=(double[])sample.invoke(null,context,"battery_temperature,cpu_temperature,gpu_temperature,power");
+            require(readings.length==4,"Actual sampler exposes all four additional readings");
+            for(int i=0;i<4;i++)sensorReadings.put(GamePerformanceMonitorConfig.items()[i+5],Double.isFinite(readings[i])?readings[i]:JSONObject.NULL);
             require(before.equals(config.snapshot())&&rawBefore.equals(preferences.getAll()),"All control and lifecycle checks preserve the original durable configuration");
         }catch(Throwable error){failure=error;try{capture("failure");}catch(Throwable captureError){error.addSuppressed(captureError);}}
         finally{
@@ -103,18 +113,47 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
                 .put("invalidTransparencyCases",invalidTransparencyCases).put("layoutOnly",layoutOnly)
                 .put("landscapeRequested",landscape).put("recreated",recreated)
                 .put("configurationUnchanged",before.equals(config.snapshot())&&rawBefore.equals(preferences.getAll()))
-                .put("layouts",layouts).put("screenshots",screenshots);
+                .put("layouts",layouts).put("screenshots",screenshots).put("actualSensorReadings",sensorReadings);
         if(failure!=null)report.put("failure",android.util.Log.getStackTraceString(failure));
         Files.write(new File(directory,"report.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
         if(failure!=null)throw new AssertionError("Game performance monitor UI checks failed",failure);
         return report;
     }
 
+    private void checkShoulderPin()throws Exception{
+        String route=ModuleHierarchy.resolve("group/game/shoulder");
+        Activity opened=test.startActivitySync(new Intent(context,EnhancementSettingsActivity.class)
+                .putExtra(ModuleNavigation.EXTRA_ROUTE,route).putExtra("target",ModuleHierarchy.group(route).target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
+        Activity page=opened;
+        if(landscape&&opened.getResources().getConfiguration().orientation!=Configuration.ORIENTATION_LANDSCAPE){
+            onMain(()->{opened.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);return null;});page=await(route,opened);
+        }
+        Activity current=page;settle();
+        onMain(()->{
+            Switch parent=(Switch)tag(current,"config:"+GameOptions.QUICK_SWITCH),pin=(Switch)tag(current,"config:"+GameOptions.SHOULDER_PIN);
+            require(parent!=null&&pin!=null,"Shoulder quick switch owns its pin control on the third-level page");
+            ViewGroup feature=(ViewGroup)tag(current,"native-feature:"+GameOptions.QUICK_SWITCH);
+            View content=feature.getChildAt(1);require(content.getVisibility()==View.GONE,"Initial shoulder options are collapsed");
+            draft(current).put(GameOptions.QUICK_SWITCH,"1");parent.setChecked(true);
+            ViewGroup row=(ViewGroup)parent.getParent();if(content.getVisibility()!=View.VISIBLE)row.getChildAt(row.getChildCount()-1).performClick();
+            require(pin.isShown(),"Pin control is available inside quick-switch parameters");
+            boolean old=pin.isChecked();draft(current).put(GameOptions.SHOULDER_PIN,old?"0":"1");pin.performClick();
+            require(pin.isChecked()!=old,"Shoulder pin switch responds to user interaction");
+            draft(current).put(GameOptions.SHOULDER_PIN,old?"1":"0");pin.performClick();
+            View path=tag(current,"page-path"),card=tag(current,"application-category:"+ModuleHierarchy.group(route).target+":shoulder");
+            float gap=(top(card)-top(path)-path.getHeight())/current.getResources().getDisplayMetrics().density;
+            require(gap>=7.5f&&gap<=12.5f,"Shoulder navigation gap stays 8–12dp");
+            pin.requestRectangleOnScreen(new Rect(0,0,pin.getWidth(),pin.getHeight()),true);
+            cancelPending(current);return null;
+        });settle();capture("05-shoulder-position-pin");
+        onMain(()->{draft(current).clear();draft(current).putAll(before);cancelPending(current);current.finish();return null;});settle();
+    }
+
     private void checkOriginal(Activity page)throws Exception{onMain(()->{
         require(ROUTE.equals(ModuleNavigation.route(page)),"Monitor belongs to the game plugin page");
         Switch toggle=toggle(page);require(toggle.isChecked()==ConfigSchema.truthy(before.get(GameOptions.PERFORMANCE_MONITOR)),"Monitor switch loads its saved state");
         for(CheckBox box:boxes(page))require(box.isChecked()==GamePerformanceMonitorConfig.selected(before.get(GameOptions.MONITOR_ITEMS),(String)box.getTag()),"Item loads its saved selection: "+box.getTag());
-        require(before.get(GameOptions.MONITOR_TRANSPARENCY).contentEquals(transparency(page).getText()),"Transparency loads its saved value");
+        require(Integer.parseInt(before.get(GameOptions.MONITOR_TRANSPARENCY))==transparency(page).getProgress(),"Transparency loads its saved value");
         require(((FieldEditQueue)get(page,"pending")).isEmpty(),"Opening a monitor page schedules no save");
         for(View view:all(tag(page,"native-feature:"+GameOptions.PERFORMANCE_MONITOR)))
             require(!(view.getTag() instanceof String)||!((String)view.getTag()).startsWith("navigation:"),"Monitor parameters stay inside the feature fold");
@@ -136,19 +175,14 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
                 boxes[index].performClick();boxes[index-1].performClick();
                 require(((String)boxes[index].getTag()).equals(draft(page).get(GameOptions.MONITOR_ITEMS)),"Each native item can be the single visible item: "+boxes[index].getTag());selectionCases++;
             }
-            EditText field=transparency(page);
-            for(String value:new String[]{"0","100","35"}){field.setText(value);require(value.equals(draft(page).get(GameOptions.MONITOR_TRANSPARENCY)),"Transparency accepts boundary or intermediate percentage: "+value);validTransparencyCases++;}
+            SeekBar field=transparency(page);
+            for(String value:new String[]{"0","100","35"}){setTransparency(page,Integer.parseInt(value));require(value.equals(draft(page).get(GameOptions.MONITOR_TRANSPARENCY)),"Transparency accepts boundary or intermediate percentage: "+value);validTransparencyCases++;}
             String items=draft(page).get(GameOptions.MONITOR_ITEMS),percentage=draft(page).get(GameOptions.MONITOR_TRANSPARENCY);
             toggle.setChecked(false);require(items.equals(draft(page).get(GameOptions.MONITOR_ITEMS))&&percentage.equals(draft(page).get(GameOptions.MONITOR_TRANSPARENCY)),"Disabling preserves both selected items and transparency");
             arrow.performClick();require(content.getVisibility()==View.GONE,"A disabled monitor cannot expose its editor");
-            toggle.setChecked(true);require(items.equals(draft(page).get(GameOptions.MONITOR_ITEMS))&&percentage.contentEquals(field.getText()),"Re-enabling recovers the previous parameter values");
-            for(String invalid:new String[]{"","-1","101","1.5"}){
-                field.setText(invalid);TextView error=(TextView)tag(page,"input-error:"+GameOptions.MONITOR_TRANSPARENCY);
-                require(error.getVisibility()==View.VISIBLE&&error.length()>0,"Invalid transparency has visible feedback: "+invalid);
-                require(before.get(GameOptions.MONITOR_TRANSPARENCY).equals(draft(page).get(GameOptions.MONITOR_TRANSPARENCY))
-                        &&!((FieldEditQueue)get(page,"pending")).restorableValues().containsKey(GameOptions.MONITOR_TRANSPARENCY),"Invalid raw input never becomes a restorable save intent");invalidTransparencyCases++;
-            }
-            field.setText("35");
+            toggle.setChecked(true);require(items.equals(draft(page).get(GameOptions.MONITOR_ITEMS))&&Integer.parseInt(percentage)==field.getProgress(),"Re-enabling recovers the previous parameter values");
+            require(field.getMin()==0&&field.getMax()==100,"Slider constrains transparency to the validated 0–100 range");
+            setTransparency(page,35);
             Bundle state=new Bundle();Method save=EnhancementSettingsActivity.class.getDeclaredMethod("onSaveInstanceState",Bundle.class);save.setAccessible(true);save.invoke(page,state);
             require("35".equals(state.getBundle("draft").getString(GameOptions.MONITOR_TRANSPARENCY))
                     &&items.equals(state.getBundle("draft").getString(GameOptions.MONITOR_ITEMS)),"Pending legal parameters enter activity state for configuration recreation");
@@ -160,7 +194,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
         try{
             Switch toggle=toggle(page);toggle.setChecked(false);toggle.setChecked(true);
             for(CheckBox box:boxes(page))box.setChecked(true);
-            transparency(page).setText("35");
+            setTransparency(page,35);
             require(content(page).getVisibility()==View.VISIBLE,"The preview shows all actual monitor controls");
         }finally{cancelPending(page);}
         return null;
@@ -170,7 +204,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
         try{
             for(CheckBox box:boxes(page))box.setChecked(true);
             for(CheckBox box:boxes(page))box.setChecked(GamePerformanceMonitorConfig.selected(before.get(GameOptions.MONITOR_ITEMS),(String)box.getTag()));
-            transparency(page).setText(before.get(GameOptions.MONITOR_TRANSPARENCY));
+            ((ParameterSlider)tag(page,"parameter-slider:"+GameOptions.MONITOR_TRANSPARENCY)).setValue(before.get(GameOptions.MONITOR_TRANSPARENCY));
             toggle(page).setChecked(ConfigSchema.truthy(before.get(GameOptions.PERFORMANCE_MONITOR)));
             for(String key:KEYS)draft(page).put(key,before.get(key));
         }finally{cancelPending(page);}
@@ -187,7 +221,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
         require(current!=null&&current.getGlobalVisibleRect(visible)&&visible.width()>=current.getWidth()-1
                 &&current.getLayout()!=null&&current.getLayout().getEllipsisCount(0)==0,"Current breadcrumb is visible without clipping");
         float minRight=Float.MAX_VALUE,maxRight=-Float.MAX_VALUE;int switches=0;
-        for(View view:all(first))if(view instanceof Switch){
+        for(View view:all(first))if(view instanceof Switch&&!GameOptions.MONITOR_PIN.equals(String.valueOf(view.getTag()).replace("config:",""))){
             int[] point=new int[2];view.getLocationInWindow(point);float right=point[0]+view.getWidth();minRight=Math.min(minRight,right);maxRight=Math.max(maxRight,right);switches++;
             require(Math.abs(view.getWidth()/density-46f)<1f,"Game plugin switches use the shared 46dp width");
         }
@@ -197,7 +231,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
             require(transparency(page).getHeight()/density>=47.5f,"Transparency field retains a 48dp touch target");
         }
         int orientation=page.getResources().getConfiguration().orientation;
-        require(!landscape||orientation==Configuration.ORIENTATION_LANDSCAPE,"Requested landscape is rendered before measurement");
+        require(orientation==(landscape?Configuration.ORIENTATION_LANDSCAPE:Configuration.ORIENTATION_PORTRAIT),"Requested orientation is rendered before measurement");
         layouts.put(new JSONObject().put("state",state).put("navigationGapDp",gap).put("switchRightSpreadDp",(maxRight-minRight)/density)
                 .put("density",density).put("fontScale",page.getResources().getConfiguration().fontScale).put("orientation",orientation));
         return null;
@@ -205,7 +239,7 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
 
     private void revealTransparency(Activity page)throws Exception{
         onMain(()->{ScrollView scroll=(ScrollView)tag(page,"detail-scroll");scroll.scrollTo(0,scroll.getChildAt(0).getHeight());return null;});settle();
-        onMain(()->{EditText field=transparency(page);Rect visible=new Rect();require(field.getGlobalVisibleRect(visible)
+        onMain(()->{SeekBar field=transparency(page);Rect visible=new Rect();require(field.getGlobalVisibleRect(visible)
                 &&visible.width()>=field.getWidth()-1&&visible.height()>=field.getHeight()-1,"The last monitor input is fully reachable in the real scroll viewport");return null;});
     }
 
@@ -223,8 +257,10 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
     private static Switch toggle(Activity page){return (Switch)tag(page,"config:"+GameOptions.PERFORMANCE_MONITOR);}
     private static View content(Activity page){ViewGroup feature=(ViewGroup)tag(page,"native-feature:"+GameOptions.PERFORMANCE_MONITOR);return feature.getChildAt(1);}
     private static ImageButton arrow(Activity page){ViewGroup row=(ViewGroup)toggle(page).getParent();return (ImageButton)row.getChildAt(row.getChildCount()-1);}
-    private CheckBox[] boxes(Activity page){ViewGroup parent=(ViewGroup)tag(page,"config:"+GameOptions.MONITOR_ITEMS);require(parent!=null&&parent.getChildCount()==5,"Five native monitoring choices are present");CheckBox[] result=new CheckBox[5];for(int index=0;index<5;index++){result[index]=(CheckBox)parent.getChildAt(index);require(GamePerformanceMonitorConfig.items()[index].equals(result[index].getTag()),"Checkbox identifies its original native item");}return result;}
-    private static EditText transparency(Activity page){return (EditText)tag(page,"config:"+GameOptions.MONITOR_TRANSPARENCY);}
+    private CheckBox[] boxes(Activity page){ViewGroup parent=(ViewGroup)tag(page,"config:"+GameOptions.MONITOR_ITEMS);require(parent!=null&&parent.getChildCount()==9,"Nine monitoring choices are present");CheckBox[] result=new CheckBox[9];for(int index=0;index<9;index++){result[index]=(CheckBox)parent.getChildAt(index);require(GamePerformanceMonitorConfig.items()[index].equals(result[index].getTag()),"Checkbox identifies its original native item");}return result;}
+    private static void setTransparency(Activity page,int value){if(transparency(page).getProgress()==value)return;Bundle arguments=new Bundle();arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,value);
+        if(!transparency(page).performAccessibilityAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId(),arguments))throw new AssertionError("Transparency slider did not accept accessibility progress");}
+    private static SeekBar transparency(Activity page){return (SeekBar)tag(page,"config:"+GameOptions.MONITOR_TRANSPARENCY);}
     private static Map<String,String> draft(Activity page)throws Exception{return (Map<String,String>)get(page,"draft");}
     private static Object get(Object owner,String name)throws Exception{Field field=EnhancementSettingsActivity.class.getDeclaredField(name);field.setAccessible(true);return field.get(owner);}
     private static View tag(Activity page,String value){return page.getWindow().getDecorView().findViewWithTag(value);}

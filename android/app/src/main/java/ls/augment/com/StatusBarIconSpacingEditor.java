@@ -76,7 +76,8 @@ final class StatusBarIconSpacingEditor {
         for(int i=0;i<titles.length;i++){
             LinearLayout parameter=ui.parameterInputGroup();form.addView(parameter,ui.wrap());
             final int index=i;TextView label=ui.text(titles[i]+" · "+values[i]+" dp",12,ui.muted,false);parameter.addView(label,ui.wrap());
-            SeekBar bar=ui.slider();bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);parameter.addView(bar,ui.wrap());
+            SeekBar bar=ui.slider();bars[i]=bar;labels[i]=label;bar.setMax(StatusBarIconSpacingSpec.MAX_DP);bar.setProgress(values[i]);bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":"+id);parameter.addView(bar,ui.wrap());
+            NumericParameterEditor.linear(ui,bar,titles[i],0,1," dp",label);
         }
         sync.run();
         for(int i=0;i<titles.length;i++){

@@ -32,8 +32,7 @@
     <string name="status_hideappsactivity_30">"配置 %1$s · 隐藏 %2$s"</string>
     <string name="status_hiderecoveryactivity_31">"当前定位：%1$s · 空间 %2$s · 序列号 %3$s\n切换分类仍保留这个应用和空间；历史仅供查询；显示需要单独确认。"</string>
     <string name="status_launchergrideditor_32">"%1$s 列 × %2$s 行 · 每页 %3$s 格"</string>
-    <string name="status_launchergrideditor_33">"%1$s 行 ▾"</string>
-    <string name="status_launchergrideditor_34">"%1$s 列 ▾"</string>
+    <string name="control_center_grid_summary">%1$s · %2$d 列 × %3$d 行</string>
     <string name="status_liftarcsettingseditor_35">"%1$s · 范围 %2$s～%3$s"</string>
     <string name="status_privacydotspacingeditor_36">"%1$s · %2$s / %3$s dp"</string>
     <string name="status_settingsactivity_37" formatted="false">"正在读取 LSP 与 ROOT 状态…"</string>

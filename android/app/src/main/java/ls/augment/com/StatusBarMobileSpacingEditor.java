@@ -17,7 +17,7 @@ final class StatusBarMobileSpacingEditor {
         LinearLayout form=new LinearLayout(context);form.setOrientation(LinearLayout.VERTICAL);form.setTag("icon-spacing:"+scope+":"+id);
         TextView status=ui.text("",12,ui.muted,false);status.setTag("icon-spacing-mobile-capacity:"+scope+":"+id);form.addView(status,ui.wrap());
         String[] titles={"起始边距","顶部边距","末尾边距","底部边距"};SeekBar[] bars=new SeekBar[4];TextView[] labels=new TextView[4];
-        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setMinimumHeight(ui.dp(48));bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
+        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());NumericParameterEditor.linear(ui,bars[i],titles[i],0,1," dp",labels[i]);}
         final String[] rejectedEdit={""};
         Runnable sync=()->{
             StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)return;

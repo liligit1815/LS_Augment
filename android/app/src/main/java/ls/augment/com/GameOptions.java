@@ -11,6 +11,8 @@ public final class GameOptions {
     public static final String PERFORMANCE_MONITOR = "ls_augment_game_performance_monitor";
     public static final String MONITOR_ITEMS = "ls_augment_game_monitor_items";
     public static final String MONITOR_TRANSPARENCY = "ls_augment_game_monitor_transparency";
+    public static final String MONITOR_PIN = "ls_augment_game_monitor_long_press_pin";
+    public static final String SHOULDER_PIN = "ls_augment_tgk_long_press_pin";
     public static final String COMBO_LIMITS = "ls_augment_combo_extended_limits";
     public static final String HIDE_DIABLO_DIALOG = "ls_augment_game_hide_diablo_dialog";
     public static final String COLLAPSE_PANEL = "ls_augment_game_prevent_panel_collapse";
@@ -25,8 +27,10 @@ public final class GameOptions {
             EnhancementOption.toggle(QUICK_SWITCH,"game","肩键方案快捷切换","在原厂肩键方案页勾选参与方案：一个直接应用，两个点击互切，更多以下拉选择。"),
             EnhancementOption.internal(ShoulderQuickSwitchPolicy.KEY,ShoulderQuickSwitchPolicy.EMPTY,ShoulderQuickSwitchPolicy::normalize),
             EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","扩展原厂游戏空间的插件支持。超境画质由原厂引擎处理，自动适配处理输入尺寸；首次开启后重新进入游戏，画质和帧率仍在原厂界面选择。关闭后恢复原厂支持范围，已建立的处理会话在重新进入游戏后恢复原厂尺寸。更高档位仍受原厂引擎限制。"),
-            EnhancementOption.toggle(PERFORMANCE_MONITOR,"game","自定义性能监测","选择游戏空间性能监控弹窗显示的项目，并调整背景透明度；数据继续来自原厂监控插件。"),
+            EnhancementOption.toggle(PERFORMANCE_MONITOR,"game","自定义性能监测","选择游戏空间性能监控弹窗显示的项目，并调整背景透明度；原有项目沿用原厂数据，新增温度来自实际传感器，功耗为电池净功率（充电时为充电功率）；不可读取时显示不可用。"),
             EnhancementOption.internal(MONITOR_ITEMS,GamePerformanceMonitorConfig.DEFAULT_ITEMS,GamePerformanceMonitorConfig::normalizeItems),
+            EnhancementOption.toggle(MONITOR_PIN,"game","长按固定悬浮窗位置","长按性能监测悬浮窗固定位置，再次长按解除固定；固定后仍可点击，关闭本项恢复拖动。"),
+            EnhancementOption.toggle(SHOULDER_PIN,"game","长按固定悬浮窗位置","长按肩键方案快捷切换悬浮窗固定位置，再次长按解除固定；固定后仍可点击切换方案，关闭本项恢复拖动。"),
             EnhancementOption.integer(MONITOR_TRANSPARENCY,"game","背景透明度（%）","调整游戏空间性能监控弹窗的背景透明度。0% 为不透明，100% 为完全透明；文字和图标不受影响。",50,0,100),
             EnhancementOption.toggle(COMBO_LIMITS,"game","扩展连招循环设置","循环次数允许输入六位数字，循环间隔最长可设为一小时。"),
             EnhancementOption.toggle(HIDE_DIABLO_DIALOG,"game","隐藏破坏神模式提示","隐藏原厂破坏神模式提示与退出悬浮提示。"),

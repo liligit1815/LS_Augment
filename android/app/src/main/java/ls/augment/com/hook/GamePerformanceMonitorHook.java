@@ -29,16 +29,18 @@ final class GamePerformanceMonitorHook {
     }
 
     static void install(AugmentModule module,ClassLoader loader){
+        FloatingPositionLock.install(module);
         try{
             GamePerformanceMonitorHook hooks=new GamePerformanceMonitorHook(module,loader);
             hooks.install();
-            module.logFeatureInfo("GAME_MONITOR_REGISTERED route="+hooks.access.route+";items=5;background_only=true");
+            module.logFeatureInfo("GAME_MONITOR_REGISTERED route="+hooks.access.route+";items=9;background_only=true");
         }catch(Throwable error){module.logFeatureError("GAME_MONITOR_ROUTE_UNAVAILABLE",error);}
     }
 
     private void install(){
         hook(access.init,chain->{
             Object owner=chain.getThisObject();State old=states.remove(owner);
+            if(old!=null)old.telemetry.dispose();
             if(old!=null&&old.applied&&old.originalWidth>0&&access.fullWidth.getInt(owner)==old.appliedWidth)
                 access.fullWidth.setInt(owner,old.originalWidth);
             Object result=chain.proceed();
@@ -74,6 +76,7 @@ final class GamePerformanceMonitorHook {
             return hitIndex(state,((Number)chain.getArg(0)).floatValue());
         });
         hook(access.click,chain->{
+            if(FloatingPositionLock.cancelling())return null;
             Object owner=chain.getThisObject();State state=states.get(owner);
             if(state==null||!state.applied)return chain.proceed();
             // The stock animation divides by (full width - selected width). A single
@@ -104,14 +107,17 @@ final class GamePerformanceMonitorHook {
 
     private void refresh(Object owner,boolean live,boolean nativeSizing)throws ReflectiveOperationException{
         ViewGroup content=(ViewGroup)access.content.get(owner);
-        if(content==null||content.getChildCount()!=5)return;
+        if(content==null)return;
         Context context=content.getContext();
         if(!listening)listening=FeatureSettings.addSnapshotListener(context,configurationChanged);
         State state=states.get(owner);
         if(state==null||state.content!=content){
+            if(content.getChildCount()!=5)return;
+            if(state!=null)state.telemetry.dispose();
             state=new State(content,(View)access.background.get(owner),(View)access.shortBackground.get(owner));
             states.put(owner,state);
         }
+        FloatingPositionLock.monitor((View)access.activeRoot.get(owner));
         int nativeWidth=access.fullWidth.getInt(owner);
         // Never promote a width written by this hook into the native baseline.
         // Zero/wrap-content values can precede sizing; wait for a real OEM width.
@@ -128,25 +134,27 @@ final class GamePerformanceMonitorHook {
         String[] items=GamePerformanceMonitorConfig.items();
         int customWidth=state.originalWidth;
         for(int i=0;i<5;i++)if(!GamePerformanceMonitorConfig.selected(selected,items[i]))customWidth-=state.widths[i];
+        for(int i=5;i<9;i++)if(GamePerformanceMonitorConfig.selected(selected,items[i]))customWidth+=state.widths[i];
         boolean on=requested&&state.sizingReady&&customWidth>1;
         if(!on&&!state.applied){
             if(requested)report(owner,state,requested,selected,nativeWidth,nativeWidth,
                     state.sizingReady?"invalid_selected_width":state.sizingPhase);
             return;
         }
-        int width=on?customWidth:state.originalWidth;
+        int width=state.fit(on,selected,on?customWidth:state.originalWidth);
         boolean changed=state.applied!=on||!selected.equals(state.selection)||state.appliedWidth!=width;
         state.selection=selected;state.count=0;
-        for(int i=0;i<5;i++){
+        for(int i=0;i<9;i++){
             View item=content.getChildAt(i);
-            state.selected[i]=!on||GamePerformanceMonitorConfig.selected(selected,items[i]);
+            state.selected[i]=on?GamePerformanceMonitorConfig.selected(selected,items[i]):i<5;
             if(state.selected[i])state.count++;
-            item.setVisibility(on&&!state.selected[i]?View.GONE:state.visibility[i]);
+            item.setVisibility(!state.selected[i]?View.GONE:state.visibility[i]);
             // Only our instant mode transition runs while customized, so reused OEM
             // items cannot retain the stock animation's hidden alpha/translation.
             if(changed){item.setAlpha(1f);item.setTranslationX(0f);}
         }
         state.applied=on;
+        state.telemetry.configure(on,selected);
         state.appliedWidth=width;
         access.fullWidth.setInt(owner,width);
         boolean shortened=access.shortened.getBoolean(owner);
@@ -178,7 +186,7 @@ final class GamePerformanceMonitorHook {
         if(reopen&&live&&access.added.getBoolean(owner))access.showMode.invoke(owner,false);
         if(live&&changed&&access.added.getBoolean(owner)){
             View root=(View)access.activeRoot.get(owner);
-            // Reuse OEM positioning and update logic. No new overlay or collector is created.
+            // Reuse OEM positioning and window update logic.
             access.clamp.invoke(owner);
             Object manager=access.windowManager.get(owner);
             access.updateWindow.invoke(manager,root,params);
@@ -197,7 +205,7 @@ final class GamePerformanceMonitorHook {
 
     private int hitIndex(State state,float x){
         int last=0;
-        for(int i=0;i<5;i++)if(state.selected[i]){
+        for(int i=0;i<9;i++)if(state.selected[i]){
             last=i;View item=state.content.getChildAt(i);
             int right=item.getWidth()>0?item.getRight():item.getLeft()+state.cellWidths[i];
             if(x<state.content.getLeft()+right)return i;
@@ -216,6 +224,9 @@ final class GamePerformanceMonitorHook {
             params.width=access.fullWidth.getInt(owner);
         }else{
             int index=hitIndex(state,x);View item=state.content.getChildAt(index);
+            // OEM compact roots contain only the five native views. Keep additional
+            // sensor cells expanded instead of requesting a nonexistent compact view.
+            if(index>=5)return;
             int width=itemWidth(state,index);
             if(width<=0)return;
             params.x+=state.content.getLeft()+item.getLeft();
@@ -241,19 +252,49 @@ final class GamePerformanceMonitorHook {
 
     private static final class State{
         final ViewGroup content;final View background,shortBackground;
-        int originalWidth,appliedWidth;final int[] widths=new int[5],cellWidths=new int[5],visibility=new int[5];
-        final boolean[] selected=new boolean[5];final float backgroundAlpha,shortBackgroundAlpha;
-        String selection="",sizingPhase="pending_cell_sizes";boolean applied,sizingReady;int count;
+        int originalWidth,appliedWidth;final int[] widths=new int[9],cellWidths=new int[9],visibility=new int[9];
+        final boolean[] selected=new boolean[9];final float backgroundAlpha,shortBackgroundAlpha;
+        final MonitorTelemetry telemetry;
+        final int[] nativeCellWidths=new int[9];final float[] nativeWeights=new float[9];
+        String selection="",sizingPhase="pending_cell_sizes";boolean applied,sizingReady,cellsShrunk;int count;
         State(ViewGroup content,View background,View shortBackground){
             this.content=content;this.background=background;this.shortBackground=shortBackground;
             backgroundAlpha=background.getAlpha();shortBackgroundAlpha=shortBackground.getAlpha();
             for(int i=0;i<5;i++)visibility[i]=content.getChildAt(i).getVisibility();
+            telemetry=new MonitorTelemetry(content);
+            for(int i=5;i<9;i++){visibility[i]=View.VISIBLE;widths[i]=cellWidths[i]=content.getChildAt(i).getLayoutParams().width;}
+            for(int i=0;i<9;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();nativeCellWidths[i]=p.width;
+                if(p instanceof android.widget.LinearLayout.LayoutParams)nativeWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;}
+        }
+        int fit(boolean on,String selection,int wanted){
+            int maximum=content.getContext().getResources().getDisplayMetrics().widthPixels;
+            boolean shrink=on&&maximum>0&&wanted>maximum;
+            int chrome=originalWidth;for(int i=0;i<5;i++)chrome-=widths[i];
+            int cells=0,margins=0;String[] items=GamePerformanceMonitorConfig.items();
+            for(int i=0;i<9;i++)if(GamePerformanceMonitorConfig.selected(selection,items[i])){cells+=cellWidths[i];margins+=widths[i]-cellWidths[i];}
+            float ratio=shrink&&cells>0?Math.max(1,maximum-chrome-margins)/(float)cells:1f;
+            if(shrink||cellsShrunk)for(int i=0;i<9;i++){
+                View item=content.getChildAt(i);ViewGroup.LayoutParams p=item.getLayoutParams();
+                int width=shrink?Math.max(1,(int)(cellWidths[i]*ratio)):nativeCellWidths[i];
+                float weight=shrink?0:nativeWeights[i];boolean changed=p.width!=width;p.width=width;
+                if(p instanceof android.widget.LinearLayout.LayoutParams){android.widget.LinearLayout.LayoutParams linear=(android.widget.LinearLayout.LayoutParams)p;changed|=linear.weight!=weight;linear.weight=weight;}
+                if(changed)item.setLayoutParams(p);
+            }
+            cellsShrunk=shrink;
+            return shrink?maximum:wanted;
         }
         void capture(int width){
             sizingReady=false;sizingPhase="pending_cell_sizes";
             // The OEM cells use wrap_content + weight. Measure the original five
             // cells at each valid native size, including those currently hidden by us.
             int[] currentVisibility=new int[5];
+            int[] currentWidths=new int[5];float[] currentWeights=new float[5];
+            for(int i=0;i<5;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();
+                if(!cellsShrunk){nativeCellWidths[i]=p.width;if(p instanceof android.widget.LinearLayout.LayoutParams)nativeWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;}
+                currentWidths[i]=p.width;p.width=nativeCellWidths[i];
+                if(p instanceof android.widget.LinearLayout.LayoutParams){currentWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;((android.widget.LinearLayout.LayoutParams)p).weight=nativeWeights[i];}}
+            int[] extraVisibility=new int[4];
+            for(int i=5;i<9;i++){extraVisibility[i-5]=content.getChildAt(i).getVisibility();content.getChildAt(i).setVisibility(View.GONE);}
             for(int i=0;i<5;i++){View item=content.getChildAt(i);currentVisibility[i]=item.getVisibility();item.setVisibility(visibility[i]);}
             try{
                 content.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
@@ -271,7 +312,9 @@ final class GamePerformanceMonitorHook {
                 if(width<minimum){sizingPhase="native_width_too_small";return;}
                 originalWidth=width;sizingReady=true;sizingPhase="ready";
                 System.arraycopy(cells,0,cellWidths,0,5);System.arraycopy(occupied,0,widths,0,5);
-            }finally{for(int i=0;i<5;i++)content.getChildAt(i).setVisibility(currentVisibility[i]);}
+            }finally{for(int i=0;i<5;i++)content.getChildAt(i).setVisibility(currentVisibility[i]);
+                for(int i=0;i<5;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();p.width=currentWidths[i];if(p instanceof android.widget.LinearLayout.LayoutParams)((android.widget.LinearLayout.LayoutParams)p).weight=currentWeights[i];}
+                for(int i=5;i<9;i++)content.getChildAt(i).setVisibility(extraVisibility[i-5]);}
         }
     }
 

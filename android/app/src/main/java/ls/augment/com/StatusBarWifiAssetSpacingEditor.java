@@ -73,7 +73,7 @@ final class StatusBarWifiAssetSpacingEditor {
         TextView status=ui.text("",12,ui.muted,false);status.setTag("icon-spacing-asset-capacity:"+scope+":"+id);form.addView(status,ui.margins(0,8,0,0));
         if(scope.equals("all"))form.addView(ui.text("共享设置只修改仍在继承的页面。主状态栏、锁屏、通知中心和控制中心分别核验；已有单独设置保持优先。尚未观察的位置不会借用其他页面的上限。",12,ui.muted,false),ui.margins(0,4,0,0));
         String[] titles={"起始边距","顶部边距","末尾边距","底部边距"};SeekBar[] bars=new SeekBar[4];TextView[] labels=new TextView[4];
-        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setMinimumHeight(ui.dp(48));bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());}
+        for(int i=0;i<4;i++){labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));bars[i]=ui.slider();bars[i].setTag("icon-spacing-"+i+":"+id);bars[i].setContentDescription(titles[i]);form.addView(bars[i],ui.wrap());NumericParameterEditor.linear(ui,bars[i],titles[i],0,1," dp",labels[i]);}
         Runnable sync=()->{
             StatusBarIconSpacingSpec spec=StatusBarIconSpacingSpec.parse(read.get());if(spec==null)spec=StatusBarIconSpacingSpec.empty();StatusBarIconSpacingSpec.Insets edge=spec.resolve(scope,id);int[] values={edge.start,edge.top,edge.end,edge.bottom};
             Budget limits=budget(context,scope,id);

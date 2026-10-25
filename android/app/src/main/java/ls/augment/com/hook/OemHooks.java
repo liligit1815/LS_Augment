@@ -49,7 +49,10 @@ final class OemHooks {
                     keys.add(key);count++;
                 }
             }
-        } catch(Throwable error) {module.logFeatureError("RM_LOOKUP "+className+"."+name,error);}
+            if(count==0)module.logFeatureInfo("COMPATIBILITY_MISS "+className+"."+name+";reason=method_signature;native_preserved=true");
+        } catch(ClassNotFoundException absent) {
+            module.logFeatureInfo("COMPATIBILITY_MISS "+className+"."+name+";reason=class_absent;native_preserved=true");
+        } catch(Throwable error) {module.logFeatureError("RM_REGISTRATION "+className+"."+name,error);}
         if(!key.isEmpty()) {
             synchronized(STATUS) {
                 if(count>0&&!EXECUTED.contains(key)) STATUS.put(key,"registered");

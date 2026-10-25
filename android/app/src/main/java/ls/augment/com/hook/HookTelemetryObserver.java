@@ -11,6 +11,12 @@ import java.util.function.LongSupplier;
 
 /** Observation only: never wraps, swallows, or replaces a callback's result or exception. */
 final class HookTelemetryObserver {
+    private static final AtomicLong EVENTS = new AtomicLong();
+    private static final ThreadLocal<Invocation> INVOCATION = new ThreadLocal<>();
+    private static final class Invocation {
+        int depth;
+        java.util.IdentityHashMap<Throwable, ErrorRecord> errors;
+    }
     enum ErrorSource { MODULE_CALLBACK, PROCEED_CHAIN, REGISTRATION }
 
     interface ErrorRecorder {
@@ -20,6 +26,9 @@ final class HookTelemetryObserver {
 
     static Hooker observe(Hooker hooker, Counter counter, LongSupplier clock, ErrorRecorder recorder) {
         return chain -> {
+            Invocation invocation = INVOCATION.get();
+            if (invocation == null) { invocation = new Invocation(); INVOCATION.set(invocation); }
+            invocation.depth++;
             counter.hits.incrementAndGet();
             counter.lastHit = clock.getAsLong();
             // One invocation owns its proxy. Reusing a proxy would change the semantics of
@@ -38,6 +47,8 @@ final class HookTelemetryObserver {
                     // vendor Throwable or logging implementation fails while being read.
                 }
                 throw error;
+            } finally {
+                if (--invocation.depth == 0 && invocation.errors != null) invocation.errors.clear();
             }
         };
     }
@@ -105,7 +116,7 @@ final class HookTelemetryObserver {
                     old.module + (source == ErrorSource.MODULE_CALLBACK ? 1 : 0),
                     old.proceed + (source == ErrorSource.PROCEED_CHAIN ? 1 : 0),
                     old.first == null ? record : old.first, record);
-            if (old.total == 0) {
+            if (old.total == 0 && !record.duplicate) {
                 try { recorder.firstFailure(this, record); } catch (Throwable ignored) { }
             }
         }
@@ -117,10 +128,20 @@ final class HookTelemetryObserver {
         private static ErrorRecord record(ErrorSource source, Throwable error, long at, long sequence,
                 ErrorRecorder recorder) {
             String summary = summary(error);
+            Invocation invocation = INVOCATION.get();
+            ErrorRecord previous = invocation == null || invocation.errors == null ? null : invocation.errors.get(error);
+            if (previous != null) return new ErrorRecord(source, at, sequence, summary, "",
+                    "SAME_EVENT", previous.eventId, true);
             StackResult stack;
             try { stack = recorder.capture(error); }
             catch (Throwable ignored) { stack = new StackResult("", "CAPTURE_FAILED"); }
-            return new ErrorRecord(source, at, sequence, summary, stack.text, stack.state);
+            ErrorRecord record = new ErrorRecord(source, at, sequence, summary, stack.text, stack.state,
+                    EVENTS.incrementAndGet(), false);
+            if (invocation != null && invocation.depth > 0) {
+                if(invocation.errors==null)invocation.errors=new java.util.IdentityHashMap<>();
+                invocation.errors.put(error, record);
+            }
+            return record;
         }
     }
 
@@ -136,9 +157,13 @@ final class HookTelemetryObserver {
     static final class ErrorRecord {
         final ErrorSource source;
         final long at, sequence;
+        final long eventId;
+        final boolean duplicate;
         final String summary, stack, stackState;
-        ErrorRecord(ErrorSource source, long at, long sequence, String summary, String stack, String stackState) {
+        ErrorRecord(ErrorSource source, long at, long sequence, String summary, String stack, String stackState,
+                long eventId, boolean duplicate) {
             this.source = source; this.at = at; this.sequence = sequence;
+            this.eventId = eventId; this.duplicate = duplicate;
             this.summary = summary; this.stack = stack; this.stackState = stackState;
         }
     }

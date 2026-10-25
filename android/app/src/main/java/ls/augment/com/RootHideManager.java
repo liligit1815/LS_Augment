@@ -42,7 +42,7 @@ final class RootHideManager {
 
     enum RootState { GRANTED, DENIED, UNAVAILABLE, TIMEOUT }
     enum State { VISIBLE, HIDDEN, MISSING, ERROR }
-    enum Aggregate { ALL_VISIBLE, ALL_HIDDEN, MIXED, EMPTY, ERROR }
+    enum Aggregate { ALL_VISIBLE, ALL_HIDDEN, MIXED, EMPTY, MISSING, ERROR }
 
     private final Context context;
     private final AppConfig config;
@@ -381,6 +381,7 @@ final class RootHideManager {
             if (root.state != RootState.GRANTED) return OperationResult.failure(root.message);
             // Decide and act under the same queue lock as manual and screen-off actions.
             Summary current = summary();
+            if (current.aggregate == Aggregate.MISSING) return OperationResult.failure("所选应用在对应空间中未安装，请重新选择");
             if (current.aggregate == Aggregate.ERROR) return OperationResult.failure(
                     "部分应用选择的用户空间或状态无法确认，请重新核对选择");
             return changeAll(current.aggregate == Aggregate.ALL_VISIBLE, false, root);
@@ -609,7 +610,8 @@ final class RootHideManager {
         Aggregate aggregate;
         int total = states.size();
         if (total == 0) aggregate = Aggregate.EMPTY;
-        else if (missing > 0 || error > 0) aggregate = Aggregate.ERROR;
+        else if (error > 0) aggregate = Aggregate.ERROR;
+        else if (missing > 0) aggregate = Aggregate.MISSING;
         else if (visible == total) aggregate = Aggregate.ALL_VISIBLE;
         else if (hidden == total) aggregate = Aggregate.ALL_HIDDEN;
         else aggregate = Aggregate.MIXED;
@@ -658,6 +660,9 @@ final class RootHideManager {
                     HideTargetCodec.encode(hidden), summary.aggregate.name());
             if (states.containsValue(State.ERROR)) return OperationResult.failure(
                     "部分选择的用户身份或状态无法确认，已保留选择并排除无效隐藏镜像"
+                            + (result.isSuccess() ? "" : "；镜像同步失败：" + result.publicError()));
+            if (states.containsValue(State.MISSING)) return OperationResult.failure(
+                    "所选应用在对应空间中未安装，请进入应用隐藏重新选择；原选择和历史记录已保留"
                             + (result.isSuccess() ? "" : "；镜像同步失败：" + result.publicError()));
             return result.isSuccess() ? OperationResult.success("运行镜像已同步")
                     : OperationResult.failure(result.publicError());

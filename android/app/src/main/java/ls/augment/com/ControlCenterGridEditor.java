@@ -14,13 +14,18 @@ final class ControlCenterGridEditor {
     private final Function<String,String> value;
     private final BiConsumer<String,String> change;
     private LinearLayout body;
+    private TextView portraitSummary,landscapeSummary;
     ControlCenterGridEditor(Activity owner,UiKit ui,Function<String,String> value,BiConsumer<String,String> change){
         this.owner=owner;this.ui=ui;this.value=value;this.change=change;
     }
     View view(){body=new LinearLayout(owner);body.setOrientation(LinearLayout.VERTICAL);body.setTag("control-center-grid-editor");render();return body;}
     private String key(String suffix){return SystemUiOptions.PREFIX+"qs_"+suffix;}
     private int number(String suffix){return Integer.parseInt(value.apply(key(suffix)));}
-    private void update(String suffix,int next){change.accept(key(suffix),String.valueOf(next));}
+    private void update(String suffix,int next){
+        change.accept(key(suffix),String.valueOf(next));
+        if(portraitSummary!=null)portraitSummary.setText(owner.getString(R.string.control_center_grid_summary,"竖屏",number("columns"),number("rows")));
+        if(landscapeSummary!=null)landscapeSummary.setText(owner.getString(R.string.control_center_grid_summary,"横屏",number("land_columns"),number("land_rows")));
+    }
     private void render(){
         body.removeAllViews();
         orientation(false);orientation(true);
@@ -30,6 +35,7 @@ final class ControlCenterGridEditor {
     private void orientation(boolean landscape){
         String prefix=landscape?"land_":"",title=landscape?"横屏":"竖屏";
         TextView summary=ui.text(title+" · "+number(prefix+"columns")+" 列 × "+number(prefix+"rows")+" 行",15,ui.text,true);
+        if(landscape)landscapeSummary=summary;else portraitSummary=summary;
         summary.setGravity(Gravity.CENTER);body.addView(summary,ui.margins(0,12,0,8));
         body.addView(ui.featureTitle("常用布局（列 × 行）",null),ui.margins(0,6,0,6));
         LinearLayout presets=new LinearLayout(owner);body.addView(presets,ui.wrap());
@@ -43,18 +49,9 @@ final class ControlCenterGridEditor {
         dimension(prefix+"rows",title+"行数 · 从上到下",1,landscape?6:8);
     }
     private void dimension(String suffix,String title,int min,int max){
-        int n=number(suffix);LinearLayout row=new LinearLayout(owner);row.setGravity(Gravity.CENTER_VERTICAL);
-        body.addView(row,ui.margins(0,3,0,3));row.addView(ui.text(title,13,ui.text,false),new LinearLayout.LayoutParams(0,-2,1));
-        Button minus=ui.tonalButton("−"),current=ui.tonalButton(n+" ▾"),plus=ui.tonalButton("＋");
-        for(Button button:new Button[]{minus,current,plus}){
-            button.setTextSize(14);button.setMinWidth(0);button.setMinimumWidth(0);button.setPadding(0,0,0,0);
-            row.addView(button,new LinearLayout.LayoutParams(ui.dp(button==current?62:42),ui.dp(44)));
-        }
-        current.setTag("config:"+key(suffix));current.setContentDescription(title+"，当前 "+n);
-        minus.setContentDescription("减少"+title);plus.setContentDescription("增加"+title);
-        minus.setEnabled(n>min);plus.setEnabled(n<max);
-        minus.setOnClickListener(v->{update(suffix,n-1);render();});plus.setOnClickListener(v->{update(suffix,n+1);render();});
-        current.setOnClickListener(v->{String[] labels=new String[max-min+1];for(int i=0;i<labels.length;i++)labels[i]=String.valueOf(min+i);
-            ui.choiceDialog(title,labels,null,index->{update(suffix,min+index);render();});});
+        View heading=ui.featureTitle(title,null);body.addView(heading,ui.margins(0,3,0,0));
+        ParameterSlider editor=new ParameterSlider(ui,EnhancementOption.integer(key(suffix),"control-center",title,"",number(suffix),min,max),
+                String.valueOf(number(suffix)),next->update(suffix,Integer.parseInt(next)));
+        editor.bindTitle(heading);body.addView(editor,ui.wrap());
     }
 }

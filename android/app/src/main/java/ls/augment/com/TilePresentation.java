@@ -25,6 +25,7 @@ final class TilePresentation {
         if ("ALL_HIDDEN".equals(state)) return "全部隐藏";
         if ("MIXED".equals(state)) return "部分隐藏，点击全部显示";
         if ("EMPTY".equals(state)) return "未配置应用";
+        if ("MISSING".equals(state)) return "所选应用未安装，请重新选择";
         if ("ERROR".equals(state)) return "状态异常，请检查配置应用";
         return "状态未知";
     }

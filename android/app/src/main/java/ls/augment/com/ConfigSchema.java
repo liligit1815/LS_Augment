@@ -203,6 +203,7 @@ public final class ConfigSchema {
     }
 
     private static final LinkedHashMap<String, Entry> ENTRIES = new LinkedHashMap<>();
+    private static final Map<String, EnhancementOption> NUMERIC_OPTIONS = new LinkedHashMap<>();
     private static final Set<String> BOOLEAN_KEYS = new LinkedHashSet<>();
     private static final Map<String, String> DEFAULTS;
     private static final Map<String, String> RUNTIME_DEFAULTS;
@@ -446,6 +447,15 @@ public final class ConfigSchema {
         return entry == null ? null : entry.defaultValue;
     }
 
+    /** Numeric editors use the same bounds as the persistence validator. */
+    static EnhancementOption numericOption(String key, String title) {
+        EnhancementOption value=NUMERIC_OPTIONS.get(key);
+        if(value==null)throw new IllegalArgumentException("No numeric schema: "+key);
+        return value.kind==EnhancementOption.Kind.INTEGER
+                ?EnhancementOption.integer(key,"",title,"",Integer.parseInt(value.defaultValue),(int)value.minimum,(int)value.maximum)
+                :EnhancementOption.decimal(key,"",title,"",Double.parseDouble(value.defaultValue),value.minimum,value.maximum);
+    }
+
     public static Map<String, String> defaults() {
         return DEFAULTS;
     }
@@ -486,11 +496,14 @@ public final class ConfigSchema {
 
     private static void addInteger(String key, int defaultValue, int min, int max) {
         add(key, String.valueOf(defaultValue), true, value -> integer(value, min, max));
+        NUMERIC_OPTIONS.put(key,EnhancementOption.integer(key,"",key,"",defaultValue,min,max));
     }
 
     private static void addDecimal(String key, float defaultValue, float min, float max) {
         add(key, String.format(Locale.US, "%.2f", defaultValue), true,
                 value -> decimal(value, min, max));
+        NUMERIC_OPTIONS.put(key,EnhancementOption.decimal(key,"",key,"",Double.parseDouble(Float.toString(defaultValue)),
+                Double.parseDouble(Float.toString(min)),Double.parseDouble(Float.toString(max))));
     }
 
     private static void add(String key, String defaultValue, boolean runtime,

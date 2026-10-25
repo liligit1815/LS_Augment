@@ -1666,7 +1666,8 @@ final class FeatureEditorController extends NativeEditorController {
 
     private void addSlider(LinearLayout card, String key, String label,
             int min, int max, int step, boolean percent) {
-        card.addView(ui.featureTitle(label, FeatureDescriptions.forKey(key, label)), ui.margins(0, 10, 0, 0));
+        View numericTitle=ui.featureTitle(label, FeatureDescriptions.forKey(key, label));
+        card.addView(numericTitle, ui.margins(0, 10, 0, 0));
         TextView value = ui.text("", 12, ui.muted, false);
         card.addView(value, ui.margins(0, 3, 0, 0));
         SeekBar bar = ui.slider();
@@ -1675,6 +1676,7 @@ final class FeatureEditorController extends NativeEditorController {
         bar.setProgressTintList(ColorStateList.valueOf(ui.accent));
         bar.setThumbTintList(ColorStateList.valueOf(ui.accent));
         Slider slider = new Slider(key, label, min, max, safeStep, percent, bar, value);
+        NumericParameterEditor.linear(ui,bar,label,min,safeStep,percent?"%":"",numericTitle,value);
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 slider.render(); if (fromUser) { markFanEdited(key); markDirty(); }

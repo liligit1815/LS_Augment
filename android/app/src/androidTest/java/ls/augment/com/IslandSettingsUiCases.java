@@ -80,6 +80,7 @@ final class IslandSettingsUiCases {
                     &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_TRANSPARENT)
                     &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_APP_STYLE),"New island parameters reach the SystemUI configuration snapshot");
             measure("saved");capture("01-saved");unchanged(config,before,rawBefore,memoryBefore);
+            checkNativeScenes();unchanged(config,before,rawBefore,memoryBefore);
 
             main(()->{
                 draft.put(SystemUiOptions.ISLAND,"0");
@@ -185,9 +186,9 @@ final class IslandSettingsUiCases {
                     ParameterSlider slider=(ParameterSlider)field;
                     require(slider.bar.getMax()>slider.bar.getMin(),"Slider has a usable device range: "+suffix);
                     if(field.isShown()){
-                        require(slider.bar.getHeight()/density>=47.5f,"Slider retains 48dp touch height: "+suffix);
+                        require(((ParameterSeekBar)slider.bar).expandedTouchBounds().height()/density>=47.5f,"Slider extends a 48dp touch region: "+suffix);
                         measurements.put(new JSONObject().put("slider",suffix).put("min",slider.bar.getMin())
-                                .put("max",slider.bar.getMax()).put("touchHeightDp",slider.bar.getHeight()/density));
+                                .put("max",slider.bar.getMax()).put("visualHeightDp",slider.bar.getHeight()/density).put("expandedTouchHeightDp",((ParameterSeekBar)slider.bar).expandedTouchBounds().height()/density));
                     }
                 }return null;
             });
@@ -219,6 +220,36 @@ final class IslandSettingsUiCases {
             });
             test.waitForIdleSync();unchanged(config,before,rawBefore,memoryBefore);
         }
+    }
+
+    private void checkNativeScenes()throws Exception{
+        main(()->{
+            require(!ConfigSchema.runtimeDefaults().containsKey("ls_augment_native_island_scenes"),"Scene diagnostic key remains outside configuration");
+            draft.put(NativeIslandSceneOptions.ENABLED,"0");render();
+            Switch master=toggle(NativeIslandSceneOptions.ENABLED);
+            UiKit.Fold fold=(UiKit.Fold)get(activity,"nativeScenesFold");
+            require(fold.content.getVisibility()==View.GONE&&!fold.arrow.isEnabled(),"Disabled native scenes cannot expand");
+            require(master.isEnabled(),"Physical native island is enabled for scene acceptance");
+            clickSeeded(NativeIslandSceneOptions.ENABLED,true);
+            require(fold.content.getVisibility()==View.VISIBLE,"Enabling native scenes expands individual choices");
+            for(String id:NativeIslandSceneOptions.IDS){String key=NativeIslandSceneOptions.key(id);Switch child=toggle(key);
+                String capability=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_capability","");
+                require(child.isEnabled()=="ready".equals(capability),"Scene control matches reported capability: "+id);
+                if(child.isEnabled()){boolean value=child.isChecked();clickSeeded(key,!value);clickSeeded(key,value);}
+            }
+            require(fold.arrow.performClick(),"Native scenes collapse through public arrow");
+            Method refresh=activity.getClass().getDeclaredMethod("refreshNativeSceneGate");refresh.setAccessible(true);refresh.invoke(activity);
+            require(master.isChecked()&&fold.content.getVisibility()==View.GONE,"Capability refresh preserves collapsed enabled scenes");
+            fold.arrow.performClick();noPending();return null;
+        });
+        settle();capture("01a-native-scenes-top");
+        main(()->{scroll().fullScroll(View.FOCUS_DOWN);return null;});capture("01b-native-scenes-bottom");
+        main(()->{
+            UiKit.Fold fold=(UiKit.Fold)get(activity,"nativeScenesFold");
+            clickSeeded(NativeIslandSceneOptions.ENABLED,false);
+            require(fold.content.getVisibility()==View.GONE&&!fold.arrow.isEnabled(),"Disabling native scenes closes parameters");
+            draft.clear();draft.putAll(originalDraft);render();scroll().scrollTo(0,0);noPending();return null;
+        });settle();
     }
 
     private void clickSeeded(String key,boolean enabled){

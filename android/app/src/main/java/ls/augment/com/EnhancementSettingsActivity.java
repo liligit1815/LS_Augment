@@ -18,6 +18,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private static final class InputSession {
         final ExecutorService worker=Executors.newSingleThreadExecutor();
         final FieldEditQueue pending=new FieldEditQueue();
+        final BatteryHealthPanel.State batteryHealth=new BatteryHealthPanel.State();
         Bundle invalidInputs;
         private String failure;
         synchronized void failed(String message){failure=message;}
@@ -38,9 +39,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final Runnable autoSave=this::flush;
     private Dialog islandAppStyleDialog;
     private boolean bindingIslandMaster;
+    private UiKit.Fold nativeScenesFold;
     private SharedPreferences islandPreferences;
+    private SharedPreferences sceneDiagnostics;
+    private final SharedPreferences.OnSharedPreferenceChangeListener sceneDiagnosticListener=(prefs,key)->{
+        if(key!=null&&key.startsWith(NativeIslandSceneOptions.ENABLED+"_")&&key.endsWith("_capability"))main.post(this::refreshNativeSceneGate);
+    };
     private final SharedPreferences.OnSharedPreferenceChangeListener islandListener=(prefs,key)->{
-        if(key==null||SystemUiOptions.ISLAND.equals(key))main.post(this::refreshIslandMaster);
+        if(key==null||SystemUiOptions.ISLAND.equals(key)||ConfigSchema.NATIVE_ISLAND_SELECTED.equals(key))main.post(this::refreshIslandMaster);
     };
     private UiKit ui;private AppConfig config;private LinearLayout body;private SharedPreferences gateMemory;
     private String group,targetId,query="",fontKey,pendingEditor;
@@ -72,6 +78,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private BackGestureIconEditor backGestureIcons;
     private ExtraDimTilePreference extraDimTile;
     private LiftArcSettingsEditor liftArcEditor;
+    private BatteryHealthPanel batteryHealthPanel;
     private final Map<String,ModuleHierarchy.Section> sectionStates=new LinkedHashMap<>();
     private SharedPreferences sectionPreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener sectionListener=(prefs,key)->runOnUiThread(this::refreshSectionCounts);
@@ -82,6 +89,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         Object retained=getLastNonConfigurationInstance();
         inputSession=retained instanceof InputSession?(InputSession)retained:new InputSession();
         worker=inputSession.worker;pending=inputSession.pending;invalidInputs=inputSession.invalidInputs;
+        if(state!=null&&retained==null)inputSession.batteryHealth.restore(state.getBundle("batteryHealth"));
         config=new AppConfig(this);ui=new UiKit(this);
         group=getIntent().getStringExtra("group");if(group==null)group="system";
         targetId=getIntent().getStringExtra("target");if("collab".equals(targetId))targetId="theme";query=getIntent().getStringExtra("query");if(query==null)query="";
@@ -124,6 +132,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if("group/notifications/island".equals(ModuleNavigation.route(this))){
             islandPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);
             islandPreferences.registerOnSharedPreferenceChangeListener(islandListener);
+            sceneDiagnostics=getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE);
+            sceneDiagnostics.registerOnSharedPreferenceChangeListener(sceneDiagnosticListener);
         }
         // Old-save failure remains visible after a configuration recreation.
         worker.execute(()->main.post(this::showSaveFailure));
@@ -148,6 +158,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 card.addView(ui.preferenceRow(section.route(),label,label.equals(summary)?"":summary,()->ModuleNavigation.open(this,section.route())),ui.wrap());
                 sectionStates.put(section.route(),section);
             }
+        }else if(selected!=null&&"battery_health".equals(selected.id)){
+            if(batteryHealthPanel!=null)batteryHealthPanel.close();
+            batteryHealthPanel=new BatteryHealthPanel(ui,inputSession.batteryHealth,worker);
+            body.addView(batteryHealthPanel.view(),ui.wrap());
         }else if(selected!=null&&"liftarc".equals(selected.id)){
             liftArcEditor=new LiftArcSettingsEditor(this,ui,new LiftArcSettingsEditor.Host(){
                 public String value(String key){return EnhancementSettingsActivity.this.value(key);}
@@ -306,11 +320,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
         String unavailable=FanFeatureAvailability.reason(this,key);
+        if(NativeIslandSceneOptions.ENABLED.equals(key)&&!nativeIslandEnabled())unavailable="请先在星云岛设置中开启星云岛";
+        if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_"))unavailable=nativeSceneUnavailable(key);
         boolean available=unavailable.isEmpty();
         toggle.setChecked(active&&available);toggle.setEnabled(available);
-        card.addView(ui.featureRow(f.title,available?FeatureHelp.forOption(option):unavailable,toggle),ui.wrap());
-        if(!available){
+        card.addView(ui.featureRow(f.title,available||key.startsWith(NativeIslandSceneOptions.ENABLED)?FeatureHelp.forOption(option):unavailable,toggle),ui.wrap());
+        if(!available||key.startsWith(NativeIslandSceneOptions.ENABLED)){
             TextView state=ui.text(unavailable,12,ui.muted,false);state.setTag("device-feature-unavailable:"+key);
+            if(available)state.setVisibility(View.GONE);
             card.addView(state,ui.margins(0,4,0,8));
         }
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(ui.dp(12),0,0,0);
@@ -344,9 +361,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         syncConditionalInputs();
         UiKit.Fold fold=null;if(f.hasConfiguration()||updateLink){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
         final UiKit.Fold configFold=fold;
+        if(NativeIslandSceneOptions.ENABLED.equals(key))nativeScenesFold=fold;
         toggle.setOnCheckedChangeListener((view,on)->{
             if(configFold!=null)configFold.sync();
-            if(bindingIslandMaster&&SystemUiOptions.ISLAND.equals(key))return;
+            if(bindingIslandMaster&&(SystemUiOptions.ISLAND.equals(key)||key.startsWith(NativeIslandSceneOptions.ENABLED)))return;
             if(f.toggleKey!=null)change(key,on?"1":"0",toggle);
             else{
                 SharedPreferences.Editor memory=gateMemory.edit().putBoolean("open:"+key,on);String next;
@@ -523,8 +541,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             control.setOnCheckedChangeListener((button,on)->change(option.key,on?"1":"0",control));return row;
         }
         LinearLayout row=ui.parameterInputGroup();
+        LinearLayout parameterTitle=null;
         if(!parentOwnsTitle||RecentsCardRadiusOptions.OFFSET.equals(option.key)){
             LinearLayout title=ui.featureTitle(option.title,FeatureHelp.forOption(option));
+            parameterTitle=title;
             if(RecentsCardRadiusOptions.OFFSET.equals(option.key)){
                 for(int i=0;i<title.getChildCount();i++)if(title.getChildAt(i) instanceof TextView){
                     recentsRadiusValue=(TextView)title.getChildAt(i);recentsRadiusValue.setTag("value:"+option.key);break;
@@ -537,7 +557,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             SeekBar slider=ui.slider();
             // No guessed endpoints: the launcher supplies an authenticated resting-card range.
             slider.setMin(0);slider.setMax(0);slider.setEnabled(false);recentsRadiusSlider=slider;
-            slider.setKeyProgressIncrement(1);slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));
+            slider.setKeyProgressIncrement(1);
             slider.setContentDescription(option.title);slider.setTag("config:"+option.key);
             slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));
             slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
@@ -561,8 +581,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 }
             });
             renderRecentsRadiusValue();controls.put(option.key,slider);
+            NumericParameterEditor.linear(ui,slider,option.title,0,1," dp",parameterTitle,recentsRadiusValue);
         }else if(option.kind==EnhancementOption.Kind.INTEGER||option.kind==EnhancementOption.Kind.DECIMAL){
             ParameterSlider slider=new ParameterSlider(ui,option,value(option.key),next->change(option.key,next,controls.get(option.key)));
+            slider.bindTitle(parameterTitle);
             row.addView(slider,ui.wrap());controls.put(option.key,slider);
             if((SystemUiOptions.PREFIX+"onehand_offset").equals(option.key))PhoneParameterRanges.oneHand(this,slider);
         }else if(option.kind==EnhancementOption.Kind.CHOICE){
@@ -845,6 +867,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(isDestroyed())return;String message=inputSession.takeFailure();if(message!=null)toast(message);
     }
     private void refreshIslandMaster(){
+        refreshNativeSceneGate();
         if(isDestroyed()||body==null||islandPreferences==null||pending.restorableValues().containsKey(SystemUiOptions.ISLAND))return;
         String saved=config.get(SystemUiOptions.ISLAND);
         draft.put(SystemUiOptions.ISLAND,saved);
@@ -852,6 +875,37 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         bindingIslandMaster=true;
         try{if(toggle instanceof Switch)((Switch)toggle).setChecked(ConfigSchema.truthy(saved));}
         finally{bindingIslandMaster=false;}
+    }
+    private boolean nativeIslandEnabled(){
+        return config.getBoolean(ConfigSchema.NATIVE_ISLAND_SELECTED)
+                &&android.provider.Settings.System.getInt(getContentResolver(),"dynamic_island_switch_state",0)!=0;
+    }
+    private void refreshNativeSceneGate(){
+        if(body==null||isDestroyed())return;
+        View view=body.findViewWithTag("config:"+NativeIslandSceneOptions.ENABLED);
+        if(!(view instanceof Switch))return;
+        boolean available=nativeIslandEnabled();
+        boolean expanded=nativeScenesFold!=null&&nativeScenesFold.content.getVisibility()==View.VISIBLE;
+        bindingIslandMaster=true;
+        try{view.setEnabled(available);((Switch)view).setChecked(available&&ConfigSchema.truthy(value(NativeIslandSceneOptions.ENABLED)));
+            if(nativeScenesFold!=null){nativeScenesFold.sync();nativeScenesFold.show(expanded);}
+            for(String id:NativeIslandSceneOptions.IDS){
+                String key=NativeIslandSceneOptions.key(id),reason=nativeSceneUnavailable(key);
+                View child=body.findViewWithTag("config:"+key);
+                if(child instanceof Switch){child.setEnabled(reason.isEmpty());((Switch)child).setChecked(reason.isEmpty()&&ConfigSchema.truthy(value(key)));}
+                View status=body.findViewWithTag("device-feature-unavailable:"+key);
+                if(status instanceof TextView){((TextView)status).setText(reason);status.setVisibility(reason.isEmpty()?View.GONE:View.VISIBLE);}
+            }
+        }
+        finally{bindingIslandMaster=false;}
+        View state=body.findViewWithTag("device-feature-unavailable:"+NativeIslandSceneOptions.ENABLED);
+        if(state instanceof TextView){((TextView)state).setText(available?"":"请先在星云岛设置中开启星云岛");state.setVisibility(available?View.GONE:View.VISIBLE);}
+    }
+    private String nativeSceneUnavailable(String key){
+        String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_capability","");
+        if("ready".equals(capability))return "";
+        if(capability.contains("recorder_waiting_user_unlock"))return "解锁手机后会自动检测录音支持";
+        return capability.startsWith("unavailable:")?"此场景暂不可用，具体原因已记录到日志":"等待星云岛报告场景能力";
     }
     private void considerQuery(View view,String title,String summary){if(queryAnchor==null&&!query.isEmpty()&&(title+summary).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))queryAnchor=view;}
     private boolean isApplicationDirectory(){return targetId!=null&&ModuleHierarchy.group(ModuleNavigation.route(this))==null;}
@@ -888,6 +942,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
+        state.putBundle("batteryHealth",inputSession.batteryHealth.save());
         // A pending picker can return to the recreated page; an old Activity import is not resumed.
         state.putLong("aodFontGeneration",aodFontGeneration);state.putLong("aodFontPickerGeneration",aodFontPickerGeneration);
         state.putBoolean("aodFontPickerPending",aodFontPickerPending);ScrollView scroll=scrollView();state.putInt("scrollY",scroll==null?0:scroll.getScrollY());if(!isApplicationDirectory()){
@@ -895,7 +950,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){if(islandPreferences!=null)islandPreferences.unregisterOnSharedPreferenceChangeListener(islandListener);stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(batteryHealthPanel!=null)batteryHealthPanel.close();if(sceneDiagnostics!=null)sceneDiagnostics.unregisterOnSharedPreferenceChangeListener(sceneDiagnosticListener);if(islandPreferences!=null)islandPreferences.unregisterOnSharedPreferenceChangeListener(islandListener);stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

@@ -102,7 +102,9 @@ public final class AugmentTileService extends TileService {
         String state = summary.aggregate.name();
         TilePresentation.apply(this, tile, state);
         if (root.state != RootHideManager.RootState.GRANTED || conflict.hasConflict()
-                || summary.aggregate == RootHideManager.Aggregate.EMPTY) {
+                || summary.aggregate == RootHideManager.Aggregate.EMPTY
+                || summary.aggregate == RootHideManager.Aggregate.MISSING
+                || summary.aggregate == RootHideManager.Aggregate.ERROR) {
             tile.setState(Tile.STATE_UNAVAILABLE);
         } else if (summary.aggregate == RootHideManager.Aggregate.ALL_VISIBLE) {
             tile.setState(Tile.STATE_ACTIVE);

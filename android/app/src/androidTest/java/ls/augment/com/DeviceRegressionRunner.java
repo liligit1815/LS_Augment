@@ -84,11 +84,13 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "statusbar-network-ui".equals(operation)
                     || "statusbar-icon-style-ui".equals(operation)
                     || "island-settings-ui".equals(operation)
-                    || "launcher-grid-ui".equals(operation)
+                    || "launcher-grid-ui".equals(operation) || "numeric-parameter-ui".equals(operation)
+                    || "configuration-layout-ui".equals(operation)
                     || "launcher-features-ui".equals(operation)
                     || "fan-settings-ui".equals(operation)
                     || "game-settings-ui".equals(operation)
                     || "game-performance-monitor-ui".equals(operation)
+                    || "battery-health-ui".equals(operation)
                     || "integrated-settings-ui".equals(operation)
                     || "liftarc-settings-ui".equals(operation)
                     || "liftarc-log-fixture".equals(operation)
@@ -382,6 +384,12 @@ public final class DeviceRegressionRunner extends Instrumentation {
                             Boolean.parseBoolean(arguments.getString("landscape","false"))));
                     result.putString("uiStandards",report.getJSONObject("uiStandards").toString());
                     break;
+                case "configuration-layout-ui":
+                    JSONObject layout=ConfigurationLayoutUiCases.run(this,arguments);
+                    report.put("configurationLayout",layout);
+                    if(!layout.getBoolean("success"))throw new AssertionError(layout.getJSONArray("violations").toString());
+                    result.putString("layoutSummary","pages="+layout.getJSONArray("pages").length()+", sliders="+layout.getInt("sliders")+", groups="+layout.getInt("groups")+", checks="+layout.getInt("checks"));
+                    break;
                 case "integrated-settings-ui":
                     report.put("integratedSettingsUi",IntegratedSettingsUiCases.run(this,
                             Boolean.parseBoolean(arguments.getString("layoutOnly","false")),
@@ -397,6 +405,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                             Boolean.parseBoolean(arguments.getString("layoutOnly","false")),
                             Boolean.parseBoolean(arguments.getString("landscape","false"))));
                     result.putString("gamePerformanceMonitorUi",report.getJSONObject("gamePerformanceMonitorUi").toString());
+                    break;
+                case "battery-health-ui":
+                    report.put("batteryHealthUi",BatteryHealthUiCases.run(this));
+                    result.putString("batteryHealthUi",report.getJSONObject("batteryHealthUi").toString());
                     break;
                 case "game-settings-ui":
                     report.put("gameSettingsUi",GameSettingsUiCases.run(this,
@@ -482,6 +494,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                 case "launcher-grid-ui":
                     report.put("launcherGridUi", LauncherGridUiCases.run(this));
                     result.putString("launcherGridUi", report.getJSONObject("launcherGridUi").toString());
+                    break;
+                case "numeric-parameter-ui":
+                    report.put("numericParameterUi",NumericParameterUiCases.run(this,Boolean.parseBoolean(arguments.getString("landscape","false"))));
+                    result.putString("numericParameterUi",report.getJSONObject("numericParameterUi").toString());
                     break;
                 case "launcher-features-ui":
                     report.put("launcherFeaturesUi",LauncherFeaturesUiCases.run(this));

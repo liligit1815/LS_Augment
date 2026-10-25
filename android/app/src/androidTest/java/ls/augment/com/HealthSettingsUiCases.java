@@ -77,15 +77,21 @@ final class HealthSettingsUiCases {
                     ((View)control.getParent()).performClick();fold.arrow.performClick();fold.show(true);
                     require(fold.content.getVisibility()==View.GONE,"Disabled editor can expand: "+names[i]);
                 }
-                // Invalid drafts cannot strand an editor behind its now-closed gate.
+                // The popup rejects invalid user input; inject a stale invalid draft to retain
+                // coverage of the existing recovery path when a feature is reopened.
                 Switch plan=(Switch)get(editor,"planEnabled");plan.setChecked(true);discard(editor);
-                ((EditText)get(editor,"executions")).setText("");discard(editor);plan.setChecked(false);discard(editor);
+                set(get(editor,"executions"),"saved","");discard(editor);plan.setChecked(false);discard(editor);
                 plan.setChecked(true);discard(editor);require(plan.isChecked()&&((View)get(editor,"planBody")).getVisibility()==View.VISIBLE,"Invalid plan draft prevented reopening");
-                require(Integer.parseInt(((EditText)get(editor,"executions")).getText().toString())>0,"Plan draft was not restored");plan.setChecked(false);discard(editor);
+                require(Integer.parseInt(((ParameterSlider)get(editor,"executions")).getValue())>0,"Plan draft was not restored");plan.setChecked(false);discard(editor);
                 Switch limit=(Switch)get(editor,"dailyLimitEnabled");limit.setChecked(true);discard(editor);
-                ((EditText)get(editor,"dailyLimitSteps")).setText("");discard(editor);limit.setChecked(false);discard(editor);
+                set(get(editor,"dailyLimitSteps"),"saved","");discard(editor);limit.setChecked(false);discard(editor);
                 limit.setChecked(true);discard(editor);require(limit.isChecked()&&((UiKit.Fold)get(editor,"limitFold")).content.getVisibility()==View.VISIBLE,"Invalid limit draft prevented reopening");
-                require(ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,((EditText)get(editor,"dailyLimitSteps")).getText().toString())!=null,"Limit draft was not restored");limit.setChecked(false);discard(editor);
+                require(ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,((ParameterSlider)get(editor,"dailyLimitSteps")).getValue())!=null,"Limit draft was not restored");limit.setChecked(false);discard(editor);
+                for(String field:new String[]{"executions","steps","dailyLimitSteps"}){
+                    ParameterSlider numeric=(ParameterSlider)get(editor,field);
+                    require(numeric.bar instanceof ParameterSeekBar,"Numeric field does not use the shared native slider: "+field);
+                    require(get(numeric,"editor") instanceof NumericParameterEditor,"Numeric field has no precise input: "+field);
+                }
                 CheckBox[] days=(CheckBox[])get(editor,"days");require(days.length==7,"Week selector incomplete");
                 for(CheckBox day:days)require(day.getLayoutParams().height>=Math.round(48*activity.getResources().getDisplayMetrics().density),"Week selector touch target too small");
                 SeekBar slider=(SeekBar)get(editor,"multiplier");require(slider.getMax()==9,"Multiplier range changed");

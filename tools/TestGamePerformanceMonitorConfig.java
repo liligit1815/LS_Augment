@@ -13,16 +13,16 @@ public final class TestGamePerformanceMonitorConfig {
     private static void require(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
 
     public static void main(String[] args){
-        String[] expected={"time","fps","network","battery","duration"};
-        require(Arrays.equals(expected,GamePerformanceMonitorConfig.items()),"All five native monitor items are available in native order");
-        require(Arrays.equals(new String[]{"时间","FPS","网速","电量","游戏时长"},GamePerformanceMonitorConfig.labels()),"Native items have unambiguous user labels");
+        String[] expected={"time","fps","network","battery","duration","battery_temperature","cpu_temperature","gpu_temperature","power"};
+        require(Arrays.equals(expected,GamePerformanceMonitorConfig.items()),"Native items precede the four sensor readings");
+        require(Arrays.equals(new String[]{"时间","FPS","网速","电量","游戏时长","电池温度","CPU 温度","GPU 温度","功耗"},GamePerformanceMonitorConfig.labels()),"Native items have unambiguous user labels");
         String[] copied=GamePerformanceMonitorConfig.items();copied[0]="unknown";
         String[] copiedLabels=GamePerformanceMonitorConfig.labels();copiedLabels[0]="changed";
         require(Arrays.equals(expected,GamePerformanceMonitorConfig.items()),"Callers cannot mutate the monitor inventory");
         require("时间".equals(GamePerformanceMonitorConfig.labels()[0]),"Callers cannot mutate the labels");
         Map<String,String> defaults=ConfigSchema.runtimeDefaults();
         require("0".equals(defaults.get(GameOptions.PERFORMANCE_MONITOR)),"Upgrade leaves native monitoring unmodified until enabled");
-        require(String.join(",",expected).equals(defaults.get(GameOptions.MONITOR_ITEMS)),"Upgrade retains all native items");
+        require(GamePerformanceMonitorConfig.DEFAULT_ITEMS.equals(defaults.get(GameOptions.MONITOR_ITEMS)),"Upgrade retains all native items");
         require("50".equals(defaults.get(GameOptions.MONITOR_TRANSPARENCY)),"Initial transparency is 50 percent");
         for(String invalid:new String[]{""," ",",",",fps","fps,","fps,,battery","FPS","cpu","time,cpu","fps;time","fps\nbattery"})
             require(ConfigSchema.normalize(GameOptions.MONITOR_ITEMS,invalid)==null,"Malformed or unknown monitor preset rejected: "+invalid);
@@ -73,7 +73,7 @@ public final class TestGamePerformanceMonitorConfig {
         for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget("game"))for(NativeFeatureGroups.Feature feature:section.features)
             if(GameOptions.PERFORMANCE_MONITOR.equals(feature.id))owner=feature;
         require(owner!=null&&GameOptions.PERFORMANCE_MONITOR.equals(owner.toggleKey)
-                &&owner.allKeys().equals(Arrays.asList(GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_TRANSPARENCY)),"The public transparency parameter belongs to the real monitor switch");
+                &&owner.allKeys().equals(Arrays.asList(GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_PIN)),"The public transparency parameter belongs to the real monitor switch");
         EnhancementOption itemsOption=null;
         for(EnhancementOption option:GameOptions.options())if(GameOptions.MONITOR_ITEMS.equals(option.key))itemsOption=option;
         require(itemsOption!=null&&itemsOption.kind==EnhancementOption.Kind.INTERNAL

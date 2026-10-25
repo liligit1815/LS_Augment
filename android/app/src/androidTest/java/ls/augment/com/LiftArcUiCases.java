@@ -323,7 +323,7 @@ final class LiftArcUiCases implements Application.ActivityLifecycleCallbacks {
                     .put("switchFullyVisible",fullyVisible).put("switchVisibleRectPx",visible.toShortString()));
         }
         for(View view:all(editor.view()))if((view instanceof EditText||view instanceof Spinner||view instanceof SeekBar)&&view.isShown())
-            observe(view.getHeight()/density>=47.5f,state,"Input keeps 48dp touch target",bounds(view,density));
+            observe((view instanceof ParameterSeekBar?((ParameterSeekBar)view).expandedTouchBounds().height():view.getHeight())/density>=47.5f,state,"Input keeps 48dp region (sliders extend into empty space)",bounds(view,density));
         layouts.put(new JSONObject().put("state",state).put("inMemoryPreview",state.contains("preview"))
                 .put("density",density).put("fontScale",page.getResources().getConfiguration().fontScale)
                 .put("orientation",page.getResources().getConfiguration().orientation)

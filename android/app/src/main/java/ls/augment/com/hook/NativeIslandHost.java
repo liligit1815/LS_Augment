@@ -141,12 +141,14 @@ final class NativeIslandHost {
         // Native observers stay registered once initialized. Gate their entry points
         // after release, and let Duo's policy own music/charging while enabled.
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","addPermanentIslandInner",1,(o,a,r)->{
+            if(NativeIslandScenes.blocked(a[0]))return null;
             if(initializedByDuo&&!nativeSelected&&active==null&&o==field(initializedManager,"mPermanentIslandManager"))return null;
             NativeIslandHost h=active;
             if(h!=null&&o==h.permanent&&a[0]==field(o,"mMediaIsland"))return null;
             return PASS;
         },null);
         count+=hookNamed(module,loader,"native_island",N+"DisposableIslandManager","updateDynamicIslandVisibility",1,(o,a,r)->{
+            if(NativeIslandScenes.blocked(a[0]))return null;
             if(initializedByDuo&&!nativeSelected&&active==null&&o==field(initializedManager,"mDisposableIslandManager"))return null;
             NativeIslandHost h=active;
             if(h!=null&&o==h.disposable&&a[0]==field(o,"mChargingIsland"))return null;
@@ -255,7 +257,7 @@ final class NativeIslandHost {
             }
             return;
         }
-        if(nativeSelected&&nativeOwner==this)return;
+        if(nativeSelected&&nativeOwner==this){if(nativeScenes!=null)nativeScenes.configurationChanged();return;}
         if(nativeOwner!=null&&nativeOwner!=this)nativeOwner.selectNative(false);
         try{
             Object f=invokeStatic("com.zte.base.Feature","get",new Class<?>[]{String.class},"DYNAMIC_ISLAND");

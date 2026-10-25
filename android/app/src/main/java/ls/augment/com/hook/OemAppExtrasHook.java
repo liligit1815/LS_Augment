@@ -27,6 +27,7 @@ final class OemAppExtrasHook {
     private static String key(String suffix){return SystemOptions.key(suffix);}
     private static void installer(AugmentModule m,ClassLoader l) {
         InstallerStartupHook.install(m,l);
+        InstallerPresentationHook.install(m,l);
         String type="com.android.packageinstaller.PackageInstallerActivity";
         for(String method:new String[]{"bindUi","bindUiPerm","bindUiPermRed"})
             OemHooks.methods(m,l,type,method,void.class,2,key("installer_hide_store"),chain->{
@@ -38,9 +39,8 @@ final class OemAppExtrasHook {
             });
         OemHooks.methods(m,l,type,"getCookUI",null,6,key("installer_hide_purify"),chain->{
             Object result=chain.proceed();
-            // This preference owns only the pure-mode entry. Keep the native warning,
-            // risk acknowledgement, isolation decision and security background intact.
-            OemHooks.set(result,true,"hidePureModeSwitchLayout");
+            InstallerWarningContract.Result applied=InstallerWarningContract.apply(result);
+            if(applied!=InstallerWarningContract.Result.COMPLETE)m.logFeatureInfo("INSTALLER_PRESENTATION_CAPABILITY mode="+applied+";missing=complete_warning_flags;unknown_fields_preserved=true");
             return result;
         });
         OemHooks.methods(m,l,"com.android.packageinstaller.InstallStaging","installScanningInit",void.class,1,key("installer_skip_scan"),chain->{

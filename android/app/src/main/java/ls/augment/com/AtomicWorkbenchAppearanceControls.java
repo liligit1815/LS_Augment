@@ -50,12 +50,14 @@ final class AtomicWorkbenchAppearanceControls extends LinearLayout {
                 String.valueOf(config.getInt(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, 100)),
                 value -> saveEntryParameter(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, value), true);
         addView(triggerArea, ui.wrap());
+        triggerArea.bindTitle(getChildAt(getChildCount()-2));
         addView(ui.featureTitle("角落触发灵敏度（%）", "数值越大，所需斜滑距离越短，范围 60–160%。默认 100%。"), ui.wrap());
         cornerSensitivity = new ParameterSlider(ui, EnhancementOption.integer(AtomicWorkbenchConfig.CORNER_SENSITIVITY,
                 "atomic_workbench", "角落触发灵敏度（%）", "", 100, 60, 160),
                 String.valueOf(config.getInt(AtomicWorkbenchConfig.CORNER_SENSITIVITY, 100)),
                 value -> saveEntryParameter(AtomicWorkbenchConfig.CORNER_SENSITIVITY, value), true);
         addView(cornerSensitivity, ui.wrap());
+        cornerSensitivity.bindTitle(getChildAt(getChildCount()-2));
         media = new Switch(activity);
         media.setTag("config:" + AtomicWorkbenchConfig.SHOW_MEDIA);
         addView(ui.featureRow("显示顶栏状态卡", "显示音乐、导航及可读取的计时通知，横向滑动切换。", media), ui.wrap());

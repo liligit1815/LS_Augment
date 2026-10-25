@@ -230,7 +230,7 @@ public final class HookAppCatalog {
         if ("screenshot_hide_status_bar".equals(suffix) || "record_hide_status_bar".equals(suffix))
             return immutable(Arrays.asList("com.android.ztescreenshot", "com.android.systemui"));
         if (GAME.equals(target.id)) {
-            if (GameOptions.QUICK_SWITCH.equals(key) || GameOptions.REDMAGIC_TIME.equals(key)
+            if (GameOptions.QUICK_SWITCH.equals(key) || GameOptions.SHOULDER_PIN.equals(key) || GameOptions.REDMAGIC_TIME.equals(key)
                     || GameOptions.WATERMARK_UNLIMITED.equals(key))
                 return Collections.singletonList("cn.nubia.gamelauncher");
             if (GameOptions.COMBO_LIMITS.equals(key)) return Collections.singletonList("cn.nubia.gamehelpmodule");
@@ -244,6 +244,7 @@ public final class HookAppCatalog {
     }
 
     private static String owner(EnhancementOption option) {
+        if(option.key.equals(NativeIslandSceneOptions.ENABLED)||option.key.startsWith(NativeIslandSceneOptions.ENABLED+"_"))return SYSTEM_UI;
         String suffix = suffix(option.key);
         if (suffix.startsWith("theme_collab_") || suffix.startsWith("fp_style_")
                 || suffix.startsWith("charging_collab_")) return THEME;

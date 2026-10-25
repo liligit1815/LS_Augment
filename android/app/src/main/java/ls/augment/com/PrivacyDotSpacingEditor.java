@@ -48,7 +48,8 @@ final class PrivacyDotSpacingEditor {
             Runnable sync=()->{for(int i=0;i<4;i++){int max=measured.maximum(i,values[(i+2)%4]);bars[i].setMax(max);bars[i].setProgress(values[i]);bars[i].setEnabled(max>0);labels[i].setText(labels[i].getContext().getString(R.string.status_privacydotspacingeditor_36 ,String.valueOf(titles[i]), String.valueOf(values[i]), String.valueOf(max)));}};
             for(int i=0;i<4;i++){
                 final int index=i;labels[i]=ui.text("",12,ui.muted,false);form.addView(labels[i],ui.margins(0,8,0,0));
-                SeekBar bar=ui.slider();bars[i]=bar;bar.setMinimumHeight(ui.dp(48));bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":privacy.dot");form.addView(bar,ui.wrap());
+                SeekBar bar=ui.slider();bars[i]=bar;bar.setContentDescription(titles[i]);bar.setTag("icon-spacing-"+i+":privacy.dot");form.addView(bar,ui.wrap());
+                NumericParameterEditor.linear(ui,bar,titles[i],0,1," dp",labels[i]);
             }
             sync.run();
             for(int i=0;i<4;i++){final int index=i;bars[i].setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){

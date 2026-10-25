@@ -102,14 +102,11 @@ final class LauncherGridUiCases {
             require(spec().rows==8&&spec().columns==6&&!spec().enabled,"6×8 preset uses columns×rows and retains disabled state");
             require(changes==1,"One preset click is one atomic update");
             onMain(()->{memory.put(LauncherGridSpec.ENABLED,"1");return null;});
-            clickDescription("减少桌面行数");require(spec().rows==7&&spec().columns==6&&spec().enabled,"Row control changes only rows and retains enabled state");
-            clickDescription("增加桌面列数");require(spec().rows==7&&spec().columns==7,"Column control changes independently");
-            for(int i=0;i<5;i++)clickDescription("增加桌面行数");
-            require(spec().rows==12&&spec().columns==7,"Row controls reach the supported upper bound");
-            require(onMain(()->!findDescription(fixture,"增加桌面行数").isEnabled()),"Upper-bound button is disabled");
-            for(int i=0;i<4;i++)clickDescription("减少桌面列数");
-            require(spec().columns==3&&spec().rows==12,"Column controls reach lower bound without changing rows");
-            require(onMain(()->!findDescription(fixture,"减少桌面列数").isEnabled()),"Lower-bound button is disabled");
+            setDimension(LauncherGridSpec.ROWS,7);require(spec().rows==7&&spec().columns==6&&spec().enabled,"Row edit retains enabled state and columns");
+            setDimension(LauncherGridSpec.COLUMNS,7);require(spec().rows==7&&spec().columns==7,"Column edit changes independently");
+            setDimension(LauncherGridSpec.ROWS,12);require(spec().rows==12&&spec().columns==7,"Rows reach the supported upper bound");
+            setDimension(LauncherGridSpec.COLUMNS,3);require(spec().columns==3&&spec().rows==12,"Columns reach lower bound without changing rows");
+            require(onMain(()->((ParameterSlider)fixture.findViewWithTag("parameter-slider:"+LauncherGridSpec.ROWS)).bar.getMax())==12,"Row maximum is shared with exact input");
             clickText("n × n…");clickDialogChoice("5 × 5（5 列 × 5 行）");
             require(spec().rows==5&&spec().columns==5&&spec().enabled,"Square shortcut changes both dimensions and preserves toggle");
             require(onMain(()->findText(fixture,"5 列 × 5 行 · 每页 25 格")!=null),"Visible preview summary follows the selected dimensions");
@@ -126,6 +123,11 @@ final class LauncherGridUiCases {
         if(failure!=null)throw new AssertionError("Native launcher-grid UI regression failed",failure);
         return new JSONObject().put("success",true).put("checks",checks).put("settingsUnchanged",true).put("memoryUpdates",changes).put("screenshots",screenshots);
     }
+    private void setDimension(String key,int value)throws Exception{onMain(()->{
+        ParameterSlider editor=fixture.findViewWithTag("parameter-slider:"+key);
+        require(editor!=null,"Shared numeric dimension editor exists");
+        ((ParameterSeekBar)editor.bar).commitExactProgress(value);return null;
+    });settle();}
     private LauncherGridSpec spec()throws Exception{return onMain(()->LauncherGridSpec.from(memory));}
     @SuppressWarnings("unchecked") private Map<String,String> map(String name){return (Map<String,String>)get(activity,name);}
     private void invokeChange(Map<String,String> values)throws Exception{Method method=EnhancementSettingsActivity.class.getDeclaredMethod("changeLauncherGrid",Map.class);method.setAccessible(true);method.invoke(activity,values);}

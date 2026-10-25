@@ -7,8 +7,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.app.KeyguardManager;
 import android.app.Notification;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
@@ -17,6 +15,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Bundle;
 import android.os.SystemClock;
+import ls.augment.com.NativeIslandSceneOptions;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -53,6 +52,7 @@ final class NativeIslandScenes {
     private final Runnable changed = this::stateChanged;
     private final Runnable recordRefresh = this::syncRecorder;
     private final Map<Object, View> panels = new java.util.IdentityHashMap<>();
+    private final java.util.Set<String> supportedScenes = new java.util.HashSet<>();
     private Object controller, listener;
     private Method enabled, available, removeListener;
     private Method visibleState;
@@ -67,12 +67,14 @@ final class NativeIslandScenes {
     private String lastPausedCache = "";
     private String recoveryState = "none";
     private String torchCapability = "unavailable", recordCapability = "unavailable", lastReport = "";
+    private long recorderProbeAt;
     private final View.OnAttachStateChangeListener rootLifecycle = new View.OnAttachStateChangeListener() {
         @Override public void onViewAttachedToWindow(View view) { }
         @Override public void onViewDetachedFromWindow(View view) { close(); }
     };
     private final BroadcastReceiver environment = new BroadcastReceiver() {
         @Override public void onReceive(Context ignored, Intent intent) {
+            recorderProbeAt=0;
             syncEnvironment();
             MAIN.removeCallbacks(torchRefresh); MAIN.post(torchRefresh);
             MAIN.removeCallbacks(recordRefresh); MAIN.post(recordRefresh);
@@ -252,18 +254,62 @@ final class NativeIslandScenes {
         selected = this;
         root.addOnAttachStateChangeListener(rootLifecycle);
         prepareRecorder(); prepareTorch();
-        if (panels.containsKey(record)) {
+        observeRecorder();
+        IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF); filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addAction(Intent.ACTION_USER_UNLOCKED);
+        try { context.registerReceiver(environment, filter, Context.RECEIVER_EXPORTED); receiving = true; }
+        catch (RuntimeException unavailable) { report("environment_listener_failed:" + reason(unavailable)); }
+        syncEnvironment();
+        configurationChanged();
+    }
+
+    private void observeRecorder() {
+        if (panels.containsKey(record) && !observingRecord) {
             try {
                 recordContext.getContentResolver().registerContentObserver(recordUri, false, recordObserver);
                 recordContext.getContentResolver().registerContentObserver(recordCountUri, false, recordObserver);
                 observingRecord = true; MAIN.post(recordRefresh);
-            } catch (RuntimeException missing) { report("record_observer_failed:" + reason(missing)); }
+            } catch (RuntimeException missing) {
+                // The first URI may have registered before the second failed.
+                try { recordContext.getContentResolver().unregisterContentObserver(recordObserver); }
+                catch (RuntimeException ignored) { }
+                report("record_observer_failed:" + reason(missing));
+            }
         }
-        IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
-        filter.addAction(Intent.ACTION_SCREEN_OFF); filter.addAction(Intent.ACTION_USER_PRESENT);
-        try { context.registerReceiver(environment, filter, Context.RECEIVER_EXPORTED); receiving = true; }
-        catch (RuntimeException unavailable) { report("environment_listener_failed:" + reason(unavailable)); }
-        syncEnvironment();
+    }
+
+    static boolean blocked(Object island) {
+        NativeIslandScenes owner=selected;
+        if(owner==null||!owner.usable()||island==null)return false;
+        String id=NativeIslandSceneOptions.id(island.getClass());
+        return id!=null&&owner.supportedScenes.contains(id)&&FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.ENABLED)
+                &&!FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.key(id));
+    }
+
+    void configurationChanged() {
+        if(!usable())return;
+        supportedScenes.clear();
+        String[] members={"mRecordIsland","mFlashlightIsland","mCallIsland","mMediaIsland","mCountDownIsland",
+                "mFaceDetectIsland","mMeetingIsland","mAIIsland","mAIMemIsland","mChargingIsland","mLowPowerIsland","mBluetoothIsland","mHeadsetIsland"};
+        Object disposable=field(manager,"mDisposableIslandManager");
+        for(int i=0;i<members.length;i++){
+            Object island=field(i<9?permanent:disposable,members[i]);
+            String capability=island instanceof View&&NativeIslandSceneOptions.IDS[i].equals(NativeIslandSceneOptions.id(island.getClass()))
+                    ?"ready":"unavailable:"+members[i];
+            if(i==0&&!panels.containsKey(record))capability="unavailable:"+recordCapability;
+            if(i==1&&!panels.containsKey(torch))capability="unavailable:"+torchCapability;
+            if("ready".equals(capability))supportedScenes.add(NativeIslandSceneOptions.IDS[i]);
+            FeatureSettings.diagnostic(context,NativeIslandSceneOptions.key(NativeIslandSceneOptions.IDS[i])+"_capability",capability);
+        }
+        for(String name:new String[]{"mRecordIsland","mFlashlightIsland","mCallIsland","mMediaIsland",
+                "mCountDownIsland","mFaceDetectIsland","mMeetingIsland","mAIIsland","mAIMemIsland"}) {
+            Object island=field(permanent,name);
+            if(island!=null&&blocked(island))try{call(permanent,"removePermanentIsland",island);}
+            catch(Exception unavailable){report("scene_remove_unavailable:"+name+":"+reason(unavailable));}
+        }
+        MAIN.removeCallbacks(recordRefresh);MAIN.post(recordRefresh);
+        MAIN.removeCallbacks(torchRefresh);MAIN.post(torchRefresh);
         scheduleChanged();
     }
 
@@ -294,27 +340,18 @@ final class NativeIslandScenes {
             if (visibleState == null) throw new IllegalStateException("record_visible_state_contract_missing");
             Object user = field(record, "mCurrentUserContext");
             Context currentUser = user instanceof Context ? (Context) user : context;
+            recordContext=currentUser;
+            RecorderActionContract.require(currentUser);
             Object uri = Class.forName("com.zte.feature.callnotify.ClientProvider", false, loader)
                     .getField("RECORD_VISIBLE_URI").get(null);
             if (!(uri instanceof Uri)) throw new IllegalStateException("record_status_uri_missing");
-            recordUri = (Uri) uri; recordContext = currentUser;
+            recordUri = (Uri) uri;
             Object countUri = Class.forName("com.zte.feature.callnotify.ClientProvider", false, loader)
                     .getField("RECORD_COUNT_URI").get(null);
             if (!(countUri instanceof Uri)) throw new IllegalStateException("record_count_uri_missing");
             recordCountUri = (Uri) countUri;
-            for (String action : new String[]{"SET_TAG", "PAUSE", "RESUME", "STOP", "CANCEL"}) {
-                Intent intent = new Intent("recorder.intent.action." + action).setPackage("cn.zte.recorder")
-                        .addCategory("recorder.intent.category.RECORDING");
-                ResolveInfo result = currentUser.getPackageManager().resolveService(intent, 0);
-                if (result == null || result.serviceInfo == null || !result.serviceInfo.enabled
-                        || !result.serviceInfo.exported)
-                    throw new IllegalStateException("recorder_action_unavailable:" + action);
-                String permission = result.serviceInfo.permission;
-                if (permission != null && currentUser.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED)
-                    throw new IllegalStateException("recorder_action_permission:" + action);
-            }
             panels.put(record, panel); recordCapability = "ready";
-        } catch (Exception absent) { recordCapability = reason(absent); }
+        } catch (Exception absent) { panels.remove(record);recordCapability = reason(absent); }
     }
 
 
@@ -355,7 +392,7 @@ final class NativeIslandScenes {
     }
 
     private void syncTorch() {
-        if (!usable() || listener == null) return;
+        if (!usable() || listener == null || blocked(torch)) return;
         try {
             syncEnvironment();
             boolean on = Boolean.TRUE.equals(enabled.invoke(controller)) && Boolean.TRUE.equals(available.invoke(controller));
@@ -367,7 +404,7 @@ final class NativeIslandScenes {
     }
 
     private boolean shouldSuppressRecorder() {
-        if (!usable() || !panels.containsKey(record) || !capsuleReady) return false;
+        if (!usable() || blocked(record) || !panels.containsKey(record) || !capsuleReady) return false;
         if (!Boolean.TRUE.equals(field(permanent, "mInteractive"))
                 || Boolean.TRUE.equals(field(permanent, "mAODVisibility"))
                 || Boolean.TRUE.equals(field(permanent, "mSuperPowerSave"))) return false;
@@ -382,10 +419,27 @@ final class NativeIslandScenes {
     }
 
     private void syncRecorder() {
-        if (!usable() || !panels.containsKey(record) || recordUri == null) return;
+        if (!usable()) return;
+        Object user=field(record,"mCurrentUserContext");
+        if(user instanceof Context && user!=recordContext){
+            if(observingRecord)try{recordContext.getContentResolver().unregisterContentObserver(recordObserver);}catch(RuntimeException ignored){}
+            observingRecord=false;panels.remove(record);recorderProbeAt=0;
+        }
+        if(!panels.containsKey(record)) {
+            long now=SystemClock.elapsedRealtime();
+            if(now<recorderProbeAt)return;
+            recorderProbeAt=now+2000;
+            prepareRecorder();observeRecorder();scheduleChanged();
+            if(panels.containsKey(record))supportedScenes.add("record");else supportedScenes.remove("record");
+            FeatureSettings.diagnostic(context,NativeIslandSceneOptions.key("record")+"_capability",
+                    panels.containsKey(record)?"ready":"unavailable:"+recordCapability);
+        }
+        if(!panels.containsKey(record)||recordUri==null)return;
+        observeRecorder();
+        if(blocked(record))return;
         loadRecovery();
         try {
-            Object user = field(record, "mCurrentUserContext");
+            user = field(record, "mCurrentUserContext");
             Context currentUser = user instanceof Context ? (Context) user : recordContext;
             if (currentUser != recordContext) {
                 if (observingRecord) recordContext.getContentResolver().unregisterContentObserver(recordObserver);

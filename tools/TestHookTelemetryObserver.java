@@ -203,7 +203,24 @@ public final class TestHookTelemetryObserver {
         require(counter.failures().total == 0, "normal callback captured errors");
     }
     public static void main(String[] args) throws Throwable {
-        testDelegation(); testModuleAndHandledFailures(); testRecordsAndBudget(); testReentry(); testConcurrency(); benchmark();
+        testDelegation(); testModuleAndHandledFailures(); testRecordsAndBudget(); testReentry(); testConcurrency(); testSameEvent(); benchmark();
         System.out.println("HookTelemetryObserver tests passed: real API 102 delegation, identity, attribution, bounded records, reentry, concurrency");
+    }
+    static void testSameEvent() throws Throwable {
+        StackBudget budget=new StackBudget(8,2048);int[] logged={0};
+        ErrorRecorder recorder=new ErrorRecorder(){public StackResult capture(Throwable error){return budget.capture(error);}
+            public void firstFailure(Counter c,ErrorRecord e){logged[0]++;}};
+        Counter a=new Counter("outer"),b=new Counter("middle"),c=new Counter("inner");
+        FakeChain chain=new FakeChain();Throwable original=new SecurityException("native denial");chain.failure=original;
+        Hooker inner=HookTelemetryObserver.observe(Chain::proceed,c,()->1L,recorder);
+        Hooker middle=HookTelemetryObserver.observe(inner,b,()->1L,recorder);
+        Hooker outer=HookTelemetryObserver.observe(middle,a,()->1L,recorder);
+        throwsSame(outer,chain,original);
+        require(a.failures().total==1&&b.failures().total==1&&c.failures().total==1,"per-hook counters retained");
+        require(a.failures().last.eventId==c.failures().last.eventId&&b.failures().last.eventId==c.failures().last.eventId,"one throwable has one event identity");
+        require(budget.used()==1&&logged[0]==1,"one stack and one log across nested observers");
+        require(a.failures().last.duplicate&&a.failures().last.stack.isEmpty(),"duplicate uses explicit event reference");
+        long previous=c.failures().last.eventId;throwsSame(outer,chain,original);
+        require(c.failures().last.eventId!=previous&&budget.used()==2,"subsequent invocation is a distinct event");
     }
 }

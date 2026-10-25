@@ -11,19 +11,31 @@ java = r'''package ls.augment.com;
 import java.util.*;import java.util.concurrent.*;import java.util.concurrent.locks.ReentrantLock;
 class HideMirrorProbe {
  static final ReentrantLock ACTION_LOCK=new ReentrantLock();final Object context=new Object();int queries;
- enum State {VISIBLE,HIDDEN,MISSING,ERROR} enum Aggregate {ALL_VISIBLE,ALL_HIDDEN,ERROR}
+ enum State {VISIBLE,HIDDEN,MISSING,ERROR} enum Aggregate {ALL_VISIBLE,ALL_HIDDEN,MISSING,ERROR}
  static final class Target extends HideTargetCodec.Entry {
- Target(String value){this(HideTargetCodec.parseEntry(value));}
+ Target(int userId,long serial,String pkg,boolean bound){super(userId,serial,pkg,bound);} Target(String value){this(HideTargetCodec.parseEntry(value));}
  Target(HideTargetCodec.Entry e){super(e.userId,e.userSerial,e.packageName,e.confirmed);}}
+ long actionGeneration;static final String RESET_REQUIRED="reset";
+ OperationResult refreshTargets(){return OperationResult.success("loaded");}
+ HideTargetStore targetStore=new HideTargetStore();HideTargetStore.Snapshot targetSnapshot=new HideTargetStore.Snapshot(1,new ArrayList<>());
  String raw=""; HideTargetCodec.Selection selectionStatus(){return HideTargetCodec.parse(raw);}
  final Map<Target,State> states=new LinkedHashMap<>();Set<Target> targets(){return states.keySet();}
  Map<Target,State> queryStates(Set<Target> targets){if(!ACTION_LOCK.isHeldByCurrentThread())throw new AssertionError("query not locked");queries++;return states;}
  static final class Summary {final Aggregate aggregate;Summary(Aggregate value){aggregate=value;}}
- Summary summary(Map<Target,State> states){return new Summary(states.containsValue(State.MISSING)||states.containsValue(State.ERROR)?Aggregate.ERROR:
+ Summary summary(Map<Target,State> states){return new Summary(states.containsValue(State.ERROR)?Aggregate.ERROR:states.containsValue(State.MISSING)?Aggregate.MISSING:
  states.containsValue(State.HIDDEN)?Aggregate.ALL_HIDDEN:Aggregate.ALL_VISIBLE);}
  static final class OperationResult {final boolean success;OperationResult(boolean ok){success=ok;}
  static OperationResult success(String message){return new OperationResult(true);}static OperationResult failure(String message){return new OperationResult(false);}}
 ''' + method + r'''}
+class ResetWriteFence {static boolean stale(long g){return false;}}
+class HideTargetStore {
+ enum ObservedState{UNKNOWN,VISIBLE,HIDDEN,MISSING}
+ static class Record {int userId;long userSerial,observedAt;String packageName,lastOperation;boolean bound,managed,desiredHidden;ObservedState observedState;
+ Record(int u,long s,String p,boolean b,boolean m,boolean h,ObservedState o,long t,String l){}}
+ static class Snapshot {long revision;List<Record> records;Snapshot(long r,List<Record> v){revision=r;records=v;}}
+ static class WriteResult {boolean applied=true;String error="";Snapshot snapshot;}
+ WriteResult compareAndSet(long revision,Snapshot next){WriteResult r=new WriteResult();r.snapshot=next;return r;}
+}
 class RootShell {static final class Result {boolean isSuccess(){return true;}String publicError(){return "failure";}}}
 class RuntimeStateStore {static String hidden="0:com.kept.app",aggregate="";static int calls;
  static RootShell.Result publishHidden(Object context,String value,String state){
@@ -47,9 +59,10 @@ public class TestHideMirror {
   try {
    Future<HideMirrorProbe.OperationResult> waiting=worker.submit(probe::syncMirrors);
    Thread.sleep(100);check(probe.queries==before&&!waiting.isDone(),"independent sync must wait for ongoing hide transaction");
-   check(probe.syncMirrors().success,"same-thread operation can reenter sync lock");
+   check(!probe.syncMirrors().success,"missing target fails after reentrant sync");
    HideMirrorProbe.ACTION_LOCK.unlock();
-   check(waiting.get(2,TimeUnit.SECONDS).success,"queued standalone sync succeeds");
+   check(!waiting.get(2,TimeUnit.SECONDS).success,"queued standalone sync reports missing target");
+   check(RuntimeStateStore.aggregate.equals("MISSING"),"missing target classified separately");
   } finally {if(HideMirrorProbe.ACTION_LOCK.isHeldByCurrentThread())HideMirrorProbe.ACTION_LOCK.unlock();worker.shutdownNow();}
   check(RuntimeStateStore.hidden.equals("v3:999:10:com.hidden.app"),"known missing package may be omitted");
   probe.raw="unrecognized-version";

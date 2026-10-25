@@ -23,8 +23,8 @@ final class ColorEditorDialog {
         EditText hex=new EditText(activity);ui.styleInput(hex);hex.setSingleLine(true);hex.setContentDescription("HEX颜色，#AARRGGBB或#RRGGBB");hex.setText(canonical(first));
         TextView error=ui.inlineInputError(hex,"shared-color-hex");
         TextView hueLabel=ui.text("色相",13,ui.muted,false),alphaLabel=ui.text("不透明度",13,ui.muted,false);
-        SeekBar hue=ui.slider();hue.setMax(359);hue.setProgress(Math.round(hsv[0]));hue.setMinHeight(ui.dp(48));hue.setContentDescription("色相");
-        SeekBar alpha=ui.slider();alpha.setMax(255);alpha.setProgress(Color.alpha(first));alpha.setMinHeight(ui.dp(48));alpha.setContentDescription("不透明度");
+        SeekBar hue=ui.slider();hue.setMax(359);hue.setProgress(Math.round(hsv[0]));hue.setContentDescription("色相");
+        SeekBar alpha=ui.slider();alpha.setMax(255);alpha.setProgress(Color.alpha(first));alpha.setContentDescription("不透明度");
         for(SeekBar bar:new SeekBar[]{hue,alpha}){bar.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));bar.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));}
         SaturationValue palette=new SaturationValue(activity,ui,hsv);
         content.addView(palette,new LinearLayout.LayoutParams(-1,ui.dp(160)));

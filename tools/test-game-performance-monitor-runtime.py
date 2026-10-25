@@ -45,7 +45,12 @@ METHODS = [
 ]
 
 STUBS = {
-    "android/content/Context.java": "package android.content;public class Context {}",
+    "ls/augment/com/hook/FloatingPositionLock.java": "package ls.augment.com.hook; final class FloatingPositionLock {static void install(AugmentModule m){}static void monitor(android.view.View v){}static boolean cancelling(){return false;}}",
+    "ls/augment/com/hook/MonitorTelemetry.java": """package ls.augment.com.hook;import android.view.*;
+final class MonitorTelemetry {MonitorTelemetry(ViewGroup content){for(int i=0;i<4;i++){View cell=new View(content.getContext());cell.layoutParams=new ViewGroup.LayoutParams(76,40);cell.setVisibility(View.GONE);content.addView(cell);}} void configure(boolean on,String selection){}void dispose(){}}""",
+    "android/content/Context.java": "package android.content;public class Context {public android.content.res.Resources getResources(){return new android.content.res.Resources();}}",
+    "android/content/res/Resources.java": "package android.content.res;public class Resources {public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}",
+    "android/util/DisplayMetrics.java": "package android.util;public class DisplayMetrics {public static int width=10000;public int widthPixels=width;}",
     "android/view/View.java": """package android.view;import android.content.Context;
 public class View {
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public final Context context;
@@ -77,6 +82,7 @@ public class ViewGroup extends View {
 """,
     "android/widget/LinearLayout.java": """package android.widget;import android.content.Context;import android.view.*;
 public class LinearLayout extends ViewGroup {
+ public static class LayoutParams extends ViewGroup.MarginLayoutParams {public float weight;public LayoutParams(int w,int h){super(w,h);}}
  public int measurements;public LinearLayout(Context c){super(c);}
   @Override public void measure(int w,int h){measurements++;for(View v:children)if(v.getVisibility()!=GONE)v.measure(w,h);else v.measuredWidth=0;measuredWidth=w&0x3fffffff;}
  public void layoutCells(){int cursor=paddingLeft;for(View v:children)if(v.getVisibility()!=GONE){
@@ -412,8 +418,24 @@ public class TestMonitorRuntime {
    eq(expectedWidth(21,450),o.fullWidth(),"enable uses the latest disabled native size");
    FeatureSettings.on=false;FeatureSettings.fire();eq(450,o.fullWidth(),"disabled update remains restorable");healthy();
   }
+ static void sensorSelections()throws Throwable {
+   PerformanceMonitorFloatingWindow o=fixture(31,true);
+   FeatureSettings.selection="battery_temperature,cpu_temperature,gpu_temperature,power";FeatureSettings.fire();o.layout();
+   eq(9,o.content().getChildCount(),"four additional cells");
+   for(int i=0;i<5;i++)eq(View.GONE,o.content().getChildAt(i).getVisibility(),"native item hidden when unselected");
+   for(int i=5;i<9;i++)eq(View.VISIBLE,o.content().getChildAt(i).getVisibility(),"selected sensor visible");
+   eq(expectedWidth(0)+4*76,o.fullWidth(),"sensor widths included");
+   o.call(CLICK,1000f);check(!o.shortened(),"sensor has no nonexistent OEM compact root");
+   FeatureSettings.on=false;FeatureSettings.fire();o.layout();
+   for(int i=5;i<9;i++)eq(View.GONE,o.content().getChildAt(i).getVisibility(),"extra cells hidden on disable");
+   FeatureSettings.on=true;FeatureSettings.selection=String.join(",",GamePerformanceMonitorConfig.items());
+   android.util.DisplayMetrics.width=320;FeatureSettings.fire();o.layout();eq(320,o.fullWidth(),"all nine items fit current display width");
+   FeatureSettings.on=false;FeatureSettings.fire();eq(PerformanceMonitorFloatingWindow.originalWidth(),o.fullWidth(),"disabling restores native geometry");
+   for(int i=0;i<5;i++)eq(PerformanceMonitorFloatingWindow.CELL_WIDTHS[i],o.content().getChildAt(i).getLayoutParams().width,"native cell width restored");
+   android.util.DisplayMetrics.width=10000;healthy();
+ }
  public static void main(String[] args)throws Throwable {
-  disabledPassthrough();allSelectionsAndLiveUpdates();alphaAndFade();collapseExpandAndRemoval();singleItem();
+  sensorSelections();disabledPassthrough();allSelectionsAndLiveUpdates();alphaAndFade();collapseExpandAndRemoval();singleItem();
    disableRestores(false);disableRestores(true);originalVisibilityAndInitRebuild();
    delayedNativeSizing();delayedCellSizing();tooSmallNativeSizing();nativeWidthUpdates();shortWidthReadiness();disabledNativeSizeUpdate();
   System.out.println("PASS "+VARIANT+" route="+ROUTE+" checks="+checks);

@@ -466,6 +466,8 @@ public final class AugmentModule extends RootEarlyModule {
     }
 
     void logFeatureInfo(String message) {
+        if(message.startsWith("COMPATIBILITY_MISS "))recordStartup("COMPATIBILITY_MISS",message,null);
+        else if(message.startsWith("ATOMIC_NATIVE_HOME_HOST_FINISH phase="))recordStartup("LIFECYCLE",message,null);
         HookTelemetry.atomicWorkbench("INFO",message,null);
         LiftArcLog.stageInfo(message);
         logInfo("FEATURE_" + message);

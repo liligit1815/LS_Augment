@@ -59,7 +59,7 @@ final class HookTelemetry {
         public void firstFailure(Counter counter,ErrorRecord error){
             String kind=error.source==HookTelemetryObserver.ErrorSource.PROCEED_CHAIN?"HOOK_PROCEED_CHAIN_FAILURE":"HOOK_MODULE_CALLBACK_FAILURE";
             android.util.Log.e("LS_Augment",kind+" process="+process+" target="+counter.target+" at="+error.at
-                +" error="+error.summary+" stackState="+error.stackState+(error.stack.isEmpty()?"":"\n"+error.stack));
+                +" eventId="+error.eventId+" error="+error.summary+" stackState="+error.stackState+(error.stack.isEmpty()?"":"\n"+error.stack));
         }
     };
     private static long lastPublished;
@@ -447,6 +447,7 @@ final class HookTelemetry {
     }
     private static JSONObject errorJson(ErrorRecord error)throws JSONException{
         return new JSONObject().put("source",error.source.name()).put("at",error.at).put("sequence",error.sequence)
+            .put("eventId",error.eventId).put("duplicate",error.duplicate)
             .put("error",error.summary).put("stack",error.stack).put("stackState",error.stackState);
     }
 }

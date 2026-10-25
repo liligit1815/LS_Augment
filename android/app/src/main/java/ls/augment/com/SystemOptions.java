@@ -41,7 +41,7 @@ public final class SystemOptions {
             {"mtp_hide_category","connections","隐藏 MTP 分类浏览","电脑连接时仅显示常规存储浏览入口。"},
             {"mtp_name_enabled","connections","自定义 MTP 存储名称","电脑连接时显示下面的存储名称。"},
             {"installer_skip_scan","installer","跳过安装包扫描","安装器直接进入安装确认流程。"},
-            {"installer_hide_purify","installer","隐藏纯净模式选项","隐藏安装界面的纯净模式入口。"},
+            {"installer_hide_purify","installer","隐藏纯净与安装提醒","隐藏安装界面的备案、安全提醒、纯净模式入口和风险勾选，保留手动安装确认。"},
             {"installer_hide_store","installer","隐藏应用商店推荐","隐藏安装界面的应用商店引导。"},
             {"installer_cts","installer","使用简洁安装界面","使用原厂提供的 CTS 安装界面。"},
             {"signature_min_v1","installer","允许较旧的 APK 签名方案","放宽最低签名方案要求，与 LS 的不同签名覆盖安装分别控制。"},

@@ -195,7 +195,8 @@ final class NativeFeatureGroups {
             new Feature("systemui:notification_media_hide","取消通知中心的音乐卡片",SystemUiOptions.NOTIFICATION_MEDIA_HIDE,new String[]{},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
-            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{})
+            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{}),
+            NativeIslandSceneOptions.feature()
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
             new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{},"boolean","0",new Feature[]{
@@ -278,7 +279,8 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_recents_memory_custom","自定义最近任务内存显示","ls_augment_rm_recents_memory_custom",new String[]{"ls_augment_rm_recents_memory_style","ls_augment_rm_recents_memory_content","ls_augment_rm_recents_memory_color_mode","ls_augment_rm_recents_memory_light_color","ls_augment_rm_recents_memory_dark_color","ls_augment_rm_recents_memory_simple_size","ls_augment_rm_recents_memory_detailed_size","ls_augment_rm_recents_memory_portrait_left","ls_augment_rm_recents_memory_landscape_left","ls_augment_rm_recents_memory_portrait_top","ls_augment_rm_recents_memory_landscape_top","ls_augment_rm_recents_memory_portrait_height","ls_augment_rm_recents_memory_landscape_height"},"boolean","0", new Feature[]{})
         }),
         new Section("game","shoulder","肩键方案", new Feature[]{
-            new Feature("ls_augment_tgk_quick_switch","肩键方案快捷切换","ls_augment_tgk_quick_switch",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_tgk_quick_switch","肩键方案快捷切换","ls_augment_tgk_quick_switch",new String[]{},"boolean","0", new Feature[]{
+                new Feature(GameOptions.SHOULDER_PIN,"长按固定悬浮窗位置",GameOptions.SHOULDER_PIN,new String[]{},"boolean","0",new Feature[]{})})
         }),
         new Section("game","combo","连招录制与循环", new Feature[]{
             new Feature("ls_augment_combo_extended_limits","扩展连招循环设置","ls_augment_combo_extended_limits",new String[]{},"boolean","0", new Feature[]{})
@@ -291,7 +293,8 @@ final class NativeFeatureGroups {
         }),
         new Section("game","plugins","游戏插件", new Feature[]{
             new Feature("ls_augment_game_plugins_unlocked","开放游戏插件资格","ls_augment_game_plugins_unlocked",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature(GameOptions.PERFORMANCE_MONITOR,"自定义性能监测",GameOptions.PERFORMANCE_MONITOR,new String[]{GameOptions.MONITOR_TRANSPARENCY},"boolean","0",new Feature[]{})
+            new Feature(GameOptions.PERFORMANCE_MONITOR,"自定义性能监测",GameOptions.PERFORMANCE_MONITOR,new String[]{GameOptions.MONITOR_TRANSPARENCY},"boolean","0",new Feature[]{
+                new Feature(GameOptions.MONITOR_PIN,"长按固定悬浮窗位置",GameOptions.MONITOR_PIN,new String[]{},"boolean","0",new Feature[]{})})
         }),
         new Section("game","game_capture","录制、高光与红魔时刻", new Feature[]{
             new Feature("game:watermark","红魔水印字数解限",GameOptions.WATERMARK_UNLIMITED,new String[]{},"boolean","0",new Feature[]{}),
@@ -306,7 +309,7 @@ final class NativeFeatureGroups {
         }),
         new Section("installer","installer","应用安装规则", new Feature[]{
             new Feature("ls_augment_rm_installer_skip_scan","跳过安装包扫描","ls_augment_rm_installer_skip_scan",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature("ls_augment_rm_installer_hide_purify","隐藏纯净模式选项","ls_augment_rm_installer_hide_purify",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("ls_augment_rm_installer_hide_purify","隐藏纯净与安装提醒","ls_augment_rm_installer_hide_purify",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_installer_hide_store","隐藏应用商店推荐","ls_augment_rm_installer_hide_store",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_installer_cts","使用简洁安装界面","ls_augment_rm_installer_cts",new String[]{},"boolean","0", new Feature[]{})
         }),

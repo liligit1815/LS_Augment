@@ -135,9 +135,18 @@ final class LiftArcSettingsEditor {
         LinearLayout row=numeric?ui.parameterInputGroup():(LinearLayout)host.input(option);row.setTag("liftarc-input:"+suffix);
         if(numeric){
             row.addView(ui.featureTitle(option.title,help(suffix)),ui.wrap());
-            SeekBar slider=ui.slider();slider.setMinHeight(ui.dp(48));slider.setMinimumHeight(ui.dp(48));slider.setContentDescription(option.title);slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
+            SeekBar slider=ui.slider();slider.setContentDescription(option.title);slider.setProgressTintList(android.content.res.ColorStateList.valueOf(ui.accent));slider.setThumbTintList(android.content.res.ColorStateList.valueOf(ui.accent));
             int ticks=suffix.equals("hint_weight")?8:1000;slider.setMax(ticks);slider.setTag("liftarc-slider:"+suffix);sliders.put(suffix,slider);
             TextView label=ui.text("",12,ui.muted,false);label.setTag("liftarc-value:"+suffix);numericLabels.put(suffix,label);row.addView(label,ui.wrap());row.addView(slider,ui.wrap());
+            double factor=percentValue(suffix)?100:1;
+            double step=option.kind==EnhancementOption.Kind.INTEGER?(suffix.equals("hint_weight")?100:1):
+                    (suffix.endsWith("alpha")||suffix.endsWith("strength")||suffix.startsWith("glass_")||suffix.equals("drag_ratio")?.01:.1);
+            NumericParameterEditor.bind(ui,slider,option.title,
+                    ()->new NumericValueSpec(option.minimum*factor,option.maximum*factor,step*factor,factor==100?"%":""),
+                    ()->NumericValueSpec.format(new java.math.BigDecimal(host.value(option.key)).multiply(java.math.BigDecimal.valueOf(factor))),
+                    next->option.normalize(new java.math.BigDecimal(next).divide(java.math.BigDecimal.valueOf(factor)).toPlainString())==null?null:next,
+                    next->host.change(option.key,new java.math.BigDecimal(next).divide(java.math.BigDecimal.valueOf(factor)).toPlainString(),slider),row.getChildAt(0),label);
+
             slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}public void onProgressChanged(SeekBar s,int progress,boolean user){if(!user)return;
                 String raw=sliderValue(suffix,progress);
                 if(option.normalize(raw)!=null)host.change(option.key,raw,s);
@@ -201,8 +210,9 @@ final class LiftArcSettingsEditor {
     }
     private void visible(String id,boolean show){View v=conditional.get(id);if(v!=null)v.setVisibility(show?View.VISIBLE:View.GONE);}
     private double number(String suffix){try{return Double.parseDouble(value(suffix));}catch(RuntimeException ignored){return Double.parseDouble(LiftArcOptions.option(suffix).defaultValue);}}
+    private boolean percentValue(String suffix){return suffix.endsWith("alpha")||suffix.endsWith("strength")||suffix.equals("drag_ratio")||Arrays.asList("glass_opacity","glass_diffuse","glass_refract","glass_edge_ref","glass_refract_w","glass_fresnel","glass_highlight").contains(suffix);}
     private String formatValue(String suffix,double n){
-        if(suffix.endsWith("alpha")||suffix.endsWith("strength")||suffix.equals("drag_ratio")||Arrays.asList("glass_opacity","glass_diffuse","glass_refract","glass_edge_ref","glass_refract_w","glass_fresnel","glass_highlight").contains(suffix))return Math.round(n*100)+"%";
+        if(percentValue(suffix))return Math.round(n*100)+"%";
         String unit=Arrays.asList("arc_width","glass_thick","hint_gap","hint_offset_x").contains(suffix)?" dp":"flick_velocity".equals(suffix)?" dp/s":"unlock_ms".equals(suffix)?" ms":"glass_blur".equals(suffix)?" px":"hint_size".equals(suffix)?" sp":"glass_hl_width".equals(suffix)?" 倍":"";
         return java.math.BigDecimal.valueOf(n).stripTrailingZeros().toPlainString()+unit;
     }

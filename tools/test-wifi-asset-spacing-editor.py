@@ -5,7 +5,7 @@ ROOT=Path(os.environ.get('DUO_SOURCE_ROOT',Path(__file__).resolve().parents[1]))
 JAVA=ROOT/'android/app/src/main/java/ls/augment/com'
 helper=ROOT/'tools/test-privacy-dot-spacing-editor.py';scope={'__file__':str(helper)}
 exec(compile(helper.read_text(encoding='utf-8').split('\nwith tempfile.TemporaryDirectory(',1)[0],str(helper),'exec'),scope)
-files={key:value for key,value in scope['files'].items() if key.startswith('android/') or key.endswith('/UiKit.java') or key.endswith('/BuildConfig.java')}
+files={key:value for key,value in scope['files'].items() if key.startswith('android/') or key.endswith('/UiKit.java') or key.endswith('/BuildConfig.java') or key.endswith('/R.java')}
 files['ls/augment/com/BuildConfig.java']='package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=20454;}'
 files['ls/augment/com/ConfigSchema.java']='package ls.augment.com;public class ConfigSchema {public static boolean isRuntimeKey(String key){return !key.startsWith("ui_only");}}'
 files['ls/augment/com/AppConfig.java']='package ls.augment.com;public class AppConfig {public static final String DIAGNOSTICS="diagnostics";public static final java.util.Map<String,String> values=new java.util.HashMap<>();public AppConfig(android.content.Context c){}public java.util.Map<String,String> snapshot(){return new java.util.HashMap<>(values);}}'
@@ -38,6 +38,10 @@ public class TestWifiAssetEditor {
   System.out.println("Wi-Fi asset production editor: "+checks+" assertions PASS; widget facade, not Android visual QA");
  }
 }'''
+
+# Dialog rendering is covered by NumericParameterUiCases; retain this suite's widget boundary.
+files['ls/augment/com/NumericParameterEditor.java']='package ls.augment.com;class NumericParameterEditor{static void linear(UiKit u,android.widget.SeekBar b,String t,double o,double s,String unit,android.view.View...v){}}'
+
 
 with tempfile.TemporaryDirectory(prefix='duo-wifi-asset-editor-') as tmp:
     paths=[]

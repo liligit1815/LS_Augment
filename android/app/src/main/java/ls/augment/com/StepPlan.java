@@ -5,6 +5,7 @@ import java.util.*;
 
 /** A stable random timetable: a saved plan never draws new times on restart. */
 public final class StepPlan {
+    public static final int MAX_EXECUTIONS=100, MAX_TOTAL_STEPS=1000000;
     public final String id, account, zone;
     public final LocalDate startDate;
     public final int fromMinute, toMinute, amount;
@@ -23,7 +24,7 @@ public final class StepPlan {
     }
     public StepPlan(String id,String account,String zone,LocalDate date,int from,int to,int executions,int steps,int weekdays,long seed) {
         if(!id.matches("[0-9a-f]{32}")||!account.matches("[0-9a-f]{64}")||from<0||from>=1440||to<0||to>1440||from==to
-            ||executions<1||executions>100||steps<1||(long)steps*executions>1000000||weekdays<1||weekdays>127)throw new IllegalArgumentException("invalid plan");
+            ||executions<1||executions>MAX_EXECUTIONS||steps<1||(long)steps*executions>MAX_TOTAL_STEPS||weekdays<1||weekdays>127)throw new IllegalArgumentException("invalid plan");
         int minutes=(to>from?to:to+1440)-from;
         if(executions>minutes)throw new IllegalArgumentException("not enough distinct minutes");
         ZoneId.of(zone);this.id=id;this.account=account;this.zone=zone;this.startDate=Objects.requireNonNull(date);

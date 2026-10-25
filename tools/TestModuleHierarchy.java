@@ -8,7 +8,7 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","atomic_workbench","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,17,24,11,8,5,1,5,18,4,16,15,12,4};
+        int[] counts={84,17,24,11,8,5,1,5,18,4,16,15,13,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
         require(HookAppCatalog.targets().size()==20&&HookAppCatalog.find(HookAppCatalog.AMAP)!=null,"Runtime targets include the navigation source independently of the 14 display categories");
@@ -17,7 +17,7 @@ public final class TestModuleHierarchy {
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==224,"Presentation includes 224 capabilities in 14 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==225,"Presentation includes 225 capabilities in 14 ordered categories");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-amap")),"Navigation source opens the existing Step editor");
         require(ModuleHierarchy.path("atomic_workbench").equals(Arrays.asList("home","atomic_workbench")),"Workbench is a first-level category without an empty intermediate page");
@@ -122,9 +122,12 @@ public final class TestModuleHierarchy {
             require(!category.id.equals(ModuleHierarchy.categoryForRoute(link.route)),"Related navigation must point to a different home");
         }
         require(ModulePresentationCatalog.related("status_layout").size()==3,"Status ambiguity has three cross-category explanations");
-        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==3,"Shoulder count includes two embedded controls and one generic control");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==4,"Shoulder count includes two embedded controls, quick switching and its position lock");
+        owner(NativeIslandSceneOptions.ENABLED,"group/notifications/island");
+        for(String id:NativeIslandSceneOptions.IDS)owner(NativeIslandSceneOptions.key(id),"group/notifications/island");
+        owner(GameOptions.MONITOR_PIN,"group/gaming/plugins");owner(GameOptions.SHOULDER_PIN,"group/gaming/shoulder");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 224 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 225 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

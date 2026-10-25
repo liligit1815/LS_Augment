@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / 'android/app/src/main/java/ls/augment/com/UiKit.java').read_text(encoding='utf-8')
 start = source.index('    final class Fold {')
 end = source.index('\n    View divider()', start)
-fold = source[start:end].replace('android.widget.Toast', 'Toast')
+fold = source[start:end].replace('android.widget.Toast', 'Toast').replace('UiKit.this', 'TestSettingsFolds.this')
 harness = r'''
 import java.util.*;
 public class TestSettingsFolds {
@@ -36,19 +36,23 @@ public class TestSettingsFolds {
  }
  static class R {static class drawable {static int ic_expand_more=1;}}
  static class Color {static int TRANSPARENT=0;}
+ static class ExpandedConfiguration {
+  boolean expanded;ExpandedConfiguration(Object ui,View header,View content){}
+  void update(boolean value){expanded=value;}
+ }
  static class Toast {static int LENGTH_SHORT; static Toast makeText(Object a,String s,int i){return new Toast();}void show(){}}
  Object activity=new Object();int muted;int dp(int n){return n;}Object round(int c,int r){return null;}Object pressable(Object b){return b;}
  final Map<String,java.util.function.Supplier<Boolean>> foldValues=new LinkedHashMap<>();
  final Map<String,java.util.function.Consumer<Boolean>> foldSetters=new LinkedHashMap<>();
  // PRODUCTION_FOLD
  Fold create(boolean checked,boolean enabled,boolean accessible){
-  Switch control=new Switch();control.checked=checked;control.enabled=enabled;
+  Switch control=new Switch();control.checked=checked;control.enabled=enabled;control.description="示例功能";
   LinearLayout row=new LinearLayout();row.addView(control,new LinearLayout.LayoutParams(1,1));row.addView(new View(),new LinearLayout.LayoutParams(1,1));
   return new Fold(control,new View(),accessible);
  }
  static int checks;
  static void check(boolean v,String reason){checks++;if(!v)throw new AssertionError(reason);}
- static void collapsed(Fold f){check(f.content.getVisibility()==View.GONE,"must be collapsed");check(f.arrow.rotation==0,"collapsed arrow");check("展开配置".equals(f.arrow.description),"collapsed accessibility label");}
+ static void collapsed(Fold f){check(f.content.getVisibility()==View.GONE,"must be collapsed");check(f.arrow.rotation==0,"collapsed arrow");check("展开示例功能配置".equals(f.arrow.description),"collapsed accessibility label identifies owner");check(!f.presentation.expanded,"collapsed group presentation");}
  public static void main(String[] args){
   TestSettingsFolds ui=new TestSettingsFolds();
   for(boolean checked:new boolean[]{false,true})for(boolean enabled:new boolean[]{false,true})for(boolean accessible:new boolean[]{false,true}){
@@ -57,6 +61,7 @@ public class TestSettingsFolds {
    f.arrow.click();check((f.content.visibility==View.VISIBLE)==f.arrow.enabled,"explicit expand respects availability");
   }
   Fold active=ui.create(true,true,false);active.arrow.click();check(active.content.visibility==View.VISIBLE,"enabled setting can expand");
+  check(active.presentation.expanded&&"收起示例功能配置".equals(active.arrow.description),"expanded group and accessibility identify owner");
   active.arrow.click();active.sync();collapsed(active);active.sync();collapsed(active);
   active.control.checked=false;active.sync();collapsed(active);
   active.control.checked=true;active.sync();check(active.content.visibility==View.VISIBLE,"user activation opens configuration");

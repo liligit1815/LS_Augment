@@ -97,6 +97,7 @@ final class BackGestureIconEditor {
         TextView label=ui.text(title+"："+number(side,field)+unit,12,ui.text,false);panel.addView(label,ui.wrap());
         SeekBar bar=ui.slider();bar.setContentDescription((side==0?"左侧":"右侧")+title);
         bar.setMax(max-min);bar.setProgress(number(side,field)-min);panel.addView(bar,ui.wrap());
+        NumericParameterEditor.linear(ui,bar,(side==0?"左侧":"右侧")+title,min,1,unit,label);
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){}

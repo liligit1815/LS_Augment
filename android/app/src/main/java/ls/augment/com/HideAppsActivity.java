@@ -159,7 +159,9 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
 
         appsPanel=ui.preferenceCard();appsPanel.setTag("hide-app-management");
         appConfigBody=new LinearLayout(this);appConfigBody.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout listSection=ui.foldingSection("应用名单",appConfigBody,false);
+        LinearLayout listTools=new LinearLayout(this);listTools.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout listSection=ui.foldingSection("应用名单",listTools,appConfigBody,false);
+        listTools.setPadding(ui.dp(12),0,ui.dp(8),0);
         LinearLayout listHeading=(LinearLayout)listSection.getChildAt(0);
         listHeading.setTag("hide-list-header");
         appsExpand=(ImageButton)listHeading.getChildAt(listHeading.getChildCount()-1);
@@ -167,8 +169,6 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         summary=ui.text("正在读取…",12,ui.muted,false);summary.setMaxLines(2);
         summary.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         listHeading.addView(summary,listHeading.getChildCount()-1,new LinearLayout.LayoutParams(-2,-2));
-        listSection.removeView(listHeading);
-        appsPanel.addView(listHeading,ui.wrap());
         appsExpand.setOnClickListener(v->showAppList(appConfigBody.getVisibility()!=View.VISIBLE));
         listHeading.setOnClickListener(v->showAppList(appConfigBody.getVisibility()!=View.VISIBLE));
 
@@ -186,7 +186,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         });
         LinearLayout.LayoutParams refreshParams=new LinearLayout.LayoutParams(-2,-2);
         refreshParams.leftMargin=ui.dp(8);spaceRow.addView(refreshAppsButton,refreshParams);
-        appsPanel.addView(spaceRow,ui.margins(0,6,0,6));
+        listTools.addView(spaceRow,ui.margins(0,6,0,6));
         hideAllButton=ui.accentButton("全部隐藏");showAllButton=ui.tonalButton("全部显示");
         hideAllButton.setOnClickListener(v->confirmAction("隐藏已配置应用","隐藏后应用将停止运行，应用数据保留。",true));
         showAllButton.setOnClickListener(v->confirmAction("显示已配置应用","恢复应用的显示状态，应用数据保留。",false));
@@ -200,15 +200,15 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
             LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);
             if(i>0)ap.leftMargin=ui.dp(6);actions.addView(action,ap);
         }
-        appsPanel.addView(actions,ui.margins(0,0,0,8));
+        listTools.addView(actions,ui.margins(0,0,0,8));
         userStatus=ui.text("正在核验用户空间…",11,ui.muted,false);
-        userStatus.setVisibility(View.GONE);appsPanel.addView(userStatus,ui.margins(0,4,0,8));
+        userStatus.setVisibility(View.GONE);listTools.addView(userStatus,ui.margins(0,4,0,8));
         operationStatus=ui.text("",12,ui.accent,false);operationStatus.setTag("hide-operation-status");
         operationStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        operationStatus.setVisibility(View.GONE);appsPanel.addView(operationStatus,ui.margins(0,0,0,8));
+        operationStatus.setVisibility(View.GONE);listTools.addView(operationStatus,ui.margins(0,0,0,8));
         saveStatus=ui.text("",12,ui.muted,false);saveStatus.setVisibility(View.GONE);
         saveStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        saveStatus.setOnClickListener(v->{if(dirty&&!saving)saveSettings();});appsPanel.addView(saveStatus,ui.margins(0,0,0,8));
+        saveStatus.setOnClickListener(v->{if(dirty&&!saving)saveSettings();});listTools.addView(saveStatus,ui.margins(0,0,0,8));
 
         LinearLayout searchRow=new LinearLayout(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);
         search=new EditText(this);search.setHint("搜索应用名称或包名");search.setSingleLine(true);
@@ -238,7 +238,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
         appBrowser=new LinearLayout(this);appBrowser.setOrientation(LinearLayout.VERTICAL);
         appList=new LinearLayout(this);appList.setOrientation(LinearLayout.VERTICAL);
         appBrowser.addView(appList,ui.wrap());appConfigBody.addView(appBrowser,ui.margins(0,0,0,8));
-        listSection.removeView(appConfigBody);appsPanel.addView(appConfigBody,ui.wrap());
+        appsPanel.addView(listSection,ui.wrap());
         page.addView(appsPanel,ui.margins(0,8,0,0));
 
         ui.addDetailSectionTitle(page,"自动与快捷操作");

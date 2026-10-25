@@ -29,7 +29,7 @@ public final class ModulePresentationCatalog {
         new Category("cooling","散热风扇","转速测量、固定档位、磁贴与息屏运行","fan","games",4),
         new Category("connectivity","网络与连接","USB 文件传输、调试、NFC、Wi-Fi 与飞行模式","files",null,16),
         new Category("apps","应用管理","安装、下载、双开、默认打开与应用隐藏","installer",null,15),
-        new Category("system_settings","系统设置","系统更新、竞技键、设置入口与显示休眠","settings",null,12),
+        new Category("system_settings","系统设置","系统更新、竞技键、电池健康度与显示休眠","settings",null,13),
         new Category("health","小米运动健康","账号绑定、步数倍率、随机计划与每日上限","health","apps",4)
     ));
     public static List<Category> categories(){return CATEGORIES;}

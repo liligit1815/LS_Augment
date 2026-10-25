@@ -250,7 +250,8 @@ public final class LSConfigProvider extends ContentProvider {
             int uid=Binder.getCallingUid();
             String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
             if(uid!=Process.myUid()&&uid!=Process.ROOT_UID&&(packages==null
-                    ||!java.util.Arrays.asList(packages).contains("com.android.systemui")))return result;
+                    ||(!java.util.Arrays.asList(packages).contains("com.android.systemui")
+                    &&!java.util.Arrays.asList(packages).contains("cn.nubia.gameassist"))))return result;
             long identity=Binder.clearCallingIdentity();
             try{return HardwareTelemetry.read();}finally{Binder.restoreCallingIdentity(identity);}
         }

@@ -206,7 +206,8 @@ final class UiKit {
     LinearLayout preferenceCard(){LinearLayout value=card();value.setPadding(dp(14),0,dp(14),0);value.setTag("preference-card");return value;}
     LinearLayout parameterInputGroup(){
         LinearLayout group=new LinearLayout(activity);group.setOrientation(LinearLayout.VERTICAL);
-        group.setPadding(0,dp(3),0,dp(8));return group;
+        group.setTag(R.id.parameter_input_group,Boolean.TRUE);
+        group.setPadding(0,0,0,dp(8));return group;
     }
     LinearLayout preferenceRow(String id,String title,String summary,Runnable action){
         LinearLayout row=groupRow();row.setTag("navigation:"+id);row.setPadding(0,dp(4),0,dp(4));
@@ -426,7 +427,9 @@ final class UiKit {
         LinearLayout row = new LinearLayout(activity) {
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
                 if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED)
-                    name.setMaxWidth(Math.max(dp(20), View.MeasureSpec.getSize(widthSpec) - dp(25) - (iceIcon(title)!=0?dp(46):0)));
+                    name.setMaxWidth(Math.max(dp(20), View.MeasureSpec.getSize(widthSpec)
+                            - (getChildCount()>0&&getChildAt(getChildCount()-1) instanceof ImageButton?dp(25):0)
+                            - (iceIcon(title)!=0?dp(46):0)));
                 super.onMeasure(widthSpec, heightSpec);
             }
         };
@@ -805,13 +808,31 @@ final class UiKit {
 
     /** The download-count slider is the common slider for every parameter editor. */
     android.widget.SeekBar slider() {
-        android.widget.SeekBar slider = new android.widget.SeekBar(activity);
-        slider.setMinHeight(dp(48));
-        slider.setMinimumHeight(dp(48));
+        android.widget.SeekBar slider = new ParameterSeekBar(activity);
+        // The native track does not need a 48dp visual row. ParameterSeekBar
+        // extends touch handling into unused surrounding space instead.
+        slider.setMinHeight(dp(20));
+        slider.setMaxHeight(dp(20));
+        slider.setMinimumHeight(dp(20));
+        slider.setPadding(slider.getPaddingLeft(),0,slider.getPaddingRight(),0);
         slider.setKeyProgressIncrement(1);
         slider.setProgressTintList(ColorStateList.valueOf(accent));
         slider.setThumbTintList(ColorStateList.valueOf(accent));
         return slider;
+    }
+
+    /** Combine sibling labels without moving the slider or its save/validation callbacks. */
+    void compactNumericHeader(View title, View value) {
+        if(title==null||title==value||!(value instanceof TextView)
+                ||!(title.getParent() instanceof LinearLayout)||title.getParent()!=value.getParent())return;
+        LinearLayout parent=(LinearLayout)title.getParent();
+        if(parent.getOrientation()!=LinearLayout.VERTICAL)return;
+        int index=parent.indexOfChild(title);
+        if(parent.indexOfChild(value)!=index+1)return;
+        LinearLayout.LayoutParams params=(LinearLayout.LayoutParams)title.getLayoutParams();
+        params.topMargin=Math.min(params.topMargin,dp(4));params.bottomMargin=0;
+        parent.removeView(title);parent.removeView(value);
+        parent.addView(new NumericParameterHeader(this,title,(TextView)value),index,params);
     }
 
     /** Keep exact HEX entry and the visual picker on the same editing surface. */
@@ -854,6 +875,7 @@ final class UiKit {
         };
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setTag("feature-row");row.setMinimumHeight(dp(44));
+        row.setPadding(dp(8),0,0,0);
         row.addView(section(title, description), new LinearLayout.LayoutParams(0, -2, 1));
         styleSwitch(control);
         control.setContentDescription(title);
@@ -878,6 +900,7 @@ final class UiKit {
         final Switch control;
         final View content;
         final ImageButton arrow;
+        final ExpandedConfiguration presentation;
         boolean wasEnabled;
         final boolean accessibleWhileOff;
         Fold(Switch control, View content) {
@@ -893,6 +916,7 @@ final class UiKit {
             arrow.setColorFilter(muted);
             arrow.setBackground(pressable(round(Color.TRANSPARENT, 12)));
             row.addView(arrow, new LinearLayout.LayoutParams(dp(25), dp(44)));
+            presentation=new ExpandedConfiguration(UiKit.this,row,content);
             arrow.setOnClickListener(v -> {
                 if (!accessibleWhileOff && !control.isChecked()) {
                     android.widget.Toast.makeText(activity, "请先开启功能", android.widget.Toast.LENGTH_SHORT).show();
@@ -917,8 +941,9 @@ final class UiKit {
         void show(boolean expanded) {
             expanded = expanded && (accessibleWhileOff || control.isChecked());
             content.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            presentation.update(expanded);
             arrow.setRotation(expanded ? 180 : 0);
-            arrow.setContentDescription(expanded ? "收起配置" : "展开配置");
+            arrow.setContentDescription((expanded ? "收起" : "展开")+control.getContentDescription()+"配置");
             arrow.setEnabled((accessibleWhileOff || control.isChecked()) && control.isEnabled());
             arrow.setAlpha(arrow.isEnabled() ? 1f : .34f);
         }
@@ -938,28 +963,40 @@ final class UiKit {
         return foldingGroup(title,content,initiallyExpanded,false);
     }
 
+    LinearLayout foldingSection(String title,View summary,View content,boolean initiallyExpanded){
+        return foldingGroup(title,null,content,initiallyExpanded,false,summary);
+    }
+
     /** Value settings share feature help/arrow columns without pretending to be a switch. */
     LinearLayout parameterSection(String title,String description,View summary,View content,
             boolean initiallyExpanded){
-        LinearLayout outer=foldingGroup(title,description,content,initiallyExpanded,false);
+        LinearLayout outer=foldingGroup(title,description,content,initiallyExpanded,false,summary);
         LinearLayout head=(LinearLayout)outer.getChildAt(0);
         // Keep the help column aligned with neighboring Boolean feature rows.
         head.addView(switchSlot(),head.getChildCount()-1,new LinearLayout.LayoutParams(dp(46),dp(44)));
-        if(summary!=null)outer.addView(summary,1,margins(12,3,0,8));return outer;
+        return outer;
     }
 
     private LinearLayout foldingGroup(String title, View content, boolean initiallyExpanded,boolean ownCard) {
         return foldingGroup(title,null,content,initiallyExpanded,ownCard);
     }
     private LinearLayout foldingGroup(String title,String description,View content,boolean initiallyExpanded,boolean ownCard) {
+        return foldingGroup(title,description,content,initiallyExpanded,ownCard,null);
+    }
+    private LinearLayout foldingGroup(String title,String description,View content,boolean initiallyExpanded,boolean ownCard,View summary) {
         LinearLayout outer=ownCard?card():new LinearLayout(activity),head=new LinearLayout(activity);
         outer.setOrientation(LinearLayout.VERTICAL);head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(8),0,0,0);
         head.setMinimumHeight(dp(44));if(ownCard)outer.setPadding(dp(16),dp(2),dp(16),dp(2));
         head.addView(featureTitle(title,description,14.5f),new LinearLayout.LayoutParams(0,-2,1));
         ImageButton arrow=new ImageButton(activity);arrow.setImageResource(R.drawable.ic_expand_more);arrow.setColorFilter(muted);
         arrow.setBackground(pressable(round(Color.TRANSPARENT,12)));head.addView(arrow,new LinearLayout.LayoutParams(dp(25),dp(44)));
-        outer.addView(head,wrap());outer.addView(content,wrap());content.setVisibility(View.GONE);
-        Runnable update=()->{boolean open=content.getVisibility()==View.VISIBLE;arrow.setRotation(open?180:0);arrow.setContentDescription((open?"收起":"展开")+title);};
+        outer.addView(head,wrap());
+        if(summary!=null){summary.setPadding(dp(12),dp(3),dp(8),dp(8));outer.addView(summary,wrap());}
+        outer.addView(content,wrap());content.setVisibility(View.GONE);
+        ExpandedConfiguration presentation=new ExpandedConfiguration(this,head,content);
+        if(summary!=null)presentation.summary(this,summary);
+        Runnable update=()->{boolean open=content.getVisibility()==View.VISIBLE;presentation.update(open);arrow.setRotation(open?180:0);arrow.setContentDescription((open?"收起":"展开")+title);};
         View.OnClickListener toggle=v->{content.setVisibility(content.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);update.run();};
         arrow.setOnClickListener(toggle);head.setOnClickListener(toggle);update.run();
         foldValues.put("group:"+title,()->content.getVisibility()==View.VISIBLE);

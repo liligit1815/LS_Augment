@@ -49,6 +49,15 @@ public class TestPrivacyDotEditor{
 files['android/view/View.java']=files['android/view/View.java'].replace('public class View {','''public class View {
  public interface OnClickListener{void onClick(View v);}public OnClickListener click;public boolean enabled=true;public Object tag;public int minimumHeight;public void setEnabled(boolean v){enabled=v;}public void setTag(Object v){tag=v;}public void setMinimumHeight(int v){minimumHeight=v;}public void setContentDescription(String s){}public void setOnClickListener(OnClickListener v){click=v;}public void performClick(){if(click!=null)click.onClick(this);}
 ''')
+# Match current UiKit and string resources while exercising the real spacing policy.
+files['ls/augment/com/UiKit.java']=files['ls/augment/com/UiKit.java'].replace('public int muted;', 'public SeekBar slider(){return new SeekBar(context);}public int muted;')
+files['ls/augment/com/R.java']='package ls.augment.com;public class R{public static class string{public static final int status_privacydotspacingeditor_36=0,status_statusbariconspacingeditor_44=1,status_statusbariconspacingeditor_45=2;}}'
+files['android/content/Context.java']=files['android/content/Context.java'].replace('public class Context{', 'public class Context{public String getString(int id,Object...args){return String.format(java.util.Locale.ROOT,new String[]{"%1$s · %2$s / %3$s dp","%1$s · %2$s dp%3$s","%1$s · %2$s dp"}[id],args);}')
+
+# Dialog rendering is covered by NumericParameterUiCases; retain this suite's widget boundary.
+files['ls/augment/com/NumericParameterEditor.java']='package ls.augment.com;class NumericParameterEditor{static void linear(UiKit u,android.widget.SeekBar b,String t,double o,double s,String unit,android.view.View...v){}}'
+
+
 with tempfile.TemporaryDirectory(prefix='duo-privacy-dot-ui-') as tmp:
     paths=[]
     for name,text in files.items():

@@ -177,14 +177,16 @@ final class StatusBarNetworkUiCases implements Application.ActivityLifecycleCall
             for(int i=0;i<TITLES.length;i++){
                 TextView label=text(fold.content,TITLES[i]);View value=control(fold.content,i);
                 require(label!=null&&value!=null,"Real parameter title and control exist: "+TITLES[i]);
-                View header=(View)label.getParent(),group=(View)header.getParent();
+                View header=(View)label.getParent();
+                if(header.getParent() instanceof View&&"numeric-parameter-header".equals(((View)header.getParent()).getTag()))header=(View)header.getParent();
+                View group=(View)header.getParent();if(group instanceof ParameterSlider)group=(View)group.getParent();
                 JSONObject row=new JSONObject().put("label",TITLES[i]).put("header",bounds(header,density)).put("control",bounds(value,density)).put("group",bounds(group,density));
                 float topPadding=group.getPaddingTop()/density,bottomPadding=group.getPaddingBottom()/density;
                 row.put("groupTopPaddingDp",topPadding).put("groupBottomPaddingDp",bottomPadding);
-                observe(group!=fold.content&&Math.abs(topPadding-3)<=.5f&&Math.abs(bottomPadding-8)<=.5f,state,"Parameter row uses shared 3dp/8dp spacing: "+TITLES[i],row);
-                observe(value.getHeight()/density>=47.5f,state,"Parameter control keeps a 48dp touch target: "+TITLES[i],bounds(value,density));
+                observe(group!=fold.content&&Math.abs(topPadding)<=.5f&&Math.abs(bottomPadding-(value instanceof SeekBar?4:8))<=.5f,state,"Parameter row uses shared slider/input spacing: "+TITLES[i],row);
+                observe((value instanceof ParameterSeekBar?((ParameterSeekBar)value).expandedTouchBounds().height():value.getHeight())/density>=47.5f,state,"Parameter control keeps a 48dp region (slider extension respects other controls): "+TITLES[i],bounds(value,density));
                 observe(Math.abs(left(header)-left(value))/density<=.5f,state,"Parameter header and input share a left edge: "+TITLES[i],row);
-                if(previousControl!=null){float rowGap=(top(header)-bottom(previousControl))/density;row.put("previousControlGapDp",rowGap);observe(range(rowGap,8,12),state,"Adjacent parameter rows are separated by 8–12dp: "+TITLES[i],new JSONObject().put("gapDp",rowGap));}
+                if(previousControl!=null){float rowGap=(top(header)-bottom(previousControl))/density;row.put("previousControlGapDp",rowGap);float expected=previousControl instanceof SeekBar?4:8;observe(range(rowGap,expected,expected+4),state,"Adjacent parameters retain compact slider/input separation: "+TITLES[i],new JSONObject().put("gapDp",rowGap));}
                 rows.put(row);previousControl=value;
             }
             layout.put("parameterRows",rows);

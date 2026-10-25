@@ -169,12 +169,12 @@ final class StatusBarCustomizationUiCases implements Application.ActivityLifecyc
                 features.put(new JSONObject().put("title",control==null?"":control.getContentDescription()).put("bounds",bounds(row,density)).put("switchRightDp",control==null?0:right(control)/density).put("slotRightDp",right(slot)/density));
             }
             if(view instanceof EditText||view instanceof Spinner||view instanceof SeekBar){
-                ViewGroup group=parameterGroup(view);spacing(group!=null,state,"Editor parameter uses shared 3dp/8dp input group",bounds(view,density));
-                spacing(view.getHeight()/density>=47.5f,state,"Parameter control retains a 48dp touch target",bounds(view,density));
+                ViewGroup group=parameterGroup(view);spacing(group!=null,state,"Editor parameter uses the shared compact input group",bounds(view,density));
+                spacing((view instanceof ParameterSeekBar?((ParameterSeekBar)view).expandedTouchBounds().height():view.getHeight())/density>=47.5f,state,"Parameter control retains a 48dp region (sliders extend into empty space)",bounds(view,density));
                 if(group!=null){View header=group.getChildAt(0);JSONObject parameter=new JSONObject().put("description",view.getContentDescription()).put("control",bounds(view,density)).put("header",bounds(header,density)).put("group",bounds(group,density));
                     ViewGroup parent=(ViewGroup)group.getParent();int index=parent.indexOfChild(group);View next=null;
                     for(int i=index+1;i<parent.getChildCount();i++)if(parent.getChildAt(i).getVisibility()==View.VISIBLE){next=parent.getChildAt(i);break;}
-                    if(next instanceof ViewGroup&&inputGroup((ViewGroup)next)){float gap=(top(((ViewGroup)next).getChildAt(0))-bottom(view))/density;parameter.put("nextParameterGapDp",gap);spacing(gap>=7.5f&&gap<=12.5f,state,"Adjacent parameters follow the shared 11dp rhythm",parameter);}
+                    if(next instanceof ViewGroup&&inputGroup((ViewGroup)next)){float gap=(top(((ViewGroup)next).getChildAt(0))-bottom(view))/density;parameter.put("nextParameterGapDp",gap);float expected=view instanceof SeekBar?4:8;spacing(Math.abs(gap-expected)<=.5f,state,"Adjacent parameters use 4dp for sliders and 8dp for other inputs",parameter);}
                     parameters.put(parameter);
                 }
             }
@@ -191,7 +191,7 @@ final class StatusBarCustomizationUiCases implements Application.ActivityLifecyc
         require(!((ConfigEditDraft)get(editor,"draft")).hasPending(),"Layout measurement queues no writes");return null;
     });}
     private void spacing(boolean condition,String state,String rule,JSONObject details)throws Exception{checks++;if(!condition)spacingViolations.put(new JSONObject().put("state",state).put("rule",rule).put("observed",details));}
-    private static boolean inputGroup(ViewGroup group){float density=group.getResources().getDisplayMetrics().density;return Math.abs(group.getPaddingTop()/density-3)<=.5f&&Math.abs(group.getPaddingBottom()/density-8)<=.5f;}
+    private static boolean inputGroup(ViewGroup group){float density=group.getResources().getDisplayMetrics().density;return Boolean.TRUE.equals(group.getTag(R.id.parameter_input_group))&&Math.abs(group.getPaddingTop()/density)<=.5f&&(Math.abs(group.getPaddingBottom()/density-8)<=.5f||Math.abs(group.getPaddingBottom()/density-4)<=.5f);}
     private static ViewGroup parameterGroup(View control){View parent=control.getParent() instanceof View?(View)control.getParent():null;while(parent instanceof ViewGroup){if(inputGroup((ViewGroup)parent))return (ViewGroup)parent;parent=parent.getParent() instanceof View?(View)parent.getParent():null;}return null;}
     private static View leadingFeature(View view){if("feature-row".equals(view.getTag()))return view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){View child=((ViewGroup)view).getChildAt(i);if(child.getVisibility()==View.VISIBLE&&child.getHeight()>0)return leadingFeature(child);}return null;}
     private static List<View> all(View root){List<View> result=new ArrayList<>();result.add(root);if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++)result.addAll(all(((ViewGroup)root).getChildAt(i)));return result;}

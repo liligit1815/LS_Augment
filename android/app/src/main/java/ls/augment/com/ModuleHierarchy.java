@@ -26,7 +26,7 @@ public final class ModuleHierarchy {
             if("systemui:statusbar_double_tap_sleep".equals(f.id))continue;
             STATUS_FEATURES.add(f);for(String key:f.allKeys())KEY_ROUTES.put(key,statusRoute(f));
         }
-        add(section("notifications","island","灵动岛"),"systemui:island_enabled");
+        add(section("notifications","island","灵动岛"),"systemui:island_enabled",NativeIslandSceneOptions.ENABLED);
         add(section("notifications","notification_display","通知展示"),"systemui:notification_media_hide","systemui:notification_stack","systemui:notification_clear","ls_augment_rm_overlay_notification_hide");
         add(section("notifications","center_layout","控制中心外观与布局"),"systemui:liquid_glass","systemui:qs_grid","systemui:cc_corners","systemui:cc_tiles","systemui:cc_media");
         source(section("notifications","notification_clock","通知页大时钟与布局"),"systemui","notification_clock");
@@ -86,6 +86,7 @@ public final class ModuleHierarchy {
         entry(section("apps","hidden","四大皆空",null,true),"hide");
         source(section("system_settings","update","系统更新"),"update","update");
         entry(section("system_settings","competitive_key","自定义竞技键"),"competitive_key");
+        section("system_settings","battery_health","电池健康度检测");
         add(section("system_settings","settings_entries","设置入口与时间格式"),"settings:hide_healthy_use","ls_augment_rm_settings_hide_battery_percent","ls_augment_rm_settings_time_period");
         Section display=section("system_settings","display","显示与休眠");add(display,"ls_augment_rm_settings_long_timeout","systemui:full_brightness");settings(display,"lock_refresh_rate");
         settings(section("system_settings","developer","开发者选项"),"development_settings_enabled");
@@ -203,7 +204,7 @@ public final class ModuleHierarchy {
         if(route.startsWith("target-")){ModulePresentationCatalog.Category category=ModulePresentationCatalog.find(route.substring(7));if(category!=null)return category.title;}Section s=group(route);if(s!=null)return s.title;
         for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if(entry.route.equals(route))return entry.title;String resolved=resolve(route);return resolved.equals(route)?"":title(resolved);
     }
-    public static String summary(Section s){if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
+    public static String summary(Section s){if("battery_health".equals(s.id))return "检测健康度、满充容量、设计容量与循环次数";if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
     /** Actual scopes of the page, preserving multiple cooperating process groups. */
     public static List<String> restartScopes(Section s){Set<String> scopes=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForKey(key));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);}for(String entry:s.entries){Section child=group(entry);if(child!=null){scopes.addAll(restartScopes(child));continue;}HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForRoute(entry));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);else if(entry.startsWith("freeform_"))scopes.add("device");}if("collab_audio".equals(s.id))return Collections.emptyList();return new ArrayList<>(scopes);}
     public static String restartScope(Section s){List<String> scopes=restartScopes(s);return scopes.size()==1?scopes.get(0):scopes.isEmpty()?null:"device";}

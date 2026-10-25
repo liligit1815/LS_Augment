@@ -51,14 +51,14 @@ public interface XposedInterface {interface Hooker {Object intercept(Chain c)thr
     "ls/augment/com/OtaBufferPolicy.java": '''package ls.augment.com; public class OtaBufferPolicy {
  public static int read(String s,byte[] b){return 0;} public static boolean validUrl(String s){return false;}}''',
     "ls/augment/com/hook/FeatureSettings.java": '''package ls.augment.com.hook; import android.content.Context;
-final class FeatureSettings {static boolean purify;static Context from(Object o){return o instanceof Context?(Context)o:null;}
+final class FeatureSettings {static boolean purify;static boolean verifiedDisabled(String k){return false;}static Context from(Object o){return o instanceof Context?(Context)o:null;}
  static boolean enabled(Context c,String k){return purify&&k.equals("ls_augment_rm_installer_hide_purify");}
  static String text(Context c,String k,String d){return d;}static void diagnostic(Context c,String k,String v){}}''',
     "ls/augment/com/hook/AugmentModule.java": '''package ls.augment.com.hook;
 import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.*;
 final class AugmentModule {final Map<Method,Hooker> hooks=new LinkedHashMap<>();int failures;
  Builder prepareFeatureHook(Method m,String key,boolean observer){return new Builder(m);}
- void registerFeatureHook(Builder b){hooks.put(b.method,b.hooker);}void logFeatureError(String s,Throwable t){failures++;}
+ void registerFeatureHook(Builder b){hooks.put(b.method,b.hooker);}void logFeatureError(String s,Throwable t){failures++;}void logFeatureInfo(String s){}
  final class Builder {final Method method;Hooker hooker;Builder(Method m){method=m;}
  Builder intercept(Hooker h){hooker=h;return this;}}
  Object call(Object owner,Method method,Object...args)throws Throwable {Hooker hook=hooks.get(method);method.setAccessible(true);
@@ -86,6 +86,7 @@ public final class InstallerPurifyRuntimeTest {
  needIsolate,showRiskCheckbox,showSwlimitLearnMore,nativeAllowInstall;
  public int securityVerdict;public String warningTitle="native-title",warningUnknownText="native-warning";public Object nativeClick=new Object();}
  public static final class FutureFlags extends NativeFlags {public String unknownFutureVerdict="preserve";}
+ public static final class LegacyFlags {public boolean hidePureModeSwitchLayout;public String nativeState="keep";}
  public static final class MissingSwitch {public boolean needIsolate=true,hideWarningLayout=false,showRiskCheckbox=true;
  public String warningMessage="required warning";}
  static final String[] FLAGS={"cleanBgColor","hidePureModeSwitchLayout","hideWarningLayout","needIsolate",
@@ -99,7 +100,12 @@ public final class InstallerPurifyRuntimeTest {
  for(int i=0;i<args.length;i++)check(i<4?Objects.equals(owner.received[i],args[i]):owner.received[i]==args[i],"native argument changed at "+i);
  Map<String,Object> after=snapshot(value);
  for(Map.Entry<String,Object> e:before.entrySet()){
- Object expected=on&&e.getKey().equals("hidePureModeSwitchLayout")?Boolean.TRUE:e.getValue();
+ Object expected=e.getValue();
+ if(on&&value instanceof LegacyFlags&&e.getKey().equals("hidePureModeSwitchLayout"))expected=true;
+ if(on&&value instanceof NativeFlags){
+ if(Arrays.asList("hidePureModeSwitchLayout","hideWarningLayout","cleanBgColor").contains(e.getKey()))expected=true;
+ if(Arrays.asList("showRiskCheckbox","showSwlimitLearnMore").contains(e.getKey()))expected=false;
+ }
  check(Objects.equals(after.get(e.getKey()),expected),"native field changed: "+e.getKey()+" on="+on+" expected="+expected+" actual="+after.get(e.getKey()));}
  return actual;}
  public static void main(String[] ignored)throws Throwable {
@@ -115,6 +121,7 @@ public final class InstallerPurifyRuntimeTest {
  FutureFlags flags=new FutureFlags();for(int i=0;i<FLAGS.length;i++)NativeFlags.class.getField(FLAGS[i]).setBoolean(flags,(bits&(1<<i))!=0);
  flags.securityVerdict=verdict;invoke(module,method,flags,on,args);}
  invoke(module,method,new MissingSwitch(),true,args);invoke(module,method,new MissingSwitch(),false,args);
+ invoke(module,method,new LegacyFlags(),true,args);invoke(module,method,new LegacyFlags(),false,args);
  invoke(module,method,null,true,args);invoke(module,method,null,false,args);
  for(boolean on:new boolean[]{false,true}){FeatureSettings.purify=on;PackageInstallerActivity owner=new PackageInstallerActivity();
  owner.nativeFailure=new IllegalStateException("native verdict failure");boolean thrown=false;
@@ -125,10 +132,10 @@ public final class InstallerPurifyRuntimeTest {
 }
 '''
 }
-for name in ("InstallerStartupHook", "OtaReadObservationHook", "DefaultAssistantUiHook"):
+for name in ("InstallerStartupHook", "InstallerPresentationHook", "OtaReadObservationHook", "DefaultAssistantUiHook"):
     SOURCES[f"ls/augment/com/hook/{name}.java"] = (
         f"package ls.augment.com.hook; final class {name} {{static void install(AugmentModule m,ClassLoader l){{}}}}")
-for name in ("CaptureVisibilityHook", "ThemeExtrasHook", "DefaultLauncherRoleHook"):
+for name in ("CaptureVisibilityHook", "ThemeExtrasHook", "DefaultLauncherRoleHook", "ScreenshotCropHook", "GalleryCropHook"):
     SOURCES[f"ls/augment/com/hook/{name}.java"] = (
         f"package ls.augment.com.hook; final class {name} {{static void install(AugmentModule m,ClassLoader l,String p){{}}}}")
 SOURCES["ls/augment/com/hook/SystemRulesHook.java"] = (
@@ -144,6 +151,7 @@ def exercise(source, expect_failure=False):
         all_sources = dict(SOURCES)
         all_sources["ls/augment/com/hook/OemAppExtrasHook.java"] = source
         all_sources["ls/augment/com/hook/OemHooks.java"] = (PRODUCTION / "OemHooks.java").read_text(encoding="utf-8")
+        all_sources["ls/augment/com/hook/InstallerWarningContract.java"] = (PRODUCTION / "InstallerWarningContract.java").read_text(encoding="utf-8")
         files = []
         for name, content in all_sources.items():
             file = base / name
@@ -154,8 +162,8 @@ def exercise(source, expect_failure=False):
         result = subprocess.run([java, "-cp", str(base), "ls.augment.com.hook.InstallerPurifyRuntimeTest"], capture_output=True, text=True)
         if expect_failure:
             if result.returncode == 0 or "native field changed:" not in result.stderr:
-                raise AssertionError("Harmful old flag mutation was not rejected: " + result.stdout + result.stderr)
-            print("Negative mutation rejected: original warning/risk/isolation/background overrides")
+                raise AssertionError("Unrequested native isolation mutation was not rejected: " + result.stdout + result.stderr)
+            print("Negative mutation rejected: unrequested native isolation override")
         else:
             print(result.stdout.strip())
             if result.returncode:
@@ -169,9 +177,9 @@ if __name__ == "__main__":
     source = (PRODUCTION / "OemAppExtrasHook.java").read_text(encoding="utf-8")
     exercise(source)
     if args.mutation_check:
-        correct = 'OemHooks.set(result,true,"hidePureModeSwitchLayout");'
+        correct = 'InstallerWarningContract.Result applied=InstallerWarningContract.apply(result);'
         if source.count(correct) != 1:
-            raise AssertionError("Expected the single-purpose production adapter mutation point")
+            raise AssertionError("Expected the verified presentation contract mutation point")
         previous = '''for(String field:new String[]{"cleanBgColor","hidePureModeSwitchLayout","hideWarningLayout"})OemHooks.set(result,true,field);
             for(String field:new String[]{"needIsolate","showRiskCheckbox","showSwlimitLearnMore"})OemHooks.set(result,false,field);'''
-        exercise(source.replace(correct, previous), expect_failure=True)
+        exercise(source.replace(correct, correct + previous), expect_failure=True)

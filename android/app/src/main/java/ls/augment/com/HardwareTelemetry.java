@@ -3,7 +3,7 @@ package ls.augment.com;
 import android.os.Bundle;
 import android.os.SystemClock;
 
-/** Fixed, read-only Root sampling shared by the authorized SystemUI caller. */
+/** Fixed, read-only Root sampling shared by authorized SystemUI and GameAssist callers. */
 final class HardwareTelemetry {
     private static long sampledAt=-10000;
     private static Bundle cached=new Bundle();

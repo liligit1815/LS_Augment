@@ -100,7 +100,7 @@ final class StatusBarEditorController extends NativeEditorController {
     private UiKit.Fold masterFold;
     private Switch masterControl;
     private LinearLayout masterRow;
-    private EditText clockSizeInput;
+    private ParameterSlider clockSizeInput;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -244,7 +244,7 @@ final class StatusBarEditorController extends NativeEditorController {
             StatusBarIconSpacingEditor.add(this,ui,spacing,"all","notifications",()->draft.get(StatusBarIconSpacingSpec.KEY),value->{draft.put(StatusBarIconSpacingSpec.KEY,value);changed();},this::renderKeepingScroll);
             if(spacing.getChildCount()>0){
                 LinearLayout editor=(LinearLayout)spacing.getChildAt(0);spacing.removeView(editor);
-                View form=editor.getChildAt(1);form.setPadding(ui.dp(12),0,0,0);addFeatureBlock(content,editor);
+                addFeatureBlock(content,editor);
             }
             related("notifications",content);
         } else if (tab == 3) {
@@ -770,7 +770,7 @@ final class StatusBarEditorController extends NativeEditorController {
             draft.put(ConfigSchema.STATUSBAR_NOTIFICATION_HIDE, visible ? "0" : "1");
         if (id.equals("clock") && size >= 0 && !positionSizeOnly()) {
             draft.put(ConfigSchema.STATUSBAR_CLOCK_SIZE_SP, "0");
-            if(clockSizeInput!=null&&!clockSizeInput.getText().toString().equals("0"))clockSizeInput.setText("0");
+            if(clockSizeInput!=null)clockSizeInput.setValue("0");
         }
         StatusBarGridSpec.Item old = grid.get(id);
         grid = grid.with(id, new StatusBarGridSpec.Item(zone == null ? old.zone : zone,
@@ -855,12 +855,12 @@ final class StatusBarEditorController extends NativeEditorController {
     private void clockTypography(LinearLayout parent){
         LinearLayout font=new LinearLayout(this);font.setOrientation(LinearLayout.VERTICAL);
         edit(font,ConfigSchema.STATUSBAR_CLOCK_FONT_FAMILY,"字体名称（sans-serif / serif / monospace）",false);
-        clockSizeInput=edit(font,ConfigSchema.STATUSBAR_CLOCK_SIZE_SP,"单独字号 sp（0 使用上方大小）",true);
+        clockSizeInput=editNumber(font,ConfigSchema.STATUSBAR_CLOCK_SIZE_SP,"单独字号 sp（0 使用上方大小）");
         font.addView(ui.text("单独字号大于 0 时优先使用；拖动上方大小会重新跟随布局。空间不足时可减小字号或调整组件位置。",11,ui.muted,false));
-        edit(font,ConfigSchema.STATUSBAR_CLOCK_WEIGHT,"字重（100–900）",true);
-        edit(font,ConfigSchema.STATUSBAR_CLOCK_LETTER_SPACING,"字间距（-0.20 至 1.00）",true);
+        editNumber(font,ConfigSchema.STATUSBAR_CLOCK_WEIGHT,"字重（100–900）");
+        editNumber(font,ConfigSchema.STATUSBAR_CLOCK_LETTER_SPACING,"字间距（-0.20 至 1.00）");
         font.addView(ui.text("双排时钟与硬件信息使用同一排对齐；两排间距统一在布局分类中调整。",11,ui.muted,false));
-        edit(font,ConfigSchema.STATUSBAR_CLOCK_WIDTH_DP,"固定宽度 dp（0 自动）",true);
+        editNumber(font,ConfigSchema.STATUSBAR_CLOCK_WIDTH_DP,"固定宽度 dp（0 自动）");
         LinearLayout alignment=parameterInputGroup(font);
         alignment.addView(ui.featureTitle("文字对齐",FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CLOCK_TEXT_ALIGN,"文字对齐")));
         Spinner align=ui.choiceSpinner("选择选项");align.setContentDescription("文字对齐");
@@ -875,6 +875,15 @@ final class StatusBarEditorController extends NativeEditorController {
         });
         alignment.addView(align);
         advanced(parent,"clock-typography","高级：字体与排版",font);
+    }
+    private ParameterSlider editNumber(LinearLayout parent,String key,String label){
+        parent=parameterInputGroup(parent);
+        View title=ui.featureTitle(label,FeatureDescriptions.forKey(key,label));parent.addView(title);
+        ParameterSlider slider=new ParameterSlider(ui,ConfigSchema.numericOption(key,label),draft.get(key),next->{
+            if(loading)return;String normalized=validInput(key,next);
+            if(normalized!=null){rawInputs.remove(key);draft.put(key,normalized);changed();}
+        });
+        slider.bindTitle(title);parent.addView(slider);return slider;
     }
     private static String precisionKey(String id){
         switch(id){
@@ -919,9 +928,11 @@ final class StatusBarEditorController extends NativeEditorController {
     }
     private void slider(LinearLayout parent, String label, int value, int min, int max, ValueChanged changed) {
         parent=parameterInputGroup(parent);
-        parent.addView(ui.featureTitle(label,FeatureDescriptions.layoutValue(label)+" 可选范围："+min+"–"+max+"。"));
+        View numericTitle=ui.featureTitle(label,FeatureDescriptions.layoutValue(label)+" 可选范围："+min+"–"+max+"。");
+        parent.addView(numericTitle);
         TextView text = ui.text("当前：" + value, 12, ui.muted, false); parent.addView(text);
-        SeekBar bar = ui.slider(); bar.setContentDescription(label); bar.setMax(max - min); bar.setProgress(value - min); parent.addView(bar, new LinearLayout.LayoutParams(-1, ui.dp(48)));
+        SeekBar bar = ui.slider(); bar.setContentDescription(label); bar.setMax(max - min); bar.setProgress(value - min); parent.addView(bar,ui.wrap());
+        NumericParameterEditor.linear(ui,bar,label,min,1,"",numericTitle,text);
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar b, int p, boolean fromUser) {
                 text.setText(text.getContext().getString(R.string.status_featureeditorcontroller_18 ,String.valueOf((p + min)))); if (fromUser && !loading) changed.set(p + min);

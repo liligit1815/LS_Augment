@@ -415,10 +415,10 @@ final class AtomicWorkbenchHomeHook {
                                 String reason = "finishIfPossible".equals(name) ? (String) chain.getArg(3) : "state_transition";
                                 if (reason == null) reason = "none";
                                 else if (!reason.matches("[A-Za-z0-9_.$:-]{1,96}")) reason = "redacted";
-                                module.logFeatureError("ATOMIC_NATIVE_HOME_HOST_FINISH phase=" + name
+                                module.logFeatureInfo("ATOMIC_NATIVE_HOME_HOST_FINISH phase=" + name
                                         + ";reason=" + reason + ";task=" + (currentTask == null ? -1 : taskId.getInt(currentTask))
                                         + ";user=" + user.getInt(owner) + ";display=" + getDisplay.invoke(owner)
-                                        + ";caller_uid=" + Binder.getCallingUid() + ";caller_pid=" + Binder.getCallingPid(), finishWitnessStack());
+                                        + ";caller_uid=" + Binder.getCallingUid() + ";caller_pid=" + Binder.getCallingPid());
                             }
                         } catch (Throwable ignored) { /* No observation failure can affect native finish. */ }
                         return chain.proceed();

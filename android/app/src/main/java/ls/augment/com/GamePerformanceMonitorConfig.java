@@ -7,8 +7,8 @@ import java.util.Set;
 /** The original game-space monitor items, shared by settings and the phone runtime. */
 public final class GamePerformanceMonitorConfig {
     public static final String DEFAULT_ITEMS = "time,fps,network,battery,duration";
-    private static final String[] ITEMS = {"time", "fps", "network", "battery", "duration"};
-    private static final String[] LABELS = {"时间", "FPS", "网速", "电量", "游戏时长"};
+    private static final String[] ITEMS = {"time", "fps", "network", "battery", "duration", "battery_temperature", "cpu_temperature", "gpu_temperature", "power"};
+    private static final String[] LABELS = {"时间", "FPS", "网速", "电量", "游戏时长", "电池温度", "CPU 温度", "GPU 温度", "功耗"};
 
     public static String[] items() { return ITEMS.clone(); }
     public static String[] labels() { return LABELS.clone(); }

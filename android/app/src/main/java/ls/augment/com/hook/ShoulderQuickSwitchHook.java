@@ -46,6 +46,7 @@ final class ShoulderQuickSwitchHook {
     private static volatile long lastError;
 
     static int install(AugmentModule module, ClassLoader loader) {
+        FloatingPositionLock.install(module);
         ShoulderQuickSwitchRuntime.install(module, loader);
         int installed = 0;
         try {
@@ -61,6 +62,7 @@ final class ShoulderQuickSwitchHook {
             Method click = ShoulderHookTargets.quickSwitchClick(service);
             if (click == null) throw new NoSuchMethodException("TgkService.onTgkCaseViewBottonClick");
             module.registerFeatureHook(module.prepareFeatureHook(click,"shoulder.quick_switch",true).intercept(chain -> {
+                if(FloatingPositionLock.cancelling())return null;
                 Object owner = chain.getThisObject();
                 if (!enabled(owner)) return chain.proceed();
                 try {

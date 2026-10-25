@@ -12,6 +12,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
 FILES = {
+    # Gesture handling is exercised against production code in test-floating-position-lock.py.
+    'ls/augment/com/hook/FloatingPositionLock.java': 'package ls.augment.com.hook;final class FloatingPositionLock {static void install(AugmentModule module){}static boolean cancelling(){return false;}}',
     'ls/augment/com/BuildConfig.java': 'package ls.augment.com;public final class BuildConfig {public static final int VERSION_CODE=20531;}',
     'ls/augment/com/hook/ShoulderMacroSwitchHook.java': 'package ls.augment.com.hook;final class ShoulderMacroSwitchHook {static final String CAPABILITIES_CALL="ls_augment_shoulder_macro_capabilities";}',
     'android/util/DisplayMetrics.java': 'package android.util; public class DisplayMetrics {public float density=1;}',

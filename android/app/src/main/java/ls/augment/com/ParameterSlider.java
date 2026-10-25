@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 // Code-only view requires UiKit/state/callbacks; it is never inflated from XML. A partial XML constructor is invalid.
 //noinspection ViewConstructor
 final class ParameterSlider extends LinearLayout {
+    private final UiKit ui;
     final SeekBar bar;
     private final TextView value, range;
     private final EnhancementOption option;
@@ -22,6 +23,7 @@ final class ParameterSlider extends LinearLayout {
     private String saved;
     private boolean tracking, cancelled, touchArmed;
     private String trackingSaved;
+    private final NumericParameterEditor editor;
 
     ParameterSlider(UiKit ui, EnhancementOption option, String initial, Consumer<String> changed) {
         this(ui, option, initial, changed, false);
@@ -31,6 +33,7 @@ final class ParameterSlider extends LinearLayout {
     //noinspection ClickableViewAccessibility
     ParameterSlider(UiKit ui, EnhancementOption option, String initial, Consumer<String> changed, boolean commitOnRelease) {
         super(ui.activity);
+        this.ui=ui;
         this.commitOnRelease=commitOnRelease;
         this.option=option;
         scale=option.kind==EnhancementOption.Kind.INTEGER?1:100;
@@ -69,7 +72,22 @@ final class ParameterSlider extends LinearLayout {
                 if(normalized!=null){saved=normalized;render();if(!commitOnRelease||!tracking)changed.accept(normalized);}
             }
         });
+        editor=NumericParameterEditor.bind(ui,bar,option.title,
+                ()->new NumericValueSpec(bar.getMin()/(double)scale,bar.getMax()/(double)scale,1.0/scale,""),
+                ()->saved,option::normalize,next->{discardEdit();setValue(next);changed.accept(next);},value);
     }
+    void bindTitle(View title){
+        editor.addTarget(title);
+        if(title==null||!(title.getParent() instanceof LinearLayout)||value.getParent()!=this)return;
+        LinearLayout owner=(LinearLayout)title.getParent();
+        if(getParent()!=null&&getParent()!=owner)return;
+        LinearLayout.LayoutParams headerParams=new LinearLayout.LayoutParams(-1,-2);
+        headerParams.topMargin=owner.indexOfChild(title)>0?ui.dp(4):0;
+        owner.removeView(title);removeView(value);
+        addView(new NumericParameterHeader(ui,title,value),0,headerParams);
+    }
+    String getValue(){return saved;}
+    void setError(String message){range.setText(message==null?"":message);range.setVisibility(message==null?GONE:VISIBLE);}
     private void cancelPendingEdit(){
         if(commitOnRelease&&(tracking||touchArmed)){cancelled=true;if(trackingSaved!=null)setValue(trackingSaved);}
     }

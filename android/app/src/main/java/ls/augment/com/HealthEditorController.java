@@ -16,7 +16,7 @@ final class HealthEditorController extends NativeEditorController {
     HealthEditorController(Activity owner,String route,boolean embedded){super(owner,route,embedded);}
     private UiKit ui;private AppConfig config;private TextView accountView,accountHint,accountAction,preview,rate,planSummary;
     private Switch multiplyEnabled,planEnabled,dailyLimitEnabled;private SeekBar multiplier;
-    private EditText executions,steps,dailyLimitSteps;private Button fromButton,toButton;
+    private ParameterSlider executions,steps,dailyLimitSteps;private Button fromButton,toButton;
     private final CheckBox[] days=new CheckBox[7];
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -53,7 +53,8 @@ final class HealthEditorController extends NativeEditorController {
         rate=ui.text("",12,ui.muted,false);rate.setContentDescription("当前步数倍率");multiplyBody.addView(rate,ui.margins(0,2,0,0));
         multiplier=ui.slider();multiplier.setContentDescription("步数倍率，1 至 10 倍");multiplier.setMax(9);
         multiplier.setProgress(Math.max(0,Math.min(9,config.getInt(ConfigSchema.HEALTH_MULTIPLIER,100)/100-1)));
-        multiplyBody.addView(multiplier,ui.margins(0,6,0,0));
+        NumericParameterEditor.linear(ui,multiplier,"步数倍率",1,1," 倍",rate);
+        multiplyBody.addView(multiplier,ui.wrap());
         Runnable showRate=()->rate.setText(rate.getContext().getString(R.string.status_healtheditorcontroller_19 ,String.valueOf((multiplier.getProgress()+1))));showRate.run();
         multiplier.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}
             public void onProgressChanged(SeekBar s,int n,boolean user){showRate.run();if(user)changed();}});
@@ -70,8 +71,8 @@ final class HealthEditorController extends NativeEditorController {
         fromButton.setOnClickListener(v->pickTime(true));toButton.setOnClickListener(v->pickTime(false));times.addView(fromButton,new LinearLayout.LayoutParams(0,ui.dp(44),1));
         LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,ui.dp(44),1);tp.leftMargin=ui.dp(8);times.addView(toButton,tp);body.addView(times,ui.margins(0,0,0,6));
         LinearLayout numbers=row(),countColumn=column(),stepsColumn=column();numbers.setBaselineAligned(false);numbers.addView(countColumn,new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(0,-2,1);np.leftMargin=ui.dp(10);numbers.addView(stepsColumn,np);body.addView(numbers);
-        executions=input(countColumn,"随机执行次数",old==null?10:old.executions>0?old.executions:1);
-        steps=input(stepsColumn,"每次增加步数",old==null?200:old.executions>0?old.stepsPerExecution:old.amount);
+        executions=input(countColumn,EnhancementOption.integer("health-plan-count","health","随机执行次数","",10,1,StepPlan.MAX_EXECUTIONS),old==null?10:old.executions>0?old.executions:1,this::planChanged);
+        steps=input(stepsColumn,EnhancementOption.integer("health-plan-steps","health","每次增加步数","",200,1,StepPlan.MAX_TOTAL_STEPS),old==null?200:old.executions>0?old.stepsPerExecution:old.amount,this::planChanged);
         body.addView(ui.featureTitle("重复星期","选择至少一天。跨午夜的时间范围归开始当天。"),ui.margins(0,6,0,0));
         String[] labels={"一","二","三","四","五","六","日"};
         for(int r=0;r<2;r++){
@@ -89,7 +90,7 @@ final class HealthEditorController extends NativeEditorController {
         LinearLayout limit=column(),limitBody=editorBody();
         LinearLayout limitHeader=featureRow("当日步数上限","达到上限后停止倍率和计划带来的额外增步。真实步行继续记录，已有步数保留；提高或关闭上限不会补发先前受限的计划步数。","shield",dailyLimitEnabled);
         limit.addView(limitHeader,ui.wrap());limit.addView(limitBody,ui.wrap());settings.addView(limit,ui.wrap());limitFold=featureFold(dailyLimitEnabled,limitHeader,limitBody);
-        dailyLimitSteps=input(limitBody,"上限步数",config.getInt(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,10000),this::changed);
+        dailyLimitSteps=input(limitBody,ConfigSchema.numericOption(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,"上限步数"),config.getInt(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,10000),this::changed);
         limitBody.addView(ui.text("可设置 1–1000000 步",12,ui.muted,false),ui.margins(0,6,0,0));
 
         installGate(multiplyEnabled);installGate(planEnabled);installGate(dailyLimitEnabled);
@@ -121,9 +122,11 @@ final class HealthEditorController extends NativeEditorController {
         header.setForeground(ui.pressable(ui.round(android.graphics.Color.TRANSPARENT,22)));header.setFocusable(true);header.setOnClickListener(v->fold.show(body.getVisibility()!=View.VISIBLE));return fold;
     }
     private void showPlan(boolean show){planFold.show(show);}
-    private EditText input(LinearLayout parent,String label,int value){return input(parent,label,value,this::planChanged);}
-    private EditText input(LinearLayout parent,String label,int value,Runnable onChange){parent.addView(ui.text(label,13,ui.muted,false),ui.margins(0,8,0,6));EditText e=new EditText(this);ui.styleInput(e);e.setSingleLine(true);e.setSelectAllOnFocus(true);e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);e.setContentDescription(label);e.setText(String.valueOf(value));parent.addView(e,new LinearLayout.LayoutParams(-1,ui.dp(48)));
-        e.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int n){}public void onTextChanged(CharSequence s,int a,int b,int c){onChange.run();}public void afterTextChanged(Editable e){}});return e;}
+    private ParameterSlider input(LinearLayout parent,EnhancementOption option,int value,Runnable onChange){
+        View title=ui.featureTitle(option.title,null);parent.addView(title,ui.margins(0,8,0,0));
+        ParameterSlider editor=new ParameterSlider(ui,option,String.valueOf(value),next->onChange.run());
+        editor.bindTitle(title);parent.addView(editor,ui.wrap());return editor;
+    }
     private android.app.Dialog pickTime(boolean start){
         int m=start?from:to%1440;
         LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER);
@@ -151,11 +154,11 @@ final class HealthEditorController extends NativeEditorController {
         return picker;
     }
     private String time(int minute){return String.format(Locale.ROOT,"%02d:%02d",minute/60,minute%60);}
-    private StepPlan draft(){int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;return new StepPlan(planId,bound,ZoneId.systemDefault().getId(),date,from,to,Integer.parseInt(executions.getText().toString()),Integer.parseInt(steps.getText().toString()),mask,seed);}
+    private StepPlan draft(){int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;return new StepPlan(planId,bound,ZoneId.systemDefault().getId(),date,from,to,Integer.parseInt(executions.getValue()),Integer.parseInt(steps.getValue()),mask,seed);}
     private void updatePreview(){fromButton.setText(fromButton.getContext().getString(R.string.status_healtheditorcontroller_21 ,String.valueOf(time(from))));toButton.setText(toButton.getContext().getString(to<=from?R.string.plan_end_next_day:R.string.plan_end_today,time(to)));
         int mask=0;for(int i=0;i<7;i++)if(days[i].isChecked())mask|=1<<i;
         String repeat=mask==127?"每天":mask==31?"工作日":mask==96?"周末":"每周 "+Integer.bitCount(mask)+" 天";
-        try{long total=Math.multiplyExact(Long.parseLong(executions.getText().toString()),Long.parseLong(steps.getText().toString()));planSummary.setText(planSummary.getContext().getString(R.string.status_healtheditorcontroller_22 ,String.valueOf(time(from)), String.valueOf((to<=from?"次日 ":"")), String.valueOf(time(to)), String.valueOf(repeat), String.valueOf(total)));}
+        try{long total=Math.multiplyExact(Long.parseLong(executions.getValue()),Long.parseLong(steps.getValue()));planSummary.setText(planSummary.getContext().getString(R.string.status_healtheditorcontroller_22 ,String.valueOf(time(from)), String.valueOf((to<=from?"次日 ":"")), String.valueOf(time(to)), String.valueOf(repeat), String.valueOf(total)));}
         catch(Exception ignored){planSummary.setText("请完善执行次数和每次步数");}
         StepPlan existing=StepPlan.parse(config.get(ConfigSchema.HEALTH_PLAN));
         if(!planDraftChanged&&existing!=null&&existing.executions==0){planSummary.setText(planSummary.getContext().getString(R.string.status_healtheditorcontroller_23 ,String.valueOf(existing.startDate), String.valueOf(existing.amount)));preview.setText(preview.getContext().getString(R.string.status_healtheditorcontroller_24));return;}
@@ -185,7 +188,7 @@ final class HealthEditorController extends NativeEditorController {
     }
     private String queuedOrSaved(String key){return queuedValues.containsKey(key)?queuedValues.get(key):config.get(key);}
     private void appendDailyLimitUpdates(Map<String,String> updates){
-        String value=ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getText().toString());
+        String value=ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getValue());
         boolean enabled=dailyLimitEnabled.isChecked();
         if(enabled&&!ConfigSchema.truthy(queuedOrSaved(ConfigSchema.HEALTH_DAILY_LIMIT_ENABLED))&&!canEnable()){
             revert(dailyLimitEnabled);enabled=false;showBindingRequired();
@@ -230,8 +233,8 @@ final class HealthEditorController extends NativeEditorController {
         if(loading||revertingToggle)return;
         if(on&&!canEnable()){revert(toggle);showBindingRequired();return;}
         if(on&&toggle==planEnabled){try{StepPlan existing=StepPlan.parse(queuedOrSaved(ConfigSchema.HEALTH_PLAN));if(planDraftChanged||existing==null||!bound.equals(existing.account))draft();}catch(Exception invalid){restorePlanInputs();toast("无效的计划参数已恢复为上次有效设置");}}
-        if(on&&toggle==dailyLimitEnabled&&ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getText().toString())==null){
-            loading=true;try{dailyLimitSteps.setText(queuedOrSaved(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS));dailyLimitSteps.setError(null);}finally{loading=false;}toast("无效的上限已恢复为上次有效设置");
+        if(on&&toggle==dailyLimitEnabled&&ConfigSchema.normalize(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS,dailyLimitSteps.getValue())==null){
+            loading=true;try{dailyLimitSteps.setValue(queuedOrSaved(ConfigSchema.HEALTH_DAILY_LIMIT_STEPS));dailyLimitSteps.setError(null);}finally{loading=false;}toast("无效的上限已恢复为上次有效设置");
         }
         multiplyFold.sync();planFold.sync();limitFold.sync();changed();
     });}
@@ -241,8 +244,8 @@ final class HealthEditorController extends NativeEditorController {
         StepPlan saved=StepPlan.parse(queuedOrSaved(ConfigSchema.HEALTH_PLAN));
         loading=true;try{
             from=saved==null?540:saved.fromMinute;to=saved==null?1080:saved.toMinute;
-            executions.setText(String.valueOf((saved==null?10:saved.executions>0?saved.executions:1)));
-            steps.setText(String.valueOf((saved==null?200:saved.executions>0?saved.stepsPerExecution:saved.amount)));
+            executions.setValue(String.valueOf((saved==null?10:saved.executions>0?saved.executions:1)));
+            steps.setValue(String.valueOf((saved==null?200:saved.executions>0?saved.stepsPerExecution:saved.amount)));
             for(int i=0;i<7;i++)days[i].setChecked(((saved==null?31:saved.weekdays)&(1<<i))!=0);
         }finally{loading=false;}
     }

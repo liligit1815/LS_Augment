@@ -35,14 +35,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Inspects the five changed pages without applying icons, sound, install rules, windows or QS tiles. */
+/** Checks current inline hosts, split window pages and legacy entry lifecycle without applying features. */
 final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCallbacks {
     private static final String[][] PAGES={
-            {"launcher","系统桌面","launcher","launcher_custom"},
-            {"systemui","系统界面","quicksettings_more","extra_dim"},
-            {"system","系统框架","freeform","freeform"},
-            {"system","系统框架","audio","audio_gain"},
-            {"system","系统框架","installer","signature_install"}};
+            {"desktop","launcher","launcher_custom"},
+            {"notifications","brightness_tiles","extra_dim"},
+            {"multitasking","freeform_rules","freeform_rules"},
+            {"multitasking","freeform_limits","freeform_limits"},
+            {"audio","audio_gain","audio_gain"},
+            {"apps","installer","signature_install"}};
     private final Instrumentation test;
     private final Context context;
     private final boolean layoutOnly,landscape;
@@ -74,18 +75,18 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
             test.startActivitySync(new Intent(context,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
             Activity home=await("home");int index=1;
             for(String[] spec:PAGES){
-                clickText(home,spec[1]);
+                clickTag(home,"home-category:"+spec[0]);
                 Activity openedDirectory=await("target-"+spec[0]);
                 Activity parent=landscape?landscapePage(openedDirectory,"target-"+spec[0]):openedDirectory;settle();
-                String group="group/"+spec[0]+"/"+spec[2],route=destination(spec);
+                String group="group/"+spec[0]+"/"+spec[1],route=destination(spec);
                 checkDirectory(parent,spec,group);
                 clickTag(parent,"navigation:"+group);
                 Activity opened=await(route),page=landscape?landscapePage(opened,route):opened;settle();
                 JSONObject measured=checkPage(page,spec,before);
-                capture(String.format(java.util.Locale.ROOT,"%02d-%s-top",index,spec[3]));
+                capture(String.format(java.util.Locale.ROOT,"%02d-%s-top",index,spec[2]));
                 checkExpandedContent(page,spec,index);
                 unchanged(config,before,stores);
-                if(!layoutOnly&&"launcher_custom".equals(spec[3]))checkLauncherDocumentCancellation(page);
+                if(!layoutOnly&&"launcher_custom".equals(spec[2]))checkLauncherDocumentCancellation(page);
                 if(!layoutOnly){page=recreate(page,route);settle();checkPage(page,spec,before);measured.put("recreated",true);}
                 captureBottom(page,spec,index,measured);pages.put(measured);index++;
                 clickTag(page,"breadcrumb:target-"+spec[0]);Activity returnedParent=await("target-"+spec[0]);
@@ -93,9 +94,9 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
                 clickTag(returnedParent,"breadcrumb:home");home=await("home");
                 if(!layoutOnly){
                     final Activity owner=home;
-                    onMain(()->{ModuleNavigation.open(owner,spec[3]);return null;});Activity alias=await(route);settle();checkDestination(alias,spec);aliasesChecked++;
+                    onMain(()->{ModuleNavigation.open(owner,spec[2]);return null;});Activity alias=await(route);settle();checkDestination(alias,spec);aliasesChecked++;
                     clickTag(alias,"breadcrumb:home");home=await("home");
-                    Activity directOwner=home;onMain(()->{directOwner.startActivity(legacyIntent(directOwner,spec[3]));return null;});
+                    Activity directOwner=home;onMain(()->{directOwner.startActivity(legacyIntent(directOwner,spec[2]));return null;});
                     Activity legacy=await(route);settle();checkDestination(legacy,spec);aliasesChecked++;
                     clickTag(legacy,"breadcrumb:target-"+spec[0]);Activity restored=await("target-"+spec[0]);checkDirectory(restored,spec,group);
                     clickTag(restored,"breadcrumb:home");home=await("home");
@@ -128,7 +129,7 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
         require(before.equals(config.snapshot()),"Every saved feature value is unchanged");
         for(Map.Entry<String,Map<String,?>> entry:stores.entrySet())require(entry.getValue().equals(context.getSharedPreferences(entry.getKey(),0).getAll()),"Exact original preference storage remains unchanged: "+entry.getKey());
     }
-    private static String destination(String[] spec){return "freeform".equals(spec[3])?"freeform":"group/"+spec[0]+"/"+spec[2];}
+    private static String destination(String[] spec){return spec[2].startsWith("freeform_")?spec[2]:"group/"+spec[0]+"/"+spec[1];}
     private static Intent legacyIntent(Activity owner,String entry){
         if("launcher_custom".equals(entry))return new Intent(owner,LauncherCustomizationActivity.class);
         if("extra_dim".equals(entry))return new Intent(owner,ExtraDimSettingsActivity.class);
@@ -137,30 +138,30 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
     private void checkDirectory(Activity page,String[] spec,String group)throws Exception{settle();onMain(()->{
         require(page instanceof EnhancementSettingsActivity&&("target-"+spec[0]).equals(ModuleNavigation.route(page)),"Home opens the expected second-level directory");
         require(tag(page,"navigation:"+group)!=null,"Existing group is still a directory entry: "+group);
-        require(tag(page,"navigation:"+spec[3])==null,"Directory does not duplicate the moved feature entry");
+        require(tag(page,"navigation:"+spec[2])==null,"Directory does not duplicate the moved feature entry");
         gap(page,tag(page,"application-groups:"+spec[0]));return null;
     });}
     private void checkDestination(Activity page,String[] spec)throws Exception{onMain(()->{
         String route=destination(spec);require(route.equals(ModuleNavigation.route(page)),"Expected route: "+route);
-        require("freeform".equals(spec[3])?page instanceof FeatureActivity:page instanceof EnhancementSettingsActivity,"Old editor resolves to the intended third-level host: "+spec[3]);
-        List<String> path=Arrays.asList("home","target-"+spec[0],route);int count=0;
+        require(spec[2].startsWith("freeform_")?page instanceof FeatureActivity:page instanceof EnhancementSettingsActivity,"Old editor resolves to the intended third-level host: "+spec[2]);
+        List<String> path=ModuleHierarchy.path(route);int count=0;
         for(View view:all(page.getWindow().getDecorView()))if(view.getTag() instanceof String&&((String)view.getTag()).startsWith("breadcrumb:"))count++;
-        require(count==3,"Page has exactly three breadcrumb levels: "+route);
+        require(count==path.size(),"Page has exactly the current breadcrumb levels: "+route);
         for(String item:path)require(tag(page,"breadcrumb:"+item)!=null,"Breadcrumb includes "+item);
-        if(!"freeform".equals(spec[3]))require(tag(page,"navigation:"+spec[3])==null&&tag(page,"inline-editor:"+spec[3])!=null,"Moved editor is inline and has no fourth-level navigation: "+spec[3]);
+        if(!spec[2].startsWith("freeform_"))require(tag(page,"navigation:"+spec[2])==null&&tag(page,"inline-editor:"+spec[2])!=null,"Moved editor is inline and has no fourth-level navigation: "+spec[2]);
         return null;
     });}
     private JSONObject checkPage(Activity page,String[] spec,Map<String,String> before)throws Exception{
         checkDestination(page,spec);
-        if("launcher_custom".equals(spec[3])){
+        if("launcher_custom".equals(spec[2])){
             long deadline=SystemClock.uptimeMillis()+8000;
             while(SystemClock.uptimeMillis()<deadline&&!onMain(()->tag(page,"config:"+ConfigSchema.LAUNCHER_OVERRIDES).isEnabled()))SystemClock.sleep(25);
             require(onMain(()->tag(page,"config:"+ConfigSchema.LAUNCHER_OVERRIDES).isEnabled()),"Launcher finishes its saved-state barrier before layout checks");
         }
         return onMain(()->{
             String route=destination(spec);View root=page.getWindow().getDecorView();float density=page.getResources().getDisplayMetrics().density;
-            View card="freeform".equals(spec[3])?tag(page,"freeform-controls"):tag(page,"application-category:"+spec[0]+":"+spec[2]);
-            if(card==null&&"freeform".equals(spec[3]))card=find(root,LiquidGlassLayout.class);
+            View card=spec[2].startsWith("freeform_")?tag(page,"freeform-controls"):tag(page,"application-category:"+spec[0]+":"+spec[1]);
+            if(card==null&&spec[2].startsWith("freeform_"))card=find(root,LiquidGlassLayout.class);
             float gap=gap(page,card);int rows=0;float low=Float.MAX_VALUE,high=-Float.MAX_VALUE;
             for(View view:all(root))if("feature-row".equals(view.getTag())){
                 Switch toggle=find(view,Switch.class);if(toggle==null||!shownThroughAncestors(toggle))continue;
@@ -174,21 +175,23 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
             require(rows>0,"Third-level page contains functional controls: "+route);
             float spread=(high-low)/density;require(spread<=1,"Switches share one right edge: "+route+" = "+spread+"dp");
             alignedSwitches+=rows;maxSwitchSpreadDp=Math.max(maxSwitchSpreadDp,spread);
-            if("freeform".equals(spec[3])){
-                require(rows==4,"Small-window page exposes exactly its four existing functions");
+            if(spec[2].startsWith("freeform_")){
+                require(rows==2,"Each split small-window page exposes its two existing functions");
                 int cards=0;for(View view:all(root))if(view instanceof LiquidGlassLayout)cards++;
                 require(cards==1,"Small-window functions share one public card");
-                for(String key:Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS,AppConfig.FREEFORM_UNLIMITED,AppConfig.FREEFORM_ALL_APPS))checkSavedSwitch(page,key,before);
-                FeatureEditorController editor=featureEditor(page,spec[3]);
+                boolean rules="freeform_rules".equals(spec[2]);
+                for(String key:rules?Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS):
+                        Arrays.asList(AppConfig.FREEFORM_UNLIMITED,AppConfig.FREEFORM_ALL_APPS))checkSavedSwitch(page,key,before);
+                FeatureEditorController editor=featureEditor(page,spec[2]);
                 Map<?,?> inputs=(Map<?,?>)get(editor,"inputs");
-                require(!inputs.containsKey(ConfigSchema.FREEFORM_GAME_APPS)&&inputs.containsKey(AppConfig.FREEFORM_EXCLUDED_APPS),"Login has no game list; native-window exceptions remain editable");
-            }else if("audio_gain".equals(spec[3])){
+                require(!inputs.containsKey(ConfigSchema.FREEFORM_GAME_APPS)&&inputs.containsKey(AppConfig.FREEFORM_EXCLUDED_APPS)==!rules,"Login has no game list; exceptions belong only to the window-scope page");
+            }else if("audio_gain".equals(spec[2])){
                 checkSavedSwitch(page,ConfigSchema.AUDIO_GAIN_ENABLED,before);
-                Map<?,?> sliders=(Map<?,?>)get(featureEditor(page,spec[3]),"sliders");
+                Map<?,?> sliders=(Map<?,?>)get(featureEditor(page,spec[2]),"sliders");
                 require(sliders.containsKey(ConfigSchema.AUDIO_GAIN_STEP)&&sliders.size()==10,"Audio editor retains its step plus nine per-output gain limits");
-            }else if("signature_install".equals(spec[3]))checkSavedSwitch(page,AppConfig.ALLOW_SIGNATURE_MISMATCH,before);
-            else if("extra_dim".equals(spec[3]))require(tag(page,"extra-dim-tile") instanceof Switch,"Real QS membership control is inline");
-            else if("launcher_custom".equals(spec[3])){
+            }else if("signature_install".equals(spec[2]))checkSavedSwitch(page,AppConfig.ALLOW_SIGNATURE_MISMATCH,before);
+            else if("extra_dim".equals(spec[2]))require(tag(page,"extra-dim-tile") instanceof Switch,"Real QS membership control is inline");
+            else if("launcher_custom".equals(spec[2])){
                 NativeEditorController editor=editors(page).get("launcher_custom");
                 require(editor instanceof LauncherEditorController&&editor.embedded&&editor.owner==page,"Launcher controller is owned by the third-level page");
                 require(page instanceof NativeEditorController.Host,"Launcher host forwards document and crop results");
@@ -206,8 +209,8 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
     }
 
     private void checkExpandedContent(Activity page,String[] spec,int index)throws Exception{
-        if("extra_dim".equals(spec[3])||"signature_install".equals(spec[3]))return;
-        NativeEditorController editor="launcher_custom".equals(spec[3])?onMain(()->editors(page).get(spec[3])):onMain(()->featureEditor(page,spec[3]));
+        if("extra_dim".equals(spec[2])||"signature_install".equals(spec[2]))return;
+        NativeEditorController editor="launcher_custom".equals(spec[2])?onMain(()->editors(page).get(spec[2])):onMain(()->featureEditor(page,spec[2]));
         boolean launcher=editor instanceof LauncherEditorController;
         List<UiKit.Fold> folds=onMain(()->launcher?Arrays.asList((UiKit.Fold)get(editor,"overrideFold")):new ArrayList<>((List<UiKit.Fold>)get(editor,"folds")));
         String guard=launcher?"bindingGate":"loading";boolean savedGuard=onMain(()->(Boolean)get(editor,guard));
@@ -219,7 +222,7 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
                 fold.arrow.performClick();require(fold.control.isChecked()&&fold.content.getVisibility()==View.GONE,"Collapsing preserves enabled state");
                 fold.arrow.performClick();require(fold.content.getVisibility()==View.VISIBLE,"Parameters can reopen without navigation");foldsChecked++;
             }return null;});settle();
-            capture(String.format(java.util.Locale.ROOT,"%02d-%s-expanded",index,spec[3]));
+            capture(String.format(java.util.Locale.ROOT,"%02d-%s-expanded",index,spec[2]));
         }finally{
             onMain(()->{for(int i=0;i<folds.size();i++){UiKit.Fold fold=folds.get(i);fold.control.setChecked(states.get(i)[0]);fold.sync();fold.show(states.get(i)[1]);}set(editor,guard,savedGuard);return null;});settle();
         }
@@ -254,7 +257,7 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
         onMain(()->{ScrollView scroll=(ScrollView)tag(page,"detail-scroll");View last=null;for(View view:all(scroll))if(shownThroughAncestors(view)&&(view instanceof Switch||view instanceof android.widget.SeekBar||view instanceof android.widget.Button||view instanceof EditText)&&view.getHeight()>0)last=view;
             require(last!=null,"Last feature control is available");Rect visible=new Rect();require(last.getGlobalVisibleRect(visible)&&visible.height()>=last.getHeight()-1,"Last feature control remains reachable at the bottom");
             report.put("bottomScrollY",scroll.getScrollY()).put("lastFeatureFullyVisible",true);return null;});
-        capture(String.format(java.util.Locale.ROOT,"%02d-%s-bottom",index,spec[3]));
+        capture(String.format(java.util.Locale.ROOT,"%02d-%s-bottom",index,spec[2]));
     }
     private float gap(Activity page,View first){
         View path=tag(page,"page-path");require(first!=null&&path!=null,"Actual content and breadcrumb bounds are present");
@@ -282,7 +285,6 @@ final class IntegratedSettingsUiCases implements Application.ActivityLifecycleCa
     private static <T extends View>T find(View root,Class<T> type){for(View view:all(root))if(type.isInstance(view))return type.cast(view);return null;}
     private static boolean shownThroughAncestors(View view){while(view!=null){if(view.getVisibility()!=View.VISIBLE)return false;view=view.getParent() instanceof View?(View)view.getParent():null;}return true;}
     private void clickTag(Activity page,String value)throws Exception{onMain(()->{View view=tag(page,value);require(view!=null&&view.performClick(),"Click "+value);return null;});}
-    private void clickText(Activity page,String value)throws Exception{onMain(()->{View found=null;for(View view:all(page.getWindow().getDecorView()))if(view instanceof TextView&&value.contentEquals(((TextView)view).getText())){found=view;break;}while(found!=null&&!found.isClickable())found=found.getParent() instanceof View?(View)found.getParent():null;require(found!=null&&found.performClick(),"Click "+value);return null;});}
     private Activity await(String route){long deadline=SystemClock.uptimeMillis()+15000;while(SystemClock.uptimeMillis()<deadline){Activity page=resumed;if(page!=null&&!page.isFinishing()&&route.equals(ModuleNavigation.route(page)))return page;SystemClock.sleep(50);}throw new AssertionError("Timed out awaiting "+route);}
     private void settle(){test.waitForIdleSync();SystemClock.sleep(250);}
     private void capture(String name)throws Exception{settle();Bitmap bitmap=test.getUiAutomation().takeScreenshot();require(bitmap!=null,"Screenshot is available");File file=new File(directory,name+".png");try(FileOutputStream out=new FileOutputStream(file)){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}finally{bitmap.recycle();}screenshots.put(file.getAbsolutePath());}

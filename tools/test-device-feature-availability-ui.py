@@ -93,7 +93,9 @@ public void setOnCheckedChangeListener(Listener value){listener=value;}public vo
 """,
     "android/widget/EditText.java": "package android.widget;public class EditText {private String text=" + '""' + ";public String getText(){return text;}public void setText(String value){text=value;}public void setError(String value){}}",
     "android/widget/Button.java": "package android.widget;public class Button {public boolean enabled;}",
-    "android/widget/TextView.java": "package android.widget;public class TextView {public void setTag(Object value){}}",
+    "android/view/View.java": "package android.view;public class View {public static final int GONE=8;public void setVisibility(int value){}}",
+    "android/widget/TextView.java": "package android.widget;public class TextView extends android.view.View {public void setTag(Object value){}}",
+    "ls/augment/com/NativeIslandSceneOptions.java": "package ls.augment.com;class NativeIslandSceneOptions {static final String ENABLED=\"ls_augment_native_island_scene_support\";}",
     "android/widget/LinearLayout.java": """package android.widget;public class LinearLayout {
 public static final int VERTICAL=1;public LinearLayout(Object context){}public void setOrientation(int value){}public void setTag(Object value){}
 public void addView(Object view,Object params){}public void setPadding(int a,int b,int c,int d){}}
@@ -150,12 +152,15 @@ void choiceEdit(String key,String value){choices.get(key).select(value);markFanE
 }
 """
 
-GENERIC = r"""package ls.augment.com;import android.os.*;import android.widget.*;import java.util.*;
+GENERIC = r"""package ls.augment.com;import android.os.*;import android.widget.*;import android.view.View;import java.util.*;
 class GenericFeatureHost extends Host {
 final UiKit ui=new UiKit();final Map<String,String> draft=new HashMap<>();int writes;String saved;
 GenericFeatureHost(String value){saved=value;draft.put(BrightnessRange.ENABLED,value);}
 String value(String key){return draft.getOrDefault(key,"0");}
 boolean deviceFeatureAvailable(String key){return DeviceFeatureAvailability.available(key,android.os.Build.DEVICE,android.os.Build.MODEL,android.os.Build.PRODUCT);}
+// Island capability queries are unrelated to brightness and must not be invoked here.
+boolean nativeIslandEnabled(){throw new AssertionError("brightness queried island enable state");}
+String nativeSceneUnavailable(String key){throw new AssertionError("brightness queried island scene capability");}
 Switch brightness(){
  NativeFeatureGroups.Feature f=new NativeFeatureGroups.Feature();String key=BrightnessRange.ENABLED;EnhancementOption option=new EnhancementOption();
  LinearLayout card=new LinearLayout(this);Map<String,Gate> gateMemory=Map.of();
