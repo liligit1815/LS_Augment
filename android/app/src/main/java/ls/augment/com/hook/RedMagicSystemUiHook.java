@@ -558,7 +558,15 @@ final class RedMagicSystemUiHook {
                 if(widthCollapsed)wroteLayout=true;
                 restoreWidth();
             }
-            if(wroteLayout){ownedWait=layoutEpoch;drawable.readyToDraw=false;showNative();anchor.requestLayout();publish("awaiting_layout");return true;}
+            if(wroteLayout){
+                ownedWait=layoutEpoch;
+                // A live badge (4G / 5G / 5G+) may require a wider host. Its
+                // vertical calibration has not changed: keep the accepted
+                // overlay and suppression until that owned width settles.
+                // First acquisition still waits with the original icons visible.
+                if(!drawable.readyToDraw)showNative();
+                anchor.requestLayout();publish("awaiting_layout");return true;
+            }
             nativeSignature=drawable.inputs();planSignature=drawable.planInputs();
             drawable.readyToDraw=true;
             if(compactNativeWidth){
@@ -807,7 +815,11 @@ final class RedMagicSystemUiHook {
             b.append(":ios=").append(iosStyle());
             Drawable d=position.getDrawable();if(d!=null)b.append(':').append(d.getBounds());
             for(View at=position;at!=null&&at!=owner;at=at.getParent() instanceof View?(View)at.getParent():null){
-                b.append('/').append(at.getLeft()).append(',').append(at.getTop()).append(',').append(at.getRight()).append(',').append(at.getBottom());
+                // The OEM moves its signal sideways when 4G/5G/5G+ changes width.
+                // Our measured badge column owns that horizontal layout. Restoring
+                // the native pair for a sideways move exposes two different OEM
+                // label sizes for a frame and unnecessarily recaptures the scale.
+                b.append('/').append(at==position?at.getWidth():0).append(',').append(at.getTop()).append(',').append(at.getHeight());
                 b.append(',').append(at.getPaddingLeft()).append(',').append(at.getPaddingTop());
                 if(at.getLayoutParams() instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams m=(ViewGroup.MarginLayoutParams)at.getLayoutParams();
                     b.append(',').append(m.getMarginStart()).append(',').append(m.topMargin).append(',').append(m.getMarginEnd()).append(',').append(m.bottomMargin);}

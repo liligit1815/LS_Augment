@@ -38,7 +38,14 @@ public final class TestSignalStylePolicy {
         draft.putAll(SignalStylePolicy.selection(true));
         check(SignalStylePolicy.conflict(draft) != null, "Settings selection cannot silently clear three-in-one");
         check("1".equals(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)), "selection keeps opponent state");
-        check("1".equals(draft.get(ConfigSchema.SYSTEMUI_MASTER)), "selection enables required SystemUI gate");
+        check(!draft.containsKey(ConfigSchema.SYSTEMUI_MASTER), "signal selection cannot activate saved full-bar layout");
+        for(String master:new String[]{"0","1"}) for(int choice=0;choice<3;choice++){
+            Map<String,String> before=new HashMap<>(Map.of(ConfigSchema.SYSTEMUI_MASTER,master,
+                    ConfigSchema.STATUSBAR_CLOCK_SIZE_SP,"19",ConfigSchema.STATUSBAR_NOTIFICATION_HIDE,"1",
+                    ConfigSchema.STATUSBAR_GRID,"user-layout"));
+            Map<String,String> after=new HashMap<>(before);after.putAll(SignalStylePolicy.selection(choice));
+            for(String key:before.keySet())check(before.get(key).equals(after.get(key)),"signal toggle preserves "+key);
+        }
         check(SignalStylePolicy.selection(false).size() == 1, "flat selection changes only the dual feature");
         check("0".equals(SignalStylePolicy.selection(false).get(SystemUiOptions.SIGNAL_DUAL)), "flat uses the native path");
         check(SignalStylePolicy.allowedCaller(20000, 20000, null, null), "application self caller");

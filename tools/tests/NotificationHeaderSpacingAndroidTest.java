@@ -75,8 +75,6 @@ public class NotificationHeaderSpacingAndroidTest {
         float nativeBaseline()throws Exception{java.lang.reflect.Field field=stackState.getClass().getDeclaredField("nativePadding");field.setAccessible(true);return field.getFloat(stackState);}
         void formatOnlyWithStackDisabled(){
             ls.augment.com.hook.FeatureSettings.put("ls_augment_rm_notification_stack","0");
-            ls.augment.com.hook.FeatureSettings.put(NotificationAppearanceOptions.STACK_BIG,"0");
-            ls.augment.com.hook.FeatureSettings.put(NotificationAppearanceOptions.STACK_SMALL,"0");
             ls.augment.com.hook.FeatureSettings.put(NotificationAppearanceOptions.CLOCK_PORTRAIT,"0");
             ls.augment.com.hook.FeatureSettings.put(NotificationAppearanceOptions.CLOCK_LANDSCAPE,"0");
             HeaderClockHooksAndroidTest.clockOptions(3);

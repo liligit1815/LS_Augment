@@ -223,7 +223,8 @@ final class StatusBarGridHook {
         return null;
     }
     private static View findClass(View root,String suffix) {
-        if(root.getClass().getSimpleName().equals(suffix))return root;
+        for(Class<?> type=root.getClass();type!=null;type=type.getSuperclass())
+            if(type.getSimpleName().equals(suffix))return root;
         if(root instanceof ViewGroup)for(int i=0;i<((ViewGroup)root).getChildCount();i++){
             View result=findClass(((ViewGroup)root).getChildAt(i),suffix);if(result!=null)return result;
         }return null;
@@ -559,6 +560,10 @@ final class StatusBarGridHook {
             }
             if(lastConfig.equals(config.toString()))return;
             lastConfig=config.toString();
+            if(enabled)FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+(isKeyguard(root)?"keyguard":"phone")+"_last_enabled_config",
+                    "build="+ls.augment.com.BuildConfig.VERSION_CODE+";revision="+snapshot.revision+";updated="+snapshot.updatedAt
+                    +";grid="+raw+";clock_custom="+snapshot.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM)
+                    +";clock_24h="+snapshot.get(ConfigSchema.STATUSBAR_CLOCK_24H));
             if(enabled&&active&&lastLayoutConfig.equals(layoutConfig.toString())){
                 // Palette changes only affect drawing. Preserve the view, radio
                 // callbacks, cached signal state and the running metrics worker.
@@ -995,9 +1000,9 @@ final class StatusBarGridHook {
             }
             if(id.equals("battery")&&view instanceof ViewGroup){Rect bounds=new Rect(batteryBounds(view));
                 if(!bounds.isEmpty()){contentBounds.put(view,bounds);h=bounds.height();w=bounds.width();}}
-            float scale=px(item.size)/h;
+            float scale=item.size==0?1:px(item.size)/h;
             if(view instanceof TextView){TextView t=(TextView)view;
-                float targetSize=px(item.size);
+                float targetSize=item.size==0?t.getTextSize():px(item.size);
                 if(baseId(id).equals("clock")&&!positionOnly()&&FeatureSettings.enabled(context,FeatureSettings.STATUSBAR_CLOCK_CUSTOM)){
                     float customSize=FeatureSettings.decimal(context,FeatureSettings.STATUSBAR_CLOCK_SIZE_SP,0,0,40);
                     if(customSize>0)targetSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,
@@ -1087,9 +1092,9 @@ final class StatusBarGridHook {
                 if(g.alpha==0)continue;
                 child.setAlpha(g.alpha);
                 float wifiReference=StatusBarContentBounds.wifiSignalHeight(child);
-                if(wifiReference>0)StatusBarWifiAssetSpacingHook.prepareGrid(child,size/wifiReference);
+                if(wifiReference>0)StatusBarWifiAssetSpacingHook.prepareGrid(child,item.size==0?1:size/wifiReference);
                 float signalReference=RedMagicSystemUiHook.stackedSignalRowHeight(child);
-                if(signalReference>0)RedMagicSystemUiHook.prepareStackedGrid(child,size/signalReference);
+                if(signalReference>0)RedMagicSystemUiHook.prepareStackedGrid(child,item.size==0?1:size/signalReference);
                 Rect ink=iconBounds(child);if(ink.isEmpty())continue;contentBounds.put(child,ink);n++;
                 if(!showItem(id)||(max>0&&n>max)){child.setAlpha(0);g.mark(child);continue;}
                 float height=desiredIconHeight(child,size);iconHeights.put(child,height);
@@ -1192,10 +1197,10 @@ final class StatusBarGridHook {
                     int left=text.getTotalPaddingLeft(),top=text.getTotalPaddingTop();
                     if(right>0)bounds.set(left,top,left+Math.min(view.getWidth(),(int)Math.ceil(right)),top+layout.getHeight());}}
             contentBounds.put(view,bounds);
-            float height=px(item.size);
+            float height=item.size==0?bounds.height():px(item.size);
             float reference=StatusBarContentBounds.wifiSignalHeight(view);
-            if(!positionOnly()&&reference>0)height*=bounds.height()/reference;
-            if(positionOnly()&&(id.equals("system_icons")||id.equals("notifications")))height*=bounds.height()/nativeIconHeight(view,px(item.size));
+            if(item.size!=0&&!positionOnly()&&reference>0)height*=bounds.height()/reference;
+            if(item.size!=0&&positionOnly()&&(id.equals("system_icons")||id.equals("notifications")))height*=bounds.height()/nativeIconHeight(view,px(item.size));
             float width=bounds.width()*height/Math.max(1,bounds.height());
             if(positionOnly())nodes.add(new StatusBarGridLayout.Node(id,item.zone.substring(0,1)+"S",item.order*100+offset,width,height));
             else addInsetNode(nodes,id,item.zone,item.order*100+offset,width,height,-1,view);
@@ -1237,15 +1242,16 @@ final class StatusBarGridHook {
         TextView firstText(View view){if(view instanceof TextView)return (TextView)view;
             if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){TextView found=firstText(((ViewGroup)view).getChildAt(i));if(found!=null)return found;}return null;}
         float desiredIconHeight(View view,float size){Rect bounds=contentBounds.get(view);
+            int sp=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,0,0,32);
+            TextView text=isNativeNetwork(view)?firstText(view):null;
+            if(sp>0&&text!=null&&text.getTextSize()>0)return bounds.height()*android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,sp,context.getResources().getDisplayMetrics())/text.getTextSize();
+            if(size==0)return bounds.height();
             float row=RedMagicSystemUiHook.stackedSignalRowHeight(view);
             if(row>0)return (float)Math.min(Float.MAX_VALUE,(double)size*bounds.height()/row);
             // Traffic arrows, independent child boundaries and the native overflow dot
             // change the union bounds. Size the stable signal glyph, not that union.
             float wifi=StatusBarContentBounds.wifiSignalHeight(view);
             if(wifi>0)return (float)Math.min(Float.MAX_VALUE,(double)size*bounds.height()/wifi);
-            int sp=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,0,0,32);
-            TextView text=isNativeNetwork(view)?firstText(view):null;
-            if(sp>0&&text!=null&&text.getTextSize()>0)return bounds.height()*android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,sp,context.getResources().getDisplayMetrics())/text.getTextSize();
             return size;}
         float nativeIconHeight(View view,float fallback){float height=0;
             if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){View child=((ViewGroup)view).getChildAt(i);
@@ -1254,7 +1260,7 @@ final class StatusBarGridHook {
         void applyNativeNetworkSize(View parent){if(!(parent instanceof ViewGroup))return;
             int sp=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,0,0,32);if(sp==0)return;
             ViewGroup group=(ViewGroup)parent;
-            float groupScale=px(spec.get("system_icons").size)/nativeIconHeight(parent,px(spec.get("system_icons").size));
+            float groupScale=spec.get("system_icons").size==0?1:px(spec.get("system_icons").size)/nativeIconHeight(parent,px(spec.get("system_icons").size));
             // Preserve native order and row membership while reserving any
             // extra width. Compensate for the later whole-group transform.
             Map<View,Float> expansions=new IdentityHashMap<>();

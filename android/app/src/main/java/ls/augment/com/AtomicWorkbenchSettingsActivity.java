@@ -75,7 +75,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         enabled.setTag("config:" + AtomicWorkbenchConfig.ENABLED);
         enabled.setChecked(on());
         card.addView(ui.featureRow("启用红魔Step",
-                "开启后，在桌面或应用中从屏幕左上侧、右上侧向内下方斜滑，进入工作台。需要手机 Root 授权，并在 LSPosed 为红魔Duo勾选系统框架和系统桌面；首次安装或更新后需重启手机。", enabled), ui.wrap());
+                "开启后，在桌面或应用中从顶部左侧或右侧、状态栏下方向屏幕中间水平滑动，进入工作台。需要手机 Root 授权，并在 LSPosed 为红魔Duo勾选系统框架和系统桌面；首次安装或更新后需重启手机。", enabled), ui.wrap());
         status = ui.text("", 12, ui.muted, false);
         status.setTag("atomic-workbench-settings-status");
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -111,7 +111,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         parameters.addView(extractionCard, ui.margins(0, 0, 0, 8));
         LinearLayout instructions = ui.preferenceCard();
         parameters.addView(instructions, ui.wrap());
-        instructions.addView(ui.featureTitle("打开方式", "从状态栏下方、靠近左右边缘的位置起滑，单指向屏幕内侧下方斜滑后松手。顶部通知下拉、水平返回、多指操作不会打开工作台。"), ui.wrap());
+        instructions.addView(ui.featureTitle("打开方式", "从顶部左侧或右侧的触发区域起滑，单指向屏幕中间水平滑动后松手。区域位于状态栏下方；向下拉动、斜下滑动、屏幕中下部侧滑和多指操作不会打开工作台。可在下方调整并查看实际触发区域。"), ui.wrap());
         instructions.addView(ui.text("首次进入开始新的工作区。同一个工作台页面临时切到其他应用后，可返回原工作区；主动退出或页面真正销毁后，手机在后台将应用任务移回原屏幕。在应用中触发时仅尝试接入本次当前应用，从桌面触发时显示手机原生桌面。空白工作区的“＋”始终打开原生桌面。开启“快捷打开 App”后，顶部横向图标可打开或切换应用。锁屏时不触发。", 13, ui.muted, false), ui.margins(0, 0, 0, 8));
         instructions.addView(ui.text("开启“显示顶栏状态卡”后，可横向滑动切换音乐、导航及可读取的计时通知。高德地图的实际转向、道路和剩余行程需要在 LSPosed 为红魔Duo勾选“高德地图”，随后完全退出并重新打开高德。导航信息由手机实时读取；未收到实际指引时会说明原因。", 13, ui.muted, false), ui.margins(0, 0, 0, 8));
         Button mapScope = ui.tonalButton("检查高德地图作用域");

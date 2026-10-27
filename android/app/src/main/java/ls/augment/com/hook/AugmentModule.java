@@ -343,6 +343,43 @@ public final class AugmentModule extends RootEarlyModule {
         installPackageStage("collab_unlock", () -> CollabUnlockHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("collab_render", () -> CollabRenderHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("entry_visibility", () -> EntryVisibilityHook.install(this, param.getClassLoader(), readyPackageName));
+        if ("zte.com.cn.alarmclock".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandClockCards.install(this, param.getClassLoader());
+            NativeIslandClockSource.install(this, param.getClassLoader());
+            return;
+        }
+        if ("cn.zte.recorder".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandRecorderCards.install(this, param.getClassLoader());
+            NativeIslandRecorderSource.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.zte.nebulatranslation".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandTranslationCards.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.zte.cn.zteshare".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandTransferCards.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.zte.multscr".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandNfcTransferCards.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.android.dialer".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandCallCards.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.zte.personalagent".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeIslandPersonalCards.install(this, param.getClassLoader());
+            return;
+        }
         if ("cn.nubia.neostore".equals(readyPackageName)) { StoreDownloadHook.install(this,param.getClassLoader()); return; }
         if (GAME_SPACE_PACKAGE.equals(readyPackageName)) {
             installGameSpaceShoulderHooks(param.getClassLoader());

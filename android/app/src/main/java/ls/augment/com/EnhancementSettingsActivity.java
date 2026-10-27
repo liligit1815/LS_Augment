@@ -540,7 +540,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             controls.put(option.key,control);LinearLayout row=ui.featureRow(option.title,FeatureHelp.forOption(option),control);
             control.setOnCheckedChangeListener((button,on)->change(option.key,on?"1":"0",control));return row;
         }
-        LinearLayout row=ui.parameterInputGroup();
+        LinearLayout row=ui.parameterInputGroup(!parentOwnsTitle);
         LinearLayout parameterTitle=null;
         if(!parentOwnsTitle||RecentsCardRadiusOptions.OFFSET.equals(option.key)){
             LinearLayout title=ui.featureTitle(option.title,FeatureHelp.forOption(option));
@@ -787,6 +787,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(liftArcEditor!=null)liftArcEditor.changed(LiftArcOptions.ENABLED);
     }
     private void syncConditionalInputs(){
+        inputVisible(NotificationAppearanceOptions.STACK_START,ConfigSchema.truthy(value(NotificationAppearanceOptions.STACK_SHADE)));
+        inputVisible(NotificationAppearanceOptions.STACK_LOCK_START,ConfigSchema.truthy(value(NotificationAppearanceOptions.STACK_LOCK)));
         String mode=value(NotificationSummaryOptions.MODE);
         inputVisible(NotificationSummaryOptions.SYMBOL,"0".equals(mode));
         inputVisible(NotificationSummaryOptions.TEXT,"1".equals(mode));
@@ -902,6 +904,24 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(state instanceof TextView){((TextView)state).setText(available?"":"请先在星云岛设置中开启星云岛");state.setVisibility(available?View.GONE:View.VISIBLE);}
     }
     private String nativeSceneUnavailable(String key){
+        if(NativeIslandSceneOptions.key("calendar_meeting").equals(key)||NativeIslandSceneOptions.key("scenic_guide").equals(key)||NativeIslandSceneOptions.key("nearby_charging").equals(key)||NativeIslandSceneOptions.key("cycling").equals(key)||NativeIslandSceneOptions.key("flight").equals(key)||NativeIslandSceneOptions.key("preflight_battery").equals(key)||NativeIslandSceneOptions.key("weather_travel").equals(key)){
+            try{getPackageManager().getApplicationInfo("com.zte.personalagent",0);}
+            catch(android.content.pm.PackageManager.NameNotFoundException missing){return "未安装小星建议（魔姬建议）";}
+            String source=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_source_capability","");
+            if(source.equals("unavailable:missing_weather_navigation_target"))return "请启用原厂助手或安装可用地图，重启后等待检测";
+            if(source.equals("unavailable:missing_flight_launch_target"))return "请安装飞常准或启用原厂应用商店，重启后等待检测";
+            if(source.equals("unavailable:return_bike_tool_not_registered"))return "请先启用原厂一步助手，等待还车能力就绪";
+            if(source.startsWith("unavailable:")&&!source.equals("unavailable:personal_service_stopped"))return "此场景缺少所需的原厂能力，具体原因已记录到日志";
+            if(!("ready:"+BuildConfig.VERSION_CODE).equals(source))return "请先启用原厂建议服务及其作用域，重启后等待能力检测";
+        }
+        if(NativeIslandSceneOptions.key("transfer").equals(key)||NativeIslandSceneOptions.key("nfc_transfer").equals(key)){
+            boolean nfc=NativeIslandSceneOptions.key("nfc_transfer").equals(key);
+            String app=nfc?"多屏协同":"系统互传";
+            try{getPackageManager().getApplicationInfo(nfc?"com.zte.multscr":"com.zte.cn.zteshare",0);}
+            catch(android.content.pm.PackageManager.NameNotFoundException missing){return "未安装"+app;}
+            String source=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_source_capability","");
+            if(!("ready:"+BuildConfig.VERSION_CODE).equals(source))return nfc?"请启用多屏协同作用域并重启手机，等待能力检测":"请启用系统互传作用域并打开互传，等待能力检测";
+        }
         String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_capability","");
         if("ready".equals(capability))return "";
         if(capability.contains("recorder_waiting_user_unlock"))return "解锁手机后会自动检测录音支持";

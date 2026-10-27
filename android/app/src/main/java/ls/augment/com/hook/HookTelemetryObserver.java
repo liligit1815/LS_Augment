@@ -109,6 +109,10 @@ final class HookTelemetryObserver {
         Counter(String target) { this.target = target; }
         Failures failures() { return failures; }
         ErrorRecord registrationError() { return registrationError; }
+        synchronized void clearHistory(long cutoff){
+            hits.set(0);returned.set(0);lastHit=0;failures=new Failures(0,0,0,null,null);
+            if(registrationError!=null&&registrationError.at<=cutoff)registrationError=null;
+        }
         synchronized void failed(ErrorSource source, Throwable error, long at, ErrorRecorder recorder) {
             Failures old = failures;
             ErrorRecord record = record(source, error, at, old.total + 1, recorder);
@@ -178,6 +182,7 @@ final class HookTelemetryObserver {
         private final AtomicInteger used = new AtomicInteger();
         StackBudget(int limit, int maxChars) { this.limit = Math.max(0, limit); this.maxChars = Math.max(128, maxChars); }
         int used() { return used.get(); }
+        void clearHistory(){used.set(0);}
         StackResult capture(Throwable error) {
             int count;
             do {

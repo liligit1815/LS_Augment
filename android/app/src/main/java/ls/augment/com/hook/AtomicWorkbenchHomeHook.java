@@ -960,7 +960,23 @@ final class AtomicWorkbenchHomeHook {
         throw new NoSuchFieldException(name);
     }
     private static Object call(Object object, String name, Class<?>[] types, Object... args) throws Exception {
-        Method method = object.getClass().getMethod(name, types); method.setAccessible(true); return method.invoke(object, args);
+        // Framework task/window methods are often package-private. Use the same
+        // declared-signature contract as installation, including OEM subclasses.
+        for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
+            Method method;
+            try { method = type.getDeclaredMethod(name, types); }
+            catch (NoSuchMethodException absent) { continue; }
+            if (Modifier.isStatic(method.getModifiers()))
+                throw new NoSuchMethodException(type.getName() + "." + name + " must be an instance method");
+            method.setAccessible(true);
+            return method.invoke(object, args);
+        }
+        // Preserve the former public lookup for inherited interface defaults.
+        Method method = object.getClass().getMethod(name, types);
+        if (Modifier.isStatic(method.getModifiers()))
+            throw new NoSuchMethodException(object.getClass().getName() + "." + name + " must be an instance method");
+        method.setAccessible(true);
+        return method.invoke(object, args);
     }
     private static Object callStatic(Class<?> type, String name, Class<?>[] types, Object... args) throws Exception {
         Method method = type.getDeclaredMethod(name, types); method.setAccessible(true); return method.invoke(null, args);

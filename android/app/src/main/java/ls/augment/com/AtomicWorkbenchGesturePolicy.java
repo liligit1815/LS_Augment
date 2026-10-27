@@ -10,22 +10,18 @@ public final class AtomicWorkbenchGesturePolicy {
     private AtomicWorkbenchGesturePolicy() { }
 
     public static final class Geometry {
-        final float width, height, density, minY, maxY, edge, minInward, minDownward;
+        final float width, height, density, minY, maxY, edge, minInward;
         final int areaPercent, sensitivityPercent;
         private Geometry(float width, float height, float density, float statusBar,
                 int areaPercent, int sensitivityPercent) {
             this.width = width; this.height = height; this.density = density;
             this.areaPercent = areaPercent; this.sensitivityPercent = sensitivityPercent;
             minY = statusBar + 8f * density;
-            float baseMaxY = Math.min(height * .28f, statusBar + 104f * density);
-            // Scale the usable corner dimensions, retaining the existing status-bar
-            // exclusion and phone-size limits. 100% preserves the original detector.
-            maxY = areaPercent == AREA_DEFAULT ? baseMaxY : Math.min(height * .28f,
-                    minY + (baseMaxY - minY) * areaPercent / 100f);
-            edge = areaPercent == AREA_DEFAULT ? Math.min(24f * density, width * .08f)
-                    : Math.min(24f * density * areaPercent / 100f, width * .08f);
+            // A shallow band below the status bar, rather than the full side edge.
+            // The status-bar exclusion leaves notification/control-center input native.
+            maxY = Math.min(height * .20f, minY + 48f * density * areaPercent / 100f);
+            edge = Math.min(48f * density * areaPercent / 100f, width * .16f);
             minInward = 88f * 100f / sensitivityPercent;
-            minDownward = 56f * 100f / sensitivityPercent;
         }
         public static Geometry create(float width, float height, float density, float statusBar) {
             return create(width, height, density, statusBar, AREA_DEFAULT, SENSITIVITY_DEFAULT);
@@ -56,7 +52,7 @@ public final class AtomicWorkbenchGesturePolicy {
     public static final class Detector {
         private Geometry geometry;
         private int side;
-        private float downX, downY, maxInward, maxDown;
+        private float downX, downY, maxInward;
         private long downTime, lastTime, lastTriggered = -1L;
         public void cancel() { side = NONE; geometry = null; }
 
@@ -75,7 +71,7 @@ public final class AtomicWorkbenchGesturePolicy {
                 int candidate = current.side(x, y);
                 if (candidate == NONE) return NONE;
                 geometry = current; side = candidate; downX = x; downY = y;
-                maxInward = maxDown = 0; downTime = lastTime = when;
+                maxInward = 0; downTime = lastTime = when;
                 return NONE;
             }
             if (side == NONE) return NONE;
@@ -86,14 +82,14 @@ public final class AtomicWorkbenchGesturePolicy {
             lastTime = when;
             float inward = (side == LEFT ? x - downX : downX - x) / geometry.density;
             float downward = (y - downY) / geometry.density;
-            if (inward < -12f || downward < -12f || maxInward - inward > 24f || maxDown - downward > 24f) {
+            if (inward < -12f || maxInward - inward > 24f
+                    || Math.abs(downward) > Math.min(24f, Math.max(12f, inward * .30f))) {
                 cancel(); return NONE;
             }
-            maxInward = Math.max(maxInward, inward); maxDown = Math.max(maxDown, downward);
+            maxInward = Math.max(maxInward, inward);
             if (action != UP) return NONE;
             int triggered = NONE;
-            if (when - downTime >= 80L && inward >= geometry.minInward && downward >= geometry.minDownward
-                    && downward >= inward * .4f && downward <= inward * 2.2f) {
+            if (when - downTime >= 80L && inward >= geometry.minInward) {
                 triggered = side; lastTriggered = when;
             }
             cancel();

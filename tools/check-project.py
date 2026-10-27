@@ -254,6 +254,8 @@ def check_scope():
     scope = set((app / 'src/main/resources/META-INF/xposed/scope.list').read_text().split())
     assert scope == {
         'com.android.settings', 'com.android.systemui', 'com.zte.beautify',
+        'zte.com.cn.alarmclock', 'cn.zte.recorder', 'com.zte.nebulatranslation',
+        'com.zte.cn.zteshare', 'com.zte.multscr', 'com.android.dialer', 'com.zte.personalagent',
         'com.zte.beautifyadapter',
         'com.zte.fingerprints', 'com.fingerprint.sensorservice',
         'com.zte.cn.doubleapp',

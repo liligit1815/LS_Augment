@@ -29,6 +29,7 @@ public final class LSConfigProvider extends ContentProvider {
         // Rediscover the live SystemUI endpoint if this provider process was reclaimed.
         if(getContext()!=null)try{getContext().sendBroadcast(new Intent("ls.augment.com.CAPTURE_SURFACE_REDISCOVER").setPackage("com.android.systemui"));}catch(RuntimeException ignored) { }
         if(getContext()!=null)try{getContext().sendBroadcast(new Intent(AudioGainState.REDISCOVER).setPackage("android"));}catch(RuntimeException ignored){}
+        if(getContext()!=null)try{getContext().sendBroadcast(new Intent(NativeIslandCardProtocol.REDISCOVER).setPackage("com.android.systemui"));}catch(RuntimeException ignored){}
         return true;
     }
 
@@ -36,6 +37,12 @@ public final class LSConfigProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
         if (getContext() == null) return result;
+        if (NativeIslandCardProtocol.METHOD.equals(method)) {
+            int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            long identity=Binder.clearCallingIdentity();
+            try{return NativeIslandCardEndpoint.call(getContext(),arg,extras,uid,caller,packages);}
+            finally{Binder.restoreCallingIdentity(identity);}
+        }
         if(NativeIslandRecoveryStore.METHOD.equals(method)){
             int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
             long identity=Binder.clearCallingIdentity();
@@ -244,7 +251,13 @@ public final class LSConfigProvider extends ContentProvider {
         }
         if ("telemetry".equals(method)) return DiagnosticStore.record(getContext(),extras);
         if ("debug_export_logs".equals(method) && BuildConfig.DEBUG && (Binder.getCallingUid()==Process.myUid()||Binder.getCallingUid()==Process.ROOT_UID)) {
-            long identity=Binder.clearCallingIdentity();try { java.io.File file=new java.io.File(getContext().getFilesDir(),"last-diagnostic-export.txt");java.nio.file.Files.write(file.toPath(),DiagnosticExport.build(getContext()).getBytes(java.nio.charset.StandardCharsets.UTF_8));result.putString("path",file.getPath()); } catch(Exception e){result.putString("error",e.toString());} finally {Binder.restoreCallingIdentity(identity);}return result;
+            long identity=Binder.clearCallingIdentity();try {
+                long boundary=LogHistory.cutoff(getContext());byte[] bytes=DiagnosticExport.build(getContext()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                synchronized(LogHistory.LOCK){
+                    if(boundary!=LogHistory.cutoff(getContext()))throw new IllegalStateException("日志已清空，请重新导出");
+                    java.io.File file=new java.io.File(getContext().getFilesDir(),"last-diagnostic-export.txt");java.nio.file.Files.write(file.toPath(),bytes);result.putString("path",file.getPath());
+                }
+            } catch(Exception e){result.putString("error",e.toString());} finally {Binder.restoreCallingIdentity(identity);}return result;
         }
         if ("hardware_telemetry".equals(method)) {
             int uid=Binder.getCallingUid();

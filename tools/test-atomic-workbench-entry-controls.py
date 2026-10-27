@@ -64,6 +64,11 @@ public class EntryControlsTest{
 }'''
 
 # Existing gesture/cancellation checks remain independent of dialog presentation, tested on Android.
+SOURCES["android/view/View.java"]=SOURCES["android/view/View.java"].replace('public class View{','public class View{public View parent;public View getParent(){return parent;}')
+SOURCES["android/widget/LinearLayout.java"]=SOURCES["android/widget/LinearLayout.java"].replace('children.add(v);','children.add(v);v.parent=this;').replace('public int getChildCount()',
+    'public static class LayoutParams{public int topMargin;public LayoutParams(int w,int h){}}public int indexOfChild(View v){return children.indexOf(v);}public void removeView(View v){children.remove(v);v.parent=null;}public void addView(View v,int at,Object p){children.add(at,v);v.parent=this;}public int getChildCount()')
+SOURCES["ls/augment/com/UiKit.java"]=SOURCES["ls/augment/com/UiKit.java"].replace('SeekBar slider()', 'int dp(int n){return n;}SeekBar slider()')
+SOURCES["ls/augment/com/NumericParameterHeader.java"]='package ls.augment.com;class NumericParameterHeader extends android.widget.LinearLayout{NumericParameterHeader(UiKit ui,android.view.View title,android.widget.TextView value){super(ui.activity);addView(title,null);addView(value,null);}}'
 SOURCES["ls/augment/com/NumericParameterEditor.java"]="""package ls.augment.com;import java.util.function.*;import android.view.View;class NumericParameterEditor{static NumericParameterEditor bind(UiKit u,android.widget.SeekBar b,String t,Supplier<NumericValueSpec>s,Supplier<String>r,Function<String,String>v,Consumer<String>c,View...targets){return new NumericParameterEditor();}void addTarget(View v){}}"""
 
 with tempfile.TemporaryDirectory(prefix="duo-entry-controls-") as temporary:

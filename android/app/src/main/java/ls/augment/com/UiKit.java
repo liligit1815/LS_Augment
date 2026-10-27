@@ -28,6 +28,7 @@ import android.widget.TextView;
 final class UiKit {
     // docs/红魔Duo-UI规范.md: one 8–12dp gap below breadcrumbs, never Home alignment padding.
     static final int DETAIL_CONTENT_GAP_DP = 8;
+    private static final int FEATURE_CONTENT_INSET_DP = 8;
     final Activity activity;
     final boolean dark;
     final boolean angularCards;
@@ -205,9 +206,13 @@ final class UiKit {
 
     LinearLayout preferenceCard(){LinearLayout value=card();value.setPadding(dp(14),0,dp(14),0);value.setTag("preference-card");return value;}
     LinearLayout parameterInputGroup(){
+        return parameterInputGroup(false);
+    }
+    /** Labelled parameters share the text edge of sibling feature switches. */
+    LinearLayout parameterInputGroup(boolean alignFeatureRow){
         LinearLayout group=new LinearLayout(activity);group.setOrientation(LinearLayout.VERTICAL);
         group.setTag(R.id.parameter_input_group,Boolean.TRUE);
-        group.setPadding(0,0,0,dp(8));return group;
+        group.setPadding(alignFeatureRow?dp(FEATURE_CONTENT_INSET_DP):0,0,0,dp(8));return group;
     }
     LinearLayout preferenceRow(String id,String title,String summary,Runnable action){
         LinearLayout row=groupRow();row.setTag("navigation:"+id);row.setPadding(0,dp(4),0,dp(4));
@@ -283,7 +288,7 @@ final class UiKit {
     void setContentView(View content) {
         compactFeatureCards(content);
         if(contentReceiver!=null)contentReceiver.accept(content);
-        else appearance.setContentView(this, content);
+        else {appearance.setContentView(this, content);SearchResultHighlight.attach(this,content);}
     }
     private void compactFeatureCards(View view){
         if(!(view instanceof android.view.ViewGroup))return;
@@ -875,7 +880,7 @@ final class UiKit {
         };
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setTag("feature-row");row.setMinimumHeight(dp(44));
-        row.setPadding(dp(8),0,0,0);
+        row.setPadding(dp(FEATURE_CONTENT_INSET_DP),0,0,0);
         row.addView(section(title, description), new LinearLayout.LayoutParams(0, -2, 1));
         styleSwitch(control);
         control.setContentDescription(title);

@@ -56,7 +56,7 @@ public class View {
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public final Context context;
  public int visibility=VISIBLE,left,right,measuredWidth,requests;public float alpha=1,translationX;
  public ViewGroup.LayoutParams layoutParams=new ViewGroup.LayoutParams(0,0);public Runnable layout;
- public View(Context c){context=c;}public Context getContext(){return context;}
+ public View(Context c){context=c;}public Context getContext(){return context;}public View getRootView(){return this;}
  public void setVisibility(int v){visibility=v;}public int getVisibility(){return visibility;}
  public void setAlpha(float a){alpha=a;}public float getAlpha(){return alpha;}
  public void setTranslationX(float t){translationX=t;}public float getTranslationX(){return translationX;}

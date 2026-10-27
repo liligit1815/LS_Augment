@@ -1,6 +1,7 @@
 package ls.augment.com.hook;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.ContentValues;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -21,6 +22,7 @@ import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.ImageView;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -31,7 +33,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
-/** Completes two existing OEM scenes only while the ordinary native host owns them. */
+/** Opt-in completion of existing OEM scenes while the ordinary native host owns them. */
 final class NativeIslandScenes {
     private static final String OEM = "com.zte.feature.dynamicisland.";
     private static final String CAPSULE = "com.zte.feature.callnotify.CallLayout";
@@ -45,16 +47,22 @@ final class NativeIslandScenes {
     private static java.lang.ref.WeakReference<NotificationListenerService> notifications = new java.lang.ref.WeakReference<>(null);
     private final Context context;
     private final ClassLoader loader;
-    private final Object manager, permanent, record, torch;
+    private final Object manager, permanent, record, torch, countdown, media;
     private final View root;
     private final Runnable capsuleRefresh = this::refreshCapsules;
     private final Runnable torchRefresh = this::syncTorch;
     private final Runnable changed = this::stateChanged;
     private final Runnable recordRefresh = this::syncRecorder;
     private final Map<Object, View> panels = new java.util.IdentityHashMap<>();
+    private final java.util.Set<String> enhancedScenes = new java.util.HashSet<>();
     private final java.util.Set<String> supportedScenes = new java.util.HashSet<>();
     private Object controller, listener;
-    private Method enabled, available, removeListener;
+    private Method enabled, available, addListener, removeListener;
+    private boolean torchListening;
+    private NativeIslandCountdown countdownBridge;
+    private NativeIslandMedia mediaBridge;
+    private NativeIslandCards cardsBridge;
+    private int panelWindowBefore = -1, panelWindowApplied = -1;
     private Method visibleState;
     private volatile boolean closed;
     private boolean suppressing, receiving;
@@ -66,7 +74,8 @@ final class NativeIslandScenes {
     private int recordSource = -1;
     private String lastPausedCache = "";
     private String recoveryState = "none";
-    private String torchCapability = "unavailable", recordCapability = "unavailable", lastReport = "";
+    private String torchCapability = "unavailable", recordCapability = "unavailable", countdownCapability = "unavailable",
+            mediaCapability = "unavailable", countdownState = "idle", lastReport = "";
     private long recorderProbeAt;
     private final View.OnAttachStateChangeListener rootLifecycle = new View.OnAttachStateChangeListener() {
         @Override public void onViewAttachedToWindow(View view) { }
@@ -75,6 +84,7 @@ final class NativeIslandScenes {
     private final BroadcastReceiver environment = new BroadcastReceiver() {
         @Override public void onReceive(Context ignored, Intent intent) {
             recorderProbeAt=0;
+            configurationChanged();
             syncEnvironment();
             MAIN.removeCallbacks(torchRefresh); MAIN.post(torchRefresh);
             MAIN.removeCallbacks(recordRefresh); MAIN.post(recordRefresh);
@@ -89,7 +99,31 @@ final class NativeIslandScenes {
 
     static int install(AugmentModule module, ClassLoader loader) {
         int count = 0;
-        for (String name : new String[]{"FlashlightIsland", "RecorderIsland"}) {
+        try {
+            Class<?> type = Class.forName(OEM + "PermanentIslandManager", false, loader);
+            Method click = NativeIslandSceneContract.method(type, "onClick", void.class);
+            Method throttle = NativeIslandSceneContract.method(type, "forceNotClick", boolean.class);
+            Method show = NativeIslandSceneContract.method(type, "showPermanentPanelIsland", void.class);
+            if (click != null && throttle != null && show != null) {
+                module.registerFeatureHook(module.prepareFeatureHook(click, "rm.ui.native_scene.click_panel", false).intercept(chain -> {
+                    NativeIslandScenes owner = selected;
+                    if (owner != null && chain.getThisObject() == owner.permanent && owner.usable()) {
+                        Object island = call(owner.permanent, "getPermanentIsland");
+                        Object state = field(island, "mCurState");
+                        if (owner.completedPanel(island) != null
+                                && !Boolean.TRUE.equals(field(owner.permanent, "mOnKeyguard"))
+                                && state instanceof Integer && owner.visibleState != null
+                                && Boolean.TRUE.equals(owner.visibleState.invoke(null, state))) {
+                            if (!Boolean.TRUE.equals(throttle.invoke(owner.permanent))) show.invoke(owner.permanent);
+                            return null;
+                        }
+                    }
+                    return chain.proceed(chain.getArgs().toArray());
+                }));
+                count++;
+            }
+        } catch (Throwable missing) { module.logFeatureError("NATIVE_SCENE_CLICK_PANEL", missing); }
+        for (String name : new String[]{"FlashlightIsland", "RecorderIsland", "CountDownIsland", "MediaIsland"}) {
             try {
                 Class<?> type = Class.forName(OEM + "islands." + name, false, loader);
                 Class<?> base = Class.forName(OEM + "DynamicPermanentIsland", false, loader);
@@ -99,16 +133,17 @@ final class NativeIslandScenes {
                         "rm.ui.native_scene.panel." + name, false).intercept(chain -> {
                     Object original = chain.proceed(chain.getArgs().toArray());
                     NativeIslandScenes owner = selected;
-                    if (original != null || owner == null || !owner.usable()) return original;
-                    View panel = owner.panels.get(chain.getThisObject());
-                    return panel != null ? panel : original;
+                    if (original != null || owner == null) return original;
+                    View panel = owner.completedPanel(chain.getThisObject());
+                    return panel == null ? original : panel;
                 }));
                 count++;
             } catch (Throwable absent) { module.logFeatureError("NATIVE_SCENE_PANEL_" + name, absent); }
         }
         for (String name : new String[]{"addPermanentIslandInner", "removePermanentIslandInner",
                 "handleDynamicIslandChanged", "onDynamicIslandSettingsChanged",
-                "onPermanentIslandPanelOpenAnimationEnd", "onPermanentIslandPanelCloseAnimationEnd",
+                "onPermanentIslandAnimationEnd",
+                "onPermanentIslandPanelOpenAnimationStart", "onPermanentIslandPanelOpenAnimationEnd", "onPermanentIslandPanelCloseAnimationEnd",
                 "onKeyguardStateChanged", "onRotationStateChangedInner",
                 "setControlPanelExpanded", "setQsPanelExpanded"}) {
             count += hookNamed(module, loader, "native_scene", OEM + "PermanentIslandManager", name, -1,
@@ -117,7 +152,7 @@ final class NativeIslandScenes {
                         if (owner != null && object == owner.permanent) {
                             if (name.equals("addPermanentIslandInner") && arguments.length > 0 && arguments[0] == owner.torch)
                                 owner.torchAddRequests++;
-                            if ((name.equals("setControlPanelExpanded") || name.equals("setQsPanelExpanded"))
+                            if (owner.hasEnhancements() && (name.equals("setControlPanelExpanded") || name.equals("setQsPanelExpanded"))
                                     && arguments.length > 0 && Boolean.TRUE.equals(arguments[0])) owner.closeOrdinaryPanel();
                             owner.scheduleChanged();
                         }
@@ -125,10 +160,17 @@ final class NativeIslandScenes {
                     });
         }
         count += hookNamed(module, loader, "native_scene", OEM + "DynamicIslandManager",
+                "handleRemoveIsland", 1, null, (object, arguments, result) -> {
+                    NativeIslandScenes owner = selected;
+                    if (owner != null && object == owner.manager) owner.foregroundChanged();
+                    return PASS;
+                });
+        count += hookNamed(module, loader, "native_scene", OEM + "DynamicIslandManager",
                 "onStartedWakingUp", 0, null, (object, arguments, result) -> {
                     NativeIslandScenes owner = selected;
                     if (owner != null && object == owner.manager) {
                         MAIN.removeCallbacks(owner.torchRefresh); MAIN.post(owner.torchRefresh);
+                        if (owner.countdownBridge != null) owner.countdownBridge.request();
                         owner.scheduleChanged();
                     }
                     return PASS;
@@ -136,7 +178,8 @@ final class NativeIslandScenes {
         count += hookNamed(module, loader, "native_scene", OEM + "PermanentIslandManager",
                 "onStartedGoingToSleep", 0, (object, arguments, result) -> {
                     NativeIslandScenes owner = selected;
-                    if (owner == null || object != owner.permanent || field(object, "mStickyAnimationView") != null) return PASS;
+                    if (owner == null || !owner.hasEnhancements() || object != owner.permanent
+                            || field(object, "mStickyAnimationView") != null) return PASS;
                     // This ordinary layout has no full-screen sticky/background views.
                     // Keep its own ordinary close animation and sleep visibility path.
                     set(object, "mInteractive", false);
@@ -161,7 +204,8 @@ final class NativeIslandScenes {
                         return PASS;
                     });
         }
-        return count + installCapsules(module, loader);
+        return count + installCapsules(module, loader) + NativeIslandMedia.install(module, loader)
+                + NativeIslandCards.install(module, loader);
     }
 
     private static int installCapsules(AugmentModule module, ClassLoader loader) {
@@ -247,29 +291,41 @@ final class NativeIslandScenes {
         this.context = context; this.loader = loader; this.manager = manager;
         this.permanent = permanent; this.root = root;
         record = field(permanent, "mRecordIsland"); torch = field(permanent, "mFlashlightIsland");
+        countdown = field(permanent, "mCountDownIsland"); media = field(permanent, "mMediaIsland");
     }
 
     void start() {
         if (selected != null && selected != this) selected.close();
         selected = this;
         root.addOnAttachStateChangeListener(rootLifecycle);
-        prepareRecorder(); prepareTorch();
-        observeRecorder();
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF); filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_USER_UNLOCKED);
+        filter.addAction("android.intent.action.USER_SWITCHED");
         try { context.registerReceiver(environment, filter, Context.RECEIVER_EXPORTED); receiving = true; }
         catch (RuntimeException unavailable) { report("environment_listener_failed:" + reason(unavailable)); }
-        syncEnvironment();
+        try {
+            cardsBridge = new NativeIslandCards(context, loader, permanent, root);
+            cardsBridge.start();
+        } catch (Exception missing) {
+            if (cardsBridge != null) cardsBridge.close();
+            cardsBridge = null;
+            FeatureSettings.diagnostic(context, "ls_augment_native_island_cards", "unavailable:" + reason(missing));
+        }
         configurationChanged();
     }
 
     private void observeRecorder() {
-        if (panels.containsKey(record) && !observingRecord) {
+        if (enhancing("record") && panels.containsKey(record) && !observingRecord) {
             try {
                 recordContext.getContentResolver().registerContentObserver(recordUri, false, recordObserver);
                 recordContext.getContentResolver().registerContentObserver(recordCountUri, false, recordObserver);
                 observingRecord = true; MAIN.post(recordRefresh);
+                try {
+                    if (recordContext.checkSelfPermission(NativeIslandScenePolicy.SOURCE_SYNC_PERMISSION) == PackageManager.PERMISSION_GRANTED)
+                        recordContext.sendBroadcast(new Intent(NativeIslandScenePolicy.RECORDER_SYNC_ACTION).setPackage("cn.zte.recorder"));
+                    else report("record_source_sync_permission_missing");
+                } catch (RuntimeException missing) { report("record_source_sync_failed:" + reason(missing)); }
             } catch (RuntimeException missing) {
                 // The first URI may have registered before the second failed.
                 try { recordContext.getContentResolver().unregisterContentObserver(recordObserver); }
@@ -288,7 +344,14 @@ final class NativeIslandScenes {
     }
 
     void configurationChanged() {
+        if (cardsBridge != null) cardsBridge.configurationChanged();
         if(!usable())return;
+        if (field(record, "mCurrentUserContext") != recordContext) {
+            suspendRecorder(); recoveryLoaded = false; recorderRecovery = new Bundle(); lastPausedCache = "";
+        }
+        prepareRecorder();
+        if (controller == null) prepareTorch();
+        prepareCountdown(); prepareMedia();
         supportedScenes.clear();
         String[] members={"mRecordIsland","mFlashlightIsland","mCallIsland","mMediaIsland","mCountDownIsland",
                 "mFaceDetectIsland","mMeetingIsland","mAIIsland","mAIMemIsland","mChargingIsland","mLowPowerIsland","mBluetoothIsland","mHeadsetIsland"};
@@ -299,9 +362,27 @@ final class NativeIslandScenes {
                     ?"ready":"unavailable:"+members[i];
             if(i==0&&!panels.containsKey(record))capability="unavailable:"+recordCapability;
             if(i==1&&!panels.containsKey(torch))capability="unavailable:"+torchCapability;
+            if(i==3&&!panels.containsKey(media))capability="unavailable:"+mediaCapability;
+            if(i==4&&!panels.containsKey(countdown))capability="unavailable:"+countdownCapability;
             if("ready".equals(capability))supportedScenes.add(NativeIslandSceneOptions.IDS[i]);
             FeatureSettings.diagnostic(context,NativeIslandSceneOptions.key(NativeIslandSceneOptions.IDS[i])+"_capability",capability);
         }
+        boolean master = FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED);
+        java.util.Set<String> next = new java.util.HashSet<>();
+        for (String id : supportedScenes) {
+            if (NativeIslandScenePolicy.enhance(master, FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), true)) next.add(id);
+        }
+        boolean restoringNative = !enhancedScenes.isEmpty() && next.isEmpty();
+        if (!next.containsAll(enhancedScenes)) closeOrdinaryPanel();
+        enhancedScenes.clear(); enhancedScenes.addAll(next);
+        syncTorchListener(enhancing("torch"));
+        if (enhancing("record")) observeRecorder(); else suspendRecorder();
+        if (countdownBridge != null) { if (enhancing("countdown")) countdownBridge.request(); else countdownBridge.suspend(); }
+        if (mediaBridge != null) { if (enhancing("media")) mediaBridge.request(); else mediaBridge.suspend(); }
+        if (restoringNative) try {
+            call(permanent, "updateRooterVisibility"); call(permanent, "updateIslandContainerVisibility");
+        } catch (Exception missing) { report("scene_native_restore_failed:" + reason(missing)); }
+        syncEnvironment();
         for(String name:new String[]{"mRecordIsland","mFlashlightIsland","mCallIsland","mMediaIsland",
                 "mCountDownIsland","mFaceDetectIsland","mMeetingIsland","mAIIsland","mAIMemIsland"}) {
             Object island=field(permanent,name);
@@ -318,17 +399,167 @@ final class NativeIslandScenes {
                 && Boolean.TRUE.equals(field(permanent, "mIsDynamicIslandEnable"));
     }
 
+    private boolean enhancing(String id) {
+        return usable() && enhancedScenes.contains(id)
+                && NativeIslandScenePolicy.enhance(FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
+                FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), supportedScenes.contains(id));
+    }
+
+    private boolean hasEnhancements() {
+        if (!usable()) return false;
+        for (String id : enhancedScenes) if (enhancing(id)) return true;
+        return false;
+    }
+
+    private View completedPanel(Object island) {
+        if (cardsBridge != null) {
+            View panel = cardsBridge.panel(island);
+            if (panel != null) return panel;
+        }
+        String id = island == null ? null : NativeIslandSceneOptions.id(island.getClass());
+        if (id == null || !enhancing(id)) return null;
+        View panel = panels.get(island);
+        if (island == media && !mediaPanelReady(panel)) return null;
+        return panel;
+    }
+
+    /** Ordinary windows can still have capsule-era widths while their panel resources are newer. */
+    static void adjustWindow(View view, WindowManager.LayoutParams params) {
+        NativeIslandScenes owner = selected;
+        if (owner == null || view != owner.root) return;
+        try {
+            Object scene = call(owner.permanent, "getPermanentIsland");
+            if (Boolean.TRUE.equals(field(owner.permanent, "mDynamicPanelShowing")) && owner.completedPanel(scene) != null) {
+                Class<?> app = Class.forName("com.zte.tools.AppTools", false, owner.loader);
+                Class<?> operator = Class.forName("com.zte.customize.OperatorUtils", false, owner.loader);
+                String name = app.getField("DYNAMIC_ISLAND_WATER_DROP").getBoolean(null)
+                        ? "dynamic_island_window_width_water_drop"
+                        : operator.getField("LARGE_RADIUS_PANEL").getBoolean(null)
+                        ? "dynamic_island_window_width_large_panel" : "dynamic_island_window_width";
+                // OEM resource names and default-DPI conversion also drive its panel animation.
+                //noinspection DiscouragedApi
+                int id = owner.context.getResources().getIdentifier(name, "dimen", "com.android.systemui");
+                Method dimension = NativeIslandSceneContract.method(Class.forName("com.zte.utils.ResourceUtil", false, owner.loader),
+                        "getDimensionPixelSizeInDefaultDpi", int.class, int.class);
+                if (id == 0 || dimension == null) throw new IllegalStateException("panel_window_dimension_missing:" + name);
+                int required = Math.min((Integer) dimension.invoke(null, id), owner.context.getResources().getDisplayMetrics().widthPixels);
+                if (params.width > 0 && required > params.width) {
+                    if (owner.panelWindowBefore < 0) owner.panelWindowBefore = params.width;
+                    owner.panelWindowApplied = required; params.width = required;
+                }
+            } else if (owner.panelWindowBefore > 0) {
+                if (params.width == owner.panelWindowApplied) params.width = owner.panelWindowBefore;
+                owner.panelWindowBefore = owner.panelWindowApplied = -1;
+            }
+        } catch (Exception missing) { owner.report("panel_window_unavailable:" + reason(missing)); }
+    }
+
+    private void restorePanelWindow() {
+        if (panelWindowBefore < 0) return;
+        Object value = field(permanent, "mParams"), window = field(permanent, "mWindowManager");
+        if (value instanceof WindowManager.LayoutParams && window instanceof WindowManager) {
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) value;
+            if (params.width == panelWindowApplied) params.width = panelWindowBefore;
+            panelWindowBefore = panelWindowApplied = -1;
+            try { ((WindowManager) window).updateViewLayout(root, params); }
+            catch (RuntimeException error) { report("panel_window_restore_failed:" + reason(error)); }
+        }
+    }
+
+    void foregroundChanged() {
+        if (countdownBridge != null && enhancing("countdown")) countdownBridge.request();
+        if (mediaBridge != null && enhancing("media")) mediaBridge.request();
+    }
+
+    private static int currentUser() {
+        try { return (Integer) Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null); }
+        catch (Exception unavailable) { return -1; }
+    }
+
+    private void suspendRecorder() {
+        MAIN.removeCallbacks(recordRefresh);
+        if (observingRecord) try { recordContext.getContentResolver().unregisterContentObserver(recordObserver); }
+        catch (RuntimeException ignored) { }
+        observingRecord = false;
+        recoveryRevision++; recoveryLoading = false;
+    }
+
+    private void prepareCountdown() {
+        if (countdownBridge != null) return;
+        try {
+            View panel = scenePanel(countdown, "mCountDownPanel", "mPanelPlay", "mPanelClose");
+            for (String action : new String[]{"START", "PAUSE", "CANCEL"}) {
+                if (!("NOTIFICATION_" + action).equals(field(panel, "METHOD_" + action)))
+                    throw new IllegalStateException("countdown_action_contract:" + action);
+            }
+            countdownBridge = new NativeIslandCountdown(manager, permanent, countdown,
+                    Class.forName("com.zte.feature.callnotify.ClientProvider", false, loader), MAIN,
+                    () -> enhancing("countdown"), NativeIslandScenes::currentUser,
+                    value -> { countdownState = value; scheduleChanged(); }, this::scheduleChanged);
+            panels.put(countdown, panel); countdownCapability = "ready";
+        } catch (Exception missing) { panels.remove(countdown); countdownCapability = reason(missing); }
+    }
+
+    private void prepareMedia() {
+        if (panels.containsKey(media)) return;
+        try {
+            View panel = existingPanel(media, "mMediaPanelIsland");
+            for (String button : new String[]{"mPanelPrev", "mPanelPlayPause", "mPanelNext"})
+                if (!(field(panel, button) instanceof ImageView)) throw new IllegalStateException("media_button_missing:" + button);
+            Class<?> data = Class.forName("com.android.systemui.media.controls.shared.model.MediaData", false, loader);
+            if (NativeIslandSceneContract.field(media.getClass(), "mMediaData", data) == null
+                    || NativeIslandSceneContract.field(media.getClass(), "mCurrentUser", int.class) == null
+                    || NativeIslandSceneContract.field(media.getClass(), "mMediaPkg", String.class) == null
+                    || NativeIslandSceneContract.field(panel.getClass(), "mMediaController", android.media.session.MediaController.class) == null
+                    || NativeIslandSceneContract.method(panel.getClass(), "updateMediaData", void.class, data, boolean.class, String.class) == null)
+                throw new IllegalStateException("media_session_contract_missing");
+            Field nativePanel = NativeIslandSceneContract.field(Class.forName("com.zte.tools.AppTools", false, loader),
+                    "ZTE_FEATURE_DYNAMIC_ISLAND_PANEL", boolean.class);
+            if (nativePanel == null) throw new IllegalStateException("native_media_listener_gate_missing");
+            mediaBridge = new NativeIslandMedia(loader, manager, permanent, media, panel, MAIN,
+                        () -> enhancing("media"), NativeIslandScenes::currentUser,
+                        value -> FeatureSettings.diagnostic(context, "ls_augment_native_island_media", value));
+            panels.put(media, panel); mediaCapability = "ready";
+        } catch (Exception missing) { panels.remove(media); mediaCapability = reason(missing); }
+    }
+
+    private boolean mediaPanelReady(View panel) {
+        if (panel == null || field(media, "mMediaData") == null) return false;
+        if (mediaBridge != null && !mediaBridge.ready()) return false;
+        Object user = field(media, "mCurrentUser");
+        if (!(user instanceof Integer) || (Integer) user != currentUser()) return false;
+        Object value = field(panel, "mMediaController"), pkg = field(media, "mMediaPkg");
+        if (!(value instanceof android.media.session.MediaController) || !(pkg instanceof String)) return false;
+        try {
+            android.media.session.MediaController session = (android.media.session.MediaController) value;
+            if (!pkg.equals(session.getPackageName()) || session.getPlaybackState() == null) return false;
+            for (String button : new String[]{"mPanelPrev", "mPanelPlayPause", "mPanelNext"}) {
+                Object view = field(panel, button);
+                if (!(view instanceof ImageView) || !((View) view).hasOnClickListeners()) return false;
+            }
+            return true;
+        } catch (RuntimeException unavailable) { return false; }
+    }
+
     private View scenePanel(Object island, String fieldName, String... buttons) throws Exception {
-        if (!(island instanceof View)) throw new IllegalStateException("scene_view_missing");
-        Field panelField = NativeIslandSceneContract.field(island.getClass(), fieldName, View.class);
-        if (panelField == null || !(panelField.get(island) instanceof View))
-            throw new IllegalStateException("panel_missing:" + fieldName);
-        View panel = (View) panelField.get(island);
+        View panel = existingPanel(island, fieldName);
         for (String button : buttons) {
             if (!(field(panel, button) instanceof ImageView)
                     || !((View) field(panel, button)).hasOnClickListeners())
                 throw new IllegalStateException("panel_button_missing:" + button);
         }
+        return panel;
+    }
+
+    private View existingPanel(Object island, String fieldName) throws Exception {
+        if (!(island instanceof View)) throw new IllegalStateException("scene_view_missing");
+        Field panelField = NativeIslandSceneContract.field(island.getClass(), fieldName, View.class);
+        if (panelField == null || !(panelField.get(island) instanceof View))
+            throw new IllegalStateException("panel_missing:" + fieldName);
+        View panel = (View) panelField.get(island);
+        Class<?> base = Class.forName(OEM + "DynamicPermanentIsland", false, loader);
+        if (!base.isInstance(panel) || NativeIslandSceneContract.method(island.getClass(), "getPanelIsland", base) == null)
+            throw new IllegalStateException("panel_getter_contract_missing:" + fieldName);
         return panel;
     }
 
@@ -369,9 +600,9 @@ final class NativeIslandScenes {
                     || NativeIslandSceneContract.method(type, "setFlashlight", void.class, boolean.class) == null)
                 throw new IllegalStateException("flashlight_methods_missing");
             Class<?> callback = Class.forName("com.android.systemui.statusbar.policy.FlashlightController$FlashlightListener", false, loader);
-            Method add = NativeIslandSceneContract.method(type, "addCallback", void.class, callback);
+            addListener = NativeIslandSceneContract.method(type, "addCallback", void.class, callback);
             removeListener = NativeIslandSceneContract.method(type, "removeCallback", void.class, callback);
-            if (!callback.isInterface() || add == null || removeListener == null)
+            if (!callback.isInterface() || addListener == null || removeListener == null)
                 throw new IllegalStateException("flashlight_listener_missing");
             listener = Proxy.newProxyInstance(loader, new Class<?>[]{callback}, (proxy, method, args) -> {
                 if (method.getDeclaringClass() == Object.class) {
@@ -382,17 +613,36 @@ final class NativeIslandScenes {
                 MAIN.removeCallbacks(torchRefresh); MAIN.post(torchRefresh); return null;
             });
             panels.put(torch, panel); torchCapability = "ready";
-            add.invoke(controller, listener);
-            MAIN.post(torchRefresh);
         } catch (Exception absent) {
             panels.remove(torch); torchCapability = reason(absent);
-            if (listener != null && removeListener != null) try { removeListener.invoke(controller, listener); } catch (Exception ignored) { }
-            listener = null;
+            syncTorchListener(false); listener = null; controller = null;
+        }
+    }
+
+    private void syncTorchListener(boolean selected) {
+        if (selected == torchListening) return;
+        if (selected && (listener == null || addListener == null || removeListener == null)) return;
+        try {
+            if (selected) {
+                // Mark ownership first so a partially registering controller is still released on failure.
+                torchListening = true;
+                addListener.invoke(controller, listener);
+            } else {
+                MAIN.removeCallbacks(torchRefresh);
+                removeListener.invoke(controller, listener);
+                torchListening = false;
+            }
+        } catch (Exception error) {
+            if (selected) {
+                try { removeListener.invoke(controller, listener); } catch (Exception ignored) { }
+                torchListening = false;
+            }
+            report("flashlight_listener_failed:" + reason(error));
         }
     }
 
     private void syncTorch() {
-        if (!usable() || listener == null || blocked(torch)) return;
+        if (!enhancing("torch") || !torchListening || listener == null) return;
         try {
             syncEnvironment();
             boolean on = Boolean.TRUE.equals(enabled.invoke(controller)) && Boolean.TRUE.equals(available.invoke(controller));
@@ -404,7 +654,7 @@ final class NativeIslandScenes {
     }
 
     private boolean shouldSuppressRecorder() {
-        if (!usable() || blocked(record) || !panels.containsKey(record) || !capsuleReady) return false;
+        if (!enhancing("record") || !panels.containsKey(record) || !capsuleReady) return false;
         if (!Boolean.TRUE.equals(field(permanent, "mInteractive"))
                 || Boolean.TRUE.equals(field(permanent, "mAODVisibility"))
                 || Boolean.TRUE.equals(field(permanent, "mSuperPowerSave"))) return false;
@@ -419,7 +669,9 @@ final class NativeIslandScenes {
     }
 
     private void syncRecorder() {
-        if (!usable()) return;
+        if (!enhancing("record")) { suspendRecorder(); return; }
+        Object recordUser = field(record, "mCurrentUser");
+        if (!(recordUser instanceof Integer) || (Integer) recordUser != currentUser()) { suspendRecorder(); return; }
         Object user=field(record,"mCurrentUserContext");
         if(user instanceof Context && user!=recordContext){
             if(observingRecord)try{recordContext.getContentResolver().unregisterContentObserver(recordObserver);}catch(RuntimeException ignored){}
@@ -582,7 +834,7 @@ final class NativeIslandScenes {
     }
 
     private void syncEnvironment() {
-        if (!usable()) return;
+        if (!hasEnhancements()) return;
         try {
             KeyguardManager guard = context.getSystemService(KeyguardManager.class);
             boolean locked = guard != null && guard.isKeyguardLocked();
@@ -598,6 +850,7 @@ final class NativeIslandScenes {
 
     private void stateChanged() {
         if (closed) return;
+        if (cardsBridge != null) cardsBridge.stateChanged();
         syncOrdinaryVisibility();
         boolean next = shouldSuppressRecorder();
         if (next != suppressing) {
@@ -605,6 +858,8 @@ final class NativeIslandScenes {
             MAIN.removeCallbacks(capsuleRefresh); MAIN.post(capsuleRefresh);
         }
         report("active;torch=" + torchCapability + ";record=" + recordCapability
+                + ";countdown=" + countdownCapability + ";countdownState=" + countdownState
+                + ";media=" + mediaCapability + ";enhanced=" + new java.util.TreeSet<>(enhancedScenes)
                 + ";torchOn=" + field(permanent, "mFlashlightOn")
                 + ";recordState=" + field(record, "mCurState")
                 + ";recordSource=" + recordSource
@@ -636,7 +891,7 @@ final class NativeIslandScenes {
     }
 
     private void syncOrdinaryVisibility() {
-        if (!usable() || children(field(permanent, "mDynamicPermanentContainer")) <= 0) return;
+        if (!hasEnhancements() || children(field(permanent, "mDynamicPermanentContainer")) <= 0) return;
         try {
             Object island = call(permanent, "getPermanentIsland");
             if (island == null) return;
@@ -668,6 +923,7 @@ final class NativeIslandScenes {
     void close() {
         if (closed) return;
         closed = true;
+        restorePanelWindow();
         root.removeOnAttachStateChangeListener(rootLifecycle);
         if (receiving) try { context.unregisterReceiver(environment); } catch (RuntimeException ignored) { }
         receiving = false;
@@ -676,9 +932,11 @@ final class NativeIslandScenes {
         if (observingRecord) try { recordContext.getContentResolver().unregisterContentObserver(recordObserver); }
         catch (RuntimeException ignored) { }
         observingRecord = false;
-        if (listener != null && removeListener != null) try { removeListener.invoke(controller, listener); }
-        catch (Exception error) { report("flashlight_release_failed:" + reason(error)); }
-        listener = null; panels.clear();
+        syncTorchListener(false);
+        if (countdownBridge != null) countdownBridge.close();
+        if (mediaBridge != null) mediaBridge.close();
+        if (cardsBridge != null) cardsBridge.close();
+        listener = null; panels.clear(); enhancedScenes.clear();
         if (selected == this) selected = null;
         refreshCapsules(); report("released");
     }

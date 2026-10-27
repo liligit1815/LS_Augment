@@ -129,6 +129,8 @@ final class NativeIslandHost {
         count+=hookNamed(module,loader,"native_island","android.view.WindowManagerImpl","updateViewLayout",2,(o,a,r)->{
             NativeIslandHost h=active;
             if(h!=null&&a[0]==h.root&&a[1] instanceof WindowManager.LayoutParams)h.window((WindowManager.LayoutParams)a[1]);
+            if(a[0] instanceof View&&a[1] instanceof WindowManager.LayoutParams)
+                NativeIslandScenes.adjustWindow((View)a[0],(WindowManager.LayoutParams)a[1]);
             return PASS;
         },null);
         for(String method:new String[]{"onClick","onLongClick"}){
@@ -229,7 +231,7 @@ final class NativeIslandHost {
             android.os.PowerManager power=context.getSystemService(android.os.PowerManager.class);
             android.app.KeyguardManager keyguardManager=context.getSystemService(android.app.KeyguardManager.class);
             call(permanent,"onKeyguardStateChanged",keyguardManager==null||keyguardManager.isKeyguardLocked());
-            if(power!=null&&power.isInteractive())call(manager,"onStartedWakingUp");
+            if(power!=null&&power.isInteractive())NativeIslandWake.synchronize(manager,permanent);
             acquired=true;report("ready;featureBefore="+originalFeature+";bootstrapped="+initializedByDuo);
             return true;
         }catch(Exception failure){
@@ -288,7 +290,7 @@ final class NativeIslandHost {
             android.app.KeyguardManager guard=context.getSystemService(android.app.KeyguardManager.class);
             call(pm,"onKeyguardStateChanged",guard==null||guard.isKeyguardLocked());
             android.os.PowerManager power=context.getSystemService(android.os.PowerManager.class);
-            if(power!=null&&power.isInteractive())call(m,"onStartedWakingUp");
+            if(power!=null&&power.isInteractive())NativeIslandWake.synchronize(m,pm);
             if(nativeScenes!=null)nativeScenes.close();
             nativeScenes=null;
             if(on){nativeScenes=new NativeIslandScenes(context,loader,m,pm,(View)view);nativeScenes.start();}
@@ -320,6 +322,8 @@ final class NativeIslandHost {
         waitingNativeRoot=null;nativeAttach=null;
     }
     void close(){selectNative(false);release();}
+
+    void nativeForegroundChanged(){if(nativeScenes!=null)nativeScenes.foregroundChanged();}
 
     // Measure the host's actual system inset resource; the existing missing-ID fallback is required across OEM layouts.
     // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.

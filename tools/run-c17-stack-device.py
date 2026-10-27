@@ -30,7 +30,7 @@ TITLE_ALIASES = {number: {title} for number, title in TITLES.items()}
 TITLE_ALIASES[3].add('六行原生收件列表')
 TITLE_ALIASES[6].add('临时对话夹具')
 VALUES = {'ls_augment_rm_notification_stack': '1',
-          'ls_augment_rm_notification_stack_complete_count': '1'}
+          'ls_augment_rm_notification_stack_start': '40'}
 ACTION_FRESH_SECONDS = 3
 AUDIT = ar.ROOT / 'out/full-function-audit-20261004'
 
@@ -1042,7 +1042,7 @@ def main():
                                   pid, ar.shell('settings get global boot_count').strip(), installed_name[1])
         if ar.shell('pidof com.android.systemui').strip() != pid:
             raise RuntimeError('SystemUI changed while checking its loaded build')
-        sources = ['android/app/src/main/java/ls/augment/com/hook/NotificationStackHook.java',
+        sources = ['android/app/src/main/java/ls/augment/com/hook/NotificationCascadeHook.java',
                    'android/app/src/main/java/ls/augment/com/NotificationLayoutPolicy.java',
                    'android/app/src/main/java/ls/augment/com/hook/NotificationAppearanceHook.java',
                    'android/app/src/main/java/ls/augment/com/hook/NotificationViewportInset.java',

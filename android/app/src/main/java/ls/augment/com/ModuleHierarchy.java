@@ -194,6 +194,7 @@ public final class ModuleHierarchy {
     public static List<String> path(String route){LinkedList<String> path=new LinkedList<>();Set<String> visited=new HashSet<>();String next=resolve(route);while(visited.add(next)){path.addFirst(next);if(Arrays.asList("home","settings","about").contains(next))break;next=parent(next);}return path;}
     public static String categoryForRoute(String route){for(String item:path(route)){if(item.startsWith("target-"))return item.substring(7);Section s=group(item);if(s!=null)return s.target;Section owner=group(ENTRY_PARENTS.get(item));if(owner!=null)return owner.target;}Section s=group(ENTRY_PARENTS.get(resolve(route)));return s==null?null:s.target;}
     public static String title(String route){
+        if("feature_search".equals(route))return "搜索";
         if("atomic_workbench".equals(route))return "红魔Step";
         if("atomic_workbench_session".equals(route))return "运行工作台";
         if("atomic_workbench_apps".equals(route))return "应用列表显示";

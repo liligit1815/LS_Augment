@@ -54,11 +54,11 @@ public class TestDualLifecycle {
  static class Geometry{float left,top;float height(){return 42;}}
  static class Plan{boolean hasSpacing;}
  static class Layout{Plan plan=new Plan();}
- static class Drawing{static int constructions;boolean refreshed,readyToDraw;float gridScale=1;int inputVersion;Geometry reference=new Geometry();Layout currentLayout=new Layout();Runnable invalidIdentity;
+ static class Drawing{static int constructions;boolean refreshed,readyToDraw;float gridScale=1;int inputVersion,contentWidth=112;Geometry reference=new Geometry();Layout currentLayout=new Layout();Runnable invalidIdentity;
   final int capturedOwnerWidth,capturedOtherWidth;
   final View owner,otherOwner;final ConnectivityIconSource source;String fallbackReason="slot_unknown";
   Drawing(View owner,View otherOwner,View position,View first,View second,ConnectivityIconSource source){constructions++;this.owner=owner;this.otherOwner=otherOwner;this.source=source;capturedOwnerWidth=owner.getWidth();capturedOtherWidth=otherOwner==null?-1:otherOwner.getWidth();}
-  void refresh(){refreshed=true;}Rect contentBounds(){return reference==null?null:new Rect();}
+  void refresh(){refreshed=true;}Rect contentBounds(){if(reference==null)return null;Rect r=new Rect();r.right=contentWidth;return r;}
   Geometry nativeGeometry(){return new Geometry();}Geometry geometry(){return reference;}Layout layout(Geometry g){return g==null?null:currentLayout;}
   String inputs(){return "native:"+inputVersion+":"+/* STYLE_GEOMETRY */;}
   // PLAN_INPUTS
@@ -199,6 +199,13 @@ public class TestDualLifecycle {
   check(waiting.apply(true)&&!waiting.drawable.readyToDraw,"repeated apply cannot skip the pending layout epoch");
   waiting.nativeLayout.onGlobalLayout();check(waiting.apply(true)&&!waiting.drawable.readyToDraw,"global callback alone cannot bypass outstanding layout requests");
   waiting.finishLayout();check(waiting.apply(true)&&waiting.drawable.readyToDraw&&badge.transition==0,"settled layout commits overlay suppression");
+  for(int width:new int[]{140,112,160,112}){
+   waiting.drawable.contentWidth=width;
+   check(waiting.apply(true)&&waiting.ownedWait>=0&&waiting.drawable.readyToDraw,"network badge width change retains accepted glyph size");
+   check(badge.transition==0&&waiting.anchorSignal.transition==0&&waiting.collapsed.transition==0,"both native row sizes stay suppressed during width transition");
+   check(waiting.apply(true)&&waiting.drawable.readyToDraw,"pending owned layout does not flash native rows");
+   waiting.finishLayout();check(waiting.apply(true)&&waiting.drawable.readyToDraw,"updated badge width commits after layout");
+  }
   waiting.restore();waiting.restore();check(waiting.closed&&waiting.observer.removed&&waiting.anchor.params.width==-2,"restore is idempotent and releases the layout listener");
   check(!waiting.apply(true)&&waiting.anchorSignal.transition==.7f,"closed pair cannot reacquire native render ownership");
   Pair released=new Pair();check(settle(released,true),"baseline pair ready before public boundary handoff");

@@ -28,6 +28,7 @@ final class BootEvidenceCapture {
     }
     private static File directory(Context context){return new File(context.createDeviceProtectedStorageContext().getFilesDir(),"boot-evidence-v1");}
     static String capture(Context context,String phase,int timeoutSeconds) {
+        long historyCutoff=LogHistory.cutoff(context);
         String boot=SystemUiCrashJournal.bootId();
         if("unknown".equals(boot))try {
             int count=android.provider.Settings.Global.getInt(context.getContentResolver(),"boot_count",-1);
@@ -44,7 +45,7 @@ final class BootEvidenceCapture {
             ApplicationInfo info=context.getPackageManager().getApplicationInfo(SystemUiCrashJournal.PACKAGE,0);
             int user=Process.myUid()/100000;if(info.uid/100000!=user)throw new SecurityException("user_identity");
             String command="CLASSPATH="+RootShell.quote(context.getApplicationInfo().sourceDir)
-                    +" exec /system/bin/app_process /system/bin ls.augment.com.SystemUiNativeCrashEvidence "+user+" "+info.uid;
+                    +" exec /system/bin/app_process /system/bin ls.augment.com.SystemUiNativeCrashEvidence "+user+" "+info.uid+" "+historyCutoff;
             RootShell.Result result=RootShell.run(command,null,timeoutSeconds,BootEvidenceArchive.LIMIT-4096);
             out.append("rootExit=").append(result.exitCode).append(" timeout=").append(result.timedOut)
                     .append(" captureComplete=").append(result.capture!=null&&result.capture.complete&&!result.capture.failed)
@@ -60,7 +61,12 @@ final class BootEvidenceCapture {
         try {
             String text=out.toString();
             if(text.getBytes(StandardCharsets.UTF_8).length>BootEvidenceArchive.LIMIT)throw new IllegalStateException("archive_limit");
-            BootEvidenceArchive.save(directory(context),boot,phase,text);
+            File guard=new File(context.createDeviceProtectedStorageContext().getFilesDir(),"log-history.lock");
+            if(java.nio.file.Files.isSymbolicLink(guard.toPath()))throw new java.io.IOException("history_lock_path");
+            try(java.io.RandomAccessFile lock=new java.io.RandomAccessFile(guard,"rw");java.nio.channels.FileLock ignored=lock.getChannel().lock()){
+                if(LogHistory.cutoff(context)!=historyCutoff)return "archiveWrite=DISCARDED_AFTER_LOG_CLEAR\n";
+                BootEvidenceArchive.save(directory(context),boot,phase,text);
+            }
         }catch(Throwable failure){out.append("archiveWrite=FAILED;error=").append(failure.getClass().getSimpleName()).append('\n');}
         return out.toString();
     }

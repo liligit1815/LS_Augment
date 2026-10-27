@@ -19,6 +19,9 @@ final class AuditLog {
     private static boolean failureMetadataPersisted=true;
 
     private AuditLog() { }
+    static synchronized void resetHistory(){
+        repeats=new LogRepeatPolicy();writeFailures=0;lastWriteErrorAt=0;lastWriteError="";failureMetadataPersisted=true;
+    }
 
     static synchronized void write(Context context, String category, String message) {
         append(context,category,message,false);
@@ -30,6 +33,9 @@ final class AuditLog {
     }
 
     private static boolean append(Context context,String category,String message,boolean durable){
+        synchronized(LogHistory.LOCK){return appendLocked(context,category,message,durable);}
+    }
+    private static boolean appendLocked(Context context,String category,String message,boolean durable){
         if (context == null || ResetWriteFence.blocked()) return false;
         try {
             File file = new File(context.getFilesDir(), "ls_augment.log");

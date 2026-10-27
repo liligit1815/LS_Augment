@@ -22,20 +22,26 @@ final class DiagnosticLogcat {
     }
     private DiagnosticLogcat(){}
     static Collection cleanup(long now,Reader reader){
-        return collect(now-10*60*1000,768*1024,
-                "LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS+"AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader);
+        return cleanup(now,0,reader);
+    }
+    static Collection cleanup(long now,long historyCutoff,Reader reader){
+        return collect(Math.max(now-10*60*1000,historyCutoff),768*1024,
+                "LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS+"AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader,historyCutoff);
     }
     static Collection module(long now,boolean ai,boolean shoulder,Reader reader){
-        return collect(now-30*60*1000,1024*1024,"DuoStartup:I LSPosedContext:E LSPosedBridge:E LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS
-                +(ai?"LS_Augment_AI:I ":"")+"'*:S'",reader);
+        return module(now,ai,shoulder,0,reader);
     }
-    private static Collection collect(long since,int limit,String tags,Reader reader){
+    static Collection module(long now,boolean ai,boolean shoulder,long historyCutoff,Reader reader){
+        return collect(Math.max(now-30*60*1000,historyCutoff),1024*1024,"DuoStartup:I LSPosedContext:E LSPosedBridge:E LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS
+                +(ai?"LS_Augment_AI:I ":"")+"'*:S'",reader,historyCutoff);
+    }
+    private static Collection collect(long since,int limit,String tags,Reader reader,long historyCutoff){
         String timestamp=new SimpleDateFormat("MM-dd HH:mm:ss.SSS",Locale.US).format(new Date(since));
         RootShell.Result primary=reader.read(BUFFERS+" -d -v epoch -T "+RootShell.quote(timestamp)+" "+tags,12,limit);
         String reason=!readable(primary)?"PRIMARY_READ_FAILED_OR_INCOMPLETE"
                 :primary.capture!=null&&primary.capture.truncated?"PRIMARY_CAPTURE_LIMIT_REACHED"
                 :hasRecords(primary)?"":"PRIMARY_NO_MATCHING_RECORDS";
-        if(reason.isEmpty())return new Collection(since,limit,primary,null,null,reason);
+        if(reason.isEmpty()||historyCutoff>0)return new Collection(since,limit,primary,null,null,reason);
         // The same selected tags retain privacy filtering. This single bounded
         // tail may precede the requested window, so it must remain a separate source.
         RootShell.Result buffers=reader.read(BUFFERS+" -g",4,BUFFER_BYTES);

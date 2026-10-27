@@ -12,6 +12,9 @@ import java.util.LinkedHashMap;
 final class StartupDiagnosticStore {
     private static final LinkedHashMap<String, Boolean> ACCEPTED = new LinkedHashMap<>();
     static synchronized Bundle record(Context context, Bundle extras) {
+        synchronized(LogHistory.LOCK){return recordLocked(context,extras);}
+    }
+    private static Bundle recordLocked(Context context,Bundle extras){
         Bundle reply = new Bundle();
         if (ResetWriteFence.blocked()) return rejected(reply, "RESET_WRITE_FENCE");
         try {
@@ -27,6 +30,7 @@ final class StartupDiagnosticStore {
             if (event.optInt("protocol", -1) != 1 || !session.matches("[A-Za-z0-9-]{1,64}")
                     || !stage.matches("[A-Z0-9_.:-]{1,96}") || sequence < 1)
                 return rejected(reply, "EVENT_INVALID");
+            if(LogHistory.old(context,event.optLong("wall"))){reply.putBoolean("ok",true);return reply;}
             String identity = uid + ":" + pid + ":" + session + ":" + sequence;
             if (!ACCEPTED.containsKey(identity)) {
                 event.put("receivedAt", System.currentTimeMillis()).put("receivedBoot", RuntimeEnvironment.bootCount(context));

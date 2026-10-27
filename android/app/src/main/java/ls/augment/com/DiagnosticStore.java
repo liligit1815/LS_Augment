@@ -28,7 +28,11 @@ final class DiagnosticStore {
         DetailBatch(byte[] hash,long now){payloadHash=hash;touched=now;}
     }
     static synchronized Bundle record(Context context,Bundle extras) {
+        synchronized(LogHistory.LOCK){return recordLocked(context,extras);}
+    }
+    private static Bundle recordLocked(Context context,Bundle extras){
         Bundle result=new Bundle();
+        long cutoff=LogHistory.cutoff(context);result.putLong("historyCutoff",cutoff);
         if(extras==null)return rejected(result,"NULL_EXTRAS",false,"IllegalArgumentException");
         if(ResetWriteFence.blocked())return rejected(result,"RESET_WRITE_FENCE",true,"WriteFence");
         String phase="snapshot_decode";
@@ -38,6 +42,13 @@ final class DiagnosticStore {
             if(raw==null)return rejected(result,"MALFORMED_PAYLOAD",false,"IllegalArgumentException");
             if(raw.length()>256*1024)return rejected(result,"SNAPSHOT_TOO_LARGE",false,"IllegalArgumentException");
             JSONObject snapshot=new JSONObject(raw);if(snapshot.getInt("pid")!=pid)return rejected(result,"PID_MISMATCH",false,"SecurityException");
+            boolean oldSender=cutoff>0&&snapshot.optLong("moduleLoadedAt")<=cutoff&&extras.getLong("historyCutoff",0)<cutoff;
+            if(oldSender){
+                JSONObject live=LogHistory.registrationOnly(snapshot);
+                live.put("sourceUid",uid).put("receivedAt",System.currentTimeMillis()).put("receivedBoot",RuntimeEnvironment.bootCount(context));
+                storeSnapshot(context,pid,live);
+                result.putBoolean("ok",true);return result;
+            }
             phase="events_decode";
             String eventsRaw=extras.getString("events","[]");
             if(eventsRaw==null)return rejected(result,"MALFORMED_PAYLOAD",false,"IllegalArgumentException");
@@ -49,10 +60,7 @@ final class DiagnosticStore {
             phase="snapshot_store";
             snapshot.put("sourceUid",uid).put("receivedAt",System.currentTimeMillis())
                     .put("receivedBoot",RuntimeEnvironment.bootCount(context));
-            android.content.SharedPreferences prefs=context.getSharedPreferences("hook-processes",0);
-            android.content.SharedPreferences.Editor editor=prefs.edit();
-            if(prefs.getAll().size()>64){String oldest=null;long time=Long.MAX_VALUE;for(java.util.Map.Entry<String,?> e:prefs.getAll().entrySet())try{long at=new JSONObject(e.getValue().toString()).optLong("receivedAt");if(at<time){time=at;oldest=e.getKey();}}catch(Exception ignored){}if(oldest!=null)editor.remove(oldest);}
-            editor.putString("pid_"+pid,snapshot.toString()).apply();
+            storeSnapshot(context,pid,snapshot);
             AppConfig config=null;
             if(batch!=null&&!batch.terminalError.isEmpty())return appendUnconfirmed(result,batch.terminalError);
             if(batch!=null&&batch.accepted){result.putBoolean("ok",true);result.putBoolean("duplicateBatch",true);return result;}
@@ -113,6 +121,12 @@ final class DiagnosticStore {
             rejected(result,detail,retryable,error.getClass().getSimpleName());result.putString("providerStage",phase);
         }
         return result;
+    }
+    private static void storeSnapshot(Context context,int pid,JSONObject snapshot){
+        android.content.SharedPreferences prefs=context.getSharedPreferences("hook-processes",0);
+        android.content.SharedPreferences.Editor editor=prefs.edit();
+        if(prefs.getAll().size()>64){String oldest=null;long time=Long.MAX_VALUE;for(java.util.Map.Entry<String,?> e:prefs.getAll().entrySet())try{long at=new JSONObject(e.getValue().toString()).optLong("receivedAt");if(at<time){time=at;oldest=e.getKey();}}catch(Exception ignored){}if(oldest!=null)editor.remove(oldest);}
+        editor.putString("pid_"+pid,snapshot.toString()).apply();
     }
     private static Bundle rejected(Bundle result,String detail,boolean retryable,String type){
         result.putBoolean("ok",false);result.putBoolean("retryable",retryable);result.putString("error",type);

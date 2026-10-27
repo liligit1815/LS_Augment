@@ -8,11 +8,9 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'out/redmagic12-12.0.15MR1/tests/stage4'
 tests=[
- ('notification-legacy','test-notification-whole-stack-runtime',[]),
- ('notification-modern','test-notification-whole-stack-runtime',['--modern-contract']),
- ('notification-bundle','test-notification-whole-stack-runtime',['--native-bundle']),
+ ('notification-cascade','test-notification-cascade-runtime',[]),
  *[(name,name,[]) for name in [
-  'check-redmagic12-stage4-contracts','test-redmagic12-systemui-contracts','test-notification-grouping-policy',
+  'check-redmagic12-stage4-contracts','test-redmagic12-systemui-contracts','test-notification-layout-policy',
   'test-notification-clear-runtime','test-notification-summary-runtime',
   'test-notification-clock-ownership-runtime','test-notification-clock-geometry-runtime','test-systemui-fatal-dispatch',
   'test-atomic-workbench-home-hook','test-atomic-workbench-home-modern','test-atomic-workbench-home-runtime',

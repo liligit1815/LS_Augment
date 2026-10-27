@@ -21,6 +21,8 @@ def member(source, signature):
 
 
 STUBS = {
+    'ls/augment/com/LogHistory.java': 'package ls.augment.com;final class LogHistory{static final Object LOCK=new Object();static long cutoff(android.content.Context c){return 0;}static org.json.JSONObject registrationOnly(org.json.JSONObject v){return v;}}',
+
     "android/content/SharedPreferences.java": """package android.content;import java.util.Map;
 public interface SharedPreferences {Map<String,?> getAll();String getString(String k,String d);int getInt(String k,int d);long getLong(String k,long d);Editor edit();
 interface Editor {Editor putString(String k,String v);Editor putInt(String k,int v);Editor putLong(String k,long v);Editor remove(String k);void apply();boolean commit();}}""",
@@ -35,7 +37,7 @@ public static Toast makeText(Object c,String v,int l){return new Toast();}public
 public static long elapsedRealtime(){return now;}public static void sleep(long delay){now+=delay;}}""",
     "android/os/Bundle.java": """package android.os;public class Bundle {private final java.util.Map<String,Object> values=new java.util.HashMap<>();
 public void putString(String k,String v){values.put(k,v);}public String getString(String k,String d){return (String)values.getOrDefault(k,d);}
-public void putBoolean(String k,boolean v){values.put(k,v);}public boolean getBoolean(String k){return Boolean.TRUE.equals(values.get(k));}}""",
+public void putLong(String k,long v){values.put(k,v);}public long getLong(String k,long d){return ((Number)values.getOrDefault(k,d)).longValue();}public long getLong(String k){return getLong(k,0);}public void putBoolean(String k,boolean v){values.put(k,v);}public boolean getBoolean(String k){return Boolean.TRUE.equals(values.get(k));}}""",
     "android/os/Binder.java": """package android.os;public final class Binder {public static int getCallingPid(){return 321;}public static int getCallingUid(){return 1000;}}""",
     "android/provider/Settings.java": """package android.provider;public class Settings {public static class Global {
 public static final String BOOT_COUNT="boot";public static int boot=7;public static int getInt(Object r,String key,int fallback){return boot;}}}""",
@@ -217,6 +219,9 @@ public final class TestDiagnosticReliability {
   DiagnosticLogcat.Collection current=DiagnosticLogcat.module(now,false,false,reader);
   yes(reader.commands.size()==1&&current.fallback==null,"matching time window does not broaden collection");
   yes(current.sinceWall==now-30*60*1000&&reader.commands.get(0).contains(" -T "),"actual time window preserved");
+  reader=new LogcatReader();reader.replies.add(raw(0,"--------- beginning of main",true,false,false));
+  DiagnosticLogcat.Collection cleared=DiagnosticLogcat.module(now,false,false,now-1000,reader);
+  yes(cleared.sinceWall==now-1000&&cleared.fallback==null&&reader.commands.size()==1,"cleared history uses the new time boundary without replaying a historical tail");
   reader=new LogcatReader();reader.replies.add(raw(0,"--------- beginning of main",true,false,false));
   reader.replies.add(raw(0,"main: ring buffer is 256 KiB",true,false,false));reader.replies.add(raw(0,"1791697000.000 4595 4595 W LS_Augment: older",true,false,false));
   DiagnosticLogcat.Collection fallback=DiagnosticLogcat.module(now,false,false,reader);

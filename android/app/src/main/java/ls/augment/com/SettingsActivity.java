@@ -11,8 +11,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
@@ -40,8 +38,7 @@ public final class SettingsActivity extends Activity {
     private LiquidGlassLayout runtimeCard;
     private boolean rootGranted, environmentKnown;
     private final Runnable environmentChanged=this::refreshEnvironment;
-    private EditText search;
-    private String selected=HOME,query="",appearanceSignature;
+    private String selected=HOME,appearanceSignature;
     private String runtimeText="正在检查模块状态…",rootText="正在读取运行环境";
     private boolean runtimeActive,environmentLoading,requestedRoot,resumedOnce;
     private String loadedModuleVersion="";
@@ -54,7 +51,7 @@ public final class SettingsActivity extends Activity {
         updater.attach(this);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
                 | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        if(state!=null){selected=state.getString("tab",HOME);query=state.getString("query","");for(String tab:new String[]{HOME,SETTINGS,ABOUT})positions.put(tab,state.getInt("scroll_"+tab));}
+        if(state!=null){selected=state.getString("tab",HOME);for(String tab:new String[]{HOME,SETTINGS,ABOUT})positions.put(tab,state.getInt("scroll_"+tab));}
         else if(getIntent().hasExtra("tab"))selected=getIntent().getStringExtra("tab");
         if(!Arrays.asList(HOME,SETTINGS,ABOUT).contains(selected))selected=HOME;
         buildScaffold();ModuleScopeService.addListener(environmentChanged);
@@ -69,11 +66,11 @@ public final class SettingsActivity extends Activity {
         loadInventory();refreshEnvironment();
         updater.resume();
     }
-    @Override protected void onSaveInstanceState(Bundle state){rememberScroll();state.putString("tab",selected);state.putString("query",query);for(String tab:new String[]{HOME,SETTINGS,ABOUT})state.putInt("scroll_"+tab,positions.getOrDefault(tab,0));super.onSaveInstanceState(state);}
+    @Override protected void onSaveInstanceState(Bundle state){rememberScroll();state.putString("tab",selected);for(String tab:new String[]{HOME,SETTINGS,ABOUT})state.putInt("scroll_"+tab,positions.getOrDefault(tab,0));super.onSaveInstanceState(state);}
     // Gesture navigation is registered separately with the platform dispatcher.
     @android.annotation.SuppressLint("GestureBackNavigation")
     @Override public void onBackPressed(){navigateBack();}
-    private void navigateBack(){if(!HOME.equals(selected))selectTab(HOME);else if(!query.isEmpty()&&search!=null)search.setText("");else finish();}
+    private void navigateBack(){if(!HOME.equals(selected))selectTab(HOME);else finish();}
     @Override protected void onPause(){if(updater!=null)updater.pause();if(scroll!=null)scroll.cancelRebound();super.onPause();}
     @Override public Object onRetainNonConfigurationInstance(){return updater;}
     @Override protected void onDestroy(){if(updater!=null)updater.detach(this,isChangingConfigurations());closeAboutObserver();ModuleScopeService.removeListener(environmentChanged);main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
@@ -98,7 +95,7 @@ public final class SettingsActivity extends Activity {
     private void renderPage(){
         closeAboutObserver();
         int generation=++renderGeneration;
-        page.removeAllViews();appList=null;search=null;runtimeState=null;rootState=null;runtimeCard=null;
+        page.removeAllViews();appList=null;runtimeState=null;rootState=null;runtimeCard=null;
         // All three destinations share the same heading and status-bar spacing.
         page.setPadding(ui.dp(16),ui.dp(8),ui.dp(16),ui.dp(100));
         int position=positions.getOrDefault(selected,0);
@@ -158,11 +155,10 @@ public final class SettingsActivity extends Activity {
     private void renderHome(){
         LinearLayout box=new LiquidGlassLayout(ui,4,true);box.setGravity(Gravity.CENTER_VERTICAL);box.setPadding(ui.dp(14),0,ui.dp(8),0);
         ImageView magnifier=new ImageView(this);magnifier.setImageDrawable(new GlassIcon("search",ui.muted));box.addView(magnifier,new LinearLayout.LayoutParams(ui.dp(20),ui.dp(20)));
-        search=new EditText(this);search.setSingleLine(true);search.setTextSize(14.5f);search.setTextColor(ui.text);search.setHintTextColor(ui.muted);search.setHint("搜索分组或功能");search.setContentDescription("搜索分组或功能");search.setBackgroundColor(Color.TRANSPARENT);search.setPadding(ui.dp(12),ui.dp(12),ui.dp(6),ui.dp(12));search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);search.setText(query);box.addView(search,new LinearLayout.LayoutParams(0,ui.dp(48),1));
-        TextView clear=ui.text("清除",12,ui.accent,true);clear.setGravity(Gravity.CENTER);clear.setContentDescription("清除搜索");clear.setVisibility(query.isEmpty()?View.GONE:View.VISIBLE);clear.setOnClickListener(v->search.setText(""));box.addView(clear,new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48)));
-        search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){query=s.toString();clear.setVisibility(query.isEmpty()?View.GONE:View.VISIBLE);renderAppList();}public void afterTextChanged(Editable e){}});
-        search.setOnFocusChangeListener((v,focused)->{if(focused)scroll.post(()->scroll.smoothScrollTo(0,Math.max(0,box.getTop()-ui.dp(8))));});
-        search.setOnEditorActionListener((v,action,event)->{getSystemService(InputMethodManager.class).hideSoftInputFromWindow(search.getWindowToken(),0);search.clearFocus();return true;});page.addView(box,ui.margins(0,0,0,12));
+        TextView prompt=ui.text("搜索分组或功能",14.5f,ui.muted,false);prompt.setGravity(Gravity.CENTER_VERTICAL);
+        prompt.setPadding(ui.dp(12),0,ui.dp(6),0);box.addView(prompt,new LinearLayout.LayoutParams(0,ui.dp(48),1));
+        box.setTag("home-search-entry");box.setContentDescription("搜索分组或功能");box.setFocusable(true);box.setClickable(true);
+        box.setOnClickListener(v->FeatureSearchActivity.open(this,box));page.addView(box,ui.margins(0,0,0,12));
         appList=new LinearLayout(this);appList.setOrientation(LinearLayout.VERTICAL);page.addView(appList);renderAppList();
     }
     private void renderRuntimeCard(){
@@ -175,23 +171,18 @@ public final class SettingsActivity extends Activity {
 
     }
     private void renderAppList(){
-        if(appList==null)return;appList.removeAllViews();String q=query.trim().toLowerCase(Locale.ROOT);int count=0;
+        if(appList==null)return;appList.removeAllViews();int count=0;
         LinearLayout panel=ui.card();panel.setTag("home-app-groups");panel.setPadding(ui.dp(14),0,ui.dp(14),0);panel.setOrientation(LinearLayout.VERTICAL);
-        if(q.isEmpty())for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
+        for(ModulePresentationCatalog.Category category:ModulePresentationCatalog.categories()){
             if(count++>0)panel.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
             Drawable icon=icons.get(category.icon);
             LinearLayout row=applicationRow(category.title,icon!=null?icon:new GlassIcon("system",ui.accent),category.id,v->openHomeRoute(category.route()));
             row.setTag("home-category:"+category.id);panel.addView(row,ui.wrap());
-        }else for(ModuleFeatureSearch.Result result:ModuleFeatureSearch.search(q,HiddenEntrySession.isUnlocked())){
-            if(count++>0)panel.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
-            View row=ui.preferenceRow(result.route,result.title,result.path,()->openHomeRoute(result.route));
-            row.setTag("search-result:"+result.route);panel.addView(row,ui.wrap());
         }
-        if(count>0)appList.addView(panel);else{TextView empty=ui.text("没有找到相关分组或功能\n试试“时钟”“USB”或“截图”",14,ui.muted,false);empty.setGravity(Gravity.CENTER);empty.setPadding(ui.dp(16),ui.dp(34),ui.dp(16),ui.dp(34));appList.addView(empty);}
+        appList.addView(panel);
     }
     private void openHomeRoute(String route){
-        getSystemService(InputMethodManager.class).hideSoftInputFromWindow(search.getWindowToken(),0);
-        query="";search.clearFocus();ModuleNavigation.open(this,route);
+        ModuleNavigation.open(this,route);
     }
     private LinearLayout applicationRow(String title,Drawable actual,String id,View.OnClickListener action){
         LinearLayout row=ui.groupRow();row.setPadding(0,ui.dp(4),0,ui.dp(4));
@@ -214,15 +205,27 @@ public final class SettingsActivity extends Activity {
         maintenanceRow(maintenance,"导入配置","选择备份文件","import");
         maintenanceRow(maintenance,"重置配置","恢复默认设置并清除模块信息","reset");page.addView(maintenance,ui.margins(0,0,0,16));
         group("日志");LinearLayout logs=ui.card();logs.setPadding(ui.dp(16),0,ui.dp(16),0);
+        maintenanceRow(logs,"清空日志","清除Duo保存的日志与历史诊断记录","clear_logs");
         maintenanceRow(logs,"导出日志","设备、权限、功能配置与运行记录","logs");page.addView(logs,ui.wrap());
     }
     private void maintenanceRow(LinearLayout card,String title,String help,String action){
         if(card.getChildCount()>0)card.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
         LinearLayout row=ui.groupRow();
-        ImageView icon=new ImageView(this);icon.setImageDrawable(new GlassIcon("reset".equals(action)?"reset":"import".equals(action)?"upload":"download",ui.accent));row.addView(icon,new LinearLayout.LayoutParams(ui.dp(28),ui.dp(28)));
+        ImageView icon=new ImageView(this);icon.setImageDrawable(new GlassIcon("reset".equals(action)||"clear_logs".equals(action)?"reset":"import".equals(action)?"upload":"download",ui.accent));row.addView(icon,new LinearLayout.LayoutParams(ui.dp(28),ui.dp(28)));
         LinearLayout copy=new LinearLayout(this);copy.setOrientation(LinearLayout.VERTICAL);copy.addView(ui.text(title,15,"reset".equals(action)?0xffa56515:ui.text,true));copy.addView(ui.text(help,12,ui.muted,false),ui.margins(0,4,0,0));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);cp.leftMargin=ui.dp(12);row.addView(copy,cp);
         row.setBackground(ui.pressable(ui.round(Color.TRANSPARENT,4)));row.setContentDescription(title);row.setClickable(true);row.setFocusable(true);
-        row.setOnClickListener(v->{if("logs".equals(action))startActivity(new Intent(this,LogExportActivity.class));else startActivity(new Intent(this,ConfigTransferActivity.class).putExtra("action",action));});card.addView(row,ui.wrap());
+        row.setOnClickListener(v->{if("clear_logs".equals(action))clearLogs();else if("logs".equals(action))startActivity(new Intent(this,LogExportActivity.class));else startActivity(new Intent(this,ConfigTransferActivity.class).putExtra("action",action));});card.addView(row,ui.wrap());
+    }
+    private void clearLogs(){
+        if(LogCleanup.running()){Toast.makeText(this,"正在清空日志，请稍候",Toast.LENGTH_SHORT).show();return;}
+        ui.glassDialog("清空日志","清除Duo保存的日志、历史诊断、崩溃与测试记录及导出临时文件。保留功能设置和运行所需状态。\n\n已另存的日志和系统、LSPosed公共日志不会删除。清空后新的运行日志会继续记录。",
+                "清空",()->{
+                    Toast.makeText(this,"正在清空日志，请稍候",Toast.LENGTH_SHORT).show();
+                    LogCleanup.start(getApplicationContext(),message->{
+                        if(!isDestroyed()&&!isFinishing())ui.glassDialog("清空日志",message,"知道了",null,null);
+                        else Toast.makeText(getApplicationContext(),message,Toast.LENGTH_LONG).show();
+                    });
+                },"取消");
     }
     private void launcherIconSetting(LinearLayout parent){
         LinearLayout card=moduleSettingRow("桌面图标","显示或隐藏 红魔Duo 的桌面入口。隐藏后仍可从 LSPosed 管理器的模块设置进入。","apps");

@@ -31,7 +31,7 @@ try:
     set_values('clock-on',{'ls_augment_rm_notification_clock_portrait_enabled':'1','ls_augment_rm_notification_clock_portrait_size':'64'})
     open_panel();capture('clock-expanded');time.sleep(2);capture('clock-stable')
     set_values('clock-off',{'ls_augment_rm_notification_clock_portrait_enabled':'0'});open_panel();capture('clock-restored')
-    set_values('stack-on',{'ls_augment_rm_notification_stack':'1','ls_augment_rm_notification_stack_complete_count':'1'})
+    set_values('stack-on',{'ls_augment_rm_notification_stack':'1','ls_augment_rm_notification_stack_start':'40'})
     open_panel();capture('stack-top')
     for index in range(1,4):
         ar.shell('input swipe 550 650 550 440 650');time.sleep(.5);capture('stack-scroll-'+str(index))

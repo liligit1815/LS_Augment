@@ -31,7 +31,8 @@ public final class SignalStylePolicy {
     public static Map<String, String> selection(boolean dual) {
         LinkedHashMap<String, String> updates = new LinkedHashMap<>();
         updates.put(SystemUiOptions.SIGNAL_DUAL, dual ? "1" : "0");
-        if (dual) updates.put(ConfigSchema.SYSTEMUI_MASTER, "1");
+        // Dual signals have their own runtime gate. Enabling the whole status-bar
+        // editor here also applies its saved clock size, icon limits and layout.
         return updates;
     }
 

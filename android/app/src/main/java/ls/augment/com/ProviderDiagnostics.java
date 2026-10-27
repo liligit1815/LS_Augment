@@ -33,6 +33,10 @@ final class ProviderDiagnostics {
         return record(context,Process.myUid(),Process.myPid(),key,value,evidence);
     }
     static Result record(Context context, int callerUid, int callerPid, String key, String value, Bundle extras) {
+        synchronized(LogHistory.LOCK){return recordLocked(context,callerUid,callerPid,key,value,extras);}
+    }
+    private static Result recordLocked(Context context,int callerUid,int callerPid,String key,String value,Bundle extras){
+        if(extras!=null&&LogHistory.old(context,extras.getLong("observedAt",0)))return Result.ACCEPTED;
         if (!DiagnosticWritePolicy.validKey(key)
                 || ConfigSchema.contains(key) || key.startsWith("ls_augment_tgk_fuse_")) return Result.INVALID;
         // Bound expensive normalization, preference snapshots and disk requests at the boundary.

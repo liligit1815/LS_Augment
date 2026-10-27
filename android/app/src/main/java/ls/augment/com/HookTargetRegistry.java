@@ -11,6 +11,13 @@ public final class HookTargetRegistry {
             new LinkedHashSet<>(Arrays.asList(
                     "com.android.settings",
                     "com.android.systemui",
+                    "zte.com.cn.alarmclock",
+                    "cn.zte.recorder",
+                    "com.zte.nebulatranslation",
+                    "com.zte.cn.zteshare",
+                    "com.zte.multscr",
+                    "com.android.dialer",
+                    "com.zte.personalagent",
                     "com.zte.beautify",
                     "com.zte.beautifyadapter",
                     "com.zte.fingerprints",

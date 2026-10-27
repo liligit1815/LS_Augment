@@ -121,7 +121,7 @@ public final class ContributorsActivity extends Activity {
 
     private static String color(int value){return String.format(java.util.Locale.ROOT,"#%06x",value&0xffffff);}
 
-    /** Only explicit user clicks on the two exact project addresses leave the document. */
+    /** Only explicit user clicks on the exact project addresses leave the document. */
     static Intent projectLinkIntent(String address, boolean mainFrame,
             boolean userGesture, boolean redirect) {
         if (!mainFrame || !userGesture || redirect || address == null) return null;
@@ -131,7 +131,8 @@ public final class ContributorsActivity extends Activity {
                     || uri.getUserInfo() != null || uri.getPort() != -1
                     || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
             if (!"https://github.com/ReChronoRain/HyperCeiler".equals(address)
-                    && !"https://github.com/miyupyxh/LiftArc".equals(address)) return null;
+                    && !"https://github.com/miyupyxh/LiftArc".equals(address)
+                    && !"https://github.com/LAOBILAXI233/onestep_on_hyper".equals(address)) return null;
             return new Intent(Intent.ACTION_VIEW, Uri.parse(address)).addCategory(Intent.CATEGORY_BROWSABLE);
         } catch (IllegalArgumentException error) { return null; }
     }

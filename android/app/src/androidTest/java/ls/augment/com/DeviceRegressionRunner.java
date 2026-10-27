@@ -82,6 +82,7 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "carrier-text-layout".equals(operation)
                     || "statusbar-customization-ui".equals(operation)
                     || "statusbar-network-ui".equals(operation)
+                    || "feature-search-ui".equals(operation)
                     || "statusbar-icon-style-ui".equals(operation)
                     || "island-settings-ui".equals(operation)
                     || "launcher-grid-ui".equals(operation) || "numeric-parameter-ui".equals(operation)
@@ -101,6 +102,50 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     .put("installedModuleVersion", context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode())
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "feedback-notifications":
+                    report.put("notifications",FeedbackNotificationCases.run(context,"true".equals(arguments.getString("clear"))));
+                    break;
+                case "native-island-clock-scope":
+                case "native-island-recorder-scope":
+                case "native-island-translation-scope":
+                case "native-island-transfer-scope":
+                case "native-island-nfc-transfer-scope":
+                case "native-island-personal-scope":
+                case "native-island-call-scope": {
+                    String sourcePackage = "native-island-clock-scope".equals(operation) ? "zte.com.cn.alarmclock"
+                            : "native-island-recorder-scope".equals(operation) ? "cn.zte.recorder"
+                            : "native-island-transfer-scope".equals(operation) ? "com.zte.cn.zteshare"
+                            : "native-island-nfc-transfer-scope".equals(operation) ? "com.zte.multscr"
+                            : "native-island-personal-scope".equals(operation) ? "com.zte.personalagent"
+                            : "native-island-call-scope".equals(operation) ? "com.android.dialer" : "com.zte.nebulatranslation";
+                    ModuleScopeService.initialize();
+                    long until = android.os.SystemClock.uptimeMillis() + 8000;
+                    while (ModuleScopeService.service() == null && android.os.SystemClock.uptimeMillis() < until)
+                        android.os.SystemClock.sleep(100);
+                    io.github.libxposed.service.XposedService service = ModuleScopeService.service();
+                    if (service == null) throw new IllegalStateException("Framework service unavailable");
+                    java.util.Set<String> before = new java.util.LinkedHashSet<>(service.getScope());
+                    if (!before.contains(sourcePackage)) {
+                        java.util.concurrent.CountDownLatch completed = new java.util.concurrent.CountDownLatch(1);
+                        service.requestScope(java.util.Collections.singletonList(sourcePackage),
+                                new io.github.libxposed.service.XposedService.OnScopeEventListener() {
+                            @Override public void onScopeRequestApproved(java.util.List<String> approved) { completed.countDown(); }
+                            @Override public void onScopeRequestFailed(String message) { completed.countDown(); }
+                        });
+                        completed.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    }
+                    java.util.Set<String> after = new java.util.LinkedHashSet<>(service.getScope());
+                    java.util.Set<String> added = new java.util.LinkedHashSet<>(after); added.removeAll(before);
+                    report.put("scopeBefore", new org.json.JSONArray(before));
+                    report.put("scopeAfter", new org.json.JSONArray(after));
+                    report.put("clockScoped", after.contains("zte.com.cn.alarmclock"));
+                    report.put("sourcePackage", sourcePackage).put("sourceScoped", after.contains(sourcePackage));
+                    if (!after.containsAll(before) || !java.util.Collections.singleton(sourcePackage).containsAll(added))
+                        throw new AssertionError("Unrelated scope changed");
+                    result.putString("clockScoped", String.valueOf(after.contains("zte.com.cn.alarmclock")));
+                    result.putString("sourceScoped", String.valueOf(after.contains(sourcePackage)));
+                    break;
+                }
                 case "health-queue-pressure": {
                     JSONObject queue=ResourceHealthQueueDeviceCases.run(this);
                     report.put("healthQueue",queue);result.putString("healthQueue",queue.toString());
@@ -523,6 +568,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("statusbarNetworkUi",StatusBarNetworkUiCases.run(this,arguments));
                     result.putString("statusbarNetworkUi",report.getJSONObject("statusbarNetworkUi").toString());
                     break;
+                case "feature-search-ui":
+                    report.put("featureSearchUi",FeatureSearchUiCases.run(this));
+                    result.putString("featureSearchUi",report.getJSONObject("featureSearchUi").toString());
+                    break;
                 case "statusbar-icon-style-ui":
                     report.put("statusbarIconStyleUi",StatusBarIconStyleUiCases.run(this,arguments));
                     result.putString("statusbarIconStyleUi",report.getJSONObject("statusbarIconStyleUi").toString());
@@ -706,6 +755,9 @@ public final class DeviceRegressionRunner extends Instrumentation {
                         targets.put(new JSONObject().put("user", target.userId).put("package", target.packageName)
                                 .put("state", manager.queryState(target).name()));
                     report.put("targets", targets);
+                    break;
+                case "log-cleanup":
+                    report.put("logCleanup",LogCleanupCases.run(context));
                     break;
                 case "set":
                     JSONObject values = new JSONObject(new String(java.util.Base64.getDecoder()

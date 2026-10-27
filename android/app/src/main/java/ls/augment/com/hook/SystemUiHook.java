@@ -26,7 +26,7 @@ final class SystemUiHook {
         int installed = StatusBarGridHook.install(module, loader);
         installed += StatusBarAssetsHook.install(module, loader);
         installed += StatusBarRecentsHook.install(module, loader);
-        installed += NotificationStackHook.install(module, loader);
+        installed += NotificationCascadeHook.install(module, loader);
         installed += BluetoothIconHook.install(module, loader);
         installed += VpnIconHook.install(module, loader);
         installed += installClock(module, loader, compatibility);

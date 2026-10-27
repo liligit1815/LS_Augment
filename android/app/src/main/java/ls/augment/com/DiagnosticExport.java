@@ -10,6 +10,7 @@ import java.util.*;
 /** A real, fresh, bounded collection. Missing evidence is never interpreted as success. */
 final class DiagnosticExport {
     static String build(Context context){
+        long historyCutoff=LogHistory.cutoff(context);
         long start=System.currentTimeMillis();StringBuilder out=new StringBuilder();AppConfig config=new AppConfig(context);
         boolean ai=config.getBoolean(ConfigSchema.AI_TRIGGER_DIAGNOSTICS),shoulder=config.getBoolean(ConfigSchema.SHOULDER_DIAGNOSTICS);
         out.append("红魔Duo device diagnostic export v2\nmodule=").append(BuildConfig.VERSION_NAME)
@@ -17,6 +18,7 @@ final class DiagnosticExport {
             .append("\ncollectionStarted=").append(start).append("\ndevice=").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
             .append("\nandroid=").append(Build.VERSION.RELEASE).append(" SDK=").append(Build.VERSION.SDK_INT).append("\nROM=").append(Build.FINGERPRINT)
             .append("\ndetailedShoulder=").append(shoulder).append(" detailedAI=").append(ai).append("\n")
+            .append("historyClearedAt=").append(historyCutoff).append("; configuration_and_live_recovery_state_are_not_history\n")
             .append("说明：REGISTERED 仅说明 Hook 注册完成；callbackCalls 是回调进入次数，callbackReturns 不是业务成功。真实生效须结合功能命中、执行结果和复现时段。没有记录表示 UNKNOWN / 未触发 / 数据已轮转，不能直接认定失败。\n")
             .append("callbackThrows 为传播异常总数；moduleCallbackThrows 是模块处理异常，proceedChainThrows 是继续调用链传回的异常。最后回调时间不等于错误发生时间，须查看 lastErrorAt 和来源。\n")
             .append("AI/肩键详细记录仅包含开启后的有界窗口；肩键快捷切换必要状态/错误、锁屏上滑及工作台 HOME/Quickstep/壁纸状态日志始终纳入采集。工作台 Hook 日志通过手机端异步队列保存，seq/session 属于各发出进程，模块版本/PID/启动时间用于区分历史记录；进程退出可能丢失尚未送达的队列，文件保留不代表画面首帧或业务成功。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、原始肩键数据、自定义锁屏提示文字全文或壁纸内容。\n");
@@ -74,9 +76,10 @@ final class DiagnosticExport {
         for(String pkg:HookTargetRegistry.packages())if(!observed.contains(pkg))out.append(pkg).append(": current module/registration/hit/result = UNKNOWN (no current snapshot)\n");
         out.append("\n===== FEATURE LATEST VALUES (same keys replace previous values; may be stale) =====\n");
         Map<String,?> diagnostic=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getAll();
-        for(String key:new TreeSet<>(diagnostic.keySet()))appendDiagnosticValue(out,key,String.valueOf(diagnostic.get(key)));
+        for(String key:new TreeSet<>(diagnostic.keySet()))if(LogHistory.currentValue(context,key))appendDiagnosticValue(out,key,String.valueOf(diagnostic.get(key)));
         out.append("\n===== FEATURE VALUE ATTRIBUTION (older observations are not current results) =====\n");
         for(String key:new TreeSet<>(diagnostic.keySet())) {
+            if(!LogHistory.currentValue(context,key))continue;
             if(diagnosticValue(key,String.valueOf(diagnostic.get(key)))==null)continue;
             out.append(DiagnosticEvidenceStore.describe(context,key,String.valueOf(diagnostic.get(key)),live)).append('\n');
         }
@@ -94,6 +97,7 @@ final class DiagnosticExport {
         BootEvidenceCapture.appendForExport(out,context);
         // Cleanup failures need process death and graphics evidence even when AI /
         // shoulder detail switches are off. Read buffers without clearing them.
+        if(historyCutoff==0){
         source(out,"LAUNCHER_EXIT_INFO; historical entries must be matched to reproduction time",
                 RootShell.run("dumpsys activity exit-info com.zte.mifavor.launcher",null,6,128*1024),128*1024);
         appendLauncherCrashHistory(out,context);
@@ -101,15 +105,18 @@ final class DiagnosticExport {
                 RootShell.run("dumpsys activity exit-info com.android.systemui",null,6,128*1024),128*1024);
         source(out,"DUO_EXIT_INFO; app process only, not complete app_process Root death evidence; match reproduction time",
                 RootShell.run("dumpsys activity exit-info ls.augment.com",null,6,128*1024),128*1024);
-        appendLogcat(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT",DiagnosticLogcat.cleanup(start,
+        }else out.append("historical_exit_summaries=OMITTED_AFTER_LOG_CLEAR; new failures are collected from post-clear logs\n");
+        appendLogcat(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT",DiagnosticLogcat.cleanup(start,historyCutoff,
                 (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
         if(ai)file(out,context,"AI_DETAIL","detail-AI.log",512*1024,"AI");
         {
-            appendLogcat(out,"LOGCAT module tags",DiagnosticLogcat.module(start,ai,shoulder,
+            appendLogcat(out,"LOGCAT module tags",DiagnosticLogcat.module(start,ai,shoulder,historyCutoff,
                     (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
-            appendFrameworkLogs(out,ai,shoulder);
+            if(historyCutoff==0)appendFrameworkLogs(out,ai,shoulder);
+            else out.append("LSPOSED_shared_files=OMITTED_AFTER_LOG_CLEAR; new module events are in scoped logcat\n");
         }
+        if(LogHistory.cutoff(context)!=historyCutoff)throw new IllegalStateException("日志在收集期间已清空，请重新导出");
         out.append("\ncollectionFinished=").append(System.currentTimeMillis()).append("\n");return out.toString();
     }
     private static void appendFrameworkLogs(StringBuilder out,boolean ai,boolean shoulder) {

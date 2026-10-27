@@ -25,8 +25,10 @@ sources.setdefault('ls/augment/com/ModuleSystemSettings.java', '''package ls.aug
  static RestoreResult restoreOne(android.content.Context c,String ns,String key){throw new AssertionError("signal bridge must never restore OEM settings");}}
 ''')
 sources['ls/augment/com/SystemUiOptions.java'] = '''package ls.augment.com;public final class SystemUiOptions {
- public static final String SIGNAL_DUAL="ls_augment_rm_signal_dual",SIGNAL_DUAL_STYLE="ls_augment_rm_signal_dual_style";}
+ public static final String ISLAND="ls_augment_island_enabled",SIGNAL_DUAL="ls_augment_rm_signal_dual",SIGNAL_DUAL_STYLE="ls_augment_rm_signal_dual_style";}
 '''
+sources['ls/augment/com/ConfigSchema.java'] = sources['ls/augment/com/ConfigSchema.java'].replace(
+    'class ConfigSchema {', 'class ConfigSchema { public static final String STATUSBAR_GRID="statusbar_grid";')
 sources['ls/augment/com/ConfigSchema.java'] = sources['ls/augment/com/ConfigSchema.java'].replace(
     'values.put("flag","0");', 'values.put("ls_augment_rm_signal_dual_style","0");values.put("flag","0");')
 sources['ls/augment/com/ConfigSnapshot.java'] = sources['ls/augment/com/ConfigSnapshot.java'].replace(
@@ -80,7 +82,7 @@ public final class TestSignalStyleControl {
   check(duo.save(Map.of(SystemUiOptions.SIGNAL_DUAL_STYLE,"1")).success,"Duo selects iOS style through the normal configuration path");
   check("1".equals(read(context).getString("style")),"Settings reads the selected iOS style from Duo");
   long before=initial.getLong("revision");Bundle merged=choose(context,true);
-  check(merged.getBoolean("ok")&&merged.getBoolean("dual")&&merged.getBoolean("master"),"Settings merged selection enables real dual gate");
+  check(merged.getBoolean("ok")&&merged.getBoolean("dual")&&!merged.getBoolean("master"),"Settings merged selection only enables the dual gate and preserves the status-bar editor master");
   check("1".equals(merged.getString("style"))&&"1".equals(duo.get(SystemUiOptions.SIGNAL_DUAL_STYLE)),"Settings merge preserves the selected iOS style");
   check(merged.getLong("revision")>before&&duo.getBoolean(dual),"Settings write is immediately visible to Duo with advanced revision");
   check(duo.save(Map.of(group,"1")).success,"Duo three-in-one selection commits");

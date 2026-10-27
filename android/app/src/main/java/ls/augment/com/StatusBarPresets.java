@@ -53,7 +53,7 @@ final class StatusBarPresets {
             String id=StatusBarGridSpec.IDS[i];StatusBarGridSpec.Item old=grid.get(id);
             boolean visible=i<4||preset==2||preset==1&&id.equals("network");
             String zone=preset==0?(i<2?"LS":"RS"):id.equals("clock")&&preset==1?"LS":id.equals("clock")?"L1":id.equals("notifications")?"L1":id.equals("system_icons")?"R1":old.zone;
-            grid=grid.with(id,new StatusBarGridSpec.Item(zone,old.order,i<4?11:9,visible));
+            grid=grid.with(id,new StatusBarGridSpec.Item(zone,old.order,i<4?(preset==0?0:11):9,visible));
         }
         values.put(ConfigSchema.STATUSBAR_GRID,grid.serialize());return values;
     }

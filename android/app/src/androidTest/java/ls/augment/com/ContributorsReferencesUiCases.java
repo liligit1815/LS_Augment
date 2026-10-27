@@ -41,10 +41,10 @@ import org.json.JSONObject;
 
 /** Pure hosted-document acceptance; temporary Resources/DOM reads never write module or system settings. */
 final class ContributorsReferencesUiCases implements Application.ActivityLifecycleCallbacks {
-    private static final String[] PROJECTS={"HyperCeiler","LiftArc","红魔助手"};
-    private static final String[] PROJECT_URLS={"https://github.com/ReChronoRain/HyperCeiler","https://github.com/miyupyxh/LiftArc"};
-    private static final String[] ICON_MIMES={"image/webp","image/svg+xml","image/svg+xml"};
-    private static final String[] ICON_SHA256={"0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8","6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157","DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457"};
+    private static final String[] PROJECTS={"HyperCeiler","LiftArc","红魔助手","Van Step"};
+    private static final String[] PROJECT_URLS={"https://github.com/ReChronoRain/HyperCeiler","https://github.com/miyupyxh/LiftArc",null,"https://github.com/LAOBILAXI233/onestep_on_hyper"};
+    private static final String[] ICON_MIMES={"image/webp","image/svg+xml","image/svg+xml","image/webp"};
+    private static final String[] ICON_SHA256={"0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8","6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157","DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457","7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6"};
     private static final String THANKS_DESCRIPTION="红魔Duo使用了以下开源项目的部分或全部内容，感谢这些项目的开发者提供的大力支持（排名顺序不分先后）。";
     private static final String[] REMOVED={"卒迹","绀漓丨Sevtinge","红魔助手开发团队","HyperCeiler开发团队"};
     private static final String[] DONORS={"kj2548","福福","隐隐约约月","夕梦月初","ninemans","停！别浪费时间聊天","萌爱oo","ღ᭄爱莉瑟琳ঞৣ"};
@@ -88,7 +88,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             scenario("01-normal",1.0f,false);scenario("02-large-font",1.5f,false);scenario("03-landscape",1.0f,true);
             require(screenshots.length()==6,"Three scenarios each saved top and bottom screenshots");
             require(webScrollObserved,"An overflowing scenario exercised the WebView's own scroll");
-            require(interceptedProjectIntents==6,"All three scenarios exercised both real project link taps with external Intents intercepted");
+            require(interceptedProjectIntents==9,"All three scenarios exercised all three real project link taps with external Intents intercepted");
         }catch(Throwable error){failure=error;}
         finally{
             try{
@@ -209,7 +209,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
         }
         require(cssColor(ui.muted).equals(dom.getString("descriptionColor")),"Thanks description uses the common muted color");
         require(Math.abs((dom.getDouble("firstProjectTop")-dom.getDouble("descriptionBottom"))*cssToDp-16)<.6,"Description to project list keeps 16dp");
-        require(dom.getInt("projectLinkCount")==2,"Only the first two project rows have semantic links");
+        require(dom.getInt("projectLinkCount")==3,"The three repository rows have semantic links");
         for(int i=0;i<rows.length();i++){
             JSONObject row=rows.getJSONObject(i);
             require(row.getInt("descriptionCount")==0,"Project row contains no descriptions or version/license small text");
@@ -219,13 +219,13 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             require("contain".equals(row.getString("iconFit")),"Project icon keeps its original aspect without cropping");
             require(row.getDouble("height")*cssToDp>=47.5,"Project row keeps at least a 48dp target");
             require(headings.getJSONObject(0).getDouble("size")>row.getDouble("size"),"Section title is larger than project names");
-            if(i<2){
+            if(PROJECT_URLS[i]!=null){
                 require("a".equals(row.getString("semantic"))&&PROJECT_URLS[i].equals(row.getString("href")),"Project name belongs to the exact semantic repository link");
                 require(cssColor(ui.accent).equals(row.getString("color"))&&row.getString("decoration").contains("underline"),"Clickable names use common accent and underline");
             }else require(row.isNull("href")&&"div".equals(row.getString("semantic")),"红魔助手 remains a static name without an invented link");
         }
         require(!dom.getString("text").contains("1.0.22")&&!dom.getString("text").contains("GPL-3.0"),"Version and license small text was removed from the webpage");
-        require(exact(dom.getJSONArray("projects"),PROJECTS),"Only HyperCeiler, LiftArc and 红魔助手 appear in the project list");
+        require(exact(dom.getJSONArray("projects"),PROJECTS),"Only HyperCeiler, LiftArc, 红魔助手 and Van Step appear in the project list");
         require(exact(dom.getJSONArray("donors"),DONORS),"All eight original donors remain in order");
         require(dom.getInt("oldPeople")==0&&!arrayContains(dom.getJSONArray("headings"),"贡献者"),"Old contributors heading and people-list structure are absent");
         for(String removed:REMOVED)require(!dom.getString("text").contains(removed),"Removed contributor is absent: "+removed);
@@ -254,6 +254,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
 
     private void checkProjectAllowlist(){
         for(String address:PROJECT_URLS){
+            if(address==null)continue;
             Intent intent=ContributorsActivity.projectLinkIntent(address,true,true,false);
             require(intent!=null&&Intent.ACTION_VIEW.equals(intent.getAction())&&address.equals(intent.getDataString())&&intent.hasCategory(Intent.CATEGORY_BROWSABLE),"Exact repository click produces a browser ACTION_VIEW");
             require(intent.getComponent()==null&&intent.getPackage()==null,"Project routing does not depend on a specific installed browser");
@@ -276,7 +277,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             require(ICON_SHA256[index].equalsIgnoreCase(hex.toString()),"Inline icon bytes match the recorded original source SHA256");
             result.put(new JSONObject().put("project",PROJECTS[index]).put("mime",icons.group(1)).put("bytes",image.length).put("sha256",hex.toString()));
         }
-        require(!icons.find(),"Only the three requested project icons are present");return result;
+        require(!icons.find(),"Only the four requested project icons are present");return result;
     }
     private void checkProjectTaps(Activity page)throws Exception{
         List<Intent> attempts=new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -288,9 +289,9 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
         };
         runner.addMonitor(monitor);
         try{
-            for(int index=0;index<3;index++){
+            for(int index=0;index<PROJECTS.length;index++){
                 attempts.clear();tapProject(page,index);settle();
-                if(index<2){
+                if(PROJECT_URLS[index]!=null){
                     long deadline=SystemClock.uptimeMillis()+4000;
                     while(attempts.isEmpty()&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(60);
                     require(attempts.size()==1,"Actual project touch emits exactly one intercepted browser Intent");
@@ -302,7 +303,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
                 }
                 require(main(()->page.hasWindowFocus()&&!web(page).getSettings().getJavaScriptEnabled()),"Browser interception preserves the visible JS-disabled host");
             }
-            layouts.getJSONObject(layouts.length()-1).put("projectTapIntentsIntercepted",2).put("staticProjectDoesNotNavigate",true);
+            layouts.getJSONObject(layouts.length()-1).put("projectTapIntentsIntercepted",3).put("staticProjectDoesNotNavigate",true);
         }finally{runner.removeMonitor(monitor);}
     }
     private void tapProject(Activity page,int index)throws Exception{

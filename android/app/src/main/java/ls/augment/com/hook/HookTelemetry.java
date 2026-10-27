@@ -63,6 +63,7 @@ final class HookTelemetry {
         }
     };
     private static long lastPublished;
+    private static long historyCutoff;
     private static final AtomicInteger publishWarnings=new AtomicInteger();
     private static final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"LSA-DiagnosticWriter");t.setDaemon(true);return t;});
     // Keep the existing 60-second freshness contract. Only this low-frequency
@@ -232,9 +233,23 @@ final class HookTelemetry {
                         "LS_Augment",e[0]+" "+e[2]+" "+e[1]);
             }catch(Throwable ignored){}
         }
-        extras.putString("events",pendingPayload);extras.putString("eventBatchId",pendingBatchId);
+        extras.putString("events",pendingPayload);extras.putString("eventBatchId",pendingBatchId);extras.putLong("historyCutoff",historyCutoff);
         phase="provider_call";
         Bundle result=context.getContentResolver().call(Uri.parse("content://ls.augment.com.config"),"telemetry",null,extras);
+        if(result!=null&&result.getLong("historyCutoff",0)>historyCutoff){
+            historyCutoff=result.getLong("historyCutoff");
+            if(startedWall<=historyCutoff){
+                for(Counter counter:counters.values())counter.clearHistory(historyCutoff);
+                errorStacks.clearHistory();
+                trace.clear();clearBatch();dropped.set(0);dropReasons.clear();workbenchDropped.set(0);
+                retriedBatches=exhaustedBatches=expiredBatches=terminalBatches=0;
+                lastDropAt=lastPublishFailureAt=firstPublishFailureAt=lastPublishRecoveredAt=0;
+                lastDropReason=lastPublishFailureReason=currentPublishFailureReason=lastPublishFailureType="";
+                lastPublishFailureDetail=lastPublishFailurePhase=lastPublishFailureCause=lastPublishFailureTrace="";
+                lastPublishProviderStage=firstPublishFailureType=firstPublishFailurePhase=firstPublishFailureCause=firstPublishFailureTrace="";
+                independentFailure="";lastPublished=0;requestPublish(1000);return;
+            }
+        }
         phase="provider_reply";
         if(result==null||!result.getBoolean("ok")){
             lastPublishProviderStage=result==null?"":providerStage(result);

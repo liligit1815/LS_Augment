@@ -118,6 +118,12 @@ final class GamePerformanceMonitorHook {
             states.put(owner,state);
         }
         FloatingPositionLock.monitor((View)access.activeRoot.get(owner));
+        // Both native roots exist before addOpenOrShortenWindow chooses one.
+        // Register them before WindowManager.addView so a recreated pinned window
+        // receives its saved coordinates on the first frame.
+        FloatingPositionLock.monitor(content.getRootView());
+        View shortBackground=(View)access.shortBackground.get(owner);
+        if(shortBackground!=null)FloatingPositionLock.monitor(shortBackground.getRootView());
         int nativeWidth=access.fullWidth.getInt(owner);
         // Never promote a width written by this hook into the native baseline.
         // Zero/wrap-content values can precede sizing; wait for a real OEM width.

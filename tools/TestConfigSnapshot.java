@@ -162,43 +162,21 @@ public final class TestConfigSnapshot {
         if(ConfigSnapshot.parse(withoutKeys(snapshot,"ls_augment_liftarc_hint_size"))!=null
                 ||ConfigSnapshot.parse(withoutKeys(snapshot,ConfigSchema.AI_TRIGGER_ENABLED))!=null)
             throw new AssertionError("migration repaired a truncated current/old snapshot");
-        Map<String,String> stackValues=new LinkedHashMap<>(values);
-        stackValues.put(SystemUiOptions.NOTIFICATION_STACK,"1");
-        stackValues.put(NotificationAppearanceOptions.STACK_BIG,"1");
-        stackValues.put(NotificationAppearanceOptions.STACK_SMALL,"1");
-        stackValues.put(NotificationAppearanceOptions.STACK_COUNT,"3");
-        stackValues.put(NotificationAppearanceOptions.STACK_STEP,"12");
-        stackValues.put(NotificationAppearanceOptions.STACK_INSET,"0");
-        ConfigSnapshot grouped=ConfigSnapshot.create(46,123460,stackValues);
-        if(grouped==null)throw new AssertionError("notification stack settings could not synchronize");
-        ConfigSnapshot groupedRoundTrip=ConfigSnapshot.parse(grouped.serialize());
-        if(groupedRoundTrip==null||!"1".equals(groupedRoundTrip.get(NotificationAppearanceOptions.STACK_BIG))
-                ||!"1".equals(groupedRoundTrip.get(NotificationAppearanceOptions.STACK_SMALL)))
-            throw new AssertionError("big and small modes lost independent enabled values");
-        String beforeGroupedStack=withoutExactKeys(grouped,
-                NotificationAppearanceOptions.STACK_BIG,NotificationAppearanceOptions.STACK_SMALL);
-        ConfigSnapshot stackUpgrade=ConfigSnapshot.parse(beforeGroupedStack);
-        if(stackUpgrade==null||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_BIG))
-                ||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_SMALL))
-                ||!"1".equals(stackUpgrade.get(SystemUiOptions.NOTIFICATION_STACK))
-                ||!"3".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_COUNT))
-                ||!"12".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_STEP))
-                ||!"0".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_INSET))
-                ||!"1".equals(stackUpgrade.get(ConfigSchema.AI_TRIGGER_ENABLED))
-                ||stackUpgrade.revision!=46||stackUpgrade.updatedAt!=123460
-                ||!beforeGroupedStack.equals(stackUpgrade.serialize())
-                ||!stackUpgrade.values().keySet().equals(ConfigSchema.runtimeKeys()))
-            throw new AssertionError("stack upgrade reset old settings or changed signed snapshot bytes");
-        for(String mode:new String[]{NotificationAppearanceOptions.STACK_BIG,NotificationAppearanceOptions.STACK_SMALL}){
-            if(ConfigSnapshot.parse(withoutExactKeys(grouped,mode))!=null)
-                throw new AssertionError("partially missing stack family accepted: "+mode);
-            for(String noncanonical:new String[]{"true","false"," 1 ","01","2",""})
-                if(ConfigSnapshot.parse(withValue(grouped,mode,noncanonical))!=null)
-                    throw new AssertionError("noncanonical signed stack boolean accepted: "+mode+"="+noncanonical);
+        String[] cascadeKeys={NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,
+                NotificationAppearanceOptions.STACK_GRADIENT,NotificationAppearanceOptions.STACK_START,NotificationAppearanceOptions.STACK_LOCK_START};
+        String oldCascade=withoutExactKeys(snapshot,cascadeKeys);
+        String oldBody=new String(java.util.Base64.getUrlDecoder().decode(oldCascade.split("\\.",3)[2]),java.nio.charset.StandardCharsets.UTF_8);
+        for(String suffix:new String[]{"big","small","style","complete_count","step","inset"}){
+            String legacyValue=suffix.equals("step")?"8":suffix.equals("inset")?"6":"1";
+            oldBody+="ls_augment_rm_notification_stack_"+suffix+"="+java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(legacyValue.getBytes(java.nio.charset.StandardCharsets.UTF_8))+"\n";
         }
-        if(!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_BIG))
-                ||!"0".equals(ConfigSnapshot.safeDefaults().get(NotificationAppearanceOptions.STACK_SMALL)))
-            throw new AssertionError("new stack modes must default disabled");
+        String oldStack=signBody(oldBody);ConfigSnapshot stackUpgrade=ConfigSnapshot.parse(oldStack);
+        if(stackUpgrade==null||!oldStack.equals(stackUpgrade.serialize())||!stackUpgrade.values().keySet().equals(ConfigSchema.runtimeKeys())
+                ||!snapshot.get(ConfigSchema.AI_TRIGGER_ENABLED).equals(stackUpgrade.get(ConfigSchema.AI_TRIGGER_ENABLED))
+                ||!"70".equals(stackUpgrade.get(NotificationAppearanceOptions.STACK_START)))
+            throw new AssertionError("retiring grouped fields must retain unrelated settings and add cascade defaults");
+        for(String key:cascadeKeys)if(ConfigSnapshot.parse(withoutExactKeys(snapshot,key))!=null)
+            throw new AssertionError("partial cascade configuration accepted");
         String beforeExtraction = withoutKeys(snapshot,"atomic_workbench_extraction_");
         ConfigSnapshot extractionUpgrade = ConfigSnapshot.parse(beforeExtraction);
         if (extractionUpgrade == null || !"0".equals(extractionUpgrade.get("atomic_workbench_extraction_enabled"))

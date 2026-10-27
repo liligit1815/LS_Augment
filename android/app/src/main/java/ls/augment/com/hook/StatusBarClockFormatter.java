@@ -46,22 +46,24 @@ public final class StatusBarClockFormatter {
         StringBuilder out = new StringBuilder();
         String error = null;
         try {
+            ShiftedPattern adjusted = shiftPattern(firstPattern, timestamp, calendar);
             String first = isEmpty(firstPattern)
                     ? builtIn(date, safeLocale, use24Hour, showSeconds, !showPeriod)
-                    : formatPattern(firstPattern, timestamp, calendar, safeLocale);
+                    : formatPattern(adjusted.pattern, adjusted.time, adjusted.calendar, safeLocale);
             out.append(first);
             if (showPeriod) {
-                out.append(' ').append(period(calendar.get(Calendar.HOUR_OF_DAY), safeLocale));
+                out.append(' ').append(period(adjusted.calendar.get(Calendar.HOUR_OF_DAY), safeLocale));
             }
             if (showWeek) {
-                out.append(' ').append(formatToken("E", timestamp, calendar, safeLocale));
+                out.append(' ').append(formatToken("E", adjusted.time, adjusted.calendar, safeLocale));
             }
         } catch (Throwable firstError) {
             error = safeMessage(firstError);
         }
         if (!isEmpty(secondPattern)) {
             try {
-                String second = formatPattern(secondPattern, timestamp, calendar, safeLocale);
+                ShiftedPattern adjusted = shiftPattern(secondPattern, timestamp, calendar);
+                String second = formatPattern(adjusted.pattern, adjusted.time, adjusted.calendar, safeLocale);
                 if (out.length() > 0) out.append('\n');
                 out.append(second);
             } catch (Throwable secondError) {
@@ -73,6 +75,54 @@ public final class StatusBarClockFormatter {
         boolean valid = error == null || error.isEmpty();
         return new FormatResult(valid, out.toString(), valid ? "" : error,
                 showSeconds || needsSecondRefresh(firstPattern, secondPattern),needsMillisecondRefresh(firstPattern,secondPattern));
+    }
+
+    /** Offsets on hour/minute tokens form one duration for that entire line. */
+    private static ShiftedPattern shiftPattern(String pattern, long timestamp, Calendar source) {
+        if (isEmpty(pattern)) return new ShiftedPattern(pattern, timestamp, source);
+        StringBuilder clean = new StringBuilder();
+        boolean quoted = false;
+        long minutes = 0;
+        for (int index = 0; index < pattern.length();) {
+            char c = pattern.charAt(index);
+            if (c == '\'') {
+                clean.append(c); index++;
+                if (index < pattern.length() && pattern.charAt(index) == '\'') {
+                    clean.append('\''); index++;
+                } else quoted = !quoted;
+                continue;
+            }
+            int end = index + 1;
+            while (end < pattern.length() && pattern.charAt(end) == c) end++;
+            clean.append(pattern, index, end);
+            if (!quoted && "HhKkm".indexOf(c) >= 0) {
+                while (end + 1 < pattern.length()
+                        && (pattern.charAt(end) == '+' || pattern.charAt(end) == '-')
+                        && pattern.charAt(end + 1) >= '0' && pattern.charAt(end + 1) <= '9') {
+                    int sign = pattern.charAt(end++) == '+' ? 1 : -1;
+                    long value = 0;
+                    while (end < pattern.length() && pattern.charAt(end) >= '0' && pattern.charAt(end) <= '9') {
+                        value = value * 10 + pattern.charAt(end++) - '0';
+                        if (value > 999999) throw new IllegalArgumentException("时间偏移数值须为 0–999999 的整数");
+                    }
+                    minutes = Math.addExact(minutes, sign * value * (c == 'm' ? 1L : 60L));
+                }
+            }
+            index = end;
+        }
+        long shifted = Math.addExact(timestamp, Math.multiplyExact(minutes, 60000L));
+        Calendar calendar = (Calendar) source.clone();
+        calendar.setTimeInMillis(shifted);
+        return new ShiftedPattern(clean.toString(), shifted, calendar);
+    }
+
+    private static final class ShiftedPattern {
+        final String pattern;
+        final long time;
+        final Calendar calendar;
+        ShiftedPattern(String pattern, long time, Calendar calendar) {
+            this.pattern = pattern; this.time = time; this.calendar = calendar;
+        }
     }
 
     private static String formatPattern(String pattern, long timestamp,

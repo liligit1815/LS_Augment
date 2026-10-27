@@ -63,7 +63,11 @@ final class RapidFirePhysicalCapture {
             lease = new File(context.getCacheDir(), "rapid-input-"
                     + UUID.randomUUID() + ".lease");
             if (!lease.createNewFile()) return new Result(null, "无法建立临时肩键测试会话");
-            File recovery = new File(context.getFilesDir(), "rapid-capture-v1");
+            // Android may expose filesDir through /data/data while canonicalizing
+            // it to /data/user/0. Resolve that trusted parent before checking the
+            // child; a symlink placed at the recovery directory is still rejected.
+            File privateFiles = context.getFilesDir().getCanonicalFile();
+            File recovery = new File(privateFiles, "rapid-capture-v1");
             if (!recovery.isDirectory() && !recovery.mkdir()) return new Result(null, "无法建立肩键恢复目录");
             if (!recovery.getCanonicalFile().equals(recovery.getAbsoluteFile()))
                 return new Result(null, "肩键恢复目录异常");

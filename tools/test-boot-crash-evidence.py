@@ -13,11 +13,15 @@ SRC=ROOT/'android/app/src/main/java/ls/augment/com'
 JDK=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 
 STUBS={
+'android/annotation/SuppressLint.java':'package android.annotation;public @interface SuppressLint{String[] value();}',
+'android/Manifest.java':'package android;public class Manifest{public static class permission{public static final String READ_DROPBOX_DATA="read";}}',
+'android/content/pm/PackageManager.java':'package android.content.pm;public class PackageManager{public static final int PERMISSION_GRANTED=0;}',
+
 'android/content/pm/ApplicationInfo.java':'''package android.content.pm;public class ApplicationInfo{public int uid;public String packageName,deviceProtectedDataDir;}''',
 'android/os/Process.java':'''package android.os;public class Process{public static int uid=10352;public static int myUid(){return uid;}public static int myPid(){return 7777;}}''',
 'android/os/SystemClock.java':'''package android.os;public class SystemClock{public static long elapsedRealtime(){return 1000;}}''',
 'android/os/Looper.java':'''package android.os;public class Looper{public static Object myLooper(){return new Object();}public static void prepare(){}}''',
-'android/content/Context.java':'''package android.content;public class Context{public <T>T getSystemService(Class<T> type){return type.cast(new android.os.DropBoxManager());}}''',
+'android/content/Context.java':'''package android.content;public class Context{public int checkSelfPermission(String p){return 0;}public <T>T getSystemService(Class<T> type){return type.cast(new android.os.DropBoxManager());}}''',
 'android/app/ActivityThread.java':'''package android.app;public class ActivityThread{public static ActivityThread systemMain(){return new ActivityThread();}public android.content.Context getSystemContext(){return new android.content.Context();}}''',
 'android/os/DropBoxManager.java':r'''package android.os;import java.util.*;public class DropBoxManager{
  public static final List<Entry> entries=new ArrayList<>();public static int closed;

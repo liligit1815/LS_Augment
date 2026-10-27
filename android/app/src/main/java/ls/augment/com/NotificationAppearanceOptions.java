@@ -10,12 +10,11 @@ public final class NotificationAppearanceOptions {
     public static final String CLOCK_PORTRAIT = PREFIX + "clock_portrait_enabled";
     public static final String CLOCK_LANDSCAPE = PREFIX + "clock_landscape_enabled";
     public static final String CLEAR = PREFIX + "clear_appearance_enabled";
-    public static final String STACK_BIG = PREFIX + "stack_big";
-    public static final String STACK_SMALL = PREFIX + "stack_small";
-    // Legacy tail-projection keys are retained for reading older exported settings.
-    public static final String STACK_COUNT = PREFIX + "stack_complete_count";
-    public static final String STACK_STEP = PREFIX + "stack_step";
-    public static final String STACK_INSET = PREFIX + "stack_inset";
+    public static final String STACK_SHADE = PREFIX + "stack_shade";
+    public static final String STACK_LOCK = PREFIX + "stack_lock";
+    public static final String STACK_GRADIENT = PREFIX + "stack_gradient";
+    public static final String STACK_START = PREFIX + "stack_start";
+    public static final String STACK_LOCK_START = PREFIX + "stack_lock_start";
     public static final String STACK_LANDSCAPE = PREFIX + "stack_landscape";
     public static final String CLEAR_ALIGN = PREFIX + "clear_align";
     public static final String CLEAR_X = PREFIX + "clear_x";
@@ -44,10 +43,11 @@ public final class NotificationAppearanceOptions {
             result.add(EnhancementOption.integer(clock(landscape,"date_gap"),group,name+"日期间距（dp）","设置时钟下边缘与日期上边缘之间的距离。",6,0,24));
             result.add(EnhancementOption.integer(clock(landscape,"list_gap"),group,name+"时钟到通知间距（dp）","为原生通知列表保留空间。",16,4,64));
         }
-        result.add(EnhancementOption.toggle(STACK_BIG,"notification_stack","启用大堆叠",
-                "将通知与静默合成外层一堆，首卡优先显示通知区域最新一条；仅有静默时显示最新静默通知。点击收起的首卡展开后恢复两类列表：小堆叠关闭时逐条显示，开启时按同应用继续收起。关闭大堆叠时不折叠整个分类，是否按应用收起由小堆叠控制。"));
-        result.add(EnhancementOption.toggle(STACK_SMALL,"notification_stack","启用小堆叠（同应用）",
-                "在原厂通知、静默各自分类内按同应用收起，不同用户分别处理。单独开启时直接显示应用堆叠；与大堆叠同时开启时，在大堆叠展开后显示。点击收起的首卡展开，展开后恢复原生点击操作，关闭通知栏后收起。应用已有的通知组保留原有摘要与展开方式。"));
+        result.add(EnhancementOption.toggle(STACK_SHADE,"notification_stack","通知中心渐进堆叠","在通知中心启用卡片堆叠。",true));
+        result.add(EnhancementOption.toggle(STACK_LOCK,"notification_stack","锁屏渐进堆叠","在锁屏启用卡片堆叠，保留原厂隐私与解锁规则。",true));
+        result.add(EnhancementOption.toggle(STACK_GRADIENT,"notification_stack","模糊与透明度渐变","后方卡片随深度逐步模糊、变淡；向上滚动后恢复。",true));
+        result.add(EnhancementOption.integer(STACK_START,"notification_stack","通知中心起始位置（%）","以通知列表可见区域高度为基准。",70,40,90));
+        result.add(EnhancementOption.integer(STACK_LOCK_START,"notification_stack","锁屏起始位置（%）","以锁屏通知列表可见区域高度为基准。",75,40,90));
         result.add(EnhancementOption.toggle(STACK_LANDSCAPE,"notification_stack","横屏使用通知堆叠","关闭时横屏使用原厂列表。"));
         result.add(EnhancementOption.toggle(CLEAR,"notification_clear","通知清除按钮样式","调整原生清除按钮，保留清除范围、长按、无障碍及可见性规则。"));
         result.add(EnhancementOption.choice(CLEAR_ALIGN,"notification_clear","水平位置","避让原生通知管理按钮；原有位置不调整系统对齐。",0,"原有位置","靠左","居中","靠右"));

@@ -11,6 +11,8 @@ signal_refresh = editor[editor.index('    private void refreshStoredSignalModes(
 assert 'static final ExecutorService worker' in editor
 assert 'worker.shutdown()' not in editor
 sources = {
+    'ls/augment/com/LogHistory.java': '''package ls.augment.com;final class LogHistory {
+static final Object LOCK=new Object();static boolean old(android.content.Context c,long at){return false;}}''',
     'ls/augment/com/AuditLog.java': '''package ls.augment.com;
 final class AuditLog {static final java.util.List<String> events=new java.util.ArrayList<>();
 static void write(android.content.Context c,String category,String message){events.add(category+":"+message);}}''',
@@ -26,6 +28,7 @@ public class Bundle {public Map<String,Object> data=new HashMap<>();
 public void putBundle(String k,Bundle v){data.put(k,v);}public void putString(String k,String v){data.put(k,v);}
 public void putInt(String k,int v){data.put(k,v);}public void putBoolean(String k,boolean v){data.put(k,v);}
 public void putLong(String k,long v){data.put(k,v);}
+public long getLong(String k,long d){return ((Number)data.getOrDefault(k,d)).longValue();}
 public Bundle getBundle(String k){return (Bundle)data.get(k);}}''',
     'android/content/Context.java': '''package android.content;public abstract class Context {
 public abstract SharedPreferences getSharedPreferences(String name,int mode);}''',

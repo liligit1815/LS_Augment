@@ -5,8 +5,12 @@ import java.util.*;
 /** Search the same presentation routes that own the controls; never clone a setting. */
 final class ModuleFeatureSearch {
     static final class Result {
-        final String title, path, route, keywords;
+        final String title, path, route, keywords, focusTag;
         Result(String title,String route,String keywords){
+            this(title,route,keywords,"");
+        }
+        Result(String title,String route,String keywords,String focusTag){
+            this.focusTag=focusTag;
             this.title=title;this.route=ModuleHierarchy.resolve(route);
             List<String> labels=new ArrayList<>();
             for(String node:ModuleHierarchy.path(this.route))if(!"home".equals(node))labels.add(ModuleHierarchy.title(node));
@@ -14,6 +18,19 @@ final class ModuleFeatureSearch {
         }
     }
     private ModuleFeatureSearch(){}
+    static String focusParentTag(String key){
+        for(ModuleHierarchy.Section section:ModuleHierarchy.allSections())for(NativeFeatureGroups.Feature feature:section.features){
+            String tag=focusParentTag(feature,key);if(!tag.isEmpty())return tag;
+        }
+        for(NativeFeatureGroups.Feature feature:NativeFeatureGroups.forGroup("statusbar")){
+            String tag=focusParentTag(feature,key);if(!tag.isEmpty())return tag;
+        }
+        return "";
+    }
+    private static String focusParentTag(NativeFeatureGroups.Feature feature,String key){
+        for(NativeFeatureGroups.Feature child:feature.children){String tag=focusParentTag(child,key);if(!tag.isEmpty())return tag;}
+        return feature.allKeys().contains(key)?"native-feature:"+feature.id:"";
+    }
     static List<Result> search(String query,boolean unlocked){
         String needle=normalize(query);if(needle.isEmpty())return Collections.emptyList();
         Map<String,Result> results=new LinkedHashMap<>();
@@ -47,7 +64,7 @@ final class ModuleFeatureSearch {
         for(EnhancementOption option:options.values()){
             if(option.kind==EnhancementOption.Kind.INTERNAL||option.title.isEmpty())continue;
             String route=ModuleHierarchy.featureRoute(option.key);
-            if(route!=null)add(results,needle,unlocked,new Result(option.title,route,option.summary));
+            if(route!=null)add(results,needle,unlocked,new Result(option.title,route,option.summary,"config:"+option.key));
         }
         List<Result> list=new ArrayList<>(results.values());
         list.sort(Comparator.comparingInt(r->normalize(r.title).equals(needle)?0:normalize(r.title).contains(needle)?1:2));
@@ -59,7 +76,7 @@ final class ModuleFeatureSearch {
             if(route==null)route=ModuleHierarchy.featureRoute(key);
             EnhancementOption option=options.get(key);if(option!=null)copy.append(' ').append(option.title).append(' ').append(option.summary);
         }
-        add(out,query,unlocked,new Result(f.title,route==null?fallback:route,copy.toString()));
+        add(out,query,unlocked,new Result(f.title,route==null?fallback:route,copy.toString(),"native-feature:"+f.id));
         for(NativeFeatureGroups.Feature child:f.children)feature(out,query,unlocked,child,route==null?fallback:route,options);
     }
     private static void add(Map<String,Result> out,String query,boolean unlocked,Result result){

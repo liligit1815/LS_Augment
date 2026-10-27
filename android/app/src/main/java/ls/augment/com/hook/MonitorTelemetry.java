@@ -21,6 +21,7 @@ import ls.augment.com.GamePerformanceMonitorConfig;
 
 /** Attached-window sampling only. Unavailable sensors are shown as unavailable, never zero. */
 final class MonitorTelemetry implements View.OnAttachStateChangeListener {
+    private static final String[] LABELS={"电池", "CPU", "GPU", "功耗"};
     private final ViewGroup content;
     private final TextView[] values=new TextView[4];
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -30,16 +31,19 @@ final class MonitorTelemetry implements View.OnAttachStateChangeListener {
         this.content=content;Context context=content.getContext();
         TextView template=findText(content);
         for(int i=0;i<4;i++){
-            LinearLayout cell=new LinearLayout(context);cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(Gravity.CENTER);
-            int width=(int)(76*context.getResources().getDisplayMetrics().density+.5f);
-            TextView label=new TextView(context),value=new TextView(context);values[i]=value;
-            for(TextView text:new TextView[]{label,value}){
+            LinearLayout cell=new LinearLayout(context);cell.setOrientation(LinearLayout.HORIZONTAL);cell.setGravity(Gravity.CENTER);
+            TextView value=new TextView(context);values[i]=value;
+            for(TextView text:new TextView[]{value}){
                 text.setGravity(Gravity.CENTER);text.setSingleLine(true);text.setIncludeFontPadding(false);
                 if(template!=null){text.setTextColor(template.getTextColors());text.setTypeface(template.getTypeface());
                     text.setTextSize(TypedValue.COMPLEX_UNIT_PX,template.getTextSize());}
             }
-            label.setText(new String[]{"电池","CPU","GPU","功耗"}[i]);value.setText("—");
-            cell.addView(value,new LinearLayout.LayoutParams(-1,-2));cell.addView(label,new LinearLayout.LayoutParams(-1,-2));
+            value.setText(LABELS[i]+" —");
+            // Reserve a full single-line reading at the OEM font size. Never
+            // shrink the type to make a value fit beside its label.
+            int width=(int)Math.ceil(value.getPaint().measureText(LABELS[i]+(i==3?" 000.0 W":" 000.0°C")))
+                    +Math.round(8*context.getResources().getDisplayMetrics().density);
+            cell.addView(value,new LinearLayout.LayoutParams(-1,-2));
             cell.setTag("duo.monitor."+GamePerformanceMonitorConfig.items()[i+5]);cell.setVisibility(View.GONE);
             content.addView(cell,new LinearLayout.LayoutParams(width,-1));
         }
@@ -62,7 +66,7 @@ final class MonitorTelemetry implements View.OnAttachStateChangeListener {
             if(worker!=session)return;
             double[] sample=sample(content.getContext(),selection);
             main.post(()->{if(generation!=token||worker!=session)return;
-                for(int i=0;i<4;i++)values[i].setText(Double.isFinite(sample[i])?String.format(Locale.ROOT,"%.1f%s",sample[i],i==3?" W":"°C"):"不可用");});
+                for(int i=0;i<4;i++)values[i].setText(LABELS[i]+" "+(Double.isFinite(sample[i])?String.format(Locale.ROOT,"%.1f%s",sample[i],i==3?" W":"°C"):"不可用"));});
             if(worker==session)session.postDelayed(this,2000);
         }});
     }

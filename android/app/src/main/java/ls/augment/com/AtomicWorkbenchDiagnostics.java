@@ -33,6 +33,7 @@ public final class AtomicWorkbenchDiagnostics {
     private static boolean failureMetadataPersisted = true;
 
     private AtomicWorkbenchDiagnostics() { }
+    static void resetLogFailures(){writeFailures=0;lastWriteErrorAt=0;lastWriteError="";failureMetadataPersisted=true;}
 
     /** Never opens app storage or waits for pipe capacity on a task/recovery thread. */
     public static void emit(String event, int windowId, int userId, String component,
@@ -216,6 +217,10 @@ public final class AtomicWorkbenchDiagnostics {
     }
 
     private static void append(Context context, long generation, JSONObject value) {
+        synchronized(ResetWriteFence.class){synchronized(LogHistory.LOCK){appendCurrent(context,generation,value);}}
+    }
+    private static void appendCurrent(Context context,long generation,JSONObject value){
+        if(context!=null&&LogHistory.old(context,value.optLong("wall")))return;
         // Synchronize with begin/end so reset cannot race a check and recreate a deleted file.
         synchronized (ResetWriteFence.class) {
             if (context == null || Process.myUid() == 0 || ResetWriteFence.active()

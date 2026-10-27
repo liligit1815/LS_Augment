@@ -234,7 +234,9 @@ final class IslandSettingsUiCases {
             require(fold.content.getVisibility()==View.VISIBLE,"Enabling native scenes expands individual choices");
             for(String id:NativeIslandSceneOptions.IDS){String key=NativeIslandSceneOptions.key(id);Switch child=toggle(key);
                 String capability=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_capability","");
-                require(child.isEnabled()=="ready".equals(capability),"Scene control matches reported capability: "+id);
+                boolean sourceRequired=java.util.Arrays.asList("transfer","nfc_transfer","calendar_meeting","scenic_guide","nearby_charging","cycling","flight","preflight_battery","weather_travel").contains(id);
+                String source=context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(key+"_source_capability","");
+                require(child.isEnabled()==("ready".equals(capability)&&(!sourceRequired||("ready:"+BuildConfig.VERSION_CODE).equals(source))),"Scene control matches host and source capability: "+id);
                 if(child.isEnabled()){boolean value=child.isChecked();clickSeeded(key,!value);clickSeeded(key,value);}
             }
             require(fold.arrow.performClick(),"Native scenes collapse through public arrow");

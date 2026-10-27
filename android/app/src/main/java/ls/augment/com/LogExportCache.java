@@ -10,11 +10,18 @@ final class LogExportCache {
     static final long MAX_FILE_BYTES = 64L * 1024 * 1024, MAX_AGE_MS = 24L * 60 * 60 * 1000;
     static final int MAX_FILES = 2;
     private static final Set<File> ACTIVE = new HashSet<>();
+    private static boolean clearing;
+    static synchronized void beginClear() throws IOException {
+        if(clearing||!ACTIVE.isEmpty())throw new IOException("请先完成或退出正在进行的日志导出");
+        clearing=true;
+    }
+    static synchronized void endClear(){clearing=false;}
     private LogExportCache() { }
     static synchronized void clean(File directory, long now) throws IOException {
         prune(directory, null, now);
     }
     static synchronized File acquire(File directory, String name, long now) throws IOException {
+        if(clearing)throw new IOException("日志正在清空，请稍后导出");
         if (!name.matches("duo-log-[a-f0-9-]+\\.txt")) throw new IOException("invalid_export_name");
         File file = new File(directory.getCanonicalFile(), name);
         if (Files.isSymbolicLink(file.toPath()) || !file.getCanonicalFile().equals(file))

@@ -22,21 +22,27 @@ public final class SystemUiNativeCrashEvidence {
     //noinspection SdCardPath
     public static void main(String[] args) {
         try {
-            if(Process.myUid()!=0||args.length!=2)throw new SecurityException("root_required");
+            if(Process.myUid()!=0||(args.length!=2&&args.length!=3))throw new SecurityException("root_required");
             int user=Integer.parseInt(args[0]),uid=Integer.parseInt(args[1]);
+            long since=args.length==3?Long.parseLong(args[2]):0;if(since<0)throw new SecurityException("history_boundary");
             if(user<0||uid<1000||uid/100000!=user)throw new SecurityException("user_identity");
             System.out.println("BOOT_CRASH_EVIDENCE protocol=1 user="+user+" systemUiUid="+uid+" collectedWall="+System.currentTimeMillis());
-            collectSystemUi(System.out::print,new File("/data/user_de/"+user+"/com.android.systemui"),uid,"DE");
-            collectSystemUi(System.out::print,new File("/data/user/"+user+"/com.android.systemui"),uid,"CE");
+            collectSystemUi(System.out::print,new File("/data/user_de/"+user+"/com.android.systemui"),uid,"DE",since);
+            collectSystemUi(System.out::print,new File("/data/user/"+user+"/com.android.systemui"),uid,"CE",since);
+            if(since==0){
             collectFramework(System.out::print,new File("/data/adb/lspd/log"),"current");
             collectFramework(System.out::print,new File("/data/adb/lspd/log.old"),"previous");
             collectFrameworkLogcat(System.out::print);
             collectDropBox(System.out::print,uid);
+            }else System.out.println("shared_history=OMITTED_AFTER_DUO_LOG_CLEAR;since="+since+";new_events=SEE_SCOPED_LOGCAT");
             System.out.println("END_BOOT_CRASH_EVIDENCE");
         }catch(Throwable failure){System.out.println("status=UNAVAILABLE;error="+failure.getClass().getSimpleName());}
     }
     interface Output {void write(String value);}
     static void collectSystemUi(Output out,File data,int uid,String storage) {
+        collectSystemUi(out,data,uid,storage,0);
+    }
+    static void collectSystemUi(Output out,File data,int uid,String storage,long since) {
         out.write("\n--- SYSTEMUI_PERSISTED storage="+storage+";history_only=true;absence_not_no_crash=true ---\n");
         try {
             if(!ownedDirectory(data,uid)){out.write("status=MISSING_OR_INACCESSIBLE;stage=data_directory\n");return;}
@@ -44,7 +50,7 @@ public final class SystemUiNativeCrashEvidence {
             if(!ownedDirectory(files,uid)){out.write("status=MISSING_OR_INACCESSIBLE;stage=files_directory\n");return;}
             Read nativeLog=read(new File(files,"log_buffers.txt"),uid,FILE_LIMIT,false);
             out.write("source=rom_log_buffers;"+nativeLog.metadata()+"\n");
-            if(nativeLog.ok)out.write(CrashStackTrace.fromText(nativeLog.text,true));
+            if(nativeLog.ok&&since==0)out.write(CrashStackTrace.fromText(nativeLog.text,true));
             File directory=new File(files,SystemUiCrashJournal.DIRECTORY);
             if(!ownedDirectory(directory,uid)){out.write("source=duo_systemui_journal;status=MISSING_OR_INACCESSIBLE\n");return;}
             File[] entries=directory.listFiles(file->file.getName().matches("duo-[0-9]+-[a-f0-9-]{36}\\.txt"));
@@ -54,7 +60,11 @@ public final class SystemUiNativeCrashEvidence {
             for(int i=0;i<Math.min(12,entries.length);i++) {
                 Read value=read(entries[i],uid,96*1024,false);
                 out.write("journal="+entries[i].getName()+";"+value.metadata()+"\n");
-                if(value.ok)out.write(safeJournal(value.text,uid));
+                if(value.ok){
+                    java.util.regex.Matcher at=java.util.regex.Pattern.compile("(?m)^fatalWall=([0-9]+) ").matcher(value.text);
+                    if(since==0||at.find()&&Long.parseLong(at.group(1))>since)out.write(safeJournal(value.text,uid));
+                    else out.write("record=OMITTED_AFTER_LOG_CLEAR\n");
+                }
             }
         }catch(Exception | LinkageError failure){out.write("status=UNAVAILABLE;error="+failure.getClass().getSimpleName()+"\n");}
     }

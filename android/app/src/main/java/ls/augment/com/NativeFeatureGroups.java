@@ -199,9 +199,7 @@ final class NativeFeatureGroups {
             NativeIslandSceneOptions.feature()
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
-            new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{},"boolean","0",new Feature[]{
-                new Feature("systemui:notification_stack_big","启用大堆叠",NotificationAppearanceOptions.STACK_BIG,new String[]{},"boolean","0",new Feature[]{}),
-                new Feature("systemui:notification_stack_small","启用小堆叠（同应用）",NotificationAppearanceOptions.STACK_SMALL,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,NotificationAppearanceOptions.STACK_GRADIENT,NotificationAppearanceOptions.STACK_START,NotificationAppearanceOptions.STACK_LOCK_START},"boolean","0",new Feature[]{
                 new Feature("systemui:notification_stack_landscape","横屏使用通知堆叠",NotificationAppearanceOptions.STACK_LANDSCAPE,new String[]{},"boolean","0",new Feature[]{})
             }),
             new Feature("systemui:notification_weather","通知中心显示当日天气","ls_augment_rm_notification_weather",new String[]{},"boolean","0", new Feature[]{}),

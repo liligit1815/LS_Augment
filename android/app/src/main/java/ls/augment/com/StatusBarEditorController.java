@@ -324,7 +324,7 @@ final class StatusBarEditorController extends NativeEditorController {
             java.util.List<String> ids=new java.util.ArrayList<>();for(String id:StatusBarGridSpec.IDS)if(grid.get(id).zone.charAt(0)==side&&itemVisible(id,grid.get(id)))ids.add(id);
             ids.sort(java.util.Comparator.comparingInt(id->grid.get(id).order));
             for(String id:ids){
-                StatusBarGridSpec.Item item=grid.get(id);String subtitle=StatusBarGridSpec.ZONE_LABELS[java.util.Arrays.asList(StatusBarGridSpec.ZONES).indexOf(item.zone)]+" · "+item.size+" dp";
+                StatusBarGridSpec.Item item=grid.get(id);String subtitle=StatusBarGridSpec.ZONE_LABELS[java.util.Arrays.asList(StatusBarGridSpec.ZONES).indexOf(item.zone)]+" · "+(item.size==0?"原生大小":item.size+" dp");
                 LinearLayout row=ui.groupRow();row.setTag("placement:"+id);
                 LinearLayout label=new LinearLayout(this);label.setOrientation(LinearLayout.VERTICAL);
                 label.addView(ui.text(componentName(id),14,ui.text,true),ui.wrap());label.addView(ui.text(subtitle,12,ui.muted,false),ui.wrap());
@@ -695,7 +695,14 @@ final class StatusBarEditorController extends NativeEditorController {
             rows.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int pos,long rowId){if(!loading&&number(ConfigSchema.STATUSBAR_CLOCK_ROWS)!=pos+1){draft.put(ConfigSchema.STATUSBAR_CLOCK_ROWS,""+(pos+1));changed();renderKeepingScroll();}}});
         }
         if(circle)slider(card,"圆形组件大小（dp）",number(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE),18,40,value->{draft.put(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE,""+value);changed();});
-        else slider(card, "大小（dp）", item.size, 6, 32, value -> updateItem(id, null, -1, value, null));
+        else {
+            if(StatusBarGridSpec.nativeComponent(id)){
+                Switch nativeSize=new Switch(this);nativeSize.setChecked(item.size==0);
+                card.addView(ui.featureRow("跟随原生大小","保留本机原厂字号与图标尺寸；关闭后使用下方指定大小。",nativeSize),ui.wrap());
+                nativeSize.setOnCheckedChangeListener((button,on)->{if(!loading){updateItem(id,null,-1,on?0:13,null);renderKeepingScroll();}});
+            }
+            if(item.size!=0)slider(card, "大小（dp）", item.size, 6, 32, value -> updateItem(id, null, -1, value, null));
+        }
         if(circle){LinearLayout internal=new LinearLayout(this);internal.setOrientation(LinearLayout.VERTICAL);connectivityControls(internal);advanced(card,"connectivity-internal","高级设置：三合一图标",internal);}
         if(!positionSizeOnly()&&precisionKey(id)!=null){LinearLayout detail=new LinearLayout(this);detail.setOrientation(LinearLayout.VERTICAL);precision(detail,id);advanced(card,"precision-"+id,"高级：小数精度",detail);}
         if(!positionSizeOnly()&&id.equals("clock"))clockConfiguration(card);
@@ -1117,13 +1124,14 @@ final class StatusBarEditorController extends NativeEditorController {
     private int networkMode(){return StatusBarNetworkDisplay.resolve(draft.get(ConfigSchema.STATUSBAR_NETWORK_DISPLAY),ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_NETWORK_TWO_ROWS)));}
     private static String baseId(String id){int split=id.indexOf('#');return split<0?id:id.substring(0,split);}
     private float previewTextSize(String id){
-        if(id.equals("battery")&&!positionSizeOnly()&&!connectivityGroup()&&!nativeBatteryEnabled())return ui.dp(StatusBarGridSpec.DEFAULT_BATTERY.size);
+        if(id.equals("battery")&&!positionSizeOnly()&&!connectivityGroup()&&!nativeBatteryEnabled())return ui.dp(13);
         if(!positionSizeOnly()&&id.equals("clock")&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))){
             try{float size=Float.parseFloat(draft.get(ConfigSchema.STATUSBAR_CLOCK_SIZE_SP));
                 if(size>0&&size<=40)return android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,size,getResources().getDisplayMetrics());
             }catch(Exception ignored){}
         }
-        return ui.dp(grid.get(id).size);
+        // A schematic preview cannot measure another process's OEM glyphs.
+        return ui.dp(grid.get(id).size==0?13:grid.get(id).size);
     }
     private void previewTypeface(Paint paint,String id){
         android.graphics.Typeface typeface=android.graphics.Typeface.DEFAULT;

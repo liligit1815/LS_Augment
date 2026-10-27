@@ -51,7 +51,7 @@ final class AtomicWorkbenchAppearanceControls extends LinearLayout {
                 value -> saveEntryParameter(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, value), true);
         addView(triggerArea, ui.wrap());
         triggerArea.bindTitle(getChildAt(getChildCount()-2));
-        addView(ui.featureTitle("角落触发灵敏度（%）", "数值越大，所需斜滑距离越短，范围 60–160%。默认 100%。"), ui.wrap());
+        addView(ui.featureTitle("角落触发灵敏度（%）", "数值越大，向中间水平滑动所需距离越短，范围 60–160%。默认 100%。"), ui.wrap());
         cornerSensitivity = new ParameterSlider(ui, EnhancementOption.integer(AtomicWorkbenchConfig.CORNER_SENSITIVITY,
                 "atomic_workbench", "角落触发灵敏度（%）", "", 100, 60, 160),
                 String.valueOf(config.getInt(AtomicWorkbenchConfig.CORNER_SENSITIVITY, 100)),

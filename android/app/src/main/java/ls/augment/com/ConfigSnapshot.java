@@ -135,6 +135,16 @@ public final class ConfigSnapshot {
                     if (rpm < 500 || rpm > 100000 || !String.valueOf(rpm).equals(value)) return invalid("retired_value_invalid;line="+i);
                     continue;
                 }
+                // Read-only retirement of old fields: no grouping implementation or
+                // runtime setting survives. Validate signed legacy bytes before discard.
+                if(key.matches("ls_augment_rm_notification_stack_(big|small|style|complete_count|step|inset)")) {
+                    int number=parseInt(value,-1),min=0,max=1;
+                    if(key.endsWith("complete_count")){min=1;max=6;}
+                    else if(key.endsWith("step")){min=4;max=20;}
+                    else if(key.endsWith("inset"))max=16;
+                    if(number<min||number>max||!String.valueOf(number).equals(value))return invalid("retired_value_invalid;line="+i);
+                    continue;
+                }
                 if (!ConfigSchema.isRuntimeKey(key)) return invalid("unknown_key;line="+i);
                 String normalized = ConfigSchema.normalize(key, value);
                 // Older signed snapshots retain their original bytes/checksum. Accept only the
@@ -155,14 +165,11 @@ public final class ConfigSnapshot {
                 values.put(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, "100");
                 values.put(AtomicWorkbenchConfig.CORNER_SENSITIVITY, "100");
             }
-            // A snapshot predating the two stack modes keeps its original checksum
-            // and settings. Only an entirely absent pair receives disabled defaults;
-            // a partially present family remains invalid.
-            if (!values.containsKey(NotificationAppearanceOptions.STACK_BIG)
-                    && !values.containsKey(NotificationAppearanceOptions.STACK_SMALL)) {
-                values.put(NotificationAppearanceOptions.STACK_BIG, "0");
-                values.put(NotificationAppearanceOptions.STACK_SMALL, "0");
-            }
+            String[] cascadeKeys={NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,
+                    NotificationAppearanceOptions.STACK_GRADIENT,NotificationAppearanceOptions.STACK_START,NotificationAppearanceOptions.STACK_LOCK_START};
+            boolean hasCascade=false;
+            for(String key:cascadeKeys)hasCascade|=values.containsKey(key);
+            if(!hasCascade)for(String key:cascadeKeys)values.put(key,ConfigSchema.runtimeDefaults().get(key));
             // Older complete snapshots have none of this family. Keep their signed bytes
             // and existing settings; a partial family is still rejected below.
             boolean hasExtraction = false;

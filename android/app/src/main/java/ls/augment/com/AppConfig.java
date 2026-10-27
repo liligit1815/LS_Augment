@@ -133,6 +133,12 @@ final class AppConfig {
                 migration.commit();
             }
             initializePrivateDefaults();
+            if (!prefs.getBoolean("notification_cascade_only_v1",false)) {
+                DurablePreferences.Editor migration=migrationEditor().putBoolean("notification_cascade_only_v1",true);
+                for(String suffix:new String[]{"big","small","style","complete_count","step","inset"})
+                    migration.remove("ls_augment_rm_notification_stack_"+suffix);
+                migration.commit();
+            }
             if (!prefs.getBoolean("fan_fixed_levels_only_v1", false)) {
                 migrationEditor()
                         .putString(ConfigSchema.FAN_FIXED_LEVEL, get(ConfigSchema.FAN_FIXED_LEVEL))

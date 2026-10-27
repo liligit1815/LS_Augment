@@ -22,5 +22,13 @@
     "note": "Original manifest application icon. Decoded Android vector paths, colors and viewport preserved as SVG.",
     "bytes": 28687,
     "sha256": "DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457"
+  },
+  {
+    "project": "Van Step",
+    "file": "van-step.webp",
+    "source": "https://raw.githubusercontent.com/LAOBILAXI233/onestep_on_hyper/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp",
+    "note": "Original upstream application launcher icon bytes; manifest references @mipmap/ic_launcher.",
+    "bytes": 28268,
+    "sha256": "7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6"
   }
 ]

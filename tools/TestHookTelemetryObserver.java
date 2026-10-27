@@ -203,8 +203,18 @@ public final class TestHookTelemetryObserver {
         require(counter.failures().total == 0, "normal callback captured errors");
     }
     public static void main(String[] args) throws Throwable {
-        testDelegation(); testModuleAndHandledFailures(); testRecordsAndBudget(); testReentry(); testConcurrency(); testSameEvent(); benchmark();
+        testDelegation(); testModuleAndHandledFailures(); testRecordsAndBudget(); testReentry(); testConcurrency(); testSameEvent(); testHistoryClear(); benchmark();
         System.out.println("HookTelemetryObserver tests passed: real API 102 delegation, identity, attribution, bounded records, reentry, concurrency");
+    }
+    static void testHistoryClear() throws Throwable {
+        Counter counter=new Counter("live");counter.state="REGISTERED";
+        StackBudget budget=new StackBudget(1,256);FakeChain chain=new FakeChain();Throwable error=new IllegalStateException("old");
+        throwsSame(HookTelemetryObserver.observe(c->{throw error;},counter,()->10L,recorder(budget)),chain,error);
+        counter.clearHistory(20);budget.clearHistory();
+        require(counter.hits.get()==0&&counter.returned.get()==0&&counter.lastHit==0&&counter.failures().total==0&&counter.failures().last==null,"history reset removes counters and error records");
+        require(counter.state.equals("REGISTERED")&&budget.used()==0,"history reset retains registration and replenishes error budget");
+        throwsSame(HookTelemetryObserver.observe(c->{throw error;},counter,()->30L,recorder(budget)),chain,error);
+        require(counter.failures().total==1&&counter.failures().last.at==30&&budget.used()==1,"fresh failures are recorded after clearing");
     }
     static void testSameEvent() throws Throwable {
         StackBudget budget=new StackBudget(8,2048);int[] logged={0};

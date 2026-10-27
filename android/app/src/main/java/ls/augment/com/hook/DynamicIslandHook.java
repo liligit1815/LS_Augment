@@ -50,7 +50,10 @@ final class DynamicIslandHook {
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final Map<View,State> STATES=new WeakHashMap<>();
     private static final Runnable TASK_CHANGED=()->{
-        for(State state:new ArrayList<>(STATES.values()))if(state.enabled&&!state.closed)state.requestRefresh();
+        for(State state:new ArrayList<>(STATES.values()))if(!state.closed){
+            if(state.enabled)state.requestRefresh();
+            state.nativeHost.nativeForegroundChanged();
+        }
     };
 
     private static void taskChanged(){

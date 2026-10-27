@@ -42,6 +42,7 @@
 
         <activity android:name=".OnboardingActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ModuleScopeActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".FeatureSearchActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ContributorsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".SupportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ModuleLicensesActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
