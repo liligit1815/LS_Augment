@@ -183,10 +183,11 @@ final class EntryVisibilityHook {
         try {
             // Verified against the local OEM launcher: D is AllAppsStore, o() is getApps,
             // t() only notifies its UI listeners. Its original c[] model remains untouched.
-            Class<?> store = Class.forName("com.android.launcher3.allapps.D", false, loader);
-            Class<?> app = Class.forName("com.android.launcher3.model.data.d", false, loader);
-            Method apps = store.getDeclaredMethod("o");
-            storeChanged = store.getDeclaredMethod("t");
+            Class<?> store = HookCompatibility.type(loader, "com.android.launcher3.allapps.AllAppsStore", "com.android.launcher3.allapps.D");
+            Class<?> app = HookCompatibility.type(loader, "com.android.launcher3.model.data.AppInfo", "com.android.launcher3.model.data.d");
+            Method apps = HookCompatibility.inheritedMethod(store, java.lang.reflect.Array.newInstance(app, 0).getClass(), false,
+                    new String[]{"getApps", "o"});
+            storeChanged = HookCompatibility.inheritedMethod(store, void.class, false, new String[]{"notifyUpdate", "t"});
             if (!apps.getReturnType().isArray() || apps.getReturnType().getComponentType() != app
                     || storeChanged.getReturnType() != void.class)
                 throw new NoSuchMethodException("unsupported AllAppsStore shape");
@@ -208,8 +209,9 @@ final class EntryVisibilityHook {
         }
         try {
             Class<?> bubble = Class.forName("com.android.launcher3.BubbleTextView", false, loader);
-            Class<?> item = Class.forName("com.android.launcher3.model.data.y", false, loader);
-            Method bind = bubble.getDeclaredMethod("B", item);
+            Class<?> item = HookCompatibility.type(loader, "com.android.launcher3.model.data.ItemInfoWithIcon", "com.android.launcher3.model.data.y");
+            Method bind = HookCompatibility.inheritedMethod(bubble, void.class, false,
+                    new String[]{"applyFromItemInfoWithIcon", "B"}, item);
             if (!View.class.isAssignableFrom(bubble) || bind.getReturnType() != void.class)
                 throw new NoSuchMethodException("unsupported BubbleTextView shape");
             module.registerFeatureHook(module.prepareFeatureHook(bind,

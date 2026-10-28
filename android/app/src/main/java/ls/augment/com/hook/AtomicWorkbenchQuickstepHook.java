@@ -35,8 +35,9 @@ final class AtomicWorkbenchQuickstepHook {
             Class<?> manager = Class.forName("com.android.quickstep.TaskAnimationManager", false, loader);
             Class<?> container = Class.forName("com.android.quickstep.BaseContainerInterface", false, loader);
             Class<?> gesture = Class.forName("com.android.quickstep.GestureState", false, loader);
-            Method route = manager.getDeclaredMethod("lambda$startRecentsAnimation$0", container,
-                    Intent.class, ActivityOptions.class, gesture);
+            Method route = HookCompatibility.inheritedMethod(manager, void.class, false,
+                    new String[]{"lambda$startRecentsAnimation$0", "lambda$startRecentsAnimationInternal$6"},
+                    container, Intent.class, ActivityOptions.class, gesture);
             gesture.getDeclaredMethod("getDisplayId");
             module.deoptimize(route);
             module.registerFeatureHook(module.prepareFeatureHook(route, "atomic_workbench.native_home.quickstep_display", true)

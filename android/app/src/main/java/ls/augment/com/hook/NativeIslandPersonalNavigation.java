@@ -52,6 +52,6 @@ final class NativeIslandPersonalNavigation {
     }
     static boolean accessible(Context context, ActivityInfo info, boolean sameApplication) {
         return info.enabled && (sameApplication || info.exported) && info.applicationInfo != null && info.applicationInfo.enabled
-                && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == 0);
+                && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == android.content.pm.PackageManager.PERMISSION_GRANTED);
     }
 }

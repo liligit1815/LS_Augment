@@ -81,6 +81,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/NotificationSummaryOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/CarrierTextOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/NativeFeatureGroups.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/NativeIslandSceneOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SystemOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/SystemUiOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/BackGestureIconPolicy.java" \
@@ -91,6 +92,7 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/tools/TestGamePerformanceMonitorConfig.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/LauncherOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusOptions.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/RecentsPrivacyOptions.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusRange.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/RecentsCardRadiusUiRange.java" \
   "$ROOT/tools/TestRecentsCardRadiusRange.java" \
@@ -169,6 +171,14 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarGridLayout.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarAdaptiveLayout.java" \
   "$ROOT/tools/TestStatusBarCustomization.java" \
+  "$ROOT/tools/TestStatusBarWorkspace.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarWorkspaceSpec.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarWorkspaceItems.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarPages.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarMargins.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarRegularDualPreset.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarEditPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarSelectiveLayout.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarPresets.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ConfigEditDraft.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarPresetPreview.java" \
@@ -291,6 +301,7 @@ java -cp "$TMP" ls.augment.com.hook.TestSignalStackLayout
 java -cp "$TMP" ls.augment.com.TestPairedStatusBarRows
 java -cp "$TMP" ls.augment.com.TestStatusBarRedesign
 java -cp "$TMP" ls.augment.com.TestStatusBarCustomization
+java -cp "$TMP" ls.augment.com.TestStatusBarWorkspace
 java -cp "$TMP" ls.augment.com.TestStatusBarSheet
 java -cp "$TMP" ls.augment.com.TestStatusBarPresetPreview
 java -cp "$TMP" ls.augment.com.TestStatusBarAssets
@@ -444,6 +455,14 @@ python "$ROOT/tools/test-volume-percent-runtime.py"
 python "$ROOT/tools/test-control-center-percent-runtime.py"
 python "$ROOT/tools/test-full-brightness-binding-runtime.py"
 python "$ROOT/tools/test-full-brightness-control-runtime.py"
+python "$ROOT/tools/test-notification-cascade-runtime.py"
+python "$ROOT/tools/test-notification-independent-runtime.py"
+python "$ROOT/tools/test-super-mirror-compat-runtime.py"
+python "$ROOT/tools/test-quickstep-per-display-runtime.py"
+python "$ROOT/tools/test-notification-binder-compat.py"
+python "$ROOT/tools/test-focus-window-modern-compat.py"
+python "$ROOT/tools/test-launcher-named-compat.py"
+python "$ROOT/tools/test-cleanup-spring-compat.py"
 python "$ROOT/tools/test-power-menu-runtime.py"
 python "$ROOT/tools/test-power-menu-lifecycle.py"
 python "$ROOT/tools/test-power-mode-control.py"
@@ -489,6 +508,7 @@ java -cp "$TMP" ls.augment.com.TestGamePerformanceMonitorConfig
 java -cp "$TMP" ls.augment.com.TestBrightnessRange
 java -cp "$TMP" ls.augment.com.TestHealthAccountState
 python "$ROOT/tools/test-recents-card-radius-runtime.py"
+python "$ROOT/tools/test-recents-privacy-runtime.py"
 python "$ROOT/tools/test-recents-card-radius-publisher.py"
 python "$ROOT/tools/test-recents-radius-store.py"
 python "$ROOT/tools/test-recents-radius-loading-ui.py"

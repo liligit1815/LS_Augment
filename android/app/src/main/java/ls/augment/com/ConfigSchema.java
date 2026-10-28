@@ -279,6 +279,7 @@ public final class ConfigSchema {
         // Status-bar entries are centralized for configuration consistency.
         // Their rendering and sampling behavior is intentionally unchanged.
         addBoolean(SYSTEMUI_MASTER, false);
+        add(StatusBarEditPolicy.KEY,"",true,value->StatusBarEditPolicy.parse(value)==null?null:value);
         addBoolean(AUDIO_GAIN_ENABLED, false);
         // Accept retired keys from old backups, but never reactivate either feature.
         add(BATTERY_DISABLE_AGE_REDUCTION, "0", false, value -> "0");
@@ -361,10 +362,7 @@ public final class ConfigSchema {
         addBoolean(STATUSBAR_DUAL_RIGHT, false);
         addBoolean(STATUSBAR_CLOCK_ACROSS, false);
         addInteger(STATUSBAR_HEIGHT_DP, 0, STATUSBAR_HEIGHT_MIN_DP, STATUSBAR_HEIGHT_MAX_DP);
-        addInteger(STATUSBAR_LEFT_MARGIN_DP, 0, 0, 64);
-        addInteger(STATUSBAR_RIGHT_MARGIN_DP, 0, 0, 64);
-        addInteger(STATUSBAR_TOP_MARGIN_DP, 0, 0, 64);
-        addInteger(STATUSBAR_BOTTOM_MARGIN_DP, 0, 0, 64);
+        for(String key:StatusBarMargins.KEYS)addInteger(key,0,StatusBarMargins.MIN_DP,StatusBarMargins.MAX_DP);
         addBoolean(STATUSBAR_FREE_POSITION, false);
         add(STATUSBAR_LAYOUT_SPEC, "", true, value -> {
             if (value.length() > 16 * 1024) return null;

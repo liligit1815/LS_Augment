@@ -93,38 +93,40 @@ final class AtomicWorkbenchQuickstepTargetHook {
     static synchronized void install(AugmentModule module, ClassLoader loader) throws Exception {
         if (installed) return;
         homeLauncher = null;
+        boolean modern=AtomicWorkbenchQuickstepCapabilities.modern;
         Class<?> tracker = Class.forName("com.android.quickstep.TopTaskTracker$CachedTaskInfo", false, loader);
-        cached = tracker.getDeclaredConstructor(List.class, boolean.class, int.class); cached.setAccessible(true);
-        Class<?> flags = Class.forName("com.android.quickstep.fallback.window.RecentsWindowFlags$Companion", false, loader);
-        Class<?> service = Class.forName("com.android.quickstep.TouchInteractionService", false, loader);
+        cached = modern?tracker.getDeclaredConstructor(List.class,Context.class,int.class,int.class):tracker.getDeclaredConstructor(List.class, boolean.class, int.class); cached.setAccessible(true);
+        Class<?> flags = modern?null:Class.forName("com.android.quickstep.fallback.window.RecentsWindowFlags$Companion", false, loader);
+        Class<?> service = Class.forName(modern?"com.android.quickstep.TouchInteractionHandler":"com.android.quickstep.TouchInteractionService", false, loader);
         Class<?> callbacks = Class.forName("com.android.quickstep.RecentsAnimationCallbacks", false, loader);
         Class<?> controller = Class.forName("com.android.quickstep.RecentsAnimationController", false, loader);
         Class<?> result = Class.forName("com.android.quickstep.RecentsAnimationController$1", false, loader);
         Class<?> view = Class.forName("com.android.quickstep.views.RecentsView", false, loader);
         Class<?> handler = Class.forName("com.android.quickstep.AbsSwipeUpHandler", false, loader);
-        Class<?> resource = Class.forName("com.android.quickstep.fallback.window.RecentsDisplayModel$RecentsDisplayResource", false, loader);
-        Class<?> windowContext = Class.forName("com.android.quickstep.fallback.window.RecentsWindowContext", false, loader);
-        Class<?> windowManager = Class.forName("com.android.quickstep.fallback.window.RecentsWindowManager", false, loader);
-        Class<?> stateType = Class.forName("com.android.launcher3.statemanager.a", false, loader);
+        Class<?> resource = modern?null:Class.forName("com.android.quickstep.fallback.window.RecentsDisplayModel$RecentsDisplayResource", false, loader);
+        Class<?> windowContext = Class.forName(modern?"com.android.quickstep.window.RecentsWindowContext":"com.android.quickstep.fallback.window.RecentsWindowContext", false, loader);
+        Class<?> windowManager = Class.forName(modern?"com.android.quickstep.window.RecentsWindowManager":"com.android.quickstep.fallback.window.RecentsWindowManager", false, loader);
+        Class<?> stateType = Class.forName(modern?"com.android.launcher3.statemanager.BaseState":"com.android.launcher3.statemanager.a", false, loader);
         Method foreground = method(windowContext, "getForeColor");
         Method stateQuery = method(windowManager, "isInState", stateType);
         Method synthetic = method(Class.forName("com.android.quickstep.GestureState", false, loader), "useSyntheticRecentsTransition");
-        Method flag = method(flags, "getEnableOverviewInWindow");
+        Method flag = modern?null:method(flags, "getEnableOverviewInWindow");
         Method gesture = named(service, "createGestureState", 4);
-        Method start = named(callbacks, "onAnimationStart", 7);
-        Method delivered = named(callbacks, "lambda$onAnimationStart$2", 2);
+        Method start = named(callbacks, "onAnimationStart", modern?6:7);
+        Method delivered = named(callbacks, modern?"lambda$onAnimationStart$4":"lambda$onAnimationStart$2", 2);
         Method cancel = method(callbacks, "onAnimationCanceled", java.util.HashMap.class);
-        Method finish = method(controller, "finishController", boolean.class, boolean.class, Runnable.class, boolean.class, boolean.class);
+        Method finish = modern?method(controller,"finishController",boolean.class,Runnable.class,boolean.class,boolean.class,Class.forName("com.android.quickstep.util.ActiveGestureLog$CompoundString",false,loader))
+                :method(controller, "finishController", boolean.class, boolean.class, Runnable.class, boolean.class, boolean.class);
         Method completed = method(result, "send", int.class, Bundle.class);
         Method plan = method(view, "applyLoadPlan", List.class);
         Method intent = method(handler, "getLaunchIntent");
         Class<?> homeListener = Class.forName("com.android.quickstep.AbsSwipeUpHandler$AppToHomeAnimationSuccessListener", false, loader);
         Method homeEnd = method(homeListener, "onAnimationEnd", android.animation.Animator.class);
         Method nativeHomeEnd = method(homeListener.getSuperclass(), "onAnimationEnd", android.animation.Animator.class);
-        for (Method m : new Method[]{flag, gesture, start, delivered, cancel, finish, completed, plan, intent, foreground, stateQuery, homeEnd}) module.deoptimize(m);
+        for (Method m : new Method[]{flag, gesture, start, delivered, cancel, finish, completed, plan, intent, foreground, stateQuery, homeEnd}) if(m!=null)module.deoptimize(m);
         // These callers may otherwise retain an ART-inlined flag-off branch.
-        module.deoptimize(resource.getDeclaredConstructor(int.class, Context.class, int.class));
-        module.deoptimize(method(Class.forName("com.android.quickstep.fallback.window.RecentsWindowFlags", false, loader), "getEnableOverviewInWindow"));
+        if(!modern)module.deoptimize(resource.getDeclaredConstructor(int.class, Context.class, int.class));
+        if(!modern)module.deoptimize(method(Class.forName("com.android.quickstep.fallback.window.RecentsWindowFlags", false, loader), "getEnableOverviewInWindow"));
         module.deoptimize(synthetic);
         module.deoptimize(method(view, "setContentAlpha", float.class));
         module.deoptimize(method(handler, "onLauncherStart"));
@@ -148,12 +150,12 @@ final class AtomicWorkbenchQuickstepTargetHook {
                 throw failure;
             }
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(flag, "atomic_workbench.recents.window_scope", true).intercept(chain -> {
+        if(!modern)module.registerFeatureHook(module.prepareFeatureHook(flag, "atomic_workbench.recents.window_scope", true).intercept(chain -> {
             AtomicWorkbenchQuickstepInputHook.Route route = WINDOW.get();
             if (route == null) route = AtomicWorkbenchQuickstepInputHook.dispatchRoute();
             return route != null && !usesHomeLauncher(route) ? true : chain.proceed();
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(foreground, "atomic_workbench.recents.foreground_color", true)
+        if(!modern)module.registerFeatureHook(module.prepareFeatureHook(foreground, "atomic_workbench.recents.foreground_color", true)
                 .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
             Object owner = chain.getThisObject();
             Integer previous; synchronized (FOREGROUNDS) { previous = FOREGROUNDS.get(owner); }
@@ -172,7 +174,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
             synchronized (FOREGROUNDS) { FOREGROUNDS.put(owner, color); }
             return color;
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(stateQuery, "atomic_workbench.recents.native_state_query", true)
+        if(!modern)module.registerFeatureHook(module.prepareFeatureHook(stateQuery, "atomic_workbench.recents.native_state_query", true)
                 .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
             Object owner = chain.getThisObject();
             AtomicWorkbenchQuickstepInputHook.Route route; synchronized (WINDOWS) { route = WINDOWS.get(owner); }
@@ -188,7 +190,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
             Object nativeManager = call(owner, "getStateManager", new Class<?>[0]);
             return call(nativeManager, "C", new Class<?>[0]) == chain.getArg(0);
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(homeEnd, "atomic_workbench.recents.home_animation_end", true)
+        if(!modern)module.registerFeatureHook(module.prepareFeatureHook(homeEnd, "atomic_workbench.recents.home_animation_end", true)
                 .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
             Object listener = chain.getThisObject();
             Object owner = field(field(listener, "this$0"), "mContainer");
@@ -342,7 +344,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
                 state.finishToLauncher = false;
                 log(module, state, "finish_cancelled", reason, actualDisplay(state.window), -1);
                 try (Scope ignored = new Scope(state.route)) {
-                    return chain.proceed(new Object[]{false, chain.getArg(1), chain.getArg(2), chain.getArg(3), chain.getArg(4)});
+                    return chain.proceed(new Object[]{false,chain.getArg(1),chain.getArg(2),chain.getArg(3),chain.getArg(4)});
                 }
             }
             log(module, state, "finish_requested", Boolean.TRUE.equals(chain.getArg(0)) ? "to_recents_or_home" : "to_app", actualDisplay(state.window), -1);
@@ -356,8 +358,8 @@ final class AtomicWorkbenchQuickstepTargetHook {
             return value;
         }));
         installed = true;
-        installWindowInitialization(module, loader);
-        installWindowHomeIdentity(module, loader);
+        if(!modern){installWindowInitialization(module, loader);installWindowHomeIdentity(module, loader);}
+        module.logFeatureInfo("ATOMIC_RECENTS_TARGET_INSTALLED route="+(modern?"per_display_repository":"display_model")+";runtime=unverified");
     }
 
     /** The ROM tracker is shared by displays; its factory drops the callback's Context argument. */
@@ -796,7 +798,12 @@ final class AtomicWorkbenchQuickstepTargetHook {
         throw new NoSuchMethodException(name);
     }
 
-    static Object cachedTask(AtomicWorkbenchQuickstepInputHook.Route route, Object tracker) throws Exception {
+    static Object cachedTask(AtomicWorkbenchQuickstepInputHook.Route route, Object tracker) throws Exception {return cachedTask(route,tracker,null);}
+    static Object cachedTask(AtomicWorkbenchQuickstepInputHook.Route route, Object tracker,Object nativeInfo) throws Exception {
+        if(AtomicWorkbenchQuickstepCapabilities.modern){
+            if(nativeInfo==null||(Integer)field(nativeInfo,"mDisplayId")!=route.target)throw new IllegalStateException("cached_display_identity");
+            return cached.newInstance(route.tasks,field(tracker,"mContext"),route.target,field(nativeInfo,"mActiveDeskId"));
+        }
         // The constructor's first item becomes mTopTask even when its display
         // parameter differs. Filter the actual bounded snapshot before calling it.
         return cached.newInstance(route.tasks, field(tracker, "mCanEnterDesktopMode"), route.target);
@@ -984,7 +991,11 @@ final class AtomicWorkbenchQuickstepTargetHook {
             if (state.callback != null && manager != null && field(manager, "mCallbacks") == state.callback) {
                 // Cancellation listeners may clear the manager's controller. Finish
                 // that controller while it is still reachable, then notify listeners.
-                call(manager, "finishRunningRecentsAnimation", new Class<?>[]{boolean.class, boolean.class, Runnable.class}, false, true, null);
+                if(AtomicWorkbenchQuickstepCapabilities.modern){
+                    Class<?> reason=Class.forName("com.android.quickstep.util.ActiveGestureLog$CompoundString",false,manager.getClass().getClassLoader());
+                    Object message=reason.getConstructor(String.class).newInstance("workbench route cancelled");
+                    call(manager,"finishRunningRecentsAnimation",new Class<?>[]{boolean.class,boolean.class,Runnable.class,reason},false,true,null,message);
+                }else call(manager, "finishRunningRecentsAnimation", new Class<?>[]{boolean.class, boolean.class, Runnable.class}, false, true, null);
                 call(state.callback, "notifyAnimationCanceled", new Class<?>[0]);
             }
         } catch (Throwable failure) { module.logFeatureError("ATOMIC_NATIVE_RECENTS phase=failed;reason=native_stream_cancel_failed", failure); }
@@ -1125,6 +1136,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
         return display == null ? -1 : (Integer) call(display, "getDisplayId", new Class<?>[0]);
     }
     private static Object field(Object value, String name) throws Exception {
+        if(AtomicWorkbenchQuickstepCapabilities.modern&&name.equals("mRecentsDisplayModel"))return AtomicWorkbenchQuickstepCapabilities.model(value);
         for (Class<?> type = value.getClass(); type != null; type = type.getSuperclass()) try {
             Field field = type.getDeclaredField(name); field.setAccessible(true); return field.get(value);
         } catch (NoSuchFieldException ignored) { }

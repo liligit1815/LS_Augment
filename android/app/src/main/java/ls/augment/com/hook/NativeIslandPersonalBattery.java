@@ -51,7 +51,7 @@ final class NativeIslandPersonalBattery {
     }
 
     private boolean powerSave(Context context) throws Exception {
-        Object power = context.getSystemService("power");
+        Object power = context.getSystemService(Context.POWER_SERVICE);
         if (power == null) throw new IllegalStateException("missing_power_service");
         boolean state = Boolean.TRUE.equals(NativeIslandPersonalScene.exact(power.getClass(), "isPowerSaveMode", boolean.class).invoke(power));
         if (state != Boolean.TRUE.equals(enabled.invoke(null, context))) throw new IllegalStateException("battery_readback_mismatch");
@@ -89,9 +89,9 @@ final class NativeIslandPersonalBattery {
             powerSave(context);
             for (String target : new String[]{"com.zte.powersavemode.intent.action.PowerSaveModeActivity", "android.settings.BATTERY_SAVER_SETTINGS"})
                 if (launchable(context, new Intent(target))) return "";
-            Object power = context.getSystemService("power");
+            Object power = context.getSystemService(Context.POWER_SERVICE);
             NativeIslandPersonalScene.exact(power.getClass(), "setPowerSaveModeEnabled", boolean.class, boolean.class);
-            return context.checkSelfPermission("android.permission.DEVICE_POWER") == 0 ? "" : "missing_battery_saver_target_or_permission";
+            return context.checkSelfPermission("android.permission.DEVICE_POWER") == android.content.pm.PackageManager.PERMISSION_GRANTED ? "" : "missing_battery_saver_target_or_permission";
         } catch (Exception missing) { return "battery_capability_unavailable:" + missing; }
     }
 
@@ -101,7 +101,7 @@ final class NativeIslandPersonalBattery {
             if (target == null) return false;
             ActivityInfo info = context.getPackageManager().getActivityInfo(target, 0);
             return info.enabled && info.exported && info.applicationInfo != null && info.applicationInfo.enabled
-                    && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == 0);
+                    && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == android.content.pm.PackageManager.PERMISSION_GRANTED);
         } catch (Exception missing) { return false; }
     }
 }

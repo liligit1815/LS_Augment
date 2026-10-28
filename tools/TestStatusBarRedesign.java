@@ -48,7 +48,8 @@ public final class TestStatusBarRedesign {
                 float h=8+random.nextInt(60);
                 nodes.add(new StatusBarGridLayout.Node("item"+i,zone,i,10+random.nextInt(250),h,trial%2==0?h*(.6f+random.nextFloat()*.35f):-1));
             }
-            Map<String,StatusBarGridLayout.Box> boxes=StatusBarGridLayout.pack(nodes,width,height,4,4,0,0,-8+random.nextInt(17),cutL,cutR);
+            float gap=-8+random.nextInt(17);Map<String,StatusBarGridLayout.Box> boxes=StatusBarGridLayout.pack(nodes,width,height,4,4,0,0,gap,cutL,cutR);
+            Map<StatusBarGridLayout.Box,String> zones=new IdentityHashMap<>();for(StatusBarGridLayout.Node node:nodes)zones.put(boxes.get(node.id),node.zone);
             require(boxes.size()==nodes.size(),"all requested contents have placement");
             for(StatusBarGridLayout.Box box:boxes.values()){
                 require(Float.isFinite(box.x)&&box.x>=3.99f&&box.x+box.width<=width-3.99f,"horizontal bounds");
@@ -57,7 +58,7 @@ public final class TestStatusBarRedesign {
                 for(StatusBarGridLayout.Box other:boxes.values())if(other!=box){
                     float x=Math.min(box.x+box.width,other.x+other.width)-Math.max(box.x,other.x);
                     float y=Math.min(box.y+box.height,other.y+other.height)-Math.max(box.y,other.y);
-                    require(x<.01f||y<.01f,"content overlap");
+                    require(x<.01f||y<.01f||StatusBarAdaptiveLayout.requestedRowOverlap(gap,zones.get(box),zones.get(other)),"only explicitly requested row overlap");
                 }
             }
         }

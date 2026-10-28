@@ -67,6 +67,24 @@ public final class TestShoulderNativeApply {
         a.rapidFireCountArray[0] = 9;
         apply(proxy, a);
         check(proxy.modes.get(137) == 6, "rapid mode complete expected setter path");
+        try(ShoulderNativeApply.Attempt attempt=ShoulderNativeApply.begin(ShoulderNativeApply.expected(a,true),101)){
+            ShoulderNativeApply.rapidFireOverride(137,9,30);
+            TgkData transformed=a.copy();transformed.rapidFireCountArray[0]=30;
+            proxy.releaseTgk();TgkHelper.setTgkParaToNative(proxy,transformed,new TgkGameInfo(),1);attempt.verify();
+            check(true,"validated rapid-fire override coexists with scheme verification");
+        }
+        try(ShoulderNativeApply.Attempt attempt=ShoulderNativeApply.begin(ShoulderNativeApply.expected(a,true),102)){
+            ShoulderNativeApply.rapidFireOverride(137,8,30);
+            TgkData transformed=a.copy();transformed.rapidFireCountArray[0]=30;
+            proxy.releaseTgk();TgkHelper.setTgkParaToNative(proxy,transformed,new TgkGameInfo(),1);
+            fails(attempt::verify,"rate:137");
+        }
+        try(ShoulderNativeApply.Attempt attempt=ShoulderNativeApply.begin(ShoulderNativeApply.expected(a,true),103)){
+            ShoulderNativeApply.rapidFireOverride(137,9,30);
+            proxy.releaseTgk();TgkHelper.setTgkParaToNative(proxy,a,new TgkGameInfo(),1);
+            fails(attempt::verify,"rate:137");
+        }
+        check(a.rapidFireCountArray[0]==9,"override never changes saved OEM scheme");
         a.optionArray[0] = 2;
 
         // A downstream macro binding reads committed selection in this boundary model.

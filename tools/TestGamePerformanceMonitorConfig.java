@@ -73,7 +73,7 @@ public final class TestGamePerformanceMonitorConfig {
         for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget("game"))for(NativeFeatureGroups.Feature feature:section.features)
             if(GameOptions.PERFORMANCE_MONITOR.equals(feature.id))owner=feature;
         require(owner!=null&&GameOptions.PERFORMANCE_MONITOR.equals(owner.toggleKey)
-                &&owner.allKeys().equals(Arrays.asList(GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_PIN)),"The public transparency parameter belongs to the real monitor switch");
+                &&owner.allKeys().equals(Arrays.asList(GameOptions.PERFORMANCE_MONITOR,GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_MARGIN,GameOptions.MONITOR_PIN)),"Transparency and spacing belong to the real monitor switch");
         EnhancementOption itemsOption=null;
         for(EnhancementOption option:GameOptions.options())if(GameOptions.MONITOR_ITEMS.equals(option.key))itemsOption=option;
         require(itemsOption!=null&&itemsOption.kind==EnhancementOption.Kind.INTERNAL

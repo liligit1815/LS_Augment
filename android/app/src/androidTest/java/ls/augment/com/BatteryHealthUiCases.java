@@ -15,7 +15,7 @@ import org.json.*;
 
 /** Exercises production navigation, real on-device sampling and result retention without settings writes. */
 final class BatteryHealthUiCases implements Application.ActivityLifecycleCallbacks {
-    private static final String ROUTE="group/system_settings/battery_health",DIRECTORY="target-system_settings";
+    private static final String ROUTE="group/system_settings/battery",DIRECTORY="target-system_settings";
     private final Instrumentation test;private final Context context;private volatile Activity resumed;
     private final List<Activity> pages=new ArrayList<>();private final JSONArray layouts=new JSONArray(),screenshots=new JSONArray();
     private File directory;private int checks;
@@ -74,7 +74,7 @@ final class BatteryHealthUiCases implements Application.ActivityLifecycleCallbac
         Activity result=await(route,page);settle();require(result.getResources().getConfiguration().orientation==wanted,"Requested orientation is active");return result;
     }
     private void layout(Activity page,String label)throws Exception{settle();main(()->{
-        View path=tag(page,"page-path"),first=tag(page,"battery-health-action-card");float density=page.getResources().getDisplayMetrics().density;
+        View path=tag(page,"page-path"),first=tag(page,"application-category:system_settings:battery");float density=page.getResources().getDisplayMetrics().density;
         float gap=(top(first)-top(path)-path.getHeight())/density;require(gap>=7.5&&gap<=12.5,"Navigation gap is 8–12dp: "+gap);
         require(button(page).getHeight()/density>=47.5,"Detection action retains a 48dp touch target");
         layouts.put(new JSONObject().put("state",label).put("gapDp",gap).put("fontScale",page.getResources().getConfiguration().fontScale)

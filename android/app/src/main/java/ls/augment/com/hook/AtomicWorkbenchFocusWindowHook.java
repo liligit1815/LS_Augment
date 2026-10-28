@@ -114,20 +114,37 @@ final class AtomicWorkbenchFocusWindowHook {
             installStage="WINDOW_STATE_FIELD_mAttrs";
             Class.forName("com.android.server.wm.WindowState", false, loader).getDeclaredField("mAttrs");
             installStage="ADD_METHOD";
-            Method add = service.getDeclaredMethod("addWindow", session,
+            Method add;
+            try { add = service.getDeclaredMethod("addWindow", session,
                     Class.forName("android.view.IWindow", false, loader), WindowManager.LayoutParams.class,
                     int.class, int.class, int.class, int.class,
                     Class.forName("android.view.InputChannel", false, loader),
                     Class.forName("android.view.InsetsState", false, loader),
                     Class.forName("android.view.InsetsSourceControl$Array", false, loader),
-                    android.graphics.Rect.class, float[].class);
+                    android.graphics.Rect.class, float[].class); }
+            catch (NoSuchMethodException oldOutputsAbsent) {
+                add = service.getDeclaredMethod("addWindow", session,
+                        Class.forName("android.view.IWindow", false, loader), WindowManager.LayoutParams.class,
+                        int.class, int.class, int.class, int.class,
+                        Class.forName("android.view.InputChannel", false, loader),
+                        Class.forName("android.view.WindowRelayoutResult", false, loader));
+            }
+            if (add.getReturnType() != int.class) throw new NoSuchMethodException("addWindow result");
             installStage="PERMISSION_METHOD";
             Method permission = policy.getDeclaredMethod("checkAddPermission", int.class, boolean.class, String.class, int[].class, int.class);
             installStage="RELAYOUT_METHOD";
-            Method relayout = service.getDeclaredMethod("relayoutWindow", session,
+            Method relayout;
+            try { relayout = service.getDeclaredMethod("relayoutWindow", session,
                     Class.forName("android.view.IWindow", false, loader), WindowManager.LayoutParams.class,
                     int.class, int.class, int.class, int.class, int.class, int.class,
-                    Class.forName("android.view.WindowRelayoutResult", false, loader));
+                    Class.forName("android.view.WindowRelayoutResult", false, loader)); }
+            catch (NoSuchMethodException oldOutputsAbsent) {
+                relayout = service.getDeclaredMethod("relayoutWindow", session,
+                        Class.forName("android.view.IWindow", false, loader), WindowManager.LayoutParams.class,
+                        int.class, int.class, int.class, int.class, int.class, int.class,
+                        Class.forName("android.view.WindowRelayoutResult", false, loader), Class.forName("android.view.SurfaceControl",false,loader));
+            }
+            if (relayout.getReturnType() != int.class) throw new NoSuchMethodException("relayoutWindow result");
             for (String name : new String[]{"mUid", "mPid"}) {installStage="SESSION_FIELD_"+name;session.getDeclaredField(name);}
             for (String name : new String[]{"mUid", "mPid", "mUserId", "mInfo", "mName"}) {installStage="PROCESS_FIELD_"+name;process.getDeclaredField(name);}
             for (String name : new String[]{"mGlobalLock", "mRoot", "mAtmService", "mCurrentUserId", "mWindowMap", "mWindowContextListenerController", "mPolicy"}) {installStage="SERVICE_FIELD_"+name;service.getDeclaredField(name);}

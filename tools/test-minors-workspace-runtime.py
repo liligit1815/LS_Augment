@@ -80,6 +80,7 @@ files['ls/augment/com/hook/FeatureSettings.java'] = files['ls/augment/com/hook/F
     'static void diagnostic(', 'static void diagnosticError(Context c,String k,String s,Throwable e){diagnostic(c,k,s+e);}static void diagnostic(')
 for name in ('EnhancementOption.java', 'EntryVisibilityOptions.java', 'EntryVisibilityPolicy.java', 'hook/MinorsWorkspaceHook.java'):
     files['ls/augment/com/' + name] = (SRC / name).read_text(encoding='utf-8')
+files['ls/augment/com/hook/HookCompatibility.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/HookCompatibility.java').read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='lsa-minors-grid-') as temp:
     sources = []
     for name, source in files.items():

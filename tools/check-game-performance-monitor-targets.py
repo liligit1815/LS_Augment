@@ -93,16 +93,19 @@ def literal(text):
 
 
 def member_names(expression):
+    compact=re.fullmatch(r'compact\s*\?\s*("[^"\\]+")\s*:\s*(.*)',expression,re.DOTALL)
+    if compact:
+        names=member_names(compact.group(2));names[2]=literal(compact.group(1));return names
     if expression.startswith('"'):
         value = literal(expression)
-        return [value, value]
+        return [value, value, value]
     match = re.fullmatch(r'name\s*\((.*)\)', expression, re.DOTALL)
     if not match:
         raise ValueError('Unsupported production member selector: ' + expression)
     parts = arguments(match.group(1))
     if len(parts) != 3 or parts[0] != 'legacy':
         raise ValueError('Unsupported production name() arguments: ' + expression)
-    return [literal(parts[1]), literal(parts[2])]
+    return [literal(parts[1]), literal(parts[2]),literal(parts[1])]
 
 
 def descriptor(expression, monitor_type, field_types):
@@ -154,15 +157,13 @@ def production_contracts(source):
     if not resolver:
         raise ValueError('Missing complete-profile Access resolver')
     resolver_body, _ = enclosed(access, access.index('{', resolver.end()), '{', '}')
-    order = re.findall(r'new\s+Access\s*\(\s*loader\s*,\s*(false|true)\s*\)', resolver_body)
-    if order != ['false', 'true']:
-        raise ValueError('Expected complete modern profile followed by complete legacy fallback')
-    route = re.search(r'route\s*=\s*legacy\s*\?\s*("[^"\\]+")\s*:\s*("[^"\\]+")\s*;', access)
-    if not route:
-        raise ValueError('Missing production profile labels')
-    profiles = [{'route': literal(route.group(2)), 'legacy': False, 'contracts': []},
-                {'route': literal(route.group(1)), 'legacy': True, 'contracts': []}]
-    constructor = re.search(r'private\s+Access\s*\(\s*ClassLoader\s+loader\s*,\s*boolean\s+legacy\s*\)', access)
+    order = re.findall(r'new\s+Access\s*\(\s*loader\s*,\s*(false|true)\s*,\s*(false|true)\s*\)', resolver_body)
+    if order != [('false','false'),('true','false'),('false','true')]:
+        raise ValueError('Expected complete old, named and compact profiles')
+    profiles=[{'route':'GameAssist17','legacy':False,'contracts':[]},
+              {'route':'GameAssist16','legacy':True,'contracts':[]},
+              {'route':'compact-fields','legacy':False,'contracts':[]}]
+    constructor = re.search(r'private\s+Access\s*\(\s*ClassLoader\s+loader\s*,\s*boolean\s+legacy\s*,\s*boolean\s+compact\s*\)', access)
     if not constructor:
         raise ValueError('Missing complete-profile Access constructor')
     body, _ = enclosed(access, access.index('{', constructor.end()), '{', '}')

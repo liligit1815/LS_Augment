@@ -20,12 +20,16 @@ final class FullBrightnessControl {
     private boolean probeQueued;
     private int probeFailures;
     private volatile long generation;
+    private volatile int calibratedMin, calibratedMax, physicalMax;
+    private volatile long observationGeneration;
+    private final android.content.SharedPreferences calibration;
     private long settleGeneration=-1, settleDeadline;
     private String lastObserved="";
     private boolean settled;
     private final Runnable tick = this::apply;
     private FullBrightnessControl(Context context) {
         this.context = context.getApplicationContext();
+        calibration = this.context.getSharedPreferences("brightness_calibration", Context.MODE_PRIVATE);
         HandlerThread thread = new HandlerThread("LSA-FullBrightness"); thread.start(); worker = new Handler(thread.getLooper());
         context.getContentResolver().registerContentObserver(Uri.parse("content://ls.augment.com.config/config"),false,
                 new ContentObserver(worker) { @Override public void onChange(boolean self) {
@@ -52,15 +56,34 @@ final class FullBrightnessControl {
         // Eligibility follows the actual phone interface, never its marketing model.
         // The calibrated driver values must not be sent to a different range.
         driverMaximum=result.isSuccess()?result.output.trim():"";
-        ready = result.isSuccess() && Integer.toString(BrightnessRange.DRIVER_MAX).equals(driverMaximum);
+        try { physicalMax = Integer.parseInt(driverMaximum); } catch (NumberFormatException invalid) { physicalMax = 0; }
+        String identity = android.os.Build.FINGERPRINT + "|" + NODE + "|" + physicalMax;
+        if (!identity.equals(calibration.getString("identity", ""))) {
+            calibratedMin = calibratedMax = 0;
+        } else {
+            calibratedMin = calibration.getInt("minimum", 0); calibratedMax = calibration.getInt("maximum", 0);
+        }
+        if (physicalMax == BrightnessRange.DRIVER_MAX) {
+            calibratedMin = BrightnessRange.NATIVE_MIN; calibratedMax = BrightnessRange.NATIVE_MAX;
+        }
+        ready = result.isSuccess() && BrightnessRange.calibrated(calibratedMin, calibratedMax, physicalMax);
         probeState=ready?"ready":!result.isSuccess()?"root_or_node_read_failed":driverMaximum.matches("[0-9]+")?"uncalibrated_driver_range":"invalid_driver_value";
         error = ready ? "" : !result.isSuccess()?"Root 或屏幕驱动读取失败，稍后自动重试；保持原厂亮度条"
-                :"屏幕驱动最大值 "+driverMaximum+" 尚无可用标定，保持原厂亮度条";
+                :calibrationHelp();
         checked = true;
     }
     Bundle call(String method, Bundle extras) {
         if(enabled()&&!ready)requestProbe(false);
-        if ("brightness_select".equals(method)) {
+        if ("brightness_observe".equals(method)) {
+            if (extras == null || extras.size() != 1 || !(extras.get("endpoint") instanceof Integer)) return snapshot(false);
+            int endpoint = extras.getInt("endpoint", -1);
+            long token = ++observationGeneration; // Every new native drag cancels an in-flight endpoint observation.
+            if (endpoint < 0) return snapshot(true);
+            if (endpoint > 1 || ready || !enabled() || !safe() || physicalMax <= 0) return snapshot(false);
+            float setting = nativeSetting();
+            if (!Float.isFinite(setting)) return snapshot(false);
+            worker.postDelayed(() -> observe(endpoint, token, setting, -1, 0), 700);
+        } else if ("brightness_select".equals(method)) {
             if (extras == null || extras.size()!=1 || !(extras.get("position") instanceof Integer)) return snapshot(false);
             int next = extras.getInt("position",-1);
             if (next < 0 || next > BrightnessRange.SLIDER_MAX || !ready || !enabled() || automatic()) return snapshot(false);
@@ -76,9 +99,42 @@ final class FullBrightnessControl {
         b.putBoolean("checked",checked); b.putBoolean("enabled",enabled());
         b.putInt("selected",selected); b.putInt("applied",applied); b.putString("error",error);
         b.putString("probeState",probeState);b.putString("driverMaximum",driverMaximum);
+        b.putInt("nativeMinimum",calibratedMin);b.putInt("nativeMaximum",calibratedMax);b.putInt("physicalMaximum",physicalMax);
         b.putString("node",NODE);return b;
     }
     private boolean automatic() { return Settings.System.getInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS_MODE,0)!=0; }
+    private boolean safe() {
+        PowerManager power = context.getSystemService(PowerManager.class);
+        return !automatic() && power != null && power.isInteractive() && !power.isPowerSaveMode()
+                && power.getCurrentThermalStatus() < PowerManager.THERMAL_STATUS_MODERATE;
+    }
+    private float nativeSetting() { return Settings.System.getFloat(context.getContentResolver(), "screen_brightness_float", Float.NaN); }
+    private String calibrationHelp() {
+        return "待标定：关闭自动亮度，将原厂亮度条分别拖到最低和最高并各停留 2 秒；已记录"
+                + (calibratedMin > 0 ? "最低" : "") + (calibratedMax > 0 ? "最高" : "") + "；完成前保持原厂亮度条";
+    }
+    private void observe(int endpoint, long token, float setting, int previous, int attempts) {
+        if (token != observationGeneration || ready || !enabled() || !safe() || nativeSetting() != setting) return;
+        RootShell.Result reading = RootShell.run("cat " + NODE + "max_brightness " + NODE + "brightness", null, 3, 256);
+        int value;
+        try {
+            String[] parts = reading.output.trim().split("\\s+");
+            if (!reading.isSuccess() || parts.length != 2 || Integer.parseInt(parts[0]) != physicalMax) return;
+            value = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException malformed) { return; }
+        if (token != observationGeneration || !safe() || nativeSetting() != setting || value <= 0 || value > physicalMax) return;
+        if (value != previous) {
+            if (attempts < 8) worker.postDelayed(() -> observe(endpoint, token, setting, value, attempts + 1), 250);
+            return;
+        }
+        if (endpoint == 0) calibratedMin = value; else calibratedMax = value;
+        calibration.edit().putString("identity", android.os.Build.FINGERPRINT + "|" + NODE + "|" + physicalMax)
+                .putInt("minimum", calibratedMin).putInt("maximum", calibratedMax).apply();
+        ready = BrightnessRange.calibrated(calibratedMin, calibratedMax, physicalMax);
+        probeState = ready ? "ready_measured_endpoints" : "calibration_incomplete";
+        error = ready ? "" : calibrationHelp();
+        context.getContentResolver().notifyChange(Uri.parse("content://ls.augment.com.config/brightness"), null);
+    }
     private void apply() {
         int position = selected;
         if (position < 0) return;
@@ -92,7 +148,8 @@ final class FullBrightnessControl {
             applied = -1; return;
         }
         long token = generation;
-        int value = BrightnessRange.driver(position);
+        if (!ready || !BrightnessRange.calibrated(calibratedMin, calibratedMax, physicalMax)) { release(true); return; }
+        int value = BrightnessRange.driver(position, calibratedMax, physicalMax);
         if(settleGeneration!=token){settleGeneration=token;settleDeadline=SystemClock.uptimeMillis()+5000;lastObserved="";settled=false;}
         if(!settled) {
             RootShell.Result observed=RootShell.run("cat "+NODE+"brightness",null,3,256);

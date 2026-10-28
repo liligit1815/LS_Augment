@@ -944,6 +944,7 @@ final class StatusBarAssetsHook {
                 if(rows.size()>=480)break;
             }
             JSONObject runtime=runtime();
+            JSONObject workspace=StatusBarGridHook.workspaceSnapshot();
             final long observed=System.currentTimeMillis();
             final long capturedElapsed=SystemClock.elapsedRealtime();
             Context context=application;
@@ -956,7 +957,8 @@ final class StatusBarAssetsHook {
                 String payload=new JSONObject().put("version",1).put("session",SESSION).put("observedAt",observed)
                         .put("surfaceObservedAt",new JSONObject().put("main",mainObservedAt).put("lock",lockObservedAt).put("notification",notificationObservedAt).put("control",controlObservedAt))
                         .put("observedSurfaces",new JSONArray(new ArrayList<>(observedSurfaces)))
-                        .put("surfaces",surfaces).put("runtime",runtime).toString();
+                        .put("surfaces",surfaces).put("runtime",runtime)
+                        .put("nativeGeometry",workspace.optJSONObject("nativeGeometry")).put("workspaceItems",workspace.optJSONObject("workspaceItems")).put("nativeAppearance",workspace.optJSONObject("nativeAppearance")).toString();
                 pendingInventory=new InventoryPublication(context,payload,capturedElapsed,generation);
                 publishInventory(pendingInventory);
             }catch(Exception failure){FeatureSettings.diagnostic(context,"ls_augment_statusbar_inventory_error",failure.toString());}});

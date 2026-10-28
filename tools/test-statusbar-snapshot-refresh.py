@@ -30,6 +30,7 @@ def extract_refresh(source):
 SNAPSHOT = '''package ls.augment.com;
 import java.util.*;
 public final class ConfigSnapshot {
+  public final long revision=1,updatedAt=1;
   private final Map<String,String> values;
   public ConfigSnapshot(Map<String,String> source) { values = Map.copyOf(source); }
   public String get(String key) { return values.get(key); }
@@ -42,6 +43,7 @@ import java.util.*;
 import ls.augment.com.ConfigSnapshot;
 public class TestStatusBarSnapshotRefresh {
   static final class ConfigSchema {
+    static final String STATUSBAR_CLOCK_CUSTOM="clock_custom",STATUSBAR_CLOCK_24H="clock_24h";
     static final String SYSTEMUI_MASTER = "ls_augment_systemui_master";
     static final String STATUSBAR_GRID = "ls_augment_statusbar_grid";
     static final String STATUSBAR_HEIGHT_DP = "ls_augment_statusbar_height_dp";
@@ -73,6 +75,14 @@ public class TestStatusBarSnapshotRefresh {
       return new StatusBarGridSpec(value);
     }
   }
+  // Geometry is covered by the real workspace-spec tests; this facade tests
+  // immutable snapshot capture and refresh admission around production refresh().
+  static final class StatusBarWorkspaceSpec {
+    static final String ROWS="ls_augment_statusbar_rows",ICONS="ls_augment_statusbar_icon_positions_v1";
+    static StatusBarWorkspaceSpec empty(){return new StatusBarWorkspaceSpec();}
+    static StatusBarWorkspaceSpec parse(String value){return empty();}
+    static StatusBarGridSpec effectiveGrid(StatusBarGridSpec grid,String rows){return grid;}
+  }
   static final class Root { int iconLayoutRefreshes,layouts,redraws,resources; void requestLayout() {layouts++;} void invalidate() {redraws++;} }
   static final class StatusBarIconLayoutHook { static void gridModeChanged(Root root) { root.iconLayoutRefreshes++; } }
   static final String GRID_CLOCK_TAG="generated_clock";
@@ -85,7 +95,15 @@ public class TestStatusBarSnapshotRefresh {
     return on;}
   static final class SystemUiHook {static int clocks; static void refreshGridClock(Root root) {clocks++;} }
   static final class TargetReflection { static void call(Root root, String method) {root.resources++;} }
+  static final class StatusBarEditPolicy {
+    boolean full=true;
+    static StatusBarEditPolicy resolve(java.util.function.Function<String,String> value){return new StatusBarEditPolicy();}
+    String effective(String key,String value){return value;}
+    StatusBarGridSpec grid(String raw){return new StatusBarGridSpec(raw);}
+  }
   static final class State {
+    StatusBarEditPolicy editPolicy=new StatusBarEditPolicy();
+    String workspaceRows="0";StatusBarWorkspaceSpec iconPositions=StatusBarWorkspaceSpec.empty();
     final Object context = new Object(); final Root root = new Root();
     boolean attached = true, active,layoutDirty;
     String lastConfig = "", lastRaw = "", lastLayoutConfig="",lastStructureConfig="";

@@ -136,7 +136,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
  static void cancel(AugmentModule m,AtomicWorkbenchQuickstepInputHook.Route r){}
  static AtomicWorkbenchQuickstepInputHook.Route windowRoute(){return null;}
  static Object registeredContainer(Object o,int d){return null;}
- static Object cachedTask(AtomicWorkbenchQuickstepInputHook.Route r,Object t)throws Exception{return t.getClass().getMethod("getCachedTopTask",boolean.class,int.class).invoke(t,false,r.target);}
+ static Object cachedTask(AtomicWorkbenchQuickstepInputHook.Route r,Object t,Object ignored)throws Exception{return t.getClass().getMethod("getCachedTopTask",boolean.class,int.class).invoke(t,false,r.target);}
  static Object container(AugmentModule m,AtomicWorkbenchQuickstepInputHook.Route r,Object o)throws Exception {java.lang.reflect.Field f=o.getClass().getField("mDefaultDisplayContainerInterface");return f.get(o);}
  static Scope launch(AugmentModule m,Object manager,Object container,Object gesture){return new Scope();}
 }'''
@@ -161,6 +161,7 @@ def main():
             subprocess.run([SUPPORT["JAVAC"], "--release", "17", "-encoding", "UTF-8", "-cp", str(sdk),
                             "-d", str(work / "classes"), str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepHook.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepInputHook.java"),
+                            str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepCapabilities.java"),str(SUPPORT["SRC"] / "hook/HookCompatibility.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepTargetHook.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchLauncherCrashHook.java"),
                             *files], check=True, timeout=45, env=SUPPORT["ENV"])

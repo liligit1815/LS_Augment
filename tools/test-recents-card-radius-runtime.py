@@ -203,7 +203,7 @@ public class TestRecentsCardRadiusSampling {
 }
 
 
-def run(sources, variant):
+def run(sources, variant, install_only=False):
     with tempfile.TemporaryDirectory(prefix='lsa-recents-radius-') as directory:
         root = Path(directory)
         for name, source in sources.items():
@@ -220,12 +220,18 @@ def run(sources, variant):
         subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(root / 'classes'), *map(str, files)], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestRecentsCardRadiusRuntime'], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.TestRecentsCardRadiusRange'], check=True)
-        subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestRecentsCardRadiusSampling'], check=True)
+        if not install_only:subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestRecentsCardRadiusSampling'], check=True)
         print('PASS exact launcher radius family: ' + variant, flush=True)
 
 
 def main():
     run(SOURCES, 'android16')
+    covariant=dict(SOURCES)
+    k='com/android/quickstep/views/TaskContainer.java'
+    covariant[k]=covariant[k].replace('android.view.View getSnapshotView()', 'com.android.quickstep.task.thumbnail.TaskThumbnailView getSnapshotView()').replace('return snapshot;', 'return (com.android.quickstep.task.thumbnail.TaskThumbnailView)snapshot;')
+    covariant['ls/augment/com/hook/TestRecentsCardRadiusRuntime.java']='package ls.augment.com.hook;public class TestRecentsCardRadiusRuntime{public static void main(String[] args){AugmentModule m=new AugmentModule();LauncherRecentsCardRadiusHook.install(m,TestRecentsCardRadiusRuntime.class.getClassLoader());if(!m.errors.isEmpty())throw new AssertionError(m.errors);System.out.println("PASS actual covariant thumbnail return installs radius hook");}}'
+    run(covariant,'covariant_snapshot',True)
+
     named = {}
     params = SOURCES['com/android/quickstep/FullscreenDrawParams.java'].split('\n', 1)[1]
     params = params.replace('public class FullscreenDrawParams', 'public static class FullscreenDrawParams')

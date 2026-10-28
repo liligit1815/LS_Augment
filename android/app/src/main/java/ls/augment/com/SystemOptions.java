@@ -8,9 +8,15 @@ public final class SystemOptions {
     public static String key(String suffix){return PREFIX+suffix;}
     public static final String NO_SAFE_WARNING=key("audio_no_safe_warning");
     public static final String SMS_CODE_CLIPBOARD=key("sms_code_clipboard");
+    public static final String BATTERY_KEEP_REFRESH=key("battery_keep_refresh");
+    public static final String GALLERY_WATERMARK=key("gallery_watermark_enabled");
+    public static final String GALLERY_WATERMARK_TEXT=key("gallery_watermark_text");
     private SystemOptions() { }
     public static List<EnhancementOption> options() {
         List<EnhancementOption> o=new ArrayList<>();
+        o.add(EnhancementOption.toggle(BATTERY_KEEP_REFRESH,"system","省电模式保持当前帧率","普通省电模式不额外降低屏幕刷新率，继续使用当前刷新率设置与应用策略；温控、超级省电和屏幕硬件限制仍有效。首次更新后需重启手机加载。"));
+        o.add(EnhancementOption.toggle(GALLERY_WATERMARK,"system","相册水印自定义","自定义原厂相册编辑水印的机型文字。进入相册编辑并选择支持文字的原厂水印后生效；图片图标、布局、日期和拍摄参数仍使用原厂设置。关闭后重新进入编辑恢复原厂文字。"));
+        o.add(EnhancementOption.custom(GALLERY_WATERMARK_TEXT,"system","水印文字","留空保留原厂文字；最多 80 个字符，长文字的排版沿用原厂模板。","",v->{String s=v.trim();return s.codePointCount(0,s.length())<=80&&!s.matches("(?s).*[\\p{Cntrl}].*")?s:null;}));
         String[][] switches={
             {"sms_code_clipboard","system","短信验证码自动加入剪贴板","收到验证码短信后自动复制验证码，供输入法粘贴；输入法候选提示取决于其剪贴板设置。"},
             {"secure_capture","system","允许受限窗口截图和录屏","允许捕获设置了禁止截图标记的窗口。"},

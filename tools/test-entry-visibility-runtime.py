@@ -284,6 +284,7 @@ for name in ("EnhancementOption.java", "EntryVisibilityOptions.java", "EntryVisi
              "hook/EntryVisibilityHook.java"):
     files["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
+files['ls/augment/com/hook/HookCompatibility.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/HookCompatibility.java').read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix="lsa-entry-visibility-") as temp:
     sources = []
     for name, source in files.items():

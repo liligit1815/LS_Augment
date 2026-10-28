@@ -17,6 +17,7 @@ import io.github.libxposed.api.XposedInterface.HookHandle;
  * action.</p>
  */
 final class SuperMirrorDiabloHook {
+    private static final ThreadLocal<Context> AUTOMATIC = new ThreadLocal<>();
     private static final String PERFORMANCE =
             "cn.nubia.gameassist.performance.PerformanceModeController";
     private static final String SUPER_VIEW =
@@ -31,6 +32,7 @@ final class SuperMirrorDiabloHook {
     static int install(AugmentModule module, ClassLoader loader) {
         int installed = 0;
         StringBuilder resolved = new StringBuilder();
+        FeatureSettings.diagnostic(FeatureSettings.from(null), FeatureSettings.SUPER_MIRROR_LAST_ERROR, "");
         Method superClick = click(loader, SUPER_TILE);
         Method biabloClick = click(loader, BIABLO_TILE);
         if (superClick != null) {
@@ -43,10 +45,6 @@ final class SuperMirrorDiabloHook {
         Context context = FeatureSettings.from(null);
         FeatureSettings.diagnostic(context, FeatureSettings.SUPER_MIRROR_INSTALLED,
                 "hooks=" + installed + ";resolved=" + resolved);
-        if (installed > 0) {
-            FeatureSettings.diagnostic(
-                    context, FeatureSettings.SUPER_MIRROR_LAST_ERROR, "");
-        }
         module.logFeatureInfo("SUPER_MIRROR_READY hooks=" + installed
                 + " resolved=" + resolved);
         return installed;
@@ -118,10 +116,29 @@ final class SuperMirrorDiabloHook {
             AugmentModule module, ClassLoader loader, StringBuilder resolved) {
         try {
             Class<?> type = Class.forName(SUPER_VIEW, false, loader);
-            Method method = HookCompatibility.method(type, void.class, false,
-                    new String[]{"updateEnableSwitchPkg", "L"}, String.class, boolean.class);
             Method automatic = HookCompatibility.method(type, void.class, false,
                     new String[]{"checkGameMode", "i"}, String.class, int.class);
+            Method method;
+            try { method = HookCompatibility.method(type, void.class, false,
+                    new String[]{"updateEnableSwitchPkg", "L"}, String.class, boolean.class); }
+            catch (NoSuchMethodException modern) {
+                // This path clears image/frame configuration before H(). Scope the
+                // native qualification predicate instead, retaining thermal/user-off paths.
+                HookCompatibility.method(type, void.class, false, new String[]{"H"}, String.class, boolean.class, boolean.class);
+                Method qualification = HookCompatibility.method(type, boolean.class, true, new String[]{"r"}, int.class);
+                module.registerFeatureHook(module.prepareFeatureHook(automatic,"super_mirror.auto_scope",true).intercept(chain -> {
+                    Context previous=AUTOMATIC.get();AUTOMATIC.set(FeatureSettings.from(chain.getThisObject()));
+                    try{return chain.proceed();}finally{if(previous==null)AUTOMATIC.remove();else AUTOMATIC.set(previous);}
+                }));
+                module.registerFeatureHook(module.prepareFeatureHook(qualification,"super_mirror.auto_qualification",true).intercept(chain -> {
+                    Object nativeResult=chain.proceed();Context context=AUTOMATIC.get();int mode=(Integer)chain.getArg(0);
+                    if(context!=null&&(mode==1||mode==2)&&enabled(context,FeatureSettings.SUPER_MIRROR_LOW_MODE)){
+                        hit(context,"SR-03|native_mode_retained");return false;
+                    }
+                    return nativeResult;
+                }));
+                module.deoptimize(automatic);addResolved(resolved,"SR-03");return 2;
+            }
             method.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(
                             method, "super_mirror.super_retention", true)
@@ -152,7 +169,17 @@ final class SuperMirrorDiabloHook {
             Class<?> type = Class.forName(PERFORMANCE, false, loader);
             // These are a separate newer OEM mutual-exclusion path. Do not map a0
             // to the older canSetPerformanceMode(), which checks battery saver.
-            Method gate = type.getDeclaredMethod("a0");
+            Method gate;
+            try { gate=type.getDeclaredMethod("a0"); }
+            catch (NoSuchMethodException nativeCoexistence) {
+                HookCompatibility.method(type, void.class, false, new String[]{"j0"},String.class,boolean.class,boolean.class);
+                HookCompatibility.method(type, boolean.class, false, new String[]{"canSetPerformanceMode"},boolean.class);
+                HookCompatibility.method(type, void.class, false, new String[]{"r0"});
+                HookCompatibility.method(Class.forName(SUPER_VIEW,false,loader),void.class,false,
+                        new String[]{"H"},String.class,boolean.class,boolean.class);
+                module.logFeatureInfo("SUPER_MIRROR_DB native_coexistence_path;power_saver_gate=retained;no_extra_gate_hook");
+                addResolved(resolved,"DB-native");return 0;
+            }
             if (gate.getReturnType() != boolean.class || click == null) return 0;
             gate.setAccessible(true);
             HookHandle gateHandle = module.prepareFeatureHook(

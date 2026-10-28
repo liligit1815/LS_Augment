@@ -93,7 +93,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         config=new AppConfig(this);ui=new UiKit(this);
         group=getIntent().getStringExtra("group");if(group==null)group="system";
         targetId=getIntent().getStringExtra("target");if("collab".equals(targetId))targetId="theme";query=getIntent().getStringExtra("query");if(query==null)query="";
-        if(!(this instanceof StatusBarSettingsActivity)&&(targetId!=null||getIntent().hasExtra("group"))){
+        if(!(this instanceof StatusBarSettingsActivity||this instanceof StatusBarWorkspaceActivity)&&(targetId!=null||getIntent().hasExtra("group"))){
             String route=ModuleHierarchy.resolve(ModuleNavigation.route(this));
             if(!route.startsWith("target-")&&ModuleHierarchy.group(route)==null){ModuleNavigation.open(this,route);finish();return;}
             getIntent().putExtra(ModuleNavigation.EXTRA_ROUTE,route);
@@ -121,9 +121,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             }
         }
         draft.putAll(retainedValues);
-        if(this instanceof StatusBarSettingsActivity){
+        if(this instanceof StatusBarSettingsActivity||this instanceof StatusBarWorkspaceActivity){
             StatusBarEditorController editor=new StatusBarEditorController(this,ModuleNavigation.route(this),false);
-            editor.setRelatedFeatures(ModuleHierarchy.statusBarFeatures(),this::feature);
+            editor.setRelatedFeatures(this instanceof StatusBarWorkspaceActivity?NativeFeatureGroups.forGroup("statusbar"):ModuleHierarchy.statusBarFeatures(),this::feature);
             editors.put(editor.route,editor);
             editor.onCreate(editorStates==null?null:editorStates.getBundle(editor.route));
         }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);if(liftArcEditor!=null)liftArcEditor.restoreState(state,()->body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,state.getInt("scrollY"));}));}
@@ -138,6 +138,36 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         // Old-save failure remains visible after a configuration recreation.
         worker.execute(()->main.post(this::showSaveFailure));
     }
+    void registerStatusAssets(StatusBarAssetsController editor){editors.put("status_assets",editor);}
+    void flushStatusbarForReset(Runnable ready,Runnable failed){
+        flush();worker.execute(()->main.post(()->{if(isFinishing()||isDestroyed())return;if(!pending.isEmpty()){toast("配置尚未保存，请修正输入后重试重置");failed.run();}else ready.run();}));
+    }
+    void refreshStatusbarAfterReset(){
+        SharedPreferences.Editor memory=gateMemory.edit();
+        memory.remove("remember:"+ConfigSchema.STATUSBAR_GRID);
+        for(String key:options.keySet())if(StatusBarWorkspaceSpec.ownsKey(key)){
+            draft.put(key,config.get(key));memory.remove("open:"+key).remove("value:"+key).remove("remember:"+key);
+            if(invalidInputs!=null)invalidInputs.remove(key);
+        }
+        memory.apply();
+    }
+    void applyStatusbarPresetValues(Map<String,String> values){
+        SharedPreferences.Editor memory=gateMemory.edit();
+        if(values.containsKey(ConfigSchema.STATUSBAR_GRID))memory.remove("remember:"+ConfigSchema.STATUSBAR_GRID);
+        for(Map.Entry<String,String> entry:values.entrySet())if(options.containsKey(entry.getKey())&&StatusBarWorkspaceSpec.ownsKey(entry.getKey())){
+            String key=entry.getKey(),value=ConfigSchema.normalize(key,entry.getValue());
+            if(value==null)continue;
+            // Replace any older native edit, including one already in flight,
+            // so its own save queue also converges on the applied preset.
+            draft.put(key,value);if(pending.needsSubmission(key))pending.put(key,value);
+            memory.remove("open:"+key).remove("value:"+key).remove("remember:"+key);
+            if(invalidInputs!=null)invalidInputs.remove(key);
+        }
+        memory.apply();
+        if(!pending.isEmpty()){main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);}
+    }
+    void statusWorkspaceBack(){for(NativeEditorController editor:editors.values())if(editor instanceof StatusBarEditorController){((StatusBarEditorController)editor).workspaceBack();return;}}
+    void statusWorkspaceAncestor(String route){for(NativeEditorController editor:editors.values())if(editor instanceof StatusBarEditorController){((StatusBarEditorController)editor).workspaceAncestor(route);return;}}
     private void render(int previousY){
         stopRecentsRadiusRange();recentsRadiusSlider=null;recentsRadiusValue=null;recentsRadiusStatus=null;
         recentsRadiusRange=null;recentsRadiusLoading=true;
@@ -158,7 +188,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 card.addView(ui.preferenceRow(section.route(),label,label.equals(summary)?"":summary,()->ModuleNavigation.open(this,section.route())),ui.wrap());
                 sectionStates.put(section.route(),section);
             }
-        }else if(selected!=null&&"battery_health".equals(selected.id)){
+        }else if(selected!=null&&"battery".equals(selected.id)){
+            LinearLayout batteryCard=category("battery","省电模式");
+            addSectionFeatures(batteryCard,selected.features);
+            ui.addDetailSectionTitle(body,"电池健康度检测");
             if(batteryHealthPanel!=null)batteryHealthPanel.close();
             batteryHealthPanel=new BatteryHealthPanel(ui,inputSession.batteryHealth,worker);
             body.addView(batteryHealthPanel.view(),ui.wrap());
@@ -511,6 +544,30 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             });
         }
         content.addView(input(options.get(GameOptions.MONITOR_TRANSPARENCY)),ui.margins(0,8,0,0));
+        content.addView(input(options.get(GameOptions.MONITOR_MARGIN)),ui.wrap());
+        View margin=controls.get(GameOptions.MONITOR_MARGIN);
+        SharedPreferences calibration=getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE);
+        SharedPreferences.OnSharedPreferenceChangeListener listener=(prefs,key)->{
+            if(GamePerformanceMonitorConfig.GEOMETRY.equals(key))main.post(this::refreshMonitorRange);
+        };
+        margin.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(View view){calibration.registerOnSharedPreferenceChangeListener(listener);refreshMonitorRange();}
+            public void onViewDetachedFromWindow(View view){calibration.unregisterOnSharedPreferenceChangeListener(listener);}
+        });
+        refreshMonitorRange();
+    }
+    private void refreshMonitorRange(){
+        View control=controls.get(GameOptions.MONITOR_MARGIN);if(!(control instanceof ParameterSlider)||isDestroyed())return;
+        ParameterSlider slider=(ParameterSlider)control;
+        GamePerformanceMonitorConfig.Geometry geometry=GamePerformanceMonitorConfig.Geometry.parse(
+                getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE).getString(GamePerformanceMonitorConfig.GEOMETRY,""));
+        android.util.DisplayMetrics metrics=getResources().getDisplayMetrics();
+        if(geometry==null||Math.abs(geometry.density-metrics.density)>.01f||Math.abs(geometry.scaledDensity-metrics.scaledDensity)>.01f){
+            slider.range(0,0,"");slider.unavailable("请先打开一次游戏空间性能监测，读取当前字号的实际可调范围");return;
+        }
+        int[] range=geometry.range(value(GameOptions.MONITOR_ITEMS));
+        slider.range(range[0],range[1],range[0]==range[1]?"当前项目组合没有可调间隔":"按最近一次监测布局："+range[0]+"～"+range[1]+" dp");
+        slider.bar.setEnabled("1".equals(value(GameOptions.PERFORMANCE_MONITOR))&&range[0]!=range[1]);
     }
     private void memoryControls(LinearLayout content){
         String prefix="ls_augment_rm_recents_memory_";
@@ -596,6 +653,13 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 choice.setAdapter(memoryContentAdapter);
             }else choice.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,option.choices));choice.setSelection(Integer.parseInt(value(option.key)));row.addView(choice,ui.wrap());controls.put(option.key,choice);
             choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int position,long id){change(option.key,String.valueOf(position),choice);}});
+        }else if(RecentsPrivacyOptions.APPS.equals(option.key)){
+            Button button=ui.textButton(RecentsPrivacyOptions.selectionLabel(value(option.key)));
+            button.setTag("config:"+option.key);row.addView(button,ui.wrap());controls.put(option.key,button);
+            button.setOnClickListener(v->AppSelectionDialog.show(this,ui,option.title,value(option.key),next->{
+                if(isFinishing()||isDestroyed()||!button.isEnabled()||!ConfigSchema.truthy(value(RecentsPrivacyOptions.ENABLED)))return;
+                change(option.key,next,button);refreshInput(option.key,next);
+            }));
         }else if(NotificationSummaryOptions.ASSET.equals(option.key)){
             Button button=ui.tonalButton(value(option.key).isEmpty()?"选择图片":"更换图片");row.addView(button,ui.wrap());controls.put(option.key,button);
             button.setOnClickListener(v->AppDialogs.builder(this).setTitle(option.title).setItems(new String[]{"选择图片","移除图片"},(d,i)->{
@@ -723,7 +787,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             else spinner.setSelection(selected);
         }
         else if(view instanceof Button){
-            if(SystemUiOptions.ISLAND_APP_STYLE.equals(key)){
+            if(RecentsPrivacyOptions.APPS.equals(key))((Button)view).setText(RecentsPrivacyOptions.selectionLabel(next));
+            else if(SystemUiOptions.ISLAND_APP_STYLE.equals(key)){
                 ((Button)view).setText(options.get(key).choices[Integer.parseInt(next)]);
                 view.setContentDescription(options.get(key).title+"，当前："+((Button)view).getText());
             }
@@ -731,6 +796,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         else if(view instanceof LinearLayout){LinearLayout checks=(LinearLayout)view;Set<String> selected=tokens(next);for(int i=0;i<checks.getChildCount();i++){CheckBox box=(CheckBox)checks.getChildAt(i);box.setChecked(selected.contains(box.getTag()));}}
         refreshAodParameterState(key);
+        if(GameOptions.MONITOR_ITEMS.equals(key)||GameOptions.PERFORMANCE_MONITOR.equals(key))refreshMonitorRange();
     }
     private String invalidMessage(EnhancementOption option){
         if(option.kind==EnhancementOption.Kind.INTEGER)return "请输入 "+(long)option.minimum+"～"+(long)option.maximum+" 之间的整数";
@@ -768,6 +834,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         if(normalized.equals(draft.get(key))&&!pending.needsSubmission(key))return;
         draft.put(key,normalized);pending.put(key,normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        if(GameOptions.MONITOR_ITEMS.equals(key)||GameOptions.PERFORMANCE_MONITOR.equals(key))refreshMonitorRange();
         if(LauncherGridSpec.ENABLED.equals(key))traceLauncherGridIntent("toggle");
         refreshAodParameterState(key);
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();

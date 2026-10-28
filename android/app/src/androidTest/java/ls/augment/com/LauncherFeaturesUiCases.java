@@ -34,11 +34,11 @@ final class LauncherFeaturesUiCases {
         File directory=new File(context.getExternalFilesDir(null),"launcher-features-ui-"+BuildConfig.VERSION_CODE);
         if(!directory.isDirectory()&&!directory.mkdirs())throw new AssertionError("Screenshot directory unavailable");
         JSONArray pages=new JSONArray();
-        String[] sections={"desktop_clock","dock_glass","launcher_grid"};
-        String[] titles={"桌面组件","Dock","桌面布局与页面"};
-        String[] featureTitles={"允许修改小组件大小","解除Dock栏应用数量限制","强制新装APP图标显示在桌面末页"};
-        String[] filenames={"widgets","dock","layout"};
-        String[] switches={LauncherOptions.WIDGET_RESIZE,LauncherOptions.DOCK_UNLIMITED,LauncherOptions.NEW_APPS_LAST_PAGE};
+        String[] sections={"desktop_clock","dock_glass","launcher_grid","recents_privacy"};
+        String[] titles={"桌面组件","Dock","桌面布局与页面","隐私屏"};
+        String[] featureTitles={"允许修改小组件大小","解除Dock栏应用数量限制","强制新装APP图标显示在桌面末页","启用隐私屏"};
+        String[] filenames={"widgets","dock","layout","privacy"};
+        String[] switches={LauncherOptions.WIDGET_RESIZE,LauncherOptions.DOCK_UNLIMITED,LauncherOptions.NEW_APPS_LAST_PAGE,RecentsPrivacyOptions.ENABLED};
         String[] routes=new String[sections.length];for(int i=0;i<sections.length;i++)routes[i]="group/desktop/"+sections[i];
         for(int i=0;i<routes.length;i++){
             Activity activity=test.startActivitySync(new Intent(context,EnhancementSettingsActivity.class)

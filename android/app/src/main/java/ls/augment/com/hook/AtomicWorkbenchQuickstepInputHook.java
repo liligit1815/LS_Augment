@@ -57,21 +57,22 @@ final class AtomicWorkbenchQuickstepInputHook {
         if (installed) return;
         AtomicWorkbenchLauncherCrashHook.install(module, loader);
         try {
-            Class<?> service = Class.forName("com.android.quickstep.TouchInteractionService", false, loader);
+            Class<?> service = AtomicWorkbenchQuickstepCapabilities.resolve(loader);
             Class<?> tracker = Class.forName("com.android.quickstep.TopTaskTracker", false, loader);
             Class<?> observer = Class.forName("com.android.quickstep.OverviewComponentObserver", false, loader);
             Class<?> launcher = Class.forName("com.android.quickstep.LauncherActivityInterface", false, loader);
-            Class<?> displays = Class.forName("com.android.quickstep.fallback.window.RecentsDisplayModel", false, loader);
+            boolean modern=AtomicWorkbenchQuickstepCapabilities.modern;
             Method input = method(service, "onInputEvent", InputEvent.class);
-            Method monitor = method(service, "getInputMonitorCompat", int.class);
-            Method receiver = method(service, "getInputEventReceiver", int.class);
+            Method monitor = modern?null:method(service, "getInputMonitorCompat", int.class);
+            Method receiver = modern?null:method(service, "getInputEventReceiver", int.class);
             Method task = method(tracker, "getCachedTopTask", boolean.class, int.class);
             Method container = method(observer, "getContainerInterface", int.class);
             method(InputEvent.class, "getDisplayId");
             method(InputEvent.class, "setDisplayId", int.class);
-            method(displays, "storeDisplayResource", int.class);
+            if(!modern)method(Class.forName("com.android.quickstep.fallback.window.RecentsDisplayModel",false,loader), "storeDisplayResource", int.class);
             AtomicWorkbenchQuickstepTargetHook.install(module, loader);
-            for (Method resource : new Method[]{monitor, receiver}) {
+            if(modern)AtomicWorkbenchQuickstepCapabilities.installInputResources(module,loader);
+            for (Method resource : modern?new Method[0]:new Method[]{monitor, receiver}) {
                 module.deoptimize(resource);
                 module.registerFeatureHook(module.prepareFeatureHook(resource,
                         "atomic_workbench.native_home.input_resource." + resource.getName(), true).intercept(chain -> {
@@ -86,7 +87,7 @@ final class AtomicWorkbenchQuickstepInputHook {
                 Route route = DISPATCH.get();
                 if (route == null) route = AtomicWorkbenchQuickstepTargetHook.windowRoute();
                 if (route != null && ((Integer) chain.getArg(1) == 0 || (Integer) chain.getArg(1) == route.target))
-                    return AtomicWorkbenchQuickstepTargetHook.cachedTask(route, chain.getThisObject());
+                    return AtomicWorkbenchQuickstepTargetHook.cachedTask(route, chain.getThisObject(),modern?chain.proceed():null);
                 return chain.proceed();
             }));
             module.deoptimize(container);
@@ -387,7 +388,8 @@ final class AtomicWorkbenchQuickstepInputHook {
         if (event.getPointerCount() != 1
                 || (event.getSource() & InputDevice.SOURCE_TOUCHSCREEN) != InputDevice.SOURCE_TOUCHSCREEN)
             return source == 0 ? null : blocked(owner, event, source, sourceUnique, "unsupported_touch_source");
-        Object rotation = field(owner, "mRotationTouchHelper");
+        Object rotation = AtomicWorkbenchQuickstepCapabilities.modern
+                ?AtomicWorkbenchQuickstepCapabilities.rotation(owner,source):field(owner, "mRotationTouchHelper");
         MotionEvent probe = MotionEvent.obtain(event);
         boolean bottom;
         try {
@@ -445,6 +447,7 @@ final class AtomicWorkbenchQuickstepInputHook {
             return route;
         }
         Object model = field(owner, "mRecentsDisplayModel");
+        if(AtomicWorkbenchQuickstepCapabilities.modern)AtomicWorkbenchQuickstepCapabilities.verifyInput(owner,display);
         if (call(model, "getTaskAnimationManager", new Class<?>[]{int.class}, display) == null) {
             // Some ROM flags initialize only display 0. Use the ROM's own bounded resource
             // factory for this authenticated live display, never a manager built by the module.
@@ -657,6 +660,7 @@ final class AtomicWorkbenchQuickstepInputHook {
     }
 
     private static Object field(Object object, String name) throws Exception {
+        if(AtomicWorkbenchQuickstepCapabilities.modern&&name.equals("mRecentsDisplayModel"))return AtomicWorkbenchQuickstepCapabilities.model(object);
         for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
             try { Field f = type.getDeclaredField(name); f.setAccessible(true); return f.get(object); }
             catch (NoSuchFieldException ignored) { }

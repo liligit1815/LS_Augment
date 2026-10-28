@@ -20,11 +20,11 @@ final class FeatureDescriptions {
             case ConfigSchema.STATUSBAR_CURRENT_DECIMALS:
             case ConfigSchema.STATUSBAR_POWER_DECIMALS: return "设置小数点后显示的位数，0 为整数，可选 0–3 位。仅调整显示精度，不提高传感器测量精度。";
             case ConfigSchema.STATUSBAR_HEIGHT_DP: return "范围 -32～96 dp；0 跟随原厂，负数从当前方向的原厂高度扣减，正数指定高度且不低于原厂。实际高度最低 1 dp；过小会压缩双排内容。";
-            case ConfigSchema.STATUSBAR_LEFT_MARGIN_DP: return "设置状态栏内容与左侧边缘之间的留白，单位 dp；不会取消屏幕开孔避让。";
-            case ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP: return "设置状态栏内容与右侧边缘之间的留白，单位 dp；不会取消屏幕开孔避让。";
-            case ConfigSchema.STATUSBAR_TOP_MARGIN_DP: return "设置状态栏内容上方的额外留白，单位 dp。";
-            case ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP: return "设置状态栏内容下方的额外留白，单位 dp。";
-            case ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP: return "调整状态栏上下两排之间的间距，单位 dp。负数仅在内容不碰撞时生效；检测到交叠时自动使用安全间距，原设置保留。正数增大间距。";
+            case ConfigSchema.STATUSBAR_LEFT_MARGIN_DP:
+            case ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP:
+            case ConfigSchema.STATUSBAR_TOP_MARGIN_DP:
+            case ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP: return "以本机原厂内容边界为 0，单位 dp；正值增加该侧边距，负值减小。仍避让屏幕开孔，超出可见空间时保留原厂排列。";
+            case ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP: return "调整状态栏上下两排之间的间距，单位 dp。正数增大间距，负数减小间距；按设定值排列，允许上下排交叠。";
             case ConfigSchema.STATUSBAR_CLOCK_CUSTOM: return "启用自定义时钟文字和排版；关闭后恢复原厂时钟显示。";
             case ConfigSchema.STATUSBAR_CLOCK_PATTERN: return "设置第一行时间格式。HH:mm 为 24 小时时间，hh:mm 为 12 小时时间，ss 为秒；固定文字使用单引号。留空时使用下方默认时间选项。点击“查看完整时间格式与示例”可查阅日期、星期、周数、毫秒、时区和农历等全部格式，并复制示例。";
             case ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND: return "设置第二行时间格式，例如 MM/dd E。与第一行支持相同格式，可在“查看完整时间格式与示例”中查询和复制。仅在时钟选择双排时显示此输入项；切回单排保留格式，再次选择双排可继续使用。留空不绘制第二行文字。";
@@ -76,6 +76,8 @@ final class FeatureDescriptions {
     }
 
     static String layoutValue(String label) {
+        if(label.startsWith("显示顺序"))return "设置当前图标在所在区域中的排列先后，数字越小越靠前；相同数字按固定图标次序排列。";
+        if(label.endsWith("侧边距（0 原厂）"))return forKey(ConfigSchema.STATUSBAR_LEFT_MARGIN_DP,label);
         if(label.endsWith("左右移动（直径 %）"))return "相对默认位置左右移动：负数向左，正数向右。10 表示移动整个三合一图标直径的 10%，0 表示不偏移。";
         if(label.endsWith("上下移动（直径 %）"))return "相对默认位置上下移动：负数向上，正数向下。10 表示移动整个三合一图标直径的 10%，0 表示不偏移。";
         if(label.endsWith("大小（%）"))return "100% 为原有大小，数值越大显示越大。调整只影响当前内容，不改变其他区域的大小。";

@@ -28,7 +28,10 @@ final class LauncherCleanupBombHook {
             Class<?> recents=Class.forName("com.android.quickstep.views.RecentsView",false,loader);
             Class<?> button=Class.forName("com.android.quickstep.views.ClearAllButton",false,loader);
             Method dismiss=recents.getDeclaredMethod("dismissAllTasks",View.class);dismiss.setAccessible(true);
-            Method all=recents.getDeclaredMethod("createAllTasksDismissAnimation",long.class);
+            Method all;
+            try { all=recents.getDeclaredMethod("createAllTasksDismissAnimation",long.class); }
+            catch (NoSuchMethodException springPath) { all=null; }
+            final boolean nativeDuration=all!=null;
             Method draw=button.getDeclaredMethod("draw",Canvas.class);
             Field overview=recents.getDeclaredField("mOverviewStateEnabled");overview.setAccessible(true);
             module.registerFeatureHook(module.prepareFeatureHook(draw,"launcher.cleanup.icon",false).intercept(chain->{
@@ -56,7 +59,25 @@ final class LauncherCleanupBombHook {
                     return chain.proceed();
                 }));particlesAvailable=true;break;
             }
-            if(particlesAvailable){
+            if(!particlesAvailable && !nativeDuration){
+                Class<?> utils=Class.forName("com.android.quickstep.views.RecentsDismissUtils",false,loader);
+                Field owner=HookCompatibility.field(utils,recents,false,"recentsView");
+                Class<?> task=Class.forName("com.android.quickstep.views.TaskView",false,loader);
+                Class<?> data=Class.forName(utils.getName()+"$DismissedTaskData",false,loader);
+                Class<?> spring=Class.forName(utils.getName()+"$SpringSet",false,loader);
+                Method capture=HookCompatibility.method(utils,spring,false,new String[]{"createTaskDismissSpringAnimation"},
+                        task,boolean.class,data,boolean.class,boolean.class);
+                module.registerFeatureHook(module.prepareFeatureHook(capture,"launcher.cleanup.spring_fragments",false).intercept(chain->{
+                    Blast blast=CAPTURING.get();
+                    if(blast!=null&&blast.particles!=null&&owner.get(chain.getThisObject())==blast.owner){
+                        try{View card=(View)chain.getArg(0);blast.particles.capture(card,blast.root);
+                            if(blast.particles.contains(card))FRAGMENT_VIEWS.put(card,blast);}
+                        catch(Throwable error){blast.module.logFeatureError("CLEANUP_FRAGMENT_CAPTURE",error);}
+                    }
+                    return chain.proceed();
+                }));particlesAvailable=true;
+            }
+            if(particlesAvailable && nativeDuration){
                 module.deoptimize(all);
                 module.registerFeatureHook(module.prepareFeatureHook(all,"launcher.cleanup.duration",false).intercept(chain->{
                     Blast blast=CAPTURING.get();
@@ -66,6 +87,8 @@ final class LauncherCleanupBombHook {
                     }
                     return result;
                 }));
+            }
+            if(particlesAvailable){
                 Method cardAlpha=View.class.getDeclaredMethod("setAlpha",float.class);
                 module.registerFeatureHook(module.prepareFeatureHook(cardAlpha,"launcher.cleanup.card_alpha",false).intercept(chain->{
                     Blast blast=FRAGMENT_VIEWS.get((View)chain.getThisObject());
@@ -104,6 +127,7 @@ final class LauncherCleanupBombHook {
                 try{
                     if(blast!=null)blast.trace("native_begin");
                     Object result=chain.proceed();
+                    if(blast!=null && canShatter && !nativeDuration)blast.start();
                     if(blast!=null)blast.trace("native_return");
                     return result;
                 }

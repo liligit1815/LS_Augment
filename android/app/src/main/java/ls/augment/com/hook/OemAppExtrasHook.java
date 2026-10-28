@@ -21,6 +21,7 @@ final class OemAppExtrasHook {
         CaptureVisibilityHook.install(module,loader,pkg);
         ScreenshotCropHook.install(module,loader,pkg);
         GalleryCropHook.install(module,loader,pkg);
+        GalleryWatermarkHook.install(module,loader,pkg);
         ThemeExtrasHook.install(module,loader,pkg);
         DefaultLauncherRoleHook.install(module,loader,pkg);
     }

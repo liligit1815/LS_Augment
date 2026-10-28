@@ -5,6 +5,7 @@ import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -20,8 +21,12 @@ final class NotificationCascadeHook {
     private static final String BASE="com.android.systemui.statusbar.notification.";
     private final Access access;
     private final Map<View,Owned> owned=new WeakHashMap<>();
+    private final Map<ViewGroup,Surface> surfaces=new WeakHashMap<>();
+    private final ThreadLocal<Boolean> nativeRange=ThreadLocal.withInitial(()->false);
+    private final ThreadLocal<ViewGroup> scrolling=new ThreadLocal<>();
     private Frame current;
-    private String lastReport="";
+    private final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean listening;
     private NotificationCascadeHook(ClassLoader loader)throws ReflectiveOperationException{access=new Access(loader);}
 
     static int install(AugmentModule module,ClassLoader loader){
@@ -31,16 +36,56 @@ final class NotificationCascadeHook {
     private int install(AugmentModule module){
         module.registerFeatureHook(module.prepareFeatureHook(access.reset,"notification.cascade.reset",false).intercept(chain->{
             ViewGroup host=(ViewGroup)access.host.get(chain.getThisObject());
+            if(!listening)listening=FeatureSettings.addSnapshotListener(host.getContext(),()->main.post(()->{
+                for(ViewGroup view:new ArrayList<>(surfaces.keySet()))if(view!=null&&view.isAttachedToWindow())
+                    try{access.refresh.invoke(view);}catch(ReflectiveOperationException error){module.logFeatureError("NOTIFICATION_CASCADE_REFRESH",error);}
+            }));
             Frame previous=current,frame;
-            try{frame=new Frame(host,chain.getArg(0));}
-            catch(ReflectiveOperationException|RuntimeException unavailable){clear(host);report(host,"native:"+unavailable);return chain.proceed();}
+            try{frame=new Frame(host,chain.getThisObject(),chain.getArg(0));}
+            catch(ReflectiveOperationException|RuntimeException unavailable){clear(host);return chain.proceed();}
             current=frame;
             Object result;
             try{result=chain.proceed();}catch(Throwable error){current=previous;clear(host);throw error;}
-            try{if(frame.enabled)finish(frame);else {clear(host);report(host,"native;surface="+(frame.keyguard?"lock":"shade"));}}
-            catch(ReflectiveOperationException|RuntimeException error){clear(host);report(host,"unavailable:"+error);}
+            try{if(frame.enabled)finish(frame);else {clear(host);report(frame,"native;reason="+frame.reason,0,0,0);}}
+            catch(ReflectiveOperationException|RuntimeException error){clear(host);report(frame,"unavailable;reason="+error.getClass().getSimpleName(),0,0,0);}
             finally{current=previous;}
             return result;
+        }));
+        module.registerFeatureHook(module.prepareFeatureHook(access.updateChild,"notification.cascade.lock_space",false).intercept(chain->{
+            Frame frame=current;
+            if(frame==null||!frame.enabled||!frame.keyguard||chain.getThisObject()!=frame.algorithm)return chain.proceed();
+            Object raw=access.children.get(chain.getArg(1));int index=((Number)chain.getArg(0)).intValue();
+            if(!(raw instanceof java.util.List)||index<0||index>=((java.util.List<?>)raw).size())return chain.proceed();
+            Object child=((java.util.List<?>)raw).get(index);
+            if(!(child instanceof View)||!eligible((View)child))return chain.proceed();
+            Object state=access.state.invoke(child);
+            // Privacy/gone state is never cleared. Only the OEM's geometric capacity
+            // input is expanded for this ordinary row, for the duration of its native call.
+            if(access.hidden.getBoolean(state)||access.gone.getBoolean(state))return chain.proceed();
+            float original=access.lockSpace.getFloat(frame.algorithm);
+            try{access.lockSpace.setFloat(frame.algorithm,Float.MAX_VALUE);frame.spacePasses++;return chain.proceed();}
+            finally{access.lockSpace.setFloat(frame.algorithm,original);}
+        }));
+        module.registerFeatureHook(module.prepareFeatureHook(access.scrollRange,"notification.cascade.scroll_range",false).intercept(chain->{
+            int original=((Number)chain.proceed()).intValue();
+            if(nativeRange.get())return original;
+            Surface surface=surfaces.get(chain.getThisObject());
+            return surface!=null&&live(surface.frame)?Math.max(original,surface.required):original;
+        }));
+        module.registerFeatureHook(module.prepareFeatureHook(access.scrollingEnabled,"notification.cascade.lock_scroll",false).intercept(chain->{
+            Object original=chain.proceed();Surface surface=surfaces.get(chain.getThisObject());
+            return Boolean.TRUE.equals(original)||surface!=null&&surface.gesture&&scrolling.get()==chain.getThisObject()
+                    &&live(surface.frame)&&surface.frame.keyguard&&surface.required>0?Boolean.TRUE:original;
+        }));
+        for(Method touch:access.touches)module.registerFeatureHook(
+                module.prepareFeatureHook(touch,"notification.cascade.touch."+touch.getName(),false).intercept(chain->{
+            ViewGroup host=(ViewGroup)chain.getThisObject();Surface surface=surfaces.get(host);
+            MotionEvent event=(MotionEvent)chain.getArg(0);int action=event.getActionMasked();
+            if(surface==null||!live(surface.frame)||!surface.frame.keyguard)return chain.proceed();
+            if(action==MotionEvent.ACTION_DOWN){Object row=access.childAt.invoke(host,event.getX(),event.getY());
+                surface.gesture=row instanceof View&&eligible((View)row)&&!access.hidden.getBoolean(access.state.invoke(row));}
+            ViewGroup previous=scrolling.get();if(surface.gesture)scrolling.set(host);
+            try{return chain.proceed();}finally{scrolling.set(previous);if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)surface.gesture=false;}
         }));
         module.registerFeatureHook(module.prepareFeatureHook(access.shelfClamp,"notification.cascade.shelf",false).intercept(chain->{
             // Shelf clamping destroys the natural Y of every off-screen row.
@@ -55,45 +100,85 @@ final class NotificationCascadeHook {
             if(old!=null&&result!=null){access.scaleX.setFloat(result,old.scaleX);access.scaleY.setFloat(result,old.scaleY);}
             return result;
         }));
-        for(Method method:new Method[]{access.reset,access.resetRow,access.shelfClamp,access.updateChild,access.positions,access.resetChildren})module.deoptimize(method);
+        for(Method method:new Method[]{access.reset,access.resetRow,access.shelfClamp,access.updateChild,access.positions,access.resetChildren,
+                access.scrollRange,access.scrollingEnabled,access.scrollTouch,access.interceptScroll,access.scrollability,access.clampScroll})module.deoptimize(method);
         module.logFeatureInfo("NOTIFICATION_CASCADE_READY alpha="+(access.alpha.getParameterCount()==1?"legacy":"reason")+";subclasses=true");
-        return 3;
+        for(Method touch:access.touches)module.deoptimize(touch);
+        return 6+access.touches.size();
     }
+    private boolean live(Frame frame){
+        if(frame==null||!frame.enabled||!frame.host.isAttachedToWindow())return false;
+        try{return frame.keyguard==(Boolean)access.keyguard.invoke(frame.ambient)
+                &&!(Boolean)access.dozing.invoke(frame.ambient)&&((Number)access.hideAmount.invoke(frame.ambient)).floatValue()==0
+                &&NotificationStackGate.enabled(frame.host.getContext(),frame.keyguard)
+                &&(frame.keyguard||((Number)access.expansion.invoke(frame.ambient)).floatValue()>.98f);}
+        catch(ReflectiveOperationException failure){return false;}
+    }
+    private static final class Surface {
+        Frame frame;int required;boolean gesture;final Evidence[] evidence={new Evidence(),new Evidence()};
+    }
+    private Surface surface(ViewGroup host){
+        Surface present=surfaces.get(host);if(present!=null)return present;
+        Surface created=new Surface();surfaces.put(host,created);
+        host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(View v){}
+            public void onViewDetachedFromWindow(View v){clear(host);surfaces.remove(host);host.removeOnAttachStateChangeListener(this);}
+        });
+        return created;
+    }
+    private static final class Evidence {long passes,appliedPasses,lastAppliedAt,lastReportAt;String lastStage="";}
     private boolean eligible(View row)throws ReflectiveOperationException{
         if(!access.row.isInstance(row)||row.getVisibility()==View.GONE)return false;
         for(Method method:access.changing)if(Boolean.TRUE.equals(method.invoke(row)))return false;
         return true;
     }
     private final class Frame {
-        final ViewGroup host;final boolean enabled,keyguard;final float start,end,density;
+        final ViewGroup host;final boolean enabled,keyguard;final float start,end,density,space;
+        final Object algorithm,ambient;final String reason;int spacePasses;
         final boolean gradient;
-        Frame(ViewGroup host,Object ambient)throws ReflectiveOperationException{
-            this.host=host;density=host.getResources().getDisplayMetrics().density;
+        Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
+            this.host=host;this.algorithm=algorithm;this.ambient=ambient;density=host.getResources().getDisplayMetrics().density;
             keyguard=(Boolean)access.keyguard.invoke(ambient);
             gradient=FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true);
             int measured=access.maxHeight.getInt(host);if(measured<=0)measured=host.getHeight();
-            end=Math.max(0,Math.min(host.getHeight(),measured)-48*density);
-            start=end*FeatureSettings.integer(host.getContext(),keyguard?NotificationAppearanceOptions.STACK_LOCK_START:NotificationAppearanceOptions.STACK_START,keyguard?75:70,40,90)/100f;
+            float top=keyguard?((Number)access.stackY.invoke(ambient)).floatValue():0;
+            float capacity=access.lockSpace.getFloat(algorithm);
+            space=capacity>0?capacity:((Number)access.stackHeight.invoke(ambient)).floatValue();
+            end=Math.max(top,Math.min(Math.min(host.getHeight(),measured)-48*density,keyguard?top+space:Float.MAX_VALUE));
+            start=top+(end-top)*FeatureSettings.integer(host.getContext(),keyguard?NotificationAppearanceOptions.STACK_LOCK_START:NotificationAppearanceOptions.STACK_START,keyguard?75:70,40,90)/100f;
             boolean landscape=host.getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;
             enabled=end>start&&host.isAttachedToWindow()
-                    &&FeatureSettings.enabled(host.getContext(),SystemUiOptions.NOTIFICATION_STACK)
-                    &&FeatureSettings.enabled(host.getContext(),keyguard?NotificationAppearanceOptions.STACK_LOCK:NotificationAppearanceOptions.STACK_SHADE,true)
-                    &&(!landscape||FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_LANDSCAPE))
+                    &&NotificationStackGate.enabled(host.getContext(),keyguard)
                     &&!(Boolean)access.dozing.invoke(ambient)&&((Number)access.hideAmount.invoke(ambient)).floatValue()==0
                     &&(keyguard||((Number)access.expansion.invoke(ambient)).floatValue()>.98f);
+            reason=enabled?"eligible":!host.isAttachedToWindow()?"detached":end<=start?"no_capacity":
+                    !FeatureSettings.enabled(host.getContext(),SystemUiOptions.NOTIFICATION_STACK)?"master_off":
+                    !FeatureSettings.enabled(host.getContext(),keyguard?NotificationAppearanceOptions.STACK_LOCK:NotificationAppearanceOptions.STACK_SHADE,true)?"surface_off":
+                    landscape&&!FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_LANDSCAPE)?"landscape_off":
+                    (Boolean)access.dozing.invoke(ambient)?"dozing":((Number)access.hideAmount.invoke(ambient)).floatValue()!=0?"native_hidden":"shade_not_expanded";
         }
     }
     private void finish(Frame frame)throws ReflectiveOperationException{
-        ArrayList<View> rows=new ArrayList<>();
+        ArrayList<View> rows=new ArrayList<>();int excluded=0;
         for(int i=0;i<frame.host.getChildCount();i++){
             View row=frame.host.getChildAt(i);
             if(eligible(row)){Object state=access.state.invoke(row);
-                if(!access.gone.getBoolean(state)&&!access.hidden.getBoolean(state))rows.add(row);}
+                if(!access.gone.getBoolean(state)&&!access.hidden.getBoolean(state))rows.add(row);else excluded++;}
         }
         // Native child order is not guaranteed during moves and Bundle transitions.
         rows.sort((a,b)->Float.compare(y(a),y(b)));
         boolean hasTail=!rows.isEmpty()&&y(rows.get(rows.size()-1))>frame.start;
-        java.util.HashSet<View> retained=new java.util.HashSet<>();float bottom=Float.NaN;int stacked=0;
+        Surface surface=surface(frame.host);surface.frame=frame;
+        int prior=surface.required;int scroll=access.scroll.getInt(frame.host);
+        if(rows.isEmpty())surface.required=0;
+        else{
+            View tail=rows.get(rows.size()-1);
+            // Reaching the unscaled line alone is insufficient for a tall final row.
+            // Its bottom must also clear the viewport's reserved bottom area.
+            float target=Math.min(frame.start,frame.end-access.height.getInt(access.state.invoke(tail)));
+            surface.required=NotificationCascadePolicy.requiredScroll(y(tail),scroll,target);
+        }
+        java.util.HashSet<View> retained=new java.util.HashSet<>();float bottom=Float.NaN;int stacked=0,visibleProjected=0;
         for(int i=0;i<rows.size();i++){
             View row=rows.get(i);Object state=access.state.invoke(row);
             float nativeY=access.y.getFloat(state),height=access.height.getInt(state);
@@ -110,6 +195,7 @@ final class NotificationCascadeHook {
             retained.add(row);stacked++;
             access.y.setFloat(state,card.y);access.scaleX.setFloat(state,baseline.scaleX*card.scale);access.scaleY.setFloat(state,baseline.scaleY*card.scale);
             float nativeAlpha=((Number)access.alphaGet.invoke(state)).floatValue();
+            if(card.alpha>0&&nativeAlpha>0)visibleProjected++;
             if(access.alpha.getParameterCount()==1)access.alpha.invoke(state,nativeAlpha*card.alpha);
             else access.alpha.invoke(state,nativeAlpha*card.alpha,"redmagic_duo.cascade");
             if(card.alpha==0)access.hidden.setBoolean(state,true);
@@ -118,15 +204,33 @@ final class NotificationCascadeHook {
             baseline.blur(row,card.blur);
         }
         for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==frame.host&&!retained.contains(row))release(row);
-        report(frame.host,"active;surface="+(frame.keyguard?"lock":"shade")+";rows="+rows.size()+";stacked="+stacked+";native_scroll=true");
+        if(prior!=surface.required){access.scrollability.invoke(frame.host);if(prior>surface.required)access.clampScroll.invoke(frame.host);}
+        String stage=rows.isEmpty()?"no_visible_rows":visibleProjected>0?"applied":"layout_only";
+        report(frame,stage+";stacked="+stacked+";excluded_native="+excluded+";space_passes="+frame.spacePasses,rows.size(),visibleProjected,scroll);
     }
     private float y(View row){try{return access.y.getFloat(access.state.invoke(row));}catch(ReflectiveOperationException failure){return Float.MAX_VALUE;}}
-    private void clear(ViewGroup host){for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==host||!row.isAttachedToWindow())release(row);}
+    private void clear(ViewGroup host){for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==host||!row.isAttachedToWindow())release(row);
+        Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;surface.gesture=false;
+            if(changed)try{access.scrollability.invoke(host);access.clampScroll.invoke(host);}catch(ReflectiveOperationException ignored){}}}
     private void release(View row){Owned baseline=owned.remove(row);if(baseline==null)return;baseline.blur(row,0);
         // A detached row can be recycled before another native reset pass.
         row.setScaleX(baseline.scaleX);row.setScaleY(baseline.scaleY);
         row.setPivotX(baseline.pivotX);row.setPivotY(baseline.pivotY);}
-    private void report(ViewGroup host,String value){if(!value.equals(lastReport)){lastReport=value;FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_cascade_runtime",value);}}
+    private void report(Frame frame,String stage,int rows,int applied,int scroll){
+        Surface surface=surface(frame.host);Evidence evidence=surface.evidence[frame.keyguard?1:0];
+        long now=System.currentTimeMillis();evidence.passes++;
+        if(applied>0){evidence.appliedPasses++;evidence.lastAppliedAt=now;}
+        String kind=(frame.keyguard?"lock":"shade")+";"+stage.split(";",2)[0]+";"+frame.reason;
+        if(kind.equals(evidence.lastStage)&&now-evidence.lastReportAt<1000)return;
+        evidence.lastStage=kind;evidence.lastReportAt=now;int original=0;
+        try{nativeRange.set(true);original=((Number)access.scrollRange.invoke(frame.host)).intValue();}catch(ReflectiveOperationException ignored){}
+        finally{nativeRange.set(false);}
+        FeatureSettings.diagnostic(frame.host.getContext(),"ls_augment_notification_cascade_runtime_"+(frame.keyguard?"lock":"shade"),
+                stage+";surface="+(frame.keyguard?"lock":"shade")+";rows="+rows+";visible_projected="+applied+";passes="+evidence.passes
+                +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll
+                +";native_range="+original+";effective_range="+Math.max(original,surface.required)+";start="+frame.start+";end="+frame.end
+                +";lock_space="+frame.space+";privacy=native;observed_at="+now);
+    }
     private static final class Owned {
         final float scaleX,scaleY,pivotX,pivotY;float radius;
         Owned(View row,float x,float y){scaleX=x;scaleY=y;pivotX=row.getPivotX();pivotY=row.getPivotY();}
@@ -138,7 +242,9 @@ final class NotificationCascadeHook {
     }
     private static final class Access {
         final Class<?> row;final Method reset,shelfClamp,resetRow,state,alpha,alphaGet,keyguard,dozing,hideAmount,expansion,updateChild,positions,resetChildren;
-        final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipBottom;
+        final Method scrollRange,scrollability,clampScroll,scrollingEnabled,scrollTouch,interceptScroll,childAt,stackY,stackHeight,refresh;
+        final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipBottom,scroll,lockSpace,children;
+        final ArrayList<Method> touches=new ArrayList<>();
         Access(ClassLoader loader)throws ReflectiveOperationException{
             Class<?> algorithm=Class.forName(BASE+"stack.StackScrollAlgorithm",false,loader);
             Class<?> layout=Class.forName(BASE+"stack.NotificationStackScrollLayout",false,loader);
@@ -148,6 +254,18 @@ final class NotificationCascadeHook {
             state=method(expandable,"getViewState");Class<?> viewState=state.getReturnType();
             reset=method(algorithm,"resetViewStates",ambient,int.class);shelfClamp=method(algorithm,"updateViewWithShelf",expandable,viewState,float.class);
             resetRow=method(expandable,"resetViewState");host=field(algorithm,"mHostView",ViewGroup.class);maxHeight=field(layout,"mMaxLayoutHeight",int.class);
+            scroll=field(layout,"mOwnScrollY",int.class);lockSpace=field(algorithm,"mKeyguardNotificationSpace",float.class);
+            children=field(algorithmState,"visibleChildren",ArrayList.class);
+            scrollRange=method(layout,"getScrollRange");scrollability=method(layout,"updateScrollability");clampScroll=method(layout,"clampScrollPosition");
+            refresh=method(layout,"requestChildrenUpdate");result(refresh,void.class);
+            scrollingEnabled=method(layout,"isScrollingEnabled");scrollTouch=method(layout,"onScrollTouch",MotionEvent.class);
+            interceptScroll=method(layout,"onInterceptTouchEventScroll",MotionEvent.class);childAt=method(layout,"getChildAtPosition",float.class,float.class);
+            touches.add(interceptScroll);touches.add(scrollTouch);
+            try{Method offered=method(layout,"offerScrollTouchToScroller",MotionEvent.class);result(offered,boolean.class);touches.add(offered);}
+            catch(NoSuchMethodException olderDispatch){/* Original scroll entry points remain installed. */}
+            stackY=method(ambient,"getStackY");stackHeight=method(ambient,"getInterpolatedStackHeight");
+            result(scrollRange,int.class);result(scrollability,void.class);result(clampScroll,void.class);result(scrollingEnabled,boolean.class);
+            result(scrollTouch,boolean.class);result(interceptScroll,boolean.class);result(stackY,float.class);result(stackHeight,float.class);
             updateChild=method(algorithm,"updateChild",int.class,algorithmState,ambient);positions=method(algorithm,"updatePositionsForState",algorithmState,ambient);resetChildren=method(algorithm,"resetChildViewStates");
             y=field(viewState,"mYTranslation",float.class);z=field(viewState,"mZTranslation",float.class);scaleX=field(viewState,"mScaleX",float.class);scaleY=field(viewState,"mScaleY",float.class);
             height=field(viewState,"height",int.class);gone=field(viewState,"gone",boolean.class);hidden=field(viewState,"hidden",boolean.class);clipBottom=field(viewState,"clipBottomAmount",int.class);

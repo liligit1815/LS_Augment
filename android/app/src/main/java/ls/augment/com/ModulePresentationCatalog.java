@@ -24,12 +24,12 @@ public final class ModulePresentationCatalog {
         new Category("interaction","操作与手势","返回、电源、助理、单手模式与剪贴板","systemui",null,8),
         new Category("multitasking","小窗与多任务","跨应用跳转、小窗数量、应用范围与触摸","system","device",5),
         new Category("atomic_workbench","红魔Step","全局手势、嵌入桌面、主侧窗口与任务恢复","system","device",1),
-        new Category("capture","截图与录屏","捕获画面、窗口限制与图片裁剪","screenshot",null,5),
+        new Category("capture","相册与编辑","相册水印、图片编辑、截图与录屏","screenshot",null,6),
         new Category("gaming","游戏空间","AI 触发器、肩键、连招、性能与游戏录制","game","games",18),
         new Category("cooling","散热风扇","转速测量、固定档位、磁贴与息屏运行","fan","games",4),
         new Category("connectivity","网络与连接","USB 文件传输、调试、NFC、Wi-Fi 与飞行模式","files",null,16),
         new Category("apps","应用管理","安装、下载、双开、默认打开与应用隐藏","installer",null,15),
-        new Category("system_settings","系统设置","系统更新、竞技键、电池健康度与显示休眠","settings",null,13),
+        new Category("system_settings","系统设置","系统更新、竞技键、电池与显示休眠","settings",null,14),
         new Category("health","小米运动健康","账号绑定、步数倍率、随机计划与每日上限","health","apps",4)
     ));
     public static List<Category> categories(){return CATEGORIES;}
@@ -38,7 +38,7 @@ public final class ModulePresentationCatalog {
     public static List<Related> related(String requested){
         String route=ModuleHierarchy.resolve(requested);
         if(Arrays.asList("status_layout","status_arrangement","status_icons").contains(route))return Arrays.asList(
-            new Related("截图与录屏中的状态栏","只影响捕获结果，请到截图与录屏设置","group/capture/capture"),
+            new Related("截图与录屏中的状态栏","只影响捕获结果，请到相册与编辑设置","group/capture/capture"),
             new Related("锁屏顶部状态栏","只影响锁屏画面，请到锁屏显示设置","group/lockscreen/lock_display"),
             new Related("双击状态栏锁屏","手势操作归入操作与手势","group/interaction/status_gestures"));
         if("target-connectivity".equals(route)||"group/connectivity/usb".equals(route)||"group/connectivity/usb_debug".equals(route))return Collections.singletonList(

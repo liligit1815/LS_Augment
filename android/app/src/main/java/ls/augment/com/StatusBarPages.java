@@ -5,14 +5,15 @@ import java.util.Arrays;
 /** One navigation model for the status bar; every page edits existing runtime settings. */
 final class StatusBarPages {
     static final String[] ROUTES={"status_arrangement","status_clock","status_notifications","status_metrics","status_network","status_battery","status_icons","status_assets"};
-    static final String[] TITLES={"排列与间距","时钟","通知图标","实时指标","网络与信号","电池与三合一","系统图标与隐私","图标素材与字体"};
+    static final String[] TITLES={"排列与间距","时钟","通知图标","实时指标","网络与信号","电池与三合一","系统图标与隐私","素材与字体"};
     static final String[] SUMMARIES={"预设、组件位置与顺序、高度和留白","日期、秒与毫秒、单双排和文字样式","显示数量、单双排和原生样式","CPU / GPU 温度、电池温度、电流与功率","Wi-Fi、双卡信号、收发箭头和网速","原生电池、三合一和电量样式","蓝牙样式、图标隐藏和隐私提示","按显示位置设置素材、字体与额外隐藏"};
     static final String[] GROUP_TITLES={"布局","状态栏内容","系统图标","外观资源"};
     static final String[][] GROUP_ROUTES={{"status_arrangement"},{"status_clock","status_notifications","status_metrics"},{"status_network","status_battery","status_icons"},{"status_assets"}};
     private StatusBarPages(){}
-    static boolean editor(String route){return "status_layout".equals(route)||"status_surfaces".equals(route)||surface(route)!=null||Arrays.asList(ROUTES).contains(route)&&!"status_assets".equals(route);}
+    static boolean editor(String route){return "status_legacy".equals(route)||"status_layout".equals(route)||"status_surfaces".equals(route)||surface(route)!=null||Arrays.asList(ROUTES).contains(route)&&!"status_assets".equals(route);}
     static String title(String route){
         if("status_layout".equals(route))return "状态栏自定义";
+        if("status_legacy".equals(route))return "旧状态栏自定义";
         if("status_surfaces".equals(route))return "按显示位置配置";
         String surface=surface(route);if(surface!=null)return StatusBarSurfaceSpec.label(surface);
         for(int i=0;i<ROUTES.length;i++)if(ROUTES[i].equals(route))return TITLES[i];return "";

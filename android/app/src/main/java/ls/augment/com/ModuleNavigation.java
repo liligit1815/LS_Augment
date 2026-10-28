@@ -19,7 +19,8 @@ final class ModuleNavigation {
     static String route(Activity owner){
         Intent intent=owner.getIntent();String route=intent.getStringExtra(EXTRA_ROUTE);
         if(route!=null)return route;
-        if(owner instanceof StatusBarSettingsActivity)return "status_layout";
+        if(owner instanceof StatusBarWorkspaceActivity)return "status_layout";
+        if(owner instanceof StatusBarSettingsActivity)return "status_legacy";
         if(owner instanceof CompetitiveKeySettingsActivity)return "competitive_key";
         if(owner instanceof AtomicWorkbenchSettingsActivity)return "atomic_workbench";
         if(owner instanceof AtomicWorkbenchActivity)return "atomic_workbench_session";
@@ -71,6 +72,9 @@ final class ModuleNavigation {
         if(route.startsWith("target-")||section!=null){
             owner.startActivity(new Intent(owner,EnhancementSettingsActivity.class).putExtra(EXTRA_ROUTE,route)
                 .putExtra("target",section==null?route.substring(7):section.target));return;
+        }
+        if("status_layout".equals(route)){
+            owner.startActivity(new Intent(owner,StatusBarWorkspaceActivity.class).putExtra(EXTRA_ROUTE,route));return;
         }
         if(StatusBarPages.editor(route)){
             owner.startActivity(new Intent(owner,StatusBarSettingsActivity.class).putExtra(EXTRA_ROUTE,route));return;

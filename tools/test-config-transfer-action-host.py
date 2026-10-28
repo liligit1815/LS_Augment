@@ -444,7 +444,7 @@ static String normalize(String key,String value){return key.equals("flag")&&!val
 
 
 # New app-document dependencies. This original suite forbids every confirmed write.
-for _name in ['AtomicWorkbenchAppListModel.java','AtomicWorkbenchAppPreferences.java','AtomicWorkbenchAppPreferencesTransfer.java']:
+for _name in ['AtomicWorkbenchConfig.java','AtomicWorkbenchAppListModel.java','AtomicWorkbenchAppPreferences.java','AtomicWorkbenchAppPreferencesTransfer.java']:
     STUBS['ls/augment/com/'+_name]=(SRC/_name).read_text(encoding='utf-8')
 STUBS['android/os/Process.java']='package android.os;public class Process{public static int myUid(){return 10001;}}'
 STUBS['android/util/AtomicFile.java']=r"""package android.util;import java.io.*;public class AtomicFile{

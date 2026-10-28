@@ -207,6 +207,7 @@ test=test.replace('  for(String style:', '  CleanupExplosionSound.prepare(new an
 test=test.replace('   a.tick(.5f);Canvas canvas=', '   int plays=android.media.SoundPool.plays; a.tick(.05f);check(android.media.SoundPool.plays==plays,"no sound before detonation");a.tick(.5f);check(android.media.SoundPool.plays==plays+("0".equals(style)?1:0),"only explosion impact plays sound once");a.tick(.6f);check(android.media.SoundPool.plays==plays+("0".equals(style)?1:0),"later animation frames cannot repeat sound");Canvas canvas=')
 test=test.replace('  System.out.println(', '  android.media.AudioManager.mode=1;int muted=android.media.SoundPool.plays;check(CleanupExplosionSound.play(new android.content.Context())==0&&muted==android.media.SoundPool.plays,"vibrate mode is honored");android.media.AudioManager.mode=2;android.media.AudioManager.volume=0;check(CleanupExplosionSound.play(new android.content.Context())==0,"zero system volume is honored");android.media.AudioManager.volume=5;CleanupExplosionSound.prepare(new android.content.Context());check(android.media.SoundPool.loads==1,"sample preloaded only once");check(android.media.SoundPool.stops>0,"effect end releases sound stream");\n  System.out.println(')
 files['ls/augment/com/hook/TestCleanupBomb.java']=test
+files['ls/augment/com/hook/HookCompatibility.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/HookCompatibility.java').read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='lsa-bomb-') as temp:
  sources=[]
  for name,source in files.items():

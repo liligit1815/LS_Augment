@@ -8,7 +8,7 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","atomic_workbench","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,17,24,11,8,5,1,5,18,4,16,15,13,4};
+        int[] counts={84,17,24,11,8,5,1,6,18,4,16,15,14,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
         require(HookAppCatalog.targets().size()==20&&HookAppCatalog.find(HookAppCatalog.AMAP)!=null,"Runtime targets include the navigation source independently of the 14 display categories");
@@ -17,7 +17,9 @@ public final class TestModuleHierarchy {
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==225,"Presentation includes 225 capabilities in 14 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==227,"Presentation includes 227 capabilities in 14 ordered categories");
+        require("group/system_settings/battery".equals(ModuleHierarchy.resolve("group/system_settings/battery_health")),"Old battery health bookmark migrates");
+        owner(SystemOptions.BATTERY_KEEP_REFRESH,"group/system_settings/battery");owner(SystemOptions.GALLERY_WATERMARK_TEXT,"group/capture/gallery");owner(GameOptions.MONITOR_MARGIN,"group/gaming/plugins");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-amap")),"Navigation source opens the existing Step editor");
         require(ModuleHierarchy.path("atomic_workbench").equals(Arrays.asList("home","atomic_workbench")),"Workbench is a first-level category without an empty intermediate page");
@@ -35,7 +37,7 @@ public final class TestModuleHierarchy {
         require("device".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/lockscreen/theme_download")))&&"device".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/lockscreen/collab_theme"))),"Moved theme pages preserve their device restart scope");
         require("device".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/notifications/notification_alerts"))),"Directory shortcut never overrides a notification page's distinct actual scope");
         require("systemui".equals(ModuleHierarchy.restartScope(ModuleHierarchy.group("group/lockscreen/lock_clock"))),"Theme directory shortcut never overrides a lock-clock page's SystemUI scope");
-        require(ModuleHierarchy.sections("notifications").stream().map(s->s.id).toList().subList(0,2).equals(Arrays.asList("statusbar","island")),"Status customization and island enter the notification/control-center directory");
+        require(ModuleHierarchy.sections("notifications").stream().map(s->s.id).toList().subList(0,3).equals(Arrays.asList("statusbar","statusbar_legacy","island")),"Status customization and island enter the notification/control-center directory");
         require(ModuleHierarchy.sections("lockscreen").stream().map(s->s.id).toList().subList(0,2).equals(Arrays.asList("theme_download","collab_theme")),"Theme download and collaboration enter the theme/lock-screen directory");
         List<String> lockscreenIds=ModuleHierarchy.sections("lockscreen").stream().map(s->s.id).toList();
         require(lockscreenIds.indexOf("liftarc")==lockscreenIds.indexOf("lock_display")+1
@@ -92,6 +94,9 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.group("group/desktop/launcher_grid").features.stream().noneMatch(f->f.allKeys().contains(LauncherOptions.DOCK_UNLIMITED)),"Dock capacity no longer belongs to desktop layout and pages");
         require("桌面组件".equals(ModuleHierarchy.title("group/desktop/desktop_clock")),"Component page retains its bookmark with the requested title");
         owner(RecentsCardRadiusOptions.ENABLED,"group/desktop/recents");owner(RecentsCardRadiusOptions.OFFSET,"group/desktop/recents");
+        owner(RecentsPrivacyOptions.ENABLED,"group/desktop/recents_privacy");owner(RecentsPrivacyOptions.APPS,"group/desktop/recents_privacy");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents_privacy"),key->RecentsPrivacyOptions.APPS.equals(key)?"ls.augment.com":"0")==0,"Saved privacy selection alone is inactive");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents_privacy"),key->RecentsPrivacyOptions.ENABLED.equals(key)?"1":"")==1,"Privacy is counted once through its master switch");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.OFFSET.equals(key)?"-24":"0")==0,"Stored radius parameters remain inactive while the switch is off");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/desktop/recents"),key->RecentsCardRadiusOptions.ENABLED.equals(key)?"1":"0")==1,"Recent-task radius is one separately counted feature");
         require(ModuleHierarchy.path("group/connectivity/usb_mtp").equals(Arrays.asList("home","target-connectivity","group/connectivity/usb","group/connectivity/usb_mtp")),"MTP lives under the shared USB directory");
@@ -112,7 +117,7 @@ public final class TestModuleHierarchy {
         require(ModuleHierarchy.path("rapid_compatibility").equals(Arrays.asList("home","target-gaming","group/gaming/shoulder","rapid_compatibility")),"Compatibility test still returns to shoulder settings");
         require("status_arrangement".equals(ModuleHierarchy.resolve("status_canvas")),"Retired canvas links reach arrangement");
         require("status_assets".equals(ModuleHierarchy.resolve("group/systemui/status_resources")),"Old asset bookmark survives");
-        for(String page:StatusBarPages.ROUTES)require("status_layout".equals(ModuleHierarchy.parent(page)),"Component editor remains under status editor: "+page);
+        for(String page:StatusBarPages.ROUTES)require("status_legacy".equals(ModuleHierarchy.parent(page)),"Component editor remains under status editor: "+page);
         require("target-notifications".equals(ModuleHierarchy.parent("status_layout")),"Status editor returns to notification/control-center category");
         require(ModuleHierarchy.path("group/notifications/island").equals(Arrays.asList("home","target-notifications","group/notifications/island")),"Island has the merged breadcrumb");
         require(ModuleHierarchy.path("group/themes/theme_download").equals(Arrays.asList("home","target-lockscreen","group/lockscreen/theme_download")),"Theme bookmark has the merged breadcrumb");
@@ -128,6 +133,6 @@ public final class TestModuleHierarchy {
         owner(GameOptions.MONITOR_PIN,"group/gaming/plugins");owner(GameOptions.SHOULDER_PIN,"group/gaming/shoulder");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 225 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 227 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }

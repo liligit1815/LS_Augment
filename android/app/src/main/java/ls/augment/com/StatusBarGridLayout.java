@@ -20,7 +20,7 @@ public final class StatusBarGridLayout {
     }
     public static final class Box {
         public final float x, y, width, height, scale;
-        Box(float x, float y, float width, float height, float scale) {
+        public Box(float x, float y, float width, float height, float scale) {
             this.x=x; this.y=y; this.width=width; this.height=height; this.scale=scale;
         }
     }
@@ -109,24 +109,14 @@ public final class StatusBarGridLayout {
             float used = Math.max(0,Math.max(cursor[0],cursor[1])-itemSpacing);
             float fit = used==0?1:Math.min(1,available/used);
             float origin = col==2?end-used*fit:col==1?start+(available-used*fit)/2:start;
-            float safeGap=gap;
-            if(gap<0){
-                // A negative preference is allowed only when the two rows do
-                // not actually intersect. Test measured bounds after fitting.
-                for(float[] a:raw.values())for(float[] b:raw.values()){
-                    if(a[5]!=0||b[5]!=1)continue;
-                    float horizontal=Math.min(a[0]+a[2],b[0]+b[2])-Math.max(a[0],b[0]);
-                    if(horizontal>0&&fit>0)safeGap=0;
-                }
-            }
             for (Map.Entry<String,float[]> e : raw.entrySet()) {
                 float[] a=e.getValue(); float scaledH=a[3]*fit;
                 // Both rows share their inner edges, including after width
                 // fitting. The configured gap is the actual space between rows,
                 // rather than padding between two oversized half-height cells.
                 float middle=top+usableH/2;
-                float y=a[5]<0?middle-scaledH/2:a[5]==0?middle-safeGap/2-scaledH:middle+safeGap/2;
-                if(a[5]>=0&&a[6]>=0)y=a[5]==0?middle-Math.max(0,gap)/2-descent[0]-a[6]*fit:middle+Math.max(0,gap)/2+ascent[1]-a[6]*fit;
+                float y=a[5]<0?middle-scaledH/2:a[5]==0?middle-gap/2-scaledH:middle+gap/2;
+                if(a[5]>=0&&a[6]>=0)y=a[5]==0?middle-gap/2-descent[0]-a[6]*fit:middle+gap/2+ascent[1]-a[6]*fit;
                 result.put(e.getKey(), new Box(col==2?end-(a[0]+a[2])*fit:origin+a[0]*fit, y,
                         a[2]*fit, scaledH,a[4]*fit));
             }

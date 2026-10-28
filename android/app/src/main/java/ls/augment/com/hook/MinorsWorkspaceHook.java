@@ -37,21 +37,27 @@ final class MinorsWorkspaceHook {
             throws ReflectiveOperationException {
         this.module = module;
         Class<?> cell = Class.forName("com.android.launcher3.CellLayout", false, loader);
-        Class<?> params = Class.forName("c1.b", false, loader);
-        Class<?> item = Class.forName("com.android.launcher3.model.data.y", false, loader);
-        Class<?> grid = Class.forName("com.android.launcher3.util.t0", false, loader);
-        Class<?> cursor = Class.forName("z1.y1", false, loader);
-        Class<?> modelWriter = Class.forName("z1.J3", false, loader);
-        launcher = Class.forName("com.android.launcher3.C2", false, loader);
-        add = cell.getDeclaredMethod("e", View.class, int.class, int.class, params, boolean.class);
-        occupied = cell.getDeclaredMethod("getOccupied");
-        vacant = grid.getDeclaredMethod("d", int.class, int.class, int.class, int.class);
-        find = grid.getDeclaredMethod("c", int[].class, int.class, int.class);
-        x = params.getDeclaredMethod("a"); y = params.getDeclaredMethod("b");
-        setX = params.getDeclaredMethod("e", int.class); setY = params.getDeclaredMethod("g", int.class);
-        writer = launcher.getDeclaredMethod("i2");
-        move = modelWriter.getDeclaredMethod("T", item, int.class, int.class, int.class, int.class);
-        Method placement = cursor.getDeclaredMethod("e", item, boolean.class);
+        Class<?> params = HookCompatibility.type(loader, "com.android.launcher3.celllayout.CellLayoutLayoutParams", "c1.b");
+        Class<?> item = HookCompatibility.type(loader, "com.android.launcher3.model.data.ItemInfo", "com.android.launcher3.model.data.y");
+        Class<?> grid = HookCompatibility.type(loader, "com.android.launcher3.util.GridOccupancy", "com.android.launcher3.util.t0");
+        Class<?> cursor = HookCompatibility.type(loader, "com.android.launcher3.model.LoaderCursor", "z1.y1");
+        Class<?> modelWriter = HookCompatibility.type(loader, "com.android.launcher3.model.IModelWriter", "z1.J3");
+        launcher = HookCompatibility.type(loader, "com.android.launcher3.Launcher", "com.android.launcher3.C2");
+        add = HookCompatibility.inheritedMethod(cell, boolean.class, false, new String[]{"addViewToCellLayout", "e"}, View.class, int.class, int.class, params, boolean.class);
+        occupied = HookCompatibility.inheritedMethod(cell, grid, false, new String[]{"getOccupied"});
+        vacant = HookCompatibility.inheritedMethod(grid, boolean.class, false, new String[]{"isRegionVacant", "d"}, int.class, int.class, int.class, int.class);
+        find = HookCompatibility.inheritedMethod(grid, boolean.class, false, new String[]{"findVacantCell", "c"}, int[].class, int.class, int.class);
+        x = HookCompatibility.inheritedMethod(params, int.class, false, new String[]{"getCellX", "a"});
+        y = HookCompatibility.inheritedMethod(params, int.class, false, new String[]{"getCellY", "b"});
+        setX = HookCompatibility.inheritedMethod(params, void.class, false, new String[]{"setCellX", "e"}, int.class);
+        setY = HookCompatibility.inheritedMethod(params, void.class, false, new String[]{"setCellY", "g"}, int.class);
+        writer = HookCompatibility.inheritedMethod(launcher, modelWriter, true, new String[]{"getModelWriter", "i2"});
+        // Invoking the interface is intentional; hooks themselves always require a concrete implementation.
+        move = modelWriter.getMethod(modelWriter.isInterface() ? "moveItemInDatabase" : "T", item, int.class, int.class, int.class, int.class);
+        if (move.getReturnType() != void.class) throw new NoSuchMethodException("moveItemInDatabase return");
+        Method placement = cursor.getName().equals("com.android.launcher3.model.LoaderCursor")
+                ? HookCompatibility.inheritedMethod(cursor, boolean.class, false, new String[]{"checkItemPlacement"}, item)
+                : HookCompatibility.inheritedMethod(cursor, boolean.class, false, new String[]{"e"}, item, boolean.class);
         placement.setAccessible(true);
         module.registerFeatureHook(module.prepareFeatureHook(placement,
                 "entries.launcher.placement", false).intercept(chain -> {

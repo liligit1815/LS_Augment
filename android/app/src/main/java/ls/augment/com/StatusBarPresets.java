@@ -27,6 +27,7 @@ final class StatusBarPresets {
     static Map<String,String> values(int preset){
         if(preset<0||preset>=NAMES.length)throw new IllegalArgumentException("preset");
         Map<String,String> values=new LinkedHashMap<>();
+        values.put(StatusBarEditPolicy.KEY,StatusBarEditPolicy.full().serialize());
         values.put(ConfigSchema.SYSTEMUI_MASTER,"1");
         values.put(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY,"0");
         values.put(SystemUiOptions.SIGNAL_DUAL,"0");

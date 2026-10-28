@@ -1,7 +1,12 @@
 package ls.augment.com;
 
-/** Continuous projection of OEM notification coordinates; original scroll extent is retained. */
+/** Continuous projection and reachability of privacy-filtered OEM notification coordinates. */
 public final class NotificationCascadePolicy {
+    /** Last row must be able to reach the uncompressed area, even when native content fits. */
+    public static int requiredScroll(float lastNativeY, int scroll, float start) {
+        if (!Float.isFinite(lastNativeY) || !Float.isFinite(start)) return 0;
+        return (int)Math.min(Integer.MAX_VALUE, Math.max(0, Math.ceil((double)lastNativeY + Math.max(0,scroll) - start)));
+    }
     public static final class Card {
         public final float y,scale,alpha,blur;
         Card(float y,float scale,float alpha,float blur){this.y=y;this.scale=scale;this.alpha=alpha;this.blur=blur;}

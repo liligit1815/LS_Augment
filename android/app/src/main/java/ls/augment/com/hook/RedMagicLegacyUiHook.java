@@ -319,7 +319,7 @@ final class RedMagicLegacyUiHook {
         int width=number(view,"battery_width_dp",0,0,120);
         // The grid reserves the requested width after icon scaling. A native
         // fixed width would be cropped away by its ink measurement instead.
-        if(FeatureSettings.enabled(view.getContext(),ls.augment.com.ConfigSchema.SYSTEMUI_MASTER))width=0;
+        if(StatusBarGridHook.configuredIconLayout(view))width=0;
         if(params!=null){
             if(width>0){if(!BATTERY_WIDTHS.containsKey(view))BATTERY_WIDTHS.put(view,params.width);int px=Math.round(width*view.getResources().getDisplayMetrics().density);if(params.width!=px){params.width=px;view.setLayoutParams(params);}}
             else{Integer old=BATTERY_WIDTHS.remove(view);if(old!=null){params.width=old;view.setLayoutParams(params);}}

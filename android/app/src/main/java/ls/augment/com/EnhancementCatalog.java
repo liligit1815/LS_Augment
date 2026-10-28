@@ -8,6 +8,7 @@ public final class EnhancementCatalog {
         all.addAll(SystemOptions.options());all.addAll(SystemUiOptions.options());
         all.addAll(GameOptions.options());all.addAll(LauncherOptions.options());all.addAll(NativeIslandSceneOptions.options());
         all.addAll(RecentsCardRadiusOptions.options());
+        all.addAll(RecentsPrivacyOptions.options());
         all.addAll(AppearanceOptions.options());
         all.addAll(CollabOptions.options());
         all.addAll(EntryVisibilityOptions.options());

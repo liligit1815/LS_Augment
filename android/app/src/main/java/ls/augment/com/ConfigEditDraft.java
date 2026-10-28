@@ -23,6 +23,7 @@ final class ConfigEditDraft {
     private long revision;
 
     void seed(String key, String value) { values.put(key, value); }
+    void replaceSaved(Map<String,String> saved) { values.clear();values.putAll(saved);edits.clear();queued.clear();revision++; }
     String get(String key) { return values.get(key); }
     boolean containsKey(String key) { return values.containsKey(key); }
     Set<String> keySet() { return Collections.unmodifiableSet(values.keySet()); }

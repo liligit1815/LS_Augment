@@ -106,6 +106,8 @@
 
         <activity android:name=".StatusBarSettingsActivity" android:exported="false"
             android:theme="@style/Theme.LSAugment.Settings" />
+        <activity android:name=".StatusBarWorkspaceActivity" android:exported="false"
+            android:theme="@style/Theme.LSAugment.Settings" />
         <activity android:name=".StatusBarAssetsActivity" android:exported="false"
             android:theme="@style/Theme.LSAugment.Settings" />
         <activity android:name=".HealthSettingsActivity" android:exported="false"

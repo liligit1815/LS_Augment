@@ -16,10 +16,48 @@ import ls.augment.com.ConfigSchema;
 import ls.augment.com.StatusBarGridSpec;
 import ls.augment.com.StatusBarGridLayout;
 import ls.augment.com.StatusBarAdaptiveLayout;
+import ls.augment.com.StatusBarWorkspaceSpec;
+import ls.augment.com.StatusBarMargins;
+import ls.augment.com.StatusBarNativeGeometry;
+import ls.augment.com.StatusBarEditPolicy;
+import ls.augment.com.StatusBarSelectiveLayout;
 
 /** Places native icon views into measured rows without taking over their lifecycle. */
 final class StatusBarGridHook {
     private static final Map<ViewGroup, State> STATES = new WeakHashMap<>();
+    /** Called on the UI thread with the native icon inventory capture. */
+    static org.json.JSONObject workspaceSnapshot(){
+        org.json.JSONObject result=new org.json.JSONObject(),geometry=new org.json.JSONObject(),items=new org.json.JSONObject(),appearance=new org.json.JSONObject();
+        try{for(State state:new ArrayList<>(STATES.values())){
+            ViewGroup root=state.root;if(!root.isAttachedToWindow()||root.getWidth()<=0||root.getHeight()<=0)continue;
+            String surface=isKeyguard(root)?"lock":"main";StatusBarNativeGeometry nativeBox=StatusBarNativeGeometry.read(root);if(nativeBox!=null)geometry.put(surface,nativeBox.json());
+            if(!visibleFrame(root))continue;
+            org.json.JSONObject nativeViews=new org.json.JSONObject();
+            for(String id:new String[]{"clock","battery","keyguard_carrier_text"}){View view=findView(root,id);if(view!=null)nativeViews.put(id,appearance(view));}
+            for(String type:new String[]{"NotificationIconContainer","StatusIconContainer"}){View view=findClass(root,type);if(view!=null)nativeViews.put(type,appearance(view));}
+            appearance.put(surface,nativeViews);
+            org.json.JSONArray rows=new org.json.JSONArray();View clock=findView(root,"clock","status_bar_clock");
+            if(clock!=null||state.keyguardClock!=null)workspaceItem(rows,"clock",state.splitClock()?state.clockLines[0]:clock==null?state.keyguardClock:clock);
+            View battery=state.connectivityPlaced()?state.connectivityIcon:findView(root,"battery");if(battery!=null)workspaceItem(rows,"battery",battery);
+            for(Map.Entry<String,TextView> metric:state.metrics.entrySet())workspaceItem(rows,baseId(metric.getKey()),metric.getValue());
+            items.put(surface,rows);
+        }result.put("nativeGeometry",geometry).put("workspaceItems",items).put("nativeAppearance",appearance);}catch(org.json.JSONException ignored){}
+        return result;
+    }
+    private static org.json.JSONObject appearance(View view)throws org.json.JSONException{
+        int[] location=new int[2];view.getLocationOnScreen(location);org.json.JSONObject value=new org.json.JSONObject()
+                .put("x",location[0]).put("y",location[1]).put("width",view.getWidth()).put("height",view.getHeight())
+                .put("scaleX",view.getScaleX()).put("scaleY",view.getScaleY()).put("translationX",view.getTranslationX()).put("translationY",view.getTranslationY())
+                .put("alpha",view.getAlpha()).put("visibility",view.getVisibility());
+        if(view instanceof TextView)value.put("textSize",((TextView)view).getTextSize());
+        if(view instanceof ViewGroup){org.json.JSONObject children=new org.json.JSONObject();ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++){View child=group.getChildAt(i);String id=name(child);children.put(i+":"+id,appearance(child));}value.put("children",children);}
+        return value;
+    }
+    private static void workspaceItem(org.json.JSONArray rows,String id,View view)throws org.json.JSONException{
+        boolean visible=view!=null&&view.isShown();for(View v=view;visible&&v!=null;v=v.getParent() instanceof View?(View)v.getParent():null)visible=v.getAlpha()>0&&v.getTransitionAlpha()>0;
+        rows.put(new org.json.JSONObject().put("id",id).put("state",visible?"visible":"hidden"));
+    }
     private static final String ROOT = "com.android.systemui.statusbar.phone.PhoneStatusBarView";
     private static final String KEYGUARD = "com.android.systemui.statusbar.phone.KeyguardStatusBarView";
     static boolean isBarRoot(View view) {
@@ -63,9 +101,9 @@ final class StatusBarGridHook {
     }
     static boolean ownsIconLayout(View view) {
         State state=stateFor(view);
-        return state!=null&&state.active&&!state.packingSuspended&&!state.positionOnly();
+        return state!=null&&state.active&&state.editPolicy.full&&!state.packingSuspended&&!state.positionOnly();
     }
-    static boolean configuredIconLayout(View view){State state=stateFor(view);return state!=null&&state.active&&!state.positionOnly();}
+    static boolean configuredIconLayout(View view){State state=stateFor(view);return state!=null&&state.active&&state.editPolicy.full&&!state.positionOnly();}
     static void invalidateLayout(View view){State state=stateFor(view);if(state!=null)state.layoutDirty=true;}
     static boolean ownsConnectivityReplacement(View view){State state=stateFor(view);return state!=null&&state.active&&!state.packingSuspended&&state.connectivityPlaced();}
     private static State stateFor(View view) {
@@ -106,7 +144,7 @@ final class StatusBarGridHook {
                 current=current.getParent() instanceof View?(View)current.getParent():null){
             if(!isBarRoot(current))continue;
             State state=STATES.get(current);
-            return state!=null&&state.active&&!state.packingSuspended&&!isKeyguard(current)&&!state.positionOnly()
+            return state!=null&&state.active&&state.editPolicy.full&&!state.packingSuspended&&!isKeyguard(current)&&!state.positionOnly()
                     &&FeatureSettings.enabled(state.context,FeatureSettings.SYSTEMUI_MASTER)
                     &&(!customClock||FeatureSettings.enabled(state.context,FeatureSettings.STATUSBAR_CLOCK_CUSTOM));
         }
@@ -374,6 +412,9 @@ final class StatusBarGridHook {
         String trialClockCapacity;
         String packingIssue="";
         StatusBarGridSpec spec=StatusBarGridSpec.defaults(); int nativeHeight=Integer.MIN_VALUE;
+        String workspaceRows="0";
+        StatusBarEditPolicy editPolicy=StatusBarEditPolicy.partial();
+        StatusBarWorkspaceSpec iconPositions=StatusBarWorkspaceSpec.empty();
         long previousRx=-1,previousTx=-1,previousTime,lastWitness,layoutFrames,positionWrites;
         String lastRaw="",lastConfig="",lastLayoutConfig="",lastStructureConfig="";
         State(ViewGroup root){this.root=root;context=root.getContext();}
@@ -546,6 +587,11 @@ final class StatusBarGridHook {
             boolean enabled=ConfigSchema.truthy(snapshot.get(ConfigSchema.SYSTEMUI_MASTER));
             String raw=snapshot.get(ConfigSchema.STATUSBAR_GRID);
             StatusBarGridSpec parsed=StatusBarGridSpec.parse(raw);if(parsed==null)return;
+            editPolicy=StatusBarEditPolicy.resolve(snapshot::get);parsed=editPolicy.grid(raw);
+            workspaceRows=editPolicy.effective(StatusBarWorkspaceSpec.ROWS,snapshot.get(StatusBarWorkspaceSpec.ROWS));
+            parsed=StatusBarWorkspaceSpec.effectiveGrid(parsed,workspaceRows);
+            StatusBarWorkspaceSpec positions=StatusBarWorkspaceSpec.parse(snapshot.get(StatusBarWorkspaceSpec.ICONS));
+            iconPositions=positions==null?StatusBarWorkspaceSpec.empty():positions;
             StringBuilder config=new StringBuilder().append(enabled);
             StringBuilder layoutConfig=new StringBuilder().append(enabled);
             StringBuilder structureConfig=new StringBuilder().append(enabled);
@@ -609,7 +655,7 @@ final class StatusBarGridHook {
                 FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"0");
                 FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAYOUT_STATE,"grid_v2;restored_native=1");
                 root.requestLayout(); return;}
-            applyHeight(Integer.parseInt(snapshot.get(ConfigSchema.STATUSBAR_HEIGHT_DP)));
+            if(editPolicy.full||!"0".equals(snapshot.get(ConfigSchema.STATUSBAR_HEIGHT_DP)))applyHeight(Integer.parseInt(snapshot.get(ConfigSchema.STATUSBAR_HEIGHT_DP)));
             SystemUiHook.refreshGridClock(root); startMetrics();root.requestLayout();root.invalidate();
         }
 
@@ -650,6 +696,7 @@ final class StatusBarGridHook {
                 || !FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_NOTIFICATION_HIDE));}
         void layout(){if(!active||applying||root.getWidth()==0||root.getHeight()==0)return;applying=true;
             try {
+                if(!editPolicy.full){layoutSelective();return;}
                 if(holdRejectedCapacity())return;
                 applyHeight(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP));
                 layoutFrames++;
@@ -726,10 +773,12 @@ final class StatusBarGridHook {
                 WindowInsets insets=root.getRootWindowInsets();
                 if(insets!=null&&insets.getDisplayCutout()!=null){int[] rp=new int[2];root.getLocationOnScreen(rp);
                     for(Rect r:insets.getDisplayCutout().getBoundingRects())if(r.top<rp[1]+root.getHeight()&&r.bottom>rp[1]){cutLeft=r.left-rp[0]-px(2);cutRight=r.right-rp[0]+px(2);}}
-                float insetLeft=px(4+FeatureSettings.integer(context,ConfigSchema.STATUSBAR_LEFT_MARGIN_DP,0,0,40)),
-                        insetRight=px(4+FeatureSettings.integer(context,ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP,0,0,40)),
-                        insetTop=px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_TOP_MARGIN_DP,0,0,12)),
-                        insetBottom=px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP,0,0,12)),
+                StatusBarNativeGeometry nativeBox=StatusBarNativeGeometry.read(root);
+                if(nativeBox==null){suspendPacking("未取得原厂状态栏内容边界，保留原厂排列");return;}
+                float insetLeft=margin(nativeBox.left,ConfigSchema.STATUSBAR_LEFT_MARGIN_DP),
+                        insetRight=margin(nativeBox.right,ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP),
+                        insetTop=margin(nativeBox.top,ConfigSchema.STATUSBAR_TOP_MARGIN_DP),
+                        insetBottom=margin(nativeBox.bottom,ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP),
                         rowGap=px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,64));
                 if(carrier instanceof TextView&&CarrierTextHook.ownsLockText(carrier)){
                     StatusBarGridLayout.Node carrierNode=null;for(StatusBarGridLayout.Node node:nodes)if(node.id.equals("clock.carrier")){carrierNode=node;break;}
@@ -748,6 +797,7 @@ final class StatusBarGridHook {
                         nodes.remove(carrierNode);addIndependentCarrier(nodes,views,text,spec.get("clock"),-11,width+text.getTotalPaddingLeft()+text.getTotalPaddingRight());
                     }
                 }
+                if(!iconPositions.ids().isEmpty())nodes.sort(java.util.Comparator.comparingInt((StatusBarGridLayout.Node node)->node.order).thenComparing(node->StatusBarWorkspaceSpec.stableOrderKey(node.id)));
                 if(!wifiAssetBudgets(nodes,insetLeft,insetRight,insetTop,insetBottom,rowGap,cutLeft,cutRight)){
                     suspendPacking("Wi-Fi 素材与所设边距超过当前完整排列空间，保留原厂显示");return;
                 }
@@ -837,6 +887,149 @@ final class StatusBarGridHook {
                     FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_notifications_visibility_state",notificationVisibility.toString());}
             }catch(Throwable e){failLayout(e);}
             finally{applying=false;}
+        }
+        /** Native layout is the baseline; only explicitly owned fields enter this pass. */
+        final class SelectiveUnit {
+            final String id,component;final View view;StatusBarGridLayout.Box box;float width,height;
+            String zone;int order;boolean changed,relocate;
+            SelectiveUnit(String id,String component,View view,StatusBarGridLayout.Box box,float width,float height,String zone,int order,boolean changed,boolean relocate){this.id=id;this.component=component;this.view=view;this.box=box;this.width=width;this.height=height;this.zone=zone;this.order=order;this.changed=changed;this.relocate=relocate;}
+            StatusBarSelectiveLayout.Item item(){return new StatusBarSelectiveLayout.Item(id,zone,box,width,height,changed,relocate,order);}
+        }
+        StatusBarGridLayout.Box nativeBox(View view){
+            if(view==null||!visibleInRoot(view)||view.getAlpha()<=0||view.getWidth()<=0||view.getHeight()<=0)return null;
+            Rect ink=iconBounds(view);if(ink.isEmpty())return null;contentBounds.put(view,ink);
+            android.graphics.RectF box=new android.graphics.RectF(ink);
+            for(View child=view;child!=root;){child.getMatrix().mapRect(box);
+                if(!(child.getParent() instanceof View))return null;View parent=(View)child.getParent();
+                box.offset(child.getLeft()-parent.getScrollX(),child.getTop()-parent.getScrollY());child=parent;}
+            return new StatusBarGridLayout.Box(box.left,box.top,box.width(),box.height(),1);
+        }
+        void selectiveNative(List<SelectiveUnit> units,List<View> hidden,String id,String component,View view){
+            StatusBarGridLayout.Box box=nativeBox(view);if(box==null)return;
+            StatusBarGridSpec.Item group=spec.get(component);boolean independent=!id.equals(component);
+            StatusBarGridSpec.Item custom=independent?iconPositions.get(id):null;
+            boolean size=editPolicy.owns(component,"size")||editPolicy.owns(id,"size");
+            boolean zone=editPolicy.owns(component,"zone")||editPolicy.owns(id,"zone");
+            boolean order=editPolicy.owns(component,"order")||editPolicy.owns(id,"order");
+            if(editPolicy.owns(component,"visible")&&!group.visible){hidden.add(view);return;}
+            if(component.equals("notifications")&&!showItem(component)){hidden.add(view);return;}
+            String targetZone=zone?(custom!=null&&editPolicy.owns(id,"zone")?custom.zone:group.zone):(box.x+box.width/2<root.getWidth()/2?"LS":"RS");
+            targetZone=StatusBarWorkspaceSpec.effectiveItem(new StatusBarGridSpec.Item(targetZone,0,0,true),workspaceRows).zone;
+            int targetSize=custom!=null&&editPolicy.owns(id,"size")?custom.size:group.size;
+            float h=size&&targetSize>0?desiredIconHeight(view,px(targetSize)):box.height;
+            float w=box.width*h/Math.max(1,box.height);
+            int rank=custom!=null&&editPolicy.owns(id,"order")?custom.order:group.order;
+            units.add(new SelectiveUnit(id,component,view,box,w,h,targetZone,rank,size||zone||order,zone));
+        }
+        void selectiveGroup(List<SelectiveUnit> units,List<View> hidden,String id,View parent){
+            if(!(parent instanceof ViewGroup)||nativeBox(parent)==null)return;
+            boolean individual=id.equals("system_icons")&&(!iconPositions.ids().isEmpty()||itemEnabled("network")||connectivityGroup());
+            if(!individual&&!editPolicy.owns(id,"size")&&!editPolicy.owns(id,"rows")){
+                selectiveNative(units,hidden,id,id,parent);return;
+            }
+            ViewGroup group=(ViewGroup)parent;int index=0;
+            for(int i=0;i<group.getChildCount();i++){View child=group.getChildAt(i);
+                if(id.equals("system_icons")&&group.getClass().getSimpleName().equals("StatusIconContainer")&&!StatusBarIconLayoutHook.eligible(group,child))continue;
+                if(RedMagicSystemUiHook.isCollapsedSignal(child)||StatusBarAssetsHook.hiddenByPolicy(child))continue;
+                String semantic=id.equals("system_icons")?StatusBarIconLayoutHook.semanticId(child):"notifications_"+index++;
+                if(semantic==null||semantic.isEmpty())semantic=id+"_"+i;
+                selectiveNative(units,hidden,semantic,id,child);
+            }
+            if(editPolicy.owns(id,"rows")&&two(id)){
+                List<SelectiveUnit> members=new ArrayList<>();for(SelectiveUnit u:units)if(u.component.equals(id))members.add(u);
+                members.sort(Comparator.comparingDouble(u->u.box.x));
+                StatusBarGridLayout.Box original=nativeBox(parent);if(original==null)return;
+                float column=0;for(int i=0;i<members.size();i+=2)column+=Math.max(members.get(i).width,i+1<members.size()?members.get(i+1).width:0);
+                float start=original.x+original.width/2<root.getWidth()/2?original.x:original.x+original.width-column;
+                for(int i=0;i<members.size();i+=2){float cell=0;for(int row=0;row<2&&i+row<members.size();row++){
+                    SelectiveUnit u=members.get(i+row);float y=original.y+original.height/2+(row==0?-1:1)*(u.height+px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,64)))/2-u.height/2;
+                    u.box=new StatusBarGridLayout.Box(start,y,u.width,u.height,1);u.zone=u.zone.substring(0,1)+(row+1);u.changed=true;u.relocate=false;cell=Math.max(cell,u.width);
+                }start+=cell;}
+            }
+        }
+        void selectiveReorder(List<SelectiveUnit> units){
+            // An icon-order edit moves its siblings only as needed to change that
+            // row's order; it does not repack the clock, battery or notifications.
+            for(String component:new String[]{"clock","notifications","system_icons","battery"}){
+                List<SelectiveUnit> members=new ArrayList<>();boolean requested=false;
+                for(SelectiveUnit u:units)if(u.component.equals(component)&&u.box!=null&&!u.relocate){members.add(u);requested|=editPolicy.owns(u.id,"order");}
+                if(!requested||members.size()<2)continue;
+                List<StatusBarSelectiveLayout.Item> items=new ArrayList<>();for(SelectiveUnit u:members)items.add(u.item());
+                Map<String,StatusBarGridLayout.Box> boxes=StatusBarSelectiveLayout.reorder(items,members.get(0).zone.startsWith("R"));
+                for(SelectiveUnit u:members){u.box=boxes.get(u.id);u.changed=true;}
+            }
+            // Component order uses the native component rectangles as intact
+            // blocks. Their internal sizes and spacing are not rewritten.
+            for(char side:new char[]{'L','R'}){
+                List<SelectiveUnit> members=new ArrayList<>();boolean requested=false;
+                for(SelectiveUnit u:units)if(u.id.equals(u.component)&&u.box!=null&&!u.relocate&&u.zone.charAt(0)==side){members.add(u);requested|=editPolicy.owns(u.id,"order");}
+                if(!requested||members.size()<2)continue;
+                List<StatusBarSelectiveLayout.Item> items=new ArrayList<>();for(SelectiveUnit u:members)items.add(u.item());
+                Map<String,StatusBarGridLayout.Box> boxes=StatusBarSelectiveLayout.reorder(items,side=='R');
+                for(SelectiveUnit u:members){u.box=boxes.get(u.id);u.changed=true;}
+            }
+        }
+        void layoutSelective(){
+            for(Map.Entry<View,Geometry> entry:geometry.entrySet())if(isDescendant(entry.getKey(),root))entry.getValue().observe(entry.getKey());
+            restorePlacement();contentBounds.clear();groups.clear();iconHeights.clear();nodeInsets.clear();circleTrial=false;circleNative.clear();
+            List<SelectiveUnit> units=new ArrayList<>();List<View> hidden=new ArrayList<>();
+            View clock=keyguardClock!=null?keyguardClock:findView(root,"clock","status_bar_clock"),notifications=findClass(root,"NotificationIconContainer"),systems=findClass(root,"StatusIconContainer"),battery=findView(root,"battery","battery_view");
+            if(systems==null)systems=findView(root,"statusIcons","status_icons");alphaAnchor=battery!=null?battery:systems;
+            float alpha=overlayAlpha(root,alphaAnchor);if(overlay!=null)overlay.setAlpha(alpha);
+            selectiveNative(units,hidden,"clock","clock",clock);
+            selectiveGroup(units,hidden,"notifications",notifications);selectiveGroup(units,hidden,"system_icons",systems);
+            selectiveNative(units,hidden,"battery","battery",battery);
+            for(String id:new String[]{"operator_name_frame","ongoing_activity_chip_primary","ongoing_activity_chip_secondary","ongoing_call_chip","heads_up_status_bar_view","ll_notification_icon_join","user_switcher_container","keyguard_carrier_text","red_magic_function_icon_container"}){
+                View view=findView(root,id);if(view==null||view==clock||isDescendant(view,systems)||isDescendant(view,notifications))continue;
+                boolean nested=false;for(SelectiveUnit unit:units)if(isDescendant(view,unit.view)){nested=true;break;}if(nested)continue;
+                StatusBarGridLayout.Box box=nativeBox(view);if(box!=null)units.add(new SelectiveUnit("native_"+id,"",view,box,box.width,box.height,box.x+box.width/2<root.getWidth()/2?"LS":"RS",0,false,false));
+            }
+            selectiveReorder(units);
+            if(connectivityGroup()){
+                if(connectivityIcon==null){connectivityIcon=new ConnectivityIconView(context);root.addView(connectivityIcon,new ViewGroup.LayoutParams(px(26),px(26)));connectivityIcon.onInvalidated(()->{layoutDirty=true;root.requestLayout();root.invalidate();});}
+                connectivityIcon.setAlpha(0);
+                if(connectivityIcon.ready()&&connectivityIcon.prepare(px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE,26,18,40)),root.getWidth(),root.getHeight())){
+                    circleTrial=true;
+                    // Split an intact system block before reserving the replacement;
+                    // unrelated Bluetooth/alarm/etc. remain at their OEM positions.
+                    boolean block=units.removeIf(u->u.id.equals("system_icons"));
+                    if(block&&systems instanceof ViewGroup){ViewGroup group=(ViewGroup)systems;for(int i=0;i<group.getChildCount();i++){View child=group.getChildAt(i);if(StatusBarIconLayoutHook.eligible(group,child))selectiveNative(units,hidden,StatusBarIconLayoutHook.semanticId(child),"system_icons",child);}}
+                    StatusBarGridLayout.Box anchor=nativeBox(battery);
+                    for(Iterator<SelectiveUnit> it=units.iterator();it.hasNext();){SelectiveUnit u=it.next();if(u.component.equals("battery")||isConnectivity(u.view)){circleNative.add(u.view);it.remove();}}
+                    List<StatusBarGridLayout.Node> nodes=new ArrayList<>();Map<String,View> views=new LinkedHashMap<>();addConnectivity(nodes,views,battery);
+                    for(StatusBarGridLayout.Node node:nodes){SelectiveUnit u=new SelectiveUnit(node.id,"battery",connectivityIcon,anchor,node.width,node.height,node.zone,node.order,true,editPolicy.owns("battery","zone")||anchor==null);units.add(u);}
+                }
+            }
+            List<StatusBarGridLayout.Node> added=new ArrayList<>();Map<String,View> addedViews=new LinkedHashMap<>();
+            if(splitClock()&&clock instanceof TextView){StatusBarGridLayout.Box anchor=nativeBox(clock);units.removeIf(u->u.component.equals("clock"));addClockRows(added,addedViews,clock);
+                float gap=px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,64));
+                for(StatusBarGridLayout.Node node:added){float y=anchor==null?0:anchor.y+anchor.height/2+(node.id.endsWith("#0")?-node.height-gap/2:gap/2);StatusBarGridLayout.Box b=anchor==null?null:new StatusBarGridLayout.Box(anchor.x,y,node.width,node.height,1);
+                    units.add(new SelectiveUnit(node.id,"clock",addedViews.get(node.id),b,node.width,node.height,node.zone,node.order,true,anchor==null||editPolicy.owns("clock","zone")));}added.clear();addedViews.clear();}
+            if(keyguardClock!=null&&!splitClock()){units.removeIf(u->u.component.equals("clock"));add(added,addedViews,"clock",keyguardClock);}
+            for(Map.Entry<String,TextView> entry:metrics.entrySet()){if(clock instanceof TextView)entry.getValue().setTextColor(((TextView)clock).getTextColors());add(added,addedViews,entry.getKey(),entry.getValue());}
+            for(StatusBarGridLayout.Node node:added)units.add(new SelectiveUnit(node.id,baseId(node.id),addedViews.get(node.id),null,node.width,node.height,node.zone,node.order,true,true));
+            if(keyguardClock!=null){View carrier=findView(root,"keyguard_carrier_text");if(carrier!=null&&replaceKeyguardCarrier()){units.removeIf(u->u.view==carrier);hidden.add(carrier);}}
+            if(itemEnabled("network")){for(Iterator<SelectiveUnit> it=units.iterator();it.hasNext();){SelectiveUnit u=it.next();if(isNativeNetwork(u.view)){hidden.add(u.view);it.remove();}}}
+            StatusBarNativeGeometry nativeArea=StatusBarNativeGeometry.read(root);float left=0,top=0,right=0,bottom=0;
+            int dl=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_LEFT_MARGIN_DP,0,-64,64),dr=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP,0,-64,64),dt=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_TOP_MARGIN_DP,0,-64,64),db=FeatureSettings.integer(context,ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP,0,-64,64);
+            if(nativeArea!=null){left=margin(nativeArea.left,ConfigSchema.STATUSBAR_LEFT_MARGIN_DP);right=margin(nativeArea.right,ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP);top=margin(nativeArea.top,ConfigSchema.STATUSBAR_TOP_MARGIN_DP);bottom=margin(nativeArea.bottom,ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP);}
+            if((dl!=0||dr!=0||dt!=0||db!=0)&&nativeArea==null){suspendPacking("未取得原厂状态栏内容边界，保留原厂排列");return;}
+            List<StatusBarSelectiveLayout.Item> planned=new ArrayList<>();
+            for(SelectiveUnit u:units){if(u.box!=null&&!u.relocate&&(dl!=0||dr!=0||dt!=0||db!=0)){
+                    float dx=u.box.x+u.box.width/2<root.getWidth()/2?px(dl):-px(dr),dy=px(dt-db)/2f;
+                    u.box=new StatusBarGridLayout.Box(u.box.x+dx,u.box.y+dy,u.box.width,u.box.height,1);u.changed=true;}
+                planned.add(u.item());}
+            float cutLeft=0,cutRight=0;WindowInsets insets=root.getRootWindowInsets();
+            if(insets!=null&&insets.getDisplayCutout()!=null){int[] location=new int[2];root.getLocationOnScreen(location);for(Rect cut:insets.getDisplayCutout().getBoundingRects())if(cut.top<location[1]+root.getHeight()&&cut.bottom>location[1]){cutLeft=cut.left-location[0];cutRight=cut.right-location[0];}}
+            StatusBarSelectiveLayout.Result result=StatusBarSelectiveLayout.place(planned,root.getWidth(),root.getHeight(),left,top,right,bottom,cutLeft,cutRight,px(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,0,-8,64)));
+            if(!result.valid){suspendPacking(result.reason);return;}
+            for(SelectiveUnit u:units){StatusBarGridLayout.Box box=result.boxes.get(u.id);if(box!=null)place(u.id,u.view,box);}
+            for(View view:hidden){Geometry g=own(view);view.setAlpha(0);g.mark(view);}
+            commitCircle(alpha);publishCirclePlacement(alpha);resumePacking();StatusBarTintHook.refreshDirty(root);
+            if(lastWitness==0||SystemClock.elapsedRealtime()-lastWitness>5000){lastWitness=SystemClock.elapsedRealtime();String surface=isKeyguard(root)?"keyguard":"phone";
+                String evidence="native_selective;surface="+surface+";changed="+result.boxes.size()+";hidden="+hidden.size()+";policy="+editPolicy.serialize()+";carrier_replaced="+replaceKeyguardCarrier();
+                FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_layout_state",evidence);FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_LAYOUT_STATE,evidence);
+                FeatureSettings.diagnostic(context,"ls_augment_statusbar_"+surface+"_last_error","");FeatureSettings.diagnostic(context,FeatureSettings.SYSTEMUI_ACTIVE,"1");}
         }
         void failLayout(Throwable error){
             // Remove replacement content before restoring native alpha/transforms. Restoring
@@ -955,7 +1148,7 @@ final class StatusBarGridHook {
         }
         void add(List<StatusBarGridLayout.Node> nodes,Map<String,View> views,String id,View view){
             StatusBarGridSpec.Item item=spec.get(baseId(id));if(view==null||item==null||!visibleInRoot(view))return;
-            if(id.equals("battery")&&!positionOnly()&&!connectivityGroup()
+            if(id.equals("battery")&&workspaceRows.equals("0")&&!positionOnly()&&!connectivityGroup()
                     &&!FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_NATIVE_BATTERY_ENABLED,true))item=StatusBarGridSpec.DEFAULT_BATTERY;
             Geometry state=own(view);if(!positionOnly()&&!item.visible){view.setAlpha(0);state.mark(view);return;}view.setAlpha(state.alpha);
             if(view instanceof TextView&&(metrics.containsKey(id)||baseId(id).equals("clock"))){
@@ -1098,6 +1291,21 @@ final class StatusBarGridHook {
                 Rect ink=iconBounds(child);if(ink.isEmpty())continue;contentBounds.put(child,ink);n++;
                 if(!showItem(id)||(max>0&&n>max)){child.setAlpha(0);g.mark(child);continue;}
                 float height=desiredIconHeight(child,size);iconHeights.put(child,height);
+                String semantic=StatusBarIconLayoutHook.semanticId(child);
+                StatusBarGridSpec.Item custom=id.equals("system_icons")?iconPositions.get(semantic):null;
+                if(custom!=null){
+                    custom=StatusBarWorkspaceSpec.effectiveItem(custom,workspaceRows);
+                    float customSize=px(custom.size);
+                    if(wifiReference>0)StatusBarWifiAssetSpacingHook.prepareGrid(child,custom.size==0?1:customSize/wifiReference);
+                    if(signalReference>0)RedMagicSystemUiHook.prepareStackedGrid(child,custom.size==0?1:customSize/signalReference);
+                    ink=iconBounds(child);if(ink.isEmpty())continue;contentBounds.put(child,ink);
+                    height=desiredIconHeight(child,customSize);iconHeights.put(child,height);
+                    if(addStackedSignalNode(nodes,views,id,custom,child,n,height))continue;
+                    ls.augment.com.StatusBarIconSpacingSpec.Insets edge=StatusBarIconLayoutHook.insets(child);
+                    String part="system_icons@"+semantic+"@"+n;
+                    nodes.add(new StatusBarGridLayout.Node(part,custom.zone,custom.order*100,ink.width()*height/ink.height()+spacingPx(edge.horizontal()),height+spacingPx(edge.vertical())));
+                    views.put(part,group);groups.put(part,java.util.Collections.singletonList(child));continue;
+                }
                 if(addStackedSignalNode(nodes,views,id,item,child,n,height))continue;
                 children.add(child);
             }
@@ -1455,7 +1663,9 @@ final class StatusBarGridHook {
                 explicitClips.release(p);
                 if(!clips.containsKey(p))clips.put(p,new boolean[]{p.getClipChildren(),p.getClipToPadding()});p.setClipChildren(false);p.setClipToPadding(false);if(p==root)break;parent=p.getParent();}
         }
-        void startMetrics(){stopMetrics();if(positionOnly())return;boolean needsClock=isKeyguard(root)&&findView(root,"clock","status_bar_clock")==null;
+        float margin(float baseline,String key){return StatusBarMargins.resolve(baseline,FeatureSettings.integer(context,key,0,StatusBarMargins.MIN_DP,StatusBarMargins.MAX_DP),context.getResources().getDisplayMetrics().density);}
+        void startMetrics(){stopMetrics();if(positionOnly())return;boolean needsClock=isKeyguard(root)&&findView(root,"clock","status_bar_clock")==null
+                    &&(editPolicy.full||editPolicy.item("clock")||FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_CLOCK_CUSTOM));
             boolean needed=false;for(int i=4;i<StatusBarGridSpec.IDS.length;i++)if(itemEnabled(StatusBarGridSpec.IDS[i]))needed=true;
             if(!needed&&!needsClock&&!splitClock())return;overlay=new FrameLayout(context);overlay.setClipChildren(false);overlay.setClickable(false);
             overlay.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1503,7 +1713,8 @@ final class StatusBarGridHook {
                     values.put("power",current==null||voltage==null?"P:—":"P:"+metricNumber("power",Math.abs(current.doubleValue()*voltage/1e12))+"W");
                 }
             }
-            if(FeatureSettings.enabled(context,"ls_augment_rm_metrics_custom")) {
+            {
+                boolean custom=FeatureSettings.enabled(context,"ls_augment_rm_metrics_custom");
                 boolean units=FeatureSettings.enabled(context,"ls_augment_rm_metrics_hide_units");
                 boolean chargingOnly=FeatureSettings.enabled(context,"ls_augment_rm_metrics_charging_only");
                 String batteryStatus=chargingOnly&&(needsCurrent||needsPower)?read("/sys/class/power_supply/battery/status"):"";
@@ -1513,7 +1724,7 @@ final class StatusBarGridHook {
                     int colon=value.indexOf(':');String fallback=colon>=0?value.substring(0,colon+1):"";
                     String numeric=colon>=0?value.substring(colon+1):value;
                     if(units)numeric=numeric.replace("mA","").replace("W","").replace("°","");
-                    String prefix=FeatureSettings.text(context,"ls_augment_rm_metric_prefix_"+kind,fallback);
+                    String prefix=custom?FeatureSettings.text(context,"ls_augment_rm_metric_prefix_"+kind,fallback):fallback;
                     values.put(kind,chargingOnly&&!charging&&(kind.equals("current")||kind.equals("power"))?"":prefix+numeric);
                 }
             }

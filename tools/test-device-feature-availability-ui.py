@@ -72,9 +72,9 @@ def constants(source, owner, names):
 
 STUBS = {
     "android/content/Context.java": "package android.content;public class Context {public static final SharedPreferences diagnostics=new SharedPreferences();public SharedPreferences getSharedPreferences(String name,int mode){return diagnostics;}}",
-    "android/content/SharedPreferences.java": "package android.content;public class SharedPreferences {public final java.util.Map<String,String> values=new java.util.HashMap<>();public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}}",
+    "android/content/SharedPreferences.java": "package android.content;public class SharedPreferences {public final java.util.Map<String,String> values=new java.util.HashMap<>();public int getInt(String key,int fallback){return values.containsKey(key)?Integer.parseInt(values.get(key)):fallback;}public String getString(String key,String fallback){return values.getOrDefault(key,fallback);}}",
     "ls/augment/com/FanHardwareIdentity.java": "package ls.augment.com;public class FanHardwareIdentity {public static String current(){return \"firmware-test\";}}",
-    "android/os/Build.java": "package android.os;public class Build {public static String DEVICE,MODEL,PRODUCT;}",
+    "android/os/Build.java": "package android.os;public class Build {public static String DEVICE,MODEL,PRODUCT,FINGERPRINT=\"fixture\";}",
     "android/os/Bundle.java": """package android.os;import java.util.*;
 public class Bundle {
 private final Map<String,Object> values=new LinkedHashMap<>();
@@ -309,6 +309,7 @@ def sources():
         raise RuntimeError("Missing production brightness node")
     files["ls/augment/com/BrightnessProbeHost.java"] = """package ls.augment.com;
 class BrightnessProbeHost {
+int physicalMax,calibratedMin,calibratedMax;final android.content.SharedPreferences calibration=new android.content.SharedPreferences();
 private static final String NODE="@@NODE@@";boolean ready,checked;String error="",driverMaximum="",probeState="";
 void run(){probe();}
 @@PROBE@@
@@ -316,7 +317,7 @@ void run(){probe();}
 class RootShell {static boolean success;static String output,command;
 static class Result {String output=RootShell.output;boolean isSuccess(){return RootShell.success;}}
 static Result run(String value,Object input,int timeout,int maximum){command=value;return new Result();}}
-""".replace("@@NODE@@", node.group(1)).replace("@@PROBE@@", method(brightness, "probe"))
+""".replace("@@NODE@@", node.group(1)).replace("@@PROBE@@", method(brightness, "probe")+"\n"+method(brightness,"calibrationHelp"))
     availability = (SRC / "DeviceFeatureAvailability.java").read_text(encoding="utf-8")
     app_source = (SRC / "AppConfig.java").read_text(encoding="utf-8")
     schema_source = (SRC / "ConfigSchema.java").read_text(encoding="utf-8")

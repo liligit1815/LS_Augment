@@ -29,7 +29,11 @@ final class FullBrightnessHook {
         WeakReference<State> reference = STATES.get(bar); return reference == null ? null : reference.get();
     }
     static String label(SeekBar bar) {
-        State s = state(bar); return s != null && s.expanded ? BrightnessRange.label(s.position) : null;
+        State s = state(bar); return s != null && s.expanded ? calibratedLabel(s.position) : null;
+    }
+    private static String calibratedLabel(int position) {
+        return BrightnessRange.label(position, snapshot.getInt("nativeMaximum", BrightnessRange.NATIVE_MAX),
+                snapshot.getInt("physicalMaximum", BrightnessRange.DRIVER_MAX));
     }
 
     // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
@@ -262,11 +266,11 @@ final class FullBrightnessHook {
         void decorate() {
             SeekBar bar=reference.get();if(bar==null)return;
             if (expanded) {
-                String label=BrightnessRange.label(position);
+                String label=calibratedLabel(position);
                 if(label.equals(decorated) && overlay.getBounds().width()==bar.getWidth() && overlay.getBounds().height()==bar.getHeight())return;
                 decorated=label;bar.setStateDescription(label);
                 if (bar.getContext().getPackageName().equals("com.android.settings")) {
-                    overlay.text=BrightnessRange.label(position);overlay.setBounds(0,0,bar.getWidth(),bar.getHeight());
+                    overlay.text=label;overlay.setBounds(0,0,bar.getWidth(),bar.getHeight());
                     overlay.density=bar.getResources().getDisplayMetrics().density;
                     bar.getOverlay().remove(overlay);bar.getOverlay().add(overlay);overlay.invalidateSelf();
                 }
@@ -294,11 +298,25 @@ final class FullBrightnessHook {
         }
         public void onStartTrackingTouch(SeekBar bar) {
             dragging=true;
+            observe(bar, -1);
             if(original!=null)nativeCall(() -> original.onStartTrackingTouch(bar));
         }
         public void onStopTrackingTouch(SeekBar bar) {
             if(original!=null)nativeCall(() -> original.onStopTrackingTouch(bar));
             dragging=false;if(expanded){queue();MAIN.removeCallbacks(send);send();}
+            else if (nativeMax > nativeMin) {
+                int value = bar.getProgress();
+                observe(bar, value == nativeMin ? 0 : value == nativeMax ? 1 : -1);
+            }
+        }
+        private void observe(SeekBar bar, int endpoint) {
+            if (expanded || !FeatureSettings.enabled(bar.getContext(), BrightnessRange.ENABLED)) return;
+            Context context = bar.getContext().getApplicationContext();
+            IO.execute(() -> {
+                Bundle extras = new Bundle(); extras.putInt("endpoint", endpoint);
+                try { Bundle b = context.getContentResolver().call(URI,"brightness_observe",null,extras); if(b != null) snapshot = b; }
+                catch (RuntimeException ignored) { }
+            });
         }
         public void onViewAttachedToWindow(View v){attach();}
         public void onViewDetachedFromWindow(View v){attached=false;MAIN.removeCallbacks(poll);MAIN.removeCallbacks(send);if(pending>=0)send();FeatureSettings.removeSnapshotListener(config);}

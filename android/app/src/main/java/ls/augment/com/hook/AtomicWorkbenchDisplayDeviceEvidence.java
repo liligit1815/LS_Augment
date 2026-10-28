@@ -37,7 +37,8 @@ final class AtomicWorkbenchDisplayDeviceEvidence {
         localService = field(serviceType, "mDisplayManagerInternal", internalType, true);
         dmsOwner = field(localType, "this$0", dmsType, true);
         syncRoot = field(dmsType, "mSyncRoot", syncType, true);
-        deviceInfo = method(dmsType, "getDisplayDeviceInfoInternal", infoType, false, int.class);
+        deviceInfo = HookCompatibility.inheritedMethod(dmsType, infoType, false,
+                new String[]{"getDisplayDeviceInfoInternal"}, int.class);
         flags = field(infoType, "flags", int.class, false);
         type = field(infoType, "type", int.class, false);
         ownerUid = field(infoType, "ownerUid", int.class, false);

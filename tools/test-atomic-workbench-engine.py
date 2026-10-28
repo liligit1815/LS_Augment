@@ -318,6 +318,13 @@ def task_journal_support(text):
 
 def output_support(sources, production):
     sources, production = dict(sources), list(production)
+    # Resolve shared production dependencies, including mutant source copies.
+    bodies=[(SRC/name).read_text(encoding="utf-8") for name in production]+list(sources.values())
+    for name, token in [("hook/AtomicWorkbenchQuickstepCapabilities.java","AtomicWorkbenchQuickstepCapabilities"),
+                        ("hook/HookCompatibility.java","HookCompatibility")]:
+        if any(token in body for body in bodies) and name not in production and "ls/augment/com/"+name not in sources:
+            production.append(name);bodies.append((SRC/name).read_text(encoding="utf-8"))
+
     if "AtomicWorkbenchEngine.java" in production:
         # Compile the actual new metadata DTOs; old coordinator cases do not
         # execute the reference route or gain a simulated cleanup authority.

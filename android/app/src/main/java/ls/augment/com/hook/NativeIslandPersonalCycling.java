@@ -43,7 +43,7 @@ final class NativeIslandPersonalCycling {
             ActivityInfo receiver = context.getPackageManager().getReceiverInfo(new ComponentName(pkg, "com.zte.toolsdk.producer.ToolsReceiver"), 0);
             if (!receiver.enabled || !receiver.exported || receiver.applicationInfo == null || !receiver.applicationInfo.enabled)
                 return "return_bike_receiver_disabled:" + pkg;
-            if (receiver.permission != null && !receiver.permission.isEmpty() && context.checkSelfPermission(receiver.permission) != 0)
+            if (receiver.permission != null && !receiver.permission.isEmpty() && context.checkSelfPermission(receiver.permission) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 return "return_bike_receiver_permission:" + receiver.permission;
             return "";
         } catch (Exception unavailable) { return "return_bike_tool_unavailable:" + unavailable; }

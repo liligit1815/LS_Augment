@@ -24,7 +24,7 @@ public final class StatusBarIconSpacingSpec {
     public static StatusBarIconSpacingSpec empty(){return new StatusBarIconSpacingSpec(Collections.emptyMap());}
     public static boolean supported(String id){
         // The dot has a bounded controller adapter; it is never an ordinary margin child.
-        if("notifications".equals(id)||"privacy.dot".equals(id))return true;
+        if("system_icons".equals(id)||"notifications".equals(id)||"privacy.dot".equals(id))return true;
         StatusBarIconCatalog.Icon icon=StatusBarIconCatalog.find(id);
         // These are actual ImageViews in NX809J's currently bound Modern layouts.
         // Painted layers, the active-data-SIM alias and unbound alternate layouts
@@ -50,7 +50,10 @@ public final class StatusBarIconSpacingSpec {
         return new StatusBarIconSpacingSpec(rules);
     }
     public Insets explicit(String surface,String id){return rules.get(surface+","+id);}
-    public Insets resolve(String surface,String id){Insets exact=explicit(surface,id);if(exact!=null)return exact;Insets common=explicit("all",id);return common==null?ZERO:common;}
+    public Insets resolve(String surface,String id){Insets exact=explicit(surface,id);if(exact!=null)return exact;Insets common=explicit("all",id);if(common!=null)return common;
+        if(id!=null&&!id.contains(".")&&!Arrays.asList("clock","battery","notifications","connectivity").contains(id)&&StatusBarIconCatalog.find(id)!=null){
+            Insets defaults=explicit(surface,"system_icons");if(defaults==null)defaults=explicit("all","system_icons");if(defaults!=null)return defaults;
+        }return ZERO;}
     public StatusBarIconSpacingSpec with(String surface,String id,Insets value){
         if(!StatusBarSurfaceSpec.validScope(surface)||!supported(id))throw new IllegalArgumentException("此对象没有独立图标边界");
         Map<String,Insets> next=new TreeMap<>(rules);String key=surface+","+id;
@@ -58,5 +61,6 @@ public final class StatusBarIconSpacingSpec {
         if(next.size()>256)throw new IllegalArgumentException("图标规则过多");return new StatusBarIconSpacingSpec(next);
     }
     public boolean isEmpty(){return rules.isEmpty();}
+    public Set<String> ids(){Set<String> ids=new LinkedHashSet<>();for(String rule:rules.keySet())ids.add(rule.substring(rule.indexOf(',')+1));return Collections.unmodifiableSet(ids);}
     public String serialize(){if(rules.isEmpty())return "";StringBuilder out=new StringBuilder("IS1");for(Map.Entry<String,Insets> rule:rules.entrySet()){Insets v=rule.getValue();out.append(';').append(rule.getKey()).append(',').append(v.start).append(',').append(v.top).append(',').append(v.end).append(',').append(v.bottom);}return out.toString();}
 }

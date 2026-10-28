@@ -50,7 +50,7 @@ STUBS = {
 final class MonitorTelemetry {MonitorTelemetry(ViewGroup content){for(int i=0;i<4;i++){View cell=new View(content.getContext());cell.layoutParams=new ViewGroup.LayoutParams(76,40);cell.setVisibility(View.GONE);content.addView(cell);}} void configure(boolean on,String selection){}void dispose(){}}""",
     "android/content/Context.java": "package android.content;public class Context {public android.content.res.Resources getResources(){return new android.content.res.Resources();}}",
     "android/content/res/Resources.java": "package android.content.res;public class Resources {public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}",
-    "android/util/DisplayMetrics.java": "package android.util;public class DisplayMetrics {public static int width=10000;public int widthPixels=width;}",
+    "android/util/DisplayMetrics.java": "package android.util;public class DisplayMetrics {public static int width=10000;public int widthPixels=width;public float density=1,scaledDensity=1;}",
     "android/view/View.java": """package android.view;import android.content.Context;
 public class View {
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8;public final Context context;
@@ -103,12 +103,12 @@ public interface XposedInterface {interface Chain {Object getThisObject();Object
 import android.content.Context;import java.util.*;import ls.augment.com.*;
 public class FeatureSettings {
  public static boolean on;public static String selection=GamePerformanceMonitorConfig.DEFAULT_ITEMS;
- public static int transparency=50;public static final List<Runnable> listeners=new ArrayList<>();
+ public static int transparency=50,margin=0;public static final List<Runnable> listeners=new ArrayList<>();
  public static final List<String> diagnostics=new ArrayList<>();public static final List<Throwable> errors=new ArrayList<>();
- public static void reset(){on=false;selection=GamePerformanceMonitorConfig.DEFAULT_ITEMS;transparency=50;
+ public static void reset(){on=false;selection=GamePerformanceMonitorConfig.DEFAULT_ITEMS;transparency=50;margin=0;
   listeners.clear();diagnostics.clear();errors.clear();}
  public static boolean enabled(Context c,String key,boolean fallback){return on;}
- public static int integer(Context c,String key,int fallback,int min,int max){return transparency;}
+ public static int integer(Context c,String key,int fallback,int min,int max){return key.equals(GameOptions.MONITOR_MARGIN)?margin:transparency;}
  public static String text(Context c,String key,String fallback){return selection;}
  public static boolean addSnapshotListener(Context c,Runnable r){listeners.add(r);return true;}
  public static void fire(){for(Runnable r:new ArrayList<>(listeners))r.run();}
@@ -434,7 +434,23 @@ public class TestMonitorRuntime {
    for(int i=0;i<5;i++)eq(PerformanceMonitorFloatingWindow.CELL_WIDTHS[i],o.content().getChildAt(i).getLayoutParams().width,"native cell width restored");
    android.util.DisplayMetrics.width=10000;healthy();
  }
+ static void itemSpacing()throws Throwable {
+  PerformanceMonitorFloatingWindow o=fixture(31,true);int nativeWidth=o.fullWidth();
+  for(int margin:new int[]{-10,0,13}){
+   FeatureSettings.margin=margin;FeatureSettings.fire();o.layout();eq(nativeWidth+4*margin,o.fullWidth(),"spacing changes actual window width");
+   for(int i=0;i<5;i++)eq(PerformanceMonitorFloatingWindow.leftMargin(i)+(i==0?0:margin),((ViewGroup.MarginLayoutParams)o.content().getChildAt(i).getLayoutParams()).leftMargin,"native margin plus spacing");
+   o.call(DIM);eq(nativeWidth+4*margin,o.fullWidth(),"native resizing never recaptures custom margins");
+  }
+  FeatureSettings.margin=-32767;FeatureSettings.fire();o.layout();
+  int previous=-1;for(int i=0;i<5;i++){check(o.content().getChildAt(i).getLeft()>previous,"negative limit preserves cell order");previous=o.content().getChildAt(i).getLeft();}
+  FeatureSettings.margin=32767;FeatureSettings.fire();o.layout();check(o.fullWidth()<=10000,"positive bound fits actual screen");
+  FeatureSettings.selection="time";FeatureSettings.fire();eq(expectedWidth(1),o.fullWidth(),"single item ignores spacing");
+  FeatureSettings.on=false;FeatureSettings.fire();eq(nativeWidth,o.fullWidth(),"disable restores full width after nonzero spacing");
+  for(int i=0;i<5;i++)eq(PerformanceMonitorFloatingWindow.leftMargin(i),((ViewGroup.MarginLayoutParams)o.content().getChildAt(i).getLayoutParams()).leftMargin,"disable restores native margins");
+  FeatureSettings.margin=0;healthy();
+ }
  public static void main(String[] args)throws Throwable {
+  itemSpacing();
   sensorSelections();disabledPassthrough();allSelectionsAndLiveUpdates();alphaAndFade();collapseExpandAndRemoval();singleItem();
    disableRestores(false);disableRestores(true);originalVisibilityAndInitRebuild();
    delayedNativeSizing();delayedCellSizing();tooSmallNativeSizing();nativeWidthUpdates();shortWidthReadiness();disabledNativeSizeUpdate();
@@ -445,7 +461,7 @@ public class TestMonitorRuntime {
 
 
 def oem_source(variant):
-    positive = variant in ("16", "17", "both", "fallback16")
+    positive = variant in ("16", "17", "both", "fallback16", "compact")
     active = 16 if variant in ("16", "fallback16") else 17
     routes = (16, 17) if variant in ("both", "fallback16", "mixed") else (active,)
     if variant == "incomplete16":
@@ -453,6 +469,7 @@ def oem_source(variant):
     declarations = []
     names = {}
     for i, (key, kind, modern, legacy) in enumerate(FIELDS):
+        if variant == "compact":modern={"j":"d","m":"g","n":"h","o":"i","J":"D","L":"F","R":"L","v":"p","U":"O","V":"P","h":"b","k":"e","w":"q","S":"M"}[modern]
         names[key] = legacy if active == 16 else modern
         for route in routes:
             name = legacy if route == 16 else modern
@@ -506,7 +523,7 @@ public class TestMonitorRuntime {public static void main(String[] args){
  if(!FeatureSettings.listeners.isEmpty())throw new AssertionError("invalid contract created runtime listener");
  System.out.println("PASS @@VARIANT@@ rejected with zero hooks");}}
 """.replace("@@VARIANT@@", variant)
-    result = HARNESS.replace("@@VARIANT@@", variant).replace("@@ROUTE@@", f"GameAssist{active}")
+    result = HARNESS.replace("@@VARIANT@@", variant).replace("@@ROUTE@@", "compact-fields" if variant == "compact" else f"GameAssist{active}")
     for key, name in names.items():
         result = result.replace(f"@@{key}@@", name)
     return result
@@ -516,7 +533,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jdk", help="JDK bin directory (or JDK installation directory)")
     parser.add_argument("--hook-source", type=Path, help="Alternative Hook source for a temporary regression control")
-    parser.add_argument("--variant", nargs="+", choices=("16", "17", "both", "fallback16", "incomplete16", "incomplete17", "mixed"),
+    parser.add_argument("--variant", nargs="+", choices=("16", "17", "compact", "both", "fallback16", "incomplete16", "incomplete17", "mixed"),
                         help="Run selected variants; defaults to the complete contract/lifecycle suite")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -533,13 +550,13 @@ def main():
     suffix = ".exe" if (jdk / "javac.exe").exists() else ""
     game_options = (root / "android/app/src/main/java/ls/augment/com/GameOptions.java").read_text(encoding="utf-8")
     constants = []
-    for name in ("PERFORMANCE_MONITOR", "MONITOR_ITEMS", "MONITOR_TRANSPARENCY"):
+    for name in ("PERFORMANCE_MONITOR", "MONITOR_ITEMS", "MONITOR_TRANSPARENCY", "MONITOR_MARGIN"):
         match = re.search(rf'public static final String {name}\s*=\s*"([^"\n]+)";', game_options)
         if match is None:
             raise RuntimeError(f"Cannot find real GameOptions key: {name}")
         constants.append(f'public static final String {name}="{match.group(1)}";')
     with tempfile.TemporaryDirectory(prefix="ls-monitor-runtime-") as temp:
-        for variant in args.variant or ("16", "17", "both", "fallback16", "incomplete16", "incomplete17", "mixed"):
+        for variant in args.variant or ("16", "17", "compact", "both", "fallback16", "incomplete16", "incomplete17", "mixed"):
             target = Path(temp) / variant
             source, names, positive, active = oem_source(variant)
             generated = dict(STUBS)

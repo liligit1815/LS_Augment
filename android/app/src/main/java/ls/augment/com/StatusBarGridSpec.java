@@ -69,7 +69,7 @@ public final class StatusBarGridSpec {
         public final int order, size;
         public final boolean visible;
         public Item(String zone, int order, int size, boolean visible) {
-            if (!java.util.Arrays.asList(ZONES).contains(zone) || order < 0 || order > 99
+            if (!java.util.Arrays.asList(ZONES).contains(zone) || order < 0 || order > 998
                     || size != 0 && (size < 6 || size > 32)) throw new IllegalArgumentException("invalid layout item");
             this.zone = zone; this.order = order; this.size = size; this.visible = visible;
         }

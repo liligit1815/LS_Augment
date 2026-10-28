@@ -170,6 +170,7 @@ def main():
     javac, java = java_tool("javac"), java_tool("java")
     variants = {
         "valid": {},
+        "object": {},
         "missing-state": {},
         "linkage-error": {},
         "invalid-activity": {"com/android/quickstep/RecentsActivity.java": ("extends android.app.Activity", "extends android.content.Context")},
@@ -184,7 +185,14 @@ def main():
         root = Path(directory)
         for mode, changes in variants.items():
             source, classes = root / mode / "src", root / mode / "classes"
-            for name, content in SOURCES.items():
+            current=dict(SOURCES)
+            if mode=="object":
+                current["com/android/launcher3/views/ScrimColors.java"]="package com.android.launcher3.views;public class ScrimColors{final int bg,fg;public ScrimColors(int b,int f){bg=b;fg=f;}public int getBackgroundColor(){return bg;}public int getForegroundColor(){return fg;}}"
+                k="com/android/quickstep/fallback/RecentsState.java"
+                current[k]=current[k].replace("public int getScrimColor", "public com.android.launcher3.views.ScrimColors getScrimColor").replace("return nativeColor;", "return new com.android.launcher3.views.ScrimColors(nativeColor, nativeColor ^ 0x123456);")
+                k="ls/augment/com/hook/ThirdPartyRecentsBackgroundTest.java"
+                current[k]=current[k].replace('!mode.equals("valid")','!mode.equals("valid")&&!mode.equals("object")').replace('int result=(Integer)module.call(state,new AugmentModule.ContextArgument(context));','com.android.launcher3.views.ScrimColors colors=(com.android.launcher3.views.ScrimColors)module.call(state,new AugmentModule.ContextArgument(context));int result=colors.getBackgroundColor();if(FeatureSettings.active&&context instanceof RecentsActivity&&state.flags==RecentsState.FLAG_SCRIM&&!state.failFlag)check(colors.getForegroundColor()==0,"both native color channels cleared");else check(colors.getForegroundColor()==(state.nativeColor ^ 0x123456),"original foreground preserved");')
+            for name, content in current.items():
                 if name in changes:
                     old, new = changes[name]
                     assert old in content, f"Missing fixture mutation: {mode}"

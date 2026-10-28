@@ -36,7 +36,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.toggle(ISLAND_TRANSPARENT,"system","透明样式","去掉紧凑胶囊的黑色背景，保留活动图标、文字与律动。长按展开的详情保持原有背景。"));
         out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
         out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
-        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","渐进堆叠使列表后方卡片逐层缩小、重叠，可分别设置通知中心和锁屏，并调整模糊与透明度渐变。保留原生通知顺序、滚动和隐私规则。关闭总开关后恢复原厂列表。"));
+        out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","同应用通知组中的真实子通知分别显示并参与渐进堆叠，后方卡片逐层缩小、重叠。可分别设置通知中心和锁屏，并调整模糊与透明度渐变。保留原生通知操作、顺序、滚动和隐私规则。关闭后恢复原厂分组；单条通知内部的多条消息不会拆分。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
         out.add(EnhancementOption.toggle(BackGestureIconPolicy.ENABLED,"system","自定义侧滑返回图标","系统界面作用域。两侧独立选择图标和遮罩，支持 GIF、动态 WebP 及初音未来预设；大小最高 10 倍。保留原厂返回判定和悬停动作，更新后需重启系统界面。"));
         for(int side=0;side<2;side++) {
@@ -69,7 +69,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.choice(PREFIX+"hide_wifi_scope","statusbar","隐藏 Wi-Fi 图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.choice(PREFIX+"hide_hotspot_scope","statusbar","隐藏热点图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
         out.add(EnhancementOption.choice(PREFIX+"hide_mobile_scope","statusbar","隐藏移动网络图标的位置","按位置独立处理原厂图标。",0,visibilityContexts));
-        out.add(EnhancementOption.text(PREFIX + "hidden_icon_slots", "statusbar", "其他隐藏图标", "展开清单并勾选要隐藏的系统图标；只隐藏图标，不关闭相应服务。", "", 1024));
+        out.add(EnhancementOption.text(PREFIX + "hidden_icon_slots", "statusbar", "隐藏指定图标", "展开清单并勾选要隐藏的系统图标；只隐藏图标，不关闭相应服务。", "", 1024));
         out.add(EnhancementOption.choice(BATTERY_PRESET, "statusbar", "电池预设样式", "ios样式随电量、数字显示、充电、省电、性能模式和图标明暗自动切换对应素材。", 0, "原生样式", "ios样式"));
         out.add(EnhancementOption.choice(PREFIX + "battery_style", "statusbar", "电池显示方式", "选择电池数字的位置或隐藏方式，与所选电池预设样式共同生效。", 0, "遵循原厂", "电池内显示数字", "电池后显示数字", "数字后显示电池", "仅电池图标", "仅电量数字", "隐藏电池"));
         bool(out, "battery_hide_percent", "statusbar", "隐藏电量百分号");
@@ -97,7 +97,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX + "charging_duration", "lockscreen", "充电动画持续秒数", "启用自定义充电动画后生效。", 6, 1, 120));
         out.add(EnhancementOption.integer(PREFIX + "charging_delay", "lockscreen", "充电动画延迟秒数", "启用自定义充电动画后生效。", 0, 0, 60));
         out.add(EnhancementOption.toggle(QS_BRIGHTNESS_PERCENT, "quicksettings", "亮度显示百分比", "控制中心亮度条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
-        out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围，不限制设备型号。需要 Root 和兼容的屏幕驱动接口；接口不可用时保持原厂亮度条。极低档显示 0.5%，原厂范围保留 0%–100%，扩展最高约 116.5%。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
+        out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围，需要 Root 和可读写的屏幕驱动。未标定的屏幕需关闭自动亮度，将原厂亮度条分别拖到最低和最高并各停留 2 秒，完成端点标定后自动启用扩展。原厂范围保留 0%–100%，扩展比例按本机标定计算，百分比不代表实测光学亮度。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
         out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心及展开音量面板显示百分比；增益开启时可超过 100%，同一行只显示一份数字。"));
         bool(out, "qs_grid", "quicksettings", "自定义控制中心行列");
         out.add(EnhancementOption.integer(PREFIX + "qs_columns", "quicksettings", "竖屏列数", "控制中心普通磁贴列数。", 4, 2, 8));

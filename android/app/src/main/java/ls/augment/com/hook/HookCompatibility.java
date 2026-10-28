@@ -8,6 +8,28 @@ import java.lang.reflect.Modifier;
 final class HookCompatibility {
     private HookCompatibility() { }
 
+    static Class<?> type(ClassLoader loader, String... names) throws ClassNotFoundException {
+        for (String name : names) try { return Class.forName(name, false, loader); }
+        catch (ClassNotFoundException ignored) { }
+        throw new ClassNotFoundException(String.join("/", names));
+    }
+
+    /** Covariant returns and inherited implementations are valid only when explicitly requested. */
+    static Method inheritedMethod(Class<?> owner, Class<?> result, boolean covariant,
+            String[] names, Class<?>... parameters) throws NoSuchMethodException {
+        for (String name : names) for (Class<?> at = owner; at != null; at = at.getSuperclass()) {
+            try {
+                Method method = at.getDeclaredMethod(name, parameters);
+                Class<?> actual = method.getReturnType();
+                if ((actual != result && !(covariant && !result.isPrimitive() && result.isAssignableFrom(actual)))
+                        || Modifier.isStatic(method.getModifiers()) || Modifier.isAbstract(method.getModifiers())) continue;
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) { }
+        }
+        throw new NoSuchMethodException(owner.getName() + ":" + String.join("/", names));
+    }
+
     static Method method(Class<?> owner, Class<?> result, boolean isStatic,
             String[] names, Class<?>... parameters) throws NoSuchMethodException {
         for (String name : names) {

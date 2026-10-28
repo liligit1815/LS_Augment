@@ -622,6 +622,22 @@ final class UiKit {
     }
     android.widget.Spinner choiceSpinner(String title,java.util.function.IntFunction<String> description,
             java.util.function.IntFunction<View> preview) {
+        return choiceSpinner(title,description,preview,false);
+    }
+    /** A trailing preference value, using the same accessible selection dialog. */
+    android.widget.Spinner inlineChoiceSpinner(String title) {
+        return choiceSpinner(title,null,null,true);
+    }
+    /** Explicit actions only; choosing the already displayed item still invokes it. */
+    android.widget.Spinner actionChoiceSpinner(String title,java.util.function.IntConsumer selected){
+        return choiceSpinner(title,null,null,true,selected);
+    }
+    private android.widget.Spinner choiceSpinner(String title,java.util.function.IntFunction<String> description,
+            java.util.function.IntFunction<View> preview,boolean inline) {
+        return choiceSpinner(title,description,preview,inline,null);
+    }
+    private android.widget.Spinner choiceSpinner(String title,java.util.function.IntFunction<String> description,
+            java.util.function.IntFunction<View> preview,boolean inline,java.util.function.IntConsumer action) {
         android.widget.Spinner spinner = new android.widget.Spinner(activity) {
             private android.app.Dialog selectionDialog;
             private final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
@@ -630,8 +646,9 @@ final class UiKit {
                 super.onLayout(changed,left,top,right,bottom);
                 View selected=getSelectedView();
                 if(selected instanceof TextView){
-                    TextView label=(TextView)selected;label.setTextColor(text);
-                    label.setTextSize(compactTextSize(14));label.setPadding(0,0,dp(24),0);
+                    TextView label=(TextView)selected;label.setTextColor(inline?(isEnabled()?accent:muted):text);
+                    label.setTextSize(compactTextSize(14));label.setPadding(0,0,inline?0:dp(24),0);
+                    if(inline)label.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
                 }
             }
             @Override protected void onDraw(android.graphics.Canvas canvas) {
@@ -650,17 +667,17 @@ final class UiKit {
                 playSoundEffect(android.view.SoundEffectConstants.CLICK);
                 String[] names = new String[getAdapter().getCount()];
                 for (int i = 0; i < names.length; i++)
-                    names[i] = String.valueOf(getAdapter().getItem(i)) + (i == getSelectedItemPosition() ? " · 当前" : "");
+                    names[i] = String.valueOf(getAdapter().getItem(i)) + (action==null&&i == getSelectedItemPosition() ? " · 当前" : "");
                 CharSequence label = getContentDescription();
                 String[] descriptions=description==null?null:new String[names.length];
                 if(descriptions!=null)for(int i=0;i<descriptions.length;i++)descriptions[i]=description.apply(i);
-                selectionDialog=choiceDialog(label == null || label.length() == 0 ? title : label.toString(), names, descriptions, preview, this::setSelection);
+                selectionDialog=choiceDialog(label == null || label.length() == 0 ? title : label.toString(), names, descriptions, preview, index->{if(action==null)setSelection(index);else action.accept(index);});
                 return true;
             }
         };
         spinner.setMinimumHeight(dp(48));
-        spinner.setPadding(dp(13),dp(8),dp(13),dp(8));
-        spinner.setBackground(controlGlass(spinner,16,IceGlassControlDrawable.NEUTRAL));
+        spinner.setPadding(dp(inline?4:13),dp(inline?0:8),dp(inline?32:13),dp(inline?0:8));
+        spinner.setBackground(inline?pressable(round(Color.TRANSPARENT,8)):controlGlass(spinner,16,IceGlassControlDrawable.NEUTRAL));
         return spinner;
     }
 
@@ -729,6 +746,38 @@ final class UiKit {
         Button button = button(value);
         button.setTextColor(accent);
         button.setBackground(pressable(controlGlass(button,16,IceGlassControlDrawable.TONAL)));
+        return button;
+    }
+
+    /** Quiet actions within an existing card: the card provides the visual surface. */
+    Button textButton(String value) {
+        Button button=button(value);
+        button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}},new int[]{muted,accent}));
+        button.setMinWidth(0);button.setMinimumWidth(0);
+        button.setPadding(dp(8),dp(7),dp(8),dp(7));
+        button.setBackground(pressable(round(Color.TRANSPARENT,8)));
+        return button;
+    }
+
+    /** Compact secondary action on an existing card surface. */
+    ImageButton iconAction(int icon,String description){
+        ImageButton button=new ImageButton(activity);button.setImageResource(icon);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);button.setPadding(dp(11),dp(11),dp(11),dp(11));
+        button.setColorFilter(accent);button.setBackground(pressable(round(Color.TRANSPARENT,8)));
+        button.setMinimumWidth(dp(44));button.setMinimumHeight(dp(44));
+        button.setContentDescription(description);button.setTooltipText(description);return button;
+    }
+
+    /** One-line section navigation; only the selected label receives an underline. */
+    Button sectionTab(String value) {
+        Button button=textButton(value);
+        button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{android.R.attr.state_selected},new int[]{}},new int[]{muted,accent,text}));
+        android.graphics.drawable.LayerDrawable indicator=new android.graphics.drawable.LayerDrawable(new Drawable[]{round(accent,2)});
+        indicator.setLayerWidth(0,dp(24));indicator.setLayerHeight(0,dp(2));
+        indicator.setLayerGravity(0,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);indicator.setLayerInsetBottom(0,dp(2));
+        android.graphics.drawable.StateListDrawable states=new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_selected},indicator);states.addState(new int[]{},round(Color.TRANSPARENT,0));
+        button.setBackground(pressable(states));button.setSingleLine(true);
         return button;
     }
 

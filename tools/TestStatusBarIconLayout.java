@@ -45,7 +45,7 @@ public final class TestStatusBarIconLayout {
         check(StatusBarIconOrderPolicy.fitHints(eligible,x->x,x->10,"",2,20).contains("vpn"),"important hint should survive exact-width boundary");
         check(StatusBarIconOrderPolicy.fitHints(eligible,x->x,x->Double.NaN,"",3,Double.POSITIVE_INFINITY).isEmpty(),"invalid measurements cannot corrupt layout");
         Map<String,EnhancementOption> options=new HashMap<>();for(EnhancementOption option:StatusBarIconLayoutOptions.options()){check(option.normalize(option.defaultValue)!=null,"invalid config default");options.put(option.key,option);}
-        check(options.size()==4&&options.get(StatusBarIconSpacingSpec.KEY).normalize(canonical).equals(canonical),"four canonical options missing");
+        check(options.size()==6&&options.get(StatusBarIconSpacingSpec.KEY).normalize(canonical).equals(canonical),"six canonical options missing");
         check(options.get(StatusBarIconOrderPolicy.LIMIT).normalize("21")==null&&options.get(StatusBarIconOrderPolicy.LIMIT).normalize("-1")==null,"limit import bounds");
         check(options.get(StatusBarIconSpacingSpec.KEY).normalize("IS1;all,wifi,-2,0,0,0")==null,"negative import must not overlap icons");
         System.out.println("PASS: per-icon boundary inheritance/reset/RTL, malformed imports, eligible-only priority and physical-capacity limits");

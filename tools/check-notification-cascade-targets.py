@@ -12,6 +12,12 @@ methods=[(A,'resetViewStates('+B+'I)V'),(A,'updateViewWithShelf('+E+S+'F)V'),
 methods += [(B,n+r) for n,r in [('isOnKeyguard','()Z'),('isDozing','()Z'),('getHideAmount','()F'),('getExpansionFraction','()F')]]
 methods += [(R,n+'()Z') for n in ['isPinned','isHeadsUpAnimatingAway','isExpandAnimationRunning','areGutsExposed','isGroupExpansionChanging']]
 fields=[(A,'mHostView:Landroid/view/ViewGroup;'),(P+'stack/NotificationStackScrollLayout;','mMaxLayoutHeight:I')]
+N=P+'stack/NotificationStackScrollLayout;'
+methods += [(N,s) for s in ['getScrollRange()I','updateScrollability()V','clampScrollPosition()V','requestChildrenUpdate()V',
+ 'isScrollingEnabled()Z','onScrollTouch(Landroid/view/MotionEvent;)Z','onInterceptTouchEventScroll(Landroid/view/MotionEvent;)Z',
+ 'getChildAtPosition(FF)'+E]]
+methods += [(B,'getStackY()F'),(B,'getInterpolatedStackHeight()F')]
+fields += [(N,'mOwnScrollY:I'),(A,'mKeyguardNotificationSpace:F'),(T,'visibleChildren:Ljava/util/ArrayList;')]
 fields += [(S,n+':F') for n in ['mYTranslation','mZTranslation','mScaleX','mScaleY']]
 fields += [(S,n+':'+t) for n,t in [('height','I'),('gone','Z'),('hidden','Z'),('clipBottomAmount','I')]]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--systemui',type=Path,action='append',required=True);parser.add_argument('--output',type=Path);args=parser.parse_args()

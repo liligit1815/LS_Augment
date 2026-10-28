@@ -76,6 +76,7 @@ final class ControlCenterSliderPercentHook {
         WeakReference<View> icon = new WeakReference<>(null);
         ViewTreeObserver observer;
         PercentLabel label;
+        final ControlCenterSliderTheme theme=new ControlCenterSliderTheme();
         boolean attached, added;
         AudioGainStateClient.Watch gainWatch;
         String attemptedRange="",issuedNative="",presentationNative="";
@@ -120,7 +121,9 @@ final class ControlCenterSliderPercentHook {
         State(View view, boolean volume) {
             source = new WeakReference<>(view);
             this.volume = volume;
-            horizontal = !volume && view.getClass().getName().equals(HORIZONTAL_BRIGHTNESS);
+            boolean horizontalType=false;
+            for(Class<?> type=view.getClass();type!=null;type=type.getSuperclass())if(type.getName().equals(HORIZONTAL_BRIGHTNESS)){horizontalType=true;break;}
+            horizontal = !volume && horizontalType;
             key = volume ? SystemUiOptions.QS_VOLUME_PERCENT : SystemUiOptions.QS_BRIGHTNESS_PERCENT;
         }
 
@@ -174,6 +177,7 @@ final class ControlCenterSliderPercentHook {
             SeekBar seek = slider.get();
             View symbol = icon.get();
             if (!attached || holder == null || seek == null || !horizontal && symbol == null) return;
+            theme.refresh(seek,symbol);
             String fullBrightness = volume ? null : FullBrightnessHook.label(seek);
             boolean percentEnabled=FeatureSettings.enabled(holder.getContext(),key);
             int stream=volume?liveStream():-1;
@@ -212,7 +216,7 @@ final class ControlCenterSliderPercentHook {
             }
             if (text.length() > 5) size = Math.min(size,holder.getWidth()/(text.length()*0.65f));
             float center = horizontal ? seek.getX() + seek.getWidth() / 2f : holder.getWidth() / 2f;
-            label.update(text, holder.getWidth(), holder.getHeight(), center, bottom, size, density, horizontal);
+            label.update(text, holder.getWidth(), holder.getHeight(), center, bottom, size, density, horizontal,theme.dark);
             if (!added) { holder.getOverlay().add(label); added = true; }
         }
 
@@ -228,6 +232,7 @@ final class ControlCenterSliderPercentHook {
             FeatureSettings.removeSnapshotListener(settingsChanged);
             if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
             observer = null;
+            theme.restore(slider.get(),icon.get());
             hide();
             label = null;
             frame.clear(); slider.clear(); icon.clear();
@@ -249,6 +254,7 @@ final class ControlCenterSliderPercentHook {
         final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
         String text = "";
         float x, baseline, bottom, textSize, density;
+        boolean dark;
 
         PercentLabel() {
             paint.setTextAlign(Paint.Align.CENTER);
@@ -256,18 +262,17 @@ final class ControlCenterSliderPercentHook {
         }
 
         void update(String next, int width, int height, float center, float bottom, float size, float density,
-                boolean verticallyCentered) {
+                boolean verticallyCentered,boolean dark) {
             if (next.equals(text) && getBounds().width() == width && getBounds().height() == height
-                    && x == center && this.bottom == bottom && textSize == size && this.density == density) return;
+                    && x == center && this.bottom == bottom && textSize == size && this.density == density&&this.dark==dark) return;
             text = next; this.bottom = bottom; textSize = size; this.density = density;
+            this.dark=dark;
             paint.setTextSize(size);
-            // The native fill stays white in night mode too. Match its dark
-            // icons; a light outline also keeps the unfilled portion readable.
-            paint.setColor(0xff30343a);
+            paint.setColor(dark?0xfff2f3f5:0xff30343a);
             outline.set(paint);
             outline.setStyle(Paint.Style.STROKE);
             outline.setStrokeWidth(1.5f * density);
-            outline.setColor(0xb0ffffff);
+            outline.setColor(dark?0xb0202226:0xb0ffffff);
             x = center;
             Paint.FontMetrics metrics = paint.getFontMetrics();
             baseline = verticallyCentered ? bottom - (metrics.ascent + metrics.descent) / 2f

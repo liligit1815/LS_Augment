@@ -30,7 +30,8 @@ class FeatureSettings {static final String SYSTEMUI_MASTER="master",STATUSBAR_CL
 import android.view.View;import android.content.Context;import java.util.*;
 class StatusBarGridHook {
  static class Phone extends View {}static class Keyguard extends View {}
- static class State {Context context;boolean active,packingSuspended;State(View v){context=v.context;}boolean positionOnly(){return context.position;}}
+ static class EditPolicy {boolean full=true;}
+ static class State {final EditPolicy editPolicy=new EditPolicy();Context context;boolean active,packingSuspended;State(View v){context=v.context;}boolean positionOnly(){return context.position;}}
  static final Map<View,State> STATES=new IdentityHashMap<>();
  static boolean isBarRoot(View v){return v instanceof Phone||v instanceof Keyguard;}
  static boolean inBar(View v){for(;v!=null;v=v.parent)if(isBarRoot(v))return true;return false;}
@@ -68,12 +69,13 @@ public class TestRecents {
  static int checks;static void check(boolean ok,String m){checks++;if(!ok)throw new AssertionError(m);}
  public static void main(String[] args)throws Throwable{
   AugmentModule module=new AugmentModule();check(StatusBarRecentsHook.install(module,TestRecents.class.getClassLoader())==2&&module.errors==0,"both exact hooks registered");
-  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<64;flags++){
+  for(boolean lock:new boolean[]{false,true})for(int flags=0;flags<128;flags++){
    View root=lock?new StatusBarGridHook.Keyguard():new StatusBarGridHook.Phone();
    root.context.master=(flags&1)!=0;root.context.custom=(flags&2)!=0;root.context.position=(flags&4)!=0;
    StatusBarGridHook.State state=new StatusBarGridHook.State(root);state.active=(flags&8)!=0;StatusBarGridHook.STATES.put(root,state);
    state.packingSuspended=(flags&16)!=0;
-   boolean grid=!lock&&state.active&&root.context.master&&!root.context.position&&!state.packingSuspended;
+   state.editPolicy.full=(flags&64)!=0;
+   boolean grid=state.editPolicy.full&&!lock&&state.active&&root.context.master&&!root.context.position&&!state.packingSuspended;
    View parent=new View();parent.parent=root;TextView clock=new TextView();clock.parent=parent;clock.context=root.context;
    SystemUiHook.ClockState text=new SystemUiHook.ClockState();text.nativeFallback=state.packingSuspended;if((flags&32)!=0)SystemUiHook.CLOCK_STATES.put(clock,text);
    Canvas canvas=new Canvas();Object result=module.invoke(new StatusBarClockFeature(),"handleOnDraw",new Class<?>[]{TextView.class,Canvas.class,TextPaint.class},clock,canvas,new TextPaint());

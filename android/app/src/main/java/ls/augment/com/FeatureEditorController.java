@@ -152,7 +152,7 @@ final class FeatureEditorController extends NativeEditorController {
         if (section == null) section = "";
         if (hiddenAccessDenied()) { finish(); return; }
         if (isStatusModule()) {
-            startActivity(new Intent(this, StatusBarSettingsActivity.class));
+            startActivity(new Intent(this, StatusBarWorkspaceActivity.class));
             finish();
             return;
         }

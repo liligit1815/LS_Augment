@@ -32,6 +32,7 @@ public final class StatusBarVisibilitySpec {
                 ||"notification".equals(value)||"control".equals(value);
     }
     public boolean isEmpty() { return rules.isEmpty(); }
+    public Set<String> ids() { Set<String> ids=new LinkedHashSet<>();for(String rule:rules)ids.add(rule.substring(rule.indexOf(',')+1));return Collections.unmodifiableSet(ids); }
     public boolean explicitlyHidden(String surface,String id) { return rules.contains(surface+","+id); }
     /** A hidden composite owns its children; a child can never reveal a hidden parent. */
     public boolean hidden(String surface,String id) {

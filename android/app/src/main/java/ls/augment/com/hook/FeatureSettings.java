@@ -50,6 +50,16 @@ final class FeatureSettings {
     // configuration generation; stale mirrors stay quarantined until resynced.
     private static String mirrorResyncChecksum;
     private static volatile ConfigSnapshot cachedSnapshot = ConfigSnapshot.safeDefaults();
+    private static final class StatusBarPolicySnapshot {
+        final ConfigSnapshot snapshot;final ls.augment.com.StatusBarEditPolicy policy;
+        StatusBarPolicySnapshot(ConfigSnapshot value){snapshot=value;policy=ls.augment.com.StatusBarEditPolicy.resolve(value::get);}
+    }
+    private static volatile StatusBarPolicySnapshot statusBarPolicy;
+    private static ls.augment.com.StatusBarEditPolicy statusBarPolicy(ConfigSnapshot snapshot){
+        StatusBarPolicySnapshot cached=statusBarPolicy;
+        if(cached==null||cached.snapshot!=snapshot){cached=new StatusBarPolicySnapshot(snapshot);statusBarPolicy=cached;}
+        return cached.policy;
+    }
     // One atomic publication distinguishes a verified saved configuration from
     // the startup placeholder without making readers take the publication lock.
     private static volatile ConfigSnapshot cachedVerifiedSnapshot;
@@ -574,7 +584,11 @@ final class FeatureSettings {
     }
 
     private static String value(Context context, String key) {
-        if (ConfigSchema.isRuntimeKey(key)) return snapshot(context).get(key);
+        if (ConfigSchema.isRuntimeKey(key)) {
+            ConfigSnapshot current=snapshot(context);
+            ls.augment.com.StatusBarEditPolicy policy=statusBarPolicy(current);
+            return ls.augment.com.StatusBarWorkspaceSpec.effectiveValue(key,policy.effective(key,current.get(key)),policy.effective(ls.augment.com.StatusBarWorkspaceSpec.ROWS,current.get(ls.augment.com.StatusBarWorkspaceSpec.ROWS)));
+        }
         return null;
     }
 

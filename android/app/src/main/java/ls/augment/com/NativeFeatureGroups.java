@@ -170,7 +170,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:hide_wifi_scope","隐藏 Wi-Fi 图标的位置",null,new String[]{"ls_augment_rm_hide_wifi_scope"},"number","0", new Feature[]{}),
             new Feature("systemui:hide_hotspot_scope","隐藏热点图标的位置",null,new String[]{"ls_augment_rm_hide_hotspot_scope"},"number","0", new Feature[]{}),
             new Feature("systemui:hide_mobile_scope","隐藏移动网络图标的位置",null,new String[]{"ls_augment_rm_hide_mobile_scope"},"number","0", new Feature[]{}),
-            new Feature("systemui:hidden_icon_slots","其他隐藏图标",null,new String[]{"ls_augment_rm_hidden_icon_slots"},"nonEmptyCommaSeparatedTokens","", new Feature[]{}),
+            new Feature("systemui:hidden_icon_slots","隐藏指定图标",null,new String[]{"ls_augment_rm_hidden_icon_slots"},"nonEmptyCommaSeparatedTokens","", new Feature[]{}),
             new Feature("systemui:battery_style","电池显示方式",null,new String[]{"ls_augment_rm_battery_style","ls_augment_rm_battery_preset"},"number","0", new Feature[]{}),
             new Feature("systemui:battery_hide_percent","隐藏电量百分号","ls_augment_rm_battery_hide_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:battery_width_dp","电池固定宽度",null,new String[]{"ls_augment_rm_battery_width_dp"},"number","0", new Feature[]{}),
@@ -272,6 +272,9 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_desktop_clock_period","桌面时钟显示中文时段","ls_augment_rm_desktop_clock_period",new String[]{},"boolean","0", new Feature[]{}),
             new Feature(LauncherOptions.WIDGET_RESIZE,"允许修改小组件大小",LauncherOptions.WIDGET_RESIZE,new String[]{},"boolean","0", new Feature[]{})
         }),
+        new Section("launcher","recents_privacy","隐私屏", new Feature[]{
+            new Feature(RecentsPrivacyOptions.ENABLED,"启用隐私屏",RecentsPrivacyOptions.ENABLED,new String[]{RecentsPrivacyOptions.APPS},"boolean","0",new Feature[]{})
+        }),
         new Section("launcher","recents","最近任务", new Feature[]{
             new Feature(RecentsCardRadiusOptions.ENABLED,"最近任务卡片圆角调节",RecentsCardRadiusOptions.ENABLED,new String[]{RecentsCardRadiusOptions.OFFSET},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_recents_memory_custom","自定义最近任务内存显示","ls_augment_rm_recents_memory_custom",new String[]{"ls_augment_rm_recents_memory_style","ls_augment_rm_recents_memory_content","ls_augment_rm_recents_memory_color_mode","ls_augment_rm_recents_memory_light_color","ls_augment_rm_recents_memory_dark_color","ls_augment_rm_recents_memory_simple_size","ls_augment_rm_recents_memory_detailed_size","ls_augment_rm_recents_memory_portrait_left","ls_augment_rm_recents_memory_landscape_left","ls_augment_rm_recents_memory_portrait_top","ls_augment_rm_recents_memory_landscape_top","ls_augment_rm_recents_memory_portrait_height","ls_augment_rm_recents_memory_landscape_height"},"boolean","0", new Feature[]{})
@@ -291,7 +294,7 @@ final class NativeFeatureGroups {
         }),
         new Section("game","plugins","游戏插件", new Feature[]{
             new Feature("ls_augment_game_plugins_unlocked","开放游戏插件资格","ls_augment_game_plugins_unlocked",new String[]{},"boolean","0", new Feature[]{}),
-            new Feature(GameOptions.PERFORMANCE_MONITOR,"自定义性能监测",GameOptions.PERFORMANCE_MONITOR,new String[]{GameOptions.MONITOR_TRANSPARENCY},"boolean","0",new Feature[]{
+            new Feature(GameOptions.PERFORMANCE_MONITOR,"自定义性能监测",GameOptions.PERFORMANCE_MONITOR,new String[]{GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_MARGIN},"boolean","0",new Feature[]{
                 new Feature(GameOptions.MONITOR_PIN,"长按固定悬浮窗位置",GameOptions.MONITOR_PIN,new String[]{},"boolean","0",new Feature[]{})})
         }),
         new Section("game","game_capture","录制、高光与红魔时刻", new Feature[]{
@@ -347,6 +350,12 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_screenshot_hide_status_bar","截图隐藏状态栏","ls_augment_rm_screenshot_hide_status_bar",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_record_hide_status_bar","录屏隐藏状态栏","ls_augment_rm_record_hide_status_bar",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_screenshot_crop_unlimited","取消截图裁剪最小尺寸限制","ls_augment_rm_screenshot_crop_unlimited",new String[]{},"boolean","0", new Feature[]{})
+        }),
+        new Section("system","battery","电池", new Feature[]{
+            new Feature(SystemOptions.BATTERY_KEEP_REFRESH,"省电模式保持当前帧率",SystemOptions.BATTERY_KEEP_REFRESH,new String[]{},"boolean","0",new Feature[]{})
+        }),
+        new Section("gallery","gallery","相册", new Feature[]{
+            new Feature(SystemOptions.GALLERY_WATERMARK,"相册水印自定义",SystemOptions.GALLERY_WATERMARK,new String[]{SystemOptions.GALLERY_WATERMARK_TEXT},"boolean","0",new Feature[]{})
         }),
         new Section("gallery","image_edit","图片编辑", new Feature[]{
             new Feature("ls_augment_rm_gallery_crop_unlimited","取消相册编辑裁剪最小尺寸限制","ls_augment_rm_gallery_crop_unlimited",new String[]{},"boolean","0", new Feature[]{})

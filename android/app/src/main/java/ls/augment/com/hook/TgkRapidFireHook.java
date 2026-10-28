@@ -112,8 +112,7 @@ final class TgkRapidFireHook {
             if (session.state == RapidFireCompatibility.State.WAIT_LEFT
                     || session.state == RapidFireCompatibility.State.WAIT_RIGHT) {
                 try (RapidFireRouteEvidence.Calls.Scope call = ROUTE_CALLS.begin()) {
-                    Object result = old == RapidFireCompatibility.TEST_CPS ? chain.proceed()
-                            : chain.proceed(new Object[]{RapidFireCompatibility.TEST_CPS, keyCode});
+                    Object result = proceedRate(chain, old, RapidFireCompatibility.TEST_CPS, keyCode);
                     int systemCode = call.trace.resolvedSystem();
                     if (systemCode > 0) {
                         FeatureSettings.recordRapidRoute(context, session.id, session.state.name(), keyCode, systemCode);
@@ -126,8 +125,7 @@ final class TgkRapidFireHook {
                 }
             }
             if (sideForUpper(session, keyCode) != null) {
-                return old == RapidFireCompatibility.TEST_CPS ? chain.proceed()
-                        : chain.proceed(new Object[]{RapidFireCompatibility.TEST_CPS, keyCode});
+                return proceedRate(chain, old, RapidFireCompatibility.TEST_CPS, keyCode);
             }
         }
 
@@ -148,7 +146,12 @@ final class TgkRapidFireHook {
         // stale target and keep the previous speed active.
         if (old == count) return chain.proceed();
         hit(context, "key=" + keyCode + "|" + old + "->" + count);
-        return chain.proceed(new Object[]{count, keyCode});
+        return proceedRate(chain, old, count, keyCode);
+    }
+
+    private static Object proceedRate(Chain chain, int original, int count, int keyCode) throws Throwable {
+        ShoulderNativeApply.rapidFireOverride(keyCode, original, count);
+        return original == count ? chain.proceed() : chain.proceed(new Object[]{count, keyCode});
     }
 
     private static String sideForUpper(RapidFireCompatibility.Session session, int keyCode) {

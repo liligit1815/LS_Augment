@@ -10,6 +10,7 @@ spec=importlib.util.spec_from_file_location('boot_core',ROOT/'tools/test-boot-cr
 core=importlib.util.module_from_spec(spec);spec.loader.exec_module(core)
 SOURCES=dict(core.STUBS)
 SOURCES.update({
+'ls/augment/com/LogHistory.java':'package ls.augment.com;final class LogHistory {static long cutoff(android.content.Context c){return 0;}}',
 'ls/augment/com/TransientCacheMaintenance.java':'package ls.augment.com;final class TransientCacheMaintenance {static void request(android.content.Context c){}}',
 'android/content/pm/ApplicationInfo.java':'''package android.content.pm;public class ApplicationInfo{public int uid;public String packageName,deviceProtectedDataDir,sourceDir="/private/module's app.apk";}''',
 'android/content/pm/PackageManager.java':'''package android.content.pm;public class PackageManager{public static int hostUid=10352;public ApplicationInfo getApplicationInfo(String name,int flags){ApplicationInfo a=new ApplicationInfo();a.uid=hostUid;a.packageName=name;return a;}}''',

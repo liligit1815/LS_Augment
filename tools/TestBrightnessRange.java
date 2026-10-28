@@ -6,7 +6,10 @@ public final class TestBrightnessRange {
         check(BrightnessRange.driver(0)==1,"lowest nonzero hardware code");
         check(BrightnessRange.driver(12150)==8190,"verified panel maximum");
         check(BrightnessRange.driver(500)==-1 && BrightnessRange.driver(10500)==-1,"OEM owns entire normal interval");
-        check(BrightnessRange.label(0).equals("极低 0.5%"),"explicit low-end meaning");
+        check(BrightnessRange.label(0).equals("极低"),"no uncalibrated optical percentage");
+        check(BrightnessRange.calibrated(4,14060,16383),"measured panel accepted");
+        check(!BrightnessRange.calibrated(4,20000,16383),"out of range calibration rejected");
+        check(BrightnessRange.driver(12150,14060,16383)==16383,"measured panel maximum");
         check(BrightnessRange.label(500).equals("0%") && BrightnessRange.label(10500).equals("100%"),"retain original labels");
         check(BrightnessRange.label(12150).equals("116.5%"),"upper calibration");
         check(BrightnessRange.fromNative(500,0,1000)==5500,"midpoint is not quantized");

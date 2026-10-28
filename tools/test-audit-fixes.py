@@ -6,7 +6,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
 editor = (SRC / 'StatusBarEditorController.java').read_text(encoding='utf-8')
-save = editor[editor.index('    private void save()'):editor.index('    @Override protected void onPause()')]
+save = editor[editor.index('    private void save()'):editor.index('    private void stopInventoryObservation()')]
 signal_refresh = editor[editor.index('    private void refreshStoredSignalModes()'):editor.index('    private void edit(String key, String label)')]
 assert 'static final ExecutorService worker' in editor
 assert 'worker.shutdown()' not in editor
@@ -76,6 +76,8 @@ final class StatusBarSaveHarness extends SaveBase {
  Map<String,Boolean> expandedComponents=new LinkedHashMap<>(),advancedExpanded=new LinkedHashMap<>();
  Map<Integer,Integer> scrollPositions=new LinkedHashMap<>();Scroll configScroll=new Scroll();
  Preview preview=new Preview();static class Preview {void invalidate(){}}
+ boolean workspace(){return false;}int workspaceGroup,workspaceFilter;String workspaceDetail="",workspaceScope="all",workspaceQuery="";
+ View previewHost=new View();Assets workspaceAssets=new Assets();static class Assets {void onSaveInstanceState(Bundle state){}}
  void renderKeepingScroll(){}
  // Android presentation boundaries; production save/state methods remain verbatim.
  static class View {static final int VISIBLE=0;int visibility;int getVisibility(){return visibility;}}

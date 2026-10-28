@@ -112,7 +112,9 @@ public final class TestStatusBarFailureCleanup {
  // OWNERSHIP
  // GEOMETRY
  // BASE_ID
+ static class EditPolicy {boolean full=true;}
  static class State {
+  final EditPolicy editPolicy=new EditPolicy();
   final Context context=new Context();final ViewGroup root=new ViewGroup();
   final Map<View,Geometry> geometry=new IdentityHashMap<>();
   final Map<ViewGroup,boolean[]> clips=new IdentityHashMap<>();

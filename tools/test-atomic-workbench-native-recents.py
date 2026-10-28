@@ -14,7 +14,7 @@ SOURCES.pop("ls/augment/com/hook/TestQuickstep.java")
 SOURCES.pop("ls/augment/com/hook/AtomicWorkbenchQuickstepTargetHook.java")
 SOURCES["android/view/InputEvent.java"] = "package android.view;public class InputEvent {public static boolean failSet;public int display;public int getDisplayId(){return display;}public void setDisplayId(int d){if(failSet)throw new IllegalStateException(\"display unavailable\");display=d;}}"
 _module = "ls/augment/com/hook/AugmentModule.java"
-SOURCES[_module] = SOURCES[_module].replace("public void deoptimize(java.lang.reflect.Executable m){", "public final java.util.List<java.lang.reflect.Executable> deoptimized=new java.util.ArrayList<>();public void deoptimize(java.lang.reflect.Executable m){deoptimized.add(m);")
+SOURCES[_module] = SOURCES[_module].replace("public boolean deoptimize(java.lang.reflect.Executable m){", "public final java.util.List<java.lang.reflect.Executable> deoptimized=new java.util.ArrayList<>();public boolean deoptimize(java.lang.reflect.Executable m){deoptimized.add(m);")
 SOURCES[_module] = SOURCES[_module].replace("Method m=owner.getClass().getMethod(name,types);", "Method m=hookMethod(owner.getClass(),name,types);").replace("public Object invoke(Object owner,", "private static Method hookMethod(Class<?> owner,String name,Class<?>[] types)throws Exception{try{return owner.getMethod(name,types);}catch(NoSuchMethodException missing){Method method=owner.getDeclaredMethod(name,types);method.setAccessible(true);return method;}}public Object invoke(Object owner,")
 SOURCES["android/content/Context.java"] = SOURCES["android/content/Context.java"].replace("public int getForeColor(){return 0xffe1d2c3;}", "public int foreColor=0xffe1d2c3;public int getForeColor(){return foreColor;}")
 SOURCES.update({
@@ -180,7 +180,7 @@ def main():
     negative = dict(SOURCES)
     source = (SUPPORT["SRC"] / production[1]).read_text(encoding="utf-8")
     source = source.replace("AtomicWorkbenchQuickstepTargetHook.install(module, loader);", "")
-    source = source.replace("return AtomicWorkbenchQuickstepTargetHook.cachedTask(route, chain.getThisObject());", "return chain.proceed(new Object[]{chain.getArg(0), route.target});")
+    source = source.replace("return AtomicWorkbenchQuickstepTargetHook.cachedTask(route, chain.getThisObject(),modern?chain.proceed():null);", "return chain.proceed(new Object[]{chain.getArg(0), route.target});")
     source = source.replace("if (route != null && display == route.target)", "if (false)")
     start = source.index("        try { AtomicWorkbenchQuickstepTargetHook.prepare(module, route); }")
     end = source.index('        Object model = field(owner, "mRecentsDisplayModel");', start)

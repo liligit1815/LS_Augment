@@ -42,7 +42,13 @@ final class AtomicWorkbenchNotificationEvidenceHook {
         try {
             AtomicWorkbenchNotificationRecords.prepare();
             serviceClass = Class.forName("com.android.server.notification.NotificationManagerService", false, loader);
-            binderClass = Class.forName("com.android.server.notification.NotificationManagerService$13", false, loader);
+            binderClass = HookCompatibility.type(loader,
+                    "com.android.server.notification.NotificationManagerService$Stub",
+                    "com.android.server.notification.NotificationManagerService$13");
+            Class<?> nativeStub = Class.forName("android.app.INotificationManager$Stub", false, loader);
+            if (!nativeStub.isAssignableFrom(binderClass)
+                    || member(binderClass, "this$0").getType() != serviceClass)
+                throw new NoSuchFieldException("notification_service_binder_shape");
             Class<?> record = Class.forName("com.android.server.notification.NotificationRecord", false, loader);
             Class<?> listeners = Class.forName("com.android.server.notification.NotificationManagerService$NotificationListeners", false, loader);
             member(serviceClass, "mNotificationLock"); member(serviceClass, "mNotificationsByKey"); member(serviceClass, "mService");
@@ -71,6 +77,8 @@ final class AtomicWorkbenchNotificationEvidenceHook {
                     .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
                 if (!binderClass.isInstance(chain.getThisObject()) || !(Integer.valueOf(TX).equals(chain.getArg(0))
                         || Integer.valueOf(AtomicWorkbenchNotificationActionsBroker.TX).equals(chain.getArg(0)))) return chain.proceed();
+                Object owner = field(chain.getThisObject(), "this$0");
+                if (!serviceClass.isInstance(owner) || field(owner, "mService") != chain.getThisObject()) return chain.proceed();
                 Parcel reply = (Parcel) chain.getArg(2);
                 if (reply != null && acceptsSynchronousBinderFlags(chain.getArg(3))) {
                     if (Integer.valueOf(TX).equals(chain.getArg(0))) read(chain.getThisObject(), (Parcel) chain.getArg(1), reply);

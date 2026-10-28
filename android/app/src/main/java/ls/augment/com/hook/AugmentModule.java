@@ -442,6 +442,7 @@ public final class AugmentModule extends RootEarlyModule {
             ThirdPartyRecentsBackgroundHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
             LauncherRecentsCardRadiusHook.install(this, param.getClassLoader());
+            LauncherRecentsPrivacyHook.install(this, param.getClassLoader());
             LauncherCleanupBombHook.install(this, param.getClassLoader());
             LiquidGlassDockHook.install(this, param.getClassLoader());
             return;
@@ -655,6 +656,7 @@ public final class AugmentModule extends RootEarlyModule {
             installSignatureMismatchInstallHooks(classLoader);
             AudioGainHook.install(this, classLoader);
             SystemRulesHook.install(this, classLoader);
+            BatteryRefreshRateHook.install(this, classLoader);
             CompetitiveKeyHook.install(this, classLoader);
             AtomicWorkbenchImeHook.install(this, classLoader);
             AtomicWorkbenchFocusWindowHook.install(this, classLoader);

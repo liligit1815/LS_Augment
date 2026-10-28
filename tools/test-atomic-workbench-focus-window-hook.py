@@ -250,7 +250,7 @@ def sdk_compile():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(SOURCES[name], encoding="utf-8")
             files.append(path)
-        files += [SUPPORT["SRC"] / "hook" / name for name in ("AtomicWorkbenchImeHook.java", "AtomicWorkbenchFocusWindowHook.java", "AtomicWorkbenchDisplayDeviceEvidence.java", "AtomicWorkbenchFocusWindowDiagnostics.java")]
+        files += [SUPPORT["SRC"] / "hook" / name for name in ("HookCompatibility.java", "AtomicWorkbenchImeHook.java", "AtomicWorkbenchFocusWindowHook.java", "AtomicWorkbenchDisplayDeviceEvidence.java", "AtomicWorkbenchFocusWindowDiagnostics.java")]
         files += [SUPPORT["SRC"] / "AtomicWorkbenchLogPolicy.java"]
         result = subprocess.run([SUPPORT["JAVAC"], "-encoding", "UTF-8", "-cp", str(sdk), "-d", str(work / "classes"), *map(str, files)],
                                 text=True, encoding="utf-8", errors="replace", capture_output=True, env=SUPPORT["ENV"], timeout=25)
@@ -282,6 +282,7 @@ def negatives(sources):
             work = Path(directory)
             files = []
             mutant_sources = dict(sources)
+            mutant_sources["ls/augment/com/hook/HookCompatibility.java"]=(SUPPORT["SRC"]/"hook/HookCompatibility.java").read_text(encoding="utf-8")
             mutant_sources["ls/augment/com/hook/AtomicWorkbenchFocusWindowDiagnostics.java"] = (SUPPORT["SRC"] / "hook/AtomicWorkbenchFocusWindowDiagnostics.java").read_text(encoding="utf-8")
             mutant_sources["ls/augment/com/AtomicWorkbenchLogPolicy.java"] = (SUPPORT["SRC"] / "AtomicWorkbenchLogPolicy.java").read_text(encoding="utf-8")
             mutant_sources["ls/augment/com/hook/AtomicWorkbenchImeHook.java"] = (SUPPORT["SRC"] / "hook/AtomicWorkbenchImeHook.java").read_text(encoding="utf-8")
@@ -346,7 +347,7 @@ def device_negatives(sources):
         "bound_device_service_replacement_allowed": ("AtomicWorkbenchDisplayDeviceEvidence.java", "else if (boundService != service || boundLocal != local || boundDms != dms || boundSync != sync)", "else if (false)", "untrusted window gained permission"),
         "focus_skips_actual_device_witness": ("AtomicWorkbenchFocusWindowHook.java", "\n                || !checked(displayDeviceEvidence != null && displayDeviceEvidence.ownsContentOnly(permit.service,display),DISPLAY_REQUIRED)", "", "untrusted window gained permission"),
     }
-    dependencies = ("hook/AtomicWorkbenchImeHook.java", "hook/AtomicWorkbenchFocusWindowHook.java", "hook/AtomicWorkbenchDisplayDeviceEvidence.java", "hook/AtomicWorkbenchFocusWindowDiagnostics.java", "AtomicWorkbenchLogPolicy.java")
+    dependencies = ("hook/HookCompatibility.java", "hook/AtomicWorkbenchImeHook.java", "hook/AtomicWorkbenchFocusWindowHook.java", "hook/AtomicWorkbenchDisplayDeviceEvidence.java", "hook/AtomicWorkbenchFocusWindowDiagnostics.java", "AtomicWorkbenchLogPolicy.java")
     for label, (filename, before, after, expected) in mutations.items():
         source = (SUPPORT["SRC"] / "hook" / filename).read_text(encoding="utf-8")
         if source.count(before) != 1:

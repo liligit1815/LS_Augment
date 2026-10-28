@@ -7,6 +7,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {
+    "ls/augment/com/hook/ControlCenterSliderTheme.java": "package ls.augment.com.hook;final class ControlCenterSliderTheme {boolean dark;void refresh(android.widget.SeekBar bar,android.view.View icon){}void restore(android.widget.SeekBar bar,android.view.View icon){}}",
     "android/content/Context.java": """package android.content;public class Context {}""",
     "android/util/DisplayMetrics.java": """package android.util;public class DisplayMetrics {public float density=1,scaledDensity=1;}""",
     "android/content/res/Resources.java": """package android.content.res;public class Resources {public final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();public android.util.DisplayMetrics getDisplayMetrics(){return metrics;}public int getIdentifier(String name,String type,String pkg){return name.hashCode();}}""",

@@ -22,6 +22,7 @@ public final class ModuleHierarchy {
     static {
         for(NativeFeatureGroups.Section s:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:s.features)FEATURES.put(f.id,f);
         entry(section("notifications","statusbar","状态栏自定义"),"status_layout");
+        entry(section("notifications","statusbar_legacy","旧状态栏自定义"),"status_legacy");
         for(NativeFeatureGroups.Feature f:NativeFeatureGroups.forGroup("statusbar")){
             if("systemui:statusbar_double_tap_sleep".equals(f.id))continue;
             STATUS_FEATURES.add(f);for(String key:f.allKeys())KEY_ROUTES.put(key,statusRoute(f));
@@ -40,6 +41,7 @@ public final class ModuleHierarchy {
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
         add(section("desktop","dock_glass","Dock"),"launcher:liquid_glass",LauncherOptions.DOCK_UNLIMITED);
         add(section("desktop","recents","最近任务与清理"),"launcher:cleanup_bomb",RecentsCardRadiusOptions.ENABLED,"ls_augment_rm_recents_memory_custom");
+        add(section("desktop","recents_privacy","隐私屏"),RecentsPrivacyOptions.ENABLED);
         add(section("lockscreen","theme_download","主题下载与使用"),"beautify:unlimited_trial","ls_augment_rm_theme_no_login");
         add(section("lockscreen","collab_theme","联名主题"),"collab:theme");
         source(section("lockscreen","fingerprint","指纹样式"),"theme","collab_fingerprint");
@@ -62,6 +64,7 @@ public final class ModuleHierarchy {
         entry(section("multitasking","freeform_limits","小窗数量与应用范围"),"freeform_limits");
         add(section("multitasking","overlay_touch","悬浮窗触摸"),"ls_augment_rm_untrusted_touch_allow");
         entry(section("atomic_workbench","workspace","红魔Step"),"atomic_workbench");
+        source(section("capture","gallery","相册"),"gallery","gallery");
         source(section("capture","capture","捕获画面"),"screenshot","capture");
         source(section("capture","image_edit","图片编辑"),"gallery","image_edit");
         add(section("capture","secure_capture","窗口捕获限制"),"ls_augment_rm_secure_capture");
@@ -86,7 +89,8 @@ public final class ModuleHierarchy {
         entry(section("apps","hidden","四大皆空",null,true),"hide");
         source(section("system_settings","update","系统更新"),"update","update");
         entry(section("system_settings","competitive_key","自定义竞技键"),"competitive_key");
-        section("system_settings","battery_health","电池健康度检测");
+        source(section("system_settings","battery","电池"),"system","battery");
+        alias("group/system_settings/battery_health","group/system_settings/battery");
         add(section("system_settings","settings_entries","设置入口与时间格式"),"settings:hide_healthy_use","ls_augment_rm_settings_hide_battery_percent","ls_augment_rm_settings_time_period");
         Section display=section("system_settings","display","显示与休眠");add(display,"ls_augment_rm_settings_long_timeout","systemui:full_brightness");settings(display,"lock_refresh_rate");
         settings(section("system_settings","developer","开发者选项"),"development_settings_enabled");
@@ -185,7 +189,7 @@ public final class ModuleHierarchy {
         if("atomic_workbench_session".equals(route)||"atomic_workbench_apps".equals(route)
                 ||"atomic_workbench_app_sort".equals(route))return "atomic_workbench";
         if("icon_crop".equals(route))return "group/desktop/launcher";if("gesture_icon_crop".equals(route))return "group/interaction/gestures";if("tile_icon_crop".equals(route))return "hide_apps";if("rapid_compatibility".equals(route))return "group/gaming/shoulder";
-        if(StatusBarPages.surface(route)!=null)return "status_surfaces";if("status_surfaces".equals(route)||Arrays.asList(StatusBarPages.ROUTES).contains(route))return "status_layout";if(route.startsWith("asset/"))return "status_assets";if(Arrays.asList("hide_apps","automation","tile").contains(route))return "hide";
+        if(StatusBarPages.surface(route)!=null)return "status_surfaces";if("status_surfaces".equals(route)||Arrays.asList(StatusBarPages.ROUTES).contains(route))return "status_legacy";if(route.startsWith("asset/"))return "status_assets";if(Arrays.asList("hide_apps","automation","tile").contains(route))return "hide";
         Section s=group(route);if(s!=null)return s.parentId==null?"target-"+s.target:"group/"+s.target+"/"+s.parentId;if(route.startsWith("target-"))return "home";String owner=ENTRY_PARENTS.get(route);if(owner!=null)return owner;
         if("license_document".equals(route))return "licenses";
         if(Arrays.asList("support","contributors","licenses").contains(route))return "about";if(Arrays.asList("scope","log_export","config_transfer").contains(route))return "settings";return "home";
@@ -205,7 +209,7 @@ public final class ModuleHierarchy {
         if(route.startsWith("target-")){ModulePresentationCatalog.Category category=ModulePresentationCatalog.find(route.substring(7));if(category!=null)return category.title;}Section s=group(route);if(s!=null)return s.title;
         for(HookAppCatalog.Target target:HookAppCatalog.targets())for(HookAppCatalog.Entry entry:HookAppCatalog.entries(target.id))if(entry.route.equals(route))return entry.title;String resolved=resolve(route);return resolved.equals(route)?"":title(resolved);
     }
-    public static String summary(Section s){if("battery_health".equals(s.id))return "检测健康度、满充容量、设计容量与循环次数";if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
+    public static String summary(Section s){if("statusbar_legacy".equals(s.id))return "目前保留，但后续会删除。";if("battery".equals(s.id))return "电池健康度检测、容量与循环次数、省电模式刷新率";if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
     /** Actual scopes of the page, preserving multiple cooperating process groups. */
     public static List<String> restartScopes(Section s){Set<String> scopes=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForKey(key));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);}for(String entry:s.entries){Section child=group(entry);if(child!=null){scopes.addAll(restartScopes(child));continue;}HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForRoute(entry));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);else if(entry.startsWith("freeform_"))scopes.add("device");}if("collab_audio".equals(s.id))return Collections.emptyList();return new ArrayList<>(scopes);}
     public static String restartScope(Section s){List<String> scopes=restartScopes(s);return scopes.size()==1?scopes.get(0):scopes.isEmpty()?null:"device";}

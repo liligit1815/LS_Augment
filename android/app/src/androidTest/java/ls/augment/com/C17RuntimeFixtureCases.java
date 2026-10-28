@@ -56,11 +56,30 @@ public final class C17RuntimeFixtureCases {
     static JSONObject run(Instrumentation test,Bundle args)throws Exception {
         if(Looper.myLooper()==Looper.getMainLooper())throw new IllegalStateException("Fixture must run on instrumentation worker");
         if(args!=null&&args.containsKey("mode")){
+            if("recover-expired".equals(String.valueOf(args.get("mode"))))return recoverExpired(test,args);
             if(!"notification-icons".equals(String.valueOf(args.get("mode"))))throw new IllegalArgumentException("Unknown explicit fixture mode");
             return new NotificationIconsFixture(test,args).run();
         }
         Fixture fixture=new Fixture(test,args==null?new Bundle():args);
         return fixture.run();
+    }
+
+    /** Recover only a recorded, expired fixture owned by this test package. */
+    private static JSONObject recoverExpired(Instrumentation test,Bundle args)throws Exception {
+        String id=String.valueOf(args.get("runId"));
+        if(!id.matches("[0-9a-f]+_[0-9a-f]{8}"))throw new IllegalArgumentException("Invalid fixture identity");
+        Context context=test.getTargetContext();
+        File file=new File(new File(context.getCacheDir(),"c17-runtime-fixture"),id+".json");
+        JSONObject old=new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8));
+        String tag="duo_c17_fixture_"+id;
+        if(!id.equals(old.getString("runId"))||!tag.equals(old.getString("notificationTag"))
+                ||System.currentTimeMillis()<old.getLong("startedWallTimeMs")+old.getInt("seconds")*1000L+35000)
+            throw new IllegalStateException("Fixture is not expired or identity changed");
+        NotificationManager manager=context.getSystemService(NotificationManager.class);
+        for(android.service.notification.StatusBarNotification n:manager.getActiveNotifications())
+            if(context.getPackageName().equals(n.getPackageName())&&tag.equals(n.getTag())&&(n.getId()>=0&&n.getId()<6||n.getId()==MEDIA_ID))manager.cancel(tag,n.getId());
+        int remaining=NotificationCleanup.await(()->{int count=0;for(android.service.notification.StatusBarNotification n:manager.getActiveNotifications())if(tag.equals(n.getTag()))count++;return count;},SystemClock::elapsedRealtime,()->SystemClock.sleep(50));
+        return new JSONObject().put("runId",id).put("recoveryOnly",true).put("cleanupComplete",remaining==0).put("remainingOwnNotifications",remaining);
     }
 
     /** Test-only opt-in. Its scheduling and identity checks have no Android dependencies. */
@@ -310,7 +329,7 @@ public final class C17RuntimeFixtureCases {
         JSONObject run()throws Exception {
             try {
                 onMain(this::start);
-                observeActiveSession();
+                if(!"true".equals(String.valueOf(args.get("skipActiveSession"))))observeActiveSession();
                 while(SystemClock.elapsedRealtime()<deadline&&!Thread.currentThread().isInterrupted()){
                     onMain(this::advance);
                     SystemClock.sleep(Math.min(100,Math.max(1,deadline-SystemClock.elapsedRealtime())));

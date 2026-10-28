@@ -142,13 +142,23 @@ final class GamePerformanceMonitorHook {
         for(int i=0;i<5;i++)if(!GamePerformanceMonitorConfig.selected(selected,items[i]))customWidth-=state.widths[i];
         for(int i=5;i<9;i++)if(GamePerformanceMonitorConfig.selected(selected,items[i]))customWidth+=state.widths[i];
         boolean on=requested&&state.sizingReady&&customWidth>1;
+        android.util.DisplayMetrics metrics=context.getResources().getDisplayMetrics();
+        GamePerformanceMonitorConfig.Geometry geometry=new GamePerformanceMonitorConfig.Geometry(metrics.widthPixels,state.originalWidth,
+                metrics.density,metrics.scaledDensity,state.widths,state.cellWidths);
+        if(state.sizingReady)FeatureSettings.diagnostic(context,GamePerformanceMonitorConfig.GEOMETRY,geometry.encode());
+        int savedMargin=FeatureSettings.integer(context,GameOptions.MONITOR_MARGIN,0,-GamePerformanceMonitorConfig.MARGIN_STORAGE_LIMIT,GamePerformanceMonitorConfig.MARGIN_STORAGE_LIMIT);
+        int marginDp=on?geometry.clamp(selected,savedMargin):0;
+        int gap=Math.round(marginDp*metrics.density),selectedCount=0;
+        for(String item:items)if(GamePerformanceMonitorConfig.selected(selected,item))selectedCount++;
+        customWidth+=Math.max(0,selectedCount-1)*gap;
         if(!on&&!state.applied){
             if(requested)report(owner,state,requested,selected,nativeWidth,nativeWidth,
                     state.sizingReady?"invalid_selected_width":state.sizingPhase);
             return;
         }
-        int width=state.fit(on,selected,on?customWidth:state.originalWidth);
-        boolean changed=state.applied!=on||!selected.equals(state.selection)||state.appliedWidth!=width;
+        int width=state.fit(on,selected,on?customWidth:state.originalWidth,gap);
+        boolean changed=state.applied!=on||!selected.equals(state.selection)||state.appliedWidth!=width||state.marginDp!=marginDp;
+        state.marginDp=marginDp;
         state.selection=selected;state.count=0;
         for(int i=0;i<9;i++){
             View item=content.getChildAt(i);
@@ -206,6 +216,7 @@ final class GamePerformanceMonitorHook {
                 "enabled="+requested+";items="+selected+";width="+width+";background_alpha="+state.background.getAlpha()
                 +";text_alpha="+(state.applied?"1":"native")+";state="+(state.applied?"APPLIED":requested?"WAITING_FOR_SIZE":"RESTORED")
                 +";phase="+phase+";applied="+state.applied+";nativeFullWidth="+nativeWidth+";originalWidth="+state.originalWidth
+                +";itemMarginDp="+state.marginDp
                 +";appliedWidth="+state.appliedWidth+";shortened="+access.shortened.getBoolean(owner)+";shortWidth="+access.shortWidth.getInt(owner));
     }
 
@@ -261,7 +272,7 @@ final class GamePerformanceMonitorHook {
         int originalWidth,appliedWidth;final int[] widths=new int[9],cellWidths=new int[9],visibility=new int[9];
         final boolean[] selected=new boolean[9];final float backgroundAlpha,shortBackgroundAlpha;
         final MonitorTelemetry telemetry;
-        final int[] nativeCellWidths=new int[9];final float[] nativeWeights=new float[9];
+        final int[] nativeCellWidths=new int[9],nativeLeft=new int[9],nativeRight=new int[9];final float[] nativeWeights=new float[9];int marginDp;
         String selection="",sizingPhase="pending_cell_sizes";boolean applied,sizingReady,cellsShrunk;int count;
         State(ViewGroup content,View background,View shortBackground){
             this.content=content;this.background=background;this.shortBackground=shortBackground;
@@ -270,14 +281,25 @@ final class GamePerformanceMonitorHook {
             telemetry=new MonitorTelemetry(content);
             for(int i=5;i<9;i++){visibility[i]=View.VISIBLE;widths[i]=cellWidths[i]=content.getChildAt(i).getLayoutParams().width;}
             for(int i=0;i<9;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();nativeCellWidths[i]=p.width;
+                if(p instanceof ViewGroup.MarginLayoutParams){nativeLeft[i]=((ViewGroup.MarginLayoutParams)p).leftMargin;nativeRight[i]=((ViewGroup.MarginLayoutParams)p).rightMargin;}
                 if(p instanceof android.widget.LinearLayout.LayoutParams)nativeWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;}
         }
-        int fit(boolean on,String selection,int wanted){
+        int fit(boolean on,String selection,int wanted,int gap){
             int maximum=content.getContext().getResources().getDisplayMetrics().widthPixels;
             boolean shrink=on&&maximum>0&&wanted>maximum;
             int chrome=originalWidth;for(int i=0;i<5;i++)chrome-=widths[i];
             int cells=0,margins=0;String[] items=GamePerformanceMonitorConfig.items();
-            for(int i=0;i<9;i++)if(GamePerformanceMonitorConfig.selected(selection,items[i])){cells+=cellWidths[i];margins+=widths[i]-cellWidths[i];}
+            int count=0;for(int i=0;i<9;i++)if(GamePerformanceMonitorConfig.selected(selection,items[i])){cells+=cellWidths[i];margins+=widths[i]-cellWidths[i];count++;}
+            margins+=on?Math.max(0,count-1)*gap:0;
+            boolean first=true;
+            for(int i=0;i<9;i++){
+                View item=content.getChildAt(i);ViewGroup.LayoutParams p=item.getLayoutParams();
+                boolean selected=on&&GamePerformanceMonitorConfig.selected(selection,items[i]);
+                if(p instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams m=(ViewGroup.MarginLayoutParams)p;
+                    int left=nativeLeft[i]+(selected&&!first?gap:0);
+                    if(m.leftMargin!=left||m.rightMargin!=nativeRight[i]){m.leftMargin=left;m.rightMargin=nativeRight[i];item.setLayoutParams(p);}}
+                if(selected)first=false;
+            }
             float ratio=shrink&&cells>0?Math.max(1,maximum-chrome-margins)/(float)cells:1f;
             if(shrink||cellsShrunk)for(int i=0;i<9;i++){
                 View item=content.getChildAt(i);ViewGroup.LayoutParams p=item.getLayoutParams();
@@ -294,8 +316,11 @@ final class GamePerformanceMonitorHook {
             // The OEM cells use wrap_content + weight. Measure the original five
             // cells at each valid native size, including those currently hidden by us.
             int[] currentVisibility=new int[5];
+            int[] currentLeft=new int[5],currentRight=new int[5];
             int[] currentWidths=new int[5];float[] currentWeights=new float[5];
             for(int i=0;i<5;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();
+                if(p instanceof ViewGroup.MarginLayoutParams){ViewGroup.MarginLayoutParams m=(ViewGroup.MarginLayoutParams)p;
+                    currentLeft[i]=m.leftMargin;currentRight[i]=m.rightMargin;m.leftMargin=nativeLeft[i];m.rightMargin=nativeRight[i];}
                 if(!cellsShrunk){nativeCellWidths[i]=p.width;if(p instanceof android.widget.LinearLayout.LayoutParams)nativeWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;}
                 currentWidths[i]=p.width;p.width=nativeCellWidths[i];
                 if(p instanceof android.widget.LinearLayout.LayoutParams){currentWeights[i]=((android.widget.LinearLayout.LayoutParams)p).weight;((android.widget.LinearLayout.LayoutParams)p).weight=nativeWeights[i];}}
@@ -319,7 +344,8 @@ final class GamePerformanceMonitorHook {
                 originalWidth=width;sizingReady=true;sizingPhase="ready";
                 System.arraycopy(cells,0,cellWidths,0,5);System.arraycopy(occupied,0,widths,0,5);
             }finally{for(int i=0;i<5;i++)content.getChildAt(i).setVisibility(currentVisibility[i]);
-                for(int i=0;i<5;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();p.width=currentWidths[i];if(p instanceof android.widget.LinearLayout.LayoutParams)((android.widget.LinearLayout.LayoutParams)p).weight=currentWeights[i];}
+                for(int i=0;i<5;i++){ViewGroup.LayoutParams p=content.getChildAt(i).getLayoutParams();p.width=currentWidths[i];if(p instanceof android.widget.LinearLayout.LayoutParams)((android.widget.LinearLayout.LayoutParams)p).weight=currentWeights[i];
+                    if(p instanceof ViewGroup.MarginLayoutParams){((ViewGroup.MarginLayoutParams)p).leftMargin=currentLeft[i];((ViewGroup.MarginLayoutParams)p).rightMargin=currentRight[i];}}
                 for(int i=5;i<9;i++)content.getChildAt(i).setVisibility(extraVisibility[i-5]);}
         }
     }
@@ -332,20 +358,23 @@ final class GamePerformanceMonitorHook {
         static Access resolve(ClassLoader loader)throws ReflectiveOperationException{
             // Keep the established 17 route first. Resolve a complete contract before
             // trying 16, so an unfamiliar APK can never combine members from both.
-            try{return new Access(loader,false);}
+            try{return new Access(loader,false,false);}
             catch(ReflectiveOperationException modern){
-                try{return new Access(loader,true);}
-                catch(ReflectiveOperationException legacy){legacy.addSuppressed(modern);throw legacy;}
+                try{return new Access(loader,true,false);}
+                catch(ReflectiveOperationException legacy){
+                    try{return new Access(loader,false,true);}
+                    catch(ReflectiveOperationException compact){compact.addSuppressed(modern);compact.addSuppressed(legacy);throw compact;}
+                }
             }
         }
-        private Access(ClassLoader loader,boolean legacy)throws ReflectiveOperationException{
-            route=legacy?"GameAssist16":"GameAssist17";
+        private Access(ClassLoader loader,boolean legacy,boolean compact)throws ReflectiveOperationException{
+            route=compact?"compact-fields":legacy?"GameAssist16":"GameAssist17";
             Class<?> type=Class.forName(TYPE,false,loader);
-            context=field(type,name(legacy,"j","mContext"),Context.class);content=field(type,name(legacy,"m","mContentLayout"),android.widget.LinearLayout.class);
-            background=field(type,name(legacy,"n","mMonitorBackgroundView"),Class.forName(TYPE.replace("PerformanceMonitorFloatingWindow","CornerRectangle"),false,loader));
-            shortBackground=field(type,name(legacy,"o","mShortenMonitorBackgroundView"),background.getType());fullWidth=field(type,name(legacy,"J","mFixedWidth"),int.class);currentWidth=field(type,name(legacy,"L","mWindowWidth"),int.class);shortWidth=field(type,name(legacy,"R","mShortenViewWidth"),int.class);
-            layoutParams=field(type,name(legacy,"v","mLayoutParams"),WindowManager.LayoutParams.class);shortened=field(type,name(legacy,"U","mIsViewGroupShorten"),boolean.class);selectedIndex=field(type,name(legacy,"V","mLastClickIndex"),int.class);added=field(type,name(legacy,"h","mWindowAdd"),boolean.class);
-            activeRoot=field(type,name(legacy,"k","mFloatLayout"),ViewGroup.class);windowManager=field(type,name(legacy,"w","mWindowManager"),Class.forName("cn.nubia.gameassist.utils.WindowManagerUtil",false,loader));pointX=field(type,name(legacy,"S","mPointX"),int.class);
+            context=field(type,compact?"d":name(legacy,"j","mContext"),Context.class);content=field(type,compact?"g":name(legacy,"m","mContentLayout"),android.widget.LinearLayout.class);
+            background=field(type,compact?"h":name(legacy,"n","mMonitorBackgroundView"),Class.forName(TYPE.replace("PerformanceMonitorFloatingWindow","CornerRectangle"),false,loader));
+            shortBackground=field(type,compact?"i":name(legacy,"o","mShortenMonitorBackgroundView"),background.getType());fullWidth=field(type,compact?"D":name(legacy,"J","mFixedWidth"),int.class);currentWidth=field(type,compact?"F":name(legacy,"L","mWindowWidth"),int.class);shortWidth=field(type,compact?"L":name(legacy,"R","mShortenViewWidth"),int.class);
+            layoutParams=field(type,compact?"p":name(legacy,"v","mLayoutParams"),WindowManager.LayoutParams.class);shortened=field(type,compact?"O":name(legacy,"U","mIsViewGroupShorten"),boolean.class);selectedIndex=field(type,compact?"P":name(legacy,"V","mLastClickIndex"),int.class);added=field(type,compact?"b":name(legacy,"h","mWindowAdd"),boolean.class);
+            activeRoot=field(type,compact?"e":name(legacy,"k","mFloatLayout"),ViewGroup.class);windowManager=field(type,compact?"q":name(legacy,"w","mWindowManager"),Class.forName("cn.nubia.gameassist.utils.WindowManagerUtil",false,loader));pointX=field(type,compact?"M":name(legacy,"S","mPointX"),int.class);
             init=method(type,name(legacy,"I","initView"),void.class);dimensions=method(type,name(legacy,"H","initSize"),void.class);params=method(type,name(legacy,"G","initLayoutParams"),WindowManager.LayoutParams.class);
             showMode=method(type,name(legacy,"v","addOpenOrShortenWindow"),void.class,boolean.class);add=method(type,"addFloatView",void.class,String.class);
             backgroundAlpha=method(type,name(legacy,"R","setAlpha"),void.class,float.class);hitIndex=method(type,name(legacy,"A","getItemIndex"),int.class,float.class);click=method(type,name(legacy,"N","onItemClick"),void.class,float.class);

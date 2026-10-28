@@ -102,6 +102,21 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     .put("installedModuleVersion", context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode())
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "recents-privacy-blur":
+                    report.put("blur",ls.augment.com.hook.RecentsPrivacyBlurDeviceCases.run());
+                    break;
+                case "recents-privacy-ui":
+                    report.put("privacy",RecentsPrivacyUiCases.run(this));
+                    break;
+                case "statusbar-workspace-ui":
+                    report.put("workspace",StatusBarWorkspaceUiCases.run(this));
+                    break;
+                case "statusbar-workspace-transactions":
+                    report.put("workspace",StatusBarWorkspaceUiCases.transactions(this));
+                    break;
+                case "statusbar-native-defaults":
+                    report.put("nativeDefaults",StatusBarNativeDefaultsDeviceCases.run(this));
+                    break;
                 case "feedback-notifications":
                     report.put("notifications",FeedbackNotificationCases.run(context,"true".equals(arguments.getString("clear"))));
                     break;
@@ -445,6 +460,8 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("realtimeActivitiesUi", RealtimeActivitiesUiCases.run(this));
                     result.putString("realtimeActivitiesUi", report.getJSONObject("realtimeActivitiesUi").toString());
                     break;
+                case "slider-theme":
+                    report=ls.augment.com.hook.SliderThemeDeviceCases.run(this);break;
                 case "game-performance-monitor-ui":
                     report.put("gamePerformanceMonitorUi",GamePerformanceMonitorUiCases.run(this,
                             Boolean.parseBoolean(arguments.getString("layoutOnly","false")),

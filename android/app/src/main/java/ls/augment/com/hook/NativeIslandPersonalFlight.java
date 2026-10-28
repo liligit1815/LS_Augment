@@ -54,7 +54,7 @@ final class NativeIslandPersonalFlight {
             if (target == null) return false;
             ActivityInfo info = context.getPackageManager().getActivityInfo(target, 0);
             return info.enabled && info.exported && info.applicationInfo != null && info.applicationInfo.enabled
-                    && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == 0);
+                    && (info.permission == null || info.permission.isEmpty() || context.checkSelfPermission(info.permission) == android.content.pm.PackageManager.PERMISSION_GRANTED);
         } catch (Exception missing) { return false; }
     }
 }

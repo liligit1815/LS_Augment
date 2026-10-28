@@ -188,7 +188,7 @@ public final class LSConfigProvider extends ContentProvider {
             try{return ExtraDimControl.call(getContext(),method,extras);}
             finally{Binder.restoreCallingIdentity(identity);}
         }
-        if ("brightness_read".equals(method) || "brightness_select".equals(method)) {
+        if ("brightness_read".equals(method) || "brightness_select".equals(method) || "brightness_observe".equals(method)) {
             int caller = Binder.getCallingUid();
             if (arg != null || !BrightnessRange.allowedCaller(caller,Process.myUid(),getCallingPackage(),
                     getContext().getPackageManager().getPackagesForUid(caller))) return result;

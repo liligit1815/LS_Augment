@@ -381,6 +381,7 @@ class Fixture:
         self.log = (self.output / (self.phase + '-fixture.txt')).open('wb')
         command = [str(ar.ADB), '-s', ar.SERIAL, 'shell', 'am', 'instrument', '-w', '-r',
                    '-e', 'seconds', str(self.seconds), '-e', 'coverAfter', '-1', '-e', 'noCoverAfter', '-1',
+                   '-e', 'skipActiveSession', 'true',
                    '-e', 'operation', 'c17-runtime-fixture', RUNNER]
         self.proc = subprocess.Popen(command, stdout=self.log, stderr=subprocess.STDOUT)
         while time.monotonic() - self.started < 15:
@@ -995,6 +996,8 @@ def main():
     parser.add_argument('--stack-mode', choices=('on', 'off'),
                         help='Explicit stack override; use on with clock only for the separate combined case')
     parser.add_argument('--expected-version', type=int, help='Refuse a different source/installed module version')
+    parser.add_argument('--start-percent', type=int, choices=range(40, 91), metavar='40..90',
+                        help='Exercise a specific shade cascade start; restored with the original settings')
     parser.add_argument('--seconds', type=int, choices=range(45, 181), metavar='45..180', default=120)
     parser.add_argument('--max-steps', type=int, default=30)
     parser.add_argument('--out', type=Path)
@@ -1007,6 +1010,8 @@ def main():
     if args.expected_version is not None and args.expected_version != int(version):
         raise RuntimeError('Requested module version differs from current source version')
     values = test_values(args.viewport_profile, args.stack_mode)
+    if args.start_percent is not None:
+        values['ls_augment_rm_notification_stack_start'] = str(args.start_percent)
     output = args.out or ar.ROOT / ('out/full-function-audit-20261004/stack-native-' + version + '-' + time.strftime('%H%M%S'))
     output.mkdir(parents=True, exist_ok=False)
     ar.OUTPUT = ui.OUTPUT = output
@@ -1043,6 +1048,7 @@ def main():
         if ar.shell('pidof com.android.systemui').strip() != pid:
             raise RuntimeError('SystemUI changed while checking its loaded build')
         sources = ['android/app/src/main/java/ls/augment/com/hook/NotificationCascadeHook.java',
+                   'android/app/src/main/java/ls/augment/com/NotificationCascadePolicy.java',
                    'android/app/src/main/java/ls/augment/com/NotificationLayoutPolicy.java',
                    'android/app/src/main/java/ls/augment/com/hook/NotificationAppearanceHook.java',
                    'android/app/src/main/java/ls/augment/com/hook/NotificationViewportInset.java',

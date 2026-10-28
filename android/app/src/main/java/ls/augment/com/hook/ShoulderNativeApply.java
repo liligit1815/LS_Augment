@@ -120,6 +120,18 @@ final class ShoulderNativeApply {
         return result;
     }
 
+    /** Called only by the validated rapid-fire route, before its framework call.
+     * Keep coordinates/modes and delivery failures under the same strict observer. */
+    static void rapidFireOverride(int keyCode, int original, int effective) {
+        Attempt attempt = ACTIVE.get();
+        if (attempt == null || original <= 0 || effective <= 0) return;
+        String key = "rate:" + keyCode;
+        if (!Integer.valueOf(original).equals(attempt.expected.values.get(key))) return;
+        attempt.expected.values.put(key, effective);
+        HookTelemetry.shoulderSwitch("INFO", "tx=" + attempt.sequence
+                + " stage=RAPID_RATE_OVERRIDE key=" + keyCode + " native=" + original + " effective=" + effective);
+    }
+
     static final class Expected {
         final Map<String, Object> values = new LinkedHashMap<>();
         String hash() { return digest(values); }

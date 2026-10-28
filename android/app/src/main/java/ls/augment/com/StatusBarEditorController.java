@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -17,7 +18,7 @@ import java.util.concurrent.Executors;
 final class StatusBarEditorController extends NativeEditorController {
     StatusBarEditorController(Activity owner,String route,boolean embedded){super(owner,route,embedded);}
     // All editor instances share submission order, including pages already closed.
-    private static final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private static final ExecutorService worker = StatusBarEditSession.WORKER;
     private final ConfigEditDraft draft = new ConfigEditDraft();
     private final LinkedHashMap<String, String> rawInputs = new LinkedHashMap<>();
     private AppConfig config;
@@ -27,6 +28,14 @@ final class StatusBarEditorController extends NativeEditorController {
     private Preview preview;
     private android.content.SharedPreferences previewPreferences;
     private final android.content.SharedPreferences.OnSharedPreferenceChangeListener previewPreferenceListener=(prefs,key)->{
+        if(workspace()&&StatusBarWorkspaceSpec.ownsKey(key))runOnUiThread(()->{
+            if(isDestroyed()||this.previewBackup!=null||this.workspaceResetting)return;
+            if(draft.refresh(key,savedValue(key))&&(ConfigSchema.STATUSBAR_GRID.equals(key)||StatusBarEditPolicy.KEY.equals(key))){
+                grid=editorGrid();
+            }
+            if(this.workspaceAssets!=null){this.workspaceAssets.workspaceRefreshSaved();updateWorkspacePreviewLabel();}
+            if(preview!=null)preview.invalidate();
+        });
         if(SystemUiOptions.SIGNAL_DUAL.equals(key)||SystemUiOptions.SIGNAL_DUAL_STYLE.equals(key)||ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP.equals(key))
             runOnUiThread(this::refreshStoredSignalModes);
         if(preview!=null&&(SystemUiOptions.SIGNAL_DUAL.equals(key)||SystemUiOptions.SIGNAL_DUAL_STYLE.equals(key)
@@ -76,9 +85,9 @@ final class StatusBarEditorController extends NativeEditorController {
     void setRelatedFeatures(java.util.List<NativeFeatureGroups.Feature> features,
             java.util.function.Function<NativeFeatureGroups.Feature,View> factory){relatedFeatures=features;featureFactory=factory;}
     private void related(String destination,LinearLayout parent){
-        for(NativeFeatureGroups.Feature feature:relatedFeatures){
+        for(NativeFeatureGroups.Feature feature:workspace()?StatusBarWorkspaceItems.features(relatedFeatures):relatedFeatures){
             if(isIconLayoutFeature(feature))continue;
-            if(!destination.equals(StatusBarPages.destination(feature)))continue;
+            if(!destination.equals(workspace()?StatusBarWorkspaceItems.destination(feature):StatusBarPages.destination(feature)))continue;
             if(SystemUiOptions.SIGNAL_DUAL.equals(feature.toggleKey)){
                 dualAppearanceSection(parent,feature.title);continue;
             }
@@ -101,19 +110,38 @@ final class StatusBarEditorController extends NativeEditorController {
     private Switch masterControl;
     private LinearLayout masterRow;
     private ParameterSlider clockSizeInput;
+    private boolean workspace(){return owner instanceof StatusBarWorkspaceActivity;}
+    private int workspaceGroup;
+    private String workspaceDetail="",workspaceScope="all",workspaceQuery="";
+    private LinearLayout workspaceTabs,workspaceAssetHost;
+    private StatusBarAssetsController workspaceAssets;
+    private TextView workspacePreviewStatus;
+    private boolean workspaceResetting;
+    private LinearLayout workspaceBody;
+    private StatusBarWorkspaceArtwork workspaceArtwork;
+    private org.json.JSONObject workspaceInventory=new org.json.JSONObject();
+    private final java.util.LinkedHashMap<String,String> workspaceObserved=new java.util.LinkedHashMap<>();
+    private final java.util.Set<String> workspaceVisible=new java.util.LinkedHashSet<>();
+    private int workspaceFilter;
+    private boolean workspaceRefreshing;
+    private ImageButton workspaceRefreshButton;
+    private boolean inventoryObserving;
+    private final android.database.ContentObserver inventoryObserver=new android.database.ContentObserver(main){
+        @Override public void onChange(boolean selfChange){refreshWorkspaceInventory(false);}
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         config = new AppConfig(this); ui = editorUi();
         previewPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);
         previewPreferences.registerOnSharedPreferenceChangeListener(previewPreferenceListener);
-        for (String key : ConfigSchema.keys()) if (!key.equals(StatusBarThemeSpec.KEY)
+        for (String key : ConfigSchema.keys()) if (workspace()&&StatusBarWorkspaceSpec.ownsKey(key)||!key.equals(StatusBarThemeSpec.KEY)
                 && !key.equals(StatusBarSheetSpec.KEY) && !key.equals(StatusBarSheetSpec.MODE_KEY)
                 && !key.equals(StatusBarFontSpec.KEY) && (key.startsWith("ls_augment_statusbar_")
                 || key.equals(ConfigSchema.SYSTEMUI_MASTER)
                 || StatusBarPresets.ownsRelatedKey(key)
                 || key.equals(SystemUiOptions.SIGNAL_DUAL_STYLE)
-                || key.startsWith(SystemUiOptions.PREFIX+"battery_"))) draft.seed(key, config.get(key));
+                || key.startsWith(SystemUiOptions.PREFIX+"battery_"))) draft.seed(key, savedValue(key));
         if (state != null) {
             Bundle saved = state.getBundle("draft-edits");
             if (saved != null) for (String key : draft.keySet()) {
@@ -134,8 +162,8 @@ final class StatusBarEditorController extends NativeEditorController {
         }
         if(ConfigSchema.truthy(draft.get(SystemUiOptions.SIGNAL_DUAL))&&signalEnableBlocked())
             draft.put(SystemUiOptions.SIGNAL_DUAL,"0");
-        grid = StatusBarGridSpec.parse(draft.get(ConfigSchema.STATUSBAR_GRID));
-        if (grid == null) grid = StatusBarGridSpec.defaults();
+        grid = editorGrid();
+        if(workspace()){createWorkspace(state);return;}
         tab=StatusBarPages.tab(route);
         LinearLayout page=embedded?new LinearLayout(this):ui.detailChrome(StatusBarPages.title(route),ScopeRestartDialog.SYSTEM_UI);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -151,7 +179,7 @@ final class StatusBarEditorController extends NativeEditorController {
 
         preview = new Preview();preview.setLayoutParams(new LinearLayout.LayoutParams(-1,ui.dp(62)));
         FrameLayout previewFrame=new FrameLayout(this);previewFrame.addView(preview,new FrameLayout.LayoutParams(-1,-1));body.addView(previewFrame,new LinearLayout.LayoutParams(-1,ui.dp(62)));previewHost=previewFrame;
-        boolean directoryPage="status_layout".equals(route)||"status_surfaces".equals(route)||StatusBarPages.surface(route)!=null;
+        boolean directoryPage=("status_layout".equals(route)||"status_legacy".equals(route))||"status_surfaces".equals(route)||StatusBarPages.surface(route)!=null;
         if(directoryPage)previewFrame.setVisibility(View.GONE);
         layoutFeedback=ui.text("已开启自动避让",11,ui.accent,false);layoutFeedback.setMaxLines(2);layoutFeedback.setEllipsize(android.text.TextUtils.TruncateAt.END);layoutFeedback.setOnClickListener(v->ui.glassDialog("预览说明",layoutFeedback.getText().toString(),"知道了",null,null));body.addView(layoutFeedback,ui.margins(0,3,0,3));
         if(directoryPage)layoutFeedback.setVisibility(View.GONE);
@@ -172,7 +200,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 return handled;
             }
         };configScroll.setFillViewport(false);configScroll.setVerticalScrollBarEnabled(false);
-        content = "status_layout".equals(route)?new LinearLayout(this):ui.preferenceCard();content.setOrientation(LinearLayout.VERTICAL);
+        content = ("status_layout".equals(route)||"status_legacy".equals(route))?new LinearLayout(this):ui.preferenceCard();content.setOrientation(LinearLayout.VERTICAL);
         configScroll.addView(content,new ScrollView.LayoutParams(-1,-2));body.addView(configScroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout actions = new LinearLayout(this);
         reset = ui.tonalButton("恢复整个状态栏编辑器默认配置");
@@ -188,16 +216,223 @@ final class StatusBarEditorController extends NativeEditorController {
         apply.setOnClickListener(v -> save());
 
         render();
-        String requestedComponent=getIntent().getStringExtra("status_component");if(requestedComponent!=null)revealComponent(requestedComponent);
+        refreshWorkspaceInventory();String requestedComponent=getIntent().getStringExtra("status_component");if(requestedComponent!=null)revealComponent(requestedComponent);
         configScroll.post(()->configScroll.scrollTo(0,scrollPositions.getOrDefault(tab,0)));
         if(dirty)main.post(autoSave);
     }
+
+    private void createWorkspace(Bundle state){
+        for(String key:ConfigSchema.keys())if(StatusBarWorkspaceSpec.ownsKey(key)&&!draft.containsKey(key))draft.seed(key,savedValue(key));
+        if(state!=null){workspaceGroup=state.getInt("workspace-group");workspaceDetail=state.getString("workspace-detail","");workspaceScope=state.getString("workspace-scope","all");workspaceQuery=state.getString("workspace-query","");workspaceFilter=state.getInt("workspace-filter",0);}
+        ui.setBackAction(this::workspaceBack);LinearLayout page=ui.detailChrome("状态栏自定义",ScopeRestartDialog.SYSTEM_UI);ui.setContentView(page);ui.applyGestureInset(page,0);
+        LinearLayout body=new LinearLayout(this);workspaceBody=body;body.setOrientation(LinearLayout.VERTICAL);body.setPadding(ui.dp(16),0,ui.dp(16),0);page.addView(body,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout previewCard=ui.preferenceCard(),heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);
+        workspacePreviewStatus=ui.text("状态栏预览 · 示例",14,ui.text,true);heading.addView(workspacePreviewStatus,new LinearLayout.LayoutParams(0,-2,1));
+        Button scene=ui.textButton("显示位置");scene.setOnClickListener(v->{String[] labels=new String[StatusBarSurfaceSpec.SCOPES.length];for(int i=0;i<labels.length;i++)labels[i]=StatusBarSurfaceSpec.label(StatusBarSurfaceSpec.SCOPES[i]);ui.choiceDialog("预览、素材、隐藏与间距的作用位置",labels,null,index->{workspaceScope=StatusBarSurfaceSpec.SCOPES[index];workspaceAssets.workspaceScope(workspaceScope);renderWorkspace();refreshWorkspaceInventory();});});heading.addView(scene);
+        Button collapse=ui.textButton("收起");heading.addView(collapse);previewCard.addView(heading,ui.wrap());
+        preview=new Preview();preview.setTag("statusbar-shared-preview");previewHost=preview;previewCard.addView(preview,new LinearLayout.LayoutParams(-1,ui.dp(62)));
+        collapse.setOnClickListener(v->{boolean open=preview.getVisibility()!=View.VISIBLE;preview.setVisibility(open?View.VISIBLE:View.GONE);collapse.setText(open?"收起":"展开");});
+        layoutFeedback=ui.text("预览使用示例数据，实际显示遵循本机能力与空间。",11,ui.muted,false);previewCard.addView(layoutFeedback,ui.margins(0,4,0,8));
+        presetActions=new LinearLayout(this);Button accept=ui.accentButton("应用方案"),cancel=ui.tonalButton("取消预览");addSpacedButton(presetActions,cancel);addSpacedButton(presetActions,accept);cancel.setOnClickListener(v->cancelPreset());accept.setOnClickListener(v->confirmWorkspacePreset());previewCard.addView(presetActions,ui.wrap());body.addView(previewCard,ui.wrap());
+        HorizontalScrollView tabScroll=new HorizontalScrollView(this);tabScroll.setHorizontalScrollBarEnabled(false);tabScroll.setFillViewport(true);workspaceTabs=new LinearLayout(this);workspaceTabs.setBaselineAligned(false);workspaceTabs.setGravity(Gravity.TOP);
+        String[] labels={"状态栏","系统图标","通知图标","素材与字体"};for(int i=0;i<labels.length;i++){final int index=i;Button button=ui.sectionTab(labels[i]);button.setTag("status-group:"+i);button.setMinWidth(ui.dp(Math.round(labels[i].length()*UiKit.compactTextSize(14)*getResources().getConfiguration().fontScale+16)));button.setOnClickListener(v->{scrollPositions.put(workspaceGroup,configScroll.getScrollY());workspaceGroup=index;workspaceDetail="";renderWorkspace();configScroll.post(()->configScroll.scrollTo(0,scrollPositions.getOrDefault(index,0)));});workspaceTabs.addView(button,new LinearLayout.LayoutParams(0,-2,1));}
+        tabScroll.addView(workspaceTabs,new HorizontalScrollView.LayoutParams(-1,-2));body.addView(tabScroll,ui.margins(0,8,0,8));
+        configScroll=new ScrollView(this);configScroll.setVerticalScrollBarEnabled(false);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);configScroll.addView(content);body.addView(configScroll,new LinearLayout.LayoutParams(-1,0,1));
+        masterControl=new Switch(this);masterControl.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)));masterControl.setTag("config:"+ConfigSchema.SYSTEMUI_MASTER);masterRow=ui.featureRow("启用状态栏自定义","关闭保留配置；独立原生功能、素材和字体遵循各自设置。",masterControl);masterControl.setOnCheckedChangeListener((v,on)->{if(!loading){draft.put(ConfigSchema.SYSTEMUI_MASTER,on?"1":"0");changed();renderKeepingScroll();}});
+        workspaceArtwork=new StatusBarWorkspaceArtwork(this,()->{if(preview!=null&&!isDestroyed())preview.invalidate();});
+        workspaceAssets=new StatusBarAssetsController(owner,true);workspaceAssets.bindWorkspace(view->{if(workspaceGroup==3&&workspaceAssetHost!=null){detach(view);workspaceAssetHost.removeAllViews();workspaceAssetHost.addView(view,ui.wrap());}if(preview!=null)preview.invalidate();},()->{if(preview!=null)preview.invalidate();updateWorkspacePreviewLabel();});
+        workspaceAssets.onCreate(state==null?null:state.getBundle("workspace-assets"));
+        ((EnhancementSettingsActivity)owner).registerStatusAssets(workspaceAssets);
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::workspaceBack);
+        renderWorkspace();refreshWorkspaceInventory();
+        if(state!=null&&state.getBoolean("workspace-preview-hidden")){previewHost.setVisibility(View.GONE);collapse.setText("展开");}
+        configScroll.post(()->configScroll.scrollTo(0,scrollPositions.getOrDefault(workspaceGroup,0)));if(dirty)main.post(autoSave);
+    }
+    private static void detach(View view){if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);}
+    private void updateWorkspacePreviewLabel(){if(workspaceArtwork!=null&&workspaceAssets!=null&&workspaceAssets.workspaceTheme()!=null)workspaceArtwork.update(workspaceAssets.workspaceTheme(),workspaceScope);if(workspacePreviewStatus!=null)workspacePreviewStatus.setText(previewBackup!=null?"预览："+presetName+" · 尚未应用":workspaceAssets!=null&&workspaceAssets.workspaceDirty()?"状态栏预览 · 包含素材草稿":"状态栏预览 · 示例");}
+    private LinearLayout workspaceCard(){boolean flat=ui.flatCards;ui.flatCards=false;LinearLayout card=ui.preferenceCard();ui.flatCards=flat;content.addView(card,ui.margins(0,0,0,8));return card;}
+    private LinearLayout column(){LinearLayout value=new LinearLayout(this);value.setOrientation(LinearLayout.VERTICAL);return value;}
+    private void renderWorkspace(){
+        indexWorkspaceInventory();
+        boolean flat=ui.flatCards;ui.flatCards=true;loading=true;
+        if(connectivityFold!=null)connectivityExpanded=connectivityFold.content.getVisibility()==View.VISIBLE;
+        if(nativeBatteryFold!=null)nativeBatteryExpanded=nativeBatteryFold.content.getVisibility()==View.VISIBLE;
+        if(dualAppearanceFold!=null)dualAppearanceExpanded=dualAppearanceFold.content.getVisibility()==View.VISIBLE;
+        connectivityFold=null;nativeBatteryFold=null;dualAppearanceFold=null;
+        for(Map.Entry<String,View> e:advancedViews.entrySet())advancedExpanded.put(e.getKey(),e.getValue().getVisibility()==View.VISIBLE);advancedViews.clear();
+        for(Map.Entry<String,UiKit.Fold> e:componentFolds.entrySet())expandedComponents.put(e.getKey(),e.getValue().content.getVisibility()==View.VISIBLE);componentFolds.clear();componentViews.clear();
+        content.removeAllViews();workspaceAssetHost=null;controls.clear();presetActions.setVisibility(previewBackup==null?View.GONE:View.VISIBLE);
+        for(int i=0;i<workspaceTabs.getChildCount();i++){View button=workspaceTabs.getChildAt(i);button.setSelected(i==workspaceGroup);}
+        try{
+            if(!workspaceDetail.isEmpty()){
+                Button back=ui.tonalButton("返回"+(workspaceGroup==2?"通知图标":"系统图标"));back.setOnClickListener(v->{workspaceDetail="";renderWorkspace();});content.addView(back,ui.wrap());
+                renderWorkspaceIcon(workspaceDetail);
+            }else if(workspaceGroup==0)renderWorkspaceProperties();
+            else if(workspaceGroup==1)renderWorkspaceSystem();
+            else if(workspaceGroup==2){LinearLayout outer=content;content=workspaceCard();component("notifications","通知图标");workspacePlacement(content,"notifications");workspaceSpacing(content,"notifications");related("notifications",content);content=outer;}
+            else{workspaceAssetHost=column();content.addView(workspaceAssetHost,ui.wrap());View assets=workspaceAssets.view();detach(assets);workspaceAssetHost.addView(assets,ui.wrap());}
+            if(previewBackup!=null||workspaceResetting)setWorkspaceEnabled(content,false);
+        }finally{loading=false;ui.flatCards=flat;updateWorkspacePreviewLabel();preview.invalidate();}
+    }
+    private static void setWorkspaceEnabled(View root,boolean enabled){root.setEnabled(enabled);if(root instanceof android.view.ViewGroup)for(int i=0;i<((android.view.ViewGroup)root).getChildCount();i++)setWorkspaceEnabled(((android.view.ViewGroup)root).getChildAt(i),enabled);}
+    private void renderWorkspaceProperties(){
+        LinearLayout card=workspaceCard();detach(masterRow);card.addView(masterRow,ui.wrap());
+        LinearLayout presets=new LinearLayout(this);presets.setGravity(Gravity.CENTER_VERTICAL);presets.setPadding(ui.dp(8),0,0,0);
+        presets.addView(ui.featureTitle("预设方案",""),new LinearLayout.LayoutParams(0,-2,1));
+        Spinner preset=ui.actionChoiceSpinner("预设方案",index->previewWorkspacePreset(index==1));preset.setContentDescription("预设方案");
+        preset.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"简洁单排","常规双排"}){
+            @Override public View getView(int position,View convert,ViewGroup parent){TextView label=(TextView)super.getView(position,convert,parent);label.setText(previewBackup==null?"选择预设":presetName);return label;}
+        });presets.addView(preset,new LinearLayout.LayoutParams(-2,-2));workspaceCard().addView(presets,ui.wrap());
+        LinearLayout outer=content;content=workspaceCard();LinearLayout properties=content;
+        workspaceRowCount(content);
+        LinearLayout edges=column();content=edges;number(ConfigSchema.STATUSBAR_HEIGHT_DP,"状态栏高度（0 原厂，负数减小）",ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP);marginInputs();advanced(properties,"workspace-edges","高度与四边边距",edges);
+        if(!"1".equals(draft.get(StatusBarWorkspaceSpec.ROWS))){LinearLayout gap=column();content=gap;number(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP,"上下两排间距",-8,64);advanced(properties,"workspace-gap","双排间距",gap);}
+        if(!ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)))setWorkspaceEnabled(properties,false);
+        content=outer;LinearLayout behavior=column();related("layout",behavior);related("gesture",behavior);advanced(workspaceCard(),"workspace-behavior","显示与交互",behavior);
+        if(positionSizeOnly()){LinearLayout mode=workspaceCard();toggle(mode,ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY,"仅调整位置和大小（旧方案）");}
+        LinearLayout resetCard=workspaceCard();Button resetAll=ui.textButton("重置状态栏配置");resetAll.setTextColor(ui.danger);resetAll.setTag("statusbar-reset-all");resetAll.setOnClickListener(v->confirmWorkspaceReset());resetCard.addView(resetAll,ui.wrap());TextView resetHint=ui.text("清除四个分组的全部配置，恢复原厂样式。",12,ui.muted,false);resetHint.setGravity(Gravity.CENTER);resetCard.addView(resetHint,ui.margins(0,0,0,10));
+    }
+    private void workspaceRowCount(LinearLayout parent){
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(ui.dp(8),0,0,0);
+        row.addView(ui.featureTitle("状态栏排数","单排时暂停第二排配置，切回双排保留原行位置。"),new LinearLayout.LayoutParams(0,-2,1));
+        Spinner input=ui.inlineChoiceSpinner("状态栏排数");input.setContentDescription("状态栏排数");
+        input.setAdapter(choiceAdapter(new String[]{"单排","双排"}));final int[] previous={singleRow()?0:1};input.setSelection(previous[0]);
+        row.addView(input,new LinearLayout.LayoutParams(-2,-2));parent.addView(row,ui.wrap());
+        input.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View view,int index,long id){if(!loading&&index!=previous[0]){previous[0]=index;draft.put(StatusBarWorkspaceSpec.ROWS,index==0?"1":"2");changed();renderKeepingScroll();}}});
+    }
+    private void renderWorkspaceSystem(){
+        LinearLayout outer=content,card=workspaceCard(),general=column();content=general;
+        if(!singleRow())toggle(general,ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS,"系统图标分两排");
+        workspaceSystemSize(general);workspacePlacement(general,"system_icons");workspaceSpacing(general,"system_icons");hintPrioritySection();related("icons",general);
+        LinearLayout network=column();related("general-network",network);advanced(general,"workspace-network-common","移动网络与信号",network);
+        toggle(general,SystemUiOptions.PREFIX+"metrics_hide_units","温度与电量隐藏单位");related("hidden-icons",general);
+        toggle(general,SystemUiOptions.PREFIX+"metrics_charging_only","仅充电时显示电流和功率");
+        content=outer;advanced(card,"workspace-general","通用设置",general);
+        workspaceConnectivity(card);
+        LinearLayout directory=column();EditText search=new EditText(this);search.setSingleLine();search.setHint("搜索名称或图标标识");search.setContentDescription("搜索系统图标");ui.styleInput(search);search.setText(workspaceQuery);directory.addView(search,ui.wrap());
+        LinearLayout actions=new LinearLayout(this);actions.setGravity(Gravity.CENTER_VERTICAL);
+        Spinner filter=ui.choiceSpinner("筛选图标");filter.setContentDescription("筛选图标");filter.setAdapter(choiceAdapter(StatusBarWorkspaceItems.FILTERS));filter.setSelection(workspaceFilter);actions.addView(filter,new LinearLayout.LayoutParams(0,-2,1));
+        ImageButton refresh=ui.iconAction(R.drawable.ic_restart_scope,"刷新本机图标");workspaceRefreshButton=refresh;refresh.setEnabled(!workspaceRefreshing);refresh.setAlpha(workspaceRefreshing?.5f:1);refresh.setOnClickListener(v->{refresh.setEnabled(false);refreshWorkspaceInventory();});
+        LinearLayout.LayoutParams refreshSize=new LinearLayout.LayoutParams(ui.dp(48),ui.dp(48));refreshSize.setMarginStart(ui.dp(8));actions.addView(refresh,refreshSize);directory.addView(actions,ui.margins(0,8,0,8));
+        LinearLayout list=column();directory.addView(list,ui.wrap());populateWorkspaceDirectory(list);search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){workspaceQuery=s.toString();populateWorkspaceDirectory(list);}public void afterTextChanged(android.text.Editable e){}});
+        filter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int index,long id){if(workspaceFilter!=index){workspaceFilter=index;populateWorkspaceDirectory(list);}}});
+        advanced(card,"workspace-directory","独立图标配置",directory);
+    }
+    private void workspaceSystemSize(LinearLayout parent){
+        StatusBarGridSpec.Item item=grid.get("system_icons");Switch enabled=new Switch(this);enabled.setChecked(item.size>0);
+        enabled.setTag("statusbar-system-size");parent.addView(ui.featureRow("系统图标大小","关闭时使用原厂大小；开启后可调整系统图标的大小。",enabled),ui.wrap());
+        LinearLayout settings=column();parent.addView(settings,ui.wrap());
+        if(item.size>0)slider(settings,"图标大小（dp）",item.size,6,32,value->updateItem("system_icons",null,-1,value,null));
+        UiKit.Fold fold=ui.fold(enabled,settings);componentFolds.put("system_icons_size",fold);fold.show(Boolean.TRUE.equals(expandedComponents.get("system_icons_size")));
+        enabled.setOnCheckedChangeListener((button,on)->{if(loading)return;
+            android.content.SharedPreferences memory=getSharedPreferences("native_value_overrides",MODE_PRIVATE);String key="remember:"+ConfigSchema.STATUSBAR_GRID;int size=13;
+            if(on){try{int remembered=Integer.parseInt(memory.getString(key,"13"));if(remembered>=6&&remembered<=32)size=remembered;}catch(NumberFormatException ignored){}}
+            else memory.edit().putString(key,String.valueOf(workspaceItem("system_icons").size)).apply();
+            expandedComponents.put("system_icons_size",on);fold.show(on);updateItem("system_icons",null,-1,on?size:0,null);renderKeepingScroll();});
+    }
+    private void workspaceConnectivity(LinearLayout parent){
+        Switch enabled=new Switch(this);enabled.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)));controls.put(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,enabled);
+        enabled.setTag("config:"+ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP);parent.addView(ui.featureRow("三合一图标",FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,"三合一图标"),enabled),ui.wrap());
+        LinearLayout settings=column();parent.addView(settings,ui.wrap());
+        if(connectivityGroup()){
+            slider(settings,"圆形组件大小（dp）",number(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE),18,40,value->{draft.put(ConfigSchema.STATUSBAR_CONNECTIVITY_SIZE,String.valueOf(value));changed();});
+            workspacePlacement(settings,"battery");connectivityControls(settings);
+        }
+        connectivityFold=ui.fold(enabled,settings);connectivityFold.show(connectivityExpanded);
+        enabled.setOnCheckedChangeListener((button,on)->{if(!loading)setBatteryMode(true,on);});
+    }
+    private void populateWorkspaceDirectory(LinearLayout list){
+        list.removeAllViews();java.util.LinkedHashMap<String,String> names=new java.util.LinkedHashMap<>();for(StatusBarIconCatalog.Icon icon:StatusBarIconCatalog.all())names.put(icon.id,icon.title);
+        for(int i=0;i<StatusBarGridSpec.IDS.length;i++)if(!java.util.Arrays.asList("notifications","system_icons").contains(StatusBarGridSpec.IDS[i]))names.put(StatusBarGridSpec.IDS[i],StatusBarGridSpec.LABELS[i]);
+        for(String id:workspaceObserved.keySet())names.putIfAbsent(id,id);
+        for(String id:StatusBarWorkspaceItems.configuredIds(draft::get,workspaceAssets.workspaceTheme()))names.putIfAbsent(id,id);
+        list.addView(ui.text(workspaceObserved.isEmpty()?"当前显示位置暂无最新检测结果，可选择全部图标预先配置。":"当前显示位置已加载 "+workspaceObserved.size()+" 项。",12,ui.muted,false),ui.wrap());int count=0;
+        String query=workspaceQuery.toLowerCase(java.util.Locale.ROOT);for(Map.Entry<String,String> e:names.entrySet())if((e.getKey()+e.getValue()).toLowerCase(java.util.Locale.ROOT).contains(query)){
+            String id=e.getKey();boolean modified=StatusBarWorkspaceItems.changed(id,draft::get,workspaceAssets.workspaceTheme(),workspaceAssets.workspaceFonts(),workspaceScope);
+            if(!StatusBarWorkspaceItems.matches(workspaceFilter,workspaceObserved.containsKey(id),workspaceVisible.contains(id),modified))continue;
+            String hint=workspaceObserved.getOrDefault(id,"尚未检测到")+(modified?" · 已修改":"");count++;
+            list.addView(ui.preferenceRow("status-icon:"+id,e.getValue(),hint,()->{workspaceDetail=id;renderWorkspace();configScroll.scrollTo(0,0);}),ui.wrap());
+        }
+        if(count==0)list.addView(ui.text("没有符合筛选条件的图标。",12,ui.muted,false),ui.wrap());
+    }
+    private void refreshWorkspaceInventory(){refreshWorkspaceInventory(true);}
+    private void finishWorkspaceRefresh(){workspaceRefreshing=false;if(workspaceRefreshButton!=null){workspaceRefreshButton.setEnabled(true);workspaceRefreshButton.setAlpha(1);}}
+    private void refreshWorkspaceInventory(boolean redrawDirectory){if(workspaceRefreshing||isDestroyed())return;workspaceRefreshing=true;worker.execute(()->{try{
+        Bundle response=getContentResolver().call(android.net.Uri.parse("content://ls.augment.com.config"),"statusbar_inventory_get",null,null);String raw=response==null?"":response.getString("payload","");
+        org.json.JSONObject next=raw.isEmpty()?new org.json.JSONObject():new org.json.JSONObject(raw);
+        runOnUiThread(()->{finishWorkspaceRefresh();if(isDestroyed())return;workspaceInventory=next;indexWorkspaceInventory();preview.invalidate();if(redrawDirectory&&workspaceGroup==1&&workspaceDetail.isEmpty())renderKeepingScroll();});
+    }catch(Exception error){runOnUiThread(()->{finishWorkspaceRefresh();if(!isDestroyed()&&redrawDirectory){Toast.makeText(this,"本机图标读取失败，保留上次结果",Toast.LENGTH_SHORT).show();if(workspaceGroup==1&&workspaceDetail.isEmpty())renderKeepingScroll();}});}});}
+    private void indexWorkspaceInventory(){
+        workspaceObserved.clear();workspaceVisible.clear();org.json.JSONArray active=workspaceInventory.optJSONArray("observedSurfaces");org.json.JSONObject times=workspaceInventory.optJSONObject("surfaceObservedAt");
+        if(active==null)return;
+        for(int s=0;s<active.length();s++){String scope=active.optString(s);if(!workspaceScope.equals("all")&&!workspaceScope.equals(scope))continue;
+            long when=times==null?workspaceInventory.optLong("observedAt"):times.optLong(scope);long age=System.currentTimeMillis()-when;if(when<=0||age<0||age>30000)continue;
+            for(String source:new String[]{"surfaces","workspaceItems"}){org.json.JSONObject surfaces=workspaceInventory.optJSONObject(source);org.json.JSONArray rows=surfaces==null?null:surfaces.optJSONArray(scope);if(rows==null)continue;
+                for(int i=0;i<rows.length();i++){org.json.JSONObject row=rows.optJSONObject(i);if(row==null)continue;String id=row.optString("id"),state=row.optString("state");if(!StatusBarIconCatalog.validId(id))continue;
+                    boolean visible=state.equals("visible")||state.equals("dot");if(visible)workspaceVisible.add(id);
+                    String label=StatusBarSurfaceSpec.label(scope)+(visible?" · 正在显示":state.equals("unsupported")?" · 已加载，暂未适配":" · 当前未显示");
+                    if(!workspaceObserved.containsKey(id)||visible)workspaceObserved.put(id,label);
+                }
+            }
+        }
+    }
+    private void renderWorkspaceIcon(String id){
+        if(id.equals("connectivity")){renderWorkspaceIcon("battery");return;}
+        LinearLayout outer=content;content=workspaceCard();boolean component=java.util.Arrays.asList(StatusBarGridSpec.IDS).contains(id);
+        if(component){if("battery".equals(id)){if(connectivityGroup())workspaceConnectivity(content);else nativeBatterySection();}else component(id,componentName(id));if(!"battery".equals(id)||!connectivityGroup())workspacePlacement(content,id);workspaceSpacing(content,id);
+            if(StatusBarWorkspaceItems.METRICS.contains(id)){toggle(content,SystemUiOptions.PREFIX+"metrics_custom","自定义前缀与宽度");LinearLayout specific=column();related(id,specific);content.addView(specific,ui.wrap());if(!ConfigSchema.truthy(draft.get(SystemUiOptions.PREFIX+"metrics_custom")))setWorkspaceEnabled(specific,false);}
+            else related(id,content);
+        }
+        else {
+            StatusBarIconCatalog.Icon icon=StatusBarIconCatalog.find(id);content.addView(ui.text(icon==null?id:icon.title,14,ui.text,true),ui.wrap());
+            StatusBarVisibilitySpec visible=StatusBarVisibilitySpec.parse(draft.get(StatusBarVisibilitySpec.KEY));if(visible==null)visible=StatusBarVisibilitySpec.empty();final StatusBarVisibilitySpec before=visible;
+            Switch hide=new Switch(this);hide.setChecked(visible.explicitlyHidden(workspaceScope,id));content.addView(ui.featureRow("隐藏图标","关闭后遵循共享方案及原厂显示条件。",hide),ui.wrap());hide.setOnCheckedChangeListener((v,on)->{if(!loading){draft.put(StatusBarVisibilitySpec.KEY,before.with(workspaceScope,id,on).serialize());changed();}});
+            if(StatusBarWorkspaceSpec.independentSlot(id)&&!(connectivityGroup()&&java.util.Arrays.asList("wifi","mobile1","mobile2").contains(id)))workspacePlacement(content,id);
+            else {String parent=StatusBarWorkspaceItems.parent(id,connectivityGroup());workspaceOwnerLink(content,parent,"前往"+(parent.equals("battery")?"三合一":parent.equals("general-network")?"移动网络与信号":parent.equals("system_icons")?"通用":StatusBarIconCatalog.find(parent)==null?parent:StatusBarIconCatalog.find(parent).title)+"配置","该元素由所属图标统一排列，显示顺序在所属图标中设置。");}
+            workspaceSpacing(content,id);if("bluetooth".equals(id))bluetoothSection();if("vpn".equals(id))vpnSection();related(id,content);
+        }content=outer;
+    }
+    private void workspaceOwnerLink(LinearLayout parent,String target,String title,String hint){parent.addView(ui.preferenceRow("workspace-owner:"+target,title,hint,()->{
+        workspaceGroup=1;if(target.startsWith("general-")||target.equals("system_icons")){workspaceDetail="";advancedExpanded.put("workspace-general",true);if(target.equals("general-network"))advancedExpanded.put("workspace-network-common",true);}else workspaceDetail=target;
+        renderWorkspace();configScroll.scrollTo(0,0);
+    }),ui.wrap());}
+    private void workspaceChoice(LinearLayout parent,String title,String[] labels,int current,java.util.function.IntConsumer change){
+        parent.addView(ui.featureTitle(title,"选择后保存；切换分组保留当前配置。"),ui.wrap());Spinner input=ui.choiceSpinner(title);input.setContentDescription(title);input.setAdapter(choiceAdapter(labels));input.setSelection(current);parent.addView(input,ui.wrap());final int[] previous={current};input.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View view,int index,long id){if(!loading&&index!=previous[0]){previous[0]=index;change.accept(index);}}});
+    }
+    private void workspacePlacement(LinearLayout parent,String id){
+        boolean component=grid.get(id)!=null;StatusBarGridSpec.Item item=workspaceItem(id);
+        LinearLayout order=column();slider(order,"显示顺序",item.order+1,1,999,n->{StatusBarGridSpec.Item value=workspaceItem(id);workspacePlace(id,new StatusBarGridSpec.Item(value.zone,n-1,value.size,value.visible));});parent.addView(order,ui.wrap());if(!ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)))setWorkspaceEnabled(order,false);
+        LinearLayout fields=column();workspaceChoice(fields,"所在区域",new String[]{"左侧","中间","右侧"},"LCR".indexOf(item.zone.charAt(0)),index->{StatusBarGridSpec.Item value=workspaceItem(id);workspacePlace(id,new StatusBarGridSpec.Item("LCR".substring(index,index+1)+value.zone.substring(1),value.order,value.size,value.visible));});
+        if(!"1".equals(draft.get(StatusBarWorkspaceSpec.ROWS)))workspaceChoice(fields,"行位置",new String[]{"上排","下排","跨两排"},"12S".indexOf(item.zone.charAt(1)),index->{StatusBarGridSpec.Item value=workspaceItem(id);workspacePlace(id,new StatusBarGridSpec.Item(value.zone.substring(0,1)+"12S".substring(index,index+1),value.order,value.size,value.visible));});
+        if(!component){Switch nativeSize=new Switch(this);nativeSize.setChecked(item.size==0);fields.addView(ui.featureRow("跟随原生大小","关闭后可指定当前图标大小。",nativeSize),ui.wrap());nativeSize.setOnCheckedChangeListener((v,on)->{if(!loading){StatusBarGridSpec.Item value=workspaceItem(id);workspacePlace(id,new StatusBarGridSpec.Item(value.zone,value.order,on?0:13,value.visible));renderKeepingScroll();}});if(item.size>0)slider(fields,"图标大小（dp）",item.size,6,32,n->{StatusBarGridSpec.Item value=workspaceItem(id);workspacePlace(id,new StatusBarGridSpec.Item(value.zone,value.order,n,value.visible));});}
+        if(!ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)))setWorkspaceEnabled(fields,false);
+        advanced(parent,"workspace-placement:"+id,"位置",fields);
+    }
+    private StatusBarGridSpec.Item workspaceItem(String id){if(grid.get(id)!=null)return grid.get(id);StatusBarWorkspaceSpec positions=StatusBarWorkspaceSpec.parse(draft.get(StatusBarWorkspaceSpec.ICONS));StatusBarGridSpec.Item item=positions==null?null:positions.get(id);return item==null?grid.get("system_icons"):item;}
+    private void workspacePlace(String id,StatusBarGridSpec.Item item){if(workspaceResetting)return;if(grid.get(id)!=null)grid=grid.with(id,item);else{
+        StatusBarGridSpec.Item old=workspaceItem(id);StatusBarEditPolicy policy=StatusBarEditPolicy.resolve(draft::get);
+        if(!old.zone.equals(item.zone))policy=policy.with(id,"zone",true);
+        if(old.order!=item.order)policy=policy.with(id,"order",true);
+        if(old.size!=item.size)policy=policy.with(id,"size",item.size!=0);
+        StatusBarWorkspaceSpec positions=StatusBarWorkspaceSpec.parse(draft.get(StatusBarWorkspaceSpec.ICONS));if(positions==null)positions=StatusBarWorkspaceSpec.empty();
+        draft.put(StatusBarEditPolicy.KEY,policy.serialize());draft.put(StatusBarWorkspaceSpec.ICONS,positions.with(id,item).serialize());}changed();}
+    private void workspaceSpacing(LinearLayout parent,String id){if(!StatusBarIconSpacingSpec.supported(id))return;StatusBarIconSpacingEditor.add(this,ui,parent,workspaceScope,id,()->draft.get(StatusBarIconSpacingSpec.KEY),value->{draft.put(StatusBarIconSpacingSpec.KEY,value);changed();},this::renderKeepingScroll);}
+    private void previewWorkspacePreset(boolean dual){save();main.removeCallbacks(autoSave);previewBackup=snapshot();presetName=dual?"常规双排":"简洁单排";StatusBarPresetPreview.preview(draft,StatusBarWorkspaceSpec.preset(dual,previewBackup));syncDraftUi();}
+    private void confirmWorkspacePreset(){if(previewBackup==null)return;Map<String,String> chosen=StatusBarWorkspaceSpec.preset("常规双排".equals(presetName),previewBackup);StatusBarPresetPreview.restore(draft,previewBackup);previewBackup=null;for(Map.Entry<String,String> e:chosen.entrySet())draft.put(e.getKey(),e.getValue());((EnhancementSettingsActivity)owner).applyStatusbarPresetValues(chosen);relatedViews.clear();syncDraftUi();changed();Toast.makeText(this,"已应用"+presetName,Toast.LENGTH_SHORT).show();}
+    private void confirmWorkspaceReset(){ui.glassDialog("重置状态栏配置","清除状态栏属性、系统图标、三合一、硬件指标、通知图标、所有显示位置的素材与字体配置及未应用草稿，关闭状态栏自定义，恢复原厂样式。其它模块设置不变。","确认重置",()->{
+        if(workspaceAssets.workspaceSaving()){Toast.makeText(this,"素材正在保存，请完成后重置",Toast.LENGTH_SHORT).show();return;}
+        if(previewBackup!=null)cancelPreset();main.removeCallbacks(autoSave);save();workspaceResetting=true;setWorkspaceEnabled(workspaceBody,false);
+        ((EnhancementSettingsActivity)owner).flushStatusbarForReset(()->worker.execute(()->{AppConfig.SaveResult result=config.save(StatusBarWorkspaceSpec.reset());runOnUiThread(()->{if(isDestroyed())return;workspaceResetting=false;setWorkspaceEnabled(workspaceBody,true);if(result.success){Map<String,String> saved=new LinkedHashMap<>();for(String key:draft.keySet())saved.put(key,savedValue(key));draft.replaceSaved(saved);grid=editorGrid();rawInputs.clear();lastLayoutBackup=null;relatedViews.clear();((EnhancementSettingsActivity)owner).refreshStatusbarAfterReset();workspaceAssets.workspaceReset();loading=true;masterControl.setChecked(false);loading=false;}renderWorkspace();Toast.makeText(this,result.success?"已重置状态栏配置":result.message,Toast.LENGTH_LONG).show();});}),()->{workspaceResetting=false;setWorkspaceEnabled(workspaceBody,true);renderWorkspace();});
+    },"取消");}
+    void workspaceBack(){if(workspaceResetting)return;if(!workspaceDetail.isEmpty()){workspaceDetail="";renderWorkspace();return;}if(previewBackup!=null){cancelPreset();return;}if(workspaceGroup==3&&workspaceAssets.workspaceBack())return;workspaceAssets.workspaceExit(()->{save();finish();});}
+    void workspaceAncestor(String route){if(workspaceResetting)return;workspaceAssets.workspaceExit(()->{if(previewBackup!=null)cancelPreset();save();ModuleNavigation.returnTo(owner,route);});}
 
     private void render() {
         render(false);
     }
     private void render(boolean preserveExpanded) {
-        boolean previousFlat=ui.flatCards;ui.flatCards=!"status_layout".equals(route);try {
+        if(workspace()){renderWorkspace();return;}
+        boolean previousFlat=ui.flatCards;ui.flatCards=!("status_layout".equals(route)||"status_legacy".equals(route));try {
         for(Map.Entry<String,View> entry:advancedViews.entrySet())advancedExpanded.put(entry.getKey(),entry.getValue().getVisibility()==View.VISIBLE);
         advancedViews.clear();
         for(Map.Entry<String,UiKit.Fold> entry:componentFolds.entrySet())
@@ -213,7 +448,7 @@ final class StatusBarEditorController extends NativeEditorController {
         presetActions.setVisibility(previewBackup==null?View.GONE:View.VISIBLE);undoLayout.setEnabled(lastLayoutBackup!=null&&previewBackup==null);
         undoLayout.setAlpha(undoLayout.isEnabled()?1f:.45f);
         masterControl.setEnabled(previewBackup==null);
-        if("status_layout".equals(route)){
+        if(("status_layout".equals(route)||"status_legacy".equals(route))){
             renderOverview();
         } else if("status_surfaces".equals(route)){
             renderSurfaces();
@@ -228,10 +463,7 @@ final class StatusBarEditorController extends NativeEditorController {
             arrangementComponents();
             LinearLayout root=content;content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
             number(ConfigSchema.STATUSBAR_HEIGHT_DP, "状态栏高度（0 原厂，负数减小）", ConfigSchema.STATUSBAR_HEIGHT_MIN_DP, ConfigSchema.STATUSBAR_HEIGHT_MAX_DP);
-            number(ConfigSchema.STATUSBAR_LEFT_MARGIN_DP, "左侧留白", 0, 40);
-            number(ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP, "右侧留白", 0, 40);
-            number(ConfigSchema.STATUSBAR_TOP_MARGIN_DP, "顶部留白", 0, 12);
-            number(ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP, "底部留白", 0, 12);
+            marginInputs();
             if(!positionSizeOnly())number(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP, "两排间距", -8, 64);
             LinearLayout settings=content;content=root;advanced(content,"layout-spacing","高级：高度、留白与两排间距",settings);
             related("layout",content);
@@ -348,30 +580,35 @@ final class StatusBarEditorController extends NativeEditorController {
         return "";
     }
     private void openPage(String target){
+        if(workspace()){if(target.equals("status_assets")){workspaceGroup=3;workspaceDetail="";}else if(target.equals("status_notifications")){workspaceGroup=2;workspaceDetail="";}else{workspaceGroup=1;workspaceDetail=target.replace("status_","");}renderWorkspace();return;}
         save();worker.execute(()->runOnUiThread(()->{if(!isDestroyed())ModuleNavigation.open(owner,target);}));
     }
     private void openComponent(String id){
+        if(workspace()){workspaceGroup=id.equals("notifications")?2:1;workspaceDetail=id;renderKeepingScroll();return;}
         String target=StatusBarPages.componentRoute(id);save();worker.execute(()->runOnUiThread(()->{if(!isDestroyed())owner.startActivity(new android.content.Intent(owner,StatusBarSettingsActivity.class).putExtra(ModuleNavigation.EXTRA_ROUTE,target).putExtra("status_component",id));}));
     }
     private void openAsset(String id,String surface){
         openAsset(id,surface,"whole");
     }
     private void openAsset(String id,String surface,String layer){
+        if(workspace()){workspaceGroup=3;workspaceDetail="";workspaceAssets.workspaceOpen(id,surface,layer);renderWorkspace();return;}
         save();worker.execute(()->runOnUiThread(()->{if(!isDestroyed())owner.startActivity(new android.content.Intent(owner,StatusBarAssetsActivity.class).putExtra(ModuleNavigation.EXTRA_ROUTE,"asset/"+id).putExtra("status_surface",surface).putExtra("status_asset_layer",layer));}));
     }
     private void openAssets(String surface,String mode){
+        if(workspace()){workspaceGroup=3;workspaceDetail="";workspaceAssets.workspaceOpenPage(surface,mode);renderWorkspace();return;}
         save();worker.execute(()->runOnUiThread(()->{if(!isDestroyed())owner.startActivity(new android.content.Intent(owner,StatusBarAssetsActivity.class).putExtra(ModuleNavigation.EXTRA_ROUTE,"status_assets").putExtra("status_surface",surface).putExtra("status_assets_page",mode));}));
     }
 
     private boolean resumed;
     @Override protected void onResume(){
-        super.onResume();if(!resumed){resumed=true;return;}
+        super.onResume();if(!inventoryObserving){getContentResolver().registerContentObserver(android.net.Uri.parse("content://ls.augment.com.config/statusbar-inventory"),false,inventoryObserver);inventoryObserving=true;}
+        refreshWorkspaceInventory(false);if(!resumed){resumed=true;return;}
         // Child editors submit through the same ordered worker. Refresh only values this page
         // does not own an unsaved edit for, so returning never overwrites a child or draft.
         worker.execute(()->runOnUiThread(()->{
             if(isDestroyed())return;Map<String,String> unsaved=draft.unsaved();boolean changed=false;
-            for(String key:draft.keySet())if(!unsaved.containsKey(key)){String value=config.get(key);if(!java.util.Objects.equals(value,draft.get(key))){draft.seed(key,value);changed=true;}}
-            if(changed){grid=StatusBarGridSpec.parse(draft.get(ConfigSchema.STATUSBAR_GRID));if(grid==null)grid=StatusBarGridSpec.defaults();loading=true;masterControl.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)));loading=false;renderKeepingScroll();}
+            for(String key:draft.keySet())if(!unsaved.containsKey(key)){String value=savedValue(key);if(!java.util.Objects.equals(value,draft.get(key))){draft.seed(key,value);changed=true;}}
+            if(changed){grid=editorGrid();loading=true;masterControl.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)));loading=false;renderKeepingScroll();}
             preview.invalidate();
             refreshRuntimeFeedback();
         }));
@@ -463,7 +700,7 @@ final class StatusBarEditorController extends NativeEditorController {
 
     private Map<String,String> snapshot(){Map<String,String> result=new LinkedHashMap<>();for(Map.Entry<String,String> entry:draft.entrySet())result.put(entry.getKey(),entry.getValue());return result;}
     private void syncDraftUi(){
-        grid=StatusBarGridSpec.parse(draft.get(ConfigSchema.STATUSBAR_GRID));if(grid==null)grid=StatusBarGridSpec.defaults();
+        grid=editorGrid();
         loading=true;masterControl.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)));loading=false;render(true);
     }
     private void arrangeLayout(){
@@ -505,6 +742,7 @@ final class StatusBarEditorController extends NativeEditorController {
         settings.setPadding(ui.dp(12),0,0,0);
         LinearLayout group=ui.foldingSection(title,settings,Boolean.TRUE.equals(advancedExpanded.get(id)));
         advancedViews.put(id,settings);addFeatureBlock(parent,group);
+        if(workspace())ui.setGroupExpanded(title,Boolean.TRUE.equals(advancedExpanded.get(id)));
     }
     private void addFeatureBlock(LinearLayout parent,View block){
         if(parent.getChildCount()>0)parent.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
@@ -662,19 +900,19 @@ final class StatusBarEditorController extends NativeEditorController {
             visible.setOnCheckedChangeListener((button, checked) -> {fold.sync();updateItem(id,null,-1,-1,checked);});
         }
         if(!positionSizeOnly()&&id.equals("notifications")){
-            toggle(card,ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS,"通知图标分两排");
+            if(!singleRow())toggle(card,ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS,"通知图标分两排");
             toggle(card,ConfigSchema.STATUSBAR_NOTIFICATION_UNLIMITED,"通知图标数量解限");
             LinearLayout root=content;content=card;
             number(ConfigSchema.STATUSBAR_NOTIFICATION_MAX,"最多显示通知数（0 跟随系统）",0,20);content=root;
             if(ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_NOTIFICATION_UNLIMITED)))card.addView(ui.text("数量解限已开启，数量设置保留但暂不参与限制；超出可用空间时仍显示溢出提示。",12,ui.muted,false),ui.wrap());
         }
-        if(!positionSizeOnly()&&id.equals("system_icons"))toggle(card,ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS,"系统图标分两排");
+        if(!positionSizeOnly()&&!singleRow()&&id.equals("system_icons"))toggle(card,ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS,"系统图标分两排");
         if(!positionSizeOnly()&&id.equals("network")){
             nativeNetworkSize(card);
             LinearLayout display=parameterInputGroup(card);
             display.addView(ui.featureTitle("显示方式", "选择网速显示的上下行组合和排数。上下行同时显示为双排时，会共用该区域的上下两排。"));
             Spinner mode=ui.choiceSpinner("网速显示方式");
-            mode.setAdapter(choiceAdapter(StatusBarNetworkDisplay.LABELS));
+            mode.setAdapter(choiceAdapter(singleRow()?java.util.Arrays.copyOf(StatusBarNetworkDisplay.LABELS,3):StatusBarNetworkDisplay.LABELS));
             mode.setSelection(networkMode()-1);display.addView(mode,ui.wrap());
             mode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
                 public void onNothingSelected(AdapterView<?> parent){}
@@ -688,7 +926,7 @@ final class StatusBarEditorController extends NativeEditorController {
             edit(card,ConfigSchema.STATUSBAR_NETWORK_UPLOAD_MARK,"上行标志（留空不显示）",false);
             edit(card,ConfigSchema.STATUSBAR_NETWORK_DOWNLOAD_MARK,"下行标志（留空不显示）",false);
         }
-        if(!positionSizeOnly()&&id.equals("clock")){
+        if(!positionSizeOnly()&&!singleRow()&&id.equals("clock")){
             LinearLayout display=parameterInputGroup(card);
             display.addView(ui.featureTitle("显示排数", "选择时钟使用一排还是上下两排。双排文字需要同时设置第二行格式。"));Spinner rows=ui.choiceSpinner("选择选项");rows.setContentDescription("时钟显示排数");
             rows.setAdapter(choiceAdapter(new String[]{"单排","双排"}));rows.setSelection(number(ConfigSchema.STATUSBAR_CLOCK_ROWS)-1);display.addView(rows);
@@ -753,7 +991,7 @@ final class StatusBarEditorController extends NativeEditorController {
         componentFolds.put("clock-custom",sectionFold);sectionFold.show(Boolean.TRUE.equals(expandedComponents.get("clock-custom")));
         LinearLayout formats=new LinearLayout(this);formats.setOrientation(LinearLayout.VERTICAL);
         edit(formats,ConfigSchema.STATUSBAR_CLOCK_PATTERN,"第一行格式，例如 HH:mm",false);
-        if(number(ConfigSchema.STATUSBAR_CLOCK_ROWS)==2)edit(formats,ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND,"第二行格式，例如 MM/dd E",false);
+        if(!singleRow()&&number(ConfigSchema.STATUSBAR_CLOCK_ROWS)==2)edit(formats,ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND,"第二行格式，例如 MM/dd E",false);
         Button formatHelp=ui.button("查看完整时间格式与示例");
         formatHelp.setOnClickListener(v->ui.showFeatureHelp("时间格式说明",StatusBarClockFormatHelp.text()));
         formats.addView(formatHelp,ui.wrap());
@@ -769,7 +1007,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 value->{draft.put(ConfigSchema.STATUSBAR_NATIVE_NETWORK_SIZE_SP,String.valueOf(value));changed();});
     }
     private LinearLayout parameterInputGroup(LinearLayout parent){
-        LinearLayout group=ui.parameterInputGroup();parent.addView(group,ui.wrap());return group;
+        LinearLayout group=ui.parameterInputGroup(workspace());parent.addView(group,ui.wrap());return group;
     }
     private void updateItem(String id, String zone, int order, int size, Boolean visible) {
         if (loading) return;
@@ -810,7 +1048,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 try{masterControl.setChecked(true);}finally{loading=wasLoading;}
             }
             changed();
-            if(key.equals(ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)||key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))renderKeepingScroll();
+            if(key.equals(ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS)||key.equals(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY)||key.equals(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)||key.equals(SystemUiOptions.PREFIX+"metrics_custom"))renderKeepingScroll();
         } });
         return row;
     }
@@ -924,8 +1162,8 @@ final class StatusBarEditorController extends NativeEditorController {
         if(ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"metrics_custom"))){
             String customPrefix=config.get(SystemUiOptions.PREFIX+"metric_prefix_"+id);
             if(customPrefix!=null&&!"null".equals(customPrefix))prefix=customPrefix;
-            if(ConfigSchema.truthy(config.get(SystemUiOptions.PREFIX+"metrics_hide_units")))unit="";
         }
+        if(ConfigSchema.truthy(draft.get(SystemUiOptions.PREFIX+"metrics_hide_units")))unit="";
         return prefix+ls.augment.com.hook.StatusBarMetricsFormatter.number(value,number(precisionKey(id)))+unit;
     }
     private interface ValueChanged { void set(int value); }
@@ -959,15 +1197,31 @@ final class StatusBarEditorController extends NativeEditorController {
         };
     }
     private void changed() {
+        if(workspaceResetting)return;
         if(masterFold!=null)masterFold.sync();
         if(sectionFold!=null)sectionFold.sync();
         if(connectivityFold!=null)connectivityFold.sync();
         if(nativeBatteryFold!=null)nativeBatteryFold.sync();
         if(dualAppearanceFold!=null)dualAppearanceFold.sync();
-        draft.put(ConfigSchema.STATUSBAR_GRID, grid.serialize());
+        recordExplicitEdits();
         if (preview != null) preview.invalidate();
         refreshRuntimeFeedback();
         if(!loading&&previewBackup==null){dirty=draft.hasPending();main.removeCallbacks(autoSave);main.postDelayed(autoSave,450);}
+    }
+    private String savedValue(String key){return StatusBarEditPolicy.resolve(config::get).effective(key,config.get(key));}
+    private StatusBarGridSpec editorGrid(){return StatusBarEditPolicy.resolve(draft::get).grid(draft.get(ConfigSchema.STATUSBAR_GRID));}
+    private void recordExplicitEdits(){
+        StatusBarEditPolicy policy=StatusBarEditPolicy.resolve(draft::get);StatusBarGridSpec previous=policy.grid(draft.get(ConfigSchema.STATUSBAR_GRID));boolean gridChanged=false;
+        for(String id:StatusBarGridSpec.IDS){StatusBarGridSpec.Item a=previous.get(id),b=grid.get(id);
+            if(!a.zone.equals(b.zone)){policy=policy.with(id,"zone",true);gridChanged=true;}
+            if(a.order!=b.order){policy=policy.with(id,"order",true);gridChanged=true;}
+            if(a.size!=b.size){policy=policy.with(id,"size",b.size!=0);gridChanged=true;}
+            if(a.visible!=b.visible){policy=policy.with(id,"visible",b.visible!=StatusBarEditPolicy.nativeGrid().get(id).visible);gridChanged=true;}
+        }
+        Map<String,String> pending=draft.unsaved();boolean rowsChanged=false;
+        for(String id:new String[]{"clock","notifications","system_icons"}){String key=id.equals("clock")?ConfigSchema.STATUSBAR_CLOCK_ROWS:id.equals("notifications")?ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS:ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS;
+            if(pending.containsKey(key)){policy=policy.with(id,"rows",id.equals("clock")?"2".equals(draft.get(key)):ConfigSchema.truthy(draft.get(key)));rowsChanged=true;}}
+        if(gridChanged||rowsChanged){draft.put(StatusBarEditPolicy.KEY,policy.serialize());if(gridChanged)draft.put(ConfigSchema.STATUSBAR_GRID,grid.serialize());}
     }
     private void refreshRuntimeFeedback(){if(runtimeFeedback!=null){String message=runtimeMessage();runtimeFeedback.setText(message);runtimeFeedback.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);}}
     private void save() {
@@ -1005,14 +1259,23 @@ final class StatusBarEditorController extends NativeEditorController {
         Bundle raw=new Bundle();for(Map.Entry<String,String> entry:rawInputs.entrySet())raw.putString(entry.getKey(),entry.getValue());state.putBundle("raw-inputs",raw);
         for(Map.Entry<String,UiKit.Fold> entry:componentFolds.entrySet())expandedComponents.put(entry.getKey(),entry.getValue().content.getVisibility()==View.VISIBLE);
         for(Map.Entry<String,View> entry:advancedViews.entrySet())advancedExpanded.put(entry.getKey(),entry.getValue().getVisibility()==View.VISIBLE);
-        scrollPositions.put(tab,configScroll.getScrollY());state.putString("selected-component",selectedComponent);
+        scrollPositions.put(workspace()?workspaceGroup:tab,configScroll.getScrollY());state.putString("selected-component",selectedComponent);
+        if(workspace()){
+            state.putInt("workspace-group",workspaceGroup);state.putString("workspace-detail",workspaceDetail);
+            state.putString("workspace-scope",workspaceScope);state.putString("workspace-query",workspaceQuery);state.putInt("workspace-filter",workspaceFilter);
+            Bundle assets=new Bundle();workspaceAssets.onSaveInstanceState(assets);state.putBundle("workspace-assets",assets);
+            state.putBoolean("workspace-preview-hidden",previewHost.getVisibility()!=View.VISIBLE);
+        }
         Bundle expanded=new Bundle();for(Map.Entry<String,Boolean> entry:expandedComponents.entrySet())expanded.putBoolean(entry.getKey(),entry.getValue());state.putBundle("expanded-components",expanded);
         Bundle advanced=new Bundle();for(Map.Entry<String,Boolean> entry:advancedExpanded.entrySet())advanced.putBoolean(entry.getKey(),entry.getValue());state.putBundle("advanced-expanded",advanced);
         Bundle positions=new Bundle();for(Map.Entry<Integer,Integer> entry:scrollPositions.entrySet())positions.putInt(String.valueOf(entry.getKey()),entry.getValue());state.putBundle("tab-scroll",positions);
         if(lastLayoutBackup!=null){Bundle undo=new Bundle();for(Map.Entry<String,String> entry:lastLayoutBackup.entrySet())undo.putString(entry.getKey(),entry.getValue());state.putBundle("layout-undo",undo);}
     }
-    @Override protected void onPause(){if(previewBackup!=null)cancelPreset();main.removeCallbacks(autoSave);save();super.onPause();}
+    private void stopInventoryObservation(){if(inventoryObserving){getContentResolver().unregisterContentObserver(inventoryObserver);inventoryObserving=false;}}
+    @Override protected void onPause(){stopInventoryObservation();if(previewBackup!=null)cancelPreset();main.removeCallbacks(autoSave);save();super.onPause();}
     @Override public void onDestroy() { main.removeCallbacks(autoSave);save();
+        stopInventoryObservation();
+        if(workspaceArtwork!=null)workspaceArtwork.close();
         if(previewPreferences!=null)previewPreferences.unregisterOnSharedPreferenceChangeListener(previewPreferenceListener);
         super.onDestroy(); }
 
@@ -1020,9 +1283,17 @@ final class StatusBarEditorController extends NativeEditorController {
         return ls.augment.com.hook.StatusBarClockFormatter.formatDetailed(System.currentTimeMillis(),java.util.Locale.getDefault(),
                 ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_24H)),ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_SECONDS)),
                 ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_PERIOD)),ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_WEEK)),
-                draft.get(ConfigSchema.STATUSBAR_CLOCK_PATTERN),number(ConfigSchema.STATUSBAR_CLOCK_ROWS)==1?"":draft.get(ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND));
+                draft.get(ConfigSchema.STATUSBAR_CLOCK_PATTERN),singleRow()||number(ConfigSchema.STATUSBAR_CLOCK_ROWS)==1?"":draft.get(ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND));
     }
     private int number(String key){try{return Integer.parseInt(draft.get(key));}catch(Exception ignored){return 0;}}
+    private void marginInputs(){String[] labels={"左侧边距（0 原厂）","上侧边距（0 原厂）","右侧边距（0 原厂）","下侧边距（0 原厂）"};for(int i=0;i<StatusBarMargins.KEYS.length;i++)number(StatusBarMargins.KEYS[i],labels[i],StatusBarMargins.MIN_DP,StatusBarMargins.MAX_DP);}
+    private org.json.JSONObject previewNativeGeometry(){
+        org.json.JSONObject geometry=workspaceInventory.optJSONObject("nativeGeometry");if(geometry==null)return null;
+        org.json.JSONObject box=geometry.optJSONObject(workspaceScope.equals("lock")?"lock":"main");
+        float widthDp=getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density;
+        return box!=null&&Math.abs(box.optDouble("width")-widthDp)<2?box:null;
+    }
+    private float previewMargin(org.json.JSONObject geometry,String side,String key){float density=getResources().getDisplayMetrics().density;return StatusBarMargins.resolve(geometry==null?0:(float)geometry.optDouble(side,0)*density,number(key),density);}
     private boolean positionSizeOnly(){return ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY));}
     private boolean connectivityGroup(){return !positionSizeOnly()&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP));}
     private ConnectivityIconState exampleState(){java.util.List<ConnectivityIconState.Sim> sims=new java.util.ArrayList<>();
@@ -1115,14 +1386,15 @@ final class StatusBarEditorController extends NativeEditorController {
         restore.setOnClickListener(v->{for(String key:new String[]{xKey,yKey,scaleKey})draft.put(key,ConfigSchema.defaultValue(key));changed();renderKeepingScroll();});
     }
     private boolean isTwoRows(String id){
-        if(positionSizeOnly())return false;
+        if(positionSizeOnly()||singleRow())return false;
         if(id.equals("clock"))return number(ConfigSchema.STATUSBAR_CLOCK_ROWS)==2;
         if(id.equals("network"))return networkMode()==4;
         String key=id.equals("network")?ConfigSchema.STATUSBAR_NETWORK_TWO_ROWS:id.equals("notifications")?ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS:id.equals("system_icons")?ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS:null;
         return key!=null&&ConfigSchema.truthy(draft.get(key));
     }
-    private int networkMode(){return StatusBarNetworkDisplay.resolve(draft.get(ConfigSchema.STATUSBAR_NETWORK_DISPLAY),ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_NETWORK_TWO_ROWS)));}
-    private static String baseId(String id){int split=id.indexOf('#');return split<0?id:id.substring(0,split);}
+    private boolean singleRow(){return "1".equals(draft.get(StatusBarWorkspaceSpec.ROWS));}
+    private int networkMode(){int mode=StatusBarNetworkDisplay.resolve(draft.get(ConfigSchema.STATUSBAR_NETWORK_DISPLAY),ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_NETWORK_TWO_ROWS)));return singleRow()&&mode==4?3:mode;}
+    private static String baseId(String id){int icon=id.indexOf("#icon:");if(icon>=0)return id.substring(icon+6);int split=id.indexOf('#');return split<0?id:id.substring(0,split);}
     private float previewTextSize(String id){
         if(id.equals("battery")&&!positionSizeOnly()&&!connectivityGroup()&&!nativeBatteryEnabled())return ui.dp(13);
         if(!positionSizeOnly()&&id.equals("clock")&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))){
@@ -1131,13 +1403,19 @@ final class StatusBarEditorController extends NativeEditorController {
             }catch(Exception ignored){}
         }
         // A schematic preview cannot measure another process's OEM glyphs.
-        return ui.dp(grid.get(id).size==0?13:grid.get(id).size);
+        StatusBarGridSpec.Item item=grid.get(id);if(item==null)item=workspaceItem(id);return ui.dp(item.size==0?13:item.size);
     }
     private void previewTypeface(Paint paint,String id){
         android.graphics.Typeface typeface=android.graphics.Typeface.DEFAULT;
         if(!positionSizeOnly()&&id.equals("clock")&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))){
             android.graphics.Typeface family=android.graphics.Typeface.create(draft.get(ConfigSchema.STATUSBAR_CLOCK_FONT_FAMILY),android.graphics.Typeface.NORMAL);
             typeface=android.graphics.Typeface.create(family,Math.max(100,Math.min(900,number(ConfigSchema.STATUSBAR_CLOCK_WEIGHT))),false);
+        }
+        if(workspaceAssets!=null){
+            String role=java.util.Arrays.asList("cpu","gpu","battery_temp","current","power").contains(id)?"metrics":java.util.Arrays.asList("clock","network","battery","bluetooth").contains(id)?id:"other";
+            String choice=workspaceAssets.workspaceFonts().resolve(role,workspaceScope);
+            if("original".equals(choice))typeface=android.graphics.Typeface.DEFAULT;
+            else {android.graphics.Typeface imported=ManagedFont.loadAsync(this,choice,()->{if(preview!=null&&!isDestroyed())preview.invalidate();});if(imported!=null)typeface=imported;}
         }
         paint.setTypeface(typeface);
     }
@@ -1155,10 +1433,12 @@ final class StatusBarEditorController extends NativeEditorController {
         }
         final Map<String,android.graphics.RectF> hits=new LinkedHashMap<>();
         final class IconSample {
-            final String text;final float size;
-            IconSample(String text,float size){this.text=text;this.size=size;}
-            float width(){if(text.equals("signal"))return size*107f/85f;p.setTextSize(size);p.setTypeface(android.graphics.Typeface.DEFAULT);return p.measureText(text);}
+            final String text;final float size;final String semantic;
+            IconSample(String text,float size){this(text,size,"");}
+            IconSample(String text,float size,String semantic){this.text=text;this.size=size;this.semantic=semantic;}
+            float width(){if(!semantic.isEmpty())return size;if(text.equals("signal"))return size*107f/85f;p.setTextSize(size);p.setTypeface(android.graphics.Typeface.DEFAULT);return p.measureText(text);}
         }
+        final StatusBarIconSamples semanticSamples=new StatusBarIconSamples();
         Preview() { super(StatusBarEditorController.this); setContentDescription("状态栏布局示例，实际图标由系统状态决定"); }
 
         // Bounded settings preview builds a coherent layout/hit-test snapshot on redraw; retained allocation tradeoff, not a hot SystemUI hook.
@@ -1167,9 +1447,9 @@ final class StatusBarEditorController extends NativeEditorController {
         //noinspection DiscouragedApi,DrawAllocation,InternalInsetResource
         @Override protected void onDraw(Canvas c) {
             p.setColor(ui.cardHigh); c.drawRoundRect(0, 0, getWidth(), getHeight(), ui.dp(12), ui.dp(12), p);
-            p.setColor(ui.outline); c.drawLine(0, getHeight()/2f, getWidth(), getHeight()/2f, p);
+            p.setColor(ui.outline); if(!singleRow())c.drawLine(0, getHeight()/2f, getWidth(), getHeight()/2f, p);
             for (int i = 1; i < 3; i++) c.drawLine(getWidth()*i/3f, 0, getWidth()*i/3f, getHeight(), p);
-            java.util.ArrayList<Map.Entry<String, StatusBarGridSpec.Item>> entries = new java.util.ArrayList<>(grid.items().entrySet());
+            java.util.ArrayList<Map.Entry<String, StatusBarGridSpec.Item>> entries = new java.util.ArrayList<>(StatusBarWorkspaceSpec.effectiveGrid(grid,draft.get(StatusBarWorkspaceSpec.ROWS)).items().entrySet());
             entries.sort(java.util.Comparator.comparingInt(e -> e.getValue().order));
             java.util.List<StatusBarGridLayout.Node> nodes = new java.util.ArrayList<>();
             java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
@@ -1198,6 +1478,26 @@ final class StatusBarEditorController extends NativeEditorController {
                     nodes.add(new StatusBarGridLayout.Node(id,item.zone,item.order,width,iosIconHeight));labels.put(id,outside);continue;
                 }
                 if(id.equals("system_icons")){
+                    if(workspace()){
+                        java.util.LinkedHashSet<String> samples=new java.util.LinkedHashSet<>();
+                        if(!connectivityGroup()){samples.add("wifi");samples.add("mobile1");}
+                        samples.add("bluetooth");samples.add("alarm_clock");
+                        StatusBarWorkspaceSpec positions=StatusBarWorkspaceSpec.parse(draft.get(StatusBarWorkspaceSpec.ICONS));
+                        if(positions!=null)samples.addAll(positions.ids());
+                        if(StatusBarWorkspaceSpec.independentSlot(workspaceDetail)&&grid.get(workspaceDetail)==null)samples.add(workspaceDetail);
+                        StatusBarVisibilitySpec visibility=StatusBarVisibilitySpec.parse(draft.get(StatusBarVisibilitySpec.KEY));
+                        StatusBarIconSpacingSpec spacing=StatusBarIconSpacingSpec.parse(draft.get(StatusBarIconSpacingSpec.KEY));
+                        int n=0;for(String semantic:samples){
+                            if(visibility!=null&&visibility.hidden(workspaceScope,semantic)||connectivityGroup()&&java.util.Arrays.asList("wifi","mobile1","mobile2").contains(semantic))continue;
+                            StatusBarGridSpec.Item own=positions==null?null:positions.get(semantic);
+                            StatusBarGridSpec.Item effective=StatusBarWorkspaceSpec.effectiveItem(own==null?item:own,draft.get(StatusBarWorkspaceSpec.ROWS));
+                            String zone=own==null&&isTwoRows(id)?effective.zone.substring(0,1)+(n++%2+1):effective.zone;
+                            float size=ui.dp(effective.size==0?13:effective.size);String part="system_icons#icon:"+semantic;
+                            StatusBarIconSpacingSpec.Insets edges=spacing==null?StatusBarIconSpacingSpec.ZERO:spacing.resolve(workspaceScope,semantic);
+                            nodes.add(new StatusBarGridLayout.Node(part,zone,effective.order,size+ui.dp(edges.horizontal()),size*1.15f+ui.dp(edges.vertical())));
+                            iconSamples.put(part,java.util.Collections.singletonList(new IconSample("",size,semantic)));
+                        }continue;
+                    }
                     java.util.List<IconSample> samples=new java.util.ArrayList<>();float size=previewTextSize(id);
                     boolean dual=!connectivityGroup()&&ConfigSchema.truthy(draft.get(SystemUiOptions.SIGNAL_DUAL));
                     if(!connectivityGroup()){samples.add(new IconSample("⌁",size));if(!dual)samples.add(new IconSample("signal",size));}
@@ -1224,7 +1524,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 if (!positionSizeOnly()&&id.equals("clock") && ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))){
                     ls.augment.com.hook.StatusBarClockFormatter.FormatResult clock=previewClock();label=clock.valid?clock.text:"格式有误";
                 }
-                if (positionSizeOnly()||(id.equals("network") && networkMode()!=4)
+                if (singleRow()||positionSizeOnly()||(id.equals("network") && networkMode()!=4)
                         || (id.equals("notifications") && !ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_NOTIFICATION_TWO_ROWS)))
                         || (id.equals("system_icons") && !ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_SYSTEM_TWO_ROWS)))) label = label.replace('\n', ' ');
                 float textSize=previewTextSize(id);p.setTextSize(textSize);previewTypeface(p,id);String[] lines = label.split("\n");
@@ -1256,10 +1556,12 @@ final class StatusBarEditorController extends NativeEditorController {
             if(insets!=null&&insets.getDisplayCutout()!=null)for(android.graphics.Rect r:insets.getDisplayCutout().getBoundingRects()){
                 if(r.top<barHeight&&r.bottom>0){cutLeft=r.left-ui.dp(2);cutRight=r.right+ui.dp(2);}
             }
+            if(workspace())nodes.sort(java.util.Comparator.comparingInt((StatusBarGridLayout.Node node)->node.order).thenComparing(node->StatusBarWorkspaceSpec.stableOrderKey(node.id)));
+            org.json.JSONObject nativeGeometry=previewNativeGeometry();
             StatusBarAdaptiveLayout.Result arrangement = StatusBarAdaptiveLayout.pack(nodes, barWidth, barHeight,
-                    ui.dp(4+number(ConfigSchema.STATUSBAR_LEFT_MARGIN_DP)),ui.dp(4+number(ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP)),
-                    ui.dp(number(ConfigSchema.STATUSBAR_TOP_MARGIN_DP)),ui.dp(number(ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP)),
-                    positionSizeOnly()?0:ui.dp(number(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP)),cutLeft,cutRight);
+                    previewMargin(nativeGeometry,"left",ConfigSchema.STATUSBAR_LEFT_MARGIN_DP),previewMargin(nativeGeometry,"right",ConfigSchema.STATUSBAR_RIGHT_MARGIN_DP),
+                    previewMargin(nativeGeometry,"top",ConfigSchema.STATUSBAR_TOP_MARGIN_DP),previewMargin(nativeGeometry,"bottom",ConfigSchema.STATUSBAR_BOTTOM_MARGIN_DP),
+                    positionSizeOnly()||singleRow()?0:ui.dp(number(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP)),cutLeft,cutRight);
             java.util.Map<String, StatusBarGridLayout.Box> boxes=arrangement.boxes;
             float scale=Math.min(getWidth()/barWidth,(getHeight()-ui.dp(8))/barHeight);
             float offsetX=(getWidth()-barWidth*scale)/2,offsetY=(getHeight()-barHeight*scale)/2;
@@ -1270,7 +1572,7 @@ final class StatusBarEditorController extends NativeEditorController {
                 if(hits.containsKey(id))hits.get(id).union(r);else hits.put(id,r);
                 if(b.scale<.7f||(!id.equals("battery")&&previewTextSize(id)*b.scale<ui.dp(8)))crowded=true;
             }
-            final String feedback=!arrangement.valid?"空间不足："+arrangement.reason:!masterControl.isChecked()?"自定义布局未开启 · 可先查看示例和配置":crowded?"预览较拥挤 · 建议减少内容或调整位置":number(ConfigSchema.STATUSBAR_DUAL_ROW_GAP_DP)<0?"示例已避开交叠 · 原间距配置保留":"布局示例 · 实际效果随通知和数据长度变化";
+            final String feedback=!arrangement.valid?"空间不足："+arrangement.reason:!masterControl.isChecked()?"自定义布局未开启 · 可先查看示例和配置":nativeGeometry==null?"布局示例 · 原厂边距等待本机检测":crowded?"预览较拥挤 · 建议减少内容或调整位置":"布局示例 · 实际效果随通知和数据长度变化";
             if(layoutFeedback!=null&&!feedback.contentEquals(layoutFeedback.getText()))main.post(()->{if(!isDestroyed())layoutFeedback.setText(feedback);});
             c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
             if(!arrangement.valid){p.setColor(ui.danger);p.setTextSize(ui.dp(12));p.setTextAlign(Paint.Align.CENTER);c.drawText("当前内容放不下，请调整组件排列",barWidth/2,barHeight/2, p);}
@@ -1304,7 +1606,14 @@ final class StatusBarEditorController extends NativeEditorController {
                     float x=b.x;p.setColor(ui.text);p.setTextAlign(Paint.Align.LEFT);
                     for(IconSample sample:samples){
                         float width=sample.width()*b.scale,h=sample.size*1.15f*b.scale;
-                        if(sample.text.equals("signal"))signalPainter.draw(c,x,b.y+(b.height-h)/2,width,h,signalBars,0,signalBars,signalBars,1,ui.text,28);
+                        if(!sample.semantic.isEmpty()){
+                            StatusBarIconSpacingSpec spacing=StatusBarIconSpacingSpec.parse(draft.get(StatusBarIconSpacingSpec.KEY));StatusBarIconSpacingSpec.Insets edge=spacing==null?StatusBarIconSpacingSpec.ZERO:spacing.resolve(workspaceScope,sample.semantic);
+                            android.graphics.RectF r=new android.graphics.RectF(x+ui.dp(edge.start)*b.scale,b.y+ui.dp(edge.top)*b.scale,x+ui.dp(edge.start)*b.scale+width,b.y+ui.dp(edge.top)*b.scale+h);
+                            String state=sample.semantic.contains("wifi")?"level3":sample.semantic.startsWith("mobile")?"level4":"default";
+                            workspaceArtwork.draw(c,sample.semantic,state,r,ui.text,"background");
+                            if(!workspaceArtwork.draw(c,sample.semantic,state,r,ui.text,"whole"))semanticSamples.draw(c,sample.semantic,state,r,ui.text);
+                            workspaceArtwork.draw(c,sample.semantic,state,r,ui.text,"foreground");
+                        }else if(sample.text.equals("signal"))signalPainter.draw(c,x,b.y+(b.height-h)/2,width,h,signalBars,0,signalBars,signalBars,1,ui.text,28);
                         else {p.setTextSize(sample.size*b.scale);c.drawText(sample.text,x,b.y+(b.height-h)/2+h*.82f,p);}
                         x+=width+ui.dp(1)*b.scale;
                     }

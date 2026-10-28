@@ -127,7 +127,8 @@ public final class HookAppCatalog {
         add(SYSTEM, "freeform", "小窗增强", "游戏登录、第三方应用跳转小窗、窗口数量与例外名单");
         add(SYSTEM, "audio_gain", "音量增强", "设置增益上限；超过 100% 会增加音量总档数");
         add(SYSTEM, "signature_install", "签名不一致安装", "同包名、不同签名 APK 的覆盖安装规则");
-        add(SYSTEM_UI, "status_layout", "状态栏自定义", "组件排列、四个显示位置、时钟、图标、三合一与素材字体");
+        add(SYSTEM_UI, "status_layout", "状态栏自定义", "状态栏、系统图标、通知图标、素材与字体");
+        add(SYSTEM_UI, "status_legacy", "旧状态栏自定义", "目前保留，但后续会删除。");
         add(LAUNCHER, "launcher_custom", "应用图标与名称", "按空间选择应用，自定义图标和桌面名称");
         add(LAUNCHER, "launcher_compatibility", "桌面兼容性检测", "检查配套修改版桌面的机型、系统与底包");
         add(GAME, "shoulder", "全应用肩键与极速连点", "肩键使用范围、兼容性测试与连点频率");
@@ -275,7 +276,7 @@ public final class HookAppCatalog {
         if (suffix.startsWith("mtp_")) return FILES;
         if (suffix.equals("third_party_launcher")) return PERMISSIONS;
         if (suffix.equals("weather_time_period")) return WEATHER;
-        if (suffix.equals("gallery_crop_unlimited")) return GALLERY;
+        if (suffix.startsWith("gallery_")) return GALLERY;
         if (suffix.equals("screenshot_hide_status_bar") || suffix.equals("record_hide_status_bar")
                 || suffix.equals("screenshot_crop_unlimited"))
             return SCREENSHOT;

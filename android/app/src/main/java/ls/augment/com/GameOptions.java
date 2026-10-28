@@ -11,6 +11,7 @@ public final class GameOptions {
     public static final String PERFORMANCE_MONITOR = "ls_augment_game_performance_monitor";
     public static final String MONITOR_ITEMS = "ls_augment_game_monitor_items";
     public static final String MONITOR_TRANSPARENCY = "ls_augment_game_monitor_transparency";
+    public static final String MONITOR_MARGIN = "ls_augment_game_monitor_item_margin";
     public static final String MONITOR_PIN = "ls_augment_game_monitor_long_press_pin";
     public static final String SHOULDER_PIN = "ls_augment_tgk_long_press_pin";
     public static final String COMBO_LIMITS = "ls_augment_combo_extended_limits";
@@ -29,6 +30,7 @@ public final class GameOptions {
             EnhancementOption.toggle(PLUGINS,"game","开放游戏插件资格","扩展原厂游戏空间的插件支持。超境画质由原厂引擎处理，自动适配处理输入尺寸；首次开启后重新进入游戏，画质和帧率仍在原厂界面选择。关闭后恢复原厂支持范围，已建立的处理会话在重新进入游戏后恢复原厂尺寸。更高档位仍受原厂引擎限制。"),
             EnhancementOption.toggle(PERFORMANCE_MONITOR,"game","自定义性能监测","选择游戏空间性能监控弹窗显示的项目，并调整背景透明度；原有项目沿用原厂数据，新增温度来自实际传感器，功耗为电池净功率（充电时为充电功率）；不可读取时显示不可用。"),
             EnhancementOption.internal(MONITOR_ITEMS,GamePerformanceMonitorConfig.DEFAULT_ITEMS,GamePerformanceMonitorConfig::normalizeItems),
+            EnhancementOption.integer(MONITOR_MARGIN,"game","监测项目间距（dp）","在原厂间距上增减相邻项目之间的左右间隔；负值压缩间隔，可使文字重叠。范围按实际项目宽度、字号和屏幕空间计算，0 保留原厂间距；仅一个项目时无可调间隔。",0,-GamePerformanceMonitorConfig.MARGIN_STORAGE_LIMIT,GamePerformanceMonitorConfig.MARGIN_STORAGE_LIMIT),
             EnhancementOption.toggle(MONITOR_PIN,"game","长按固定悬浮窗位置","长按性能监测悬浮窗固定位置，再次长按解除固定；固定后仍可点击，关闭本项恢复拖动。"),
             EnhancementOption.toggle(SHOULDER_PIN,"game","长按固定悬浮窗位置","长按肩键方案快捷切换悬浮窗固定位置，再次长按解除固定；固定后仍可点击切换方案，关闭本项恢复拖动。"),
             EnhancementOption.integer(MONITOR_TRANSPARENCY,"game","背景透明度（%）","调整游戏空间性能监控弹窗的背景透明度。0% 为不透明，100% 为完全透明；文字和图标不受影响。",50,0,100),

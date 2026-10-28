@@ -242,7 +242,7 @@ final class LauncherRecentsCardRadiusHook {
 
         static Method method(Class<?> owner, Class<?> result, String name, Class<?>... args)
                 throws NoSuchMethodException {
-            return HookCompatibility.method(owner, result, false, new String[]{name}, args);
+            return HookCompatibility.inheritedMethod(owner, result, result == View.class, new String[]{name}, args);
         }
     }
 }

@@ -228,7 +228,8 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
         require(switches==2&&(maxRight-minRight)/density<=1f,"Native plugin and monitor switches share one aligned column");
         if(content(page).getVisibility()==View.VISIBLE){
             for(CheckBox box:boxes(page))require(box.getHeight()/density>=47.5f,"Monitor item retains a 48dp touch target: "+box.getTag());
-            require(transparency(page).getHeight()/density>=47.5f,"Transparency field retains a 48dp touch target");
+            require(transparency(page).getHeight()/density>=19.5f,"Transparency uses the shared 20dp display row; touch extension is checked separately");
+            require(tag(page,"config:"+GameOptions.MONITOR_MARGIN) instanceof SeekBar,"Item spacing uses the shared numeric slider");
         }
         int orientation=page.getResources().getConfiguration().orientation;
         require(orientation==(landscape?Configuration.ORIENTATION_LANDSCAPE:Configuration.ORIENTATION_PORTRAIT),"Requested orientation is rendered before measurement");
@@ -238,9 +239,11 @@ final class GamePerformanceMonitorUiCases implements Application.ActivityLifecyc
     });}
 
     private void revealTransparency(Activity page)throws Exception{
-        onMain(()->{ScrollView scroll=(ScrollView)tag(page,"detail-scroll");scroll.scrollTo(0,scroll.getChildAt(0).getHeight());return null;});settle();
-        onMain(()->{SeekBar field=transparency(page);Rect visible=new Rect();require(field.getGlobalVisibleRect(visible)
-                &&visible.width()>=field.getWidth()-1&&visible.height()>=field.getHeight()-1,"The last monitor input is fully reachable in the real scroll viewport");return null;});
+        for(String key:new String[]{GameOptions.MONITOR_TRANSPARENCY,GameOptions.MONITOR_MARGIN}){
+            onMain(()->{View field=tag(page,"config:"+key);field.requestRectangleOnScreen(new Rect(0,0,field.getWidth(),field.getHeight()),true);return null;});settle();
+            onMain(()->{View field=tag(page,"config:"+key);Rect visible=new Rect();require(field.getGlobalVisibleRect(visible)
+                    &&visible.width()>=field.getWidth()-1&&visible.height()>=field.getHeight()-1,"Monitor parameter is fully reachable: "+key);return null;});
+        }
     }
 
     private Activity landscapePage(Activity original)throws Exception{
