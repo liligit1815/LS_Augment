@@ -402,10 +402,28 @@ def main():
     parser.add_argument('--keep-output', type=Path)
     parser.add_argument('--coordinator-only', action='store_true')
     parser.add_argument('--native-only', action='store_true')
+    parser.add_argument('--string-links', action='store_true', help='Use captured OEM table/case/key String link setters')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='lsa-shoulder-switch-') as directory:
         root = Path(directory)
-        for name, source in ({} if args.coordinator_only else FILES).items():
+        fixtures=dict(FILES)
+        if args.string_links:
+            name='cn/nubia/tgk/proxy/InputManagerProxy.java'
+            fixtures[name]=fixtures[name].replace('setGameKeyLinkFunctionEnable(int key)', 'setGameKeyLinkFunctionEnable(String key)')\
+                .replace('key==137?', 'key.endsWith("|137")?').replace('key==138?', 'key.endsWith("|138")?')\
+                .replace('new Class[]{int.class},key);}', 'new Class[]{String.class},key);}')\
+                .replace('setDefaultGameKeyLinkFunctionEnable(int n)', 'setDefaultGameKeyLinkFunctionEnable(String n)')\
+                .replace('input(name,new Class[]{int.class},n);}', 'input(name,new Class[]{String.class},n);}')
+            name='android/hardware/input/InputManager.java'
+            for key in ('Left','Right','Middle'):
+                fixtures[name]=fixtures[name].replace(f'setGame{key}KeyLinkFunction(int key)', f'setGame{key}KeyLinkFunction(String key)')
+            fixtures[name]=fixtures[name].replace('link(String name,int key)', 'link(String name,String key)')\
+                .replace('dispatch(name,new Class[]{int.class},new Object[]{key}', 'dispatch(name,new Class[]{String.class},new Object[]{key}')\
+                .replace('if(key!=0)owner.macroCaseId', 'if(!key.isEmpty())owner.macroCaseId')
+            name='cn/nubia/tgk/TgkHelper.java'
+            fixtures[name]=fixtures[name].replace('setDefaultGameKeyLinkFunctionEnable(0)', 'setDefaultGameKeyLinkFunctionEnable("")')\
+                .replace('setGameKeyLinkFunctionEnable(key)', 'setGameKeyLinkFunctionEnable(getTgkLinkKey(d.ID,d.state,key))')
+        for name, source in ({} if args.coordinator_only else fixtures).items():
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source, encoding='utf-8')

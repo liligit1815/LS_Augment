@@ -13,6 +13,7 @@ final class ShoulderNativeApply {
     private static final ThreadLocal<Attempt> ACTIVE = new ThreadLocal<>();
     private static boolean installed;
     private static boolean ready;
+    private static boolean stringLinks;
 
     static synchronized boolean install(AugmentModule module, ClassLoader loader) {
         if (installed) return ready;
@@ -25,15 +26,15 @@ final class ShoulderNativeApply {
             required += observe(module, input, "setGameKeyEnable", boolean.class, Context.class) ? 1 : 0;
             required += observe(module, input, "setLeftTgkEnable", boolean.class) ? 1 : 0;
             required += observe(module, input, "setRightTgkEnable", boolean.class) ? 1 : 0;
-            required += observe(module, input, "setGameLeftKeyLinkFunction", int.class) ? 1 : 0;
-            required += observe(module, input, "setGameRightKeyLinkFunction", int.class) ? 1 : 0;
+            required += observeLink(module, input, "setGameLeftKeyLinkFunction") ? 1 : 0;
+            required += observeLink(module, input, "setGameRightKeyLinkFunction") ? 1 : 0;
             required += observe(module, input, "releaseTgk") ? 1 : 0;
             observe(module, input, "setMiddleTgkEnable", boolean.class);
-            observe(module, input, "setGameMiddleKeyLinkFunction", int.class);
+            observeLink(module, input, "setGameMiddleKeyLinkFunction");
             observe(module, input, "setTgkRapidFireCount", int.class, int.class);
             ready = required == 8;
             HookTelemetry.shoulderSwitch(ready ? "INFO" : "ERROR", "stage=INPUT_OBSERVER status="
-                    + (ready ? "READY" : "MISSING") + " registered=" + required);
+                    + (ready ? "READY" : "MISSING") + " registered=" + required+" string_links="+stringLinks);
         } catch (Throwable error) {
             HookTelemetry.shoulderSwitch("ERROR", "stage=INPUT_OBSERVER status=FAILED errorClass="
                     + error.getClass().getSimpleName());
@@ -41,9 +42,19 @@ final class ShoulderNativeApply {
         return ready;
     }
 
+    private static boolean observeLink(AugmentModule module,Class<?> input,String name){
+        boolean integer=observe(module,input,name,int.class),text=observe(module,input,name,String.class);
+        stringLinks|=text;
+        if(!integer&&!text)HookTelemetry.shoulderSwitch("ERROR","stage=INPUT_OBSERVER missing="+name+"(int|String)");
+        return integer||text;
+    }
+
     private static boolean observe(AugmentModule module, Class<?> input, String name, Class<?>... args) {
         try {
-            Method method = input.getDeclaredMethod(name, args);
+            Method method = null;
+            for(Class<?> type=input;type!=null;type=type.getSuperclass())try{method=type.getDeclaredMethod(name,args);break;}
+                catch(NoSuchMethodException absent){}
+            if(method==null||method.getReturnType()!=void.class||java.lang.reflect.Modifier.isStatic(method.getModifiers()))return false;
             module.registerFeatureHook(module.prepareFeatureHook(method, "shoulder.input." + name, true)
                     .intercept(chain -> {
                         Attempt attempt = ACTIVE.get();
@@ -92,6 +103,19 @@ final class ShoulderNativeApply {
             boolean enabled = main && switches[i];
             out.values.put("enable:" + key, enabled);
             out.values.put("link:" + key, enabled && modes[i] == 4 ? key : 0);
+            if(stringLinks){
+                String token="";
+                if(enabled&&modes[i]==4){
+                    Class<?> helper=Class.forName("cn.nubia.tgk.TgkHelper",false,data.getClass().getClassLoader());
+                    Method make=helper.getDeclaredMethod("getTgkLinkKey",long.class,int.class,int.class);
+                    if(make.getReturnType()!=String.class||!java.lang.reflect.Modifier.isStatic(make.getModifiers()))
+                        throw new NoSuchMethodException("getTgkLinkKey(long,int,int):String");
+                    token=(String)make.invoke(null,((Number)TargetReflection.field(data,"ID")).longValue(),
+                            ((Number)TargetReflection.field(data,"state")).intValue(),key);
+                    if(token==null||token.isEmpty())throw new IllegalStateException("native_link_token_missing");
+                }
+                out.links.put("link:"+key,token);
+            }
             if (!main) continue;
             if (points == null || points.length <= i || points[i] == null || points[i].length < 2)
                 throw new IllegalArgumentException("invalid_shoulder_points");
@@ -134,6 +158,7 @@ final class ShoulderNativeApply {
 
     static final class Expected {
         final Map<String, Object> values = new LinkedHashMap<>();
+        final Map<String, String> links = new LinkedHashMap<>();
         String hash() { return digest(values); }
     }
 
@@ -175,6 +200,9 @@ final class ShoulderNativeApply {
                 int code = name.contains("Left") ? 137 : name.contains("Right") ? 138 : 136;
                 key = (name.contains("LinkFunction") ? "link:" : "enable:") + code;
                 value = args[0];
+                // New firmware uses the full native table/case/key token, not
+                // a decimal key code. Verify it before normalizing the receipt.
+                if(value instanceof String&&value.equals(expected.links.get(key)))value=expected.values.get(key);
             }
             if (!expected.values.containsKey(key)) return;
             calls++;

@@ -94,6 +94,12 @@ public final class TestShoulderNativeApply {
         apply(proxy, b);
         check(proxy.macroCaseId == 29 && proxy.modes.get(137) == 4,
                 "macro receives selected persisted scheme");
+        ShoulderNativeApply.Expected linked=ShoulderNativeApply.expected(b,true);
+        if(!linked.links.isEmpty())try(ShoulderNativeApply.Attempt attempt=ShoulderNativeApply.begin(linked,104)){
+            TgkData wrongCase=b.copy();wrongCase.ID++;
+            proxy.releaseTgk();TgkHelper.setTgkParaToNative(proxy,wrongCase,new TgkGameInfo(),1);
+            fails(attempt::verify,"link:137");
+        }
         proxy.failPoints = true;
         fails(() -> apply(proxy, a), "input_failed:setTgkPoint");
         proxy.failPoints = false;

@@ -7,12 +7,39 @@ reject per-row shrinking and shrinking both rows to fit HD/roaming content.
 from pathlib import Path
 import argparse
 import ast
+import json
+import re
 import os
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
+
+def native_path():
+    """Translate the checked-in captured OEM cubic path to Java2D without font substitution."""
+    fixture = json.loads((ROOT/'tools/fixtures/signal/oem-5g-android17.json').read_text())
+    commands=['var p=new java.awt.geom.Path2D.Double();']
+    for source in fixture['paths']:
+        tokens=re.findall(r'[A-Za-z]|[-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?',source)
+        i=0;x=y=sx=sy=0;op=''
+        while i<len(tokens):
+            if tokens[i].isalpha():op=tokens[i];i+=1
+            kind=op.upper();relative=op.islower()
+            if kind=='Z':commands.append('p.closePath();');x,y=sx,sy;continue
+            count={'M':2,'L':2,'H':1,'V':1,'C':6}[kind]
+            values=list(map(float,tokens[i:i+count]));i+=count
+            if kind in ('M','L','C'):
+                coords=[v+(x if j%2==0 else y) if relative else v for j,v in enumerate(values)]
+                x,y=coords[-2:]
+                method={'M':'moveTo','L':'lineTo','C':'curveTo'}[kind]
+                commands.append('p.'+method+'('+','.join(map(str,coords))+');')
+                if kind=='M':sx,sy=x,y;op='l' if relative else 'L'
+            else:
+                if kind=='H':x=values[0]+(x if relative else 0)
+                else:y=values[0]+(y if relative else 0)
+                commands.append(f'p.lineTo({x},{y});')
+    return ''.join(commands)+'return p;'
 
 
 def sources():
@@ -69,7 +96,7 @@ public class ImageView {public Drawable drawable;public int width,height;public 
     files['ls/augment/com/hook/StatusBarAssetDrawable.java'] = '''package ls.augment.com.hook;import android.graphics.*;import android.graphics.drawable.Drawable;
 class StatusBarAssetDrawable extends Drawable {final Drawable source;StatusBarAssetDrawable(Drawable d){source=d;}Drawable original(){return source;}public void draw(Canvas c){throw new AssertionError("custom wrapper must be unwrapped");}}
 '''
-    files['ls/augment/com/hook/TestSignalTypeSize.java'] = HARNESS
+    files['ls/augment/com/hook/TestSignalTypeSize.java'] = HARNESS.replace('// OEM_PATH',native_path())
     return files
 
 
@@ -86,6 +113,21 @@ public class TestSignalTypeSize {
   public ConstantState getConstantState(){return constant?new ConstantState(){public Drawable newDrawable(android.content.res.Resources r){return new InkDrawable(image,true,intrinsic);}}:null;}
  }
  static class SubclassDrawable extends InkDrawable {SubclassDrawable(Bitmap b,boolean c,boolean i){super(b,c,i);}}
+ static class TinyVector extends Drawable {
+  static java.awt.Shape oem(){// OEM_PATH
+  }
+  int w,h;String label="5G";final float offset;
+  TinyVector(int w,int h,float offset){this.w=w;this.h=h;this.offset=offset;}
+  public int getIntrinsicWidth(){return w;}public int getIntrinsicHeight(){return h;}
+  public void draw(Canvas canvas){
+   var g=(java.awt.Graphics2D)canvas.g.create();Rect bounds=getBounds();
+   g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+   g.translate(bounds.left,bounds.top);g.scale(bounds.width()/21.5,bounds.height()/14.0);g.translate(4.1,offset);
+   java.awt.Shape shape=label.equals("5G")?oem():new java.awt.Font("SansSerif",java.awt.Font.BOLD,48).createGlyphVector(g.getFontRenderContext(),label).getOutline();
+   var box=shape.getBounds2D();g.scale(5.2/box.getHeight(),5.2/box.getHeight());g.translate(-box.getX(),-box.getY());
+   g.setColor(java.awt.Color.WHITE);g.fill(shape);g.dispose();
+  }
+ }
  static Bitmap glyph(String label,int scale,int padding){
   java.awt.Font font=new java.awt.Font("SansSerif",java.awt.Font.BOLD,48);
   Bitmap scratch=Bitmap.createBitmap(256,100,Bitmap.Config.ARGB_8888);var g=scratch.image.createGraphics();
@@ -149,6 +191,19 @@ public class TestSignalTypeSize {
   Rect second=pixels(padded,sized.plan.rows[1].badges[0],0xffffffff);
   check(bright.width()==dark.width()&&bright.height()==dark.height(),"native tint changed visible glyph bounds");
   check(Math.abs(bright.height()-second.height())<=1&&Math.abs(bright.width()-second.width())<=1,"same glyph at different density/padding rasterized at different sizes");
+  // Reproduce intrinsic-size quantization, using fractional vector ink bounds
+  // and tiny viewports like the captured OEM statusbar_5g (21.5 x 14).
+  TinyVector vectorA=new TinyVector(22,14,3.15f),vectorB=new TinyVector(32,20,3.8f);
+  ImageView viewA=new ImageView(vectorA,22,14),viewB=new ImageView(vectorB,32,20);
+  SignalTypeBadge tinyA=new SignalTypeBadge(),tinyB=new SignalTypeBadge();tinyA.refresh(viewA);tinyB.refresh(viewB);
+  check(Math.abs(tinyA.aspect()/tinyB.aspect()-1)<.025f,"tiny-vector intrinsic raster magnifies per-SIM crop error");
+  var tinyPlan=layout(false,2,false,52f/75,false,new float[][]{{tinyA.aspect(),0,0},{tinyB.aspect(),0,0}});
+  Rect inkA=pixels(tinyA,tinyPlan.plan.rows[0].badges[0],-1),inkB=pixels(tinyB,tinyPlan.plan.rows[1].badges[0],-1);
+  check(Math.abs(inkA.width()-inkB.width())<=1&&Math.abs(inkA.height()-inkB.height())<=1,"tiny native 5G actual ink differs per SIM");
+  String before=tinyA.observation();vectorA.w=44;vectorA.h=28;tinyA.refresh(viewA);
+  check(!before.equals(tinyA.observation()),"same drawable dimensions changed without refreshing crop");
+  float previousAspect=tinyA.aspect();vectorA.label="5G+";SignalTypeBadge.invalidated(viewA);tinyA.refresh(viewA);
+  check(tinyA.aspect()>previousAspect*1.2f,"in-place OEM type update stale or 5G+ semantic lost");
   SignalTypeBadge absent=new SignalTypeBadge();absent.refresh(null);near(absent.aspect(),0,"missing native type invented a label");
   Canvas empty=new Canvas(Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888));absent.draw(empty,0,0,10,10,0xffffffff);check(empty.bitmapDraws==0,"missing interface draws fabricated 5G");
   SignalTypeBadge transparent=badge(Bitmap.createBitmap(20,20,Bitmap.Config.ARGB_8888),false,false,true,false);near(transparent.aspect(),0,"transparent resource invented a badge");
@@ -210,6 +265,18 @@ def main():
             else:
                 assert result.returncode != 0 and 'actual type ink shrank' in result.stderr, result.stdout + result.stderr
                 print('PASS rejected size regression:', 'individual row fit' if index == 1 else 'both rows fit the widest badge group')
+        coarse = work / 'coarse/SignalTypeBadge.java'
+        coarse.parent.mkdir()
+        source = (SRC / 'hook/SignalTypeBadge.java').read_text(encoding='utf-8')
+        old = source.replace('Math.min(8f,1024f/', 'Math.min(1f,1024f/')
+        assert source != old, 'sampling mutation point missing'
+        coarse.write_text(old, encoding='utf-8')
+        classes = coarse.parent / 'classes'
+        subprocess.run([javac, '-encoding', 'UTF-8', '--release', '17', '-d', str(classes), *files,
+                        *map(str, production[1:]), str(SRC/'DualSignalLayout.java'), str(coarse)], check=True)
+        result = subprocess.run([java, '-Djava.awt.headless=true', '-cp', str(classes), 'ls.augment.com.hook.TestSignalTypeSize'], capture_output=True, text=True, timeout=60)
+        assert result.returncode != 0 and 'intrinsic raster magnifies' in result.stderr, result.stdout + result.stderr
+        print('PASS rejected original intrinsic-size crop: tiny OEM vector ink differs between SIM rows')
 
 
 if __name__ == '__main__':

@@ -2126,9 +2126,9 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_SHOULDER:
             case MODULE_RAPID_COMPATIBILITY:
             case MODULE_AI_TRIGGER:
-            case MODULE_COMBO_SPEED:
+            case MODULE_COMBO_SPEED: return ScopeRestartDialog.GAMES;
             case MODULE_SUPER_RESOLUTION:
-            case MODULE_DIABLO_COEXIST: return ScopeRestartDialog.GAMES;
+            case MODULE_DIABLO_COEXIST: return HookAppCatalog.restartScopeForRoute(section);
             case MODULE_FAN_CONTROL: return ScopeRestartDialog.FAN;
             case MODULE_STATUS_LAYOUT:
             case MODULE_STATUS_CLOCK:

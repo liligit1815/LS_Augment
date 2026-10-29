@@ -212,8 +212,29 @@ public final class ModuleHierarchy {
     }
     public static String summary(Section s){if("statusbar_legacy".equals(s.id))return "目前保留，但后续会删除。";if("battery".equals(s.id))return "电池健康度检测、容量与循环次数、省电模式刷新率";if("liftarc".equals(s.id))return "指示条、上滑解锁、弧形效果、玻璃与提示文字";if("statusbar".equals(s.id))return "布局、时钟、图标、实时指标与素材字体";if("usb".equals(s.id))return "文件传输、调试安装、默认用途与提示";if("collab_audio".equals(s.id))return "导入本机联名铃声、通知音与闹钟素材";Set<String> titles=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features){titles.add(f.title);if(titles.size()==3)break;}if(titles.isEmpty())for(String entry:s.entries){titles.add(title(entry));if(titles.size()==3)break;}return String.join("、",titles);}
     /** Actual scopes of the page, preserving multiple cooperating process groups. */
-    public static List<String> restartScopes(Section s){Set<String> scopes=new LinkedHashSet<>();for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForKey(key));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);}for(String entry:s.entries){Section child=group(entry);if(child!=null){scopes.addAll(restartScopes(child));continue;}HookAppCatalog.Target t=HookAppCatalog.find(HookAppCatalog.targetForRoute(entry));if(t!=null&&t.restartScope!=null)scopes.add(t.restartScope);else if(entry.startsWith("freeform_"))scopes.add("device");}if("collab_audio".equals(s.id))return Collections.emptyList();return new ArrayList<>(scopes);}
+    public static List<String> restartScopes(Section s){
+        if("collab_audio".equals(s.id))return Collections.emptyList();
+        Set<String> scopes=new LinkedHashSet<>();
+        for(NativeFeatureGroups.Feature f:s.features)for(String key:f.allKeys()){
+            String scope=HookAppCatalog.restartScopeForKey(key);
+            if(scope!=null)scopes.add(scope);
+        }
+        for(String entry:s.entries){
+            Section child=group(entry);
+            if(child!=null){scopes.addAll(restartScopes(child));continue;}
+            String scope=HookAppCatalog.restartScopeForRoute(entry);
+            if(scope!=null)scopes.add(scope);
+            else if(entry.startsWith("freeform_"))scopes.add("device");
+        }
+        return new ArrayList<>(scopes);
+    }
     public static String restartScope(Section s){List<String> scopes=restartScopes(s);return scopes.size()==1?scopes.get(0):scopes.isEmpty()?null:"device";}
+    /** Category pages must include all nested feature groups, just like their individual pages. */
+    public static String restartScopeForCategory(String category){
+        Set<String> scopes=new LinkedHashSet<>();
+        for(Section section:sections(category))scopes.addAll(restartScopes(section));
+        return scopes.size()==1?scopes.iterator().next():scopes.isEmpty()?null:"device";
+    }
     public static int activeCount(Section s,java.util.function.Function<String,String> value){int count=0;for(NativeFeatureGroups.Feature f:s.features)count+=activeCount(f,value);for(String route:s.entries){Section child=group(route);if(child!=null){count+=activeCount(child,value);continue;}List<String> keys;switch(route){case "competitive_key":keys=Collections.singletonList(CompetitiveKeyOptions.ENABLED);break;case "shoulder":keys=Arrays.asList(ConfigSchema.SHOULDER_ENABLED,ConfigSchema.TGK_RAPID_FIRE_ENABLED);break;case "combo_speed":keys=Collections.singletonList(ConfigSchema.COMBO_SPEED_ENABLED);break;case "super_resolution":keys=Arrays.asList(ConfigSchema.SUPER_MIRROR_LOW_MODE,ConfigSchema.SUPER_MIRROR_DIABLO_COEXIST);break;case "audio_gain":keys=Collections.singletonList(ConfigSchema.AUDIO_GAIN_ENABLED);break;case "signature_install":keys=Collections.singletonList(ConfigSchema.ALLOW_SIGNATURE_MISMATCH);break;case "ai_trigger":keys=Collections.singletonList(ConfigSchema.AI_TRIGGER_ENABLED);break;case "freeform_rules":keys=Arrays.asList(ConfigSchema.FREEFORM_GAME_LOGIN,ConfigSchema.FREEFORM_EXTERNAL_APPS);break;case "freeform_limits":keys=Arrays.asList(ConfigSchema.FREEFORM_UNLIMITED,ConfigSchema.FREEFORM_ALL_APPS);break;case "fan_control":keys=Arrays.asList(ConfigSchema.FAN_FIXED_ENABLED,ConfigSchema.FAN_TILE_ENHANCEMENT_ENABLED,ConfigSchema.FAN_SCREEN_OFF_ENABLED);break;default:keys=Collections.emptyList();}for(String key:keys)if("1".equals(value.apply(key)))count++;if("launcher_custom".equals(route)){LauncherOverrides overrides=LauncherOverrides.parse(value.apply(ConfigSchema.LAUNCHER_OVERRIDES));if(overrides!=null&&!overrides.entries().isEmpty())count++;}}return count;}
     private static int activeCount(NativeFeatureGroups.Feature f,java.util.function.Function<String,String> value){String key=f.toggleKey==null?f.parameterKeys[0]:f.toggleKey;boolean active=f.toggleKey!=null?"1".equals(value.apply(key)):ValueOverrideState.active(f.comparison,value.apply(key),f.noOpValue);if(!active)return 0;int count=1;for(NativeFeatureGroups.Feature child:f.children)count+=activeCount(child,value);return count;}
 }

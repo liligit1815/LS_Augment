@@ -94,9 +94,12 @@ public class TestIslandReview {
   visibility.host.shown=true;visibility.nativeHost.fade=false;check(!visibility.hostVisible(),"fullscreen alpha resumes hiding after native fade ends");
 
   MediaController paused=new MediaController(2),playing=new MediaController(3),broken=new MediaController(3);broken.bad=true;s.controllers.add(paused);s.controllers.add(broken);s.controllers.add(playing);
-  check(s.selectMedia()==playing,"real playback beats a paused session even if another session fails");playing.state=new PlaybackState(1);check(s.selectMedia()==null,"an unrelated stale paused session never becomes an activity");
+  check(s.selectMedia()==playing,"real playback beats a paused session even if another session fails");playing.state=new PlaybackState(1);
+  check(s.selectMedia()==playing,"the previously playing session retains its existing track handoff grace");
+  SystemClock.now+=IslandActivityPolicy.MEDIA_HANDOFF_MILLIS;
+  check(s.selectMedia()==null,"after the handoff expires an unrelated stale paused session never becomes an activity");
   playing.state=new PlaybackState(3);check(s.selectMedia()==playing,"resumed playback appears");playing.state=new PlaybackState(2);check(s.selectMedia()==playing,"new pause gets brief grace");
-  SystemClock.now+=4000;check(s.selectMedia()==null,"paused playback disappears exactly at four seconds");SystemClock.now=1234;
+  SystemClock.now+=4000;check(s.selectMedia()==null,"paused playback disappears exactly at four seconds");
   paused.state=new PlaybackState(7);playing.state=new PlaybackState(1);check(s.selectMedia()==null,"stopped/error sessions disappear");
   State foregroundMedia=new State();MediaController bili=new MediaController("tv.danmaku.bili",3);foregroundMedia.controllers.add(bili);foregroundMedia.foreground=bili.getPackageName();
   check(foregroundMedia.selectMedia()==null,"Bili playing in foreground never appears on the island");

@@ -11,6 +11,7 @@ tree = ast.parse((ROOT / 'tools/test-liquid-glass-control-center-runtime.py').re
 base = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
             and any(isinstance(target, ast.Name) and target.id == 'FILES' for target in node.targets))
 names = ['android/content/Context', 'android/content/res/Resources', 'android/content/res/ColorStateList',
+         'android/content/res/Configuration', 'android/util/TypedValue',
          'android/util/DisplayMetrics', 'android/graphics/Canvas', 'android/graphics/Rect',
          'android/graphics/ColorFilter', 'android/graphics/Outline', 'android/graphics/PorterDuff',
          'android/graphics/drawable/Drawable', 'android/graphics/drawable/GradientDrawable',

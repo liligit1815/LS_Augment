@@ -7,14 +7,27 @@ import java.lang.reflect.Modifier;
 /** Resolve OEM wake contracts without fabricating lifecycle state. */
 final class NativeIslandWake {
     static String synchronize(Object manager,Object permanent)throws ReflectiveOperationException {
+        Contract contract=resolve(manager,permanent);
+        contract.method.invoke(contract.owner);
+        return contract.route;
+    }
+    /** Inspect without changing wake/AOD state during host preflight. */
+    static String contract(Object manager,Object permanent)throws ReflectiveOperationException {
+        return resolve(manager,permanent).route;
+    }
+    private static final class Contract {
+        final Object owner;final Method method;final String route;
+        Contract(Object owner,Method method,String route){this.owner=owner;this.method=method;this.route=route;}
+    }
+    private static Contract resolve(Object manager,Object permanent)throws ReflectiveOperationException {
         boolean incompatibleWake=false;
         for(Object owner:new Object[]{manager,permanent}) {
             if(owner==null)continue;
             for(Class<?> type=owner.getClass();type!=null;type=type.getSuperclass())try {
                 Method method=type.getDeclaredMethod("onStartedWakingUp");
                 if(method.getReturnType()!=void.class||Modifier.isStatic(method.getModifiers())||Modifier.isAbstract(method.getModifiers())){incompatibleWake=true;break;}
-                method.setAccessible(true);method.invoke(owner);
-                return owner==manager?"manager":"permanent";
+                method.setAccessible(true);
+                return new Contract(owner,method,owner==manager?"manager":"permanent");
             }catch(NoSuchMethodException absent){/* Continue through OEM subclasses. */}
         }
         // Older OEM engines have no interactive flag or wake callback. Their
@@ -28,8 +41,7 @@ final class NativeIslandWake {
             field(type,"mPayJoyControlled",boolean.class);
             field(type,"mCurRotation",int.class);
             method(type,"setAODVisibility",boolean.class);
-            method(type,"updateRooterVisibility").invoke(permanent);
-            return "permanent_visibility";
+            return new Contract(permanent,method(type,"updateRooterVisibility"),"permanent_visibility");
         }
         throw new NoSuchMethodException("native wake: manager/permanent onStartedWakingUp():void and legacy AOD visibility contract unavailable");
     }

@@ -175,7 +175,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         String route=ModuleNavigation.route(this);
         ModulePresentationCatalog.Category target=ModulePresentationCatalog.find(targetId);
         ModuleHierarchy.Section selected=ModuleHierarchy.group(route);
-        String scope=selected!=null?ModuleHierarchy.restartScope(selected):target!=null?target.restartScope:null;
+        String scope=selected!=null?ModuleHierarchy.restartScope(selected):target!=null&&target.restartScope!=null?ModuleHierarchy.restartScopeForCategory(target.id):null;
         String title=ModuleHierarchy.title(route);
         body=ui.detailPage(title.isEmpty()?EnhancementCatalog.title(group):title,scope);
         sectionStates.clear();aodParameterStates.clear();aodParameterRestores.clear();

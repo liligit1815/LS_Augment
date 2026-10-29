@@ -110,8 +110,9 @@ public class TestPackageReadyDispatch {
         deliver(launcher, target("com.zte.mifavor.launcher"));
         check(launcher.calls.contains("LauncherCustomizationHook"), "later launcher callback was lost");
         check(launcher.calls.contains("LauncherPagesHook")
-                && launcher.calls.contains("LauncherRecentsMemoryHook"),
-                "launcher page and memory features were not installed in the launcher scope");
+                && launcher.calls.contains("LauncherRecentsMemoryHook")
+                && launcher.calls.contains("LauncherRecentsPrivacyHook"),
+                "launcher page, memory and privacy features were not installed in the launcher scope");
         check(launcher.logs.stream().anyMatch(s -> s.contains("PACKAGE_READY_TARGET") && s.contains("first=false")),
                 "accepted later main-package callback has no explicit diagnostic witness");
         int callCount = launcher.calls.size(), telemetryCount = telemetry.size();
@@ -143,7 +144,7 @@ public class TestPackageReadyDispatch {
 
         TestPackageReadyDispatch ordinary = module("com.android.providers.settings");
         for (String pkg : Arrays.asList("system", "android", "com.android.providers.settings",
-                "com.zte.mifavor.launcher.resource", "untrusted.example", "", null)) {
+                "com.zte.mifavor.launcher.resource", "com.tencent.mobileqq", "untrusted.example", "", null)) {
             deliver(ordinary, ignored(pkg));
         }
         check(ordinary.calls.isEmpty() && telemetry.isEmpty() && !ordinary.systemPackageReadySeen,
@@ -164,6 +165,22 @@ public class TestPackageReadyDispatch {
         TestPackageReadyDispatch mapRemote = module("com.autonavi.minimap:locationservice");
         deliver(mapRemote, target("com.autonavi.minimap"));
         check(!mapRemote.calls.contains("AtomicWorkbenchAmapHook"), "Amap secondary process installed main-process hook");
+
+        for (String[] route : new String[][] {
+                {"zte.com.cn.alarmclock", "NativeIslandClockCards", "NativeIslandClockSource"},
+                {"cn.zte.recorder", "NativeIslandRecorderCards", "NativeIslandRecorderSource"},
+                {"com.zte.nebulatranslation", "NativeIslandTranslationCards"},
+                {"com.zte.cn.zteshare", "NativeIslandTransferCards"},
+                {"com.zte.multscr", "NativeIslandNfcTransferCards"},
+                {"com.android.dialer", "NativeIslandCallCards"},
+                {"com.zte.personalagent", "NativeIslandPersonalCards"}}) {
+            TestPackageReadyDispatch source = module("vendor-source-process");
+            deliver(source, ignored("unrelated.resource"));
+            deliver(source, target(route[0]));
+            for (int i = 1; i < route.length; i++)
+                check(source.calls.contains(route[i]), "island source dispatch lost: " + route[i]);
+            check(!source.calls.contains("systemui"), "source application entered display-host hooks");
+        }
 
         for (String pkg : HookTargetRegistry.packages()) {
             if ("system".equals(pkg)) continue;
@@ -200,7 +217,10 @@ def main():
                  'ShoulderMacroSwitchHook', 'AtomicWorkbenchQuickstepHook', 'LauncherGridHook',
                  'LauncherWidgetResizeHook', 'LauncherDockCapacityHook', 'LauncherNewAppsLastPageHook',
                  'ThirdPartyRecentsBackgroundHook', 'LauncherRecentsCardRadiusHook',
-                 'LauncherCleanupBombHook', 'LiquidGlassDockHook'):
+                 'LauncherCleanupBombHook', 'LiquidGlassDockHook', 'LauncherRecentsPrivacyHook',
+                 'NativeIslandClockCards', 'NativeIslandClockSource', 'NativeIslandRecorderCards',
+                 'NativeIslandRecorderSource', 'NativeIslandTranslationCards', 'NativeIslandTransferCards',
+                 'NativeIslandNfcTransferCards', 'NativeIslandCallCards', 'NativeIslandPersonalCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l) {{ m.feature("{name}", l); }} }}')
     stubs.append('static final class FeatureSettings { static void awaitBootSnapshot() {} }')
     stubs.append('static final class AtomicWorkbenchSourceDragHook { static void install(TestPackageReadyDispatch m) { m.calls.add("AtomicWorkbenchSourceDragHook"); } }')

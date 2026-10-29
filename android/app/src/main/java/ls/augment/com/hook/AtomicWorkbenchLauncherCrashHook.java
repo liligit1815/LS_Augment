@@ -18,18 +18,29 @@ final class AtomicWorkbenchLauncherCrashHook {
     private static boolean installed;
     private AtomicWorkbenchLauncherCrashHook() { }
 
+    private record Contract(Field instance,Method uncaught,Method clear) { }
+    private static Contract contract(ClassLoader loader)throws ReflectiveOperationException {
+        for(String[] names:new String[][]{{"x1.w","x1.w$a","b","i"},
+                {"com.android.launcher3.mfvUtil.CrashHandler","com.android.launcher3.mfvUtil.CrashHandler$1","this$0","cleaner"}}){
+            try{
+                Class<?> handler=Class.forName(names[0],false,loader),callback=Class.forName(names[1],false,loader);
+                if(!Thread.UncaughtExceptionHandler.class.isAssignableFrom(callback))continue;
+                Field instance=callback.getDeclaredField(names[2]);
+                Method uncaught=callback.getDeclaredMethod("uncaughtException",Thread.class,Throwable.class);
+                Method clear=handler.getDeclaredMethod(names[3],Context.class);
+                if(instance.getType()!=handler||clear.getReturnType()!=void.class
+                        ||java.lang.reflect.Modifier.isStatic(clear.getModifiers()))continue;
+                instance.setAccessible(true);return new Contract(instance,uncaught,clear);
+            }catch(ClassNotFoundException|NoSuchMethodException|NoSuchFieldException absent){}
+        }
+        throw new NoSuchMethodException("scoped_uncaught_handler_and_cleaner");
+    }
+
     static synchronized void install(AugmentModule module, ClassLoader loader) {
         if (installed) return;
         try {
-            Class<?> handler = Class.forName("x1.w", false, loader);
-            Class<?> callback = Class.forName("x1.w$a", false, loader);
-            if (!Thread.UncaughtExceptionHandler.class.isAssignableFrom(callback)) throw new NoSuchMethodException("handler_contract");
-            Field instance = callback.getDeclaredField("b");
-            if (instance.getType() != handler) throw new NoSuchFieldException("handler_identity");
-            instance.setAccessible(true);
-            Method uncaught = callback.getDeclaredMethod("uncaughtException", Thread.class, Throwable.class);
-            Method clear = handler.getDeclaredMethod("i", Context.class);
-            if (clear.getReturnType() != void.class) throw new NoSuchMethodException("clear_contract");
+            Contract contract=contract(loader);
+            Field instance=contract.instance();Method uncaught=contract.uncaught(),clear=contract.clear();
             module.deoptimize(uncaught);
             module.deoptimize(clear);
             module.registerFeatureHook(module.prepareFeatureHook(uncaught, "atomic_workbench.launcher_crash.scope", true)

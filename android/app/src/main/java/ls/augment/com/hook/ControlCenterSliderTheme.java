@@ -19,8 +19,12 @@ final class ControlCenterSliderTheme {
     private WeakReference<Drawable> drawable=new WeakReference<>(null);
     private boolean active,glass;
     boolean dark;
+    // Shared by the native foreground and its glass track, including in-place theme changes.
+    static boolean isNight(View view){
+        return (view.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+    }
     void refresh(SeekBar seek,View icon){
-        dark=(seek.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
+        dark=isNight(seek);
         Drawable current=seek.getProgressDrawable();
         if(!dark){restore(seek,icon);return;}
         if(!(current instanceof LayerDrawable)||((LayerDrawable)current).findDrawableByLayerId(android.R.id.background)==null

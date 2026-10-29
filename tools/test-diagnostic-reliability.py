@@ -138,7 +138,7 @@ public final class TestDiagnosticReliability {
   FrameworkReader(RootShell.Result listing,RootShell.Result... tails){this.listing=listing;this.tails.addAll(Arrays.asList(tails));}
   public RootShell.Result read(String command,String input,long timeout,int limit){
    commands.add(command);yes(input==null,"framework collector never writes stdin");
-   if(commands.size()==1){yes(command.equals("ls -1 /data/adb/lspd/log")&&timeout==5&&limit==8192,"fixed bounded directory read");return listing;}
+   if(commands.size()==1){yes(command.equals("ls -1t /data/adb/lspd/log")&&timeout==5&&limit==8192,"newest-first bounded directory read");return listing;}
    yes(command.startsWith("tail -c 524288 '")&&timeout==8&&limit==512*1024,"fixed bounded quoted tail");
    return tails.isEmpty()?raw(0,"LS_Augment framework witness\n",true,false,false):tails.remove();
   }
@@ -398,7 +398,7 @@ final class ScopeRestartHarness {""" + constants + "static void run(Activity a,S
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             files.append(path)
-        files += [SRC / (name + ".java") for name in ("FrameworkDiagnosticFilter", "RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "DiagnosticStore", "ShoulderSwitchLogPolicy", "AtomicWorkbenchLogPolicy", "HookTargetRegistry", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
+        files += [SRC / (name + ".java") for name in ("FrameworkDiagnosticFilter", "RuntimeEnvironment", "ModuleRuntimeStatus", "DiagnosticEvidencePolicy", "DiagnosticWritePolicy", "DiagnosticLogcat", "DiagnosticStore", "ShoulderSwitchLogPolicy", "AtomicWorkbenchLogPolicy", "HookTargetRegistry", "ScopeRestartPolicy", "AuditLog", "BoundedLog", "LogRepeatPolicy")]
         subprocess.run([javac, "-encoding", "UTF-8", "--release", "17", "-cp", str(json_jar), "-d", str(directory), *map(str, files)], check=True)
         subprocess.run([java, "-cp", str(directory) + os.pathsep + str(json_jar), "ls.augment.com.TestDiagnosticReliability"], check=True, timeout=30)
         if args.negative_controls:

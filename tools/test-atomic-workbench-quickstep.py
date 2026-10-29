@@ -8,6 +8,9 @@ import tempfile
 BASE = runpy.run_path(str(Path(__file__).with_name("test-atomic-workbench-home-hook.py")))
 SUPPORT = BASE["SUPPORT"]
 SOURCES = {key: value for key, value in BASE["SOURCES"].items() if key.startswith("android/") or key.startswith("io/") or key.endswith("AugmentModule.java")}
+SOURCES["ls/augment/com/hook/AugmentModule.java"]=SOURCES["ls/augment/com/hook/AugmentModule.java"].replace(
+    "public Object getArg(int i){return args[i];}",
+    "public Object getArg(int i){return args[i];}public java.util.List<Object> getArgs(){return java.util.Arrays.asList(args);}")
 SOURCES.update({
     "android/annotation/SuppressLint.java": "package android.annotation;public @interface SuppressLint {String[] value();}",
     "android/os/IBinder.java": "package android.os;public interface IBinder {boolean isBinderAlive();}",
@@ -163,6 +166,7 @@ def main():
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepInputHook.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepCapabilities.java"),str(SUPPORT["SRC"] / "hook/HookCompatibility.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchQuickstepTargetHook.java"),
+                            str(SUPPORT["SRC"] / "hook/RecentsLoadPlan.java"),
                             str(SUPPORT["SRC"] / "hook/AtomicWorkbenchLauncherCrashHook.java"),
                             *files], check=True, timeout=45, env=SUPPORT["ENV"])
         print("PASS production Quickstep hook compiles against Android 36 public SDK")

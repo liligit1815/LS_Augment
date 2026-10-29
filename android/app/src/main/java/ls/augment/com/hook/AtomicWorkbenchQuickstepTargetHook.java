@@ -118,7 +118,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
         Method finish = modern?method(controller,"finishController",boolean.class,Runnable.class,boolean.class,boolean.class,Class.forName("com.android.quickstep.util.ActiveGestureLog$CompoundString",false,loader))
                 :method(controller, "finishController", boolean.class, boolean.class, Runnable.class, boolean.class, boolean.class);
         Method completed = method(result, "send", int.class, Bundle.class);
-        Method plan = method(view, "applyLoadPlan", List.class);
+        Method plan = RecentsLoadPlan.resolve(view);
         Method intent = method(handler, "getLaunchIntent");
         Class<?> homeListener = Class.forName("com.android.quickstep.AbsSwipeUpHandler$AppToHomeAnimationSuccessListener", false, loader);
         Method homeEnd = method(homeListener, "onAnimationEnd", android.animation.Animator.class);
@@ -242,7 +242,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
                 if (launcherView != null) route = launcherView.route;
             }
             if (route == null) {
-                synchronized (RETIRED_WINDOWS) { if (RETIRED_WINDOWS.containsKey(owner)) return chain.proceed(new Object[]{java.util.List.of()}); }
+                synchronized (RETIRED_WINDOWS) { if (RETIRED_WINDOWS.containsKey(owner)) return chain.proceed(RecentsLoadPlan.replaceTasks(chain.getArgs(),List.of())); }
                 return chain.proceed();
             }
             if (!(launcherView != null ? launcherView.owner.get() == owner && retainedLauncherValid(route, owner, chain.getThisObject()) : retainedWindowValid(route, owner))) {
@@ -257,7 +257,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
                 }
                 if (launcherView == null) retireWindow(owner);
                 module.logFeatureInfo("ATOMIC_NATIVE_RECENTS phase=failed;reason=retained_window_identity_changed;target_display=" + route.target);
-                return chain.proceed(new Object[]{java.util.List.of()});
+                return chain.proceed(RecentsLoadPlan.replaceTasks(chain.getArgs(),List.of()));
             }
             // Do not modify the shared RecentsModel cache. A native per-display
             // view receives only complete groups belonging to its display/user.
@@ -275,7 +275,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
             if (launcherView != null) synchronized (LAUNCHER_VIEWS) {
                 if (LAUNCHER_VIEWS.get(chain.getThisObject()) != launcherView) return null;
             }
-            try (Scope ignored = new Scope(route)) { return chain.proceed(new Object[]{selected}); }
+            try (Scope ignored = new Scope(route)) { return chain.proceed(RecentsLoadPlan.replaceTasks(chain.getArgs(),selected)); }
         }));
         module.registerFeatureHook(module.prepareFeatureHook(gesture, "atomic_workbench.recents.gesture_identity", true)
                 .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
@@ -547,7 +547,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
             profile.overview = method(profile.launcher, "getOverviewPanel");
             profile.root = method(profile.launcher, "getRootView");
             profile.dragLayer = method(profile.launcher, "getDragLayer");
-            profile.plan = method(profile.recentsView, "applyLoadPlan", List.class);
+            profile.plan = RecentsLoadPlan.resolve(profile.recentsView);
             profile.reload = method(profile.recentsView, "reloadIfNeeded", boolean.class);
             if (profile.plan.getReturnType() != void.class || profile.reload.getReturnType() != void.class
                     || java.lang.reflect.Modifier.isStatic(profile.plan.getModifiers()) || java.lang.reflect.Modifier.isStatic(profile.reload.getModifiers()))
@@ -908,7 +908,7 @@ final class AtomicWorkbenchQuickstepTargetHook {
                 // The shared native model may already have populated this Activity.
                 // Clear those cards before selecting it, then use the ROM's forced
                 // reload so every asynchronous load passes the owner-scoped filter.
-                profile.plan.invoke(view, List.of());
+                RecentsLoadPlan.clear(profile.plan,view);
                 profile.reload.invoke(view, true);
             }
             module.logFeatureInfo("ATOMIC_NATIVE_HOME_CONTAINER source_display=" + route.source

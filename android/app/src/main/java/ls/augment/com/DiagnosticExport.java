@@ -28,7 +28,8 @@ final class DiagnosticExport {
                 RootShell.run("for n in /sys/class/backlight/*; do [ -d \"$n\" ] || continue; echo node=$n; "
                     +"for f in max_brightness brightness actual_brightness bl_power; do if [ -r \"$n/$f\" ]; then echo field=$f; cat \"$n/$f\"; fi; done; done",null,5,16384),16384);
         source(out,"COLOR_DISPLAY live controller and matrix readback",RootShell.run("dumpsys color_display",null,5,49152),49152);
-        source(out,"DISPLAY_BRIGHTNESS native state at export",RootShell.run("dumpsys display | grep -E 'BrightnessInfo|mScreenBrightness|mBrightness|mDisplayState|mReduceBright'",null,5,32768),32768);
+        source(out,"DISPLAY_BRIGHTNESS native state at export; each line capped at 1024 characters; long curve vectors omitted",
+                RootShell.run("dumpsys display | grep -E 'BrightnessInfo|mScreenBrightness|mBrightness|mDisplayState|mReduceBright' | cut -c 1-1024",null,5,32768),32768);
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
         source(out,"PROCESS_LIST",processes,256*1024);
         Map<Integer,String> live=processNames(processes);
@@ -120,7 +121,7 @@ final class DiagnosticExport {
         out.append("\ncollectionFinished=").append(System.currentTimeMillis()).append("\n");return out.toString();
     }
     private static void appendFrameworkLogs(StringBuilder out,boolean ai,boolean shoulder) {
-        RootShell.Result listing=RootShell.run("ls -1 /data/adb/lspd/log",null,5,8192);
+        RootShell.Result listing=RootShell.run("ls -1t /data/adb/lspd/log",null,5,8192);
         // Report capture proof without exporting the successful directory listing body.
         source(out,"LSPOSED_CURRENT_LOG_DIRECTORY",new RootShell.Result(listing.exitCode,
                 listing.isSuccess()?"":listing.output,listing.timedOut,listing.capture),8192);

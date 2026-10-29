@@ -16,6 +16,9 @@ assert 'publishSnapshot(authoritative, true)' in source
 constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', source)))
 
 SOURCES = {
+    # Layout policy is independently tested; this suite isolates transport/identity and writer timing.
+    'ls/augment/com/StatusBarEditPolicy.java': '''package ls.augment.com;public final class StatusBarEditPolicy{public static StatusBarEditPolicy resolve(java.util.function.Function<String,String> values){return new StatusBarEditPolicy();}public String effective(String key,String value){return value;}}''',
+    'ls/augment/com/StatusBarWorkspaceSpec.java': '''package ls.augment.com;public final class StatusBarWorkspaceSpec{public static final String ROWS="rows";public static String effectiveValue(String key,String value,String rows){return value;}}''',
     'ls/augment/com/StartupDiagnostics.java': '''package ls.augment.com;public final class StartupDiagnostics{public static final java.util.List<String> events=new java.util.concurrent.CopyOnWriteArrayList<>();public static void record(String s,String d,Throwable e){events.add(s+":"+d+(e==null?"":":"+e.getClass().getName()));}}''',
     'android/net/Uri.java': '''package android.net; public final class Uri { public final String value; private Uri(String v){value=v;} public static Uri parse(String v){return new Uri(v);} }''',
     'android/os/SystemClock.java': '''package android.os; public final class SystemClock { public static volatile long offset; public static long elapsedRealtime(){return System.nanoTime()/1000000+offset;} }''',
@@ -207,6 +210,9 @@ public final class TestFeatureSettingsAsync {
         long start=System.nanoTime();for(int i=0;i<1000;i++)check(FeatureSettings.hiddenTargets(context).isEmpty(),"expired publication retained filtering");
         check(System.nanoTime()-start<TimeUnit.SECONDS.toNanos(1),"hot reader waited for blocked identity service");
         android.os.UserManager.gate.countDown();readerIdle();
+        // Simulate a separate process: a healthy Settings context must not be
+        // replaced merely because one callback supplies another package context.
+        Field retained=FeatureSettings.class.getDeclaredField("applicationContext");retained.setAccessible(true);retained.set(null,null);
         Context other=new Context(new Resolver(),"com.android.systemui");FeatureSettings.hiddenTargets(other);refresh();
         int otherCalls=android.os.UserManager.calls.get();refresh();
         check(android.os.UserManager.calls.get()==otherCalls&&FeatureSettings.hiddenTargets(other).isEmpty(),"non-Settings process acquired identity IPC or filtering");
@@ -433,6 +439,19 @@ public final class TestFeatureSettingsAsync {
         System.out.println("FeatureSettings/OemHooks actual guard: unverified refresh, 4000 fresh off callbacks without IPC/owner lookup, 4000 expired off callbacks with blocked worker refresh, enable/disable changes passed");
     }
     public static void main(String[] args)throws Throwable {
+        if(args.length>0&&args[0].equals("host_context")){
+            providerGate.countDown();WRITE_GATE.countDown();AtomicInteger foreignCalls=new AtomicInteger();
+            Context foreign=new Context(new Resolver(){@Override public Bundle call(Uri uri,String method,String key,Bundle extras){foreignCalls.incrementAndGet();throw new SecurityException("android does not own app uid");}},"android"){
+                @Override public android.content.pm.ApplicationInfo getApplicationInfo(){var info=super.getApplicationInfo();info.uid=1000;return info;}
+            };
+            FeatureSettings.snapshot(foreign);Thread.sleep(60);check(foreignCalls.get()==0,"early foreign context reached Provider");
+            Context host=new Context(new Resolver());Framework framework=new Framework();framework.remoteSupported=false;FeatureSettings.attachFramework(framework);
+            until(()->FeatureSettings.snapshot(host).revision==3);
+            for(int i=0;i<1000;i++){FeatureSettings.snapshot(i%2==0?foreign:host);FeatureSettings.diagnostic(foreign,"ls_augment_identity_regression","valid-host");}
+            FeatureSettings.invalidateSnapshot();until(()->"valid-host".equals(writes.get("ls_augment_identity_regression")));readerIdle();
+            check(foreignCalls.get()==0&&FeatureSettings.hasVerifiedSnapshot(host),"foreign context poisoned read/write or discarded verified state");
+            System.out.println("FeatureSettings real read/write host identity: 1000 alternating contexts, startup fallback and verified snapshot retained");return;
+        }
         if(args.length>0&&args[0].equals("auxiliary_outage_observer")) {
             REMOTE_GATE.countDown();providerGate.countDown();WRITE_GATE.countDown();runtimeThrows=true;
             remoteValue="7:1";providerValue="8:1";Framework observerFramework=new Framework();FeatureSettings.attachFramework(observerFramework);
@@ -585,6 +604,13 @@ public final class TestFeatureSettingsAsync {
 }
 
 SOURCES['ls/augment/com/hook/ConfigReadRetry.java'] = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/ConfigReadRetry.java').read_text(encoding='utf-8')
+SOURCES['ls/augment/com/hook/ConfigHostContext.java'] = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/ConfigHostContext.java').read_text(encoding='utf-8')
+SOURCES['ls/augment/com/hook/TestFeatureSettingsAsync.java'] = SOURCES['ls/augment/com/hook/TestFeatureSettingsAsync.java'].replace('final class Resolver', 'class Resolver')
+SOURCES['ls/augment/com/hook/AugmentModule.java'] = SOURCES['ls/augment/com/hook/AugmentModule.java'].replace('void logFeatureError', 'void logFeatureInfo(String message){}void logFeatureError')
+SOURCES['android/content/pm/ApplicationInfo.java']='package android.content.pm;public class ApplicationInfo{public int uid;public String packageName;}'
+SOURCES['android/content/Context.java']=SOURCES['android/content/Context.java'].replace(
+    'public String getPackageName(){return packageName;}',
+    'public String getPackageName(){return packageName;}public String getOpPackageName(){return packageName;}public android.content.pm.ApplicationInfo getApplicationInfo(){var info=new android.content.pm.ApplicationInfo();info.uid=android.os.Process.myUid();info.packageName=packageName;return info;}')
 # Keep the production per-transport cache around the controlled snapshot parser.
 # The parser double models authority/revision races; real serialization has its
 # separate checksum/corruption suite.
@@ -604,5 +630,5 @@ with tempfile.TemporaryDirectory(prefix='ls-feature-settings-async-') as directo
     classes = temporary / 'classes'
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', str(classes), *files], check=True)
     subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestSettingsTargetMatcher'], check=True, timeout=20)
-    for case in ('remote', 'provider_only', 'hidden_binding', 'diagnostic_retry', 'verified_off_guard', 'boot_startup', 'provider_recovery', 'launcher_publication_wait', 'auxiliary_outage_observer', 'diagnostic_queue_full', 'home_readiness_priority'):
+    for case in ('host_context', 'remote', 'provider_only', 'hidden_binding', 'diagnostic_retry', 'verified_off_guard', 'boot_startup', 'provider_recovery', 'launcher_publication_wait', 'auxiliary_outage_observer', 'diagnostic_queue_full', 'home_readiness_priority'):
         subprocess.run(['java', '-cp', str(classes), 'ls.augment.com.hook.TestFeatureSettingsAsync', case], check=True, timeout=20)

@@ -123,35 +123,6 @@ final class ScopeRestartDialog {
     }
 
     private static String command(String scope) {
-        switch (scope) {
-            case SETTINGS:
-                return "am force-stop com.android.settings";
-            case AMAP:
-                return "am force-stop com.autonavi.minimap";
-            case SYSTEM_UI:
-                return "killall com.android.systemui";
-            case LAUNCHER:
-                return "killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
-            case DEVICE:
-                return "reboot";
-            case APPS:
-                return "am force-stop cn.nubia.neostore; am force-stop com.mi.health; am force-stop com.zte.cn.doubleapp; am force-stop com.zte.beautify; "
-                        + "am force-stop com.zte.beautifyadapter; am force-stop com.android.packageinstaller; "
-                        + "am force-stop com.zte.zdm; am force-stop com.zte.mifavor.weather; "
-                        + "am force-stop com.android.permissioncontroller; am force-stop cn.nubia.filebrowser; am force-stop com.android.mtp; "
-                        + "am force-stop com.android.ztescreenshot; am force-stop cn.nubia.photoeditor; killall com.zte.mifavor.launcher >/dev/null 2>&1 || true";
-            case GAMES:
-                return "am force-stop cn.nubia.gamelauncher; am force-stop cn.nubia.gameassist; "
-                        + "am force-stop cn.nubia.gamelab; "
-                        + "am force-stop cn.nubia.gamehelpmodule; "
-                        + "am force-stop cn.nubia.gamehelperline; "
-                        + "am force-stop com.zte.game.plugintrigger; "
-                        + "am force-stop cn.zte.gamefloat; am force-stop cn.nubia.gamehighlights; "
-                        + "killall cn.nubia.fan >/dev/null 2>&1 || true";
-            case FAN:
-                return "killall cn.nubia.fan >/dev/null 2>&1 || true; killall com.android.systemui";
-            default:
-                return "reboot";
-        }
+        return ScopeRestartPolicy.command(scope);
     }
 }

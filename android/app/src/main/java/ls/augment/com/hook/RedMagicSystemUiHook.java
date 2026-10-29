@@ -92,6 +92,8 @@ final class RedMagicSystemUiHook {
                 (target,args,result)->{if(target instanceof ViewGroup)watch((ViewGroup)target);});
         count += RedMagicLegacyUiHook.install(owner, loader);
         count += DualSignalTint.install(owner, loader);
+        count += hook(loader,"android.widget.ImageView",new String[]{"invalidateDrawable"},
+                (target,args,result)->{if(target instanceof ImageView)SignalTypeBadge.invalidated((ImageView)target);});
         count += ControlCenterGridHook.install(owner, loader);
         count += VolumePositionHook.install(owner, loader);
         count += RedMagicAdvancedUiHook.install(owner, loader);
@@ -728,6 +730,8 @@ final class RedMagicSystemUiHook {
             FeatureSettings.diagnostic(owner.getContext(),"ls_augment_signal_badges",
                     "art="+(iosStyle()?"ios-png-v4-"+(second==null?"single":"dual"):"honor-reference-v5")+";cards="+(second==null?1:2)+";types="+showTypes+";arrows="+activity
                             +";native_ink_h="+nativeInkHeight+";native_frame_h="+nativeFrameHeight
+                            +";type0="+firstType.observation()+";type1="+secondType.observation()
+                            +";combined_drawing="+readyToDraw+";spacing_editor_enabled="+(FeatureSettings.enabled(owner.getContext(),ConfigSchema.SYSTEMUI_MASTER)&&!RedMagicLegacyUiHook.positionSizeOnly(owner.getContext()))
                             +";frame_px="+(g==null?"pending":g.width+"x"+g.height())+";"+source.state.description());
         }
         boolean iosStyle(){return "1".equals(FeatureSettings.snapshot(owner.getContext()).get(SystemUiOptions.SIGNAL_DUAL_STYLE));}

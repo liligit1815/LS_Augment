@@ -69,6 +69,15 @@ public final class TestHookAppCatalog {
         }
         check(visibleKeys.equals(allKeys), "some existing controls were lost");
         check(coveredPackages.equals(HookTargetRegistry.packages()), "scoped application is absent from inventory");
+        check(HookAppCatalog.find(HookAppCatalog.GALLERY).packages.equals(
+                List.of("cn.nubia.photoeditor", "com.android.gallery3d")),
+                "gallery source dragging and photo editing retain distinct packages");
+        check(!coveredPackages.contains("com.tencent.mobileqq"), "retired QQ scope was restored");
+        for (String suffix : List.of("mtp_name_enabled", "mtp_name"))
+            check(HookAppCatalog.affectedPackages(SystemOptions.key(suffix)).equals(
+                    List.of("cn.nubia.filebrowser", "com.android.mtp")), "MTP name misses an old/new carrier: " + suffix);
+        check(HookAppCatalog.affectedPackages(SystemOptions.key("mtp_hide_category")).equals(
+                List.of("cn.nubia.filebrowser")), "legacy MTP categories must not claim standalone service support");
         // GameExtrasHook.space() installs both watermark editor hooks in GameSpace.
         check(HookAppCatalog.affectedPackages(GameOptions.WATERMARK_UNLIMITED).equals(
                 List.of("cn.nubia.gamelauncher")), "watermark scope must match the GameSpace editor consumer");

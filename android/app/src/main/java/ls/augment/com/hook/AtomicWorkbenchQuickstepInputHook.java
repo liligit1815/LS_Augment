@@ -27,6 +27,7 @@ final class AtomicWorkbenchQuickstepInputHook {
     private static final WeakHashMap<Object, Map<Integer, Route>> STREAMS = new WeakHashMap<>();
     private static final ThreadLocal<Route> DISPATCH = new ThreadLocal<>();
     private static boolean installed;
+    static boolean ready(){return installed;}
 
     static final class Route {
         final WeakReference<Object> service;

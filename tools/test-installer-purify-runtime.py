@@ -135,20 +135,27 @@ public final class InstallerPurifyRuntimeTest {
 for name in ("InstallerStartupHook", "InstallerPresentationHook", "OtaReadObservationHook", "DefaultAssistantUiHook"):
     SOURCES[f"ls/augment/com/hook/{name}.java"] = (
         f"package ls.augment.com.hook; final class {name} {{static void install(AugmentModule m,ClassLoader l){{}}}}")
-for name in ("CaptureVisibilityHook", "ThemeExtrasHook", "DefaultLauncherRoleHook", "ScreenshotCropHook", "GalleryCropHook"):
+for name in ("CaptureVisibilityHook", "ThemeExtrasHook", "DefaultLauncherRoleHook", "ScreenshotCropHook", "GalleryCropHook", "GalleryWatermarkHook"):
     SOURCES[f"ls/augment/com/hook/{name}.java"] = (
         f"package ls.augment.com.hook; final class {name} {{static void install(AugmentModule m,ClassLoader l,String p){{}}}}")
 SOURCES["ls/augment/com/hook/SystemRulesHook.java"] = (
     "package ls.augment.com.hook; final class SystemRulesHook {static void installCapture(AugmentModule m,ClassLoader l){}}")
 
 
-def exercise(source, expect_failure=False):
+def exercise(source, expect_failure=False, modern=False):
     javac, java = java_bin()
     if not javac or not java:
         raise RuntimeError("A JDK is required for the local production-adapter regression")
     with tempfile.TemporaryDirectory(prefix="duo-installer-purify-") as directory:
         base = Path(directory)
         all_sources = dict(SOURCES)
+        if modern:
+            for name in ('com/android/packageinstaller/PackageInstallerActivity.java', 'ls/augment/com/hook/InstallerPurifyRuntimeTest.java'):
+                all_sources[name] = all_sources[name].replace('int a,int b,int c,boolean d', 'int a,int b,int c,int risk,boolean d')\
+                    .replace('new Object[]{a,b,c,d,e,f}', 'new Object[]{a,b,c,risk,d,e,f}')\
+                    .replace('int.class,int.class,int.class,boolean.class', 'int.class,int.class,int.class,int.class,boolean.class')\
+                    .replace('Integer.valueOf(1),Boolean.TRUE', 'Integer.valueOf(1),Integer.valueOf(8),Boolean.TRUE')\
+                    .replace('i<4?', 'i<5?')
         all_sources["ls/augment/com/hook/OemAppExtrasHook.java"] = source
         all_sources["ls/augment/com/hook/OemHooks.java"] = (PRODUCTION / "OemHooks.java").read_text(encoding="utf-8")
         all_sources["ls/augment/com/hook/InstallerWarningContract.java"] = (PRODUCTION / "InstallerWarningContract.java").read_text(encoding="utf-8")
@@ -176,6 +183,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     source = (PRODUCTION / "OemAppExtrasHook.java").read_text(encoding="utf-8")
     exercise(source)
+    exercise(source, modern=True)
     if args.mutation_check:
         correct = 'InstallerWarningContract.Result applied=InstallerWarningContract.apply(result);'
         if source.count(correct) != 1:

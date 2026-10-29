@@ -21,6 +21,13 @@ public final class SystemUiNativeCrashEvidence {
     // Root cross-user operation: these are validated target-package CE paths, not this module's own storage directory.
     //noinspection SdCardPath
     public static void main(String[] args) {
+        int result=run(args);
+        System.out.flush();System.err.flush();
+        // app_process may start Binder service threads during DropBox collection.
+        // Finishing main alone does not terminate that standalone helper process.
+        System.exit(result);
+    }
+    static int run(String[] args) {
         try {
             if(Process.myUid()!=0||(args.length!=2&&args.length!=3))throw new SecurityException("root_required");
             int user=Integer.parseInt(args[0]),uid=Integer.parseInt(args[1]);
@@ -36,7 +43,8 @@ public final class SystemUiNativeCrashEvidence {
             collectDropBox(System.out::print,uid);
             }else System.out.println("shared_history=OMITTED_AFTER_DUO_LOG_CLEAR;since="+since+";new_events=SEE_SCOPED_LOGCAT");
             System.out.println("END_BOOT_CRASH_EVIDENCE");
-        }catch(Throwable failure){System.out.println("status=UNAVAILABLE;error="+failure.getClass().getSimpleName());}
+            return 0;
+        }catch(Throwable failure){System.out.println("status=UNAVAILABLE;error="+failure.getClass().getSimpleName());return 1;}
     }
     interface Output {void write(String value);}
     static void collectSystemUi(Output out,File data,int uid,String storage) {
@@ -97,7 +105,13 @@ public final class SystemUiNativeCrashEvidence {
     private static boolean ownedDirectory(File folder,int uid)throws Exception {
         if(!folder.exists())return false;
         StructStat stat=Os.lstat(folder.getPath());
-        return folder.getCanonicalFile().equals(folder.getAbsoluteFile())&&OsConstants.S_ISDIR(stat.st_mode)&&stat.st_uid==uid;
+        File canonical=folder.getCanonicalFile(),absolute=folder.getAbsoluteFile();
+        // Android's user-0 CE root can be the framework-owned /data/user/0 -> /data/data alias.
+        // Allow only that fixed parent mapping, never a symlink inside the package directory.
+        String path=absolute.getPath(),prefix="/data/user/0/com.android.systemui";
+        boolean nativeAlias=(path.equals(prefix)||path.startsWith(prefix+"/"))
+                &&canonical.getPath().equals("/data/data/com.android.systemui"+path.substring(prefix.length()));
+        return (canonical.equals(absolute)||nativeAlias)&&OsConstants.S_ISDIR(stat.st_mode)&&stat.st_uid==uid;
     }
     static final class Read {
         boolean ok,truncated;long size,modified;int bytes;String text="",error="";

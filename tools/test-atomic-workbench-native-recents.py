@@ -12,6 +12,7 @@ BASE = runpy.run_path(str(Path(__file__).with_name("test-atomic-workbench-quicks
 SUPPORT, SOURCES = BASE["SUPPORT"], dict(BASE["SOURCES"])
 SOURCES.pop("ls/augment/com/hook/TestQuickstep.java")
 SOURCES.pop("ls/augment/com/hook/AtomicWorkbenchQuickstepTargetHook.java")
+SOURCES["ls/augment/com/hook/RecentsLoadPlan.java"]=(SUPPORT["SRC"] / "hook/RecentsLoadPlan.java").read_text(encoding="utf-8")
 SOURCES["android/view/InputEvent.java"] = "package android.view;public class InputEvent {public static boolean failSet;public int display;public int getDisplayId(){return display;}public void setDisplayId(int d){if(failSet)throw new IllegalStateException(\"display unavailable\");display=d;}}"
 _module = "ls/augment/com/hook/AugmentModule.java"
 SOURCES[_module] = SOURCES[_module].replace("public boolean deoptimize(java.lang.reflect.Executable m){", "public final java.util.List<java.lang.reflect.Executable> deoptimized=new java.util.ArrayList<>();public boolean deoptimize(java.lang.reflect.Executable m){deoptimized.add(m);")
@@ -152,6 +153,19 @@ def main():
     production = ["hook/AtomicWorkbenchQuickstepHook.java", "hook/AtomicWorkbenchQuickstepInputHook.java", "hook/AtomicWorkbenchQuickstepTargetHook.java", "hook/AtomicWorkbenchLauncherCrashHook.java"]
     with tempfile.TemporaryDirectory(prefix="lsa-native-recents-") as directory:
         SUPPORT["compile_run"](Path(directory), SOURCES, production, "ls.augment.com.hook.TestNativeRecents")
+    modern=dict(SOURCES)
+    view="com/android/quickstep/views/RecentsView.java"
+    modern[view]=modern[view].replace("applyLoadPlan(java.util.List<?> tasks){chosen=tasks;}",
+        'applyLoadPlan(java.util.List<?> tasks,int generation){if(generation!=77)throw new AssertionError("native generation changed");chosen=tasks;}')
+    fixture="ls/augment/com/hook/TestNativeRecents.java"
+    modern[fixture]=modern[fixture].replace('"applyLoadPlan",new Class<?>[]{java.util.List.class},',
+        '"applyLoadPlan",new Class<?>[]{java.util.List.class,int.class},77,')
+    # Keep the actual call's argument order (tasks, generation), including after filtering.
+    import re
+    modern[fixture]=re.sub(r'("applyLoadPlan",new Class<\?>\[\]\{java.util.List.class,int.class\},)77,([^;]+)\);',
+        r'\1\2,77);',modern[fixture])
+    with tempfile.TemporaryDirectory(prefix="lsa-native-recents-generation-") as directory:
+        SUPPORT["compile_run"](Path(directory), modern, production, "ls.augment.com.hook.TestNativeRecents")
     missing = dict(SOURCES)
     missing["com/android/quickstep/util/ContextInitListener.java"] = missing["com/android/quickstep/util/ContextInitListener.java"].replace("mOnInitListener", "legacyCallback")
     missing["ls/augment/com/hook/TestNativeRecents.java"] = missing["ls/augment/com/hook/TestNativeRecents.java"].replace('check(m.callbacks.size()==21,', 'check(m.callbacks.size()==20,').replace('public static void main(String[] args)throws Throwable {', 'public static void main(String[] args)throws Throwable {if(args.length>0&&args[0].equals("window_init_missing")){F f=new F();java.util.concurrent.atomic.AtomicInteger calls=new java.util.concurrent.atomic.AtomicInteger();f.s.initPredicate=started->{calls.incrementAndGet();return false;};f.down();check(!f.s.initListener.init(new Object(),false)&&calls.get()==1&&f.log("window_init_capability_missing"),"missing callback capability changed native behavior");System.out.println("WINDOW INIT MISSING CAPABILITY: native callback preserved");return;}')

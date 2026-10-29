@@ -73,6 +73,7 @@ final class FeatureSettings {
     private static int consecutiveReadFailures;
     private static String startupReadState = "";
     private static final Map<String,String> startupReadFailures = new HashMap<>();
+    private static final Map<String,Long> startupReadFailureTimes = new HashMap<>();
     private static String startupWriteFailureState = "";
     private static final AtomicBoolean handshakeSent = new AtomicBoolean();
     private static volatile XposedInterface framework;
@@ -600,14 +601,15 @@ final class FeatureSettings {
         return executor;
     }
 
-    private static Context remember(Context context) {
-        if (context != null) {
-            boolean firstContext = applicationContext == null;
-            try { Context app = context.getApplicationContext(); applicationContext = app == null ? context : app; }
-            catch (RuntimeException unavailable) { applicationContext = context; }
+    private static synchronized Context remember(Context context) {
+        Context previous = applicationContext;
+        Context selected = ConfigHostContext.select(previous, context);
+        if (selected == null) selected = ConfigHostContext.select(null, currentApplication());
+        applicationContext = selected;
+        if (selected != null && selected != previous) {
             // A framework-only refresh may already be running. Ensure that its
             // context-less attempt is followed by a real provider read promptly.
-            if (firstContext) invalidations.incrementAndGet();
+            invalidations.incrementAndGet();
         }
         Context application = applicationContext;
         if (application != null && pollingStarted.compareAndSet(false, true)) {
@@ -644,7 +646,6 @@ final class FeatureSettings {
                     hiddenCandidates = hidden != null && hidden.length() <= 131072 ? hidden : "";
                     runtimeAuthoritative = true;
                     runtimeReadState = "ready";
-                    startupReadFailures.remove("CONFIG_RUNTIME_FAILED");
                 } else runtimeReadState = runtime == null ? "reply_missing" : "reply_not_accepted";
             } catch (Throwable unavailable) {
                 // Auxiliary state is independent from the verified settings
@@ -770,7 +771,6 @@ final class FeatureSettings {
                 return null;
             }
             providerReadState = "ready";
-            startupReadFailures.remove("CONFIG_PROVIDER_FAILED");
             return snapshot;
         } catch (Throwable unavailable) {
             providerReadState = ConfigReadRetry.failure(unavailable);
@@ -795,7 +795,6 @@ final class FeatureSettings {
             ConfigSnapshot mirror = REMOTE_READER.read(raw instanceof String ? (String) raw : null).snapshot;
             if (mirror != null) publishSnapshot(mirror, false);
             remoteReadState = mirror == null ? "snapshot_missing_or_invalid" : "ready";
-            if(mirror!=null)startupReadFailures.remove("CONFIG_REMOTE_FAILED");
             Object hidden = values.get(RemoteConfig.HIDDEN);
             if (!runtimeAuthoritative)
                 hiddenCandidates = hidden instanceof String && ((String) hidden).length() <= 131072
@@ -813,8 +812,13 @@ final class FeatureSettings {
     }
 
     private static void startupReadFailure(String stage,String state,Throwable error){
-        if(!state.equals(startupReadFailures.put(stage,state)))
+        long now=SystemClock.elapsedRealtime();
+        Long previous=startupReadFailureTimes.get(stage);
+        // A successful read must not re-arm an identical error on every poll.
+        if(!state.equals(startupReadFailures.get(stage))||previous==null||now-previous>=300_000L){
+            startupReadFailures.put(stage,state);startupReadFailureTimes.put(stage,now);
             try{ls.augment.com.StartupDiagnostics.record(stage,state,error);}catch(Throwable ignored){}
+        }
     }
 
     private static void installObserversOnWorker(Context context) {
@@ -826,7 +830,6 @@ final class FeatureSettings {
         try {
             context.getContentResolver().registerContentObserver(CONFIG_URI, true, observer);
             observersInstalled = true;
-            startupReadFailures.remove("CONFIG_OBSERVER_FAILED");
         } catch (Throwable error) {
             try { context.getContentResolver().unregisterContentObserver(observer); }
             catch (Throwable cleanup) { if(cleanup!=error)error.addSuppressed(cleanup); }

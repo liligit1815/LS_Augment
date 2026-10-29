@@ -38,12 +38,16 @@ final class OemAppExtrasHook {
                 }
                 return result;
             });
-        OemHooks.methods(m,l,type,"getCookUI",null,6,key("installer_hide_purify"),chain->{
+        io.github.libxposed.api.XposedInterface.Hooker warnings=chain->{
             Object result=chain.proceed();
             InstallerWarningContract.Result applied=InstallerWarningContract.apply(result);
             if(applied!=InstallerWarningContract.Result.COMPLETE)m.logFeatureInfo("INSTALLER_PRESENTATION_CAPABILITY mode="+applied+";missing=complete_warning_flags;unknown_fields_preserved=true");
             return result;
-        });
+        };
+        OemHooks.methods(m,l,type,"getCookUI",null,6,key("installer_hide_purify"),warnings,
+                new Class<?>[]{int.class,int.class,int.class,boolean.class,String.class,String.class});
+        OemHooks.methods(m,l,type,"getCookUI",null,7,key("installer_hide_purify"),warnings,
+                new Class<?>[]{int.class,int.class,int.class,int.class,boolean.class,String.class,String.class});
         OemHooks.methods(m,l,"com.android.packageinstaller.InstallStaging","installScanningInit",void.class,1,key("installer_skip_scan"),chain->{
             Object owner=chain.getThisObject(),uri=chain.getArg(0);
             // StagingAsyncTask has already validated the session and assigned mPackageURI.

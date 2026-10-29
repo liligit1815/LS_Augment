@@ -432,7 +432,10 @@ final class LiquidGlassControlCenterHook {
             } else { Object candidate = field(owner, "mTitleText"); if (candidate instanceof TextView) label = (TextView) candidate;
                 else{View title=child(owner,"header_title");if(title instanceof TextView)label=(TextView)title;}}
             int color = label == null ? Color.BLACK : label.getCurrentTextColor();
-            glass.setForegroundIsLight(circle && active || Color.luminance(color) > .5f);
+            // Slider frames have icons/overlay percentages, not a tile label. Use the
+            // same live theme as their foreground instead of treating a missing label as black.
+            glass.setForegroundIsLight(progress != null ? ControlCenterSliderTheme.isNight(view)
+                    : circle && active || Color.luminance(color) > .5f);
             int tint = Color.WHITE;
             Drawable nativeBackground = trackOnly?track.original:material.original;
             if (active && nativeBackground instanceof GradientDrawable) {

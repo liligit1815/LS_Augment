@@ -88,7 +88,7 @@ public final class HookAppCatalog {
                     "cn.nubia.gamehelperline", "cn.zte.gamefloat", "cn.nubia.gamehighlights"),
             target(AI_TRIGGER, "AI 触发器", "识别速度、点击队列与 YOLO 参数", "games",
                     "com.zte.game.plugintrigger", "cn.nubia.gamelab", "cn.nubia.gameassist"),
-            target(FAN, "散热风扇", "固定档位、本机测量与磁贴增强", "games",
+            target(FAN, "散热风扇", "固定档位、本机测量与磁贴增强", "fan",
                     "cn.nubia.fan"),
             target(THEME, "主题与个性化", "主题试用、资源下载与联名定制", "device",
                     "com.zte.beautify", "com.zte.beautifyadapter", "com.zte.fingerprints",
@@ -106,7 +106,9 @@ public final class HookAppCatalog {
             target(FILES, "MTP传输", "电脑端存储名称与 MTP 浏览", "apps", "cn.nubia.filebrowser", "com.android.mtp"),
             target(PERMISSIONS, "权限管理", "第三方默认桌面选择", "apps", "com.android.permissioncontroller"),
             target(SCREENSHOT, "截图与录屏", "截图裁剪与捕获画面的状态栏显示", "apps", "com.android.ztescreenshot"),
-            target(GALLERY, "相册图片编辑", "图片编辑中的裁剪尺寸限制", "apps", "cn.nubia.photoeditor")
+            // The gallery owns native source dragging; crop/watermark controls stay in the editor.
+            target(GALLERY, "相册图片编辑", "图片编辑中的裁剪尺寸限制", "apps",
+                    "cn.nubia.photoeditor", "com.android.gallery3d")
     ));
     private static final Target MODULE_TARGET = target(MODULE, "模块设置",
             "模块设置、配置备份与日志导出", null, "ls.augment.com");
@@ -236,6 +238,8 @@ public final class HookAppCatalog {
         Target target = find(targetForKey(key));
         if (target == null || MODULE.equals(target.id)) return Collections.emptyList();
         String suffix = suffix(key);
+        if ("mtp_name_enabled".equals(suffix) || "mtp_name".equals(suffix))
+            return immutable(Arrays.asList("cn.nubia.filebrowser", "com.android.mtp"));
         if (THEME.equals(target.id)) {
             if (ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL.equals(key)) return immutable(Arrays.asList("com.zte.beautify", "com.zte.beautifyadapter"));
             if (suffix.startsWith("theme_collab_")) return Collections.singletonList("com.zte.beautify");
@@ -260,6 +264,26 @@ public final class HookAppCatalog {
             return Collections.singletonList("cn.nubia.gameassist");
         }
         return Collections.singletonList(target.packageName);
+    }
+
+    /** Suggested actions must reload every cooperating process, not just the setting's home. */
+    public static String restartScopeForKey(String key) {
+        Target target = find(targetForKey(key));
+        if (target == null || target.restartScope == null) return null;
+        return ScopeRestartPolicy.completeScope(target.restartScope, affectedPackages(key));
+    }
+
+    public static String restartScopeForRoute(String route) {
+        Target target = find(targetForRoute(route));
+        if (target == null) return null;
+        if ("super_resolution".equals(route) || "diablo_coexist".equals(route))
+            return ScopeRestartPolicy.completeScope(target.restartScope,
+                    Arrays.asList("system", "cn.nubia.gamelauncher", "cn.nubia.gameassist"));
+        if ("atomic_workbench".equals(route))
+            return ScopeRestartPolicy.completeScope(target.restartScope,
+                    Arrays.asList("system", "com.zte.mifavor.launcher", "com.autonavi.minimap", "com.android.gallery3d"));
+        if ("fan_control".equals(route)) return "fan";
+        return target.restartScope;
     }
 
     private static String owner(EnhancementOption option) {

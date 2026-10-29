@@ -18,10 +18,14 @@ import android.widget.TextView;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import io.github.libxposed.api.XposedInterface.HookHandle;
 
 /** Uses the same OEM QSDetail host and opening path as CoolingFanTile. */
 final class ExtraDimTileHook {
@@ -34,23 +38,34 @@ final class ExtraDimTileHook {
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
-    static int install(AugmentModule module,ClassLoader loader) {
+    static synchronized int install(AugmentModule module,ClassLoader loader) {
         if(installed)return 0;
+        List<HookHandle> handles=new ArrayList<>();
+        AtomicBoolean live=new AtomicBoolean();
         try {
             Class<?> custom=Class.forName("com.android.systemui.qs.external.CustomTile",false,loader);
             Class<?> base=Class.forName("com.android.systemui.qs.tileimpl.QSTileImpl",false,loader);
             Class<?> adapter=Class.forName("com.android.systemui.plugins.qs.DetailAdapter",false,loader);
-            Method component=custom.getMethod("getComponent");
-            Method show=base.getMethod("showDetail",boolean.class);
-            Method toggle=base.getMethod("fireToggleStateChanged",boolean.class);
-            Method get=base.getDeclaredMethod("getDetailAdapter");
-            Method longClick=base.getDeclaredMethod("handleLongClick",Class.forName("com.android.systemui.animation.Expandable",false,loader));
-            module.registerFeatureHook(module.prepareFeatureHook(get,"extra_dim.detail_adapter",false).intercept(chain->{
+            if(!adapter.isInterface())throw new IllegalStateException("extra_dim_detail_adapter_not_interface");
+            Method component=HookCompatibility.inheritedMethod(custom,ComponentName.class,false,new String[]{"getComponent"});
+            Method show=HookCompatibility.inheritedMethod(base,void.class,false,new String[]{"showDetail"},boolean.class);
+            Method toggle=HookCompatibility.inheritedMethod(base,void.class,false,new String[]{"fireToggleStateChanged"},boolean.class);
+            Method get=HookCompatibility.inheritedMethod(base,adapter,false,new String[]{"getDetailAdapter"});
+            Method longClick=HookCompatibility.inheritedMethod(base,void.class,false,new String[]{"handleLongClick"},Class.forName("com.android.systemui.animation.Expandable",false,loader));
+            Class<?> layout=Class.forName("com.zte.feature.qs.layout.QsDetailModule",false,loader);
+            Method choose=HookCompatibility.inheritedMethod(layout,void.class,false,new String[]{"handleShowDetailTile"},
+                    Class.forName("com.android.systemui.plugins.qs.QSTile",false,loader),boolean.class,boolean.class,boolean.class);
+            List<Method> measures=detailLayouts(layout);
+            // Resolve every required capability before installing any interception.
+            // A failed installation keeps even a handle that cannot unhook inert.
+            handles.add(module.prepareFeatureHook(get,"extra_dim.detail_adapter",false).intercept(chain->{
+                if(!live.get())return chain.proceed();
                 Object tile=chain.getThisObject();
                 if(!matches(tile,custom,component))return chain.proceed();
                 return detail(tile,adapter,toggle).adapter;
             }));
-            module.registerFeatureHook(module.prepareFeatureHook(longClick,"extra_dim.long_click",true).intercept(chain->{
+            handles.add(module.prepareFeatureHook(longClick,"extra_dim.long_click",true).intercept(chain->{
+                if(!live.get())return chain.proceed();
                 Object tile=chain.getThisObject();
                 if(!matches(tile,custom,component))return chain.proceed();
                 MAIN.post(()->{
@@ -59,21 +74,44 @@ final class ExtraDimTileHook {
                 });
                 return null;
             }));
-            Class<?> layout=Class.forName("com.zte.feature.qs.layout.QsDetailModule",false,loader);
-            Method choose=layout.getDeclaredMethod("handleShowDetailTile",Class.forName("com.android.systemui.plugins.qs.QSTile",false,loader),boolean.class,boolean.class,boolean.class);
-            Method measure=layout.getDeclaredMethod("updateDetailContainerLayout",android.view.ViewGroup.LayoutParams.class,View.class);
-            module.registerFeatureHook(module.prepareFeatureHook(choose,"extra_dim.detail_layout_kind",true).intercept(chain->{
-                if(Boolean.TRUE.equals(chain.getArg(1)))LAYOUTS.put(chain.getThisObject(),matches(chain.getArg(0),custom,component));
-                return chain.proceed();
+            handles.add(module.prepareFeatureHook(choose,"extra_dim.detail_layout_kind",true).intercept(chain->{
+                if(!live.get())return chain.proceed();
+                Object owner=chain.getThisObject();
+                Boolean previous=LAYOUTS.put(owner,Boolean.TRUE.equals(chain.getArg(1))&&matches(chain.getArg(0),custom,component));
+                try{return chain.proceed();}
+                catch(Throwable failure){
+                    if(previous==null)LAYOUTS.remove(owner);else LAYOUTS.put(owner,previous);
+                    throw failure;
+                }
             }));
-            module.registerFeatureHook(module.prepareFeatureHook(measure,"extra_dim.detail_height",false).intercept(chain->{
-                Object result=chain.proceed();
-                if(Boolean.TRUE.equals(LAYOUTS.get(chain.getThisObject())))
-                    ((android.view.ViewGroup.LayoutParams)chain.getArg(0)).height=android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
-                return result;
-            }));
-            installed=true;return 4;
-        }catch(Throwable error){module.logFeatureError("EXTRA_DIM_TILE_INSTALL",error);return 0;}
+            for(Method measure:measures)handles.add(module.prepareFeatureHook(measure,
+                    measure.getParameterCount()==1?"extra_dim.detail_height_legacy":"extra_dim.detail_height",false).intercept(chain->{
+                        Object result=chain.proceed();
+                        if(live.get()&&Boolean.TRUE.equals(LAYOUTS.get(chain.getThisObject())))
+                            ((android.view.ViewGroup.LayoutParams)chain.getArg(0)).height=android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+                        return result;
+                    }));
+            for(HookHandle handle:handles)module.registerFeatureHook(handle);
+            live.set(true);installed=true;return handles.size();
+        }catch(Throwable error){
+            live.set(false);
+            for(int i=handles.size()-1;i>=0;i--)try{handles.get(i).unhook();}
+            catch(Throwable cleanup){if(cleanup!=error)error.addSuppressed(cleanup);}
+            module.logFeatureError("EXTRA_DIM_TILE_INSTALL",error);return 0;
+        }
+    }
+    private static List<Method> detailLayouts(Class<?> layout)throws NoSuchMethodException {
+        List<Method> methods=new ArrayList<>();
+        // Both inspected OEM contracts mutate the LayoutParams in argument zero.
+        for(Class<?>[] parameters:new Class<?>[][]{
+                {android.view.ViewGroup.LayoutParams.class,View.class},
+                {android.view.ViewGroup.LayoutParams.class}})try{
+            methods.add(HookCompatibility.inheritedMethod(layout,void.class,false,
+                    new String[]{"updateDetailContainerLayout"},parameters));
+        }catch(NoSuchMethodException absent){/* Try the other inspected layout contract. */}
+        if(methods.isEmpty())throw new NoSuchMethodException(layout.getName()+
+                ".updateDetailContainerLayout(LayoutParams[,View]):instance void");
+        return methods;
     }
     private static boolean matches(Object tile,Class<?> custom,Method method) throws ReflectiveOperationException {
         if(!custom.isInstance(tile))return false;

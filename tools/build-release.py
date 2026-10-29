@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 from java_properties import read_properties
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -39,6 +40,8 @@ def main():
     with log.open('w',encoding='utf-8') as stream:
         subprocess.run([str(gradle),'-p','android',':app:assembleRelease','--offline','--console=plain'],cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT,check=True)
     apk=ROOT/'android/app/build/outputs/apk/release/app-release.apk'
+    # Refuse a stale scope resource before copying anything into the distributed release directory.
+    subprocess.run([sys.executable,str(ROOT/'tools/check-modern-xposed.py'),str(apk)],cwd=ROOT,check=True)
     certificate(apk)
     if version(apk)!=(code,name):raise RuntimeError('Built APK version does not match version.properties')
     zipalign=build/('zipalign.exe' if os.name=='nt' else 'zipalign')

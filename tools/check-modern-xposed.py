@@ -4,6 +4,21 @@ import re
 import sys
 import zipfile
 
+
+def scope_packages(text, label):
+    packages = [line.strip() for line in text.splitlines()
+                if line.strip() and not line.lstrip().startswith('#')]
+    assert packages, f'{label}: empty scope'
+    assert len(packages) == len(set(packages)), f'{label}: duplicate scope entries'
+    assert all(re.fullmatch(r'[a-z][A-Za-z0-9_.]*', package) for package in packages), \
+        f'{label}: invalid scope entry'
+    return set(packages)
+
+
+def same_scope(actual, expected, label):
+    assert actual == expected, \
+        f'{label}: missing={sorted(expected - actual)}, extra={sorted(actual - expected)}'
+
 root = Path(__file__).resolve().parents[1]
 app = root / 'android/app'
 entry = app / 'src/main/resources/META-INF/xposed/java_init.list'
@@ -17,9 +32,10 @@ source = app / 'src/main/java/ls/augment/com/hook/AugmentModule.java'
 assert entry.read_text(encoding='utf-8').strip() == 'ls.augment.com.hook.AugmentModule'
 assert native_entry.read_text(encoding='utf-8').strip() == 'liblsaugment_tgk.so'
 registry = app / 'src/main/java/ls/augment/com/HookTargetRegistry.java'
-registered_packages = set(re.findall(r'"([a-z][A-Za-z0-9_.]+)"', registry.read_text(encoding='utf-8')))
-assert set(scope.read_text(encoding='utf-8').split()) == registered_packages, \
-    'static scope must match the unchanged Provider/package authorization registry'
+registered_packages = scope_packages('\n'.join(re.findall(r'"([a-z][A-Za-z0-9_.]+)"',
+    registry.read_text(encoding='utf-8'))), 'HookTargetRegistry')
+declared_packages = scope_packages(scope.read_text(encoding='utf-8'), 'source scope.list')
+same_scope(declared_packages, registered_packages, 'source scope vs Provider/package authorization registry')
 props = {}
 for line in prop.read_text(encoding='utf-8').splitlines():
     line=line.strip()
@@ -82,6 +98,9 @@ if len(sys.argv) > 1:
         for n in ('META-INF/xposed/java_init.list','META-INF/xposed/native_init.list',
                   'META-INF/xposed/scope.list','META-INF/xposed/module.prop'):
             assert n in names, f'APK missing {n}'
+            assert z.namelist().count(n) == 1, f'APK duplicate metadata entry: {n}'
+        packaged_scope = scope_packages(z.read('META-INF/xposed/scope.list').decode('utf-8'), 'APK scope.list')
+        same_scope(packaged_scope, declared_packages, 'APK scope vs source scope/registry')
         assert 'assets/xposed_init' not in names, 'legacy assets/xposed_init packaged'
         assert z.read('META-INF/xposed/java_init.list').decode().strip() == 'ls.augment.com.hook.AugmentModule'
         assert z.read('META-INF/xposed/native_init.list').decode().strip() == 'liblsaugment_tgk.so'
@@ -89,6 +108,5 @@ if len(sys.argv) > 1:
         for line in z.read('META-INF/xposed/module.prop').decode().splitlines():
             if '=' in line:
                 k,v=line.split('=',1); p[k.strip()]=v.strip()
-        assert p.get('minApiVersion') == '102'
-        assert p.get('targetApiVersion') == '102'
+        assert p == props, f'APK module.prop differs from source: {p} != {props}'
 print('Modern libxposed API 102 checks: OK')

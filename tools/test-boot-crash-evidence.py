@@ -81,7 +81,7 @@ public class BootCrashEvidenceTest{
   android.os.DropBoxManager.entries.add(new android.os.DropBoxManager.Entry("system_app_crash",System.currentTimeMillis()-1500,"Process: com.android.systemui\nUID: 110352\njava.lang.IllegalStateException: secret\n at private.user.Leak.start(Leak.java:9)\n"));
   android.os.DropBoxManager.entries.add(new android.os.DropBoxManager.Entry("system_app_crash",System.currentTimeMillis()-1000,"Process: private.app\njava.lang.RuntimeException: secret\n at private.app.Leak.x(Leak.java:1)\n"));
   ByteArrayOutputStream bytes=new ByteArrayOutputStream();PrintStream original=System.out;
-  try{System.setOut(new PrintStream(bytes));android.os.Process.uid=0;SystemUiNativeCrashEvidence.main(new String[]{"0","10352"});}finally{System.setOut(original);android.os.Process.uid=10352;}
+  try{System.setOut(new PrintStream(bytes));android.os.Process.uid=0;SystemUiNativeCrashEvidence.run(new String[]{"0","10352"});}finally{System.setOut(original);android.os.Process.uid=10352;}
   s=bytes.toString();check(s.contains("C.java:9")&&!s.contains("private.app.Leak")&&!s.contains("private.user.Leak")&&!s.contains(": secret"),"DropBox reads only same-user SystemUI trace, never unrelated entries or messages");check(android.os.DropBoxManager.closed==3,"every DropBox entry is closed");check(s.contains("uidMissingOrDifferent=1"),"missing or foreign UID is explicitly counted");
  }
  static void write(Path base)throws Exception{Path data=base.resolve("retained-systemui");Files.createDirectories(data);SystemUiCrashJournal.hook("thread_dispatch");SystemUiCrashJournal.stage("install:core");SystemUiCrashJournal.prepare(info(data));check(SystemUiCrashJournal.status().startsWith("ARMED"),"journal armed in DE before application attach");SystemUiCrashJournal.capture(failure());SystemUiCrashJournal.capture(new IllegalArgumentException("second fatal"));String s=nativeRead(data);check(s.contains("capture=FATAL")&&s.contains("LockedView.java:47")&&!s.contains("second fatal")&&!s.contains("1234"),"first fatal synchronously persisted with phase and no messages");check(Os.syncs>=2,"arming and fatal each fsync before returning");}
@@ -95,12 +95,18 @@ public class BootCrashEvidenceTest{
 def main():
     with tempfile.TemporaryDirectory(prefix='duo-boot-crash-') as temporary:
         directory=Path(temporary);files=[]
-        for name,text in {**STUBS,'ls/augment/com/BootCrashEvidenceTest.java':TEST}.items():
+        exit_test='''package ls.augment.com;public class BootCrashExitTest{public static void main(String[] args){
+ new Thread(()->{try{Thread.sleep(60000);}catch(InterruptedException ignored){}},"persistent-binder-fixture").start();
+ android.os.Process.uid=0;SystemUiNativeCrashEvidence.main(new String[]{"0","10352"});throw new AssertionError("helper main returned without exiting");}}'''
+        for name,text in {**STUBS,'ls/augment/com/BootCrashEvidenceTest.java':TEST,'ls/augment/com/BootCrashExitTest.java':exit_test}.items():
             path=directory/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,'utf-8');files.append(path)
         files += [SRC/(name+'.java') for name in ('CrashStackTrace','FrameworkDiagnosticFilter','BootEvidenceArchive','SystemUiCrashJournal','SystemUiNativeCrashEvidence')]
         subprocess.run([str(JDK/'javac'),'-encoding','UTF-8','--release','17','-d',temporary,*map(str,files)],check=True)
         data=directory/'data'
         for mode in ('all','write','read'):
             subprocess.run([str(JDK/'java'),'-cp',temporary,'ls.augment.com.BootCrashEvidenceTest',mode,str(data)],check=True,timeout=25)
+        process=subprocess.run([str(JDK/'java'),'-cp',temporary,'ls.augment.com.BootCrashExitTest'],capture_output=True,text=True,timeout=5)
+        assert process.returncode==0 and 'END_BOOT_CRASH_EVIDENCE' in process.stdout, process.stdout+process.stderr
+        print('PASS standalone evidence helper exits after final marker despite persistent Binder-like threads')
 
 if __name__=='__main__':main()

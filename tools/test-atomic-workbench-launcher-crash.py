@@ -13,7 +13,7 @@ fixture = "ls/augment/com/hook/TestNativeRecents.java"
 SOURCES[fixture] = SOURCES[fixture].replace(
     "AtomicWorkbenchQuickstepTargetHook.class}",
     "AtomicWorkbenchQuickstepTargetHook.class,AtomicWorkbenchLauncherCrashHook.class}"
-).replace("check(m.callbacks.size()==19,", "check(m.callbacks.size()==21,")
+).replace("check(m.callbacks.size()==21,", "check(m.callbacks.size()==23,")
 module = "ls/augment/com/hook/AugmentModule.java"
 SOURCES[module] = SOURCES[module].replace("public int errors;", "public int errors;public boolean failLog;public Throwable captured;")
 SOURCES[module] = SOURCES[module].replace("{errors++;logs.add(s);}", "{if(failLog)throw new IllegalStateException();captured=e;errors++;logs.add(s);}")
@@ -63,6 +63,20 @@ def main():
                   "hook/AtomicWorkbenchQuickstepTargetHook.java", "hook/AtomicWorkbenchLauncherCrashHook.java"]
     with tempfile.TemporaryDirectory(prefix="lsa-launcher-crash-") as directory:
         SUPPORT["compile_run"](Path(directory), SOURCES, production, "ls.augment.com.hook.TestLauncherCrash")
+    modern=dict(SOURCES)
+    owner=modern.pop("x1/w.java").replace("package x1;", "package com.android.launcher3.mfvUtil;")
+    owner=owner.replace("class w ", "class CrashHandler ").replace("public w other", "public CrashHandler other").replace("void i(", "void cleaner(")
+    callback=modern.pop("x1/w$a.java").replace("package x1;", "package com.android.launcher3.mfvUtil;")
+    callback=callback.replace("w$a", "CrashHandler$1").replace("final w b", "final CrashHandler this$0")\
+        .replace("(w h)", "(CrashHandler h)").replace("b=h", "this$0=h").replace("b.", "this$0.")\
+        .replace("?b:", "?this$0:").replace('"i"', '"cleaner"')
+    modern["com/android/launcher3/mfvUtil/CrashHandler.java"]=owner
+    modern["com/android/launcher3/mfvUtil/CrashHandler$1.java"]=callback
+    fixture="ls/augment/com/hook/TestLauncherCrash.java"
+    modern[fixture]=modern[fixture].replace("x1.w$a", "com.android.launcher3.mfvUtil.CrashHandler$1")\
+        .replace("x1.w", "com.android.launcher3.mfvUtil.CrashHandler").replace('"i"', '"cleaner"')
+    with tempfile.TemporaryDirectory(prefix="lsa-launcher-crash-modern-") as directory:
+        SUPPORT["compile_run"](Path(directory), modern, production, "ls.augment.com.hook.TestLauncherCrash")
     # Replace only the ThreadLocal boundary with a throwing implementation; all
     # production interception/authentication/finally methods remain unchanged.
     fault = dict(SOURCES)

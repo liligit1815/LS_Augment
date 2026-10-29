@@ -14,10 +14,12 @@ FILES = {
 "android/animation/ValueAnimator.java": """package android.animation;public class ValueAnimator {public static boolean enabled;public static boolean areAnimatorsEnabled(){return enabled;}}""",
 "android/os/SystemClock.java": """package android.os;public class SystemClock {public static long now=1000;public static long uptimeMillis(){return now;}}""",
 "android/util/DisplayMetrics.java": """package android.util;public class DisplayMetrics {public float density=1;}""",
-"android/R.java": """package android;public final class R {public static final class id {public static final int background=1,progress=2;}}""",
-"android/content/Context.java": """package android.content;public class Context {}""",
-"android/content/res/Resources.java": """package android.content.res;public class Resources {final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();public android.util.DisplayMetrics getDisplayMetrics(){return metrics;}public int getIdentifier(String name,String type,String pkg){return name.hashCode();}}""",
-"android/content/res/ColorStateList.java": """package android.content.res;public class ColorStateList {final int color;public ColorStateList(int c){color=c;}public int getDefaultColor(){return color;}}""",
+"android/R.java": """package android;public final class R {public static final class id {public static final int background=1,progress=2;}public static final class attr {public static final int colorAccent=3,state_checked=4;}}""",
+"android/content/Context.java": """package android.content;public class Context {public android.content.res.Resources.Theme getTheme(){return new android.content.res.Resources.Theme();}}""",
+"android/content/res/Configuration.java": """package android.content.res;public class Configuration {public static final int UI_MODE_NIGHT_MASK=0x30,UI_MODE_NIGHT_YES=0x20,UI_MODE_NIGHT_NO=0x10;public int uiMode=UI_MODE_NIGHT_NO;}""",
+"android/util/TypedValue.java": """package android.util;public class TypedValue {public static final int TYPE_FIRST_COLOR_INT=28,TYPE_LAST_COLOR_INT=31;public int type,data;}""",
+"android/content/res/Resources.java": """package android.content.res;public class Resources {final android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();final Configuration config=new Configuration();public Configuration getConfiguration(){return config;}public android.util.DisplayMetrics getDisplayMetrics(){return metrics;}public int getIdentifier(String name,String type,String pkg){return name.hashCode();}public static class Theme {public boolean resolveAttribute(int id,android.util.TypedValue value,boolean resolve){return false;}}}""",
+"android/content/res/ColorStateList.java": """package android.content.res;public class ColorStateList {final int color;final boolean stateful;public ColorStateList(int c){color=c;stateful=false;}public ColorStateList(int[][] states,int[] colors){color=colors[colors.length-1];stateful=states.length>1;}public static ColorStateList valueOf(int c){return new ColorStateList(c);}public int getDefaultColor(){return color;}public boolean isStateful(){return stateful;}}""",
 "android/graphics/Color.java": """package android.graphics;public class Color {public static final int BLACK=0xff000000,WHITE=0xffffffff;public static float luminance(int c){return (((c>>16)&255)*.2126f+((c>>8)&255)*.7152f+(c&255)*.0722f)/255;}}""",
 "android/graphics/Rect.java": """package android.graphics;public class Rect {public int left,top,right,bottom;
 public Rect(){}public Rect(int l,int t,int r,int b){set(l,t,r,b);}public Rect(Rect r){set(r);}
@@ -46,7 +48,7 @@ public void invalidateSelf(){if(callback!=null)callback.invalidateDrawable(this)
 public void unscheduleSelf(Runnable r){if(callback!=null)callback.unscheduleDrawable(this,r);}
 public void setBounds(int l,int t,int r,int b){setBounds(new Rect(l,t,r,b));}public void setBounds(Rect r){if(!bounds.equals(r)){bounds.set(r);onBoundsChange(r);}}
 public Rect getBounds(){return bounds;}protected void onBoundsChange(Rect r){}public void setAlpha(int a){alpha=a;invalidateSelf();}public int getAlpha(){return alpha;}
-public void setColorFilter(ColorFilter f){}public void setTintList(ColorStateList t){}public void setTintMode(PorterDuff.Mode m){}
+public ColorStateList tint;public void setColorFilter(ColorFilter f){}public void setTintList(ColorStateList t){tint=t;}public void setTintMode(PorterDuff.Mode m){}
 public boolean isStateful(){return true;}protected boolean onStateChange(int[] s){return true;}protected boolean onLevelChange(int l){return true;}
 public boolean setState(int[] s){state=s;return onStateChange(s);}public int[] getState(){return state;}public boolean setLevel(int l){level=l;return onLevelChange(l);}public int getLevel(){return level;}
 public boolean setVisible(boolean v,boolean r){return true;}public void setHotspot(float x,float y){}public void setHotspotBounds(int l,int t,int r,int b){}
@@ -71,7 +73,7 @@ public float getTranslationX(){return translationX;}public float getTranslationY
 public float getPivotX(){return width*.5f;}public float getPivotY(){return height*.5f;}
 public float getScaleX(){return scaleX;}public float getScaleY(){return scaleY;}public float getRotation(){return rotation;}
 public float getRotationX(){return 0;}public float getRotationY(){return 0;}
-public Drawable background;public final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();final Context context=new Context();final Resources resources=new Resources();
+public Drawable background;public android.content.res.ColorStateList backgroundTint;public android.content.res.ColorStateList getBackgroundTintList(){return backgroundTint;}public void setBackgroundTintList(android.content.res.ColorStateList tint){backgroundTint=tint;}public final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();final Context context=new Context();final Resources resources=new Resources();
 private int pl,pt,pr,pb;
 public interface OnAttachStateChangeListener {void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}
 public Context getContext(){return context;}public Resources getResources(){return resources;}public ViewParent getParent(){return parent;}
@@ -81,6 +83,7 @@ if(d!=null){d.setCallback(this);Rect p=new Rect();d.getPadding(p);setPadding(p.l
 public int getPaddingLeft(){return pl;}public int getPaddingTop(){return pt;}public int getPaddingRight(){return pr;}public int getPaddingBottom(){return pb;}
 public void setPadding(int l,int t,int r,int b){pl=l;pt=t;pr=r;pb=b;}public void invalidateOutline(){}public void invalidate(){invalidations++;}public void postInvalidateOnAnimation(){invalidate();}
 public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.add(l);}public void detach(){attached=false;for(OnAttachStateChangeListener l:listeners)l.onViewDetachedFromWindow(this);}
+public void attach(){attached=true;for(OnAttachStateChangeListener l:listeners)l.onViewAttachedToWindow(this);}
 public void invalidateDrawable(Drawable d){invalidate();}public void scheduleDrawable(Drawable d,Runnable r,long t){}public void unscheduleDrawable(Drawable d,Runnable r){}
 }""",
 "android/view/ViewGroup.java": """package android.view;import android.graphics.Rect;public class ViewGroup extends View {
@@ -90,7 +93,9 @@ public int getChildCount(){return children.size();}public View getChildAt(int i)
 public void offsetDescendantRectToMyCoords(View v,Rect r){while(v!=this){if(v==null)throw new IllegalArgumentException();r.offset(v.left,v.top);v=v.parent;}}
 }""",
 "android/view/MotionEvent.java": """package android.view;public class MotionEvent {public static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;public int action=ACTION_UP;public float x,y;public MotionEvent(){}public MotionEvent(int a,float px,float py){action=a;x=px;y=py;}public int getActionMasked(){return action;}public float getX(){return x;}public float getY(){return y;}}""",
-"android/widget/SeekBar.java": """package android.widget;import android.graphics.drawable.Drawable;public class SeekBar extends android.view.View {public Drawable progress;public Drawable getProgressDrawable(){return progress;}}""",
+"android/widget/SeekBar.java": """package android.widget;import android.graphics.drawable.*;import android.content.res.ColorStateList;public class SeekBar extends android.view.View {public Drawable progress;public int value=47,min=0,max=100;private ColorStateList fillTint,trackTint;public Drawable getProgressDrawable(){return progress;}public int getProgress(){return value;}public int getMin(){return min;}public int getMax(){return max;}public ColorStateList getProgressTintList(){return fillTint;}public ColorStateList getProgressBackgroundTintList(){return trackTint;}public void setProgressTintList(ColorStateList t){fillTint=t;apply(2,t);}public void setProgressBackgroundTintList(ColorStateList t){trackTint=t;apply(1,t);}private void apply(int id,ColorStateList t){if(progress instanceof LayerDrawable){Drawable layer=((LayerDrawable)progress).findDrawableByLayerId(id);if(layer!=null)layer.setTintList(t);}}}""",
+"android/widget/ImageView.java": """package android.widget;import android.content.res.ColorStateList;public class ImageView extends android.view.View {private ColorStateList tint;public ColorStateList getImageTintList(){return tint;}public void setImageTintList(ColorStateList t){tint=t;}}""",
+"android/widget/CompoundButton.java": """package android.widget;public class CompoundButton extends android.view.View {}""",
 "android/widget/TextView.java": """package android.widget;public class TextView extends android.view.View {public int color=0xff000000;public int getCurrentTextColor(){return color;}}""",
 "ls/augment/com/GlassOptions.java": """package ls.augment.com;public class GlassOptions {public static final String CONTROL_CENTER="enabled",CC_REDUCE_TRANSPARENCY="opaque",CC_REDUCE_MOTION="motion";}""",
 "ls/augment/com/BuildConfig.java": "package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=20378;}",
@@ -120,9 +125,9 @@ static Object field(Object o,String name){if(o==null)return null;for(Class<?> c=
 static Object call(Object o,String name,Object...args)throws ReflectiveOperationException {Method m=o.getClass().getMethod(name);return m.invoke(o,args);}}
 """,
 "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;import android.content.Context;public class FeatureSettings {
-static boolean active=true,opaque,motion;static int listeners,diagnosticWrites;static String diagnostic;
+static boolean active=true,opaque,motion;static int listeners,diagnosticWrites;static String diagnostic;static final java.util.Set<Runnable> observers=new java.util.HashSet<>();
 static boolean enabled(Context c,String key){return key.equals("enabled")?active:key.equals("opaque")?opaque:motion;}
-static void addSnapshotListener(Context c,Runnable r){listeners++;}static void removeSnapshotListener(Runnable r){listeners--;}
+static void addSnapshotListener(Context c,Runnable r){listeners++;observers.add(r);}static void removeSnapshotListener(Runnable r){listeners--;observers.remove(r);}static void changed(){for(Runnable r:new java.util.ArrayList<>(observers))r.run();}
 static void diagnostic(Context c,String key,String value){diagnostic=value;diagnosticWrites++;}}
 """,
 "com/zte/qs/tileimpl/QSTileViewWide.java": """package com.zte.qs.tileimpl;import android.graphics.drawable.GradientDrawable;import android.widget.TextView;
@@ -339,6 +344,8 @@ FILES["ls/augment/com/hook/LiquidGlassControlCenterHook.java"] = (
     ROOT / "android/app/src/main/java/ls/augment/com/hook/LiquidGlassControlCenterHook.java"
 ).read_text(encoding="utf-8")
 FILES["ls/augment/com/hook/ControlCenterGlassTargets.java"] = (ROOT / "android/app/src/main/java/ls/augment/com/hook/ControlCenterGlassTargets.java").read_text(encoding="utf-8")
+FILES["ls/augment/com/hook/ControlCenterSliderTheme.java"] = (ROOT / "android/app/src/main/java/ls/augment/com/hook/ControlCenterSliderTheme.java").read_text(encoding="utf-8")
+FILES["ls/augment/com/hook/TestControlCenterSliderGlassTheme.java"] = (ROOT / "tools/tests/TestControlCenterSliderGlassTheme.java").read_text(encoding="utf-8")
 FILES["ls/augment/com/GlassGeometry.java"] = (
     ROOT / "android/app/src/main/java/ls/augment/com/GlassGeometry.java"
 ).read_text(encoding="utf-8")
@@ -351,3 +358,4 @@ with tempfile.TemporaryDirectory(prefix="lsa-control-center-glass-") as director
         sources.append(str(path))
     subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "-d", directory, *sources], check=True)
     subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestControlCenterGlass"], check=True)
+    subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestControlCenterSliderGlassTheme"], check=True)

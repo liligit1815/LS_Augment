@@ -167,6 +167,19 @@ public class TestLiquidGlassDrawable {
   int unchanged=f.view.invalidations;for(int i=0;i<100;i++){f.glass.setMaterialGradient(0xff1677d2,0xff725bc9,2,.85f);f.glass.setRadiusDp(0);}check(f.view.invalidations==unchanged,"steady combined style never schedules redundant redraws");
   f.glass.setMaterialTint(Color.WHITE,0);Canvas.Command nativeTint=optical(draw(f.glass));near(uniform(nativeTint,"tintAmount"),0,"inactive/native tint clears prior custom gradient strength");check(java.util.Arrays.equals(nativeTint.uniforms.get("tint"),nativeTint.uniforms.get("tintEnd")),"returning to native tint clears both gradient endpoints");
   check(f.source.samples==1,"changing optical uniforms never recaptures backdrop");f.glass.release();}
+ static void sliderThemeTransitions(){Fixture f=new Fixture();f.glass.setControlSurface(true);f.glass.updatePreferences(false,true);
+  check(f.glass.prepare(),"slider glass starts with a verified backdrop");int samples=f.source.samples;
+  for(boolean night:new boolean[]{true,false,true,false}){int invalidations=f.view.invalidations;f.glass.setForegroundIsLight(night);
+   check(f.view.invalidations>invalidations,"theme transition invalidates the actual host display list");
+   Canvas.Command body=optical(draw(f.glass));near(uniform(body,"whiteText"),night?1:0,"next glass draw uses the new foreground contrast");
+   near(uniform(body,"controlSurface"),1,"theme switch retains control glass optics");
+   check(f.glass.isReady()&&f.source.samples==samples,"theme switch preserves the verified texture without a new capture");}
+  f.source.valid=false;check(!f.glass.prepare(),"missing backdrop selects fallback");
+  for(boolean night:new boolean[]{true,false}){f.glass.setForegroundIsLight(night);Canvas c=new Canvas();check(f.glass.drawFallback(c),"themed fallback remains available");
+   check(c.commands.get(0).shader instanceof LinearGradient,"themed fallback retains translucent gradient");
+   int[] colors=((LinearGradient)c.commands.get(0).shader).colors;
+   check(colors[0]==(night?0x86303b50:0xb8ffffff)&&colors[1]==(night?0x98202a3c:0x948d9fb5),"fallback follows the same night/day contrast");}
+  f.glass.release();}
  static void cacheAndStaleFrames(){Fixture f=new Fixture();check(f.glass.prepare(),"first generation prepares");int bitmaps=Bitmap.creations;
   check(f.source.samples==1,"first preparation samples once");for(int i=0;i<4;i++){SystemClock.now+=2000;check(f.glass.prepare(),"same shared revision stays prepared");optical(draw(f.glass));}
   check(f.source.samples==1&&Bitmap.creations==bitmaps,"identical shared revision reuses sample and CPU-blurred texture across polling intervals");
@@ -289,7 +302,7 @@ public class TestLiquidGlassDrawable {
   check(!f.glass.prepare(),"mapped scale does not allow secure windows");
   ((WindowManager.LayoutParams)f.view.params).flags=0;f.glass.setControlSurface(false);
   check(!f.glass.prepare(),"mapped source cannot broaden Dock transform rules");f.glass.release();}
- public static void main(String[] args){uniformsAndTint();cacheAndStaleFrames();unavailableFallback();safety();opaquePreference();rejectionAndFaults();interactionAndRelease();controlReveal();controlBackdropCalming();scaledControlFallback();mappedControlScale();
+ public static void main(String[] args){uniformsAndTint();sliderThemeTransitions();cacheAndStaleFrames();unavailableFallback();safety();opaquePreference();rejectionAndFaults();interactionAndRelease();controlReveal();controlBackdropCalming();scaledControlFallback();mappedControlScale();
   check(ValueAnimator.active.isEmpty(),"all test animations released");System.out.println("PASS production LiquidGlassDrawable runtime: "+checks+" checks (Java facade; AGSL/GPU not executed)");}
 }
 """,

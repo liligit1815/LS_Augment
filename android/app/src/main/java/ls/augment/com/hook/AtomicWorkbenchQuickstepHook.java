@@ -81,7 +81,9 @@ final class AtomicWorkbenchQuickstepHook {
                         }
                     }));
             installed = true;
-            module.logFeatureInfo("ATOMIC_NATIVE_HOME_QUICKSTEP_INSTALLED interface_matched=true;gesture_runtime=unverified");
+            module.logFeatureInfo("ATOMIC_NATIVE_HOME_QUICKSTEP_INSTALLED interface_matched="
+                    +AtomicWorkbenchQuickstepInputHook.ready()+";launch_options=true;input_adapter="
+                    +AtomicWorkbenchQuickstepInputHook.ready()+";gesture_runtime=unverified");
         } catch (Throwable failure) { module.logFeatureError("ATOMIC_NATIVE_HOME_QUICKSTEP_UNAVAILABLE", failure); }
     }
 

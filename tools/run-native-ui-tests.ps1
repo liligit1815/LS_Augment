@@ -11,6 +11,9 @@ $taskSources+=Join-Path $taskJava 'ModuleHierarchy.java'
 $taskSources+=Join-Path $taskJava 'BrightnessRange.java'
 $taskSources+=Join-Path $taskJava 'LauncherGridSpec.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestModuleHierarchy.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestHookAppCatalog.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestHookTargetRegistry.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestScopeRestartPolicy.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestModuleFeatureSearch.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestStatusBarIconLayout.java'
 $taskSources+=Join-Path $taskJava 'RecentsCardRadiusRange.java'
@@ -31,6 +34,12 @@ if($LASTEXITCODE -ne 0){throw 'Hidden entry checks failed'}
 if($LASTEXITCODE -ne 0){throw 'Launcher draft checks failed'}
 & java -cp $taskClasses ls.augment.com.TestModuleHierarchy
 if($LASTEXITCODE -ne 0){throw 'Module hierarchy checks failed'}
+& java -cp $taskClasses ls.augment.com.TestHookTargetRegistry (Join-Path $taskRoot 'android/app/src/main/resources/META-INF/xposed/scope.list')
+if($LASTEXITCODE -ne 0){throw 'Scope registry checks failed'}
+& java -cp $taskClasses ls.augment.com.TestHookAppCatalog
+if($LASTEXITCODE -ne 0){throw 'Hook application inventory checks failed'}
+& java -cp $taskClasses ls.augment.com.TestScopeRestartPolicy
+if($LASTEXITCODE -ne 0){throw 'Restart coverage checks failed'}
 & java -cp $taskClasses ls.augment.com.TestModuleFeatureSearch
 if($LASTEXITCODE -ne 0){throw 'Module feature search checks failed'}
 & java -cp $taskClasses ls.augment.com.TestStatusBarIconLayout
