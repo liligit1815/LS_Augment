@@ -4127,6 +4127,8 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus || entryFocusLogged || destroyed) return;
         entryFocusLogged = true;
+        if (incomingProof != null && entryProblem(incomingProof).isEmpty())
+            AtomicWorkbenchGestureGuide.entered(this, incomingProof.triggered);
         AppCrashDiagnostics.stage("atomic_workbench_focused");
         lifecycleDiagnostic("UI_ENTRY_FOCUSED", "gesture=" + (incomingProof != null)
                 + ";request_elapsed=" + (incomingProof == null ? -1L : incomingProof.triggered)

@@ -17,6 +17,9 @@ names = ['android/content/Context', 'android/content/res/Resources', 'android/co
          'android/view/ViewParent', 'android/view/View', 'android/view/ViewGroup',
          'ls/augment/com/LayerBackdropSource', 'ls/augment/com/LiquidGlassDrawable']
 files = {name + '.java': base[name + '.java'] for name in names}
+files['android/graphics/Color.java']='package android.graphics;public class Color {public static final int WHITE=0xffffffff;}'
+files['ls/augment/com/LiquidGlassDrawable.java'] = files['ls/augment/com/LiquidGlassDrawable.java'].replace(
+    'public void setControlSurface(', 'public boolean isBackdropLight(){return false;} public void setClarity(float value){} public void setAnimatedFallback(boolean value){} public void setRadiusDp(float value){} public void setControlSurface(')
 files['android/view/View.java'] = files['android/view/View.java'].replace(
     'public int width=', 'public static final int VISIBLE=0;public int windowVisibility;'
     'public int getWindowVisibility(){return windowVisibility;}'
@@ -69,7 +72,7 @@ check(nativeShape.getCallback()==installed,"native callbacks delegated after Vie
 check(view.observer.listeners.size()==1&&view.listeners.size()==1,"one lifecycle owner");
 LayerBackdropSource source=(LayerBackdropSource)field(installed,"source");
 LiquidGlassDrawable glass=(LiquidGlassDrawable)field(installed,"glass");
-check(glass.light&&glass.controlSurface,"white foreground contrast retained");
+check(glass.light&&!glass.controlSurface,"clear material avoids heavy control-surface blur");
 Canvas canvas=new Canvas();view.observer.dispatch();installed.draw(canvas);
 check(canvas.events.contains("glass"),"verified frame selects glass");
 source.available=false;canvas.events.clear();view.observer.dispatch();installed.draw(canvas);
@@ -81,6 +84,11 @@ int requests=LayerBackdropSource.requests;view.shown=false;view.observer.dispatc
 check(LayerBackdropSource.requests==requests,"hidden surface does not request captures");view.shown=true;
 source.available=true;glass.fallback=true;installed.setBounds(0,0,350,200);view.observer.dispatch();
 check(glass.getBounds().width()==350&&glass.getBounds().height()==200,"expanded geometry reaches renderer");
+GradientDrawable nextShape=new GradientDrawable();
+check(installed.replaceNative(nextShape),"known native transition shape accepted");
+check(view.getBackground()==installed&&field(installed,"source")==source,"open/close retains the same glass and capture owner");
+check(!installed.replaceNative(new Drawable()),"unknown transition shape keeps native fallback");
+nativeShape=nextShape;
 glass.failGpu=true;installed.draw(canvas);requests=LayerBackdropSource.requests;view.observer.dispatch();
 check(source.released&&LayerBackdropSource.requests==requests,"failed renderer releases capture instead of polling");
 installed.release();installed.release();

@@ -3,6 +3,8 @@ package ls.augment.com.hook;
 import android.content.Context;
 import android.graphics.Insets;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.widget.ImageView;
 import android.view.*;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
@@ -30,10 +32,6 @@ final class VolumePositionHook {
             Class<?> dialog=Class.forName("com.zte.feature.volume.MfvVolumeDialogImpl",false,loader);
             Method update=HookCompatibility.inheritedMethod(dialog,void.class,false,new String[]{"updateWindowParams"},WindowManager.LayoutParams.class);
             Method init=HookCompatibility.inheritedMethod(dialog,void.class,false,new String[]{"initDialog"},int.class);
-            Method show=HookCompatibility.inheritedMethod(dialog,void.class,false,new String[]{"showH"},int.class,boolean.class,int.class);
-            Class<?> feature=Class.forName("com.zte.feature.volume.MfvVolumeDialog",false,loader);
-            Method showEntrance=HookCompatibility.method(feature,void.class,false,new String[]{"showVolumeAssistWindow"});
-            java.lang.reflect.Field nativeFeature=HookCompatibility.field(dialog,feature,true,"sMfvVolumeDialog");
             module.registerFeatureHook(module.prepareFeatureHook(update,"volume.position.main",false).intercept(chain->{
                 Object result=chain.proceed();
                 try{bindMain(chain.getThisObject(),(WindowManager.LayoutParams)chain.getArg(0));}
@@ -47,20 +45,6 @@ final class VolumePositionHook {
                 try{Object raw=field(owner,"mWindow");if(raw instanceof Window){Window w=(Window)raw;bindMain(owner,w.getAttributes());w.setAttributes(w.getAttributes());}}
                 catch(RuntimeException error){module.logFeatureError("VOLUME_POSITION_INIT",error);}return result;
             }));module.deoptimize(init);
-            module.registerFeatureHook(module.prepareFeatureHook(show,"volume.position.show",false).intercept(chain->{
-                Object result=chain.proceed();
-                try{Object raw=field(chain.getThisObject(),"mDialogView");
-                    if(raw instanceof View){View view=(View)raw;
-                        // Dialog.show schedules attachment; immediately reading
-                        // isAttachedToWindow here misses the first visible frame.
-                        view.post(()->{try{
-                            Main main=MAINS.get(view);
-                            if(view.isAttachedToWindow()&&main!=null&&enabled(view.getContext()))
-                                showEntrance.invoke(nativeFeature.get(null));
-                        }catch(ReflectiveOperationException|RuntimeException error){module.logFeatureError("VOLUME_POSITION_SHOW",error);}});
-                    }
-                }catch(RuntimeException error){module.logFeatureError("VOLUME_POSITION_SHOW",error);}return result;
-            }));module.deoptimize(show);
             module.registerFeatureHook(module.prepareFeatureHook(params,"volume.position.entrance",false).intercept(chain->{
                 Object result=chain.proceed();
                 try{
@@ -74,7 +58,7 @@ final class VolumePositionHook {
                 }catch(ReflectiveOperationException|RuntimeException error){module.logFeatureError("VOLUME_POSITION_ENTRANCE",error);}
                 return result;
             }));module.deoptimize(params);
-            return 4;
+            return 3;
         }catch(ReflectiveOperationException|LinkageError error){module.logFeatureError("VOLUME_POSITION_CAPABILITY",error);return 0;}
     }
     private static boolean enabled(Context context){return VolumePositionSettings.multiAppEnabled(context)&&FeatureSettings.enabled(context,SystemUiOptions.VOLUME_SAME_SIDE);}
@@ -184,26 +168,50 @@ final class VolumePositionHook {
         }
         @Override void update(){View view=reference.get();Window w=window.get();if(view==null||w==null||!view.isAttachedToWindow())return;
             WindowManager.LayoutParams p=w.getAttributes();Position before=new Position(p);adjust(p);if(!before.same(p))w.setAttributes(p);
+            // The OEM can attach its assist button before the main dialog. Its
+            // first pre-draw then has no anchor and never redraws by itself.
+            // Retry from the main panel's measured frame, without showing it.
+            Entrance entrance=latestEntrance.get();if(entrance!=null)entrance.refresh();
         }
     }
     private static final class Entrance extends Binding{
         final WindowManager manager;
+        EntranceStyle style;
         Entrance(View view,WindowManager manager){super(view);this.manager=manager;}
         @android.annotation.SuppressLint("RtlHardcoded") // Physical side selected by the user.
         void adjust(WindowManager.LayoutParams p){
             View view=reference.get();Main main=latest.get();View root=main==null?null:main.reference.get();
             if(view==null||nativePosition==null)return;
             if(!enabled(view.getContext())||main==null||!main.owned||root==null||!root.isAttachedToWindow()){
+                status(view,"native_fallback:main_pending;enabled="+enabled(view.getContext())+";main="+(main!=null)+";owned="+(main!=null&&main.owned)+";attached="+(root!=null&&root.isAttachedToWindow()));
+                if(style!=null)style.restore();
                 if(owned){nativePosition.apply(p);owned=false;}return;
             }
             Window w=main.window.get();if(w==null)return;
+            Object ringRaw=field(main.owner.get(),"mRinger"),sliderRaw=field(main.owner.get(),"mDialogMain");
+            Object iconRaw=field(main.owner.get(),"mRingerIcon");
+            if(!(ringRaw instanceof View)||!(sliderRaw instanceof View)||!(iconRaw instanceof ImageView)){
+                status(view,"native_fallback:main_views;ringer="+(ringRaw!=null)+";slider="+(sliderRaw!=null)+";icon="+(iconRaw!=null));return;}
+            View ringer=(View)ringRaw,slider=(View)sliderRaw;
+            Rect ringBounds=new Rect(),sliderBounds=new Rect();
+            if(!ringer.getGlobalVisibleRect(ringBounds)||!slider.getGlobalVisibleRect(sliderBounds)
+                    ||ringBounds.width()<=0||Math.abs(ringBounds.width()-ringBounds.height())>4*view.getResources().getDisplayMetrics().density){
+                status(view,"native_fallback:ringer_geometry;ringer="+ringBounds+";slider="+sliderBounds);return;}
+            // getGlobalVisibleRect uses this window's root coordinates. The
+            // assist is a separate window, so anchor it in physical screen space.
+            int[] location=new int[2];ringer.getLocationOnScreen(location);
+            ringBounds.set(location[0],location[1],location[0]+ringer.getWidth(),location[1]+ringer.getHeight());
+            slider.getLocationOnScreen(location);
+            sliderBounds.set(location[0],location[1],location[0]+slider.getWidth(),location[1]+slider.getHeight());
+            if(style==null)style=EntranceStyle.create(view);
+            if(style==null){status(view,"native_fallback:entrance_views");return;}
+            if(!style.apply(ringer,(ImageView)iconRaw)){status(view,"native_fallback:ringer_surface");return;}
             Rect screen=manager.getCurrentWindowMetrics().getBounds();Insets edge=insets(root);
-            int[] point=new int[2];root.getLocationOnScreen(point);
             int height=view.getHeight()>0?view.getHeight():view.getMeasuredHeight();
             int width=view.getWidth()>0?view.getWidth():view.getMeasuredWidth();
             if(height<=0||width<=0){view.measure(View.MeasureSpec.makeMeasureSpec(screen.width(),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(screen.height(),View.MeasureSpec.AT_MOST));height=view.getMeasuredHeight();width=view.getMeasuredWidth();}
-            int gap=Math.round(8*view.getResources().getDisplayMetrics().density);
-            int bottom=point[1]+root.getHeight()+gap;
+            int gap=Math.max(0,ringBounds.top-sliderBounds.bottom);
+            int bottom=ringBounds.bottom+gap-Math.max(0,(height-ringBounds.height())/2);
             if(root.getHeight()<=0||height<=0||bottom+height>screen.bottom-edge.bottom){
                 // Insufficient landscape space: keep the stock window until the
                 // native main panel has a usable measured frame; never overlap it.
@@ -211,16 +219,74 @@ final class VolumePositionHook {
                 FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime","awaiting_room_below_panel");return;
             }
             boolean left=left(view.getContext());
-            int center=point[0]+root.getWidth()/2;
+            int center=ringBounds.centerX();
             p.gravity=Gravity.TOP|(left?Gravity.LEFT:Gravity.RIGHT);
             // Coordinates in screen space; fit-inset origin is excluded by WM.
             p.x=Math.max(0,left?center-width/2-screen.left-edge.left:screen.right-edge.right-center-width/2);
             p.y=Math.max(0,bottom-screen.top-edge.top);
             owned=true;
         }
+        String lastStatus="";
+        void status(View view,String value){if(!value.equals(lastStatus)){lastStatus=value;FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",value);}}
         @Override void update(){View view=reference.get();if(view==null||!view.isAttachedToWindow()||!(view.getLayoutParams() instanceof WindowManager.LayoutParams))return;
             WindowManager.LayoutParams p=(WindowManager.LayoutParams)view.getLayoutParams();Position before=new Position(p);adjust(p);
             if(!before.same(p)){manager.updateViewLayout(view,p);FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",owned?"same_side_below;side="+(left(view.getContext())?"left":"right"):"native_restored");}
         }
+    }
+    /** Reuses OEM surface and tint while retaining the native clickable view and icon. */
+    private static final class EntranceStyle{
+        final WeakReference<View> root,outer,container,blue;
+        final WeakReference<ImageView> background,note;
+        final Drawable originalBackground;final android.content.res.ColorStateList originalTint;
+        final int outerWidth,outerHeight,innerWidth,innerHeight,blueVisibility;
+        boolean applied;Drawable sourceBackground,fallbackSurface;
+        EntranceStyle(View root,View outer,View container,View blue,ImageView background,ImageView note){
+            this.root=new WeakReference<>(root);this.outer=new WeakReference<>(outer);this.container=new WeakReference<>(container);
+            this.blue=new WeakReference<>(blue);this.background=new WeakReference<>(background);this.note=new WeakReference<>(note);
+            originalBackground=background.getDrawable();originalTint=note.getImageTintList();blueVisibility=blue.getVisibility();
+            outerWidth=outer.getLayoutParams().width;outerHeight=outer.getLayoutParams().height;
+            innerWidth=container.getLayoutParams().width;innerHeight=container.getLayoutParams().height;
+        }
+        @android.annotation.SuppressLint("DiscouragedApi")
+        static EntranceStyle create(View root){
+            android.content.res.Resources r=root.getResources();
+            View container=root.findViewById(r.getIdentifier("volume_assist_icon_container","id","com.android.systemui"));
+            View bg=root.findViewById(r.getIdentifier("volume_assist_bg","id","com.android.systemui"));
+            View blue=root.findViewById(r.getIdentifier("volume_assist_icon","id","com.android.systemui"));
+            if(!(container instanceof ViewGroup)||!(container.getParent() instanceof View)||!(bg instanceof ImageView)||blue==null)return null;
+            ImageView note=null;ViewGroup group=(ViewGroup)container;
+            for(int i=0;i<group.getChildCount();i++){View child=group.getChildAt(i);if(child instanceof ImageView&&child!=bg&&child!=blue)note=(ImageView)child;}
+            if(note==null)return null;
+            return new EntranceStyle(root,(View)container.getParent(),container,blue,(ImageView)bg,note);
+        }
+        @android.annotation.SuppressLint("DiscouragedApi")
+        boolean apply(View ringer,ImageView icon){
+            View out=outer.get(),in=container.get(),fill=blue.get();ImageView bg=background.get(),music=note.get();
+            Drawable nativeBg=ringer.getBackground();
+            // Newer ROMs paint the ringer surface in VolumeDialogBackView instead
+            // of assigning a background to the ringer FrameLayout itself.
+            if(nativeBg==null){
+                if(fallbackSurface==null){
+                    int resource=ringer.getResources().getIdentifier("volume_dialog_ringer_background","drawable","com.android.systemui");
+                    if(resource!=0)fallbackSurface=ringer.getContext().getDrawable(resource);
+                }
+                nativeBg=fallbackSurface;
+            }
+            if(out==null||in==null||fill==null||bg==null||music==null||nativeBg==null||nativeBg.getConstantState()==null)return false;
+            int size=ringer.getWidth(),pad=Math.max(0,outerWidth-innerWidth);
+            resize(out,size+pad,size+pad);resize(in,size,size);
+            if(sourceBackground!=nativeBg){bg.setImageDrawable(nativeBg.getConstantState().newDrawable(ringer.getResources()).mutate());sourceBackground=nativeBg;}
+            bg.getDrawable().setState(ringer.getDrawableState());fill.setVisibility(View.INVISIBLE);
+            music.setImageTintList(icon.getImageTintList());music.setColorFilter(icon.getColorFilter());
+            applied=true;return true;
+        }
+        void restore(){
+            if(!applied)return;View out=outer.get(),in=container.get(),fill=blue.get();ImageView bg=background.get(),music=note.get();
+            if(out!=null)resize(out,outerWidth,outerHeight);if(in!=null)resize(in,innerWidth,innerHeight);
+            if(fill!=null)fill.setVisibility(blueVisibility);if(bg!=null)bg.setImageDrawable(originalBackground);
+            if(music!=null){music.setImageTintList(originalTint);music.clearColorFilter();}
+            applied=false;sourceBackground=null;
+        }
+        static void resize(View v,int width,int height){ViewGroup.LayoutParams p=v.getLayoutParams();if(p.width!=width||p.height!=height){p.width=width;p.height=height;v.setLayoutParams(p);}}
     }
 }

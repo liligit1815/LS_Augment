@@ -53,7 +53,10 @@ public final class TestAtomicWorkbenchGesturePolicy {
         d=armed();point(d,2,40,20,150,0,"upward detour cancels");point(d,1,120,40,300,0,"ending cannot hide detour");
         d=armed();point(d,2,60,40,200,0,"ordered sample");point(d,2,80,40,180,0,"stale sample cancels");
         point(d,1,120,40,300,0,"nonmonotonic path cannot revive");
-        point(armed(),1,120,40,901,0,"long hold rejected");point(armed(),1,120,40,150,0,"instant movement rejected");
+        point(armed(),1,120,40,1301,0,"long hold rejected");point(armed(),1,120,40,150,0,"instant movement rejected");
+        d=detector();point(d,0,399,24,100,0,"right immediately below status bar arms");
+        point(d,2,382,39,160,0,"small initial diagonal jitter stays armed");
+        point(d,1,280,48,1050,2,"slower natural right swipe accepted");
         for(int action:new int[]{3,5}){d=armed();point(d,action,50,40,160,0,"cancel or pointer action");point(d,1,120,40,300,0,"cancelled UP ignored");}
         for(float x:new float[]{Float.NaN,-1}){d=armed();point(d,2,x,40,160,0,"malformed point cancels");point(d,1,120,40,300,0,"malformed path cannot revive");}
         AtomicWorkbenchGesturePolicy.Geometry high=geometry(1200,2700,3,72);d=detector();
@@ -68,7 +71,7 @@ public final class TestAtomicWorkbenchGesturePolicy {
     private static void entryParameters(){
         for(int area:new int[]{50,100,120})for(int sensitivity:new int[]{60,100,160}){
             var g=AtomicWorkbenchGesturePolicy.Geometry.create(1216,2688,3.25f,90,area,sensitivity);
-            require(g.minY==116f&&g.maxY>g.minY&&g.maxY<=2688*.20f,"safe top band");
+            require(g.minY==90f&&g.maxY>g.minY&&g.maxY<=2688*.20f,"safe top band without dead gap");
             require(g.side(g.edge,g.minY)==1&&g.side(1216-g.edge,g.maxY)==2,"both boundaries");
             require(g.side(g.edge+1,g.minY)==0&&g.side(1216-g.edge-1,g.maxY)==0,"outside regions");
             require(g.side(1,g.minY-1)==0&&g.side(1215,g.maxY+1)==0,"status bar and lower edge excluded");

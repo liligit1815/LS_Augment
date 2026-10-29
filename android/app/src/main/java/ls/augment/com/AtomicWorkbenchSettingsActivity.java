@@ -57,7 +57,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private SharedPreferences diagnostics;
     private boolean rendering;
     private boolean resumed;
-    private AlertDialog gestureGuide;
+    private AtomicWorkbenchGestureGuide gestureGuide;
     private Toast statusToast;
     private long editorGeneration;
     private final Runnable statusTick = new Runnable() {
@@ -121,7 +121,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         LinearLayout instructions = ui.preferenceCard();
         parameters.addView(instructions, ui.wrap());
         instructions.addView(ui.featureTitle("打开方式", "从顶部左侧或右侧的触发区域起滑，单指向屏幕中间水平滑动后松手。区域位于状态栏下方；向下拉动、斜下滑动、屏幕中下部侧滑和多指操作不会打开工作台。可在下方调整并查看实际触发区域。"), ui.wrap());
-        Button demonstrate = ui.tonalButton("查看手势演示");
+        Button demonstrate = ui.tonalButton("练习进入手势");
         demonstrate.setTag("step-gesture-guide-replay");
         demonstrate.setOnClickListener(view -> showGestureGuide());
         instructions.addView(demonstrate, ui.margins(0, 0, 0, 8));
@@ -245,15 +245,10 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         session.guideOffered = true;
         session.guidePending = true;
         cancelStatusToast();
-        AlertDialog dialog = AtomicWorkbenchGestureGuide.create(this, ui, config, () -> {
-            session.guidePending = false;
-            if (on() && !ResetWriteFence.stale(editorGeneration))
-                getSharedPreferences(AtomicWorkbenchGestureGuide.PREFS, MODE_PRIVATE).edit()
-                        .putBoolean(AtomicWorkbenchGestureGuide.SEEN, true).apply();
-        });
+        AtomicWorkbenchGestureGuide dialog = AtomicWorkbenchGestureGuide.create(this, ui, config);
         gestureGuide = dialog;
-        dialog.setOnCancelListener(ignored -> session.guidePending = false);
-        dialog.setOnDismissListener(ignored -> { if (gestureGuide == dialog) gestureGuide = null; });
+        dialog.setOnCancelListener(() -> session.guidePending = false);
+        dialog.setOnDismissListener(() -> { if (gestureGuide == dialog) gestureGuide = null; });
         dialog.show();
     }
 
@@ -299,6 +294,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         main.removeCallbacks(statusTick);
         main.postDelayed(statusTick, 5000L);
         refreshControls(); refreshStatus();
+        if (AtomicWorkbenchGestureGuide.seen(this)) session.guidePending = false;
         maybeShowGestureGuide();
     }
 

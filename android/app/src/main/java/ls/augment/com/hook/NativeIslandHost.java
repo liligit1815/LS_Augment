@@ -116,7 +116,7 @@ final class NativeIslandHost {
         },null);
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onPermanentIslandPanelCloseAnimationStart",0,(o,a,r)->{
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){
-                h.restoreBackgrounds();h.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
+                if(h.glassBackground==null)h.restoreBackgrounds();h.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
                 if(h.ownsSelected(o)&&NativeIslandPanelCompat.ordinary(o))
                     invokeStatic(N+"DynamicIslandAnimation","startStatusBarAnimation",new Class<?>[]{View.class,boolean.class},h.phone,true);
             }return PASS;
@@ -167,6 +167,12 @@ final class NativeIslandHost {
             if(h!=null&&a[0]==h.root&&a[1] instanceof WindowManager.LayoutParams)h.window((WindowManager.LayoutParams)a[1]);
             if(a[0] instanceof View&&a[1] instanceof WindowManager.LayoutParams)
                 NativeIslandScenes.adjustWindow((View)a[0],(WindowManager.LayoutParams)a[1]);
+            return PASS;
+        },null);
+        count+=hookNamed(module,loader,"native_island_glass","android.view.View","setBackground",1,(o,a,r)->{
+            NativeIslandHost h=active;
+            if(h!=null&&o==h.container&&h.glassBackground!=null&&a[0]!=h.glassBackground
+                    &&a[0] instanceof Drawable&&h.glassBackground.replaceNative((Drawable)a[0]))return null;
             return PASS;
         },null);
         for(String method:new String[]{"onClick","onLongClick"}){
@@ -513,10 +519,12 @@ final class NativeIslandHost {
             if(style==SystemUiOptions.ISLAND_BACKGROUND_GLASS){
                 if(glassBackground==null||container.getBackground()!=glassBackground){
                     restoreBackgrounds();
-                    glassBackground=IslandGlassBackground.attach(container,this::reportGlass);
+                    glassBackground=IslandGlassBackground.attach(container,this::reportGlass,this::glassForeground);
                 }
+                if(glassBackground!=null)glassForeground(glassBackground.foregroundColor());
             }else{
                 if(glassBackground!=null){glassBackground.release();glassBackground=null;}
+                glassForeground(android.graphics.Color.WHITE);
                 if(!expanded()&&style==SystemUiOptions.ISLAND_BACKGROUND_TRANSPARENT){
                     if(!backgrounds.containsKey(container))backgrounds.put(container,container.getBackground());container.setBackground(null);
                 }else if(backgrounds.containsKey(container))container.setBackground(backgrounds.remove(container));
@@ -531,6 +539,17 @@ final class NativeIslandHost {
         android.widget.FrameLayout.LayoutParams p=(android.widget.FrameLayout.LayoutParams)view.getLayoutParams();
         p.width=w;p.height=h;p.gravity=android.view.Gravity.TOP|(end?android.view.Gravity.END:android.view.Gravity.START);
         p.topMargin=(height-h)/2;p.bottomMargin=0;p.setMarginStart(0);p.setMarginEnd(0);view.setLayoutParams(p);
+    }
+    private void glassForeground(int color){
+        Object mediaPanel=field(music,"mMediaPanelIsland");
+        for(Object view:new Object[]{field(mediaPanel,"mDisplayTitle"),field(mediaPanel,"mDisplayText"),field(notice,"mDisplayText"),
+                field(noticePanel,"mDisplayText"),field(noticePanel,"mDisplaySecondText"),field(chargePanel,"mDisplayText"),field(chargePanel,"mDisplaySecondText")}){
+            if(view instanceof TextView){TextView text=(TextView)view;text.setTextColor(color);
+                boolean glass=glassBackground!=null;text.setShadowLayer(glass?dp(1):0,0,0,color==android.graphics.Color.WHITE?0x88000000:0x88ffffff);}
+        }
+        for(String name:new String[]{"mPanelPrev","mPanelNext","mPanelPlayPause"}){
+            Object view=field(mediaPanel,name);if(view instanceof ImageView)((ImageView)view).setImageTintList(android.content.res.ColorStateList.valueOf(color));
+        }
     }
     private void resize(View view,int w,int h){ViewGroup.LayoutParams p=view.getLayoutParams();if(p!=null&&(p.width!=w||p.height!=h)){p.width=w;p.height=h;view.setLayoutParams(p);}}
     boolean visible(){return acquired&&current!=null&&root!=null&&root.isShown()&&(expanded()||current.isShown());}
@@ -548,7 +567,7 @@ final class NativeIslandHost {
         if(NativeIslandPanelCompat.ordinary(permanent)&&(!panelCloseAdapterInstalled||!panelTransitionsInstalled)){
             reportPanel("panel_capability_missing:close_hooks");return;
         }
-        try{restoreBackgrounds();
+        try{if(glassBackground==null)restoreBackgrounds();
         panelTransition.finish();
         Object panel=call(current,"getPanelIsland");
         FeatureSettings.diagnostic(context,"ls_augment_native_island_panel","request;panel="+(panel==null?"null":panel.getClass().getSimpleName())+";anim="+field(permanent,"mAnimProcessing")+";priority="+field(permanent,"mPriorityProcessing"));

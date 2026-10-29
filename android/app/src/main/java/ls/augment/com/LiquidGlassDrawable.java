@@ -59,6 +59,9 @@ public final class LiquidGlassDrawable extends Drawable {
     private int materialTintEnd=Color.TRANSPARENT,tintDirection;
     private LinearGradient materialGradient;
     private float tintStrength;
+    private float clarity;
+    private boolean backdropLight=true;
+    public boolean isBackdropLight(){return backdropLight;}
     private float lightX=.24f,lightY=.06f,pressure;
     private long sampledAt,lastAccessibilityRead,sampledRevision=-1,revealStartedAt=-1;
     private ValueAnimator releaseAnimation;
@@ -75,6 +78,8 @@ public final class LiquidGlassDrawable extends Drawable {
     public void setForegroundIsLight(boolean value) { if(lightForeground!=value){lightForeground=value;redraw();} }
     /** A Dock or icon well has no text requiring an opaque dark backing. */
     public void setIconOnly(boolean value) { if(iconOnly!=value){iconOnly=value;redraw();} }
+    /** A text-bearing clear surface keeps a small contrast backing; other surfaces retain their material. */
+    public void setClarity(float value) { float next=LiquidGlassPolicy.clamp01(value);if(clarity!=next){clarity=next;redraw();} }
     /** Allows only uncaptured gradients during a verified native 2-D return animation. */
     public void setAnimatedFallback(boolean value) { animatedFallback=value; }
     /** Controls need a calmer backdrop than the clear tray below opaque application icons. */
@@ -141,6 +146,11 @@ public final class LiquidGlassDrawable extends Drawable {
             finally{sampleCanvas.restoreToCount(save);}
             if(!valid){ready=false;revealStartedAt=-1;failure="backdrop_unavailable";return false;}
             bitmap.getPixels(pixels,0,size[0],0,0,size[0],size[1]);
+            float brightness=0;int samples=0;
+            for(int i=0;i<pixels.length;i+=Math.max(1,pixels.length/256)){
+                int color=pixels[i];brightness+=.2126f*((color>>16)&255)+.7152f*((color>>8)&255)+.0722f*(color&255);samples++;
+            }
+            if(samples>0){float mean=brightness/samples;if(mean>150)backdropLight=true;else if(mean<112)backdropLight=false;}
             // Transparent holes could reveal feedback or hide failed capture: reject them.
             for(int i=0;i<pixels.length;i+=Math.max(1,pixels.length/256))
                 if((pixels[i]>>>24)<250){ready=false;revealStartedAt=-1;failure="incomplete_backdrop";return false;}
@@ -194,6 +204,7 @@ public final class LiquidGlassDrawable extends Drawable {
                 optics.setFloatUniform("highContrast",highContrast?1:0);
                 optics.setFloatUniform("iconOnly",iconOnly?1:0);
                 optics.setFloatUniform("controlSurface",controlSurface?1:0);
+                optics.setFloatUniform("clarity",clarity);
                 optics.setFloatUniform("tint",Color.red(materialTint)/255f,Color.green(materialTint)/255f,Color.blue(materialTint)/255f);
                 optics.setFloatUniform("tintEnd",Color.red(materialTintEnd)/255f,Color.green(materialTintEnd)/255f,Color.blue(materialTintEnd)/255f);
                 optics.setFloatUniform("tintDirection",tintDirection);
@@ -230,8 +241,8 @@ public final class LiquidGlassDrawable extends Drawable {
         return progress*progress*(3-2*progress);
     }
     private void drawFallbackBody(Canvas canvas,int width,int height,float round,int opacity){
-        int top=iconOnly?0x38ffffff:lightForeground?0x86303b50:0xb8ffffff;
-        int bottom=iconOnly?0x1895a2b5:lightForeground?0x98202a3c:0x948d9fb5;
+        int top=iconOnly?0x38ffffff:clarity>0?0x26303b50:lightForeground?0x86303b50:0xb8ffffff;
+        int bottom=iconOnly?0x1895a2b5:clarity>0?0x30202a3c:lightForeground?0x98202a3c:0x948d9fb5;
         ensureGradients(width,height);
         if(fallbackGradient==null||fallbackTop!=top||fallbackBottom!=bottom){
             fallbackGradient=new LinearGradient(0,0,width*.3f,height,top,bottom,Shader.TileMode.CLAMP);
@@ -314,7 +325,7 @@ public final class LiquidGlassDrawable extends Drawable {
     private static final String SHADER=
             "uniform shader backdrop; uniform float2 size; uniform float radius; uniform float dp;"+
             "uniform float2 light; uniform float pressure; uniform float whiteText; uniform float highContrast;"+
-            "uniform float iconOnly; uniform float controlSurface; uniform float3 tint; uniform float3 tintEnd; uniform float tintDirection; uniform float tintAmount;"+
+            "uniform float iconOnly; uniform float controlSurface; uniform float clarity; uniform float3 tint; uniform float3 tintEnd; uniform float tintDirection; uniform float tintAmount;"+
             "float3 linearize(float3 c){return mix(c/12.92,pow((c+.055)/1.055,float3(2.4)),step(float3(.04045),c));}"+
             "float3 encode(float3 c){return mix(c*12.92,1.055*pow(max(c,0.0),float3(1.0/2.4))-.055,step(float3(.0031308),c));}"+
             "half4 main(float2 p){"+
@@ -335,7 +346,7 @@ public final class LiquidGlassDrawable extends Drawable {
             "float a=clamp(mix(mixLight,mixDark,whiteText),0.0,1.0);"+
             "float3 readable=mix(rgb,float3(1.0-whiteText),a);"+
             "float3 clearGlass=mix(rgb,float3(.9,.94,1.0),mix(.055,.2,highContrast));"+
-            "rgb=mix(readable,clearGlass,iconOnly);"+
+            "rgb=mix(readable,clearGlass,max(iconOnly,clarity*(1.0-highContrast)));"+
             "float2 l=normalize((light-float2(.5)) * float2(1.0,.65)+float2(.001,-.3));"+
             "float rim=pow(max(dot(n,l),0.0),4.0)*edge*(.032+pressure*.018);"+
             "float caustic=exp(-pow((-sd-2.2*dp)/(1.1*dp),2.0))*.015;"+

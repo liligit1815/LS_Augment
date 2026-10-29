@@ -157,6 +157,7 @@ final class DynamicIslandHook {
         long noticeUntil;String lastState="";
         StatusBarNotification notice;MediaController media;
         Bitmap cachedArt;Drawable cachedArtDrawable,cachedAppIcon;String cachedIconPackage="",popupContent="";
+        MediaSession.Token artworkSession;long artworkMissingSince=-1;boolean holdingArtwork;
         String title="",subtitle="";Drawable icon;boolean playing;
         State(FrameLayout host){this.host=host;context=host.getContext();
             nativeHost=new NativeIslandHost(host,this::openActivity,this::expand,this::runAction);
@@ -352,6 +353,7 @@ final class DynamicIslandHook {
                 diagnostic("activity="+next+",playing="+playing);
             }
             long deadline=0;
+            if(holdingArtwork&&artworkMissingSince>=0&&now<artworkMissingSince+1500)deadline=artworkMissingSince+1500;
             if(notice!=null&&noticeUntil>now)deadline=noticeUntil;
             if(option("charging")&&charging&&chargeActivity.expiresAt()>now)
                 deadline=earlier(deadline,chargeActivity.expiresAt());
@@ -363,6 +365,10 @@ final class DynamicIslandHook {
         void updateContent(){
             title="";subtitle="";icon=null;playing=false;
             if(activity==IslandActivityPolicy.MUSIC&&media!=null){
+                if(!media.getSessionToken().equals(artworkSession)){
+                    artworkSession=media.getSessionToken();cachedArt=null;cachedArtDrawable=null;artworkMissingSince=-1;
+                }
+                holdingArtwork=false;
                 MediaMetadata metadata=media.getMetadata();PlaybackState state=media.getPlaybackState();
                 playing=state!=null&&IslandActivityPolicy.mediaPlaying(state.getState());
                 if(metadata!=null){title=string(metadata.getText(MediaMetadata.METADATA_KEY_TITLE));subtitle=string(metadata.getText(MediaMetadata.METADATA_KEY_ARTIST));
@@ -370,7 +376,12 @@ final class DynamicIslandHook {
                     if(art!=null&&!art.isRecycled()){
                         if(art!=cachedArt){cachedArt=art;cachedArtDrawable=new android.graphics.drawable.BitmapDrawable(context.getResources(),art);}
                         icon=cachedArtDrawable;
+                        artworkMissingSince=-1;
                     }
+                }
+                if(icon==null&&cachedArtDrawable!=null&&cachedArt!=null&&!cachedArt.isRecycled()){
+                    long now=SystemClock.elapsedRealtime();if(artworkMissingSince<0)artworkMissingSince=now;
+                    if(now-artworkMissingSince<1500){icon=cachedArtDrawable;holdingArtwork=true;}
                 }
                 if(title.isEmpty())title="音乐";if(icon==null)icon=appIcon(media.getPackageName());
             }else if(activity==IslandActivityPolicy.NOTICE&&notice!=null){
@@ -439,6 +450,7 @@ final class DynamicIslandHook {
             listening=false;
             for(MediaController c:controllers)try{c.unregisterCallback(mediaCallback);}catch(RuntimeException ignored){}controllers.clear();media=null;clearNotice();
             mediaActivities.clear();noticeHistory.clear();cachedArt=null;cachedArtDrawable=null;cachedAppIcon=null;cachedIconPackage="";
+            artworkSession=null;artworkMissingSince=-1;holdingArtwork=false;
         }
         void stopListening(){
             stopMediaListening();

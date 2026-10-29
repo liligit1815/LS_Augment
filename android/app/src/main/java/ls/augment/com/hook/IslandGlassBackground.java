@@ -15,10 +15,12 @@ import ls.augment.com.LiquidGlassDrawable;
 final class IslandGlassBackground extends DrawableWrapper
         implements ViewTreeObserver.OnPreDrawListener, View.OnAttachStateChangeListener {
     private final View host;
-    private final Drawable original;
+    private Drawable original;
     private final LayerBackdropSource source;
     private final LiquidGlassDrawable glass;
     private final Consumer<String> diagnostic;
+    private java.util.function.IntConsumer foreground=color->{};
+    private int foregroundColor=android.graphics.Color.WHITE;
     private final ViewTreeObserver observer;
     private final Rect region = new Rect();
     private boolean released, sourceReleased;
@@ -43,6 +45,10 @@ final class IslandGlassBackground extends DrawableWrapper
         }
         return new IslandGlassBackground(host, background, radius, diagnostic);
     }
+    static IslandGlassBackground attach(View host,Consumer<String> diagnostic,java.util.function.IntConsumer foreground){
+        IslandGlassBackground result=attach(host,diagnostic);if(result!=null)result.foreground=foreground;return result;
+    }
+    int foregroundColor(){return foregroundColor;}
 
     private IslandGlassBackground(View host, Drawable original, float radiusPx, Consumer<String> diagnostic) {
         super(original);
@@ -51,7 +57,8 @@ final class IslandGlassBackground extends DrawableWrapper
         float radius = radiusPx / host.getResources().getDisplayMetrics().density;
         glass = new LiquidGlassDrawable(host, source, radius);
         glass.setForegroundIsLight(true);
-        glass.setControlSurface(true);
+        glass.setClarity(.82f);
+        glass.setAnimatedFallback(true);
         glass.setCallback(this);
         background(host, this);
         // View.setBackground clears the old drawable callback; restore delegation after installation.
@@ -60,6 +67,17 @@ final class IslandGlassBackground extends DrawableWrapper
         observer.addOnPreDrawListener(this);
         host.addOnAttachStateChangeListener(this);
         host.invalidate();
+    }
+
+    /** OEM open/close animation changes the shape, not the lifetime of the captured material. */
+    boolean replaceNative(Drawable next) {
+        if (released || !(next instanceof GradientDrawable)) return false;
+        GradientDrawable shape=(GradientDrawable)next;
+        if(shape.getShape()!=GradientDrawable.RECTANGLE)return false;
+        float radius=shape.getCornerRadius();float[] corners=shape.getCornerRadii();
+        if(corners!=null){radius=corners[0];for(float corner:corners)if(corner!=radius)return false;}
+        original.setCallback(null);original=next;setDrawable(next);next.setCallback(this);
+        glass.setRadiusDp(radius/host.getResources().getDisplayMetrics().density);host.invalidate();return true;
     }
 
     @Override public boolean onPreDraw() {
@@ -72,6 +90,10 @@ final class IslandGlassBackground extends DrawableWrapper
         glass.setBounds(region);
         glass.setAlpha(original.getAlpha());
         boolean ready = glass.prepare();
+        if(ready){
+            int color=glass.isBackdropLight()?0xff17202b:android.graphics.Color.WHITE;
+            if(color!=foregroundColor){foregroundColor=color;foreground.accept(color);}
+        }
         String status = ready ? "refractive" : "translucent;reason="
                 + (glass.isFailed() || source.failureReason().isEmpty() ? glass.failureReason() : source.failureReason());
         if (!status.equals(reported)) { reported = status; diagnostic.accept(status); }

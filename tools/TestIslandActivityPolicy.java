@@ -32,8 +32,18 @@ public final class TestIslandActivityPolicy {
         check(!media.update(2,65000),"paused media disappears at the deadline");
         check(!media.update(2,90000)&&media.expiresAt()==65000,"callbacks do not renew a paused activity");
         check(media.update(3,90001),"real resumed playback reappears");
-        check(!media.update(1,90002),"stopped playback disappears immediately");
-        check(!media.update(2,90003),"stopped-to-paused does not resurrect stale playback");
+        check(media.update(1,90002),"track handoff retains the existing session");
+        check(media.expiresAt()==90652,"stopped grace is bounded");
+        check(media.update(0,90651)&&media.expiresAt()==90652,"NONE/STOPPED callbacks do not renew grace");
+        check(!media.update(1,90652),"real stop expires at grace boundary");
+        check(!media.update(2,90653),"stopped-to-paused does not resurrect stale playback");
+        for(int temporary:new int[]{0,1,7}){
+            media=new IslandActivityPolicy.MediaActivity();check(!media.update(temporary,1),"idle sessions never appear");
+            check(media.update(3,2)&&media.update(temporary,3)&&media.update(3,200),"track replacement stays continuous");
+        }
+        media=new IslandActivityPolicy.MediaActivity();media.update(3,1);media.update(2,2);
+        check(!media.update(2,4002)&&!media.update(1,4003),"expired paused playback cannot reappear on stop");
+        check(!media.update(2,4004),"expired handoff cannot renew paused playback");
         for(int initial:new int[]{6,8,9,10,11}){
             media=new IslandActivityPolicy.MediaActivity();check(media.update(initial,100),"transitions get a bounded initial window");
             check(media.update(8,12099),"transition category changes do not reset its timer");

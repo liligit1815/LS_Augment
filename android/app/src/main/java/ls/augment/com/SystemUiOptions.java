@@ -96,7 +96,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.decimal(PREFIX + "lock_clock_scale", "lockscreen", "锁屏时钟字体比例", "适用于文字时钟，1 为原厂大小；文字过大时自动适配可用空间，避免裁切。", 1, 0.5, 2));
         bool(out, "lock_volume", "audio", "锁屏时允许调节音量");
         bool(out, "audio_no_long_press_vibrate", "audio", "取消长按音量键振动");
-        out.add(EnhancementOption.toggle(VOLUME_SAME_SIDE,"audio","多应用声音与音量调节归为同侧","将多应用音量调节按钮放到音量面板下方。功能前提：开启多应用音量调节功能。横屏可用高度不足时保留原厂位置。首次更新需重启系统界面；关闭后恢复原厂位置。"));
+        out.add(EnhancementOption.toggle(VOLUME_SAME_SIDE,"audio","多应用声音与音量调节归为同侧","将多应用音量调节按钮放到音量面板下方。功能前提：开启多应用音量调节功能。横屏可用高度不足时保留原厂位置。首次更新需重启手机；关闭后恢复原厂位置。"));
         out.add(EnhancementOption.choice(VOLUME_POSITION,"audio","音量调节显示位置","音量面板和多应用音量调节按钮显示在同一侧。",1,"左侧","右侧"));
         bool(out, "charging_animation", "lockscreen", "自定义充电动画");
         bool(out, "charging_every_wake", "lockscreen", "每次亮屏显示充电动画");

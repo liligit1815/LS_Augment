@@ -655,6 +655,7 @@ public final class AugmentModule extends RootEarlyModule {
             installTgkRapidFireSystemHooks(classLoader);
             installSignatureMismatchInstallHooks(classLoader);
             AudioGainHook.install(this, classLoader);
+            MultiAppVolumePositionHook.install(this, classLoader);
             SystemRulesHook.install(this, classLoader);
             BatteryRefreshRateHook.install(this, classLoader);
             CompetitiveKeyHook.install(this, classLoader);

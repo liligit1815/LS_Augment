@@ -4,6 +4,7 @@ package ls.augment.com;
 public final class IslandActivityPolicy {
     public static final int NONE=0, MUSIC=1, NOTICE=2, CHARGING=3;
     public static final long CHARGE_MILLIS=5000, PAUSE_MILLIS=4000, TRANSITION_MILLIS=12000;
+    public static final long MEDIA_HANDOFF_MILLIS=650;
     private IslandActivityPolicy() { }
     public static int choose(boolean enabled, boolean visible, boolean locked, long now,
             boolean music, boolean notice, long noticeUntil, boolean charging, long chargeUntil) {
@@ -29,11 +30,15 @@ public final class IslandActivityPolicy {
         private boolean played;
         private long until;
         public boolean update(int state,long now) {
+            if(phase==0&&until<=now)played=false;
             int next=mediaPlaying(state)?1:state==2?2:mediaActive(state)?3:0;
             if(next==1){played=true;until=0;}
             else if(next!=phase){
-                until=next==2&&played?now+PAUSE_MILLIS:next==3?now+TRANSITION_MILLIS:0;
-                if(next==0)played=false;
+                // Some players briefly publish NONE/STOPPED while replacing a track.
+                // Keep this same session's existing island through the handoff. A real
+                // stop still expires promptly; repeated callbacks never renew it.
+                until=next==2&&played?now+PAUSE_MILLIS:next==3?now+TRANSITION_MILLIS:
+                        next==0&&played&&(phase==1||until>now)?now+MEDIA_HANDOFF_MILLIS:0;
             }
             phase=next;
             return next==1 || until>now;

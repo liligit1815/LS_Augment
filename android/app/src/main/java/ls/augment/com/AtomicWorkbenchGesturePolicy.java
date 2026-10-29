@@ -16,10 +16,10 @@ public final class AtomicWorkbenchGesturePolicy {
                 int areaPercent, int sensitivityPercent) {
             this.width = width; this.height = height; this.density = density;
             this.areaPercent = areaPercent; this.sensitivityPercent = sensitivityPercent;
-            minY = statusBar + 8f * density;
+            minY = statusBar;
             // A shallow band below the status bar, rather than the full side edge.
             // The status-bar exclusion leaves notification/control-center input native.
-            maxY = Math.min(height * .20f, minY + 48f * density * areaPercent / 100f);
+            maxY = Math.min(height * .20f, minY + 64f * density * areaPercent / 100f);
             edge = Math.min(48f * density * areaPercent / 100f, width * .16f);
             minInward = 88f * 100f / sensitivityPercent;
         }
@@ -75,7 +75,7 @@ public final class AtomicWorkbenchGesturePolicy {
                 return NONE;
             }
             if (side == NONE) return NONE;
-            if (!geometry.same(current) || when < lastTime || when - downTime > 800L
+            if (!geometry.same(current) || when < lastTime || when - downTime > 1200L
                     || x < 0 || y < 0 || x >= geometry.width || y >= geometry.height) {
                 cancel(); return NONE;
             }
@@ -83,7 +83,7 @@ public final class AtomicWorkbenchGesturePolicy {
             float inward = (side == LEFT ? x - downX : downX - x) / geometry.density;
             float downward = (y - downY) / geometry.density;
             if (inward < -12f || maxInward - inward > 24f
-                    || Math.abs(downward) > Math.min(24f, Math.max(12f, inward * .30f))) {
+                    || Math.abs(downward) > Math.min(32f, Math.max(18f, inward * .35f))) {
                 cancel(); return NONE;
             }
             maxInward = Math.max(maxInward, inward);

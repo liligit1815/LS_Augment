@@ -2,157 +2,127 @@ package ls.augment.com;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.os.SystemClock;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.LinearInterpolator;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Phone-side demonstration. Uses the detector's actual region and distance, without injecting input. */
+/** Actual screen-size practice. The framework gesture alone launches Step. */
 final class AtomicWorkbenchGestureGuide {
-    static final String PREFS = "atomic-workbench-guide";
-    static final String SEEN = "corner-gesture-v1";
+    static final String PREFS = "atomic-workbench-guide", SEEN = "corner-practice-v2";
+    private static final String START = "practice-start";
+    private final Activity activity;
+    private final Practice layer;
+    private Runnable cancelled = () -> {}, dismissed = () -> {};
+    private boolean showing;
 
     static boolean seen(Activity activity) {
-        return activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE).getBoolean(SEEN, false);
+        return activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(SEEN, false);
     }
-
-    static AlertDialog create(Activity activity, UiKit ui, AppConfig config, Runnable acknowledge) {
-        LinearLayout body = new LinearLayout(activity);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(ui.dp(20), 0, ui.dp(20), 0);
-        body.addView(ui.text("从状态栏下方的右上角起滑，单指向左水平滑动，松手进入红魔Step。左上角向右滑也可以。",
-                14, ui.text, false), ui.margins(0, 0, 0, 12));
-        TextView caption = ui.text("右上角向左滑 → 松手进入", 14, ui.accent, true);
-        caption.setTag("step-gesture-guide-caption");
-        AtomicWorkbenchGesturePolicy.Geometry geometry = geometry(activity, config);
-        if (geometry != null) {
-            Demonstration demonstration = new Demonstration(ui, geometry, caption);
-            demonstration.setTag("step-gesture-guide-animation");
-            int illustrationHeight = geometry.height / geometry.density < 480f ? 100 : 170;
-            body.addView(demonstration, new LinearLayout.LayoutParams(-1, ui.dp(illustrationHeight)));
-        }
-        body.addView(caption, ui.margins(0, 8, 0, 12));
-        body.addView(ui.text("从高亮区域开始，保持水平。屏幕中下部侧滑、下拉和多指手势不会进入。可在本页调整触发区域和灵敏度。",
-                13, ui.muted, false), ui.margins(0, 0, 0, 8));
-        ScrollView scroll = new ScrollView(activity);
-        scroll.setFillViewport(false);
-        scroll.addView(body);
-        scroll.setTag("step-gesture-guide");
-        return AppDialogs.builder(activity).setTitle("进入红魔Step的手势")
-                .setView(scroll).setPositiveButton("我知道了", (dialog, which) -> acknowledge.run()).create();
+    static void entered(Activity activity, long triggered) {
+        android.content.SharedPreferences prefs = activity.getSharedPreferences(PREFS, 0);
+        long start = prefs.getLong(START, -1), now = SystemClock.elapsedRealtime();
+        if (start >= 0 && triggered >= start && now >= triggered && now - start < 120000L)
+            prefs.edit().putBoolean(SEEN, true).remove(START).apply();
     }
-
-    // Same display, inset and policy as the global detector and the existing region preview.
+    static AtomicWorkbenchGestureGuide create(Activity activity, UiKit ui, AppConfig config) {
+        return new AtomicWorkbenchGestureGuide(activity, ui, config);
+    }
+    private AtomicWorkbenchGestureGuide(Activity activity, UiKit ui, AppConfig config) {
+        this.activity = activity; layer = new Practice(ui, geometry(activity, config));
+        layer.skip.setOnClickListener(v -> cancel());
+    }
+    void setOnCancelListener(Runnable listener) { cancelled = listener; }
+    void setOnDismissListener(Runnable listener) { dismissed = listener; }
+    boolean isShowing() { return showing; }
+    View view() { return layer; }
+    void show() {
+        if (showing) return; showing = true;
+        activity.getSharedPreferences(PREFS, 0).edit().putLong(START, SystemClock.elapsedRealtime()).apply();
+        ((ViewGroup)activity.getWindow().getDecorView()).addView(layer, new ViewGroup.LayoutParams(-1, -1));
+        layer.requestFocus();
+    }
+    void cancel() {
+        activity.getSharedPreferences(PREFS, 0).edit().remove(START).apply(); cancelled.run(); dismiss();
+    }
+    void dismiss() {
+        if (!showing) return; showing = false;
+        if (layer.getParent() instanceof ViewGroup) ((ViewGroup)layer.getParent()).removeView(layer);
+        dismissed.run();
+    }
     @android.annotation.SuppressLint({"DiscouragedApi", "InternalInsetResource"})
     private static AtomicWorkbenchGesturePolicy.Geometry geometry(Activity activity, AppConfig config) {
         Rect screen = activity.getWindowManager().getMaximumWindowMetrics().getBounds();
         float density = activity.getResources().getDisplayMetrics().density;
         int resource = activity.getResources().getIdentifier("status_bar_height", "dimen", "android");
         float bar = resource == 0 ? 24f * density : activity.getResources().getDimensionPixelSize(resource);
-        try {
-            return AtomicWorkbenchGesturePolicy.Geometry.create(screen.width(), screen.height(), density, bar,
-                    config.getInt(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, 100),
-                    config.getInt(AtomicWorkbenchConfig.CORNER_SENSITIVITY, 100));
-        } catch (IllegalArgumentException unavailable) { return null; }
+        return AtomicWorkbenchGesturePolicy.Geometry.create(screen.width(), screen.height(), density, bar,
+                config.getInt(AtomicWorkbenchConfig.TRIGGER_AREA_SCALE, 100), config.getInt(AtomicWorkbenchConfig.CORNER_SENSITIVITY, 100));
     }
-
-    @android.annotation.SuppressLint("ViewConstructor") // Created only here with an explicit policy and shared theme; never inflated.
-    static final class Demonstration extends View {
-        private final UiKit ui;
-        private final AtomicWorkbenchGesturePolicy.Geometry geometry;
-        private final TextView caption;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private ValueAnimator animator;
-        private float phase;
-        private boolean left;
-
-        Demonstration(UiKit ui, AtomicWorkbenchGesturePolicy.Geometry geometry, TextView caption) {
-            super(ui.activity);
-            this.ui = ui; this.geometry = geometry; this.caption = caption;
-            // Instructions remain ordinary scalable TextViews; the drawing is only a visual aid.
-            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+    @android.annotation.SuppressLint("ViewConstructor")
+    static final class Practice extends FrameLayout {
+        final UiKit ui; final AtomicWorkbenchGesturePolicy.Geometry geometry;
+        final AtomicWorkbenchGesturePolicy.Detector detector = new AtomicWorkbenchGesturePolicy.Detector();
+        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final TextView caption; final android.widget.Button skip;
+        ValueAnimator animator; float phase; int candidate; final int[] origin = new int[2];
+        Practice(UiKit ui, AtomicWorkbenchGesturePolicy.Geometry geometry) {
+            super(ui.activity); this.ui = ui; this.geometry = geometry;
+            setTag("step-gesture-guide"); setWillNotDraw(false); setClickable(true); setFocusableInTouchMode(true);
+            setBackgroundColor(0x66000000);
+            LinearLayout instructions = ui.preferenceCard();
+            caption = ui.text("从右侧高亮区域向左滑动", 18, ui.text, true);
+            caption.setTag("step-gesture-guide-caption"); instructions.addView(caption, ui.wrap());
+            instructions.addView(ui.text("请在屏幕上实际操作：单指向中间滑动，松手进入红魔Step。左侧向右滑也可以。", 14, ui.text, false), ui.margins(0, 8, 0, 8));
+            skip = ui.tonalButton("稍后练习"); skip.setTag("step-gesture-guide-skip"); instructions.addView(skip, ui.wrap());
+            LayoutParams box = new LayoutParams(-1, -2, Gravity.TOP);
+            box.leftMargin = box.rightMargin = ui.dp(24); box.topMargin = Math.round(geometry.maxY) + ui.dp(48);
+            addView(instructions, box);
         }
-
-        private void start() {
-            if (animator != null || !isAttachedToWindow() || !isShown() || !hasWindowFocus()
-                    || !ValueAnimator.areAnimatorsEnabled()) return;
-            animator = ValueAnimator.ofFloat(0f, 2f);
-            animator.setDuration(5200);
-            animator.setRepeatCount(ValueAnimator.INFINITE);
+        @android.annotation.SuppressLint("ClickableViewAccessibility") // This layer practices a directional gesture; its skip button remains accessible.
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) candidate = geometry.side(event.getRawX(), event.getRawY());
+            int side = detector.event(action, 0, event.getPointerCount(), event.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN),
+                    true, event.getRawX(), event.getRawY(), event.getEventTime(), geometry);
+            if (action == MotionEvent.ACTION_DOWN) caption.setText(candidate == 0 ? "请从屏幕两侧的高亮区域开始" : "向屏幕中间滑动，然后松手");
+            if (action == MotionEvent.ACTION_UP) caption.setText(side == 0 ? "再试一次：沿箭头向中间滑动" : "正在进入红魔Step…");
+            return true;
+        }
+        @Override protected void onAttachedToWindow() { super.onAttachedToWindow();
+            if (!ValueAnimator.areAnimatorsEnabled()) return;
+            animator = ValueAnimator.ofFloat(0f, 1f); animator.setDuration(1800); animator.setRepeatCount(-1);
             animator.setInterpolator(new LinearInterpolator());
-            animator.addUpdateListener(value -> {
-                float progress = (Float) value.getAnimatedValue();
-                boolean nextLeft = progress >= 1f;
-                phase = progress % 1f;
-                if (nextLeft != left) {
-                    left = nextLeft;
-                    caption.setText(left ? "左上角向右滑 → 松手进入" : "右上角向左滑 → 松手进入");
-                }
-                invalidate();
-            });
-            animator.start();
+            animator.addUpdateListener(a -> { phase = (float)a.getAnimatedValue(); invalidate(); }); animator.start();
         }
-
-        private void stop() {
+        @Override protected void onDetachedFromWindow() {
             if (animator != null) { animator.cancel(); animator.removeAllUpdateListeners(); animator = null; }
+            super.onDetachedFromWindow();
         }
-
-        @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); start(); }
-        @Override protected void onDetachedFromWindow() { stop(); super.onDetachedFromWindow(); }
-        @Override protected void onWindowVisibilityChanged(int visibility) {
-            super.onWindowVisibilityChanged(visibility);
-            if (visibility == VISIBLE) start(); else stop();
-        }
-        @Override public void onWindowFocusChanged(boolean focused) {
-            super.onWindowFocusChanged(focused);
-            if (focused) start(); else stop();
-        }
-
         @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            float inset = ui.dp(12), top = ui.dp(8), bottom = getHeight() - ui.dp(8);
-            float scale = (getWidth() - inset * 2) / geometry.width;
-            if (scale <= 0) return;
-            float right = getWidth() - inset;
-            paint.setColor(ui.muted); paint.setAlpha(150); paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(ui.dp(1));
-            canvas.drawRoundRect(inset, top, right, bottom, ui.dp(18), ui.dp(18), paint);
-            float bar = top + (geometry.minY - 8f * geometry.density) * scale;
-            canvas.drawLine(inset, bar, right, bar, paint);
-            paint.setStyle(Paint.Style.FILL); paint.setColor(ui.accent); paint.setAlpha(48);
-            float y1 = top + geometry.minY * scale, y2 = top + geometry.maxY * scale;
-            float edge = geometry.edge * scale;
-            canvas.drawRect(inset, y1, inset + edge, y2, paint);
-            canvas.drawRect(right - edge, y1, right, y2, paint);
-            float start = left ? inset + edge / 2 : right - edge / 2;
-            float distance = (geometry.minInward + 16f) * geometry.density * scale;
-            float end = start + (left ? distance : -distance), y = (y1 + y2) / 2;
-            paint.setColor(ui.accent); paint.setAlpha(190); paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(ui.dp(2)); paint.setStrokeCap(Paint.Cap.ROUND);
-            canvas.drawLine(start, y, end, y, paint);
-            float arrow = ui.dp(6), back = end + (left ? -arrow : arrow);
-            canvas.drawLine(back, y - arrow, end, y, paint);
-            canvas.drawLine(back, y + arrow, end, y, paint);
-            float travel = Math.max(0, Math.min(1, (phase - .15f) / .5f));
-            // Hold, slide, then lift. A static arrow remains when system animations are disabled.
-            float finger = start + (end - start) * travel;
-            paint.setStyle(Paint.Style.FILL); paint.setAlpha(phase > .78f ? 0 : 220);
-            canvas.drawCircle(finger, y, ui.dp(8), paint);
-            paint.setStyle(Paint.Style.STROKE); paint.setAlpha(phase > .78f ? 0 : 80);
-            canvas.drawCircle(finger, y, ui.dp(13), paint);
-            paint.setColor(ui.muted); paint.setAlpha(55); paint.setStrokeWidth(ui.dp(1));
-            float contentTop = Math.max(y2 + ui.dp(20), bottom - ui.dp(58));
-            float center = (inset + right) / 2;
-            canvas.drawRoundRect(inset + ui.dp(14), contentTop, center - ui.dp(5), bottom - ui.dp(14), ui.dp(6), ui.dp(6), paint);
-            canvas.drawRoundRect(center + ui.dp(5), contentTop, right - ui.dp(14), bottom - ui.dp(14), ui.dp(6), ui.dp(6), paint);
-            paint.setAlpha(255);
+            super.onDraw(canvas); getLocationOnScreen(origin);
+            float top = geometry.minY - origin[1], bottom = geometry.maxY - origin[1];
+            paint.setColor(ui.accent); paint.setAlpha(100);
+            canvas.drawRect(0, top, geometry.edge, bottom, paint); canvas.drawRect(getWidth() - geometry.edge, top, getWidth(), bottom, paint);
+            for (int side = 0; side < 2; side++) {
+                boolean left = side == 1;
+                float from = left ? geometry.edge / 2 : getWidth() - geometry.edge / 2;
+                float to = from + (left ? 1 : -1) * (geometry.minInward + 16) * geometry.density;
+                float y = (top + bottom) / 2, arrow = ui.dp(7), back = to + (left ? -arrow : arrow);
+                paint.setColor(ui.accent); paint.setAlpha(255); paint.setStrokeWidth(ui.dp(3)); paint.setStrokeCap(Paint.Cap.ROUND);
+                canvas.drawLine(from, y, to, y, paint); canvas.drawLine(back, y - arrow, to, y, paint); canvas.drawLine(back, y + arrow, to, y, paint);
+                paint.setColor(0xffffffff); paint.setAlpha(phase > .85f ? 0 : 240);
+                canvas.drawCircle(from + (to - from) * Math.min(1, phase / .7f), y, ui.dp(8), paint);
+            }
         }
     }
-
-    private AtomicWorkbenchGestureGuide() { }
 }

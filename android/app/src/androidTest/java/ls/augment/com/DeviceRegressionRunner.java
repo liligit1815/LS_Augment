@@ -103,6 +103,11 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     .put("installedModuleVersion", context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode())
                     .put("at", System.currentTimeMillis());
             switch (operation) {
+                case "update-prompt-preview":
+                    report.put("preview", UpdatePromptPreview.run(this,
+                            new String(android.util.Base64.decode(arguments.getString("manifest"), android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8),
+                            Integer.parseInt(arguments.getString("seconds", "60"))));
+                    break;
                 case "recents-privacy-blur":
                     report.put("blur",ls.augment.com.hook.RecentsPrivacyBlurDeviceCases.run());
                     break;
