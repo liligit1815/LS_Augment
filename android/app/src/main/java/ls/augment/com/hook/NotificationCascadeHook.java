@@ -225,6 +225,20 @@ final class NotificationCascadeHook {
         evidence.lastStage=kind;evidence.lastReportAt=now;int original=0;
         try{nativeRange.set(true);original=((Number)access.scrollRange.invoke(frame.host)).intValue();}catch(ReflectiveOperationException ignored){}
         finally{nativeRange.set(false);}
+        if(frame.keyguard){
+            int nativeRows=0,goneRows=0,invisibleRows=0;
+            for(int i=0;i<frame.host.getChildCount();i++){View child=frame.host.getChildAt(i);
+                if(access.row.isInstance(child)){nativeRows++;if(child.getVisibility()==View.GONE)goneRows++;else if(child.getVisibility()!=View.VISIBLE)invisibleRows++;}}
+            String settings;
+            try{android.content.ContentResolver resolver=frame.host.getContext().getContentResolver();
+                settings="show="+android.provider.Settings.Secure.getInt(resolver,"lock_screen_show_notifications",-1)
+                        +";private="+android.provider.Settings.Secure.getInt(resolver,"lock_screen_allow_private_notifications",-1)
+                        +";zen="+android.provider.Settings.Global.getInt(resolver,"zen_mode",-1);
+            }catch(RuntimeException unavailable){settings="settings=unavailable";}
+            FeatureSettings.diagnostic(frame.host.getContext(),"ls_augment_notification_lock_native_evidence",
+                    settings+";children="+frame.host.getChildCount()+";native_rows="+nativeRows+";gone="+goneRows
+                    +";invisible="+invisibleRows+";eligible="+rows+";observed_at="+now);
+        }
         FeatureSettings.diagnostic(frame.host.getContext(),"ls_augment_notification_cascade_runtime_"+(frame.keyguard?"lock":"shade"),
                 stage+";surface="+(frame.keyguard?"lock":"shade")+";rows="+rows+";visible_projected="+applied+";passes="+evidence.passes
                 +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll

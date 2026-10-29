@@ -79,6 +79,14 @@ public class TestRecentsPrivacy {
 }'''
 }
 
+SOURCES['android/view/ViewTreeObserver.java']='package android.view;import java.util.*;public class ViewTreeObserver{public interface OnPreDrawListener{boolean onPreDraw();}public final List<OnPreDrawListener> listeners=new ArrayList<>();public boolean isAlive(){return true;}public void addOnPreDrawListener(OnPreDrawListener l){listeners.add(l);}public void removeOnPreDrawListener(OnPreDrawListener l){listeners.remove(l);}}'
+SOURCES['android/graphics/ColorFilter.java']='package android.graphics;public class ColorFilter{}'
+SOURCES['android/graphics/PixelFormat.java']='package android.graphics;public class PixelFormat{public static final int TRANSLUCENT=-3;}'
+SOURCES['android/graphics/drawable/Drawable.java']=SOURCES['android/graphics/drawable/Drawable.java'].replace('public Drawable mutate()', 'public void invalidateSelf(){}public void setAlpha(int a){}public void setColorFilter(android.graphics.ColorFilter f){}public int getOpacity(){return -3;}public Drawable mutate()')
+SOURCES['android/view/View.java']=SOURCES['android/view/View.java'].replace('public ViewParent parent;', 'public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}public java.util.List<OnAttachStateChangeListener> attaches=new java.util.ArrayList<>();public final ViewTreeObserver observer=new ViewTreeObserver();public ViewTreeObserver getViewTreeObserver(){return observer;}public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){attaches.add(l);}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){attaches.remove(l);}public boolean isAttachedToWindow(){return true;}public void invalidate(){invalidations++;}public static class Overlay{public java.util.List<android.graphics.drawable.Drawable> items=new java.util.ArrayList<>();public void add(android.graphics.drawable.Drawable d){items.add(d);}public void remove(android.graphics.drawable.Drawable d){items.remove(d);}}public final Overlay overlay=new Overlay();public Overlay getOverlay(){return overlay;}public ViewParent parent;')
+SOURCES['ls/augment/com/hook/FeatureSettings.java']=SOURCES['ls/augment/com/hook/FeatureSettings.java'].replace('static ConfigSnapshot', 'static void diagnostic(android.content.Context c,String k,String v){}static ConfigSnapshot',1)
+SOURCES['ls/augment/com/hook/RecentsPrivacyOverlay.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/RecentsPrivacyOverlay.java').read_text(encoding='utf-8')
+
 for mode in ('both', 'legacy', 'modern', 'nested', 'missing', 'field_data', 'abstract_snapshot'):
     sources = dict(SOURCES)
     if mode == 'nested':

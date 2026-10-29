@@ -46,9 +46,7 @@ public final class SettingsActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        Object retained=getLastNonConfigurationInstance();
-        updater=retained instanceof AppUpdater?(AppUpdater)retained:new AppUpdater(this);
-        updater.attach(this);
+        updater=((AugmentApplication)getApplication()).appUpdater();
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
                 | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if(state!=null){selected=state.getString("tab",HOME);for(String tab:new String[]{HOME,SETTINGS,ABOUT})positions.put(tab,state.getInt("scroll_"+tab));}
@@ -64,16 +62,14 @@ public final class SettingsActivity extends Activity {
         if(resumedOnce){rememberScroll();if(!appearanceKey().equals(appearanceSignature))buildScaffold();else renderPage();}
         resumedOnce=true;
         loadInventory();refreshEnvironment();
-        updater.resume();
     }
     @Override protected void onSaveInstanceState(Bundle state){rememberScroll();state.putString("tab",selected);for(String tab:new String[]{HOME,SETTINGS,ABOUT})state.putInt("scroll_"+tab,positions.getOrDefault(tab,0));super.onSaveInstanceState(state);}
     // Gesture navigation is registered separately with the platform dispatcher.
     @android.annotation.SuppressLint("GestureBackNavigation")
     @Override public void onBackPressed(){navigateBack();}
     private void navigateBack(){if(!HOME.equals(selected))selectTab(HOME);else finish();}
-    @Override protected void onPause(){if(updater!=null)updater.pause();if(scroll!=null)scroll.cancelRebound();super.onPause();}
-    @Override public Object onRetainNonConfigurationInstance(){return updater;}
-    @Override protected void onDestroy(){if(updater!=null)updater.detach(this,isChangingConfigurations());closeAboutObserver();ModuleScopeService.removeListener(environmentChanged);main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
+    @Override protected void onPause(){if(scroll!=null)scroll.cancelRebound();super.onPause();}
+    @Override protected void onDestroy(){closeAboutObserver();ModuleScopeService.removeListener(environmentChanged);main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy();}
     private String appearanceKey(){AppConfig c=new AppConfig(this);return c.get(AppearanceOptions.THEME)+":"+c.get(AppearanceOptions.BLUR)+":"+c.get(AppearanceOptions.LIGHT_MASK)+":"+c.get(AppearanceOptions.DARK_MASK)+":"+c.get(AppearanceOptions.ANGULAR_CARDS);}
     private void buildScaffold(){
         closeAboutObserver();

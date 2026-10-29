@@ -53,6 +53,7 @@ public final class ModuleHierarchy {
         add(section("lockscreen","lock_timeout","锁屏超时与解锁验证"),"ls_augment_rm_strong_auth_timeout","ls_augment_rm_lock_timeout_enabled");
         section("audio","collab_audio","铃声素材");
         add(section("audio","volume_panel","音量面板与按键"),"systemui:lock_volume","systemui:audio_no_long_press_vibrate","systemui:qs_volume_percent");
+        add(section("audio","volume_position","音量调节位置"),"systemui:volume_same_side");
         Section gain=section("audio","audio_gain","音量增强");add(gain,"ls_augment_rm_audio_no_safe_warning");entry(gain,"audio_gain");
         add(section("audio","audio_steps","各类音量档数"),"ls_augment_rm_audio_steps_alarm_enabled","ls_augment_rm_audio_steps_media_enabled","ls_augment_rm_audio_steps_notification_enabled","ls_augment_rm_audio_steps_ring_enabled","ls_augment_rm_audio_steps_call_enabled");
         add(section("interaction","status_gestures","状态栏手势"),"systemui:statusbar_double_tap_sleep");

@@ -8,7 +8,13 @@ import android.os.Bundle;
 /** Clears temporary UI disclosure whenever the whole app leaves the foreground. */
 public final class AugmentApplication extends Application
         implements Application.ActivityLifecycleCallbacks {
-    private int startedActivities;
+    private final AppUpdatePolicy.ForegroundSession foregroundSession = new AppUpdatePolicy.ForegroundSession();
+    private AppUpdater updater;
+
+    AppUpdater appUpdater() {
+        if (updater == null) updater = new AppUpdater(this);
+        return updater;
+    }
 
     @Override protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
@@ -38,12 +44,11 @@ public final class AugmentApplication extends Application
     }
 
     @Override public void onActivityStarted(Activity activity) {
-        startedActivities++;
+        if (foregroundSession.started()) appUpdater().beginForegroundSession();
     }
 
     @Override public void onActivityStopped(Activity activity) {
-        startedActivities = Math.max(0, startedActivities - 1);
-        if (startedActivities == 0 && !activity.isChangingConfigurations()) HiddenEntrySession.lock();
+        if (foregroundSession.stopped(activity.isChangingConfigurations())) HiddenEntrySession.lock();
     }
 
     private static void stageActivity(Activity activity) {
@@ -54,8 +59,13 @@ public final class AugmentApplication extends Application
     }
 
     @Override public void onActivityCreated(Activity activity, Bundle state) { stageActivity(activity); }
-    @Override public void onActivityResumed(Activity activity) { stageActivity(activity); }
-    @Override public void onActivityPaused(Activity activity) { }
+    @Override public void onActivityResumed(Activity activity) {
+        stageActivity(activity);
+        if (activity instanceof OnboardingActivity || OnboardingActivity.needsConsent(activity)) return;
+        appUpdater().attach(activity);
+        appUpdater().resume();
+    }
+    @Override public void onActivityPaused(Activity activity) { if (updater != null) updater.pause(activity); }
     @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
-    @Override public void onActivityDestroyed(Activity activity) { }
+    @Override public void onActivityDestroyed(Activity activity) { if (updater != null) updater.pause(activity); }
 }

@@ -352,10 +352,12 @@ final class RedMagicLegacyUiHook {
 
     private static int installQuickSettings(AugmentModule module,ClassLoader loader) {
         int count=0;
-        for(String type:new String[]{"com.zte.utils.QsDimenUtils$Companion","com.zte.adapt.mifavor.qs.MfvTileLayoutAdapt"})
-            count+=hook(module,loader,type,"getTileColumns",-1,(o,a,r)->on(o,"qs_grid")?grid(o,"columns",4,2,10):PASS,null);
-        count+=hook(module,loader,"com.zte.adapt.mifavor.qs.MfvTileLayoutAdapt","getRows",1,(o,a,r)->on(o,"qs_grid")?grid(o,"rows",3,1,8):PASS,null);
-        count+=hook(module,loader,"com.zte.utils.QsDimenUtils$Companion","getMaxQsPanelRowCount",0,(o,a,r)->on(o,"qs_grid")?grid(o,"rows",3,1,8):PASS,null);
+        // Shared helpers also size fixed wide tiles and lock-screen headers.
+        // Override only adapters whose owner is an identified ordinary grid.
+        count+=hook(module,loader,"com.zte.adapt.mifavor.qs.MfvTileLayoutAdapt","getTileColumns",1,
+                (o,a,r)->ControlCenterGridHook.countOverride(o,"columns",4,2,10),null);
+        count+=hook(module,loader,"com.zte.adapt.mifavor.qs.MfvTileLayoutAdapt","getRows",1,
+                (o,a,r)->ControlCenterGridHook.countOverride(o,"rows",3,1,8),null);
         count+=hook(module,loader,"com.zte.feature.qs.layout.QsCustomizerModule","getColumns",-1,(o,a,r)->on(o,"qs_grid")?grid(o,"edit_columns",4,2,10):PASS,null);
         String type="com.zte.controlcenter.widget.CCHeaderView";
         count+=hook(module,loader,type,"shouldQsCarrierVisible",0,(o,a,r)->CarrierTextHook.headerEnabled(o)?Boolean.TRUE:choice(o,"qs_carrier"),null);

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -30,7 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** A retained, foreground-only update flow. APK checks do not depend on Root or installation Hooks. */
+/** Application-owned, foreground-only update flow. APK checks do not depend on Root or installation Hooks. */
 final class AppUpdater {
     private enum State { IDLE, CHECKING, AVAILABLE, DOWNLOADING, READY, PERMISSION, INSTALLING, MESSAGE }
     private final Context context;
@@ -45,40 +46,36 @@ final class AppUpdater {
     private AppUpdateManifest release;
     private File verifiedApk;
     private String message = "";
-    private boolean foreground, manual, closed;
+    private boolean foreground, manual, automaticPending;
     private long received;
 
     AppUpdater(Context context) { this.context = context.getApplicationContext(); }
 
-    void attach(Activity screen) { activity = screen; }
+    void beginForegroundSession() { automaticPending = true; }
+
+    void attach(Activity screen) { if (activity != screen) dismiss(); activity = screen; }
 
     void resume() {
         foreground = true;
+        boolean checkOnOpen = automaticPending;
+        automaticPending = false;
         if (state == State.PERMISSION) {
             if (context.getPackageManager().canRequestPackageInstalls()) install();
             else { state = State.READY; message = "尚未允许安装此来源的应用。点击“安装”可再次授权。"; render(); }
             return;
         }
         if (state == State.INSTALLING) { state = State.IDLE; release = null; }
+        if ((state == State.AVAILABLE || state == State.MESSAGE) && checkOnOpen) { check(false); return; }
         if (state != State.IDLE) { render(); return; }
-        long last = context.getSharedPreferences("app-updates", Context.MODE_PRIVATE).getLong("last-check-at", 0);
-        if (AppUpdatePolicy.automaticCheckDue(last, System.currentTimeMillis()))
-            check(false);
+        if (checkOnOpen) check(false);
     }
 
-    void pause() { foreground = false; }
-
-    void detach(Activity screen, boolean rotating) {
+    void pause(Activity screen) {
         if (activity != screen) return;
         dismiss(); activity = null; foreground = false;
-        if (!rotating) {
-            closed = true;
-            cancelTask(); worker.shutdownNow(); main.removeCallbacksAndMessages(null);
-        }
     }
 
     void checkManually() {
-        if (closed) return;
         if (state == State.CHECKING) { manual = true; render(); return; }
         if (state == State.AVAILABLE || state == State.DOWNLOADING || state == State.READY) { render(); return; }
         if (state == State.PERMISSION || state == State.INSTALLING) return;
@@ -87,10 +84,6 @@ final class AppUpdater {
 
     private void check(boolean requested) {
         manual = requested; message = ""; state = State.CHECKING;
-        if (!context.getSharedPreferences("app-updates", Context.MODE_PRIVATE).edit()
-                .putLong("last-check-at", System.currentTimeMillis()).commit()) {
-            finishCheck("暂时无法保存检查状态，请稍后重试。"); return;
-        }
         final int request = generation.incrementAndGet();
         render();
         task = worker.submit(() -> {
@@ -104,7 +97,8 @@ final class AppUpdater {
                     if (found == null) finishCheck("暂未发布可下载的版本。");
                     else if (found.versionCode <= BuildConfig.VERSION_CODE) finishCheck("已是最新版本。\n当前版本：" + BuildConfig.VERSION_NAME);
                     else if (found.minSdk > Build.VERSION.SDK_INT) finishCheck("新版需要更高的 Android 版本，当前系统暂时无法安装。");
-                    else { release = found; state = State.AVAILABLE; render(); }
+                    else if (shouldPrompt(found)) { release = found; state = State.AVAILABLE; render(); }
+                    else { state = State.IDLE; release = null; }
                 });
             } catch (Exception error) {
                 main.post(() -> {
@@ -119,6 +113,26 @@ final class AppUpdater {
     private void finishCheck(String result) {
         state = manual ? State.MESSAGE : State.IDLE;
         message = result; render();
+    }
+
+    private SharedPreferences preferences() { return context.getSharedPreferences("app-updates", Context.MODE_PRIVATE); }
+
+    private boolean shouldPrompt(AppUpdateManifest found) {
+        SharedPreferences saved = preferences();
+        return AppUpdatePolicy.shouldPrompt(found.versionCode, manual, saved.getInt("skipped-version", 0),
+                saved.getInt("deferred-version", 0), saved.getLong("deferred-at", 0), System.currentTimeMillis());
+    }
+
+    private void defer(boolean skip) {
+        if (release == null) { cancel(); return; }
+        SharedPreferences.Editor edit = preferences().edit();
+        if (skip) edit.putInt("skipped-version", release.versionCode).remove("deferred-version").remove("deferred-at");
+        else edit.putInt("deferred-version", release.versionCode).putLong("deferred-at", System.currentTimeMillis());
+        if (!edit.commit()) {
+            android.widget.Toast.makeText(context, "未能保存提醒设置，请重试。", android.widget.Toast.LENGTH_LONG).show();
+            render(); return;
+        }
+        cancel();
     }
 
     private String readManifest(int request) throws Exception {
@@ -185,7 +199,8 @@ final class AppUpdater {
                 main.post(() -> {
                     if (!current(request)) return;
                     verifiedApk = ready; state = State.READY;
-                    message = "下载完成，已校验安装包。点击“安装”继续。"; render();
+                    message = "下载完成，已校验安装包。点击“安装”继续。";
+                    if (activity != null && foreground) install(); else render();
                 });
             } catch (Exception error) {
                 main.post(() -> {
@@ -274,7 +289,8 @@ final class AppUpdater {
 
     private void install() {
         if ((state != State.READY && state != State.PERMISSION)
-                || activity == null || !foreground || verifiedApk == null || release == null) return;
+                || activity == null || !foreground || activity.isFinishing() || activity.isDestroyed()
+                || verifiedApk == null || release == null) return;
         if (!context.getPackageManager().canRequestPackageInstalls()) {
             state = State.PERMISSION; dismiss();
             try { activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -334,9 +350,10 @@ final class AppUpdater {
                 builder = AppDialogs.builder(activity).setTitle("发现新版本")
                         .setMessage("当前版本：" + BuildConfig.VERSION_NAME + "\n新版：" + release.versionName
                                 + "\n安装包：" + android.text.format.Formatter.formatFileSize(context, release.size)
-                                + "\n\n" + (release.notes.isBlank() ? "暂无更新说明。" : release.notes))
-                        .setNegativeButton("稍后", (d, w) -> cancel())
-                        .setPositiveButton("下载更新", (d, w) -> download()); break;
+                                + "\n\n更新内容\n" + (release.notes.isBlank() ? "暂无更新说明。" : release.notes))
+                        .setNegativeButton("跳过此版本", (d, w) -> defer(true))
+                        .setNeutralButton("稍后提醒", (d, w) -> defer(false))
+                        .setPositiveButton("立即更新", (d, w) -> download()); break;
             case DOWNLOADING:
                 builder = AppDialogs.builder(activity).setTitle(message.isEmpty() ? "下载更新" : "校验更新")
                         .setMessage(progressText()).setNegativeButton("取消", (d, w) -> cancel()); break;
@@ -350,7 +367,7 @@ final class AppUpdater {
         }
         dialog = builder.create();
         dialog.setCanceledOnTouchOutside(false);
-        dialog.setOnCancelListener(d -> cancel());
+        dialog.setOnCancelListener(d -> { if (state == State.AVAILABLE) defer(false); else cancel(); });
         dialog.show();
     }
 
@@ -364,13 +381,13 @@ final class AppUpdater {
 
     private void updateProgress() { if (dialog != null && state == State.DOWNLOADING) dialog.setMessage(progressText()); }
     private void dismiss() { if (dialog != null) { dialog.dismiss(); dialog = null; } }
-    private void cancel() { cancelTask(); state = State.IDLE; release = null; message = ""; dismiss(); }
+    private void cancel() { cancelTask(); state = State.IDLE; release = null; verifiedApk = null; message = ""; dismiss(); }
     private void cancelTask() {
         generation.incrementAndGet();
         HttpURLConnection opened = connection; if (opened != null) opened.disconnect();
         if (task != null) task.cancel(true);
     }
-    private boolean current(int request) { return !closed && generation.get() == request; }
+    private boolean current(int request) { return generation.get() == request; }
     private void requireCurrent(int request) throws IOException {
         if (!current(request) || Thread.currentThread().isInterrupted()) throw new IOException("Cancelled");
     }

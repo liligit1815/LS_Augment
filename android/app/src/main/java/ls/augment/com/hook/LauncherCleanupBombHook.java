@@ -18,6 +18,7 @@ final class LauncherCleanupBombHook {
     private static final ThreadLocal<Blast> CAPTURING=new ThreadLocal<>();
     private static final Map<View,Blast> ACTIVE=new WeakHashMap<>();
     private static final Map<View,Blast> FRAGMENT_VIEWS=new WeakHashMap<>();
+    private static final Map<Object,Blast> SPRINGS=new WeakHashMap<>();
     private static final Map<ImageView,IconBinding> ICONS=new WeakHashMap<>();
     private static final Paint ICON_PAINT=new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -65,16 +66,29 @@ final class LauncherCleanupBombHook {
                 Class<?> task=Class.forName("com.android.quickstep.views.TaskView",false,loader);
                 Class<?> data=Class.forName(utils.getName()+"$DismissedTaskData",false,loader);
                 Class<?> spring=Class.forName(utils.getName()+"$SpringSet",false,loader);
-                Method capture=HookCompatibility.method(utils,spring,false,new String[]{"createTaskDismissSpringAnimation"},
-                        task,boolean.class,data,boolean.class,boolean.class);
+                Method capture;
+                boolean batch=false;
+                try{
+                    capture=utils.getDeclaredMethod("createDismissedTaskViewSpringAnimation",task);
+                    if(capture.getReturnType().isPrimitive())throw new NoSuchMethodException("batch spring return");
+                    capture.setAccessible(true);batch=true;
+                }catch(NoSuchMethodException older){
+                    capture=HookCompatibility.method(utils,spring,false,new String[]{"createTaskDismissSpringAnimation"},
+                            task,boolean.class,data,boolean.class,boolean.class);
+                }
+                if(batch)installSpringCompletion(module,spring);
+                module.deoptimize(capture);
+                for(Method caller:utils.getDeclaredMethods())if(caller.getName().equals("dismissAllTasks"))module.deoptimize(caller);
                 module.registerFeatureHook(module.prepareFeatureHook(capture,"launcher.cleanup.spring_fragments",false).intercept(chain->{
                     Blast blast=CAPTURING.get();
-                    if(blast!=null&&blast.particles!=null&&owner.get(chain.getThisObject())==blast.owner){
-                        try{View card=(View)chain.getArg(0);blast.particles.capture(card,blast.root);
-                            if(blast.particles.contains(card))FRAGMENT_VIEWS.put(card,blast);}
+                    Object result=chain.proceed();
+                    if(result!=null&&blast!=null&&owner.get(chain.getThisObject())==blast.owner){
+                        try{blast.selectedCards++;View card=(View)chain.getArg(0);
+                            if(blast.particles!=null){blast.particles.capture(card,blast.root);
+                                if(blast.particles.contains(card))FRAGMENT_VIEWS.put(card,blast);}}
                         catch(Throwable error){blast.module.logFeatureError("CLEANUP_FRAGMENT_CAPTURE",error);}
                     }
-                    return chain.proceed();
+                    return result;
                 }));particlesAvailable=true;
             }
             if(particlesAvailable && nativeDuration){
@@ -147,6 +161,27 @@ final class LauncherCleanupBombHook {
             bindIconHost(module,loader,"MFVClearAllButton","mfv_clear_iv");
         }catch(Throwable error){module.logFeatureError("CLEANUP_BOMB_UNAVAILABLE",error);}
     }
+    /** Keep the inspected native completion attached to its own SpringSet. The
+     * selected tasks and removal listeners are never rebuilt or called twice. */
+    private static void installSpringCompletion(AugmentModule module,Class<?> spring)throws ReflectiveOperationException{
+        Method start=HookCompatibility.method(spring,spring,false,new String[]{"start"});
+        Method end=HookCompatibility.method(spring,void.class,false,new String[]{"onEnd"});
+        // Private onEnd can be inlined into the native spring listeners.
+        for(Method method:spring.getDeclaredMethods())module.deoptimize(method);
+        module.registerFeatureHook(module.prepareFeatureHook(start,"launcher.cleanup.spring_start",false).intercept(chain->{
+            Blast blast=CAPTURING.get();
+            if(blast!=null&&blast.selectedCards>0){SPRINGS.put(chain.getThisObject(),blast);blast.start();}
+            return chain.proceed();
+        }));
+        module.registerFeatureHook(module.prepareFeatureHook(end,"launcher.cleanup.spring_end",false).intercept(chain->{
+            Object owner=chain.getThisObject();Blast blast=SPRINGS.get(owner);
+            if(blast==null||blast.closed||!ValueAnimator.areAnimatorsEnabled())return chain.proceed();
+            if(blast.completion==null)blast.completion=()->{
+                try{end.invoke(owner);}catch(ReflectiveOperationException error){module.logFeatureError("CLEANUP_SPRING_COMPLETION",error);}
+            };
+            return null;
+        }));
+    }
     private static void bindIconHost(AugmentModule module,ClassLoader loader,String name,String id){
         try{
             Class<?> host=Class.forName("com.android.quickstep.views."+name,false,loader);
@@ -189,7 +224,8 @@ final class LauncherCleanupBombHook {
         final HolographicBlastEffect energy;
         final Map<View,Float> cardAlphas=new WeakHashMap<>();
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final ValueAnimator animator=ValueAnimator.ofFloat(0,1);
-        final float startX,startY,radius;float progress;boolean closed,drawn,sounded;int soundStream;
+        final float startX,startY,radius;float progress;boolean closed,drawn,sounded,started;int soundStream,selectedCards;
+        Runnable completion;
         final long traceId=System.nanoTime();
         Blast(AugmentModule module,View owner,View root,View source,Field overview,boolean shatter){
             particles=shatter?new RecentsParticleEffect():null;
@@ -201,6 +237,7 @@ final class LauncherCleanupBombHook {
         }
         long duration(){return particles==null?1450L:1150L;}
         void start(){
+            if(started||closed)return;started=true;
             trace("start style="+(particles==null?"bomb":"particles"));
             for(Map.Entry<View,Blast> card:FRAGMENT_VIEWS.entrySet())if(card.getValue()==this){
                 View view=card.getKey();float alpha=view.getAlpha();view.setAlpha(0f);cardAlphas.put(view,alpha);
@@ -231,7 +268,8 @@ final class LauncherCleanupBombHook {
             for(Map.Entry<View,Float> card:cardAlphas.entrySet())card.getKey().setAlpha(card.getValue());
             cardAlphas.clear();
             if(particles!=null)particles.close();
-
+            SPRINGS.entrySet().removeIf(entry->entry.getValue()==this);
+            Runnable pending=completion;completion=null;if(pending!=null)pending.run();
         }
         @Override public void onViewAttachedToWindow(View view){}
         void trace(String stage){FeatureSettings.diagnostic(owner.getContext(),"ls_augment_cleanup_visual_runtime",stage+";cards="+(particles==null?0:particles.size()));module.logFeatureInfo("CLEANUP_FLOW id="+traceId+" wall="+System.currentTimeMillis()+" elapsedMs="+((System.nanoTime()-traceId)/1_000_000)+" "+stage);}

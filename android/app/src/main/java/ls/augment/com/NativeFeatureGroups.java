@@ -57,6 +57,10 @@ final class NativeFeatureGroups {
         return new Feature(id,title,toggle,parameters.toArray(new String[0]),"boolean","0",new Feature[0]);
     }
     static final Section[] SECTIONS={
+        new Section("systemui","volume_position","音量调节位置",new Feature[]{
+            new Feature("systemui:volume_same_side","多应用声音与音量调节归为同侧",SystemUiOptions.VOLUME_SAME_SIDE,
+                    new String[]{SystemUiOptions.VOLUME_POSITION},"boolean","0",new Feature[0])
+        }),
         new Section("systemui","liftarc","锁屏上滑效果",new Feature[]{
             new Feature("liftarc:enabled","锁屏上滑效果",LiftArcOptions.ENABLED,
                     LiftArcOptions.parameterKeys(),"boolean","0",new Feature[0])

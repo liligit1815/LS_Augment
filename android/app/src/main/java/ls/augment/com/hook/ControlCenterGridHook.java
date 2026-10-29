@@ -20,13 +20,14 @@ final class ControlCenterGridHook {
     private static final Map<View,State> STATES=new WeakHashMap<>();
     private static final Map<View,PagerState> PAGERS=new WeakHashMap<>();
     private static final Map<View,float[]> SCALES=new WeakHashMap<>();
+    private static final Map<View,Boolean> FAILED=new WeakHashMap<>();
     private ControlCenterGridHook(){ }
 
     static int install(AugmentModule module,ClassLoader loader){
         int count=hook(module,loader,TYPE,"onUpdateColumns",0,null,(owner,args,result)->{
             if(owner instanceof View&&regular((View)owner)){
                 View view=(View)owner;
-                if(FeatureSettings.enabled(view.getContext(),P+"grid"))
+                if(active(view))
                     set(owner,"mColumns",FeatureSettings.integer(view.getContext(),P+(land(view)?"land_":"")+"columns",4,2,10));
             }
             return PASS;
@@ -77,7 +78,21 @@ final class ControlCenterGridHook {
     }
 
     private static View gridOwner(Object adapter){Object owner=field(adapter,"mOwner");return owner instanceof View?(View)owner:null;}
-    private static boolean active(View view){return view!=null&&regular(view)&&FeatureSettings.enabled(view.getContext(),P+"grid");}
+    private static boolean active(View view){return view!=null&&!FAILED.containsKey(view)&&regular(view)&&FeatureSettings.enabled(view.getContext(),P+"grid");}
+    static Object countOverride(Object adapter,String name,int fallback,int min,int max){
+        View view=gridOwner(adapter);
+        return active(view)?FeatureSettings.integer(view.getContext(),P+(land(view)?"land_":"")+name,fallback,min,max):PASS;
+    }
+    private static void failed(View view,Throwable error){
+        if(view==null||FAILED.put(view,Boolean.TRUE)!=null)return;
+        FeatureSettings.diagnostic(view.getContext(),P+"grid_error","native_fallback:"+view.getClass().getName()+":"+error);
+        Object pages=field(view,"mPages");
+        if(pages instanceof Iterable<?>)for(Object page:(Iterable<?>)pages)if(page instanceof View)FAILED.put((View)page,Boolean.TRUE);
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)restoreScale(((ViewGroup)view).getChildAt(i));
+        // Restore native cached cell/count values outside the failing traversal.
+        view.post(()->{try{call(view,"updateResources");view.requestLayout();}
+            catch(ReflectiveOperationException|RuntimeException unavailable){/* Already diagnosed; no repeating callback. */}});
+    }
 
     // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
     //noinspection DiscouragedApi
@@ -107,7 +122,8 @@ final class ControlCenterGridHook {
                 // Native layout gives the tile a narrow slot. Retain that slot's
                 // origin, but lay out native contents at their measured size so
                 // the view transform scales both drawing and hit testing together.
-                tile.layout(tile.getLeft(),tile.getTop(),tile.getLeft()+tile.getMeasuredWidth(),tile.getTop()+tile.getMeasuredHeight());
+                if(tile.getWidth()!=tile.getMeasuredWidth()||tile.getHeight()!=tile.getMeasuredHeight())
+                    tile.layout(tile.getLeft(),tile.getTop(),tile.getLeft()+tile.getMeasuredWidth(),tile.getTop()+tile.getMeasuredHeight());
                 tile.setPivotX(0);tile.setPivotY(0);tile.setScaleX(saved[0]*scale);tile.setScaleY(saved[1]*scale);
             }else restoreScale(tile);
         }
@@ -139,7 +155,7 @@ final class ControlCenterGridHook {
             attached=false;FeatureSettings.removeSnapshotListener(listener);view.getViewTreeObserver().removeOnPreDrawListener(this);
         }
         void refresh(){
-            ViewGroup view=reference.get();if(view==null||!attached||refreshing)return;
+            ViewGroup view=reference.get();if(view==null||!attached||refreshing||FAILED.containsKey(view))return;
             ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());int width=view.getWidth(),orientation=view.getResources().getConfiguration().orientation;
             if(snapshot==lastSnapshot&&width==lastWidth&&orientation==lastOrientation)return;
             lastSnapshot=snapshot;lastWidth=width;lastOrientation=orientation;
@@ -147,12 +163,13 @@ final class ControlCenterGridHook {
             String next=snapshot.get(P+"grid")+'|'+snapshot.get(prefix+"columns")+'|'+snapshot.get(prefix+"rows")+'|'+width+'|'+orientation;
             if(next.equals(signature))return;signature=next;refreshing=true;
             try{call(view,"updateResources");set(view,"mDistributeTiles",true);view.requestLayout();}
-            catch(ReflectiveOperationException error){FeatureSettings.diagnostic(view.getContext(),"ls_augment_rm_qs_pager_error",error.toString());}
+            catch(ReflectiveOperationException|RuntimeException error){failed(view,error);}
             finally{refreshing=false;}
         }
         @Override public boolean onPreDraw(){
-            refresh();Object pages=field(reference.get(),"mPages");
-            if(pages instanceof Iterable<?>)for(Object page:(Iterable<?>)pages)if(page instanceof ViewGroup)fitTiles((ViewGroup)page);
+            try{refresh();Object pages=field(reference.get(),"mPages");
+                if(pages instanceof Iterable<?>)for(Object page:(Iterable<?>)pages)if(page instanceof ViewGroup)fitTiles((ViewGroup)page);
+            }catch(RuntimeException error){failed(reference.get(),error);}
             return true;
         }
     }
@@ -183,18 +200,18 @@ final class ControlCenterGridHook {
             String prefix=P+(land(view)?"land_":"");
             String next=snapshot.get(P+"grid")+'|'+prefix+'|'+snapshot.get(prefix+"columns")+'|'+snapshot.get(prefix+"rows")+'|'+view.getWidth();
             if(next.equals(signature))return;
-            signature=next;enabled="1".equals(snapshot.get(P+"grid"));rows=Integer.parseInt(snapshot.get(prefix+"rows"));
+            signature=next;enabled=active(view);rows=FeatureSettings.integer(view.getContext(),prefix+"rows",3,1,8);
             refreshing=true;
             try{
                 call(view,"updateResources");
                 if(!enabled)restoreViewport();
                 view.requestLayout();
-            }catch(ReflectiveOperationException error){
-                FeatureSettings.diagnostic(view.getContext(),"ls_augment_rm_qs_grid_error",error.toString());
+            }catch(ReflectiveOperationException|RuntimeException error){
+                enabled=false;failed(view,error);restoreViewport();
             }finally{refreshing=false;}
         }
         @Override public boolean onPreDraw(){
-            refresh();
+            try{refresh();
             if(enabled){
                 ViewGroup view=reference.get();
                 // The panel's external appearance animator writes native scale=1
@@ -203,6 +220,7 @@ final class ControlCenterGridHook {
                 if(view!=null)fitTiles(view);
                 applyViewport();
             }
+            }catch(RuntimeException error){enabled=false;failed(reference.get(),error);restoreViewport();}
             return true;
         }
         void applyViewport(){
@@ -216,11 +234,20 @@ final class ControlCenterGridHook {
             if(!(scroller.getParent() instanceof ViewGroup)||scroller.getLayoutParams()==null)return;
             Object height=field(view,"mCellHeight"),margin=field(view,"mCellMarginVertical"),padding=field(view,"mCellMarginTop");
             if(!(height instanceof Integer)||!(margin instanceof Integer)||!(padding instanceof Integer))return;
-            int available=((ViewGroup)scroller.getParent()).getHeight()-scroller.getTop();
+            // A WRAP_CONTENT parent shrinks with this scroller. Feeding that
+            // height back each pre-draw can repeatedly shrink the whole panel.
+            View ceiling=scroller;int offset=0;
+            while(ceiling.getParent() instanceof View){
+                offset+=ceiling.getTop();ceiling=(View)ceiling.getParent();
+                ViewGroup.LayoutParams lp=ceiling.getLayoutParams();
+                if(lp==null||lp.height!=ViewGroup.LayoutParams.WRAP_CONTENT)break;
+            }
+            int available=ceiling.getHeight()-offset;
             if(available<=0||(Integer)height<=0)return;
             // Keep all native tiles in the scroll content. Only limit the
             // viewport; dropping records would make the remaining tiles unreachable.
             int desired=Math.min(available,top+(Integer)padding+rows*(Integer)height+Math.max(0,rows-1)*(Integer)margin);
+            if(desired<=0)return;
             if(viewport.get()!=scroller){restoreViewport();viewport=new WeakReference<>(scroller);originalHeight=scroller.getLayoutParams().height;}
             ViewGroup.LayoutParams params=scroller.getLayoutParams();
             if(params.height!=desired){params.height=desired;scroller.setLayoutParams(params);}

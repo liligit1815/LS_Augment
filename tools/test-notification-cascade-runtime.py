@@ -15,9 +15,11 @@ files={k:FILES[k] for k in ['ls/augment/com/hook/AugmentModule.java','android/co
     'android/os/Handler.java','android/os/Looper.java','android/content/pm/PackageManager.java','android/content/res/Configuration.java',
     'android/content/res/Resources.java','android/util/DisplayMetrics.java','ls/augment/com/SystemUiOptions.java']}
 files['ls/augment/com/hook/AugmentModule.java']=files['ls/augment/com/hook/AugmentModule.java'].replace('target.getClass().getDeclaredMethod(name,types)','lookup(target.getClass(),name,types)').replace('public static Object invoke(','''static Method lookup(Class<?> c,String n,Class<?>[] p)throws Exception{for(;c!=null;c=c.getSuperclass())try{return c.getDeclaredMethod(n,p);}catch(NoSuchMethodException missing){}throw new NoSuchMethodException(n);}public static Object invoke(''')
+files['android/content/ContentResolver.java']='package android.content;public class ContentResolver{}'
+files['android/provider/Settings.java']='package android.provider;public class Settings{public static class Secure{public static int getInt(android.content.ContentResolver r,String k,int d){return d;}}public static class Global extends Secure{}}'
 files.update({
 'android/content/Context.java':'''package android.content;public class Context{
- public final android.content.res.Resources resources=new android.content.res.Resources();public android.content.res.Resources getResources(){return resources;}}
+ public android.content.ContentResolver getContentResolver(){return new android.content.ContentResolver();}public final android.content.res.Resources resources=new android.content.res.Resources();public android.content.res.Resources getResources(){return resources;}}
 ''',
 'android/view/MotionEvent.java':'''package android.view;public class MotionEvent {
  public static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;public int action;public float x,y;
@@ -27,9 +29,9 @@ files.update({
 'android/graphics/Shader.java':'package android.graphics;public class Shader{public enum TileMode{CLAMP}}',
 'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}}',
 'android/view/View.java':'''package android.view;public class View{
- public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){}public static final int GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
+ public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){}public static final int VISIBLE=0,GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
  public float sx=1,sy=1,px=200,py=50;public android.graphics.RenderEffect effect;
- public final android.content.Context context=new android.content.Context();public final android.content.res.Resources resources=context.getResources();
+ public final android.content.Context context=new android.content.Context();public android.content.ContentResolver getContentResolver(){return new android.content.ContentResolver();}public final android.content.res.Resources resources=context.getResources();
  public android.content.Context getContext(){return context;}public android.content.res.Resources getResources(){return resources;}
  public int getVisibility(){return visibility;}public int getWidth(){return width;}public int getHeight(){return height;}
  public boolean isAttachedToWindow(){return attached;}public boolean isHardwareAccelerated(){return hardware;}public ViewGroup getParent(){return parent;}

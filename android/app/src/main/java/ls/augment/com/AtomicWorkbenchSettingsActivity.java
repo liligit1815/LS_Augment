@@ -1,6 +1,7 @@
 package ls.augment.com;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -31,6 +32,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private static final class Session {
         boolean busy;
         Boolean expanded;
+        boolean guideOffered, guidePending;
         String message = "";
         long messageUntil;
         WeakReference<AtomicWorkbenchSettingsActivity> owner;
@@ -38,7 +40,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final SharedPreferences.OnSharedPreferenceChangeListener diagnosticListener = (prefs, key) -> {
         if (AtomicWorkbenchConfig.READY.equals(key) || AtomicWorkbenchConfig.RUNTIME.equals(key))
-            main.post(this::refreshStatus);
+            main.post(() -> { refreshStatus(); maybeShowGestureGuide(); });
     };
     private Session session;
     private AppConfig config;
@@ -54,9 +56,12 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private AtomicWorkbenchExtractionControls extraction;
     private SharedPreferences diagnostics;
     private boolean rendering;
+    private boolean resumed;
+    private AlertDialog gestureGuide;
+    private Toast statusToast;
     private long editorGeneration;
     private final Runnable statusTick = new Runnable() {
-        @Override public void run() { refreshStatus(); main.postDelayed(this, 5000L); }
+        @Override public void run() { refreshStatus(); maybeShowGestureGuide(); main.postDelayed(this, 5000L); }
     };
 
     @Override public void onCreate(Bundle state) {
@@ -66,6 +71,10 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         ui = new UiKit(this);
         Object retained = getLastNonConfigurationInstance();
         session = retained instanceof Session ? (Session) retained : new Session();
+        if (!(retained instanceof Session) && state != null) {
+            session.guideOffered = state.getBoolean("step_guide_offered");
+            session.guidePending = state.getBoolean("step_guide_pending");
+        }
         session.owner = new WeakReference<>(this);
         LinearLayout body = ui.detailPage("红魔Step", "device");
         ui.addDetailSectionTitle(body, "全局手势");
@@ -112,6 +121,10 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         LinearLayout instructions = ui.preferenceCard();
         parameters.addView(instructions, ui.wrap());
         instructions.addView(ui.featureTitle("打开方式", "从顶部左侧或右侧的触发区域起滑，单指向屏幕中间水平滑动后松手。区域位于状态栏下方；向下拉动、斜下滑动、屏幕中下部侧滑和多指操作不会打开工作台。可在下方调整并查看实际触发区域。"), ui.wrap());
+        Button demonstrate = ui.tonalButton("查看手势演示");
+        demonstrate.setTag("step-gesture-guide-replay");
+        demonstrate.setOnClickListener(view -> showGestureGuide());
+        instructions.addView(demonstrate, ui.margins(0, 0, 0, 8));
         instructions.addView(ui.text("首次进入开始新的工作区。同一个工作台页面临时切到其他应用后，可返回原工作区；主动退出或页面真正销毁后，手机在后台将应用任务移回原屏幕。在应用中触发时仅尝试接入本次当前应用，从桌面触发时显示手机原生桌面。空白工作区的“＋”始终打开原生桌面。开启“快捷打开 App”后，顶部横向图标可打开或切换应用。锁屏时不触发。", 13, ui.muted, false), ui.margins(0, 0, 0, 8));
         instructions.addView(ui.text("开启“显示顶栏状态卡”后，可横向滑动切换音乐、导航及可读取的计时通知。高德地图的实际转向、道路和剩余行程需要在 LSPosed 为红魔Duo勾选“高德地图”，随后完全退出并重新打开高德。导航信息由手机实时读取；未收到实际指引时会说明原因。", 13, ui.muted, false), ui.margins(0, 0, 0, 8));
         Button mapScope = ui.tonalButton("检查高德地图作用域");
@@ -174,7 +187,12 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
                 AtomicWorkbenchSettingsActivity page = requestSession.owner == null ? null : requestSession.owner.get();
                 if (page == null || page.isDestroyed()) return;
                 page.refreshControls(); page.refreshStatus();
-                Toast.makeText(page, requestSession.message, Toast.LENGTH_LONG).show();
+                page.maybeShowGestureGuide();
+                if (page.gestureGuide == null) {
+                    page.cancelStatusToast();
+                    page.statusToast = Toast.makeText(page, requestSession.message, Toast.LENGTH_LONG);
+                    page.statusToast.show();
+                }
             });
         });
     }
@@ -206,6 +224,45 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         if (extraction != null) extraction.refresh(available && on());
         rendering = false;
         fold.sync();
+        if (!on() || ResetWriteFence.stale(editorGeneration)) {
+            session.guidePending = false;
+            dismissGestureGuide();
+        }
+    }
+
+    private void maybeShowGestureGuide() {
+        if (!resumed || session.busy || gestureGuide != null || !on() || ResetWriteFence.stale(editorGeneration)
+                || isFinishing() || isDestroyed()) return;
+        if (!session.guidePending && (session.guideOffered || AtomicWorkbenchGestureGuide.seen(this))) return;
+        if (!AtomicWorkbenchConfig.readinessProblem(config.diagnostic(AtomicWorkbenchConfig.READY),
+                BuildConfig.VERSION_CODE, RuntimeEnvironment.bootCount(this), 0, SystemClock.elapsedRealtime()).isEmpty()) return;
+        showGestureGuide();
+    }
+
+    private void showGestureGuide() {
+        if (!resumed || gestureGuide != null || !on() || ResetWriteFence.stale(editorGeneration)
+                || isFinishing() || isDestroyed()) return;
+        session.guideOffered = true;
+        session.guidePending = true;
+        cancelStatusToast();
+        AlertDialog dialog = AtomicWorkbenchGestureGuide.create(this, ui, config, () -> {
+            session.guidePending = false;
+            if (on() && !ResetWriteFence.stale(editorGeneration))
+                getSharedPreferences(AtomicWorkbenchGestureGuide.PREFS, MODE_PRIVATE).edit()
+                        .putBoolean(AtomicWorkbenchGestureGuide.SEEN, true).apply();
+        });
+        gestureGuide = dialog;
+        dialog.setOnCancelListener(ignored -> session.guidePending = false);
+        dialog.setOnDismissListener(ignored -> { if (gestureGuide == dialog) gestureGuide = null; });
+        dialog.show();
+    }
+
+    private void dismissGestureGuide() {
+        if (gestureGuide != null) { gestureGuide.dismiss(); gestureGuide = null; }
+    }
+
+    private void cancelStatusToast() {
+        if (statusToast != null) { statusToast.cancel(); statusToast = null; }
     }
 
     private void refreshStatus() {
@@ -228,6 +285,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        resumed = true;
         if (!ResetWriteFence.blocked() && editorGeneration != ResetWriteFence.generation()) {
             editorGeneration = ResetWriteFence.generation();
             config = new AppConfig(this);
@@ -241,12 +299,22 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         main.removeCallbacks(statusTick);
         main.postDelayed(statusTick, 5000L);
         refreshControls(); refreshStatus();
+        maybeShowGestureGuide();
     }
 
     @Override protected void onPause() {
+        resumed = false;
+        dismissGestureGuide();
+        cancelStatusToast();
         if (diagnostics != null) diagnostics.unregisterOnSharedPreferenceChangeListener(diagnosticListener);
         main.removeCallbacks(statusTick);
         super.onPause();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("step_guide_offered", session.guideOffered);
+        state.putBoolean("step_guide_pending", session.guidePending);
+        super.onSaveInstanceState(state);
     }
 
     @Override public Object onRetainNonConfigurationInstance() {
@@ -255,6 +323,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        dismissGestureGuide();
         if (extraction != null) extraction.close();
         if (session.owner != null && session.owner.get() == this) session.owner.clear();
         super.onDestroy();

@@ -54,6 +54,7 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     || "atomic-workbench-recovery-status".equals(operation)
                     || "atomic-workbench-ui".equals(operation)
                     || "atomic-workbench-entry-ui".equals(operation)
+                    || "atomic-workbench-gesture-guide".equals(operation)
                     || "apps-licenses-ui".equals(operation)
                     || "atomic-workbench-interaction".equals(operation)
                     || "ui-preview".equals(operation) || "prototype-navigation".equals(operation)
@@ -232,6 +233,13 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("atomicWorkbenchEntryUi",entry);
                     result.putString("atomicWorkbenchEntryUi",entry.toString());
                     if(!entry.getBoolean("success"))throw new AssertionError(entry.toString());
+                    break;
+                }
+                case "atomic-workbench-gesture-guide": {
+                    JSONObject guide=AtomicWorkbenchGestureGuideDeviceCases.run(this);
+                    report.put("atomicWorkbenchGestureGuide",guide);
+                    result.putString("atomicWorkbenchGestureGuide",guide.toString());
+                    if(!guide.getBoolean("success"))throw new AssertionError(guide.toString());
                     break;
                 }
                 case "atomic-workbench-input": {
@@ -606,6 +614,10 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     result.putString("islandSettingsUi",report.getJSONObject("islandSettingsUi").toString());
                     report.put("islandAppStyle",ls.augment.com.hook.IslandAppStyleRegressionCases.run(this));
                     result.putString("islandAppStyle",report.getJSONObject("islandAppStyle").toString());
+                    break;
+                case "volume-position-ui":
+                    report.put("volumePositionUi",VolumePositionUiCases.run(this));
+                    result.putString("volumePositionUi",report.getJSONObject("volumePositionUi").toString());
                     break;
                 case "statusbar-assets-runtime":
                     report.put("statusbarRuntime",StatusBarAssetsUiCases.runtime(context,arguments.getString("stage","observe")));

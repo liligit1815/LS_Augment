@@ -90,12 +90,12 @@ final class IslandSettingsUiCases {
                 render();
                 require(!master().isChecked()&&masterContent().getVisibility()==View.GONE,"Disabled master hides its settings");
                 require(!arrow(master()).isEnabled(),"Disabled master cannot expand");
-                for(String suffix:new String[]{"enabled","music","notifications","charging","transparent"}){
+                for(String suffix:new String[]{"enabled","music","notifications","charging"}){
                     String key=P+suffix;
                     require(countTag(root(),"config:"+key)==1,"One switch owns "+key);
                     require(tag("config:"+key) instanceof Switch,"Boolean uses public switch: "+key);
                 }
-                require(all(root(),Spinner.class).size()==1,"Island uses the shared choice spinner");
+                require(all(root(),Spinner.class).size()==2,"Background and icon styles use shared choice spinners");
                 require(all(root(),Spinner.class).contains(appStyle()),"App style has one mapped shared choice control");
                 require(all(appStyleSection(),Switch.class).isEmpty(),"App style has no pseudo feature switch");
                 require(!appStyle().isShown(),"Disabled master hides app display style");
@@ -106,19 +106,18 @@ final class IslandSettingsUiCases {
                 clickSeeded(SystemUiOptions.ISLAND,true);
                 require(masterContent().getVisibility()==View.VISIBLE,"Enabling master expands configuration");
                 for(String suffix:new String[]{"music","notifications","charging"})require(toggle(P+suffix).isShown(),"Activity source is reachable: "+suffix);
-                require(toggle(SystemUiOptions.ISLAND_TRANSPARENT).isShown(),"Transparent style uses a reachable native switch");
+                require(control(SystemUiOptions.ISLAND_TRANSPARENT) instanceof Spinner&&control(SystemUiOptions.ISLAND_TRANSPARENT).isShown(),"Background style uses a reachable shared choice control");
                 require(appStyleSection().isShown()&&text(appStyleSection(),"灵动岛显示样式")!=null,"App display style is a function row on the island page");
                 require(appStyleContent().getVisibility()==View.GONE&&!appStyle().isShown(),"App display style options are folded by default");
                 require("圆角方形".contentEquals(String.valueOf(appStyle().getSelectedItem())),"Folded app style retains the rounded-square default");
-                clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,true);
-                require(master().isChecked()&&toggle(P+"music").isChecked(),"Enabling transparent style preserves the island and activity source");
-                clickSeeded(SystemUiOptions.ISLAND_TRANSPARENT,false);
                 require(text(root(),"有活动时出现 · 轻点打开 · 长按展开")!=null,"Real event and gesture behavior is stated in place");
                 require(!control(P+"width").isShown(),"Geometry is folded by default");
                 require(!control(P+"notice_seconds").isShown(),"Notification duration begins in its own fold");
                 noPending();return null;
             });
             settle();measure("enabled");checkSwitchGeometry();capture("03-active-sources");
+
+            for(int background:new int[]{1,2,0})selectBackgroundSeeded(background);
 
             checkAppStyleFold(false,0);capture("03a-app-style-collapsed");
             setAppStyleExpanded(true);checkAppStyleFold(true,0);checkAppStyle(0);capture("03b-app-style-expanded");
@@ -364,7 +363,7 @@ final class IslandSettingsUiCases {
         require(styleHead.getHeight()/density>=43.5f,"App style header retains the public 44dp function-row touch target");
         require(Math.abs(styleArrow.getWidth()/density-25)<1&&Math.abs(styleArrow.getHeight()/density-44)<1,"App style has the common 25 by 44dp fold column");
         require(Math.abs(styleHelp.getWidth()/density-25)<1&&Math.abs(styleHelp.getHeight()/density-44)<1,"App style has the common 25 by 44dp help column");
-        for(String suffix:new String[]{"enabled","music","notifications","charging","transparent"}){
+        for(String suffix:new String[]{"enabled","music","notifications","charging"}){
             Switch control=toggle(P+suffix);ViewGroup row=(ViewGroup)control.getParent();
             require(row.getHeight()/density>=43.5f,"Switch row retains 44dp touch target: "+suffix);
             require(Math.abs(control.getWidth()/density-46)<1,"Switch uses common 46dp width: "+suffix);
@@ -378,6 +377,27 @@ final class IslandSettingsUiCases {
         require(high-low<=1,"Master and source switches share a trailing column: "+(high-low));return null;
     });}
     private void render()throws Exception{Method method=activity.getClass().getDeclaredMethod("render",int.class);method.setAccessible(true);method.invoke(activity,0);}
+    private void selectBackgroundSeeded(int selection)throws Exception{
+        Dialog dialog=main(()->{
+            Spinner choice=(Spinner)control(SystemUiOptions.ISLAND_TRANSPARENT);
+            require(choice.performClick(),"Background selector opens its shared dialog");
+            Dialog shown=(Dialog)get(choice,"selectionDialog");
+            require(shown!=null&&shown.isShowing(),"Background uses the common glass choice dialog");return shown;
+        });
+        try{
+            settleDialog(dialog);
+            main(()->{
+                String[] labels={"经典黑色","透明","液态玻璃"};
+                for(int index=0;index<labels.length;index++)require(dialog.getWindow().getDecorView().findViewWithTag("choice-option:"+index)!=null,"Background option exists: "+labels[index]);
+                draft.put(SystemUiOptions.ISLAND_TRANSPARENT,String.valueOf(selection));
+                require(dialog.getWindow().getDecorView().findViewWithTag("choice-option:"+selection).performClick(),"Background choice selects");
+                require(((Spinner)control(SystemUiOptions.ISLAND_TRANSPARENT)).getSelectedItemPosition()==selection,"Background selection updates");
+                require(master().isChecked()&&toggle(P+"music").isChecked(),"Background style preserves enabled sources");
+                noPending();return null;
+            });
+        }finally{main(()->{if(dialog.isShowing())dialog.dismiss();return null;});}
+        settle();
+    }
     private View root(){return activity.getWindow().getDecorView();}
     private View tag(String key){return root().findViewWithTag(key);}
     private Switch toggle(String key){View view=tag("config:"+key);require(view instanceof Switch,"Switch exists: "+key);return (Switch)view;}

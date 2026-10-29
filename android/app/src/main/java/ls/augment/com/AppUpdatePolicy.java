@@ -10,9 +10,28 @@ final class AppUpdatePolicy {
     static final String PACKAGE_NAME = "ls.augment.com";
     static final String MANIFEST_URL = "https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json";
     static final long MAX_APK_BYTES = 2L * 1024 * 1024 * 1024 - 1;
+    static final long REMIND_LATER_MS = 24L * 60 * 60 * 1000;
     private static final String ASSET_PREFIX = "/liligit1815/lispacerelease/releases/download/";
 
     private AppUpdatePolicy() { }
+
+    /** Activity navigation overlaps starts/stops; recreation keeps the same foreground session. */
+    static final class ForegroundSession {
+        private int started;
+        private boolean foreground;
+        boolean started() {
+            boolean opening = !foreground;
+            foreground = true;
+            started++;
+            return opening;
+        }
+        boolean stopped(boolean changingConfigurations) {
+            started = Math.max(0, started - 1);
+            if (started != 0 || changingConfigurations) return false;
+            foreground = false;
+            return true;
+        }
+    }
 
     static boolean assetUrl(String address) {
         try {
@@ -46,8 +65,13 @@ final class AppUpdatePolicy {
 
     static boolean digest(String text) { return text != null && text.matches("[0-9a-fA-F]{64}"); }
 
-    static boolean automaticCheckDue(long lastAttempt, long now) {
-        return lastAttempt <= 0 || (now >= lastAttempt && now - lastAttempt >= 24L * 60 * 60 * 1000);
+    /** Checking is per foreground session; only the reminder is deferred, for that exact release. */
+    static boolean shouldPrompt(int version, boolean manual, int skippedVersion,
+            int deferredVersion, long deferredAt, long now) {
+        if (manual) return true;
+        if (version == skippedVersion) return false;
+        return version != deferredVersion || deferredAt <= 0 || now < deferredAt
+                || now - deferredAt >= REMIND_LATER_MS;
     }
 
     static String sha256(byte[] bytes) {

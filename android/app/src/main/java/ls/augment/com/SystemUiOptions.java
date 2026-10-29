@@ -16,11 +16,15 @@ public final class SystemUiOptions {
     public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
     public static final String ISLAND = PREFIX + "island_enabled";
     public static final String ISLAND_OFFSET_Y = PREFIX + "island_offset_y";
+    // Keep the persisted key and values 0/1 so existing opaque/transparent settings survive upgrades.
     public static final String ISLAND_TRANSPARENT = PREFIX + "island_transparent";
+    public static final int ISLAND_BACKGROUND_CLASSIC = 0, ISLAND_BACKGROUND_TRANSPARENT = 1, ISLAND_BACKGROUND_GLASS = 2;
     public static final String ISLAND_APP_STYLE = PREFIX + "island_app_style";
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
     public static final String QS_BRIGHTNESS_PERCENT = PREFIX + "qs_brightness_percent";
     public static final String QS_VOLUME_PERCENT = PREFIX + "qs_volume_percent";
+    public static final String VOLUME_SAME_SIDE = PREFIX + "volume_same_side";
+    public static final String VOLUME_POSITION = PREFIX + "volume_position";
     private SystemUiOptions() { }
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
@@ -33,7 +37,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.integer(PREFIX+"island_height","system","胶囊高度（dp）","实际高度不超过当前状态栏。",32,20,48));
         out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));
         out.add(EnhancementOption.integer(ISLAND_OFFSET_Y,"system","上下偏移（dp）","正数向下，负数向上；以居中位置为基准，实际偏移受状态栏可用高度限制，不会超出状态栏。",0,-24,24));
-        out.add(EnhancementOption.toggle(ISLAND_TRANSPARENT,"system","透明样式","去掉紧凑胶囊的黑色背景，保留活动图标、文字与律动。长按展开的详情保持原有背景。"));
+        out.add(EnhancementOption.choice(ISLAND_TRANSPARENT,"system","背景样式","经典黑色保留原有外观；透明仅去掉紧凑胶囊背景；液态玻璃应用于胶囊和展开详情，呈现透色材质与边缘高光。系统支持安全背景采样时显示真实背景折射，否则使用半透明玻璃。",ISLAND_BACKGROUND_CLASSIC,"经典黑色","透明","液态玻璃"));
         out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
         out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
         out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","同应用通知组中的真实子通知分别显示并参与渐进堆叠，后方卡片逐层缩小、重叠。可分别设置通知中心和锁屏，并调整模糊与透明度渐变。保留原生通知操作、顺序、滚动和隐私规则。关闭后恢复原厂分组；单条通知内部的多条消息不会拆分。"));
@@ -92,6 +96,8 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.decimal(PREFIX + "lock_clock_scale", "lockscreen", "锁屏时钟字体比例", "适用于文字时钟，1 为原厂大小；文字过大时自动适配可用空间，避免裁切。", 1, 0.5, 2));
         bool(out, "lock_volume", "audio", "锁屏时允许调节音量");
         bool(out, "audio_no_long_press_vibrate", "audio", "取消长按音量键振动");
+        out.add(EnhancementOption.toggle(VOLUME_SAME_SIDE,"audio","多应用声音与音量调节归为同侧","将多应用音量调节按钮放到音量面板下方。功能前提：开启多应用音量调节功能。横屏可用高度不足时保留原厂位置。首次更新需重启系统界面；关闭后恢复原厂位置。"));
+        out.add(EnhancementOption.choice(VOLUME_POSITION,"audio","音量调节显示位置","音量面板和多应用音量调节按钮显示在同一侧。",1,"左侧","右侧"));
         bool(out, "charging_animation", "lockscreen", "自定义充电动画");
         bool(out, "charging_every_wake", "lockscreen", "每次亮屏显示充电动画");
         out.add(EnhancementOption.integer(PREFIX + "charging_duration", "lockscreen", "充电动画持续秒数", "启用自定义充电动画后生效。", 6, 1, 120));

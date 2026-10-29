@@ -353,6 +353,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
         String unavailable=FanFeatureAvailability.reason(this,key);
+        if(SystemUiOptions.VOLUME_SAME_SIDE.equals(key)&&!VolumePositionSettings.multiAppEnabled(this))unavailable="请先在系统设置中开启多应用音量调节功能";
         if(NativeIslandSceneOptions.ENABLED.equals(key)&&!nativeIslandEnabled())unavailable="请先在星云岛设置中开启星云岛";
         if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_"))unavailable=nativeSceneUnavailable(key);
         boolean available=unavailable.isEmpty();
@@ -396,6 +397,9 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         final UiKit.Fold configFold=fold;
         if(NativeIslandSceneOptions.ENABLED.equals(key))nativeScenesFold=fold;
         toggle.setOnCheckedChangeListener((view,on)->{
+            if(on&&SystemUiOptions.VOLUME_SAME_SIDE.equals(key)&&!VolumePositionSettings.multiAppEnabled(this)){
+                toggle.setChecked(false);android.widget.Toast.makeText(this,"请先开启多应用音量调节功能",android.widget.Toast.LENGTH_SHORT).show();return;
+            }
             if(configFold!=null)configFold.sync();
             if(bindingIslandMaster&&(SystemUiOptions.ISLAND.equals(key)||key.startsWith(NativeIslandSceneOptions.ENABLED)))return;
             if(f.toggleKey!=null)change(key,on?"1":"0",toggle);
@@ -504,10 +508,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             divider(content);
         }
         EnhancementOption transparent=options.get(SystemUiOptions.ISLAND_TRANSPARENT);
-        Switch transparentControl=new Switch(this);transparentControl.setTag("config:"+transparent.key);
-        transparentControl.setChecked(ConfigSchema.truthy(value(transparent.key)));controls.put(transparent.key,transparentControl);
-        content.addView(ui.featureRow(transparent.title,FeatureHelp.forOption(transparent),transparentControl),ui.wrap());
-        transparentControl.setOnCheckedChangeListener((button,on)->change(transparent.key,on?"1":"0",transparentControl));
+        content.addView(input(transparent),ui.wrap());
         divider(content);
         EnhancementOption appStyle=options.get(SystemUiOptions.ISLAND_APP_STYLE);
         LinearLayout styleContent=new LinearLayout(this);styleContent.setOrientation(LinearLayout.VERTICAL);
@@ -1026,7 +1027,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&isApplicationDirectory()){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&(isApplicationDirectory()||"group/audio/volume_position".equals(ModuleNavigation.route(this)))){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
         state.putBundle("batteryHealth",inputSession.batteryHealth.save());

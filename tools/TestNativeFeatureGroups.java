@@ -62,11 +62,14 @@ public final class TestNativeFeatureGroups {
         require("0".equals(islandY.defaultValue)&&"-24".equals(islandY.normalize("-24"))&&"24".equals(islandY.normalize("24")),"island vertical position defaults to center and accepts both directions");
         require(islandY.normalize("-25")==null&&islandY.normalize("25")==null,"island vertical position rejects values outside its supported range");
         EnhancementOption transparent=OPTIONS.get(SystemUiOptions.ISLAND_TRANSPARENT);
-        require(transparent.kind==EnhancementOption.Kind.BOOLEAN&&"0".equals(transparent.defaultValue),"island transparent style is a real opt-in boolean");
+        require(transparent.kind==EnhancementOption.Kind.CHOICE&&"0".equals(transparent.defaultValue),"island background defaults to the classic style");
+        require(Arrays.equals(transparent.choices,new String[]{"经典黑色","透明","液态玻璃"}),"island background includes liquid glass");
+        for(String valid:new String[]{"0","1","2"})require(valid.equals(transparent.normalize(valid)),"background style preserves legacy and glass values");
+        for(String invalid:new String[]{"-1","3","glass",""})require(transparent.normalize(invalid)==null,"reject unknown background style");
         require(find(SystemUiOptions.ISLAND_TRANSPARENT).toggleKey.equals(SystemUiOptions.ISLAND),"island owns its style and keeps it behind the master switch");
         EnhancementOption appStyle=OPTIONS.get(SystemUiOptions.ISLAND_APP_STYLE);
         require(appStyle.kind==EnhancementOption.Kind.CHOICE&&"0".equals(appStyle.defaultValue),"island app style defaults to rounded square");
-        require("灵动岛app显示样式".equals(appStyle.title)&&Arrays.equals(appStyle.choices,new String[]{"圆角方形","圆形"}),"island app style exposes exactly the requested display choices");
+        require("灵动岛显示样式".equals(appStyle.title)&&Arrays.equals(appStyle.choices,new String[]{"圆角方形","圆形"}),"island app style exposes exactly the requested display choices");
         require("0".equals(appStyle.normalize("0"))&&"1".equals(appStyle.normalize("1")),"both island app display styles are valid");
         for(String invalid:new String[]{"-1","2","circle","true",""})require(appStyle.normalize(invalid)==null,"island app style rejects invalid value: "+invalid);
         NativeFeatureGroups.Feature island=find(SystemUiOptions.ISLAND_APP_STYLE);
@@ -82,11 +85,9 @@ public final class TestNativeFeatureGroups {
             // The existing side-gesture editor owns its two mirror switches directly.
             boolean gestureMirror="systemui:back_icon_enabled".equals(f.id)
                     &&(key.equals(BackGestureIconPolicy.key(0,"mirror"))||key.equals(BackGestureIconPolicy.key(1,"mirror")));
-            // Like the gesture editor, islandControls owns its native style switch.
-            boolean islandStyle="systemui:island_enabled".equals(f.id)&&key.equals(SystemUiOptions.ISLAND_TRANSPARENT);
             // The lock-swipe editor owns all subordinate switches under one master.
             boolean lockSwipe="liftarc:enabled".equals(f.id)&&key.startsWith("ls_augment_liftarc_");
-            require(gestureMirror||islandStyle||lockSwipe||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
+            require(gestureMirror||lockSwipe||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
             require(seen.add(key),"duplicate parameter "+key);
         }
         for(NativeFeatureGroups.Feature child:f.children)check(child,seen);

@@ -96,6 +96,8 @@ public void setOnCheckedChangeListener(Listener value){listener=value;}public vo
     "android/view/View.java": "package android.view;public class View {public static final int GONE=8;public void setVisibility(int value){}}",
     "android/widget/TextView.java": "package android.widget;public class TextView extends android.view.View {public void setTag(Object value){}}",
     "ls/augment/com/NativeIslandSceneOptions.java": "package ls.augment.com;class NativeIslandSceneOptions {static final String ENABLED=\"ls_augment_native_island_scene_support\";}",
+    "ls/augment/com/SystemUiOptions.java": "package ls.augment.com;class SystemUiOptions {static final String VOLUME_SAME_SIDE=\"ls_augment_rm_volume_same_side\";}",
+    "ls/augment/com/VolumePositionSettings.java": "package ls.augment.com;class VolumePositionSettings {static boolean multiAppEnabled(Object context){return true;}}",
     "android/widget/LinearLayout.java": """package android.widget;public class LinearLayout {
 public static final int VERTICAL=1;public LinearLayout(Object context){}public void setOrientation(int value){}public void setTag(Object value){}
 public void addView(Object view,Object params){}public void setPadding(int a,int b,int c,int d){}}

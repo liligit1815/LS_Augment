@@ -46,6 +46,10 @@ final class AtomicWorkbenchEntryUiDeviceCases {
         require(directory.isDirectory()||directory.mkdirs(),"Screenshot directory");
         JSONObject result=new JSONObject().put("fontScale",context.getResources().getConfiguration().fontScale)
                 .put("screens",screens).put("scope","PHONE_NATIVE_SETTINGS_INPUT_NO_WORKBENCH_SESSION");
+        android.content.SharedPreferences guide = context.getSharedPreferences(AtomicWorkbenchGestureGuide.PREFS, 0);
+        boolean hadGuide = guide.contains(AtomicWorkbenchGestureGuide.SEEN);
+        boolean guideSeen = guide.getBoolean(AtomicWorkbenchGestureGuide.SEEN, false);
+        guide.edit().putBoolean(AtomicWorkbenchGestureGuide.SEEN, true).commit();
         try {
             require(!AtomicWorkbenchCleanup.pending(),"Previous cleanup must finish");
             save(Map.of(AtomicWorkbenchConfig.ENABLED,"1",AREA,"100",SENSITIVITY,"100"));
@@ -88,6 +92,10 @@ final class AtomicWorkbenchEntryUiDeviceCases {
                 save(restore);
                 Map<String,String> after=config.snapshot();
                 for(String key:before.keySet())require(before.get(key).equals(after.get(key)),"Setting changed after restoration: "+key);
+                android.content.SharedPreferences.Editor guideEdit = guide.edit();
+                if (hadGuide) guideEdit.putBoolean(AtomicWorkbenchGestureGuide.SEEN, guideSeen);
+                else guideEdit.remove(AtomicWorkbenchGestureGuide.SEEN);
+                guideEdit.commit();
                 result.put("settingsRestored",true);
             }
         }

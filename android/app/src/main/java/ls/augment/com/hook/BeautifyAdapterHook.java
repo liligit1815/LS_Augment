@@ -42,9 +42,7 @@ final class BeautifyAdapterHook {
         Context context = FeatureSettings.from(null);
         FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_ADAPTER_INSTALLED,
                 "hooks=" + installed);
-        if (installed > 0) {
-            FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_LAST_ERROR, "");
-        }
+
         return installed;
     }
 
@@ -60,29 +58,21 @@ final class BeautifyAdapterHook {
             Class<?> service = Class.forName(APPLY_SERVICE, false, classLoader);
             int installed = 0;
 
-            // Combined reset paths used after boot and when a trial expires.
-            installed += installResetMethod(module, service, "X", int.class,
-                    "adapter_reset_to_pre_or_default");
-            installed += installResetMethod(module, service, "a0", void.class,
-                    "adapter_reset_to_pre_or_default_async");
-
-            // Direct resource reset paths used by the current adapter.
-            installed += installResetMethod(module, service, "Y", int.class,
-                    "adapter_reset_theme");
-            installed += installResetMethod(module, service, "Z", int.class,
-                    "adapter_reset_wallpaper");
-            installed += installResetMethod(module, service, "U", int.class,
-                    "adapter_reset_font");
-
-            // The adapter clears trial_key before/alongside the reset. Keep
-            // the bit intact while unlimited trial is enabled.
-            installed += installTrialFlagReset(module, service);
-            installed += installResourceApplication(module, service);
+            ThemeServiceContract contract=ThemeServiceContract.resolve(service);
+            // Validate the deliberate-apply escape path together with every reset.
+            installed += installResourceApplication(module, contract.apply);
+            installed += installResetMethod(module, contract.combined, "adapter_reset_to_pre_or_default");
+            installed += installResetMethod(module, contract.async, "adapter_reset_to_pre_or_default_async");
+            installed += installResetMethod(module, contract.theme, "adapter_reset_theme");
+            installed += installResetMethod(module, contract.wallpaper, "adapter_reset_wallpaper");
+            installed += installResetMethod(module, contract.font, "adapter_reset_font");
+            installed += installTrialFlagReset(module, contract.trialFlag);
 
             if (installed > 0) {
                 module.logFeatureInfo("BEAUTIFY_ADAPTER_CURRENT_SERVICE_INSTALLED "
                         + installed);
             }
+            if(installed==7)FeatureSettings.diagnostic(FeatureSettings.from(null),FeatureSettings.BEAUTIFY_LAST_ERROR,"");
             return installed;
         } catch (Throwable error) {
             Context context = FeatureSettings.from(null);
@@ -93,21 +83,7 @@ final class BeautifyAdapterHook {
         }
     }
 
-    private static int installResetMethod(AugmentModule module, Class<?> type,
-            String name, Class<?> returnType, String id) {
-        Method method = findMethod(type, name, returnType, int.class);
-        if (method == null && "Y".equals(name)) {
-            method = findMethod(type, name, returnType);
-        }
-        if (method == null && "Z".equals(name)) {
-            method = findMethod(type, name, returnType);
-        }
-        if (method == null && "U".equals(name)) {
-            method = findMethod(type, name, returnType);
-        }
-        if (method == null) {
-            return 0;
-        }
+    private static int installResetMethod(AugmentModule module, Method method, String id) {
         try {
             final Method targetMethod = method;
             targetMethod.setAccessible(true);
@@ -129,9 +105,7 @@ final class BeautifyAdapterHook {
         }
     }
 
-    private static int installTrialFlagReset(AugmentModule module, Class<?> type) {
-        Method method = findMethod(type, "b0", void.class, int.class);
-        if (method == null) return 0;
+    private static int installTrialFlagReset(AugmentModule module, Method method) {
         try {
             method.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(method,
@@ -144,7 +118,7 @@ final class BeautifyAdapterHook {
                         // A deliberate native resource replacement must leave the prior
                         // trial normally. Only expiry and startup resets are suppressed.
                         if (APPLYING_RESOURCE.get()) return chain.proceed();
-                        // b0(0x111) resets all existing trials during adapter startup.
+                        // The trial-flag entry resets all trials with 0x111 at startup.
                         // Its first call can precede the async configuration read; treating
                         // the placeholder defaults as an explicit off setting destroys the
                         // theme before the font reset reaches the now-loaded configuration.
@@ -209,11 +183,7 @@ final class BeautifyAdapterHook {
         });
     }
 
-    private static int installResourceApplication(AugmentModule module, Class<?> type) {
-        // x(int, path, id) is the verified applyResourceInternal entry. It contains
-        // the native stopTrial calls for the resource being deliberately replaced.
-        Method method = findMethod(type, "x", int.class, int.class, String.class, String.class);
-        if (method == null) return 0;
+    private static int installResourceApplication(AugmentModule module, Method method) {
         try {
             method.setAccessible(true);
             HookHandle handle = module.prepareFeatureHook(method,

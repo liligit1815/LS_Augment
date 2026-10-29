@@ -135,18 +135,8 @@ final class LauncherRecentsPrivacyHook {
             Method image=type.getDeclaredMethod("getThumbnailView");
             if(!ImageView.class.isAssignableFrom(image.getReturnType()))throw new NoSuchMethodException("getThumbnailView return type");
             image.setAccessible(true);
-            Class<?> declaration = type;
-            Method draw = null;
-            while (declaration != null && draw == null) {
-                try { draw = method(declaration, void.class, "dispatchDraw", Canvas.class); }
-                catch (NoSuchMethodException inherited) { declaration = declaration.getSuperclass(); }
-            }
-            if (draw == null) throw new NoSuchMethodException(type.getName()+".dispatchDraw");
-            module.registerFeatureHook(module.prepareFeatureHook(draw,"launcher.recents.privacy.modern",false).intercept(chain -> {
-                if (!type.isInstance(chain.getThisObject())) return chain.proceed();
-                View view = (View) chain.getThisObject();
-                try {
-                    Object identity = null;
+            RecentsPrivacyOverlay.Painter painter=(view,canvas)->{
+                Object identity = null;
                     ViewParent parent = view.getParent();
                     while (parent instanceof View && !owner.isInstance(parent)) parent = parent.getParent();
                     if (owner.isInstance(parent)) {
@@ -157,6 +147,7 @@ final class LauncherRecentsPrivacyHook {
                         }
                     }
                     if (selected(view, identity)) {
+                        if(canvas==null)return true;
                         Rect rect = (Rect) bounds.invoke(view);
                         if (rect == null || rect.isEmpty()) rect = new Rect(0,0,view.getWidth(),view.getHeight());
                         // Suppress the thumbnail AND LiveTileView children. Their CLEAR
@@ -169,10 +160,23 @@ final class LauncherRecentsPrivacyHook {
                             if(child!=null){transform=new Matrix(child.getImageMatrix());transform.postTranslate(child.getLeft(),child.getTop());}
                         }
                         if(source==null)source=taskBitmap(identity);
-                        drawMask(view,identity,source,transform,(Canvas)chain.getArg(0),rect.left,rect.top,rect.right,rect.bottom,(Float)radius.invoke(view));
-                        return null;
+                        drawMask(view,identity,source,transform,canvas,rect.left,rect.top,rect.right,rect.bottom,(Float)radius.invoke(view));
+                        return true;
                     }
-                } catch (ReflectiveOperationException | RuntimeException error) { logDraw(error); }
+                    return false;
+            };
+            if(RecentsPrivacyOverlay.install(module,type,stateType,painter))return;
+            Class<?> declaration = type;
+            Method draw = null;
+            while (declaration != null && draw == null) {
+                try { draw = method(declaration, void.class, "dispatchDraw", Canvas.class); }
+                catch (NoSuchMethodException inherited) { declaration = declaration.getSuperclass(); }
+            }
+            if (draw == null) throw new NoSuchMethodException(type.getName()+".dispatchDraw");
+            module.registerFeatureHook(module.prepareFeatureHook(draw,"launcher.recents.privacy.modern",false).intercept(chain->{
+                if(type.isInstance(chain.getThisObject()))try{
+                    if(painter.paint((View)chain.getThisObject(),(Canvas)chain.getArg(0)))return null;
+                }catch(ReflectiveOperationException|RuntimeException error){logDraw(error);}
                 return chain.proceed();
             }));
             module.deoptimize(draw);

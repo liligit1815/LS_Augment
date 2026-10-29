@@ -91,7 +91,29 @@ final class AppDialogs {
             ViewGroup oldRow = (ViewGroup) sample.getParent();
             oldRow.removeAllViews();
             oldRow.setVisibility(View.GONE);
-            LinearLayout actions = new LinearLayout(ui.activity);
+            LinearLayout actions = new LinearLayout(ui.activity) {
+                @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                    if (getChildCount() >= 3) {
+                        int widest = 0;
+                        for (int i = 0; i < getChildCount(); i++) {
+                            Button button = (Button) getChildAt(i);
+                            widest = Math.max(widest, (int) Math.ceil(button.getPaint().measureText(button.getText().toString()))
+                                    + button.getPaddingLeft() + button.getPaddingRight());
+                        }
+                        boolean stack = MeasureSpec.getMode(widthSpec) != MeasureSpec.UNSPECIFIED
+                                && widest * getChildCount() + ui.dp(8) * (getChildCount() - 1)
+                                > MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+                        setOrientation(stack ? VERTICAL : HORIZONTAL);
+                        for (int i = 0; i < getChildCount(); i++) {
+                            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) getChildAt(i).getLayoutParams();
+                            params.width = stack ? -1 : 0; params.weight = stack ? 0 : 1;
+                            params.leftMargin = !stack && i > 0 ? ui.dp(8) : 0;
+                            params.topMargin = stack && i > 0 ? ui.dp(8) : 0;
+                        }
+                    }
+                    super.onMeasure(widthSpec, heightSpec);
+                }
+            };
             actions.setGravity(Gravity.CENTER_VERTICAL);
             actions.setPadding(ui.dp(20), ui.dp(12), ui.dp(20), ui.dp(20));
             for (Button button : new Button[]{negative, neutral, positive}) {
@@ -99,6 +121,7 @@ final class AppDialogs {
                 if (button.getParent() instanceof ViewGroup) ((ViewGroup) button.getParent()).removeView(button);
                 boolean primary = button == positive;
                 button.setAllCaps(false);
+                button.setSingleLine(false);
                 button.setTextSize(12.5f);
                 button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
                 button.setMinWidth(0); button.setMinimumWidth(0);

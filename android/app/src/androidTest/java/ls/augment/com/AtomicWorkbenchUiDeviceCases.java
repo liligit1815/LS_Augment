@@ -55,6 +55,10 @@ final class AtomicWorkbenchUiDeviceCases {
                 AtomicWorkbenchConfig.QUICK_OPEN_APPS}) before.put(key, config.get(key));
         require("0".equals(ConfigSchema.defaultValue(AtomicWorkbenchConfig.QUICK_OPEN_APPS)), "Quick opening defaults off");
         require(directory.isDirectory() || directory.mkdirs(), "Screenshot directory");
+        android.content.SharedPreferences guide = context.getSharedPreferences(AtomicWorkbenchGestureGuide.PREFS, 0);
+        boolean hadGuide = guide.contains(AtomicWorkbenchGestureGuide.SEEN);
+        boolean guideSeen = guide.getBoolean(AtomicWorkbenchGestureGuide.SEEN, false);
+        guide.edit().putBoolean(AtomicWorkbenchGestureGuide.SEEN, true).commit();
         try {
             save(Map.of(AtomicWorkbenchConfig.ENABLED, "1", AtomicWorkbenchConfig.SHOW_MEDIA, "0",
                     AtomicWorkbenchConfig.QUICK_OPEN_APPS, "0"));
@@ -289,7 +293,10 @@ final class AtomicWorkbenchUiDeviceCases {
                     .put("navigationRealZeroVisible", true).put("navigationEndClearsMetrics", true)
                     .put("navigationLayouts", navigationLayouts)
                     .put("noRootSession", true).put("screens", screens);
-        } finally { close(); save(before); }
+        } finally { close(); save(before); android.content.SharedPreferences.Editor guideEdit = guide.edit();
+                if (hadGuide) guideEdit.putBoolean(AtomicWorkbenchGestureGuide.SEEN, guideSeen);
+                else guideEdit.remove(AtomicWorkbenchGestureGuide.SEEN);
+                guideEdit.commit(); }
     }
 
     private void launch(Class<? extends Activity> type) throws Exception {

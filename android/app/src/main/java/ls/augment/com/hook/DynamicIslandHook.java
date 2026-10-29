@@ -406,7 +406,10 @@ final class DynamicIslandHook {
         }
         void runAction(Runnable command){
             if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||ownerUser<0||currentUser()!=ownerUser)return;
-            try{command.run();}catch(RuntimeException ignored){}dismiss();MAIN.removeCallbacks(tick);MAIN.postDelayed(tick,150);
+            try{command.run();}catch(RuntimeException ignored){}
+            // Playback callbacks update the existing panel. A media control is not a request to close it.
+            MAIN.removeCallbacks(collapse);if(nativeHost.expanded())MAIN.postDelayed(collapse,8000);
+            MAIN.removeCallbacks(tick);MAIN.postDelayed(tick,150);
         }
         void openNotice(PendingIntent intent){
             openDiagnostic("clicked");
@@ -430,7 +433,7 @@ final class DynamicIslandHook {
         int dp(int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
         void diagnostic(String value){if(!lastState.equals(value)){lastState=value;FeatureSettings.diagnostic(context,"ls_augment_island_state",value);}}
         void dismiss(){MAIN.removeCallbacks(collapse);nativeHost.dismiss();}
-        void hide(){dismiss();nativeHost.hide();title="";subtitle="";icon=null;popupContent="";diagnostic(enabled?"idle":"disabled");}
+        void hide(){MAIN.removeCallbacks(collapse);nativeHost.hide();title="";subtitle="";icon=null;popupContent="";diagnostic(enabled?"idle":"disabled");}
         void stopMediaListening(){
             if(listening&&sessions!=null)try{sessions.removeOnActiveSessionsChangedListener(sessionListener);}catch(RuntimeException ignored){}
             listening=false;
@@ -442,7 +445,7 @@ final class DynamicIslandHook {
             chargeActivity.reset();
             if(receiving)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}receiving=false;
         }
-        void close(){closed=true;MAIN.removeCallbacks(tick);FeatureSettings.removeSnapshotListener(config);stopListening();dismiss();nativeHost.close();
+        void close(){closed=true;MAIN.removeCallbacks(tick);MAIN.removeCallbacks(collapse);FeatureSettings.removeSnapshotListener(config);stopListening();nativeHost.close();
             host.removeOnLayoutChangeListener(hostLayout);
             if(host.getViewTreeObserver().isAlive())host.getViewTreeObserver().removeOnPreDrawListener(hostVisibility);}
     }

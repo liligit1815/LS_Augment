@@ -93,6 +93,7 @@ final class RedMagicSystemUiHook {
         count += RedMagicLegacyUiHook.install(owner, loader);
         count += DualSignalTint.install(owner, loader);
         count += ControlCenterGridHook.install(owner, loader);
+        count += VolumePositionHook.install(owner, loader);
         count += RedMagicAdvancedUiHook.install(owner, loader);
         count += ControlCenterHeaderHook.install(owner, loader);
         count += NotificationWeatherHook.install(owner, loader);
