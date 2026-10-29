@@ -273,8 +273,8 @@ final class NativeIslandHost {
             android.os.PowerManager power=context.getSystemService(android.os.PowerManager.class);
             android.app.KeyguardManager keyguardManager=context.getSystemService(android.app.KeyguardManager.class);
             call(permanent,"onKeyguardStateChanged",keyguardManager==null||keyguardManager.isKeyguardLocked());
-            if(power!=null&&power.isInteractive())NativeIslandWake.synchronize(manager,permanent);
-            acquired=true;report("ready;featureBefore="+originalFeature+";bootstrapped="+initializedByDuo);
+            String wake=power!=null&&power.isInteractive()?NativeIslandWake.synchronize(manager,permanent):"not_interactive";
+            acquired=true;report("ready;featureBefore="+originalFeature+";bootstrapped="+initializedByDuo+";wake="+wake);
             return true;
         }catch(Exception failure){
             if(active==this)active=null;

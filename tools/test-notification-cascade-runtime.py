@@ -40,6 +40,7 @@ files.update({
  public void setRenderEffect(android.graphics.RenderEffect e){effect=e;}}
 ''',
 'android/view/ViewGroup.java':'''package android.view;public class ViewGroup extends View{
+ public boolean disallow;public void requestDisallowInterceptTouchEvent(boolean v){disallow=v;}
  public java.util.List<View> children=new java.util.ArrayList<>();public void addView(View v){children.add(v);v.parent=this;}
  public int getChildCount(){return children.size();}public View getChildAt(int i){return children.get(i);}}
 ''',
@@ -52,7 +53,7 @@ files.update({
  public static boolean addSnapshotListener(android.content.Context c,Runnable r){return true;}public static void diagnostic(android.content.Context c,String k,String v){reports.put(k,v);}}
 ''',
 BASE+'stack/ExpandableViewState.java':'''package com.android.systemui.statusbar.notification.stack;public class ExpandableViewState{
- public float mYTranslation,mZTranslation,mScaleX=1,mScaleY=1,alpha=1;public int height=100,clipBottomAmount;public boolean gone,hidden;
+ public float mYTranslation,mZTranslation,mScaleX=1,mScaleY=1,alpha=1;public int height=100,clipTopAmount,clipBottomAmount;public boolean gone,hidden;
  public float getAlpha(){return alpha;}public void setAlpha(float a){alpha=a;}}
 ''',
 BASE+'row/ExpandableView.java':'''package com.android.systemui.statusbar.notification.row;
@@ -60,7 +61,7 @@ import com.android.systemui.statusbar.notification.stack.ExpandableViewState;imp
 public class ExpandableView extends android.view.View{public final ExpandableViewState state=new ExpandableViewState();public float nativeY;public boolean privateHidden;
  public ExpandableViewState getViewState(){return state;}
  public ExpandableViewState resetViewState(){return (ExpandableViewState)AugmentModule.invoke(this,"resetViewState",new Class<?>[]{});}
- public ExpandableViewState native_resetViewState(){state.mYTranslation=nativeY;state.mScaleX=sx;state.mScaleY=sy;state.mZTranslation=0;state.alpha=1;state.hidden=privateHidden;state.gone=visibility==GONE;return state;}}
+ public ExpandableViewState native_resetViewState(){state.mYTranslation=nativeY;state.mScaleX=sx;state.mScaleY=sy;state.mZTranslation=0;state.alpha=1;state.clipTopAmount=0;state.hidden=privateHidden;state.gone=visibility==GONE;return state;}}
 ''',
 BASE+'row/ExpandableNotificationRow.java':'''package com.android.systemui.statusbar.notification.row;public class ExpandableNotificationRow extends ExpandableView{
  public boolean busy,pinned,away,guts,expanding,groupChanging;
@@ -73,6 +74,10 @@ BASE+'stack/AmbientState.java':'''package com.android.systemui.statusbar.notific
  public float getStackY(){return stackY;}public float getInterpolatedStackHeight(){return 600;}}
 ''',
 BASE+'stack/NotificationStackScrollLayout.java':'''package com.android.systemui.statusbar.notification.stack;public class NotificationStackScrollLayout extends android.view.ViewGroup{
+ public boolean upEnabled;public int moves;
+ public boolean dispatchTouchEvent(android.view.MotionEvent e){return (Boolean)ls.augment.com.hook.AugmentModule.invoke(this,"dispatchTouchEvent",new Class<?>[]{android.view.MotionEvent.class},e);}
+ public boolean native_dispatchTouchEvent(android.view.MotionEvent e){onInterceptTouchEventScroll(e);boolean result=onScrollTouch(e);if(e.action==1)upEnabled=isScrollingEnabled();if(e.action==2&&result)moves++;return result;}
+ public boolean fromParent(android.view.MotionEvent e){if(e.action==2&&parent!=null&&!parent.disallow)return false;return dispatchTouchEvent(e);}
  public int mMaxLayoutHeight=1000,scrollRange=2000,mOwnScrollY,scrollabilityCalls;public boolean nativeScrolling=true;public NotificationStackScrollLayout(){height=1000;}
  public int getScrollRange(){return (Integer)ls.augment.com.hook.AugmentModule.invoke(this,"getScrollRange",new Class<?>[]{});}public int native_getScrollRange(){return scrollRange;}
  public void requestChildrenUpdate(){}public void updateScrollability(){scrollabilityCalls++;}public void clampScrollPosition(){mOwnScrollY=Math.min(mOwnScrollY,getScrollRange());}
@@ -104,7 +109,7 @@ public class TestCascade{
  public static void main(String[] args){AugmentModule m=new AugmentModule();AugmentModule.active=m;
   int hooks=NotificationCascadeHook.install(m,TestCascade.class.getClassLoader());
   if(args.length>0){check(hooks==0&&m.hooks.isEmpty(),"missing contract cannot partially hook");System.out.println("cascade missing contract rejected");return;}
-  check(hooks==8,"installed");NotificationStackScrollLayout h=new NotificationStackScrollLayout();AmbientState a=new AmbientState();StackScrollAlgorithm alg=new SubAlgorithm(h);
+  check(hooks==9,"installed");NotificationStackScrollLayout h=new NotificationStackScrollLayout();AmbientState a=new AmbientState();StackScrollAlgorithm alg=new SubAlgorithm(h);
   SubRow front=new SubRow(),tail=new SubRow(),secret=new SubRow();front.nativeY=600;tail.nativeY=800;secret.nativeY=850;secret.privateHidden=true;h.addView(front);h.addView(tail);h.addView(secret);
   alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"disabled native shelf");
   flag(SystemUiOptions.NOTIFICATION_STACK,true);alg.clamps=0;alg.resetViewStates(a,0);check(alg.clamps==0&&tail.state.mYTranslation>600&&tail.state.mYTranslation<800,"tail preserves natural position before projecting");
@@ -129,7 +134,15 @@ public class TestCascade{
   check(!h.onInterceptTouchEventScroll(new android.view.MotionEvent(0,10,10)),"blank lock gesture stays native");
   check(h.onInterceptTouchEventScroll(new android.view.MotionEvent(0,10,front.state.mYTranslation+5)),"row gesture uses native scroller");
   check(h.onScrollTouch(new android.view.MotionEvent(2,10,400)),"captured row drag scrolls");h.onScrollTouch(new android.view.MotionEvent(3,10,400));check(!h.isScrollingEnabled(),"cancel releases scroll override");
+  android.view.ViewGroup parent=new android.view.ViewGroup();parent.addView(h);
+  h.fromParent(new android.view.MotionEvent(0,10,front.state.mYTranslation+5));check(parent.disallow,"row DOWN retains gesture before keyguard parent intercepts MOVE");
+  check(h.fromParent(new android.view.MotionEvent(2,10,400))&&h.moves==1,"native scroller receives MOVE instead of unlock parent");
+  h.fromParent(new android.view.MotionEvent(1,10,400));check(h.upEnabled&&!parent.disallow&&!h.isScrollingEnabled(),"nested UP keeps native fling enabled until dispatch completes and releases parent");
+  h.fromParent(new android.view.MotionEvent(0,10,10));check(!parent.disallow&&!h.fromParent(new android.view.MotionEvent(2,10,40)),"blank lock screen keeps native unlock gesture");
+  h.fromParent(new android.view.MotionEvent(0,10,front.state.mYTranslation+5));h.fromParent(new android.view.MotionEvent(3,10,400));check(!parent.disallow&&!h.isScrollingEnabled(),"CANCEL releases dispatch ownership");
   h.mOwnScrollY=h.getScrollRange();alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"lock tail full at end");
+  h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"scrolled lock row is clipped below clock");
+  h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==0,"scroll back restores native clipping");
   check(FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_shade")&&FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_lock"),"independent evidence");
   alg.failChild=true;try{alg.resetViewStates(a,0);throw new AssertionError("native failure propagated");}catch(RuntimeException expected){}near(alg.mKeyguardNotificationSpace,600,"capacity restored on throw");alg.failChild=false;
   flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);check(h.getScrollRange()==0&&h.mOwnScrollY==0,"disable restores native range and position");alg.resetViewStates(a,0);check(tail.state.hidden,"native lock capacity restored");
@@ -140,10 +153,24 @@ public class TestWake{
  static class Legacy{int calls;private void onStartedWakingUp(){calls++;}}static class Child extends Legacy{}
  static class Wrong{public boolean onStartedWakingUp(){throw new AssertionError();}}static class Broken{public void onStartedWakingUp(){throw new IllegalStateException("native failure");}}
  static void check(boolean x){if(!x)throw new AssertionError();}
+ static class Visibility {boolean mAODVisibility,mIsDynamicIslandEnable,mPayJoyControlled;int mCurRotation,calls;void setAODVisibility(boolean x){throw new AssertionError("must not fabricate AOD state");}private void updateRooterVisibility(){calls++;}}
+ static class OldChild extends Visibility{}
+ static class Interactive extends Visibility {boolean mInteractive;}
+ static class WrongInteractive extends Visibility {String mInteractive;}
+ static class BadFields extends Visibility {String mAODVisibility;}
+ static class MissingFields {void updateRooterVisibility(){throw new AssertionError();}}
+ static class ThrowingVisibility extends Visibility {private void updateRooterVisibility(){throw new IllegalStateException();}}
  public static void main(String[] args)throws Exception{Child manager=new Child();Legacy permanent=new Legacy();check("manager".equals(NativeIslandWake.synchronize(manager,permanent)));check(manager.calls==1&&permanent.calls==0);
  check("permanent".equals(NativeIslandWake.synchronize(new Object(),permanent)));check(permanent.calls==1);NativeIslandWake.synchronize(new Wrong(),permanent);check(permanent.calls==2);
  try{NativeIslandWake.synchronize(new Object(),new Object());throw new AssertionError();}catch(NoSuchMethodException expected){}
- try{NativeIslandWake.synchronize(new Broken(),permanent);throw new AssertionError();}catch(java.lang.reflect.InvocationTargetException expected){}check(permanent.calls==2);System.out.println("native wake legacy/inherited/permanent/missing/error checks passed");}}
+ try{NativeIslandWake.synchronize(new Broken(),permanent);throw new AssertionError();}catch(java.lang.reflect.InvocationTargetException expected){}check(permanent.calls==2);
+ OldChild old=new OldChild();old.mAODVisibility=true;old.mPayJoyControlled=true;old.mCurRotation=3;check("permanent_visibility".equals(NativeIslandWake.synchronize(new Object(),old)));check(old.calls==1&&old.mAODVisibility&&old.mPayJoyControlled&&old.mCurRotation==3);
+ check("manager".equals(NativeIslandWake.synchronize(manager,old))&&old.calls==1);
+ try{NativeIslandWake.synchronize(new Wrong(),old);throw new AssertionError();}catch(NoSuchMethodException expected){}check(old.calls==1);
+ for(Object unsupported:new Object[]{new Interactive(),new WrongInteractive(),new BadFields(),new MissingFields()})try{NativeIslandWake.synchronize(new Object(),unsupported);throw new AssertionError();}catch(NoSuchMethodException expected){}
+ try{NativeIslandWake.synchronize(new Broken(),old);throw new AssertionError();}catch(java.lang.reflect.InvocationTargetException expected){}check(old.calls==1);
+ try{NativeIslandWake.synchronize(new Object(),new ThrowingVisibility());throw new AssertionError();}catch(java.lang.reflect.InvocationTargetException expected){}
+ System.out.println("native wake manager/permanent/legacy AOD/inherited/type mismatch/missing/error checks passed");}}
 '''
 })
 
@@ -153,7 +180,7 @@ for variant in ['legacy','modern','missing']:
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha(float a)','setAlpha(float a,String why)')
         k=BASE+'row/ExpandableNotificationRow.java';current[k]=current[k].replace('isUserLocked','isUserSwipingToExpandRow')
         k=BASE+'stack/NotificationStackScrollLayout.java';current[k]=current[k].replace('public boolean native_onScrollTouch', '''public boolean offerScrollTouchToScroller(android.view.MotionEvent e){return (Boolean)ls.augment.com.hook.AugmentModule.invoke(this,"offerScrollTouchToScroller",new Class<?>[]{android.view.MotionEvent.class},e);}public boolean native_offerScrollTouchToScroller(android.view.MotionEvent e){return isScrollingEnabled();}public boolean native_onScrollTouch''')
-        k='ls/augment/com/hook/TestCascade.java';current[k]=current[k].replace('hooks==8','hooks==9').replace('h.onScrollTouch(', 'h.offerScrollTouchToScroller(')
+        k='ls/augment/com/hook/TestCascade.java';current[k]=current[k].replace('hooks==9','hooks==10').replace('h.onScrollTouch(', 'h.offerScrollTouchToScroller(')
     if variant=='missing':
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha','unrelatedAlpha')
     with tempfile.TemporaryDirectory(prefix='duo-cascade-') as folder:

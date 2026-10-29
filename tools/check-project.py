@@ -263,7 +263,7 @@ def check_scope():
         'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',
         'cn.nubia.fan',
         'com.mi.health', 'com.autonavi.minimap', 'com.zte.mifavor.launcher',
-        'com.tencent.mobileqq', 'com.android.gallery3d',
+        'com.android.gallery3d',
         'cn.nubia.gamehelperline', 'cn.nubia.gamehelpmodule',
         'com.android.packageinstaller', 'com.zte.zdm', 'com.zte.mifavor.weather',
         'cn.zte.gamefloat', 'cn.nubia.gamehighlights',
@@ -272,6 +272,7 @@ def check_scope():
         'system', 'cn.nubia.neostore'
     }, scope
     assert 'com.smallcircle.heartvoice' not in scope
+    assert 'com.tencent.mobileqq' not in scope
 
 
 def check_legacy_sources():

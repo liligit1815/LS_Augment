@@ -19,7 +19,7 @@ methods += [(N,s) for s in ['getScrollRange()I','updateScrollability()V','clampS
 methods += [(B,'getStackY()F'),(B,'getInterpolatedStackHeight()F')]
 fields += [(N,'mOwnScrollY:I'),(A,'mKeyguardNotificationSpace:F'),(T,'visibleChildren:Ljava/util/ArrayList;')]
 fields += [(S,n+':F') for n in ['mYTranslation','mZTranslation','mScaleX','mScaleY']]
-fields += [(S,n+':'+t) for n,t in [('height','I'),('gone','Z'),('hidden','Z'),('clipBottomAmount','I')]]
+fields += [(S,n+':'+t) for n,t in [('height','I'),('gone','Z'),('hidden','Z'),('clipTopAmount','I'),('clipBottomAmount','I')]]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--systemui',type=Path,action='append',required=True);parser.add_argument('--output',type=Path);args=parser.parse_args()
 reports=[]
 for apk in args.systemui:

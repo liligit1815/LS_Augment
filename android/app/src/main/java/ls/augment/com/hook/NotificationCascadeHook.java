@@ -82,10 +82,22 @@ final class NotificationCascadeHook {
             ViewGroup host=(ViewGroup)chain.getThisObject();Surface surface=surfaces.get(host);
             MotionEvent event=(MotionEvent)chain.getArg(0);int action=event.getActionMasked();
             if(surface==null||!live(surface.frame)||!surface.frame.keyguard)return chain.proceed();
-            if(action==MotionEvent.ACTION_DOWN){Object row=access.childAt.invoke(host,event.getX(),event.getY());
-                surface.gesture=row instanceof View&&eligible((View)row)&&!access.hidden.getBoolean(access.state.invoke(row));}
+            boolean outer=surface.touchDepth==0;
+            if(outer&&action==MotionEvent.ACTION_DOWN){Object row=access.childAt.invoke(host,event.getX(),event.getY());
+                surface.gesture=surface.required>0&&row instanceof View&&eligible((View)row)
+                        &&!access.hidden.getBoolean(access.state.invoke(row));
+                // The keyguard parent otherwise intercepts MOVE to unlock before
+                // the native notification scroller can cross its touch slop.
+                // Retain only gestures that began on a real, visible card. The
+                // row's native click, expansion and horizontal swipe still run.
+                if(surface.gesture&&host.getParent()!=null){host.getParent().requestDisallowInterceptTouchEvent(true);surface.parentHeld=true;}
+            }
+            surface.touchDepth++;
             ViewGroup previous=scrolling.get();if(surface.gesture)scrolling.set(host);
-            try{return chain.proceed();}finally{scrolling.set(previous);if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)surface.gesture=false;}
+            try{return chain.proceed();}finally{
+                scrolling.set(previous);surface.touchDepth--;
+                if(outer&&(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL))endGesture(host,surface);
+            }
         }));
         module.registerFeatureHook(module.prepareFeatureHook(access.shelfClamp,"notification.cascade.shelf",false).intercept(chain->{
             // Shelf clamping destroys the natural Y of every off-screen row.
@@ -115,7 +127,11 @@ final class NotificationCascadeHook {
         catch(ReflectiveOperationException failure){return false;}
     }
     private static final class Surface {
-        Frame frame;int required;boolean gesture;final Evidence[] evidence={new Evidence(),new Evidence()};
+        Frame frame;int required,touchDepth;boolean gesture,parentHeld;final Evidence[] evidence={new Evidence(),new Evidence()};
+    }
+    private void endGesture(ViewGroup host,Surface surface){
+        surface.gesture=false;
+        if(surface.parentHeld){surface.parentHeld=false;if(host.getParent()!=null)host.getParent().requestDisallowInterceptTouchEvent(false);}
     }
     private Surface surface(ViewGroup host){
         Surface present=surfaces.get(host);if(present!=null)return present;
@@ -133,7 +149,7 @@ final class NotificationCascadeHook {
         return true;
     }
     private final class Frame {
-        final ViewGroup host;final boolean enabled,keyguard;final float start,end,density,space;
+        final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space;
         final Object algorithm,ambient;final String reason;int spacePasses;
         final boolean gradient;
         Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
@@ -141,7 +157,7 @@ final class NotificationCascadeHook {
             keyguard=(Boolean)access.keyguard.invoke(ambient);
             gradient=FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true);
             int measured=access.maxHeight.getInt(host);if(measured<=0)measured=host.getHeight();
-            float top=keyguard?((Number)access.stackY.invoke(ambient)).floatValue():0;
+            top=keyguard?((Number)access.stackY.invoke(ambient)).floatValue():0;
             float capacity=access.lockSpace.getFloat(algorithm);
             space=capacity>0?capacity:((Number)access.stackHeight.invoke(ambient)).floatValue();
             end=Math.max(top,Math.min(Math.min(host.getHeight(),measured)-48*density,keyguard?top+space:Float.MAX_VALUE));
@@ -189,6 +205,12 @@ final class NotificationCascadeHook {
             // projection line. Raising only projected rows paints their blur
             // over the last lines of the preceding unscaled notification.
             if(hasTail)access.z.setFloat(state,frame.density*(rows.size()-i)/rows.size());
+            // OEM keyguard normally has no scroll offset and does not clip rows
+            // against the clock. Keep scrolled rows inside the native viewport.
+            if(frame.keyguard&&scroll>0){
+                int clip=Math.min((int)height,Math.max(0,(int)Math.ceil(frame.top-card.y)));
+                access.clipTop.setInt(state,Math.max(access.clipTop.getInt(state),clip));
+            }
             if(nativeY<=frame.start)continue;
             Owned baseline=owned.get(row);
             if(baseline==null){baseline=new Owned(row,access.scaleX.getFloat(state),access.scaleY.getFloat(state));owned.put(row,baseline);}
@@ -210,7 +232,7 @@ final class NotificationCascadeHook {
     }
     private float y(View row){try{return access.y.getFloat(access.state.invoke(row));}catch(ReflectiveOperationException failure){return Float.MAX_VALUE;}}
     private void clear(ViewGroup host){for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==host||!row.isAttachedToWindow())release(row);
-        Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;surface.gesture=false;
+        Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;endGesture(host,surface);
             if(changed)try{access.scrollability.invoke(host);access.clampScroll.invoke(host);}catch(ReflectiveOperationException ignored){}}}
     private void release(View row){Owned baseline=owned.remove(row);if(baseline==null)return;baseline.blur(row,0);
         // A detached row can be recycled before another native reset pass.
@@ -257,7 +279,7 @@ final class NotificationCascadeHook {
     private static final class Access {
         final Class<?> row;final Method reset,shelfClamp,resetRow,state,alpha,alphaGet,keyguard,dozing,hideAmount,expansion,updateChild,positions,resetChildren;
         final Method scrollRange,scrollability,clampScroll,scrollingEnabled,scrollTouch,interceptScroll,childAt,stackY,stackHeight,refresh;
-        final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipBottom,scroll,lockSpace,children;
+        final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipTop,clipBottom,scroll,lockSpace,children;
         final ArrayList<Method> touches=new ArrayList<>();
         Access(ClassLoader loader)throws ReflectiveOperationException{
             Class<?> algorithm=Class.forName(BASE+"stack.StackScrollAlgorithm",false,loader);
@@ -275,6 +297,10 @@ final class NotificationCascadeHook {
             scrollingEnabled=method(layout,"isScrollingEnabled");scrollTouch=method(layout,"onScrollTouch",MotionEvent.class);
             interceptScroll=method(layout,"onInterceptTouchEventScroll",MotionEvent.class);childAt=method(layout,"getChildAtPosition",float.class,float.class);
             touches.add(interceptScroll);touches.add(scrollTouch);
+            // Keep the override alive through the whole native dispatch, including
+            // nested interception and the final UP that starts the native fling.
+            Method dispatch=method(layout,"dispatchTouchEvent",MotionEvent.class);result(dispatch,boolean.class);
+            if(dispatch.getDeclaringClass()==layout)touches.add(dispatch);
             try{Method offered=method(layout,"offerScrollTouchToScroller",MotionEvent.class);result(offered,boolean.class);touches.add(offered);}
             catch(NoSuchMethodException olderDispatch){/* Original scroll entry points remain installed. */}
             stackY=method(ambient,"getStackY");stackHeight=method(ambient,"getInterpolatedStackHeight");
@@ -282,7 +308,7 @@ final class NotificationCascadeHook {
             result(scrollTouch,boolean.class);result(interceptScroll,boolean.class);result(stackY,float.class);result(stackHeight,float.class);
             updateChild=method(algorithm,"updateChild",int.class,algorithmState,ambient);positions=method(algorithm,"updatePositionsForState",algorithmState,ambient);resetChildren=method(algorithm,"resetChildViewStates");
             y=field(viewState,"mYTranslation",float.class);z=field(viewState,"mZTranslation",float.class);scaleX=field(viewState,"mScaleX",float.class);scaleY=field(viewState,"mScaleY",float.class);
-            height=field(viewState,"height",int.class);gone=field(viewState,"gone",boolean.class);hidden=field(viewState,"hidden",boolean.class);clipBottom=field(viewState,"clipBottomAmount",int.class);
+            height=field(viewState,"height",int.class);gone=field(viewState,"gone",boolean.class);hidden=field(viewState,"hidden",boolean.class);clipTop=field(viewState,"clipTopAmount",int.class);clipBottom=field(viewState,"clipBottomAmount",int.class);
             Method setter;try{setter=method(viewState,"setAlpha",float.class);}catch(NoSuchMethodException newer){setter=method(viewState,"setAlpha",float.class,String.class);}alpha=setter;alphaGet=method(viewState,"getAlpha");
             keyguard=method(ambient,"isOnKeyguard");dozing=method(ambient,"isDozing");hideAmount=method(ambient,"getHideAmount");expansion=method(ambient,"getExpansionFraction");
             Method user;try{user=method(row,"isUserLocked");}catch(NoSuchMethodException newer){user=method(row,"isUserSwipingToExpandRow");}

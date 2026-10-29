@@ -30,7 +30,6 @@ public final class HookTargetRegistry {
                     "cn.nubia.fan",
                     "com.mi.health",
                     "com.autonavi.minimap",
-                    "com.tencent.mobileqq",
                     "com.android.gallery3d",
                     "cn.nubia.neostore",
                     "com.zte.mifavor.launcher",
