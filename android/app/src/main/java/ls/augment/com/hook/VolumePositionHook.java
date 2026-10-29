@@ -52,7 +52,7 @@ final class VolumePositionHook {
                     if(raw instanceof View&&result instanceof WindowManager.LayoutParams){
                         View view=(View)raw;Entrance binding=ENTRANCES.get(view);
                         if(binding==null){binding=new Entrance(view,(WindowManager)manager.invoke(chain.getThisObject()));ENTRANCES.put(view,binding);binding.watch();}
-                        latestEntrance=new WeakReference<>(binding);binding.nativePosition=new Position((WindowManager.LayoutParams)result);
+                        latestEntrance=new WeakReference<>(binding);binding.prepare((WindowManager.LayoutParams)result);
                         binding.adjust((WindowManager.LayoutParams)result);
                     }
                 }catch(ReflectiveOperationException|RuntimeException error){module.logFeatureError("VOLUME_POSITION_ENTRANCE",error);}
@@ -176,16 +176,75 @@ final class VolumePositionHook {
     }
     private static final class Entrance extends Binding{
         final WindowManager manager;
+        // Reuse the verified framework move-animation contract used by the island.
+        final IslandWindowMotion motion=new IslandWindowMotion();
+        boolean firstFrame,nativeOnly,positionChanged;
+        long waitingSince;
+        int nativeAnimations;
         EntranceStyle style;
         Entrance(View view,WindowManager manager){super(view);this.manager=manager;}
+        void prepare(WindowManager.LayoutParams params){
+            nativePosition=new Position(params);nativeAnimations=params.windowAnimations;
+            firstFrame=true;nativeOnly=false;positionChanged=false;waitingSince=-1;
+            View view=reference.get();
+            if(view!=null&&enabled(view.getContext())){
+                if(motion.suppress(params,value->status(view,value)))params.windowAnimations=0;
+                else nativeOnly=true;
+            }
+        }
+        void restoreMotion(View view,WindowManager.LayoutParams params){
+            motion.restore(params,value->status(view,value));params.windowAnimations=nativeAnimations;
+        }
+        @Override public boolean onPreDraw(){
+            if(waitingSince<0)waitingSince=android.os.SystemClock.uptimeMillis();
+            refresh();View view=reference.get();
+            if(view==null||!firstFrame||nativeOnly||!enabled(view.getContext()))return true;
+            // Never submit the stock location or the old measured size as a visible
+            // first frame. The main dialog may attach after this separate window.
+            if(!failed&&(!owned||view.isLayoutRequested()||!dimensionsReady(view)||positionChanged)
+                    &&android.os.SystemClock.uptimeMillis()-waitingSince<500){
+                positionChanged=false;view.postInvalidateOnAnimation();return false;
+            }
+            firstFrame=false;
+            if(failed||!owned||view.isLayoutRequested()||!dimensionsReady(view)||positionChanged){
+                String reason="native_fallback:first_frame_unavailable;owned="+owned+";layout="+view.isLayoutRequested()+";measured="+dimensionsReady(view)+";position="+positionChanged+";failed="+failed;
+                nativeOnly=true;restoreNative(view);status(view,reason);
+                return false;
+            }
+            // The inspected OEM show animator only fades/translates this entrance.
+            // Cancel it before the first submitted frame; keep native hide/timers/clicks.
+            view.animate().cancel();view.setTranslationX(0f);view.setAlpha(1f);
+            return true;
+        }
+        boolean dimensionsReady(View view){return view.getWidth()>0&&view.getHeight()>0&&view.getWidth()==view.getMeasuredWidth()&&view.getHeight()==view.getMeasuredHeight();}
+        boolean settled(View view){
+            // The OEM adapter may animate the dialog root or an ancestor. Wait
+            // for that existing entrance to finish before exposing this window.
+            for(View item=view;item!=null;item=item.getParent() instanceof View?(View)item.getParent():null)
+                if(item.isLayoutRequested()||item.getTranslationX()!=0f||item.getTranslationY()!=0f)return false;
+            return true;
+        }
+        void restoreNative(View view){
+            if(!(view.getLayoutParams() instanceof WindowManager.LayoutParams))return;
+            WindowManager.LayoutParams params=(WindowManager.LayoutParams)view.getLayoutParams();
+            nativePosition.apply(params);restoreMotion(view,params);owned=false;
+            if(style!=null)style.restore();manager.updateViewLayout(view,params);view.postInvalidateOnAnimation();
+        }
         @android.annotation.SuppressLint("RtlHardcoded") // Physical side selected by the user.
         void adjust(WindowManager.LayoutParams p){
             View view=reference.get();Main main=latest.get();View root=main==null?null:main.reference.get();
             if(view==null||nativePosition==null)return;
+            if(nativeOnly)return;
+            if(enabled(view.getContext())){
+                if(!motion.suppress(p,value->status(view,value))){nativeOnly=true;return;}
+                p.windowAnimations=0;
+            }
             if(!enabled(view.getContext())||main==null||!main.owned||root==null||!root.isAttachedToWindow()){
                 status(view,"native_fallback:main_pending;enabled="+enabled(view.getContext())+";main="+(main!=null)+";owned="+(main!=null&&main.owned)+";attached="+(root!=null&&root.isAttachedToWindow()));
                 if(style!=null)style.restore();
-                if(owned){nativePosition.apply(p);owned=false;}return;
+                if(owned){nativePosition.apply(p);owned=false;}
+                if(!enabled(view.getContext()))restoreMotion(view,p);
+                return;
             }
             Window w=main.window.get();if(w==null)return;
             Object ringRaw=field(main.owner.get(),"mRinger"),sliderRaw=field(main.owner.get(),"mDialogMain");
@@ -193,6 +252,7 @@ final class VolumePositionHook {
             if(!(ringRaw instanceof View)||!(sliderRaw instanceof View)||!(iconRaw instanceof ImageView)){
                 status(view,"native_fallback:main_views;ringer="+(ringRaw!=null)+";slider="+(sliderRaw!=null)+";icon="+(iconRaw!=null));return;}
             View ringer=(View)ringRaw,slider=(View)sliderRaw;
+            if(firstFrame&&(!settled(ringer)||!settled(slider))){owned=false;return;}
             Rect ringBounds=new Rect(),sliderBounds=new Rect();
             if(!ringer.getGlobalVisibleRect(ringBounds)||!slider.getGlobalVisibleRect(sliderBounds)
                     ||ringBounds.width()<=0||Math.abs(ringBounds.width()-ringBounds.height())>4*view.getResources().getDisplayMetrics().density){
@@ -206,10 +266,10 @@ final class VolumePositionHook {
             if(style==null)style=EntranceStyle.create(view);
             if(style==null){status(view,"native_fallback:entrance_views");return;}
             if(!style.apply(ringer,(ImageView)iconRaw)){status(view,"native_fallback:ringer_surface");return;}
+            if(view.isLayoutRequested()){owned=false;return;}
             Rect screen=manager.getCurrentWindowMetrics().getBounds();Insets edge=insets(root);
-            int height=view.getHeight()>0?view.getHeight():view.getMeasuredHeight();
-            int width=view.getWidth()>0?view.getWidth():view.getMeasuredWidth();
-            if(height<=0||width<=0){view.measure(View.MeasureSpec.makeMeasureSpec(screen.width(),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(screen.height(),View.MeasureSpec.AT_MOST));height=view.getMeasuredHeight();width=view.getMeasuredWidth();}
+            int height=view.getHeight(),width=view.getWidth();
+            if(height<=0||width<=0){owned=false;return;}
             int gap=Math.max(0,ringBounds.top-sliderBounds.bottom);
             int bottom=ringBounds.bottom+gap-Math.max(0,(height-ringBounds.height())/2);
             if(root.getHeight()<=0||height<=0||bottom+height>screen.bottom-edge.bottom){
@@ -229,8 +289,8 @@ final class VolumePositionHook {
         String lastStatus="";
         void status(View view,String value){if(!value.equals(lastStatus)){lastStatus=value;FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",value);}}
         @Override void update(){View view=reference.get();if(view==null||!view.isAttachedToWindow()||!(view.getLayoutParams() instanceof WindowManager.LayoutParams))return;
-            WindowManager.LayoutParams p=(WindowManager.LayoutParams)view.getLayoutParams();Position before=new Position(p);adjust(p);
-            if(!before.same(p)){manager.updateViewLayout(view,p);FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",owned?"same_side_below;side="+(left(view.getContext())?"left":"right"):"native_restored");}
+            WindowManager.LayoutParams p=(WindowManager.LayoutParams)view.getLayoutParams();Position before=new Position(p);int animations=p.windowAnimations;adjust(p);
+            if(!before.same(p)||animations!=p.windowAnimations){positionChanged=true;manager.updateViewLayout(view,p);FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",owned?"same_side_below;side="+(left(view.getContext())?"left":"right"):"native_restored");}
         }
     }
     /** Reuses OEM surface and tint while retaining the native clickable view and icon. */
