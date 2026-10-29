@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20678,
-    "versionName": "2.0.0-alpha1-test20678",
+    "versionCode": 20688,
+    "versionName": "2.0.0-alpha1-test20688",
     "minSdk": 35,
-    "publishedAt": "2026-10-28T10:55:04Z",
-    "notes": "- 重构状态栏自定义，四组配置共用预览，支持独立图标排序与筛选、简洁单排与常规双排预设，以及一键恢复原厂样式。\n- 新增最近任务隐私屏。\n- 完善通知堆叠，分组中的子通知独立显示，改善底部卡片滚动与点击响应。\n- 新增省电模式保持当前帧率，电池健康度检测统一收纳到“系统设置 → 电池”。\n- 新增相册水印机型文字自定义。\n- 自定义性能监测支持项目间距调节；修复肩键方案切换与极速连点同时开启时的误报。\n- 修复控制中心亮度、音量控件的深色显示，完善完整亮度的本机标定及红魔Step、最近任务等功能的接口兼容。\n\n更新后请重启手机，使系统服务与桌面相关改动生效。",
+    "publishedAt": "2026-10-29T10:17:23Z",
+    "notes": "- 修复超暗亮度详情入口与布局异常。\n- 修复红魔 Duo 灵动岛在部分旧版系统无法显示的问题，完善通知、充电、音乐切换与展开面板。\n- 完善原厂星云岛的全屏适配，保持与红魔 Duo 灵动岛互斥。\n- 优化通知堆叠、锁屏滚动、最近任务隐私屏和音量面板显示。\n- 完善红魔 Step 手势练习、桌面适配与任务恢复。\n- 修复双卡网络类型、肩键连点及控制中心深色显示异常。\n- 优化配置读取、日志导出及功能生效的重启提示。\n- 优化在线更新提醒，返回应用时自动检查新版。\n- 更新后请重启手机。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20678/redmagic-duo-20678.apk",
-      "size": 14449055,
-      "sha256": "a52c145a8d21c7896f10d9d8417ccc41d1ce6e196a290177547b7668c85c6662",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20688/redmagic-duo-20688.apk",
+      "size": 14520691,
+      "sha256": "1904f87f9cd3e09160901f740bbc4fb77abb30070127a50bf32a5d30f735b0f4",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
