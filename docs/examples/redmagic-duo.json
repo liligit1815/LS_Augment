@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20688,
-    "versionName": "2.0.0-alpha1-test20688",
+    "versionCode": 20690,
+    "versionName": "2.0.0-alpha1-test20690",
     "minSdk": 35,
-    "publishedAt": "2026-10-29T10:17:23Z",
-    "notes": "- 修复超暗亮度详情入口与布局异常。\n- 修复红魔 Duo 灵动岛在部分旧版系统无法显示的问题，完善通知、充电、音乐切换与展开面板。\n- 完善原厂星云岛的全屏适配，保持与红魔 Duo 灵动岛互斥。\n- 优化通知堆叠、锁屏滚动、最近任务隐私屏和音量面板显示。\n- 完善红魔 Step 手势练习、桌面适配与任务恢复。\n- 修复双卡网络类型、肩键连点及控制中心深色显示异常。\n- 优化配置读取、日志导出及功能生效的重启提示。\n- 优化在线更新提醒，返回应用时自动检查新版。\n- 更新后请重启手机。",
+    "publishedAt": "2026-10-30T02:14:55Z",
+    "notes": "- 修复小米运动健康点击“去绑定”后返回仍无法完成账号绑定的问题。\n- 修复通知堆叠滚动后首条通知顶部被裁切、内容显示不完整的问题。\n- 优化通知堆叠在锁屏、通知中心切换及关闭功能时的显示恢复。\n- 更新后请重启手机。\n- 取消工作台文件流转能力，取消QQ作用域，请务必在LSP框架中取消勾选QQ作用域，经反馈Hook QQ易出现账户风险提示，不Hook无法实现文件流转，故取消此功能",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20688/redmagic-duo-20688.apk",
-      "size": 14520691,
-      "sha256": "1904f87f9cd3e09160901f740bbc4fb77abb30070127a50bf32a5d30f735b0f4",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20690/redmagic-duo-20690.apk",
+      "size": 14502827,
+      "sha256": "fffe1e1c0c8d2fb351ab4a31edd6d96d9ec72b09f1c5bcf531023495f0b2cf5b",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
