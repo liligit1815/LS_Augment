@@ -1,6 +1,7 @@
 package ls.augment.com.hook;
 
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.Intent;
 import android.content.Context;
 import android.os.*;
@@ -70,17 +71,44 @@ final class MiHealthHook {
             Method resume=Activity.class.getDeclaredMethod("onResume");
             module.registerFeatureHook(module.prepareFeatureHook(resume,"health.identity.probe",false).intercept(chain->{
                 Object result=chain.proceed();Activity activity=(Activity)chain.getThisObject();
-                Intent intent=activity.getIntent();
-                if("com.mi.health".equals(activity.getPackageName())&&intent!=null&&intent.hasExtra(HealthIdentityProbe.EXTRA)){
-                    String probe=intent.getStringExtra(HealthIdentityProbe.EXTRA);intent.removeExtra(HealthIdentityProbe.EXTRA);
-                    Controller c=ensure(module,loader);if(c!=null)c.probe(probe);
-                }
+                receiveProbe(module,loader,activity,activity.getIntent());
                 return result;
             }));
+            // A launcher can redirect/finish before onResume. A reused activity
+            // receives a new Intent without necessarily replacing getIntent().
+            // Observe native dispatch before the app runs either lifecycle entry.
+            // Accept the platform's Intent subclasses/overloads by capability.
+            for(Method dispatch:Instrumentation.class.getDeclaredMethods()){
+                Class<?>[] params=dispatch.getParameterTypes();
+                if(dispatch.getReturnType()!=void.class||Modifier.isStatic(dispatch.getModifiers())
+                        ||Modifier.isAbstract(dispatch.getModifiers())||params.length<2||params[0]!=Activity.class)continue;
+                boolean create=dispatch.getName().equals("callActivityOnCreate")&&params[1]==Bundle.class
+                        &&(params.length==2||params.length==3&&params[2]==PersistableBundle.class);
+                boolean newIntent=dispatch.getName().equals("callActivityOnNewIntent")&&Intent.class.isAssignableFrom(params[1])
+                        &&(params.length==2||params.length==3&&params[2].getName().equals("android.app.ComponentCaller"));
+                if(!create&&!newIntent)continue;
+                module.registerFeatureHook(module.prepareFeatureHook(dispatch,"health.identity.dispatch."
+                        +dispatch.getName()+"."+params[1].getSimpleName()+"."+params.length,false).intercept(chain->{
+                    Activity activity=(Activity)chain.getArg(0);
+                    if(activity!=null)receiveProbe(module,loader,activity,create?activity.getIntent():(Intent)chain.getArg(1));
+                    return chain.proceed();
+                }));
+            }
             installed=true;
             Handler main=new Handler(Looper.getMainLooper());
             main.postDelayed(new Runnable(){public void run(){if(ensure(module,loader)==null)main.postDelayed(this,1500);}},1500);
         }catch(Throwable e){module.logFeatureError("MI_HEALTH_INSTALL",e);}
+    }
+    private static void receiveProbe(AugmentModule module,ClassLoader loader,Activity activity,Intent intent){
+        if(!"com.mi.health".equals(activity.getPackageName())||intent==null)return;
+        try{
+            if(!intent.hasExtra(HealthIdentityProbe.EXTRA))return;
+            String probe=intent.getStringExtra(HealthIdentityProbe.EXTRA);
+            Controller c=ensure(module,loader);
+            // Leave it for the existing resume fallback if application context
+            // has not become available. Never alter the app's own intent fields.
+            if(c!=null){intent.removeExtra(HealthIdentityProbe.EXTRA);c.probe(probe);}
+        }catch(RuntimeException error){module.logFeatureError("MI_HEALTH_PROBE_INTENT",error);}
     }
     static synchronized Controller ensure(AugmentModule module,ClassLoader loader){
         if(controller!=null)return controller;
@@ -92,6 +120,7 @@ final class MiHealthHook {
         final AugmentModule module;final Context context;final ClassLoader loader;
         final Handler worker;private StepLedger ledger;
         private String identityProbe="";private final Set<String> consumedProbes=new LinkedHashSet<>();
+        private String probeStage="";
         volatile boolean compatible;volatile long gap;String account="",lastError="";long lastSync;int pendingUploads;
         Controller(AugmentModule module,Context context,ClassLoader loader){
             this.module=module;this.context=context;this.loader=loader;
@@ -133,11 +162,15 @@ final class MiHealthHook {
                     ||FeatureSettings.hasVerifiedSnapshot(context)&&!probeValid(probe))return;
             consumedProbes.removeIf(previous->!probePending(previous));
             if(consumedProbes.size()>=64)return;
-            consumedProbes.add(probe);identityProbe=probe;worker.removeCallbacks(probing);worker.post(probing);
+            consumedProbes.add(probe);identityProbe=probe;probeStage="";worker.removeCallbacks(probing);worker.post(probing);
         });}
+        void probeStatus(String stage){
+            if(stage.equals(probeStage))return;probeStage=stage;
+            FeatureSettings.diagnostic(context,"ls_augment_health_probe_runtime",stage+";observed_at="+System.currentTimeMillis());
+        }
         final Runnable probing=new Runnable(){public void run(){
-            String request=identityProbe;if(!probePending(request)){identityProbe="";return;}
-            if(!FeatureSettings.hasVerifiedSnapshot(context)){worker.postDelayed(this,1000);return;}
+            String request=identityProbe;if(!probePending(request)){if(!request.isEmpty())probeStatus("expired");identityProbe="";return;}
+            if(!FeatureSettings.hasVerifiedSnapshot(context)){probeStatus("waiting_verified_config");worker.postDelayed(this,1000);return;}
             if(!probeValid(request)){identityProbe="";return;}
             try{
                 Identity observed=identity();String discovered=observed.id;
@@ -145,8 +178,16 @@ final class MiHealthHook {
                 publishIdentity(observed);
                 FeatureSettings.diagnostic(context,"ls_augment_health_account_runtime",discovered);
                 FeatureSettings.diagnostic(context,"ls_augment_health_heartbeat",""+System.currentTimeMillis());
+                probeStatus(discovered.isEmpty()?"waiting_login":"identity_ready");
                 if(!discovered.isEmpty()){identityProbe="";return;}
-            }catch(Exception ignored){/* Native account initialization can finish after resume. */}
+            }catch(Exception failure){
+                // Native initialization may finish later. Preserve bounded retry,
+                // but expose missing code contracts without account/database data.
+                String capability=failure instanceof ClassNotFoundException||failure instanceof NoSuchMethodException
+                        ||failure instanceof NoSuchFieldException?Objects.toString(failure.getMessage(),""):"";
+                if(capability.length()>180)capability=capability.substring(0,180);
+                probeStatus("unavailable;error="+failure.getClass().getSimpleName()+";capability="+capability);
+            }
             if(probeValid(request))worker.postDelayed(this,1000);else identityProbe="";
         }};
         Class<?> type(String name)throws ClassNotFoundException{return Class.forName(name,false,loader);}

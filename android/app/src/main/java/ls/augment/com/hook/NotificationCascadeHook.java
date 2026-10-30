@@ -21,6 +21,7 @@ final class NotificationCascadeHook {
     private static final String BASE="com.android.systemui.statusbar.notification.";
     private final Access access;
     private final Map<View,Owned> owned=new WeakHashMap<>();
+    private final Map<View,TopClip> topClips=new WeakHashMap<>();
     private final Map<ViewGroup,Surface> surfaces=new WeakHashMap<>();
     private final ThreadLocal<Boolean> nativeRange=ThreadLocal.withInitial(()->false);
     private final ThreadLocal<ViewGroup> scrolling=new ThreadLocal<>();
@@ -106,10 +107,14 @@ final class NotificationCascadeHook {
             return chain.proceed();
         }));
         module.registerFeatureHook(module.prepareFeatureHook(access.resetRow,"notification.cascade.native_scale",false).intercept(chain->{
-            Object result=chain.proceed();Owned old=owned.get(chain.getThisObject());
+            Object result=chain.proceed();View row=(View)chain.getThisObject();Owned old=owned.get(row);
             // resetViewState copies the animated View scale; never feed our last
             // projection back into the next native layout generation.
             if(old!=null&&result!=null){access.scaleX.setFloat(result,old.scaleX);access.scaleY.setFloat(result,old.scaleY);}
+            // Some OEM resets deliberately retain clipTopAmount. Return only our
+            // previous addition to its native baseline before the algorithm runs.
+            // Do not overwrite a new clipping value already supplied by the ROM.
+            restoreTopClip(row,result,false);
             return result;
         }));
         for(Method method:new Method[]{access.reset,access.resetRow,access.shelfClamp,access.updateChild,access.positions,access.resetChildren,
@@ -151,6 +156,7 @@ final class NotificationCascadeHook {
     private final class Frame {
         final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space;
         final Object algorithm,ambient;final String reason;int spacePasses;
+        final StringBuilder rowGeometry=new StringBuilder();
         final boolean gradient;
         Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
             this.host=host;this.algorithm=algorithm;this.ambient=ambient;density=host.getResources().getDisplayMetrics().density;
@@ -209,9 +215,10 @@ final class NotificationCascadeHook {
             // against the clock. Keep scrolled rows inside the native viewport.
             if(frame.keyguard&&scroll>0){
                 int clip=Math.min((int)height,Math.max(0,(int)Math.ceil(frame.top-card.y)));
-                access.clipTop.setInt(state,Math.max(access.clipTop.getInt(state),clip));
+                int original=access.clipTop.getInt(state);
+                if(clip>original){topClips.put(row,new TopClip(original,clip));access.clipTop.setInt(state,clip);}
             }
-            if(nativeY<=frame.start)continue;
+            if(nativeY<=frame.start){recordGeometry(frame,row,state,i,nativeY);continue;}
             Owned baseline=owned.get(row);
             if(baseline==null){baseline=new Owned(row,access.scaleX.getFloat(state),access.scaleY.getFloat(state));owned.put(row,baseline);}
             retained.add(row);stacked++;
@@ -224,20 +231,48 @@ final class NotificationCascadeHook {
             access.clipBottom.setInt(state,0);
             row.setPivotX(row.getWidth()/2f);row.setPivotY(0);
             baseline.blur(row,card.blur);
+            recordGeometry(frame,row,state,i,nativeY);
         }
         for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==frame.host&&!retained.contains(row))release(row);
         if(prior!=surface.required){access.scrollability.invoke(frame.host);if(prior>surface.required)access.clampScroll.invoke(frame.host);}
         String stage=rows.isEmpty()?"no_visible_rows":visibleProjected>0?"applied":"layout_only";
         report(frame,stage+";stacked="+stacked+";excluded_native="+excluded+";space_passes="+frame.spacePasses,rows.size(),visibleProjected,scroll);
     }
+    private void recordGeometry(Frame frame,View row,Object state,int index,float nativeY)throws ReflectiveOperationException{
+        // Bounded numeric state only: no package, notification key, title or body.
+        // This is layout evidence, not proof of the final rendered pixels.
+        if(index>=3)return;
+        frame.rowGeometry.append(";row").append(index).append("={native_y=").append(nativeY)
+                .append(",y=").append(access.y.getFloat(state)).append(",height=").append(access.height.getInt(state))
+                .append(",view_height=").append(row.getHeight()).append(",clip_top=").append(access.clipTop.getInt(state))
+                .append(",clip_bottom=").append(access.clipBottom.getInt(state)).append(",scale_y=").append(access.scaleY.getFloat(state))
+                .append(",alpha=").append(access.alphaGet.invoke(state)).append(",z=").append(access.z.getFloat(state)).append('}');
+    }
     private float y(View row){try{return access.y.getFloat(access.state.invoke(row));}catch(ReflectiveOperationException failure){return Float.MAX_VALUE;}}
     private void clear(ViewGroup host){for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==host||!row.isAttachedToWindow())release(row);
+        for(View row:new ArrayList<>(topClips.keySet()))if(row.getParent()==host||!row.isAttachedToWindow()){
+            try{restoreTopClip(row,access.state.invoke(row),true);}
+            catch(ReflectiveOperationException error){FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_cascade_clip_restore","unavailable;error="+error.getClass().getSimpleName());}
+        }
         Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;endGesture(host,surface);
             if(changed)try{access.scrollability.invoke(host);access.clampScroll.invoke(host);}catch(ReflectiveOperationException ignored){}}}
     private void release(View row){Owned baseline=owned.remove(row);if(baseline==null)return;baseline.blur(row,0);
         // A detached row can be recycled before another native reset pass.
         row.setScaleX(baseline.scaleX);row.setScaleY(baseline.scaleY);
         row.setPivotX(baseline.pivotX);row.setPivotY(baseline.pivotY);}
+    private static final class TopClip {
+        final int original,applied;
+        TopClip(int original,int applied){this.original=original;this.applied=applied;}
+    }
+    private void restoreTopClip(View row,Object state,boolean restoreView)throws ReflectiveOperationException{
+        TopClip previous=topClips.remove(row);
+        if(previous==null||state==null||access.clipTop.getInt(state)!=previous.applied)return;
+        access.clipTop.setInt(state,previous.original);
+        // On detach/error there may be no subsequent native apply pass. Restore
+        // the rendered value only when it is still exactly the value we owned.
+        if(restoreView&&((Number)access.getClipTop.invoke(row)).intValue()==previous.applied)
+            access.setClipTop.invoke(row,previous.original);
+    }
     private void report(Frame frame,String stage,int rows,int applied,int scroll){
         Surface surface=surface(frame.host);Evidence evidence=surface.evidence[frame.keyguard?1:0];
         long now=System.currentTimeMillis();evidence.passes++;
@@ -266,6 +301,12 @@ final class NotificationCascadeHook {
                 +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll
                 +";native_range="+original+";effective_range="+Math.max(original,surface.required)+";start="+frame.start+";end="+frame.end
                 +";lock_space="+frame.space+";privacy=native;observed_at="+now);
+        // Closing the shade must not erase the last usable expanded layout.
+        // The timestamp/surface keep this explicitly historical after dismissal.
+        if(frame.enabled&&rows>0&&frame.rowGeometry.length()>0&&!stage.startsWith("unavailable"))
+            FeatureSettings.diagnostic(frame.host.getContext(),"ls_augment_notification_cascade_last_layout_"+(frame.keyguard?"lock":"shade"),
+                    "layout_state_only;surface="+(frame.keyguard?"lock":"shade")+";observed_at="+now
+                    +";rows="+rows+";scroll="+scroll+";start="+frame.start+";end="+frame.end+frame.rowGeometry);
     }
     private static final class Owned {
         final float scaleX,scaleY,pivotX,pivotY;float radius;
@@ -278,7 +319,7 @@ final class NotificationCascadeHook {
     }
     private static final class Access {
         final Class<?> row;final Method reset,shelfClamp,resetRow,state,alpha,alphaGet,keyguard,dozing,hideAmount,expansion,updateChild,positions,resetChildren;
-        final Method scrollRange,scrollability,clampScroll,scrollingEnabled,scrollTouch,interceptScroll,childAt,stackY,stackHeight,refresh;
+        final Method scrollRange,scrollability,clampScroll,scrollingEnabled,scrollTouch,interceptScroll,childAt,stackY,stackHeight,refresh,getClipTop,setClipTop;
         final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipTop,clipBottom,scroll,lockSpace,children;
         final ArrayList<Method> touches=new ArrayList<>();
         Access(ClassLoader loader)throws ReflectiveOperationException{
@@ -288,6 +329,8 @@ final class NotificationCascadeHook {
             Class<?> algorithmState=Class.forName(BASE+"stack.StackScrollAlgorithm$StackScrollAlgorithmState",false,loader);
             Class<?> expandable=Class.forName(BASE+"row.ExpandableView",false,loader);row=Class.forName(BASE+"row.ExpandableNotificationRow",false,loader);
             state=method(expandable,"getViewState");Class<?> viewState=state.getReturnType();
+            getClipTop=method(expandable,"getClipTopAmount");result(getClipTop,int.class);
+            setClipTop=method(expandable,"setClipTopAmount",int.class);result(setClipTop,void.class);
             reset=method(algorithm,"resetViewStates",ambient,int.class);shelfClamp=method(algorithm,"updateViewWithShelf",expandable,viewState,float.class);
             resetRow=method(expandable,"resetViewState");host=field(algorithm,"mHostView",ViewGroup.class);maxHeight=field(layout,"mMaxLayoutHeight",int.class);
             scroll=field(layout,"mOwnScrollY",int.class);lockSpace=field(algorithm,"mKeyguardNotificationSpace",float.class);

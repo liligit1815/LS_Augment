@@ -22,7 +22,7 @@ JDK = Path(r'C:/Program Files/Android/openjdk/jdk-21.0.8/bin')
 runner = (ROOT / 'tools/run-java-tests.sh').read_text(encoding='utf-8')
 production = [ROOT / p for p in re.findall(r'"\$ROOT/([^\"]+\.java)"', runner)
               if p.startswith('android/app/src/main/')]
-production += [SRC / 'HealthIdentityProbe.java', SRC / 'hook/MiHealthHook.java',
+production += [SRC / 'HealthIdentityProbe.java', SRC / 'ScopeRestartPolicy.java', SRC / 'hook/MiHealthHook.java',
                args.background_source or SRC / 'hook/HealthBackgroundHook.java', SRC / 'hook/TargetReflection.java']
 sources = {
  'android/content/Context.java': '''package android.content;public class Context {
@@ -54,6 +54,20 @@ sources = {
  public android.content.Intent intent=new android.content.Intent();public android.content.Intent getIntent(){return intent;}
  protected void onResume(){}}
 ''',
+ 'android/app/Instrumentation.java': '''package android.app;public class Instrumentation {
+ public void callActivityOnCreate(Activity a,android.os.Bundle b){}
+ public void callActivityOnCreate(Activity a,android.os.Bundle b,android.os.PersistableBundle p){}
+ public void callActivityOnNewIntent(Activity a,android.content.Intent i){}
+ public void callActivityOnNewIntent(Activity a,ReferrerIntent i){}
+ public void callActivityOnNewIntent(Activity a,android.content.Intent i,ComponentCaller caller){}
+ public void callActivityOnNewIntent(Activity a,ReferrerIntent i,ComponentCaller caller){}
+ public void callActivityOnNewIntent(Activity a,android.content.Intent i,int unrelated){}
+ public Object callActivityOnNewIntent(Activity a,String unrelated){return null;}
+ public static class ReferrerIntent extends android.content.Intent {}}
+''',
+ 'android/app/ComponentCaller.java': 'package android.app;public class ComponentCaller {}',
+ 'android/os/Bundle.java': 'package android.os;public class Bundle {}',
+ 'android/os/PersistableBundle.java': 'package android.os;public class PersistableBundle extends Bundle {}',
  'android/os/IBinder.java': 'package android.os;public interface IBinder {}',
  'android/os/UserHandle.java': 'package android.os;public class UserHandle {public static UserHandle of(int n){return new UserHandle();}}',
  'android/os/Process.java': 'package android.os;public class Process {public static final int THREAD_PRIORITY_BACKGROUND=10;public static int myUid(){return 10077;}}',
@@ -115,7 +129,7 @@ sources = {
  Builder prepareFeatureHook(Method m,String k,boolean x){return new Builder(k);}void registerFeatureHook(Builder b){}
  void logFeatureError(String k,Throwable e){throw new AssertionError(k,e);}
  static final class Chain {final Object owner;final Object[] args;int proceeds;Chain(Object owner,Object...args){this.owner=owner;this.args=args;}
- Object getArg(int n){return args[n];}Object getThisObject(){return owner;}Object proceed(){proceeds++;return args.length==0?"native":args;}}
+ Runnable nativeAction;Object getArg(int n){return args[n];}Object getThisObject(){return owner;}Object proceed(){proceeds++;if(nativeAction!=null)nativeAction.run();return args.length==0?"native":args;}}
  }
 ''',
  'com/xiaomi/fitness/account/manager/AccountManager.java': '''package com.xiaomi.fitness.account.manager;
@@ -192,6 +206,29 @@ sources = {
  reset();FeatureSettings.current=config();c=controller();Handler.drain();AccountManager.id="";probe=HealthIdentityProbe.create(FeatureSettings.current,0,System.currentTimeMillis());c.probe(probe);Handler.drain();Handler.drain();check(!Handler.queue.isEmpty(),"cold account initialization not retried");AccountManager.id="1234567890";Handler.drain();check(id.equals(FeatureSettings.diagnostics.get("ls_augment_health_account_runtime"))&&Handler.queue.isEmpty(),"cold probe failed after login initialization");untouched("cold probe");done("cold-explicit-probe-short-retry");
  reset();FeatureSettings.current=config();FeatureSettings.verified=false;c=controller();Handler.drain();probe=HealthIdentityProbe.create(FeatureSettings.current,0,System.currentTimeMillis());c.probe(probe);Handler.drain();Handler.drain();check(AccountManager.reads==0&&!Handler.queue.isEmpty(),"unverified cold start collected identity or lost request");FeatureSettings.verified=true;Handler.drain();check(id.equals(FeatureSettings.diagnostics.get("ls_augment_health_account_runtime"))&&Handler.queue.isEmpty(),"cold snapshot readiness did not finish one shot");untouched("cold snapshot probe");done("explicit-probe-waits-for-verified-cold-snapshot");
  reset();FeatureSettings.current=config();c=controller();setController(c);Handler.drain();android.app.Activity activity=new android.app.Activity();activity.intent.putExtra(HealthIdentityProbe.EXTRA,HealthIdentityProbe.create(FeatureSettings.current,0,System.currentTimeMillis()));AugmentModule.Chain resume=new AugmentModule.Chain(activity);AugmentModule.hooks.get("health.identity.probe").invoke(resume);check(resume.proceeds==1&&!activity.intent.hasExtra(HealthIdentityProbe.EXTRA),"resume changed/intent not consumed");Handler.drain();Handler.drain();untouched("intent bridge");check(id.equals(FeatureSettings.diagnostics.get("ls_augment_health_account_runtime")),"bridge not delivered");done("resume-intent-consumed-native-lifecycle-preserved");
+ for(String entry:new String[]{"callActivityOnCreate.Bundle.2","callActivityOnCreate.Bundle.3","callActivityOnNewIntent.Intent.2","callActivityOnNewIntent.Intent.3","callActivityOnNewIntent.ReferrerIntent.2","callActivityOnNewIntent.ReferrerIntent.3"}){
+  reset();FeatureSettings.current=config();c=controller();setController(c);Handler.drain();
+  android.app.Activity target=new android.app.Activity();android.content.Intent incoming=entry.contains("ReferrerIntent")?new android.app.Instrumentation.ReferrerIntent():new android.content.Intent();
+  incoming.putExtra("native-payload","keep");incoming.putExtra(HealthIdentityProbe.EXTRA,HealthIdentityProbe.create(FeatureSettings.current,0,System.currentTimeMillis()));
+  boolean create=entry.startsWith("callActivityOnCreate");if(create)target.intent=incoming;
+  AugmentModule.Chain dispatch=new AugmentModule.Chain(new android.app.Instrumentation(),target,create?new android.os.Bundle():incoming,null);
+  dispatch.nativeAction=()->{check(!incoming.hasExtra(HealthIdentityProbe.EXTRA),"probe must be consumed before native redirect");target.intent=new android.content.Intent();};
+  AugmentModule.hooks.get("health.identity.dispatch."+entry).invoke(dispatch);
+  check(dispatch.proceeds==1&&"keep".equals(incoming.getStringExtra("native-payload")),"native dispatch/payload changed");
+  Handler.drain();Handler.drain();check(id.equals(FeatureSettings.diagnostics.get("ls_augment_health_account_runtime")),"launch/reused activity request lost: "+entry);
+  check(FeatureSettings.diagnostics.get("ls_augment_health_probe_runtime").startsWith("identity_ready;"),"probe outcome missing");
+  prior=AccountManager.reads;AugmentModule.hooks.get("health.identity.dispatch."+entry).invoke(dispatch);Handler.drain();Handler.drain();
+  check(AccountManager.reads==prior&&Handler.queue.isEmpty(),"nested dispatch replayed identity");untouched(entry);done("dispatch-"+entry);
+ }
+ check(!AugmentModule.hooks.containsKey("health.identity.dispatch.callActivityOnNewIntent.String.2"),"unrelated overload hooked");
+ reset();FeatureSettings.current=config();c=controller();setController(c);Handler.drain();
+ android.app.Activity foreign=new android.app.Activity(){public String getPackageName(){return "foreign";}};
+ android.content.Intent ignored=new android.content.Intent().putExtra(HealthIdentityProbe.EXTRA,HealthIdentityProbe.create(FeatureSettings.current,0,System.currentTimeMillis()));
+ AugmentModule.Chain unrelated=new AugmentModule.Chain(new android.app.Instrumentation(),foreign,ignored);
+ AugmentModule.hooks.get("health.identity.dispatch.callActivityOnNewIntent.Intent.2").invoke(unrelated);Handler.drain();
+ check(unrelated.proceeds==1&&ignored.hasExtra(HealthIdentityProbe.EXTRA)&&AccountManager.reads==0&&FeatureSettings.diagnostics.isEmpty(),"foreign dispatch changed");
+ AugmentModule.hooks.get("health.identity.dispatch.callActivityOnNewIntent.Intent.2").invoke(new AugmentModule.Chain(new android.app.Instrumentation(),new android.app.Activity(),null));Handler.drain();
+ check(AccountManager.reads==0&&Handler.queue.isEmpty(),"null native intent did work");done("dispatch-foreign-null-and-unrelated-native");
  reset();FeatureSettings.current=config();HealthBackgroundHook bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();check(android.content.Context.bindings==0&&FeatureSettings.diagnostics.isEmpty()&&Handler.queue.isEmpty(),"default background loop/binding");
  FeatureSettings.current=on(id);FeatureSettings.changed();Handler.drain();check(bg.bound&&android.content.Context.bindings==1&&!Handler.queue.isEmpty(),"enabled service not resumed");FeatureSettings.current=config();FeatureSettings.changed();Handler.drain();check(!bg.bound&&android.content.Context.unbindings==1&&Handler.queue.isEmpty(),"default service/task survived");FeatureSettings.diagnostics.clear();bg.connection.onServiceConnected(null,null);bg.connection.onServiceDisconnected(null);check(FeatureSettings.diagnostics.isEmpty(),"late disabled callback wrote state");done("background-default-enable-disable-late-callback");
  reset();FeatureSettings.current=config(ConfigSchema.HEALTH_ENABLED,"1",ConfigSchema.HEALTH_MULTIPLY_ENABLED,"1",ConfigSchema.HEALTH_BACKGROUND,"1");bg=new HealthBackgroundHook(new android.content.Context());Handler.drain();check(android.content.Context.bindings==0&&FeatureSettings.diagnostics.isEmpty()&&Handler.queue.isEmpty(),"unbound background bound");done("background-unbound-no-service");

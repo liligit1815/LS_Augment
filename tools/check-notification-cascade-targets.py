@@ -8,7 +8,7 @@ P='Lcom/android/systemui/statusbar/notification/'
 A=P+'stack/StackScrollAlgorithm;';S=P+'stack/ExpandableViewState;';E=P+'row/ExpandableView;';R=P+'row/ExpandableNotificationRow;';B=P+'stack/AmbientState;';T=P+'stack/StackScrollAlgorithm$StackScrollAlgorithmState;'
 methods=[(A,'resetViewStates('+B+'I)V'),(A,'updateViewWithShelf('+E+S+'F)V'),
  (A,'updateChild(I'+T+B+')V'),(A,'updatePositionsForState('+T+B+')V'),(A,'resetChildViewStates()V'),
- (E,'getViewState()'+S),(E,'resetViewState()'+S),(S,'getAlpha()F')]
+ (E,'getViewState()'+S),(E,'resetViewState()'+S),(E,'getClipTopAmount()I'),(E,'setClipTopAmount(I)V'),(S,'getAlpha()F')]
 methods += [(B,n+r) for n,r in [('isOnKeyguard','()Z'),('isDozing','()Z'),('getHideAmount','()F'),('getExpansionFraction','()F')]]
 methods += [(R,n+'()Z') for n in ['isPinned','isHeadsUpAnimatingAway','isExpandAnimationRunning','areGutsExposed','isGroupExpansionChanging']]
 fields=[(A,'mHostView:Landroid/view/ViewGroup;'),(P+'stack/NotificationStackScrollLayout;','mMaxLayoutHeight:I')]

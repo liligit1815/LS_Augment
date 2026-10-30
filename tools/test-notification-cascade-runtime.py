@@ -29,7 +29,7 @@ files.update({
 'android/graphics/Shader.java':'package android.graphics;public class Shader{public enum TileMode{CLAMP}}',
 'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}}',
 'android/view/View.java':'''package android.view;public class View{
- public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){}public static final int VISIBLE=0,GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
+ public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}private final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.add(l);}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.remove(l);}public void detach(){attached=false;for(var l:new java.util.ArrayList<>(listeners))l.onViewDetachedFromWindow(this);}public static final int VISIBLE=0,GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
  public float sx=1,sy=1,px=200,py=50;public android.graphics.RenderEffect effect;
  public final android.content.Context context=new android.content.Context();public android.content.ContentResolver getContentResolver(){return new android.content.ContentResolver();}public final android.content.res.Resources resources=context.getResources();
  public android.content.Context getContext(){return context;}public android.content.res.Resources getResources(){return resources;}
@@ -58,10 +58,11 @@ BASE+'stack/ExpandableViewState.java':'''package com.android.systemui.statusbar.
 ''',
 BASE+'row/ExpandableView.java':'''package com.android.systemui.statusbar.notification.row;
 import com.android.systemui.statusbar.notification.stack.ExpandableViewState;import ls.augment.com.hook.AugmentModule;
-public class ExpandableView extends android.view.View{public final ExpandableViewState state=new ExpandableViewState();public float nativeY;public boolean privateHidden;
+public class ExpandableView extends android.view.View{public final ExpandableViewState state=new ExpandableViewState();public float nativeY;public boolean privateHidden,resetTopClip=true;public int renderedTopClip;
+ public int getClipTopAmount(){return renderedTopClip;}public void setClipTopAmount(int n){renderedTopClip=n;}
  public ExpandableViewState getViewState(){return state;}
  public ExpandableViewState resetViewState(){return (ExpandableViewState)AugmentModule.invoke(this,"resetViewState",new Class<?>[]{});}
- public ExpandableViewState native_resetViewState(){state.mYTranslation=nativeY;state.mScaleX=sx;state.mScaleY=sy;state.mZTranslation=0;state.alpha=1;state.clipTopAmount=0;state.hidden=privateHidden;state.gone=visibility==GONE;return state;}}
+ public ExpandableViewState native_resetViewState(){state.mYTranslation=nativeY;state.mScaleX=sx;state.mScaleY=sy;state.mZTranslation=0;state.alpha=1;if(resetTopClip)state.clipTopAmount=0;state.hidden=privateHidden;state.gone=visibility==GONE;return state;}}
 ''',
 BASE+'row/ExpandableNotificationRow.java':'''package com.android.systemui.statusbar.notification.row;public class ExpandableNotificationRow extends ExpandableView{
  public boolean busy,pinned,away,guts,expanding,groupChanging;
@@ -120,7 +121,10 @@ public class TestCascade{
   flag(NotificationAppearanceOptions.STACK_LOCK,false);a.keyguard=true;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"lock gate independent");a.keyguard=false;
   a.doze=true;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"doze native");a.doze=false;
   a.hide=1;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"hidden shade native");a.hide=0;
-  a.expansion=.5f;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"partial expansion native");a.expansion=1;
+  String lastLayout=FeatureSettings.reports.get("ls_augment_notification_cascade_last_layout_shade");
+  check(lastLayout!=null&&lastLayout.contains("layout_state_only;surface=shade;observed_at=")&&lastLayout.contains(";row0={native_y=600.0")&&lastLayout.contains("clip_top=")&&lastLayout.contains("clip_bottom=")&&lastLayout.contains("view_height=")&&!lastLayout.contains(";row2="),"bounded privacy-filtered front layout evidence");
+  a.expansion=.5f;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"partial expansion native");
+  check(lastLayout.equals(FeatureSettings.reports.get("ls_augment_notification_cascade_last_layout_shade")),"collapsed shade erased last expanded geometry");a.expansion=1;
   h.resources.configuration.orientation=2;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"landscape default native");flag(NotificationAppearanceOptions.STACK_LANDSCAPE,true);alg.resetViewStates(a,0);check(tail.state.mScaleX<1,"landscape opt in");
   flag(SystemUiOptions.NOTIFICATION_STACK,false);tail.sx=tail.sy=.8f;alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"disable restores native scale");check(tail.effect==null&&tail.py==50,"disable releases effects");near(tail.sx,1,"recycled view scale restored");near(tail.sy,1,"recycled view height scale restored");
   float lastScale=1,lastAlpha=1;for(int i=0;i<1000;i++){float y=600+i;NotificationCascadePolicy.Card c=NotificationCascadePolicy.project(y,100,700,600,1000,2,true);check(Float.isFinite(c.y)&&c.scale>0&&c.alpha>=0&&c.alpha<=1,"finite geometry");check(c.scale<=lastScale&&c.alpha<=lastAlpha,"monotonic depth");lastScale=c.scale;lastAlpha=c.alpha;}
@@ -143,6 +147,17 @@ public class TestCascade{
   h.mOwnScrollY=h.getScrollRange();alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"lock tail full at end");
   h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"scrolled lock row is clipped below clock");
   h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==0,"scroll back restores native clipping");
+  // First (unscaled) rows need their own clip ownership; they never enter the
+  // projection/blur map. The real OEM may retain a nonzero native baseline too.
+  front.resetTopClip=false;front.state.clipTopAmount=7;h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"lock adds clipping above existing native seven pixels");
+  h.mOwnScrollY=640;alg.resetViewStates(a,0);check(front.state.clipTopAmount==40,"scrolling down decreases owned clipping instead of accumulating maximum");
+  a.keyguard=false;a.stackY=0;h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==7,"lock-to-shade restores only owned clipping");
+  a.keyguard=true;a.stackY=150;h.mOwnScrollY=680;alg.resetViewStates(a,0);flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);check(front.state.clipTopAmount==7,"master off restores first unscaled row");flag(SystemUiOptions.NOTIFICATION_STACK,true);
+  h.mOwnScrollY=680;alg.resetViewStates(a,0);flag(NotificationAppearanceOptions.STACK_LOCK,false);alg.resetViewStates(a,0);check(front.state.clipTopAmount==7,"lock surface off restores first row");flag(NotificationAppearanceOptions.STACK_LOCK,true);
+  h.mOwnScrollY=680;alg.resetViewStates(a,0);front.state.clipTopAmount=23;h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==23,"new OEM clip takes ownership");
+  front.state.clipTopAmount=7;h.mOwnScrollY=680;alg.resetViewStates(a,0);front.setClipTopAmount(front.state.clipTopAmount);h.detach();check(front.state.clipTopAmount==7&&front.getClipTopAmount()==7,"detach restores owned state and matching rendered clip");
+  h.attached=true;h.mOwnScrollY=680;alg.resetViewStates(a,0);front.setClipTopAmount(31);h.detach();check(front.state.clipTopAmount==7&&front.getClipTopAmount()==31,"detach preserves externally changed rendered clip");
+  h.attached=true;front.state.clipTopAmount=0;h.mOwnScrollY=0;alg.resetViewStates(a,0);
   check(FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_shade")&&FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_lock"),"independent evidence");
   alg.failChild=true;try{alg.resetViewStates(a,0);throw new AssertionError("native failure propagated");}catch(RuntimeException expected){}near(alg.mKeyguardNotificationSpace,600,"capacity restored on throw");alg.failChild=false;
   flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);check(h.getScrollRange()==0&&h.mOwnScrollY==0,"disable restores native range and position");alg.resetViewStates(a,0);check(tail.state.hidden,"native lock capacity restored");
@@ -174,20 +189,28 @@ public class TestWake{
 '''
 })
 
-for variant in ['legacy','modern','missing']:
+for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
     current=dict(files)
     if variant=='modern':
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha(float a)','setAlpha(float a,String why)')
+        # NX819J's native resetViewState and algorithm.updateClipping leave
+        # clipTopAmount untouched. The old double hid ownership leaks by zeroing it.
+        k=BASE+'row/ExpandableView.java';current[k]=current[k].replace('resetTopClip=true','resetTopClip=false')
         k=BASE+'row/ExpandableNotificationRow.java';current[k]=current[k].replace('isUserLocked','isUserSwipingToExpandRow')
         k=BASE+'stack/NotificationStackScrollLayout.java';current[k]=current[k].replace('public boolean native_onScrollTouch', '''public boolean offerScrollTouchToScroller(android.view.MotionEvent e){return (Boolean)ls.augment.com.hook.AugmentModule.invoke(this,"offerScrollTouchToScroller",new Class<?>[]{android.view.MotionEvent.class},e);}public boolean native_offerScrollTouchToScroller(android.view.MotionEvent e){return isScrollingEnabled();}public boolean native_onScrollTouch''')
         k='ls/augment/com/hook/TestCascade.java';current[k]=current[k].replace('hooks==9','hooks==10').replace('h.onScrollTouch(', 'h.offerScrollTouchToScroller(')
     if variant=='missing':
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha','unrelatedAlpha')
+    if variant=='missing_clip':
+        k=BASE+'row/ExpandableView.java';current[k]=current[k].replace('setClipTopAmount','unrelatedTopClip')
+        k='ls/augment/com/hook/TestCascade.java';current[k]=current[k].replace('setClipTopAmount','unrelatedTopClip')
+    if variant=='wrong_clip_type':
+        k=BASE+'row/ExpandableView.java';current[k]=current[k].replace('int getClipTopAmount()','float getClipTopAmount()')
     with tempfile.TemporaryDirectory(prefix='duo-cascade-') as folder:
         work=Path(folder);paths=[]
         for name,source in current.items():
             p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(source,encoding='utf-8');paths.append(p)
         paths += [SRC/name for name in ['EnhancementOption.java','NotificationAppearanceOptions.java','NotificationCascadePolicy.java','hook/NotificationCascadeHook.java','hook/NotificationStackGate.java','hook/NativeIslandWake.java']]
         subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',folder,*map(str,paths)],check=True)
-        subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestCascade',*(['missing'] if variant=='missing' else [])],check=True)
+        subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestCascade',*(['missing'] if variant in ['missing','missing_clip','wrong_clip_type'] else [])],check=True)
         if variant=='legacy':subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestWake'],check=True)
