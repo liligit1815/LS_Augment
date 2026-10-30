@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20690,
-    "versionName": "2.0.0-alpha1-test20690",
+    "versionCode": 20693,
+    "versionName": "2.0.0-alpha1-test20693",
     "minSdk": 35,
-    "publishedAt": "2026-10-30T02:14:55Z",
-    "notes": "- 修复小米运动健康点击“去绑定”后返回仍无法完成账号绑定的问题。\n- 修复通知堆叠滚动后首条通知顶部被裁切、内容显示不完整的问题。\n- 优化通知堆叠在锁屏、通知中心切换及关闭功能时的显示恢复。\n- 更新后请重启手机。\n- 取消工作台文件流转能力，取消QQ作用域，请务必在LSP框架中取消勾选QQ作用域，经反馈Hook QQ易出现账户风险提示，不Hook无法实现文件流转，故取消此功能",
+    "publishedAt": "2026-10-30T06:27:31Z",
+    "notes": "- 完善红魔 12 魔力岛适配，修复开启状态识别、设置入口及开关联动，保留旧版星云岛兼容。\n- 接入充电、音乐、倒计时、红魔互传与 AI 帮写，扩展日程、天气、航班、火车票、打车和外卖等原厂服务卡片。\n- 补全录音、通话、会议转写、通话 AI 辅助、AI 记忆和 NFC 文件传输场景，沿用原厂内容与操作。\n- 修复 AI 记忆收藏处理与结果卡片缺失，以及 NFC 传输卡片与原厂开关关联异常。\n- 优化关闭场景后的撤卡与面板收起，重新开启后响应新的服务事件。\n- 新增“通知状态自动避让岛”开关，可选择是否为岛预留状态栏空间。\n- 更新后请确认相关作用域并重启手机；AI 记忆需启用 AI 知识后台服务（com.zte.ai.knowledge）作用域。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20690/redmagic-duo-20690.apk",
-      "size": 14502827,
-      "sha256": "fffe1e1c0c8d2fb351ab4a31edd6d96d9ec72b09f1c5bcf531023495f0b2cf5b",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20693/redmagic-duo-20693.apk",
+      "size": 14550095,
+      "sha256": "4c027f8c3d93e5ded0f24bdcc5dd854ea4ed82fca9568507bee60f0858bdba9f",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
