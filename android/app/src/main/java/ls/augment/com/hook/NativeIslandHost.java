@@ -64,6 +64,7 @@ final class NativeIslandHost {
     private String lastDiagnostic="";
     private NativeIslandScenes nativeScenes;
     private NativeIslandFullscreen nativeFullscreen;
+    private MagicIslandScenes magicScenes;
     private DuoIslandCompatibility duoCompatibility;
     private DuoIslandLegacyCards legacyCards;
     private boolean nativeRequested;
@@ -314,6 +315,7 @@ final class NativeIslandHost {
     void selectNative(boolean selected){
         nativeRequested=selected;
         if(!selected){
+            if(magicScenes!=null){magicScenes.close();magicScenes=null;}
             cancelNativeWait();
             if(nativeFullscreen!=null){try{nativeFullscreen.restore();}catch(Exception e){report("native_fullscreen_exit_failed:"+cause(e));}nativeFullscreen=null;}
             if(nativeOwner==this){
@@ -326,7 +328,7 @@ final class NativeIslandHost {
             }
             return;
         }
-        if(nativeSelected&&nativeOwner==this){if(nativeScenes!=null)nativeScenes.configurationChanged();return;}
+        if(nativeSelected&&nativeOwner==this){if(nativeScenes!=null)nativeScenes.configurationChanged();if(magicScenes!=null)magicScenes.refresh();return;}
         if(nativeOwner!=null&&nativeOwner!=this)nativeOwner.selectNative(false);
         try{
             Object f=invokeStatic("com.zte.base.Feature","get",new Class<?>[]{String.class},"DYNAMIC_ISLAND");
@@ -354,7 +356,7 @@ final class NativeIslandHost {
             if(!set(f,"mEnabled",true)||!Boolean.TRUE.equals(call(f,"enabled")))
                 throw new IllegalStateException("native_feature_enable_not_applied");
             nativeSelected=true;nativeOwner=this;
-            boolean on=android.provider.Settings.System.getInt(context.getContentResolver(),"dynamic_island_switch_state",0)!=0;
+            boolean on=android.provider.Settings.System.getInt(context.getContentResolver(),fullscreen?"dynamic_island_function_switch":"dynamic_island_switch_state",0)==1;
             if(nativeFullscreen!=null)nativeFullscreen.apply(android.provider.Settings.System.getInt(
                     context.getContentResolver(),"dynamic_island_function_switch",0)==1);
             call(pm,"onDynamicIslandSettingsChanged",on);
@@ -365,10 +367,15 @@ final class NativeIslandHost {
             if(nativeScenes!=null)nativeScenes.close();
             nativeScenes=null;
             if(on&&!fullscreen){nativeScenes=new NativeIslandScenes(context,loader,m,pm,(View)view);nativeScenes.start();}
+            if(on&&fullscreen&&magicScenes==null){
+                try{magicScenes=new MagicIslandScenes(context,pm);magicScenes.start();}
+                catch(Exception unavailable){FeatureSettings.diagnostic(context,ls.augment.com.MagicIslandPolicy.CAPABILITY,"unavailable:"+unavailable.getMessage());}
+            }
             report("native_selected;enabled="+on+";feature="+call(f,"enabled")+";windowAttached=true;duo=false;fullscreen="+fullscreen
-                    +";scene_extensions="+(fullscreen?"fullscreen_native_only":"capability_checked"));
+                    +";scene_extensions="+(fullscreen?(magicScenes!=null?"fullscreen_native_scenes":"fullscreen_native_only"):"capability_checked"));
         }catch(Exception failure){
             cancelNativeWait();
+            if(magicScenes!=null){magicScenes.close();magicScenes=null;}
             if(nativeScenes!=null){nativeScenes.close();nativeScenes=null;}
             if(nativeFullscreen!=null){try{nativeFullscreen.restore();}catch(Exception ignored){}nativeFullscreen=null;}
             nativeSelected=false;if(nativeOwner==this)nativeOwner=null;

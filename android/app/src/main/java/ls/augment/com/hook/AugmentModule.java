@@ -349,12 +349,14 @@ public final class AugmentModule extends RootEarlyModule {
         }
         if ("cn.zte.recorder".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
             NativeIslandRecorderCards.install(this, param.getClassLoader());
             NativeIslandRecorderSource.install(this, param.getClassLoader());
             return;
         }
         if ("com.zte.nebulatranslation".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
             NativeIslandTranslationCards.install(this, param.getClassLoader());
             return;
         }
@@ -365,16 +367,24 @@ public final class AugmentModule extends RootEarlyModule {
         }
         if ("com.zte.multscr".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
             NativeIslandNfcTransferCards.install(this, param.getClassLoader());
             return;
         }
         if ("com.android.dialer".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
             NativeIslandCallCards.install(this, param.getClassLoader());
+            return;
+        }
+        if ("com.zte.ai.knowledge".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
             return;
         }
         if ("com.zte.personalagent".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            MagicIslandPersonalCards.install(this, param.getClassLoader());
             NativeIslandPersonalCards.install(this, param.getClassLoader());
             return;
         }

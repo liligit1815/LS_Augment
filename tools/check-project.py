@@ -256,6 +256,7 @@ def check_scope():
         'com.android.settings', 'com.android.systemui', 'com.zte.beautify',
         'zte.com.cn.alarmclock', 'cn.zte.recorder', 'com.zte.nebulatranslation',
         'com.zte.cn.zteshare', 'com.zte.multscr', 'com.android.dialer', 'com.zte.personalagent',
+        'com.zte.ai.knowledge',
         'com.zte.beautifyadapter',
         'com.zte.fingerprints', 'com.fingerprint.sensorservice',
         'com.zte.cn.doubleapp',

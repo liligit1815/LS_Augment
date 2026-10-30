@@ -17,7 +17,11 @@ final class NativeIslandSettings {
 
     static void open(Activity activity, ExecutorService worker) {
         worker.execute(() -> {
-            ComponentName component = new ComponentName(PACKAGE, PAGE);
+            String mode=NativeIslandMode.detect(activity);
+            if(!NativeIslandMode.known(mode)){
+                activity.runOnUiThread(()->Toast.makeText(activity,"等待原厂岛能力检测，请确认系统界面作用域后重启",Toast.LENGTH_LONG).show());return;
+            }
+            ComponentName component = new ComponentName(PACKAGE, NativeIslandMode.page(mode));
             PackageManager pm = activity.getPackageManager();
             int previous = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
             boolean changed = false;
@@ -36,7 +40,7 @@ final class NativeIslandSettings {
                 RootShell.Result started = RootShell.run("am start -W --user " + user() + " -n "
                         + component.flattenToString(), null, 12, 8192);
                 if (!started.isSuccess() || !started.output.contains("Status: ok"))
-                    throw new IllegalStateException("原厂星云岛设置未能打开");
+                    throw new IllegalStateException("原厂"+NativeIslandMode.name(mode)+"设置未能打开");
             } catch (Exception failure) {
                 if (changed) {
                     String action = previous == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ? "default-state"
@@ -44,7 +48,7 @@ final class NativeIslandSettings {
                     RootShell.run("pm " + action + " --user " + user() + " " + component.flattenToString(), null, 8, 4096);
                 }
                 String message = failure instanceof PackageManager.NameNotFoundException
-                        ? "当前系统未提供星云岛设置界面" : failure.getMessage();
+                        ? "当前系统未提供"+NativeIslandMode.name(mode)+"设置界面" : failure.getMessage();
                 activity.runOnUiThread(() -> { if (!activity.isDestroyed())
                     Toast.makeText(activity, message, Toast.LENGTH_LONG).show(); });
             }

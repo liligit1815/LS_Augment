@@ -18,6 +18,7 @@ public final class HookTargetRegistry {
                     "com.zte.multscr",
                     "com.android.dialer",
                     "com.zte.personalagent",
+                    "com.zte.ai.knowledge",
                     "com.zte.beautify",
                     "com.zte.beautifyadapter",
                     "com.zte.fingerprints",

@@ -27,7 +27,7 @@ public final class ModuleHierarchy {
             if("systemui:statusbar_double_tap_sleep".equals(f.id))continue;
             STATUS_FEATURES.add(f);for(String key:f.allKeys())KEY_ROUTES.put(key,statusRoute(f));
         }
-        add(section("notifications","island","灵动岛"),"systemui:island_enabled",NativeIslandSceneOptions.ENABLED);
+        add(section("notifications","island","灵动岛"),"systemui:island_status_avoidance","systemui:island_enabled",NativeIslandSceneOptions.ENABLED);
         add(section("notifications","notification_display","通知展示"),"systemui:notification_media_hide","systemui:notification_stack","systemui:notification_clear","ls_augment_rm_overlay_notification_hide");
         add(section("notifications","center_layout","控制中心外观与布局"),"systemui:liquid_glass","systemui:qs_grid","systemui:cc_corners","systemui:cc_tiles","systemui:cc_media");
         source(section("notifications","notification_clock","通知页大时钟与布局"),"systemui","notification_clock");

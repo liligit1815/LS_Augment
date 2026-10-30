@@ -316,6 +316,9 @@ final class AppConfig {
                 }
             }
             next.putAll(clean);
+            if(ConfigSchema.truthy(clean.get(SystemUiOptions.ISLAND))
+                    &&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(context)))
+                return rejected(updates,"当前魔力岛显示分支尚不支持Duo自定义岛，请使用原厂魔力岛");
             // Last explicit selection wins, atomically. Keep every appearance parameter.
             if (ConfigSchema.truthy(clean.get(ConfigSchema.NATIVE_ISLAND_SELECTED))) {
                 clean.put(SystemUiOptions.ISLAND, "0");

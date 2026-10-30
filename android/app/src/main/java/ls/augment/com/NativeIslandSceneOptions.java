@@ -6,8 +6,8 @@ import java.util.List;
 /** Shared scene identifiers; unknown OEM scenes retain their native behavior. */
 public final class NativeIslandSceneOptions {
     public static final String ENABLED = "ls_augment_native_island_scene_support";
-    public static final String[] IDS = {"record", "torch", "call", "media", "countdown", "face", "meeting", "ai", "ai_memory", "charging", "low_power", "bluetooth", "headset", "transfer", "nfc_transfer", "calendar_meeting", "scenic_guide", "nearby_charging", "cycling", "flight", "preflight_battery", "weather_travel"};
-    public static final String[] LABELS = {"录音", "手电筒", "通话", "音乐播放", "倒计时", "人脸识别", "会议", "AI 助手", "AI 记忆", "充电", "低电量", "蓝牙", "耳机", "互传", "NFC 文件传输", "日程会议提醒", "景区导览", "附近充电宝", "骑行与还车", "航班行程", "出行前省电建议", "异常天气出行建议"};
+    public static final String[] IDS = {"record", "torch", "call", "media", "countdown", "face", "meeting", "ai", "ai_memory", "charging", "low_power", "bluetooth", "headset", "transfer", "nfc_transfer", "calendar_meeting", "scenic_guide", "nearby_charging", "cycling", "flight", "preflight_battery", "weather_travel", "ai_writing", "taxi", "takeout", "train_12306", "train_travel"};
+    public static final String[] LABELS = {"录音", "手电筒", "通话", "音乐播放", "倒计时", "人脸识别", "会议", "AI 助手", "AI 记忆", "充电", "低电量", "蓝牙", "耳机", "互传", "NFC 文件传输", "日程会议提醒", "景区导览", "附近充电宝", "骑行与还车", "航班行程", "出行前省电建议", "异常天气出行建议", "AI 帮写", "打车", "外卖", "12306 火车票", "出行工具火车票"};
     // App-provided cards have no ordinary *Island class; only the first 13 map here.
     public static final String[] TYPES = {"RecorderIsland", "FlashlightIsland", "CallIsland", "MediaIsland", "CountDownIsland", "FaceDetectIsland", "MeetingIsland", "AIIsland", "AIMemIsland", "ChargingIsland", "LowPowerIsland", "BluetoothIsland", "HeadsetIsland"};
     public static String key(String id) { return ENABLED + "_" + id; }
@@ -40,6 +40,8 @@ public final class NativeIslandSceneOptions {
                         ? "显示原厂在航班出发前产生的低电量省电建议。轻点展开，点击“开启”、正文或图标沿用原厂省电操作；无法直接开启时打开省电设置。已开启省电时显示充电提醒并隐藏按钮。需启用原厂建议服务、相关出行与低电量提醒及其作用域，并通过能力检测；不会自行生成行程或模拟电量。"
                         : "cycling".equals(IDS[i])
                         ? "显示原厂建议识别的骑行时长、还车中和骑行结束状态。轻点展开；正文或图标打开来源骑行应用，“还车”由原厂一步助手操作该平台，结果以实际车辆和平台状态为准。需启用原厂建议服务、共享单车提醒及其作用域，并等待原厂还车能力就绪；开启本项不会自行识别骑行或启动还车。"
+                        : ("ai_writing".equals(IDS[i]) || "taxi".equals(IDS[i]) || "takeout".equals(IDS[i]) || "train_12306".equals(IDS[i]) || "train_travel".equals(IDS[i]))
+                        ? "控制魔力岛中对应原厂服务的实时卡片，保留原厂操作。需启用来源服务；开启后随新的业务状态更新显示，不会自行生成订单或行程。旧版缺少相应接口时不可用。"
                         : "允许此场景在星云岛显示。开启后随下一次场景状态更新生效；缺少原厂能力时保留原生行为并记录原因。"));
         return options;
     }

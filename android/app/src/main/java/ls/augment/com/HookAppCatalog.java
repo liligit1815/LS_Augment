@@ -78,7 +78,7 @@ public final class HookAppCatalog {
             target(SYSTEM, "系统框架", "小窗、音量、安装规则与无线连接", "device",
                     "system", "com.zte.recommend"),
             target(SYSTEM_UI, "系统界面", "状态栏、控制中心、锁屏与息屏显示", "systemui",
-                    "com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent"),
+                    "com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent", "com.zte.ai.knowledge"),
             target(SETTINGS, "系统设置", "显示与时间、USB 连接及开发者选项", "settings",
                     "com.android.settings"),
             target(LAUNCHER, "系统桌面", "桌面行列布局、图标名称、页面与最近任务", "launcher",
@@ -218,12 +218,16 @@ public final class HookAppCatalog {
     public static List<String> affectedPackages(String key) {
         if (NativeIslandSceneOptions.ENABLED.equals(key) || ConfigSchema.NATIVE_ISLAND_SELECTED.equals(key)
                 || SystemUiOptions.ISLAND.equals(key))
-            return immutable(Arrays.asList("com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent"));
+            return immutable(Arrays.asList("com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent", "com.zte.ai.knowledge"));
+        if (key.startsWith(NativeIslandSceneOptions.ENABLED+"_") && MagicIslandPolicy.personal(key.substring((NativeIslandSceneOptions.ENABLED+"_").length())))
+            return immutable(Arrays.asList("com.android.systemui", "com.zte.personalagent"));
         if (NativeIslandSceneOptions.key("calendar_meeting").equals(key) || NativeIslandSceneOptions.key("scenic_guide").equals(key)
                 || NativeIslandSceneOptions.key("nearby_charging").equals(key) || NativeIslandSceneOptions.key("cycling").equals(key) || NativeIslandSceneOptions.key("flight").equals(key) || NativeIslandSceneOptions.key("preflight_battery").equals(key) || NativeIslandSceneOptions.key("weather_travel").equals(key))
             return immutable(Arrays.asList("com.android.systemui", "com.zte.personalagent"));
         if (NativeIslandSceneOptions.key("call").equals(key))
             return immutable(Arrays.asList("com.android.systemui", "com.android.dialer"));
+        if (NativeIslandSceneOptions.key("ai_memory").equals(key))
+            return immutable(Arrays.asList("com.android.systemui", "com.zte.ai.knowledge"));
         if (NativeIslandSceneOptions.key("countdown").equals(key))
             return immutable(Arrays.asList("com.android.systemui", "zte.com.cn.alarmclock"));
         if (NativeIslandSceneOptions.key("record").equals(key))

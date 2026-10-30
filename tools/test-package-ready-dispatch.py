@@ -168,12 +168,13 @@ public class TestPackageReadyDispatch {
 
         for (String[] route : new String[][] {
                 {"zte.com.cn.alarmclock", "NativeIslandClockCards", "NativeIslandClockSource"},
-                {"cn.zte.recorder", "NativeIslandRecorderCards", "NativeIslandRecorderSource"},
-                {"com.zte.nebulatranslation", "NativeIslandTranslationCards"},
+                {"cn.zte.recorder", "NativeIslandRecorderCards", "NativeIslandRecorderSource", "MagicIslandAppCards:cn.zte.recorder"},
+                {"com.zte.nebulatranslation", "NativeIslandTranslationCards", "MagicIslandAppCards:com.zte.nebulatranslation"},
                 {"com.zte.cn.zteshare", "NativeIslandTransferCards"},
-                {"com.zte.multscr", "NativeIslandNfcTransferCards"},
-                {"com.android.dialer", "NativeIslandCallCards"},
-                {"com.zte.personalagent", "NativeIslandPersonalCards"}}) {
+                {"com.zte.multscr", "NativeIslandNfcTransferCards", "MagicIslandAppCards:com.zte.multscr"},
+                {"com.android.dialer", "NativeIslandCallCards", "MagicIslandAppCards:com.android.dialer"},
+                {"com.zte.ai.knowledge", "MagicIslandAppCards:com.zte.ai.knowledge"},
+                {"com.zte.personalagent", "NativeIslandPersonalCards", "MagicIslandPersonalCards"}}) {
             TestPackageReadyDispatch source = module("vendor-source-process");
             deliver(source, ignored("unrelated.resource"));
             deliver(source, target(route[0]));
@@ -210,7 +211,7 @@ def main():
     ))
     stubs = []
     for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook',
-                 'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook'):
+                 'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook', 'MagicIslandAppCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l, String p) {{ m.feature("{name}:" + p, l); }} }}')
     for name in ('StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
                  'LauncherPagesHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
@@ -220,7 +221,7 @@ def main():
                  'LauncherCleanupBombHook', 'LiquidGlassDockHook', 'LauncherRecentsPrivacyHook',
                  'NativeIslandClockCards', 'NativeIslandClockSource', 'NativeIslandRecorderCards',
                  'NativeIslandRecorderSource', 'NativeIslandTranslationCards', 'NativeIslandTransferCards',
-                 'NativeIslandNfcTransferCards', 'NativeIslandCallCards', 'NativeIslandPersonalCards'):
+                 'NativeIslandNfcTransferCards', 'NativeIslandCallCards', 'NativeIslandPersonalCards', 'MagicIslandPersonalCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l) {{ m.feature("{name}", l); }} }}')
     stubs.append('static final class FeatureSettings { static void awaitBootSnapshot() {} }')
     stubs.append('static final class AtomicWorkbenchSourceDragHook { static void install(TestPackageReadyDispatch m) { m.calls.add("AtomicWorkbenchSourceDragHook"); } }')

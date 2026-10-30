@@ -63,7 +63,8 @@ final class DynamicIslandHook {
     }
 
     static int install(AugmentModule module,ClassLoader loader) {
-        int taskHooks=NativeIslandHost.install(module,loader)+NativeIslandSettingsHook.install(module,loader);
+        int taskHooks=NativeIslandHost.install(module,loader)+NativeIslandSettingsHook.install(module,loader)
+                +IslandStatusBarAvoidanceHook.install(module,loader)+MagicIslandScenes.install(module,loader);
         for(String listener:new String[]{"com.android.systemui.shared.system.TaskStackChangeListeners$Impl",
                 "com.android.wm.shell.common.TaskStackListenerImpl"}){
             for(String method:new String[]{"onTaskStackChanged","onTaskMovedToFront","onTaskDisplayChanged",
@@ -78,6 +79,7 @@ final class DynamicIslandHook {
             taskChanged();return PASS;
         });
         int count=hookNamed(module,loader,"island",PHONE,"onAttachedToWindow",0,null,(owner,args,result)->{
+            if(owner instanceof View)IslandStatusBarAvoidanceHook.attach(((View)owner).getContext());
             if(owner instanceof FrameLayout && !STATES.containsKey(owner)){
                 State state=new State((FrameLayout)owner);STATES.put((View)owner,state);state.start();
             }return PASS;
@@ -186,7 +188,7 @@ final class DynamicIslandHook {
             if(visible!=observedHostVisible){observedHostVisible=visible;requestRefresh();}
             return true;
         }
-        void start(){FeatureSettings.addSnapshotListener(context,config);configure();}
+        void start(){NativeIslandSettingsHook.attach(context);FeatureSettings.addSnapshotListener(context,config);configure();}
         boolean option(String suffix){return FeatureSettings.integer(context,P+suffix,1,0,1)!=0;}
         boolean locked(){return keyguard!=null&&keyguard.isKeyguardLocked();}
         void configure(){

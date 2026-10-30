@@ -15,6 +15,7 @@ public final class SystemUiOptions {
     public static final String BATTERY_PRESET = PREFIX + "battery_preset";
     public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
     public static final String ISLAND = PREFIX + "island_enabled";
+    public static final String ISLAND_STATUS_AVOIDANCE = PREFIX + "island_status_avoidance";
     public static final String ISLAND_OFFSET_Y = PREFIX + "island_offset_y";
     // Keep the persisted key and values 0/1 so existing opaque/transparent settings survive upgrades.
     public static final String ISLAND_TRANSPARENT = PREFIX + "island_transparent";
@@ -30,6 +31,7 @@ public final class SystemUiOptions {
         ArrayList<EnhancementOption> out = new ArrayList<>();
         out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
         out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","使用系统原生星云岛显示音乐、新通知与接通电源提醒，保留大小、位置、透明背景和图标样式设置。轻点打开来源，长按展开详情与音乐控制；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND_STATUS_AVOIDANCE,"system","通知状态自动避让岛","开启时，灵动岛或星云岛出现后，状态栏按原厂逻辑折叠通知图标并为岛腾出空间。关闭时不再因岛出现而避让，图标可能与岛重叠；原有通知显示设置仍然生效。",true));
         out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","播放时显示封面与律动，暂停后短暂保留控制入口并自动收起；已暂停的旧会话不会上岛。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","新通知短暂上岛；遵循勿扰、通知重要性及锁屏隐私，不取消原通知。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电提示","刚接通电源时显示电量，5 秒后收起；持续充电、开启功能或解锁不会让提示常驻。",1,"关闭","开启"));

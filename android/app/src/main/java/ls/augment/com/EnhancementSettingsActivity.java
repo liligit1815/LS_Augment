@@ -43,7 +43,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private SharedPreferences islandPreferences;
     private SharedPreferences sceneDiagnostics;
     private final SharedPreferences.OnSharedPreferenceChangeListener sceneDiagnosticListener=(prefs,key)->{
-        if(key!=null&&key.startsWith(NativeIslandSceneOptions.ENABLED+"_")&&key.endsWith("_capability"))main.post(this::refreshNativeSceneGate);
+        if(key!=null&&(key.equals(NativeIslandMode.DIAGNOSTIC)||key.equals(MagicIslandPolicy.CAPABILITY)||key.startsWith(NativeIslandSceneOptions.ENABLED+"_")&&key.endsWith("_capability")))main.post(this::refreshIslandMaster);
     };
     private final SharedPreferences.OnSharedPreferenceChangeListener islandListener=(prefs,key)->{
         if(key==null||SystemUiOptions.ISLAND.equals(key)||ConfigSchema.NATIVE_ISLAND_SELECTED.equals(key))main.post(this::refreshIslandMaster);
@@ -222,8 +222,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             String id=selected==null?group:selected.id;
             if("island".equals(id)){
                 LinearLayout nativeCard=ui.preferenceCard();
-                nativeCard.addView(ui.preferenceRow("native-island-settings","打开星云岛设置",
-                        "开启原厂星云岛后，自动关闭Duo灵动岛",()->{
+                nativeCard.addView(ui.preferenceRow("native-island-settings","打开"+NativeIslandMode.name(NativeIslandMode.detect(this))+"设置",
+                        "选择原厂岛后，自动关闭Duo灵动岛",()->{
                             flush();NativeIslandSettings.open(this,worker);
                         }),ui.wrap());
                 body.addView(nativeCard,ui.margins(0,12,0,0));
@@ -353,12 +353,23 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 &&!ValueOverrideState.active(f.comparison,value(key),gateMemory.getString("value:"+key,value(key))))
             active=gateMemory.getBoolean("open:"+key,active);
         String unavailable=FanFeatureAvailability.reason(this,key);
+        if(SystemUiOptions.ISLAND.equals(key)&&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))
+            unavailable="当前魔力岛显示分支尚不支持Duo自定义岛，请使用下方魔力岛场景支持";
         if(SystemUiOptions.VOLUME_SAME_SIDE.equals(key)&&!VolumePositionSettings.multiAppEnabled(this))unavailable="请先在系统设置中开启多应用音量调节功能";
-        if(NativeIslandSceneOptions.ENABLED.equals(key)&&!nativeIslandEnabled())unavailable="请先在星云岛设置中开启星云岛";
+        if(NativeIslandSceneOptions.ENABLED.equals(key)&&!nativeIslandEnabled())unavailable=nativeIslandUnavailable();
+        if(SystemUiOptions.ISLAND_STATUS_AVOIDANCE.equals(key)){
+            String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString("ls_augment_island_avoidance_capability","");
+            if(capability.startsWith("unavailable:"))unavailable="当前系统缺少状态栏避让接口，保留原厂行为";
+        }
         if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_"))unavailable=nativeSceneUnavailable(key);
         boolean available=unavailable.isEmpty();
         toggle.setChecked(active&&available);toggle.setEnabled(available);
-        card.addView(ui.featureRow(f.title,available||key.startsWith(NativeIslandSceneOptions.ENABLED)?FeatureHelp.forOption(option):unavailable,toggle),ui.wrap());
+        String featureTitle=NativeIslandSceneOptions.ENABLED.equals(key)?NativeIslandMode.name(NativeIslandMode.detect(this))+"场景支持":f.title;
+        String featureHelp=available||key.startsWith(NativeIslandSceneOptions.ENABLED)?FeatureHelp.forOption(option):unavailable;
+        if(key.startsWith(NativeIslandSceneOptions.ENABLED)&&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))
+            featureHelp=(key.equals(NativeIslandSceneOptions.ENABLED)?"":MagicIslandPolicy.detail(key.substring((NativeIslandSceneOptions.ENABLED+"_").length())))
+                    +"控制已核验的原厂魔力岛场景，保留原厂内容、按钮和业务条件。关闭单项会撤下该场景；重新开启随新的原厂状态更新生效。关闭场景支持恢复原厂选择，不回放过期卡片。魔力岛已完成接口与离线验证，红魔 12 尚未完成真机验收。";
+        card.addView(ui.featureRow(featureTitle,featureHelp,toggle),ui.wrap());
         if(!available||key.startsWith(NativeIslandSceneOptions.ENABLED)){
             TextView state=ui.text(unavailable,12,ui.muted,false);state.setTag("device-feature-unavailable:"+key);
             if(available)state.setVisibility(View.GONE);
@@ -943,12 +954,34 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         draft.put(SystemUiOptions.ISLAND,saved);
         View toggle=body.findViewWithTag("config:"+SystemUiOptions.ISLAND);
         bindingIslandMaster=true;
-        try{if(toggle instanceof Switch)((Switch)toggle).setChecked(ConfigSchema.truthy(saved));}
+        try{if(toggle instanceof Switch){
+            boolean modern=NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this));
+            toggle.setEnabled(!modern);((Switch)toggle).setChecked(!modern&&ConfigSchema.truthy(saved));
+            View state=body.findViewWithTag("device-feature-unavailable:"+SystemUiOptions.ISLAND);
+            if(state instanceof TextView){((TextView)state).setText(modern?"当前魔力岛显示分支尚不支持Duo自绘灵动岛，请使用原厂魔力岛及场景支持":"");state.setVisibility(modern?View.VISIBLE:View.GONE);}
+        }}
         finally{bindingIslandMaster=false;}
     }
     private boolean nativeIslandEnabled(){
         return config.getBoolean(ConfigSchema.NATIVE_ISLAND_SELECTED)
-                &&android.provider.Settings.System.getInt(getContentResolver(),"dynamic_island_switch_state",0)!=0;
+                &&!config.getBoolean(SystemUiOptions.ISLAND)&&NativeIslandMode.enabled(this,NativeIslandMode.detect(this))
+                &&magicHostUnavailable().isEmpty();
+    }
+    private String magicHostUnavailable(){
+        if(!NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))return "";
+        String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(MagicIslandPolicy.CAPABILITY,"");
+        if(("ready:"+BuildConfig.VERSION_CODE).equals(capability))return "";
+        return capability.startsWith("unavailable:")?"魔力岛显示接口不完整，保留原厂行为":"等待魔力岛显示接口检测，请确认系统界面作用域";
+    }
+    private String nativeIslandUnavailable(){
+        String mode=NativeIslandMode.detect(this),name=NativeIslandMode.name(mode);
+        if(!NativeIslandMode.known(mode))return "等待原厂岛能力检测，请确认系统界面作用域";
+        if(!NativeIslandMode.enabled(this,mode))return "请先在"+name+"设置中开启"+name;
+        if(NativeIslandMode.LEGACY.equals(mode))return config.getBoolean(SystemUiOptions.ISLAND)
+                ?"当前使用Duo灵动岛；请在星云岛设置中重新开启星云岛"
+                :"请在星云岛设置中重新开启星云岛，以切换到原厂岛";
+        if(config.getBoolean(ConfigSchema.NATIVE_ISLAND_SELECTED)&&!magicHostUnavailable().isEmpty())return magicHostUnavailable();
+        return "原厂"+name+"已开启，等待Duo联动；请确认系统界面作用域并重启";
     }
     private void refreshNativeSceneGate(){
         if(body==null||isDestroyed())return;
@@ -969,9 +1002,39 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         finally{bindingIslandMaster=false;}
         View state=body.findViewWithTag("device-feature-unavailable:"+NativeIslandSceneOptions.ENABLED);
-        if(state instanceof TextView){((TextView)state).setText(available?"":"请先在星云岛设置中开启星云岛");state.setVisibility(available?View.GONE:View.VISIBLE);}
+        if(state instanceof TextView){((TextView)state).setText(available?"":nativeIslandUnavailable());state.setVisibility(available?View.GONE:View.VISIBLE);}
     }
     private String nativeSceneUnavailable(String key){
+        if(NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this))){
+            String id=key.substring((NativeIslandSceneOptions.ENABLED+"_").length());
+            String source=MagicIslandPolicy.source(id);
+            if(source==null)return MagicIslandPolicy.unavailable(id);
+            try{if(!getPackageManager().getApplicationInfo(source,0).enabled)return "请启用对应原厂服务";}
+            catch(android.content.pm.PackageManager.NameNotFoundException missing){return "未安装对应原厂服务";}
+            SharedPreferences diagnostics=getSharedPreferences(AppConfig.DIAGNOSTICS,0);
+            String host=diagnostics.getString(MagicIslandPolicy.CAPABILITY,"");
+            if(!("ready:"+BuildConfig.VERSION_CODE).equals(host))return host.startsWith("unavailable:")?"魔力岛显示接口不完整，保留原厂行为":"等待魔力岛显示接口检测";
+            if(MagicIslandPolicy.personal(id)){
+                String producer=diagnostics.getString(key+"_magic_source_capability","");
+                if(!("ready:"+BuildConfig.VERSION_CODE).equals(producer))return producer.startsWith("unavailable:")&&!producer.endsWith("personal_service_stopped")?"此场景缺少已核验的原厂适配器":"请启用魔姬建议服务及其作用域，等待场景检测";
+            }
+            if(MagicIslandPolicy.appSource(id)){
+                String producer=diagnostics.getString(key+"_magic_source_capability","");
+                String ready;
+                try{ready="ready:"+BuildConfig.VERSION_CODE+":"+getPackageManager().getPackageInfo(source,0).lastUpdateTime;}
+                catch(android.content.pm.PackageManager.NameNotFoundException missing){return "未安装对应原厂服务";}
+                if(!ready.equals(producer))return producer.startsWith("unavailable:")&&!producer.endsWith("disconnected")
+                        ?"原厂来源、卡片或操作接口不完整，保留原厂行为":"请启用来源应用作用域并启动对应功能，等待原厂卡片服务连接";
+                if("ai_memory".equals(id))try{
+                    android.content.pm.ActivityInfo detail=getPackageManager().getActivityInfo(new android.content.ComponentName("com.zte.aimemory","com.zte.aimemory.activities.MemoryDetailFavoriteActivity"),0);
+                    if(!detail.enabled||!detail.applicationInfo.enabled)return "请启用 AI 记忆及其原厂详情入口";
+                }catch(android.content.pm.PackageManager.NameNotFoundException missing){return "缺少 AI 记忆原厂详情入口";}
+            }
+            return "";
+        }
+        if(key.equals(NativeIslandSceneOptions.key("ai_writing"))||key.equals(NativeIslandSceneOptions.key("taxi"))
+                ||key.equals(NativeIslandSceneOptions.key("takeout"))||key.equals(NativeIslandSceneOptions.key("train_12306"))
+                ||key.equals(NativeIslandSceneOptions.key("train_travel")))return "当前旧版星云岛尚未接入此场景";
         if(NativeIslandSceneOptions.key("calendar_meeting").equals(key)||NativeIslandSceneOptions.key("scenic_guide").equals(key)||NativeIslandSceneOptions.key("nearby_charging").equals(key)||NativeIslandSceneOptions.key("cycling").equals(key)||NativeIslandSceneOptions.key("flight").equals(key)||NativeIslandSceneOptions.key("preflight_battery").equals(key)||NativeIslandSceneOptions.key("weather_travel").equals(key)){
             try{getPackageManager().getApplicationInfo("com.zte.personalagent",0);}
             catch(android.content.pm.PackageManager.NameNotFoundException missing){return "未安装小星建议（魔姬建议）";}
