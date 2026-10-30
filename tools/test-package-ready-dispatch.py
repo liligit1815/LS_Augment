@@ -110,9 +110,10 @@ public class TestPackageReadyDispatch {
         deliver(launcher, target("com.zte.mifavor.launcher"));
         check(launcher.calls.contains("LauncherCustomizationHook"), "later launcher callback was lost");
         check(launcher.calls.contains("LauncherPagesHook")
+                && launcher.calls.contains("LauncherPageIndicatorHook")
                 && launcher.calls.contains("LauncherRecentsMemoryHook")
                 && launcher.calls.contains("LauncherRecentsPrivacyHook"),
-                "launcher page, memory and privacy features were not installed in the launcher scope");
+                "launcher page, indicator, memory and privacy features were not installed in the launcher scope");
         check(launcher.logs.stream().anyMatch(s -> s.contains("PACKAGE_READY_TARGET") && s.contains("first=false")),
                 "accepted later main-package callback has no explicit diagnostic witness");
         int callCount = launcher.calls.size(), telemetryCount = telemetry.size();
@@ -214,7 +215,7 @@ def main():
                  'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook', 'MagicIslandAppCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l, String p) {{ m.feature("{name}:" + p, l); }} }}')
     for name in ('StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
-                 'LauncherPagesHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
+                 'LauncherPagesHook', 'LauncherPageIndicatorHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
                  'ShoulderMacroSwitchHook', 'AtomicWorkbenchQuickstepHook', 'LauncherGridHook',
                  'LauncherWidgetResizeHook', 'LauncherDockCapacityHook', 'LauncherNewAppsLastPageHook',
                  'ThirdPartyRecentsBackgroundHook', 'LauncherRecentsCardRadiusHook',

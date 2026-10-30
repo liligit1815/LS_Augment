@@ -9,6 +9,7 @@ public final class LauncherOptions {
     public static final String CLEANUP_BOMB = "ls_augment_rm_launcher_cleanup_bomb";
     public static final String PAGE_REORDER = "ls_augment_rm_launcher_page_reorder";
     public static final String KEEP_EMPTY = "ls_augment_rm_launcher_keep_empty";
+    public static final String PAGE_INDICATOR_EDIT_ONLY = "ls_augment_rm_launcher_page_indicator_edit_only";
     public static final String WIDGET_RESIZE = "ls_augment_rm_launcher_widget_resize";
     public static final String DOCK_UNLIMITED = "ls_augment_rm_launcher_dock_unlimited";
     public static final String NEW_APPS_LAST_PAGE = "ls_augment_rm_launcher_new_apps_last_page";
@@ -25,6 +26,8 @@ public final class LauncherOptions {
                 "在桌面编辑模式点击“页面”，选中页面后前移、后移，或长按卡片拖动排序；图标、文件夹和组件一起移动。适配 10 系列与 11 系列桌面，修改开关后重启系统桌面生效。"),
             EnhancementOption.toggle(KEEP_EMPTY, "launcher", "允许空白桌面",
                 "在桌面编辑模式的“页面”中新增或删除空白页；空白页及页面顺序在重启后保留。适配 10 系列与 11 系列桌面，修改开关后重启系统桌面生效。"),
+            EnhancementOption.toggle(PAGE_INDICATOR_EDIT_ONLY, "launcher", "仅在编辑时显示分页指示器",
+                "隐藏普通桌面的分页圆点（小圆点）及负一屏标记，仅在编辑模式恢复原厂显示规则，不影响文件夹内分页。默认关闭，关闭恢复原厂显示。首次安装或更新后重启系统桌面加载功能，之后修改开关即时生效。"),
             EnhancementOption.toggle(NEW_APPS_LAST_PAGE, "launcher", "强制新装APP图标显示在桌面末页",
                 "新安装应用的图标加入桌面末页；末页已满时新增一页，不移动已有图标，不改变更新应用的位置。适配 10 系列与 11 系列桌面，修改开关后重启系统桌面生效。"),
             EnhancementOption.toggle(WIDGET_RESIZE, "launcher", "允许修改小组件大小",

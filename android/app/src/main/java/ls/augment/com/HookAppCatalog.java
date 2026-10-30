@@ -341,7 +341,7 @@ public final class HookAppCatalog {
             if ("system".equals(option.group)) return "interaction";
         }
         if (LAUNCHER.equals(targetId)) {
-            if (suffix.startsWith("launcher_grid_")) return "launcher_grid";
+            if (suffix.startsWith("launcher_grid_") || LauncherOptions.PAGE_INDICATOR_EDIT_ONLY.equals(option.key)) return "launcher_grid";
             if (LauncherOptions.DOCK_UNLIMITED.equals(option.key) || GlassOptions.DOCK.equals(option.key)
                     || GlassOptions.DOCK_REDUCE_TRANSPARENCY.equals(option.key) || GlassOptions.DOCK_REDUCE_MOTION.equals(option.key)) return "dock_glass";
             if (suffix.startsWith("desktop_clock_") || LauncherOptions.WIDGET_RESIZE.equals(option.key)) return "desktop_clock";

@@ -37,7 +37,7 @@ public final class ModuleHierarchy {
         add(section("notifications","notification_alerts","通知提醒"),"ls_augment_rm_notification_quiet_unlocked");
         add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim");
         add(section("desktop","desktop_clock","桌面组件"),"ls_augment_rm_desktop_clock_enabled","ls_augment_rm_desktop_clock_period","ls_augment_rm_weather_time_period",LauncherOptions.WIDGET_RESIZE);
-        add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty",LauncherOptions.NEW_APPS_LAST_PAGE);
+        add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty",LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,LauncherOptions.NEW_APPS_LAST_PAGE);
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
         add(section("desktop","dock_glass","Dock"),"launcher:liquid_glass",LauncherOptions.DOCK_UNLIMITED);
         add(section("desktop","recents","最近任务与清理"),"launcher:cleanup_bomb",RecentsCardRadiusOptions.ENABLED,"ls_augment_rm_recents_memory_custom");

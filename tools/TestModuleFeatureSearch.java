@@ -81,6 +81,8 @@ public final class TestModuleFeatureSearch {
         exactFeature("允许修改小组件大小","group/desktop/desktop_clock","desktop");
         exactFeature("解除Dock栏应用数量限制","group/desktop/dock_glass","desktop");
         exactFeature("强制新装APP图标显示在桌面末页","group/desktop/launcher_grid","desktop");
+        exactFeature("仅在编辑时显示分页指示器","group/desktop/launcher_grid","desktop");
+        for(String query:Arrays.asList("分页","指示器","小圆点","编辑模式"))destination(query,"group/desktop/launcher_grid","desktop");
         destination("桌面组件","group/desktop/desktop_clock","desktop");
         destination("圆角偏移","group/desktop/recents","desktop");
         for(String query:Arrays.asList("LiftArc","小白条","锁屏玻璃","上甩解锁","提示文字"))

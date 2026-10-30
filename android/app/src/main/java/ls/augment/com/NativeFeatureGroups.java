@@ -270,6 +270,7 @@ final class NativeFeatureGroups {
             new Feature("launcher:hide_minors","隐藏未成年模式图标",EntryVisibilityOptions.HIDE_MINORS_ICON,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_rm_launcher_page_reorder","整页移动桌面","ls_augment_rm_launcher_page_reorder",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_launcher_keep_empty","允许空白桌面","ls_augment_rm_launcher_keep_empty",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature(LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,"仅在编辑时显示分页指示器",LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,new String[]{},"boolean","0",new Feature[]{}),
             new Feature(LauncherOptions.NEW_APPS_LAST_PAGE,"强制新装APP图标显示在桌面末页",LauncherOptions.NEW_APPS_LAST_PAGE,new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("launcher","desktop_clock","桌面组件", new Feature[]{

@@ -8,7 +8,7 @@ public final class TestModuleHierarchy {
     private static void owner(String key,String route){require(route.equals(ModuleHierarchy.featureRoute(key)),key+" has its approved unique home");}
     public static void main(String[] args){
         String[] ids={"notifications","desktop","lockscreen","audio","interaction","multitasking","atomic_workbench","capture","gaming","cooling","connectivity","apps","system_settings","health"};
-        int[] counts={84,17,24,11,8,5,1,6,18,4,16,15,14,4};
+        int[] counts={84,18,24,11,8,5,1,6,18,4,16,15,14,4};
         List<String> actualIds=new ArrayList<>();int total=0,index=0;
         Set<String> covered=new LinkedHashSet<>(),routes=new LinkedHashSet<>(),groupRoutes=new HashSet<>(),entries=new HashSet<>(),deviceKeys=new HashSet<>();
         require(HookAppCatalog.targets().size()==20&&HookAppCatalog.find(HookAppCatalog.AMAP)!=null,"Runtime targets include the navigation source independently of the 14 display categories");
@@ -17,7 +17,7 @@ public final class TestModuleHierarchy {
             require(!ModuleHierarchy.sections(category.id).isEmpty(),"Every display category has content");
             require(HookAppCatalog.find(category.icon)!=null,"Category icon reuses an existing source application");routes.add(category.route());
         }
-        require(actualIds.equals(Arrays.asList(ids))&&total==227,"Presentation includes 227 capabilities in 14 ordered categories");
+        require(actualIds.equals(Arrays.asList(ids))&&total==228,"Presentation includes 228 capabilities in 14 ordered categories");
         require("group/system_settings/battery".equals(ModuleHierarchy.resolve("group/system_settings/battery_health")),"Old battery health bookmark migrates");
         owner(SystemOptions.BATTERY_KEEP_REFRESH,"group/system_settings/battery");owner(SystemOptions.GALLERY_WATERMARK_TEXT,"group/capture/gallery");owner(GameOptions.MONITOR_MARGIN,"group/gaming/plugins");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
@@ -91,6 +91,12 @@ public final class TestModuleHierarchy {
         owner("ls_augment_rm_third_party_launcher","group/desktop/default_launcher");owner("ls_augment_rm_third_party_recents_no_scrim","group/desktop/default_launcher");owner("ls_augment_rm_weather_time_period","group/desktop/desktop_clock");
         owner(LauncherOptions.WIDGET_RESIZE,"group/desktop/desktop_clock");owner(LauncherOptions.DOCK_UNLIMITED,"group/desktop/dock_glass");
         owner(LauncherOptions.NEW_APPS_LAST_PAGE,"group/desktop/launcher_grid");
+        owner(LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,"group/desktop/launcher_grid");
+        List<NativeFeatureGroups.Feature> pages=ModuleHierarchy.group("group/desktop/launcher_grid").features;
+        require(pages.get(2).toggleKey.equals(LauncherOptions.KEEP_EMPTY)
+                &&pages.get(3).toggleKey.equals(LauncherOptions.PAGE_INDICATOR_EDIT_ONLY)
+                &&pages.get(4).toggleKey.equals(LauncherOptions.NEW_APPS_LAST_PAGE),"Indicator is independent and placed between empty pages and new apps");
+        require(!pages.get(3).hasConfiguration(),"Indicator toggle has no unnecessary configuration fold");
         require(ModuleHierarchy.group("group/desktop/launcher_grid").features.stream().noneMatch(f->f.allKeys().contains(LauncherOptions.DOCK_UNLIMITED)),"Dock capacity no longer belongs to desktop layout and pages");
         require("桌面组件".equals(ModuleHierarchy.title("group/desktop/desktop_clock")),"Component page retains its bookmark with the requested title");
         owner(RecentsCardRadiusOptions.ENABLED,"group/desktop/recents");owner(RecentsCardRadiusOptions.OFFSET,"group/desktop/recents");
@@ -133,6 +139,6 @@ public final class TestModuleHierarchy {
         owner(GameOptions.MONITOR_PIN,"group/gaming/plugins");owner(GameOptions.SHOULDER_PIN,"group/gaming/shoulder");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
-        System.out.println("V2.0 presentation hierarchy: OK (14 categories, 227 capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
+        System.out.println("V2.0 presentation hierarchy: OK (14 categories, "+total+" capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }
 }
