@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20693,
-    "versionName": "2.0.0-alpha1-test20693",
+    "versionCode": 20696,
+    "versionName": "2.0.0-alpha1-test20696",
     "minSdk": 35,
-    "publishedAt": "2026-10-30T06:27:31Z",
-    "notes": "- 完善红魔 12 魔力岛适配，修复开启状态识别、设置入口及开关联动，保留旧版星云岛兼容。\n- 接入充电、音乐、倒计时、红魔互传与 AI 帮写，扩展日程、天气、航班、火车票、打车和外卖等原厂服务卡片。\n- 补全录音、通话、会议转写、通话 AI 辅助、AI 记忆和 NFC 文件传输场景，沿用原厂内容与操作。\n- 修复 AI 记忆收藏处理与结果卡片缺失，以及 NFC 传输卡片与原厂开关关联异常。\n- 优化关闭场景后的撤卡与面板收起，重新开启后响应新的服务事件。\n- 新增“通知状态自动避让岛”开关，可选择是否为岛预留状态栏空间。\n- 更新后请确认相关作用域并重启手机；AI 记忆需启用 AI 知识后台服务（com.zte.ai.knowledge）作用域。",
+    "publishedAt": "2026-10-30T16:42:59Z",
+    "notes": "- 新增“仅在编辑时显示分页指示器”，退出桌面编辑后自动隐藏分页圆点。\n- 优化状态栏保存反馈，明确提示出错字段与原因，保存失败时恢复开关状态。\n- 优化多应用音量调节入口位置，移至音量面板上方。\n- 补齐工作台通知接口适配及内容提取失败原因记录。\n- 修复隐藏状态栏内容时灵动岛、魔力岛和原厂星云岛随之消失的问题。\n- 修复更新缓存限制导致的下载失败，区分网络异常、缓存占用和空间不足，并补充错误日志。\n- 修复主题无限期试用开关生效异常，调整为重启主题相关应用。\n- 更新后重启系统界面和系统桌面；主题功能按页面提示重启相关应用。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20693/redmagic-duo-20693.apk",
-      "size": 14550095,
-      "sha256": "4c027f8c3d93e5ded0f24bdcc5dd854ea4ed82fca9568507bee60f0858bdba9f",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20696/redmagic-duo-20696.apk",
+      "size": 14575687,
+      "sha256": "6570ef1d6443ee737e7d5359fac6a54413bf8d85fae1432e9c1597fe1f282dfb",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
