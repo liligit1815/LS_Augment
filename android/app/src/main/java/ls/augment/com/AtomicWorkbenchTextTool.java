@@ -35,7 +35,6 @@ import java.util.function.Consumer;
 /** UiKit dialog over the live workbench; never creates an Activity for the tool itself. */
 final class AtomicWorkbenchTextTool implements AutoCloseable {
     interface Actions {
-        void addText(String text);
         void shareText(String text);
         boolean startTextDrag(View source, String text, Runnable onEnded);
     }
@@ -250,8 +249,7 @@ final class AtomicWorkbenchTextTool implements AutoCloseable {
         addMenu(content, "复制所选", "copy", () -> copy(selection()), hasSelection());
         addMenu(content, "搜索所选", "search", () -> lookup(false), hasSelection());
         addMenu(content, "词典查询", "dictionary", () -> lookup(true), hasSelection());
-        addMenu(content, "分享所选", "share", () -> act(false), hasSelection());
-        addMenu(content, "添加到流转", "add", () -> act(true), hasSelection());
+        addMenu(content, "分享所选", "share", this::shareSelection, hasSelection());
         own(ui.glassDialog("文字操作", content, null, null, "返回"));
     }
     private void addMenu(LinearLayout parent, String label, String tag, Runnable action, boolean enabled) {
@@ -273,11 +271,11 @@ final class AtomicWorkbenchTextTool implements AutoCloseable {
     }
     private boolean hasSelection() { return model != null && model.hasSelection() && !busy && !layoutBusy; }
     private String selection() { return hasSelection() ? model.selectedText() : ""; }
-    private void act(boolean add) {
+    private void shareSelection() {
         if (!actionAllowed()) return;
         String text = selection(); if (text.isEmpty()) { notice("请先选择文字"); return; }
         remember(capture(true));
-        if (add) actions.addText(text); else actions.shareText(text);
+        actions.shareText(text);
     }
     private void copy(String text) {
         if (!actionAllowed()) return;

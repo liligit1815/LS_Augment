@@ -22,7 +22,6 @@ SIGNATURES = ["static final class DeliverySnapshot", "private static final class
 SIGNATURES += ["private static boolean extractedTextDragCurrent(", "private void revokeExtractedTextDrag()", "private boolean beginDrag(View source, AtomicWorkbenchPendingPayload snapshot, Runnable ended, boolean accessibility, boolean extractedText)"]
 SIGNATURES += ["boolean requestExtractedTextPasteSetup("]
 SIGNATURES += ["boolean consumeDrop(DragEvent event, DeliverySnapshot snapshot, java.util.function.Consumer<Boolean> delivery)"]
-SIGNATURES += ["private boolean beginDrag(View source, AtomicWorkbenchPendingPayload snapshot, Runnable ended, boolean accessibility, boolean extractedText,", "private static String[] mimeTypes(", "private View.DragShadowBuilder sourceShadow("]
 STUBS = {
     "android/app/Activity.java": 'package android.app;public class Activity {public boolean destroyed,finishing;public boolean isDestroyed(){return destroyed;}public boolean isFinishing(){return finishing;}}',
     "ls/augment/com/AtomicWorkbenchActivity.java": 'package ls.augment.com;class AtomicWorkbenchActivity extends android.app.Activity {}',
@@ -42,7 +41,6 @@ STUBS = {
     "ls/augment/com/AtomicWorkbenchPendingControls.java": 'package ls.augment.com;class AtomicWorkbenchPendingControls {static final String SORT_MIME="application/vnd.lsaugment.pending-order";}',
 }
 STUBS.update({
-    "ls/augment/com/AtomicWorkbenchSourceDragData.java": 'package ls.augment.com;class AtomicWorkbenchSourceDragData {String label="file drag";android.content.ClipData clip;android.os.PersistableBundle decoration=new android.os.PersistableBundle();}',
     "ls/augment/com/UiKit.java": 'package ls.augment.com;class UiKit {int cardHigh,text;int dp(int n){return n;}}',
     "android/graphics/Point.java": 'package android.graphics;public class Point {public void set(int x,int y){}}',
     "android/util/DisplayMetrics.java": 'package android.util;public class DisplayMetrics {}',
@@ -61,14 +59,12 @@ public class TestTransferSessions {
  static AtomicWorkbenchPendingPayload payload(String text,int files){var list=new ArrayList<AtomicWorkbenchPendingPayload.FileItem>();for(int i=1;i<=files;i++)list.add(new AtomicWorkbenchPendingPayload.FileItem(String.format("%032x",i),"content://synthetic/"+i,"synthetic","image/png",1,System.currentTimeMillis(),AtomicWorkbenchPendingPayload.Availability.READY));return new AtomicWorkbenchPendingPayload(UUID.randomUUID().toString(),8,text,System.currentTimeMillis(),false,list,AtomicWorkbenchPendingPayload.State.READY);}
  static DragEvent event(int action,Object state,String mime){return new DragEvent(action,state,new ClipDescription("",new String[]{mime}));}
  public static void main(String[] args){
- test("app source preserves native original URI while authenticated delivery retains copied bytes",()->{
-  var owner=new AtomicWorkbenchTransfer();var view=new View();var frozen=payload("",1);
-  var original=new ClipData("file drag",new String[]{"image/png"},new ClipData.Item(android.net.Uri.parse("content://media/external/images/media/55")));
-  check(owner.beginOriginalForTest(view,frozen,original),"native source did not start");
-  check(view.clip.getItemAt(0).getUri().toString().equals("content://media/external/images/media/55"),"native original URI replaced with private cache");
-  var issued=owner.snapshotForDrop(new DragEvent(3,null,view.clip.getDescription()));
-  check(issued!=null&&owner.frozenFileForTest(issued).equals("content://synthetic/1"),"authenticated drop abandoned frozen bytes");
-  check(owner.consumeDrop(new DragEvent(3,null,view.clip.getDescription()),issued),"native source snapshot was not consumable");view.end();
+ test("retired file transfer refuses saved file and mixed queues before native drag",()->{
+  for(int files:new int[]{1,16}) for(String text:List.of("","companion")){
+   var owner=new AtomicWorkbenchTransfer();var view=new View();
+   check(!owner.beginForTest(view,payload(text,files)),"retired file drag started");
+   check(view.clip==null&&owner.active()==null,"rejected file drag created native payload or session");
+  }
  });
  test("temporary text keeps original whitespace and does not mutate current queue",()->{var transfer=new AtomicWorkbenchTransfer();transfer.current=payload("pending",1);var before=transfer.current;View source=new View();AtomicInteger ended=new AtomicInteger();
   check(transfer.startTextDrag(source," \n selected \t",ended::incrementAndGet),"start failed");var frozen=transfer.snapshotForDrop(event(3,source.state,"text/plain"));
@@ -90,9 +86,6 @@ public class TestTransferSessions {
  });
  test("second start cannot prematurely end an existing real drag",()->{var transfer=new AtomicWorkbenchTransfer();AtomicInteger old=new AtomicInteger(),next=new AtomicInteger();View a=new View(),b=new View();check(transfer.startTextDrag(a,"first",old::incrementAndGet),"start first");
   check(!transfer.startTextDrag(b,"second",next::incrementAndGet)&&old.get()==0&&next.get()==1,"second start ended old drag");check(transfer.snapshotForDrop(event(3,a.state,"text/plain")).text.equals("first"),"old session lost");a.end();check(old.get()==1,"old end missing");});
- test("mixed 16 URI payload carries companion text in same first item and preserves exact order",()->{var p=payload(" accompanying ",16);ClipData clip=AtomicWorkbenchTransfer.clipForTest(p);
-  check(clip.getItemCount()==16&&clip.getItemAt(0).getText().toString().equals(p.text),"mixed companion lost or 17th item added");for(int i=0;i<16;i++)check(clip.getItemAt(i).getUri().toString().equals(p.files.get(i).uri),"file order changed");
-  var transfer=new AtomicWorkbenchTransfer();View source=new View();check(transfer.beginForTest(source,p),"mixed start");check((source.flags&View.DRAG_FLAG_GLOBAL_URI_READ)!=0,"URI read flag missing");var snapshot=transfer.snapshotForDrop(event(3,source.state,"image/png"));check(snapshot.hasFiles&&snapshot.textReady&&snapshot.ready,"mixed snapshot incomplete");source.end();});
  test("cross Dialog ViewRoot null localState resolves only exact nonce/id/revision",()->{var transfer=new AtomicWorkbenchTransfer();View source=new View();transfer.startTextDrag(source,"selected",null);ClipDescription issued=source.clip.getDescription();var cross=new DragEvent(3,null,issued);
   var snapshot=transfer.snapshotForDrop(cross);check(snapshot!=null&&snapshot.text.equals("selected"),"cross ViewRoot cannot resolve real session");check(issued.hasMimeType("application/vnd.lsaugment.transfer-session"),"marker absent");
   check(issued.getExtras().getString("duo_drag_nonce").matches("[0-9a-f]{32}"),"nonce is not random canonical capability");
@@ -115,7 +108,7 @@ public class TestTransferSessions {
   check(target.snapshotForDrop(new DragEvent(3,null,ordinaryView.clip.getDescription()))==null,"ordinary Transfer exported");ordinaryView.end();
   var host=new AtomicWorkbenchExtractionActivity();var source=new AtomicWorkbenchTransfer(host);View view=new View();
   check(source.beginForTest(view,payload("pending",0)),"pending start");check(target.snapshotForDrop(new DragEvent(3,null,view.clip.getDescription()))==null,"pending queue exported");view.end();
-  check(source.beginForTest(view,payload("with file",1)),"file start");check(target.snapshotForDrop(new DragEvent(3,null,view.clip.getDescription()))==null,"file exported");view.end();
+  check(!source.beginForTest(view,payload("with file",1)),"retired file start accepted");check(source.active()==null,"retired file session survived");
   source.startTextDrag(view,"extracted",null);var drop=new DragEvent(3,null,view.clip.getDescription());
   check(new AtomicWorkbenchTransfer().snapshotForDrop(drop)==null,"non-workbench receiver accepted");
   target.foreground=false;check(target.snapshotForDrop(drop)==null,"stopped receiver accepted");target.foreground=true;
@@ -199,7 +192,6 @@ final class AtomicWorkbenchTransfer {final UiKit ui=new UiKit();boolean closed,f
 AtomicWorkbenchTransfer(){this(new android.app.Activity());}AtomicWorkbenchTransfer(android.app.Activity host){activity=host;}
 void notice(String value){}Object active(){return activeDrag;}void closeForTest(){closed=true;revokeExtractedTextDrag();if(activeDrag!=null)endDrag(activeDrag);}void stopForTest(){foreground=false;revokeExtractedTextDrag();}
 boolean beginForTest(View source,AtomicWorkbenchPendingPayload p){return beginDrag(source,p,null);}static ClipData clipForTest(AtomicWorkbenchPendingPayload p){return clip(p);}
-boolean beginOriginalForTest(View source,AtomicWorkbenchPendingPayload p,ClipData original){var data=new AtomicWorkbenchSourceDragData();data.clip=original;return beginDrag(source,p,null,false,false,data);}String frozenFileForTest(DeliverySnapshot value){return value.frozen.files.get(0).uri;}
 """ + constants + members + "}"
     clip_source = S.STUBS["android/content/ClipData.java"].replace("final List<Item>items", "ClipDescription description;public ClipDescription getDescription(){return description;}final List<Item>items").replace("items.add(i);}public void", "items.add(i);description=new ClipDescription(l,m);}public void", 1)
     clip_source = clip_source.replace("public ClipData(String", "public ClipData(ClipDescription d,Item i){description=d;items.add(i);}public ClipData(String")
@@ -223,6 +215,7 @@ def main():
         result = execute(temp); print(result.stdout, end="")
         if result.returncode: raise AssertionError(result.stderr)
     for name, mutation in {
+        "retired file drag restored": ("if (closed || source == null || !snapshot.deliverable() || !snapshot.files.isEmpty())", "if (closed || source == null || !snapshot.deliverable())"),
         "drop silently reads new pending": ("new DeliverySnapshot(value.frozen)", "new DeliverySnapshot(current)"),
         "duplicate drop consumption accepted": ("value.consumed = true;\n        if (delivery != null)", "value.consumed = false;\n        if (delivery != null)"),
         "cross ViewRoot falls back to current pending": ("value.nonce.equals(extras.getString(DRAG_NONCE))", "true"),

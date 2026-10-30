@@ -106,7 +106,6 @@ public final class HookAppCatalog {
             target(FILES, "MTP传输", "电脑端存储名称与 MTP 浏览", "apps", "cn.nubia.filebrowser", "com.android.mtp"),
             target(PERMISSIONS, "权限管理", "第三方默认桌面选择", "apps", "com.android.permissioncontroller"),
             target(SCREENSHOT, "截图与录屏", "截图裁剪与捕获画面的状态栏显示", "apps", "com.android.ztescreenshot"),
-            // The gallery owns native source dragging; crop/watermark controls stay in the editor.
             target(GALLERY, "相册图片编辑", "图片编辑中的裁剪尺寸限制", "apps",
                     "cn.nubia.photoeditor", "com.android.gallery3d")
     ));

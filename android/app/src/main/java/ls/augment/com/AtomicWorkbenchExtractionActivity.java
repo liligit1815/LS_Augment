@@ -69,7 +69,6 @@ public final class AtomicWorkbenchExtractionActivity extends Activity {
         });
         transfer.setForeground(false);
         textTool = new AtomicWorkbenchTextTool(ui, new AtomicWorkbenchTextTool.Actions() {
-            @Override public void addText(String text) { if (acceptedValueCurrent()) transfer.addText(text); }
             @Override public void shareText(String text) { if (acceptedValueCurrent()) transfer.shareText(text); }
             @Override public boolean startTextDrag(View source, String text, Runnable ended) { return acceptedValueCurrent() && transfer.startTextDrag(source, text, ended); }
         });

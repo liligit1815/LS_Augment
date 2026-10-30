@@ -117,7 +117,6 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         }
     }
     private AtomicWorkbenchTransfer transfer;
-    private AtomicWorkbenchAppSourceDrag appSourceDrag;
     private AtomicWorkbenchTextTool textTool;
     private AtomicWorkbenchPasteCoordinator pasteCoordinator;
     private volatile boolean hostDialogActive;
@@ -317,17 +316,7 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
                 else if (hostDialogActive && !busy) queueHostInput(true);
             }
         });
-        appSourceDrag = new AtomicWorkbenchAppSourceDrag(this, transfer, new AtomicWorkbenchAppSourceDrag.Host() {
-            @Override public AtomicWorkbenchAppSourceDrag.Capture capture(int uid, int display, long down) {
-                if (hostDragActive) return null;
-                AtomicWorkbenchAppSourceDrag.Capture capture = captureAppSourceDrag(uid, display, down);
-                return capture != null && currentAppSourceDrag(capture) ? capture : null;
-            }
-            @Override public boolean current(AtomicWorkbenchAppSourceDrag.Capture capture) { return currentAppSourceDrag(capture); }
-            @Override public void preparing(boolean value) { hostDragActive = value; }
-        });
         textTool = new AtomicWorkbenchTextTool(ui, new AtomicWorkbenchTextTool.Actions() {
-            @Override public void addText(String value) { transfer.addText(value); }
             @Override public void shareText(String value) { transfer.shareText(value); }
             @Override public boolean startTextDrag(View source, String value, Runnable ended) {
                 return transfer.startTextDrag(source, value, ended);
@@ -642,9 +631,9 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
                 this, ui, config, launchGeneration, WORKER, this::refreshAppearance);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         content.addView(controls, ui.wrap());
-        Button materials = ui.tonalButton("素材与历史"); materials.setMinimumHeight(ui.dp(48));
-        materials.setTag("atomic-workbench-material-tools");
-        materials.setOnClickListener(view -> { if (settingsDialog != null) settingsDialog.dismiss(); transfer.showTools(); });
+        Button materials = ui.tonalButton("文字工具"); materials.setMinimumHeight(ui.dp(48));
+        materials.setTag("atomic-workbench-text-tools");
+        materials.setOnClickListener(view -> { if (settingsDialog != null) settingsDialog.dismiss(); textTool.show(""); });
         content.addView(materials, ui.margins(0, 8, 0, 0));
         Button shelf = ui.tonalButton("暂存与移出任务"); shelf.setMinimumHeight(ui.dp(48));
         shelf.setTag("atomic-workbench-task-shelf");
@@ -3632,35 +3621,9 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         return true;
     }
 
-    private AtomicWorkbenchAppSourceDrag.Capture captureAppSourceDrag(int uid, int display, long down) {
-        int id = model.mainWindowId(); Slot slot = slots[id];
-        return new AtomicWorkbenchAppSourceDrag.Capture(uid, display, slot.targetTaskId, id, epoch, down,
-                sessionGeneration, launchGeneration, slot.displayUniqueId, client, slot.surface);
-    }
 
-    private boolean currentAppSourceDrag(AtomicWorkbenchAppSourceDrag.Capture capture) {
-        if (capture == null || !mainReady() || !resumed || isFinishing() || exitRequested || textDeliveryActive
-                || !hostTouchActive || config == null || !config.getBoolean(AtomicWorkbenchConfig.ENABLED)
-                || capture.client == null || capture.client != client || !client.live()
-                || capture.session != sessionGeneration || capture.reset != launchGeneration || capture.epoch != epoch
-                || capture.window != model.mainWindowId() || gestureWindow != capture.window || gestureDisplay != capture.display
-                || gestureGeometry == null || lastTouch == null || lastTouch.getPointerCount() != 1
-                || lastTouch.getDownTime() != capture.down || lastTouch.getActionMasked() == MotionEvent.ACTION_UP
-                || lastTouch.getActionMasked() == MotionEvent.ACTION_CANCEL
-                || !Float.isFinite(lastTouch.getX()) || !Float.isFinite(lastTouch.getY())
-                || capture.down <= 0 || SystemClock.uptimeMillis() - capture.down < 200
-                || SystemClock.uptimeMillis() - capture.down > 30_000) return false;
-        Slot slot = slots[capture.window];
-        android.os.PowerManager power = getSystemService(android.os.PowerManager.class);
-        android.app.KeyguardManager keyguard = getSystemService(android.app.KeyguardManager.class);
-        return power != null && power.isInteractive() && keyguard != null && !keyguard.isKeyguardLocked()
-                && capture.uid >= 10000 && capture.uid / 100000 == android.os.Process.myUid() / 100000
-                && capture.uid == slot.targetUid && capture.display > 0 && capture.display == slot.displayId
-                && capture.task > 0 && capture.task == slot.targetTaskId && !slot.nativeHome
-                && !capture.unique.isEmpty() && capture.unique.equals(slot.displayUniqueId)
-                && capture.source == slot.surface && capture.source.isAttachedToWindow()
-                && getDisplay() != null && getDisplay().getDisplayId() == 0;
-    }
+
+
 
     /** Uses the actual TextureView content rectangle, never the surrounding letterbox frame. */
     private Bundle captureExtractionGeometry() {
@@ -3747,7 +3710,6 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
     private void clearGesture() {
         if (lastTouch != null) lastTouch.recycle();
         lastTouch = null; gestureGeometry = null; gestureWindow = gestureDisplay = -1;
-        if (appSourceDrag != null) appSourceDrag.cancel();
     }
 
     private void requestCloseAll(boolean finishWhenRestored) {
@@ -4092,7 +4054,6 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         super.onStart(); active = true; lifecycleGate.started();
         main.removeCallbacks(extractionGeometryTick); main.postDelayed(extractionGeometryTick, 1100L);
         if (transfer != null) transfer.setForeground(true);
-        if (appSourceDrag != null) appSourceDrag.foreground(true);
         lifecycleDiagnostic("UI_STARTED", "surface_missing=" + lifecycleGate.surfaceMissing());
         refreshAppearance();loadApps();
         if(!appPackagesRegistered){
@@ -4175,7 +4136,6 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         textDeliveryActive = false;
         if (pasteCoordinator != null) pasteCoordinator.cancelAll();
         if (transfer != null) transfer.setForeground(false);
-        if (appSourceDrag != null) appSourceDrag.foreground(false);
         if (client != null) client.clearGestureTarget();
         main.removeCallbacks(homePresentationPoll);
         if (closeDialog != null) closeDialog.dismiss();
@@ -4203,7 +4163,6 @@ public final class AtomicWorkbenchActivity extends Activity implements ModuleNav
         main.removeCallbacks(entrySideDispatch);
         invalidateExtractionGeometry(); main.removeCallbacks(extractionGeometryTick);
         destroyed = true; active = false;
-        if (appSourceDrag != null) appSourceDrag.foreground(false);
         retireNativeShieldLayout("DESTROY"); hostTouchActive = false;
         if (pasteCoordinator != null) pasteCoordinator.close();
         if (textTool != null) textTool.close();

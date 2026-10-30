@@ -188,7 +188,7 @@ public class TestPackageReadyDispatch {
             deliver(scoped, target(pkg));
             check(scoped.calls.contains("provider-witness:" + pkg), "registered target lost witness: " + pkg);
             check(scoped.calls.contains("OemAppExtrasHook:" + pkg), "registered app was not dispatched: " + pkg);
-            check(scoped.calls.contains("AtomicWorkbenchSourceDragHook"), "registered source lost native drag hook: " + pkg);
+            check(!scoped.calls.contains("AtomicWorkbenchSourceDragHook"), "retired source drag hook was installed: " + pkg);
             check(!scoped.systemPackageReadySeen, "registered app entered server branch: " + pkg);
         }
         System.out.println("PackageReady dispatch regression: " + assertions + " assertions passed");

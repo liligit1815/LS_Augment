@@ -275,6 +275,21 @@ def check_scope():
     assert 'com.tencent.mobileqq' not in scope
 
 
+def check_retired_workbench_file_transfer():
+    manifest = (app / 'src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+    assert '.AtomicWorkbenchShareActivity' not in manifest
+    assert '.AtomicWorkbenchTransferProvider' not in manifest
+    for name in ('hook/AtomicWorkbenchSourceDragHook.java', 'AtomicWorkbenchAppSourceDrag.java',
+                 'AtomicWorkbenchSourceDragBridge.java', 'AtomicWorkbenchSourceDragData.java'):
+        assert not (src / name).exists(), f'retired app drag source remains: {name}'
+    module = (src / 'hook/AugmentModule.java').read_text(encoding='utf-8')
+    assert 'workbench_source_drag' not in module
+    host = (src / 'AtomicWorkbenchActivity.java').read_text(encoding='utf-8')
+    assert 'transfer.showTools()' not in host and '素材与历史' not in host
+    text_tool = (src / 'AtomicWorkbenchTextTool.java').read_text(encoding='utf-8')
+    assert '添加到流转' not in text_tool
+
+
 def check_legacy_sources():
     for source in (app / 'src/main/java').rglob('*.java'):
         text = source.read_text(encoding='utf-8')
@@ -551,6 +566,7 @@ def main():
         check_retired_recents,
         check_auxiliary_line,
         check_scope,
+        check_retired_workbench_file_transfer,
         check_legacy_sources,
         check_rapid_keys,
         check_fan,

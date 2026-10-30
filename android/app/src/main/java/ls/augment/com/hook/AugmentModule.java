@@ -335,8 +335,6 @@ public final class AugmentModule extends RootEarlyModule {
         // the normal diagnostics and is harmless when no context is available.
         writePackageReadyWitness(readyPackageName);
 
-        installPackageStage("workbench_source_drag", () -> AtomicWorkbenchSourceDragHook.install(this));
-
         installPackageStage("oem_extras", () -> OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("connections", () -> ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("game_extras", () -> GameExtrasHook.install(this, param.getClassLoader(), readyPackageName));

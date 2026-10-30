@@ -65,15 +65,6 @@
             android:screenOrientation="portrait" android:launchMode="singleTask"
             android:taskAffinity="ls.augment.com.atomic_workbench" android:autoRemoveFromRecents="true"
             android:resizeableActivity="true" android:exported="false" />
-        <activity android:name=".AtomicWorkbenchShareActivity" android:theme="@style/Theme.LSAugment.Settings"
-            android:label="红魔Duo · 流转" android:exported="true" android:excludeFromRecents="true">
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
-            </intent-filter>
-        </activity>
         <activity android:name=".LauncherCompatibilityActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
             android:name=".SettingsActivity"
@@ -209,8 +200,5 @@
         <provider android:name=".AtomicWorkbenchProvider"
             android:authorities="ls.augment.com.workbench" android:exported="true"
             android:grantUriPermissions="false" tools:ignore="ExportedContentProvider" />
-        <provider android:name=".AtomicWorkbenchTransferProvider"
-            android:authorities="${applicationId}.workbench.transfer" android:exported="false"
-            android:grantUriPermissions="true" />
     </application>
 </manifest>

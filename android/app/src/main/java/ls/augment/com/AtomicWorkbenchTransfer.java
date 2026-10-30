@@ -106,7 +106,7 @@ final class AtomicWorkbenchTransfer {
         clear = ui.button("×"); clear.setContentDescription("清除流转素材");
         clear.setPadding(0, 0, 0, 0); clear.setMinWidth(0); clear.setMinimumWidth(0); clear.setMinimumHeight(ui.dp(48));
         clear.setOnClickListener(v -> clear()); staged.addView(clear, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
-        help = ui.helpButton("流转与素材历史", helpText());
+        help = ui.helpButton("素材历史", "文件流转已取消；历史缓存按原有效期清理。");
         staged.addView(help, new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)));
         LinearLayout regions = new LinearLayout(activity);
         for (AtomicWorkbenchContentItem.Kind kind : AtomicWorkbenchContentItem.Kind.values()) {
@@ -214,7 +214,7 @@ final class AtomicWorkbenchTransfer {
     }
 
     private void showShareTargets(AtomicWorkbenchPendingPayload snapshot) {
-        if (snapshot == null || !snapshot.deliverable() || closed) { notice("有素材已失效，请先移除或选择有效单项"); return; }
+        if (snapshot == null || !snapshot.files.isEmpty() || !snapshot.deliverable() || closed) { notice("有素材已失效，请先移除或选择有效单项"); return; }
         dismissMenu();
         targetSnapshot = snapshot;
         AtomicWorkbenchShareTargetRepository.Descriptor descriptor = descriptor(snapshot);
@@ -564,11 +564,8 @@ final class AtomicWorkbenchTransfer {
         return beginDrag(source, snapshot, ended, accessibility, false);
     }
     private boolean beginDrag(View source, AtomicWorkbenchPendingPayload snapshot, Runnable ended, boolean accessibility, boolean extractedText) {
-        return beginDrag(source, snapshot, ended, accessibility, extractedText, null);
-    }
-    private boolean beginDrag(View source, AtomicWorkbenchPendingPayload snapshot, Runnable ended, boolean accessibility, boolean extractedText,
-            AtomicWorkbenchSourceDragData appSource) {
-        if (closed || source == null || !snapshot.deliverable()) { ended(ended); return false; }
+        // Retired file transfer cannot be revived by a saved queue or stale callback.
+        if (closed || source == null || !snapshot.deliverable() || !snapshot.files.isEmpty()) { ended(ended); return false; }
         if (activeDrag != null) { ended(ended); notice("请先结束当前拖动"); return false; }
         DragSession session = new DragSession(this, source, snapshot, ended); activeDrag = session;
         if (extractedText && activity instanceof AtomicWorkbenchExtractionActivity) {
@@ -585,17 +582,6 @@ final class AtomicWorkbenchTransfer {
         boolean started = false;
         ClipData clip = dragClip(snapshot, session.nonce);
         View.DragShadowBuilder shadow = new View.DragShadowBuilder(source);
-        if (appSource != null) {
-            ClipDescription description = new ClipDescription(appSource.label, mimeTypes(clip.getDescription()));
-            android.os.PersistableBundle extras = new android.os.PersistableBundle(appSource.decoration);
-            extras.putAll(clip.getDescription().getExtras()); description.setExtras(extras);
-            // Native receivers (including the OEM station) retain the original media URI.
-            // Our authenticated window drop still delivers the verified frozen cache bytes.
-            ClipData original = appSource.clip;
-            ClipData decorated = new ClipData(description, original.getItemAt(0));
-            for (int i = 1; i < original.getItemCount(); i++) decorated.addItem(original.getItemAt(i));
-            clip = decorated; shadow = sourceShadow(source, snapshot);
-        }
         try { started = source.startDragAndDrop(clip, shadow, session,
                 View.DRAG_FLAG_GLOBAL | (snapshot.files.isEmpty() ? 0 : View.DRAG_FLAG_GLOBAL_URI_READ)
                         | (accessibility ? View.DRAG_FLAG_ACCESSIBILITY_ACTION : 0)); }
@@ -613,44 +599,10 @@ final class AtomicWorkbenchTransfer {
         return started;
     }
 
-    private static String[] mimeTypes(ClipDescription description) {
-        String[] types = new String[description.getMimeTypeCount()];
-        for (int i = 0; i < types.length; i++) types[i] = description.getMimeType(i);
-        return types;
-    }
-    private View.DragShadowBuilder sourceShadow(View source, AtomicWorkbenchPendingPayload snapshot) {
-        final int width = ui.dp(112), height = ui.dp(64), background = ui.cardHigh, foreground = ui.text;
-        final String label = snapshot.files.isEmpty() ? "文字" : snapshot.files.size() > 1 ? snapshot.files.size() + " 个文件"
-                : snapshot.files.get(0).image() ? "图片" : snapshot.files.get(0).video() ? "视频" : "文件";
-        return new View.DragShadowBuilder(source) {
-            @Override public void onProvideShadowMetrics(android.graphics.Point size, android.graphics.Point touch) {
-                size.set(width, height); touch.set(width / 2, height / 2);
-            }
-            @Override public void onDrawShadow(android.graphics.Canvas canvas) {
-                android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(background); canvas.drawRoundRect(0, 0, width, height, ui.dp(12), ui.dp(12), paint);
-                paint.setColor(foreground); paint.setTextSize(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 16,
-                        source.getResources().getDisplayMetrics())); paint.setTextAlign(android.graphics.Paint.Align.CENTER);
-                canvas.drawText(label, width / 2f, height / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
-            }
-        };
-    }
 
-    boolean beginAppSourceDrag(View source, AtomicWorkbenchPendingPayload snapshot, AtomicWorkbenchContentPanel.DragSource state,
-            AtomicWorkbenchSourceDragData payload) {
-        if (closed || !foreground || !state.held() || activeDrag != null) { state.ended(); return false; }
-        contentDragState = state; contentDragView = source; state.starting();
-        if (callback != null) callback.onDragState(true);
-        boolean started = beginDrag(source, snapshot, () -> {
-            state.ended();
-            if (contentDragState == state) {
-                contentDragState = null; contentDragView = null;
-                if (callback != null) callback.onDragState(false);
-            }
-        }, false, false, payload);
-        if (started && contentDragState == state) state.started();
-        return started;
-    }
+
+
+
 
     private static final class ContentRead {
         final View source; final AtomicWorkbenchContentPanel.DragSource state;
@@ -789,7 +741,7 @@ final class AtomicWorkbenchTransfer {
     }
 
     private void check(AtomicWorkbenchPendingPayload value) throws IOException {
-        if (!value.deliverable() || !value.text.isEmpty() && !AtomicWorkbenchTransferPolicy.fresh(value.textCreated, System.currentTimeMillis())) throw new IOException();
+        if (!value.files.isEmpty() || !value.deliverable() || !value.text.isEmpty() && !AtomicWorkbenchTransferPolicy.fresh(value.textCreated, System.currentTimeMillis())) throw new IOException();
         long bytes = 0;
         for (AtomicWorkbenchPendingPayload.FileItem item : value.files) {
             long count = AtomicWorkbenchTransferStore.resolve(activity, Uri.parse(item.uri)).file.length();
@@ -896,9 +848,5 @@ final class AtomicWorkbenchTransfer {
         dismissMenu(); clearHover(); if (scroller != null) scroller.close(); contentPanel.close(); collector.close();
     }
     private static AtomicWorkbenchShareTargetRepository.Descriptor descriptor(AtomicWorkbenchPendingPayload value) { return AtomicWorkbenchShareTargetRepository.Descriptor.from(AtomicWorkbenchTransferStore.payload(value)); }
-    private static String helpText() {
-        return "应用间流转的目标是：在来源应用中长按图片、视频、文件或文字，直接拖到工作台里已打开的目标应用，松手交给该应用。允许进入目标应用自己的接收界面，最终发送由你确认。来源应用和跨窗口接收仍在适配，未打通的组合不能称为已支持。\n\n"
-                + "按目标应用实际接收能力适配文字、图片、视频和文件，不以应用名单代替能力检查。优先核对图库到微信、QQ、浏览器，微信到QQ、浏览器，MT管理器到微信、QQ、浏览器。浏览器只接收图片或文字并执行搜索，不接收视频和文件。文字搜索打开必应网页；图片搜索仍待适配。不支持时提示“当前app暂不支持”。\n\n"
-                + "这里的素材清单是独立辅助工具，可导入或保存文字和文件，每次最多16个文件、合计512MB，手机缓存保留24小时。手动选择分享入口仍可使用；它不等于来源应用间的直接拖拽。";
-    }
+
 }

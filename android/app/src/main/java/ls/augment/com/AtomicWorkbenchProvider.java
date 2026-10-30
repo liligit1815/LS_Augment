@@ -240,8 +240,11 @@ public final class AtomicWorkbenchProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
 
     @Override public Bundle call(String method, String arg, Bundle extras) {
-        if (AtomicWorkbenchSourceDragData.PROBE.equals(method) || AtomicWorkbenchSourceDragData.OFFER.equals(method))
-            return AtomicWorkbenchSourceDragBridge.call(method, arg, extras);
+        // Old app processes may still hold hooks until restart. Refuse their
+        // retired handoff before reading any payload or granting a session.
+        if ("source_drag_probe".equals(method) || "source_drag_offer".equals(method)) {
+            Bundle rejected = new Bundle(); rejected.putBoolean("accepted", false); return rejected;
+        }
         if (AtomicWorkbenchAmapData.REGISTER.equals(method) || AtomicWorkbenchAmapData.PUBLISH.equals(method))
             return writeAmapNavigation(method, arg, extras);
         if ("gesture_target".equals(method)) return readGestureTarget(arg, extras);
