@@ -1310,7 +1310,7 @@ public final class AtomicWorkbenchRoot extends Binder {
     private static Bundle failureState(Throwable failure, boolean pending) {
         Throwable detail = cause(failure);
         AtomicWorkbenchDiagnostics.emit("ROOT_OPERATION_FAILED", -1, -1, "", -1,
-                "recovery_pending=" + pending, detail);
+                "recovery_pending=" + pending+";reason="+AtomicWorkbenchDiagnostics.reason(detail), detail);
         Bundle state = AtomicWorkbenchProtocol.failure("工作台系统调用失败：" + detail.getClass().getSimpleName());
         state.putBoolean("recovery_pending", pending);
         return state;

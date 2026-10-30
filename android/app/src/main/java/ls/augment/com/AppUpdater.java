@@ -101,10 +101,13 @@ final class AppUpdater {
                     else { state = State.IDLE; release = null; }
                 });
             } catch (Exception error) {
+                if(!current(request))return;
+                AppUpdateFailure failure=AppUpdateFailure.classify(error,"manifest");
+                logFailure("manifest",foundVersion(),null,error,failure);
                 main.post(() -> {
                     if (!current(request)) return;
                     finishCheck(error instanceof UpdateError ? error.getMessage()
-                            : "无法检查更新，请检查网络后重试。");
+                            : failure.userMessage());
                 });
             }
         });
@@ -139,7 +142,8 @@ final class AppUpdater {
         HttpURLConnection opened = open(AppUpdatePolicy.MANIFEST_URL, false);
         try {
             requireCurrent(request);
-            if (opened.getResponseCode() != 200) throw new IOException();
+            int status=opened.getResponseCode();
+            if (status != 200) throw new AppUpdateFailure("network","http_"+status,null);
             if (opened.getContentLengthLong() > 64 * 1024) throw new UpdateError("更新信息无效，请稍后重试。");
             ByteArrayOutputStream result = new ByteArrayOutputStream();
             long deadline = SystemClock.elapsedRealtime() + 30000;
@@ -147,7 +151,7 @@ final class AppUpdater {
                 byte[] buffer = new byte[4096]; int count;
                 while ((count = input.read(buffer)) != -1) {
                     requireCurrent(request);
-                    if (SystemClock.elapsedRealtime() > deadline) throw new IOException();
+                    if (SystemClock.elapsedRealtime() > deadline) throw new java.net.SocketTimeoutException();
                     if (result.size() + count > 64 * 1024) throw new UpdateError("更新信息无效，请稍后重试。");
                     result.write(buffer, 0, count);
                 }
@@ -176,6 +180,7 @@ final class AppUpdater {
         render();
         task = worker.submit(() -> {
             File temporary = null;
+            DownloadTrace trace=new DownloadTrace();trace.expected=selected.size;
             try (UpdateApkProvider.DownloadLease lease=UpdateApkProvider.beginDownload(context,selected.sha256,selected.size)) {
                 File directory = UpdateApkProvider.directory(context);
                 if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException();
@@ -183,6 +188,7 @@ final class AppUpdater {
                 File cached = lease.cached;
                 boolean reusable = false;
                 if (cached.isFile()) {
+                    trace.stage="verify_cache";
                     try { verifyFile(cached, selected, request); reusable = true; }
                     catch (Exception invalid) {
                         requireCurrent(request);
@@ -190,9 +196,14 @@ final class AppUpdater {
                     }
                 }
                 if (!reusable) {
-                    transfer(selected, temporary, request);
+                    trace.stage="space_check";
+                    trace.available=directory.getUsableSpace();
+                    AppUpdateFailure.requireSpace(trace.available,selected.size);
+                    transfer(selected, temporary, request,trace);
+                    trace.stage="verify";
                     verifyFile(temporary, selected, request);
                     requireCurrent(request);
+                    trace.stage="rename";
                     if (!temporary.renameTo(cached)) throw new IOException();
                 }
                 final File ready = cached;
@@ -203,28 +214,34 @@ final class AppUpdater {
                     if (activity != null && foreground) install(); else render();
                 });
             } catch (Exception error) {
+                if(!current(request))return;
+                AppUpdateFailure failure=AppUpdateFailure.classify(error,trace.stage);
+                logFailure(trace.stage,selected.versionCode,trace,error,failure);
                 main.post(() -> {
                     if (!current(request)) return;
                     state = State.MESSAGE;
-                    message = error instanceof UpdateError ? error.getMessage() : "下载未完成，请检查网络和可用空间后重试。";
+                    message = error instanceof UpdateError ? error.getMessage() : failure.userMessage();
                     render();
                 });
             } finally { if (temporary != null && temporary.exists()) temporary.delete(); }
         });
     }
 
-    private void transfer(AppUpdateManifest selected, File destination, int request) throws Exception {
+    private void transfer(AppUpdateManifest selected, File destination, int request,DownloadTrace trace) throws Exception {
         String address = selected.url;
         HttpURLConnection opened = null;
         try {
             for (int redirect = 0; redirect <= 5; redirect++) {
                 requireCurrent(request);
+                trace.stage="connect";trace.host=URI.create(address).getHost();
                 opened = open(address, true);
                 int code = opened.getResponseCode();
+                trace.http=code;
                 if (code == 200) break;
-                if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) throw new IOException();
+                if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308)
+                    throw new AppUpdateFailure("network","http_"+code,null);
                 String location = opened.getHeaderField("Location");
-                if (location == null || redirect == 5) throw new IOException();
+                if (location == null || redirect == 5) throw new AppUpdateFailure("network",location==null?"redirect_missing":"redirect_limit",null);
                 String next = URI.create(address).resolve(location).toString();
                 if (!AppUpdatePolicy.redirectUrl(next)) throw new UpdateError("下载地址不符合发布规则，已停止下载。");
                 opened.disconnect(); address = next;
@@ -234,26 +251,44 @@ final class AppUpdater {
             if (length >= 0 && length != selected.size) throw new UpdateError("安装包大小与发布信息不一致，已停止下载。");
             long total = 0, lastProgress = 0;
             long deadline = SystemClock.elapsedRealtime() + 15L * 60 * 1000;
-            try (InputStream input = opened.getInputStream(); FileOutputStream output = new FileOutputStream(destination)) {
+            trace.stage="read";
+            try (InputStream input = opened.getInputStream()) {
+              trace.stage="write";
+              try (FileOutputStream output = new FileOutputStream(destination)) {
                 byte[] buffer = new byte[64 * 1024]; int count;
-                while ((count = input.read(buffer)) != -1) {
+                while (true) {
+                    trace.stage="read";count=input.read(buffer);if(count==-1)break;
                     requireCurrent(request);
                     long now = SystemClock.elapsedRealtime();
-                    if (now > deadline) throw new IOException();
+                    if (now > deadline) throw new java.net.SocketTimeoutException();
                     total += count;
                     if (total > selected.size) throw new UpdateError("安装包大小与发布信息不一致，已停止下载。");
-                    output.write(buffer, 0, count);
+                    trace.stage="write";output.write(buffer, 0, count);trace.bytes=total;
                     if (now - lastProgress >= 250) {
                         lastProgress = now; final long progress = total;
                         main.post(() -> { if (current(request)) { received = progress; updateProgress(); } });
                     }
                 }
-                output.getFD().sync();
+                trace.stage="sync";output.getFD().sync();
+              }
+              trace.stage="read";
             }
-            if (total != selected.size) throw new UpdateError("安装包下载不完整，请重试。");
+            if (total != selected.size) throw new AppUpdateFailure("network","response_truncated",null);
         } finally {
             if (opened != null) { opened.disconnect(); if (connection == opened) connection = null; }
         }
+    }
+
+    private static final class DownloadTrace {
+        String stage="cache",host="";long bytes,expected,available=-1;int http=-1;
+    }
+    private int foundVersion(){return release==null?-1:release.versionCode;}
+    private void logFailure(String stage,int target,DownloadTrace trace,Throwable error,AppUpdateFailure failure){
+        AuditLog.write(context,"UPDATE_FAILED","build="+BuildConfig.VERSION_NAME+";target="+target
+                +";stage="+stage+";category="+(error instanceof UpdateError?"validation":failure.category)
+                +";reason="+(error instanceof UpdateError?error.getMessage():failure.reason)
+                +(trace==null?"":";host="+trace.host+";http="+trace.http+";received="+trace.bytes+";expected="+trace.expected+";available="+trace.available)
+                +";exception="+AppUpdateFailure.trace(error));
     }
 
     private void verifyFile(File file, AppUpdateManifest selected, int request) throws Exception {
@@ -329,9 +364,12 @@ final class AppUpdater {
                     } catch (Exception unavailable) { state = State.READY; message = "无法打开系统安装界面，请稍后重试。"; render(); }
                 });
             } catch (Exception error) {
+                if(!current(request))return;
+                AppUpdateFailure failure=AppUpdateFailure.classify(error,"verify");
+                logFailure("install_verify",selected.versionCode,null,error,failure);
                 main.post(() -> {
                     if (!current(request)) return;
-                    state = State.MESSAGE; message = error instanceof UpdateError ? error.getMessage() : "安装包无法读取，请重新检查更新。"; render();
+                    state = State.MESSAGE; message = error instanceof UpdateError ? error.getMessage() : failure.userMessage(); render();
                 });
             }
         });

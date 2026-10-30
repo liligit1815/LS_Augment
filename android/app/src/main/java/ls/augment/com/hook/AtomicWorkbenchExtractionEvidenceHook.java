@@ -47,6 +47,7 @@ public final class AtomicWorkbenchExtractionEvidenceHook {
     public static final int CONTROL_TRANSACTION=0x00D04E07;
     public static final String CONTROL_DESCRIPTOR="ls.augment.com.atomic_extraction_control.v1";
     private static volatile boolean installed;
+    private static AugmentModule diagnostics;
     private static ClassLoader systemLoader;
     private static Class<?> pointerInterface;
     private static Controller controller;
@@ -58,6 +59,7 @@ public final class AtomicWorkbenchExtractionEvidenceHook {
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
     public static synchronized int install(AugmentModule module,ClassLoader loader){
+        diagnostics=module;
         if(installed){installInjection(module,loader);installNativeDrag(module,loader);return isInstalled()?1:0;}
         try {
             Class<?> wms=Class.forName("com.android.server.wm.WindowManagerService",false,loader);
@@ -132,17 +134,26 @@ public final class AtomicWorkbenchExtractionEvidenceHook {
     }
     private static void dispatchGeometry(Object wms,Parcel data,Parcel reply){
         String nonce=null;Bundle value;boolean success=false;
+        int action=-1;
         int uid=Binder.getCallingUid(),pid=Binder.getCallingPid();
         try{
             if(!isVirtualDisplayInstalled()||data==null||data.dataSize()>12288)throw new Refusal("unavailable");
             data.enforceInterface(AtomicWorkbenchExtractionGeometryTransport.DESCRIPTOR);
-            if(data.readInt()!=1)throw new Refusal("rejected");int action=data.readInt();nonce=data.readString();
+            if(data.readInt()!=1)throw new Refusal("rejected");action=data.readInt();nonce=data.readString();
             if(!hex(nonce,32)||uid!=0||pid<=0)throw new Refusal("rejected");
             Bundle auth=data.readBundle(AtomicWorkbenchExtractionRequest.class.getClassLoader());
             Bundle geometry=data.readBundle(AtomicWorkbenchExtractionRequest.class.getClassLoader());
             if(data.dataAvail()!=0)throw new Refusal("rejected");
             value=controller(wms).geometries.control(action,auth,geometry,uid,pid);success=true;
-        }catch(Throwable failed){value=new Bundle();value.putString("reason",reason(failed));}
+        }catch(Throwable failed){value=new Bundle();value.putString("reason",reason(failed));
+            if(diagnostics!=null){
+                Throwable cause=failed;while(cause instanceof java.lang.reflect.InvocationTargetException&&cause.getCause()!=null)cause=cause.getCause();
+                String capability=cause instanceof Refusal?((Refusal)cause).capability:"";
+                if(!capability.matches("[a-z_]{0,80}"))capability="unclassified";
+                diagnostics.logFeatureInfo("ATOMIC_WORKBENCH_EXTRACTION_GEOMETRY_FAILED action="+action+";reason="+reason(failed)
+                        +";capability="+capability+";exception="+cause.getClass().getName());
+            }
+        }
         reply.writeNoException();reply.writeInt(1);reply.writeString(nonce);reply.writeInt(success?1:0);reply.writeBundle(value);
     }
     private static synchronized Controller controller(Object wms)throws Exception{

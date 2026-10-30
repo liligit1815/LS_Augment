@@ -29,7 +29,9 @@ final class AtomicWorkbenchNotificationEvidenceHook {
     private static final String DESCRIPTOR = "ls.augment.com.atomic_notification_evidence.v1";
     private static final Map<Object, AtomicWorkbenchNotificationRecords> STORES = new WeakHashMap<>();
     private static volatile boolean installed;
-    private static Class<?> binderClass, serviceClass;
+    private static Class<?> nativeStub, serviceClass;
+    private static java.lang.reflect.Field listenerOwner;
+    private static final java.util.Set<Method> transactions=new java.util.HashSet<>();
     private static Method getService, getSbn, getContext;
 
     static boolean isInstalled() { return installed; }
@@ -42,26 +44,22 @@ final class AtomicWorkbenchNotificationEvidenceHook {
         try {
             AtomicWorkbenchNotificationRecords.prepare();
             serviceClass = Class.forName("com.android.server.notification.NotificationManagerService", false, loader);
-            binderClass = HookCompatibility.type(loader,
-                    "com.android.server.notification.NotificationManagerService$Stub",
-                    "com.android.server.notification.NotificationManagerService$13");
-            Class<?> nativeStub = Class.forName("android.app.INotificationManager$Stub", false, loader);
-            if (!nativeStub.isAssignableFrom(binderClass)
-                    || member(binderClass, "this$0").getType() != serviceClass)
-                throw new NoSuchFieldException("notification_service_binder_shape");
+            nativeStub = Class.forName("android.app.INotificationManager$Stub", false, loader);
             Class<?> record = Class.forName("com.android.server.notification.NotificationRecord", false, loader);
             Class<?> listeners = Class.forName("com.android.server.notification.NotificationManagerService$NotificationListeners", false, loader);
             member(serviceClass, "mNotificationLock"); member(serviceClass, "mNotificationsByKey"); member(serviceClass, "mService");
-            member(binderClass, "this$0"); member(listeners, "this$0");
+            listenerOwner=AtomicWorkbenchNotificationAdapter.ownerField(listeners,serviceClass);
             getContext = method(serviceClass, "getContext"); getSbn = method(record, "getSbn");
             getService = Class.forName("android.os.ServiceManager", false, loader).getDeclaredMethod("getService", String.class); getService.setAccessible(true);
             Method post = method(listeners, "notifyPostedLocked", record, record, boolean.class);
             Method remove = method(serviceClass, "removeFromNotificationListsLocked", record);
-            Method transact = method(binderClass, "onTransact", int.class, Parcel.class, Parcel.class, int.class);
-            module.deoptimize(post); module.deoptimize(remove); module.deoptimize(transact);
+            if(!Context.class.isAssignableFrom(getContext.getReturnType())||!StatusBarNotification.class.isAssignableFrom(getSbn.getReturnType())
+                    ||!Map.class.isAssignableFrom(member(serviceClass,"mNotificationsByKey").getType()))
+                throw new NoSuchFieldException("notification_records_contract");
+            module.deoptimize(post); module.deoptimize(remove);
             module.registerFeatureHook(module.prepareFeatureHook(post, "atomic_workbench.notification_generation.post", true)
                     .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
-                try { committed(field(chain.getThisObject(), "this$0"), chain.getArg(0), chain.getArg(1)); }
+                try { committed(listenerOwner.get(chain.getThisObject()), chain.getArg(0), chain.getArg(1)); }
                 catch (Throwable ignored) { /* A tracking failure cannot change notification delivery. */ }
                 return chain.proceed();
             }));
@@ -73,23 +71,66 @@ final class AtomicWorkbenchNotificationEvidenceHook {
             }));
             // The new optional route cannot disable the original 04 reader.
             try { AtomicWorkbenchNotificationActionsBroker.prepare(loader); } catch (Throwable ignored) { }
-            module.registerFeatureHook(module.prepareFeatureHook(transact, "atomic_workbench.notification_evidence.read", true)
+            // Prefer the actual published service; old names remain checked fallback candidates.
+            Object published=getService.invoke(null,"notification");
+            if(published!=null)tryInstallBinder(module,published.getClass());
+            if(!installed)for(String name:new String[]{serviceClass.getName()+"$Stub",serviceClass.getName()+"$13"}){
+                try{tryInstallBinder(module,Class.forName(name,false,loader));}catch(ClassNotFoundException absent){ }
+                if(installed)break;
+            }
+            // At system-server startup notification may not have been published yet.
+            // Discover mService after native startup instead of guessing another anonymous number.
+            try {
+                Method start=method(serviceClass,"onStart");
+                if(start.getReturnType()!=void.class)throw new NoSuchMethodException("notification_onStart_signature");
+                module.deoptimize(start);
+                module.registerFeatureHook(module.prepareFeatureHook(start,"atomic_workbench.notification_service.ready",true)
+                        .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain->{
+                    Object result=chain.proceed();
+                    try{Object binder=field(chain.getThisObject(),"mService");
+                        if(binder!=null)tryInstallBinder(module,binder.getClass());
+                    }catch(Throwable unavailable){module.logFeatureError("ATOMIC_WORKBENCH_NOTIFICATION_SERVICE_DISCOVERY",unavailable);}
+                    return result;
+                }));
+            }catch(ReflectiveOperationException absent){
+                if(!installed)throw absent;
+            }
+            module.logFeatureInfo(installed?"ATOMIC_WORKBENCH_NOTIFICATION_EVIDENCE_INSTALLED schema=1;content=none"
+                    :"ATOMIC_WORKBENCH_NOTIFICATION_EVIDENCE_PENDING capability=service_publication");return 1;
+        } catch (Throwable unavailable) {
+            module.logFeatureError("ATOMIC_WORKBENCH_NOTIFICATION_EVIDENCE_UNAVAILABLE", unavailable); return 0;
+        }
+    }
+
+    private static synchronized void tryInstallBinder(AugmentModule module,Class<?> candidate){
+        try {
+            AtomicWorkbenchNotificationAdapter adapter=new AtomicWorkbenchNotificationAdapter(serviceClass,nativeStub,candidate,Parcel.class);
+            Method transact=adapter.transact;
+            if(transactions.contains(transact))return;
+            module.deoptimize(transact);
+            module.registerFeatureHook(module.prepareFeatureHook(transact, "atomic_workbench.notification_evidence.read."+candidate.getName(), true)
                     .setExceptionMode(ExceptionMode.PASSTHROUGH).intercept(chain -> {
-                if (!binderClass.isInstance(chain.getThisObject()) || !(Integer.valueOf(TX).equals(chain.getArg(0))
+                if (!nativeStub.isInstance(chain.getThisObject()) || !(Integer.valueOf(TX).equals(chain.getArg(0))
                         || Integer.valueOf(AtomicWorkbenchNotificationActionsBroker.TX).equals(chain.getArg(0)))) return chain.proceed();
-                Object owner = field(chain.getThisObject(), "this$0");
-                if (!serviceClass.isInstance(owner) || field(owner, "mService") != chain.getThisObject()) return chain.proceed();
+                Object owner;
+                try { owner=ownerOf(chain.getThisObject()); }
+                catch(ReflectiveOperationException|RuntimeException unknown){return chain.proceed();}
                 Parcel reply = (Parcel) chain.getArg(2);
                 if (reply != null && acceptsSynchronousBinderFlags(chain.getArg(3))) {
                     if (Integer.valueOf(TX).equals(chain.getArg(0))) read(chain.getThisObject(), (Parcel) chain.getArg(1), reply);
-                    else AtomicWorkbenchNotificationActionsBroker.handle(field(chain.getThisObject(), "this$0"), (Parcel) chain.getArg(1), reply);
+                    else AtomicWorkbenchNotificationActionsBroker.handle(owner, (Parcel) chain.getArg(1), reply);
                 }
                 return true;
             }));
-            installed = true; module.logFeatureInfo("ATOMIC_WORKBENCH_NOTIFICATION_EVIDENCE_INSTALLED schema=1;content=none"); return 1;
-        } catch (Throwable unavailable) {
-            installed = false; module.logFeatureError("ATOMIC_WORKBENCH_NOTIFICATION_EVIDENCE_UNAVAILABLE", unavailable); return 0;
+            transactions.add(transact);installed=true;
+            module.logFeatureInfo("ATOMIC_WORKBENCH_NOTIFICATION_BINDER_READY class="+candidate.getName()+";owner="+adapter.ownerField.getName()+";method="+transact.getDeclaringClass().getName());
+        }catch(Throwable unavailable){
+            module.logFeatureError("ATOMIC_WORKBENCH_NOTIFICATION_BINDER_UNAVAILABLE class="+candidate.getName(),unavailable);
         }
+    }
+    private static Object ownerOf(Object binder)throws ReflectiveOperationException {
+        if(binder==null)throw new IllegalAccessException("notification_binder_missing");
+        return new AtomicWorkbenchNotificationAdapter(serviceClass,nativeStub,binder.getClass(),Parcel.class).owner(binder);
     }
 
     private static AtomicWorkbenchNotificationRecords store(Object service) {
@@ -131,8 +172,8 @@ final class AtomicWorkbenchNotificationEvidenceHook {
     static Object localService() throws ReflectiveOperationException {
         if (!installed) throw new IllegalStateException("notification evidence unavailable");
         Object binder = getService.invoke(null, "notification");
-        if (!binderClass.isInstance(binder)) throw new SecurityException();
-        Object service = field(binder, "this$0");
+        if (!nativeStub.isInstance(binder)) throw new SecurityException();
+        Object service = ownerOf(binder);
         if (!serviceClass.isInstance(service) || !binder.equals(field(service, "mService"))) throw new SecurityException();
         return service;
     }
@@ -163,7 +204,7 @@ final class AtomicWorkbenchNotificationEvidenceHook {
             String nonce = data.readString(); long deadline = data.readLong();
             if (data.dataAvail() != 0 || nonce == null || !nonce.matches("[0-9a-f]{32}")) throw new SecurityException();
             fresh(deadline);
-            Object service = field(binder, "this$0");
+            Object service = ownerOf(binder);
             if (service != localService()) throw new SecurityException();
             Context context = (Context) getContext.invoke(service);
             AtomicWorkbenchSystemRootAuthority.Session principal = AtomicWorkbenchSystemRootAuthority.authenticate(context, auth, uid, pid);

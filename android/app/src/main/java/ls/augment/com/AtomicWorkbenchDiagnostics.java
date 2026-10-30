@@ -141,6 +141,7 @@ public final class AtomicWorkbenchDiagnostics {
                     value.put("rootPipeFailures", source.optLong("rootPipeFailures", -1));
                     value.put("rootQueueCapacity", source.optInt("rootQueueCapacity", -1));
                     value.put("errorType", safe(source.optString("errorType", ""), token, 160));
+                    value.put("errorReason", fixedReason(source.optString("errorReason", "")));
                     value.put("errorStack", safe(source.optString("errorStack", ""), token, 4096));
                     value.put("receivedAt", System.currentTimeMillis());
                     value.put("transport", "child_stdout");
@@ -181,12 +182,25 @@ public final class AtomicWorkbenchDiagnostics {
         value.put("package", target.contains("/") ? target.substring(0, target.indexOf('/')) : target);
         value.put("detail", safe(detail, null, 2048));
         value.put("errorType", error == null ? "" : safe(error.getClass().getName(), null, 160));
+        value.put("errorReason", reason(error));
         value.put("errorStack", stack(error));
         return value;
     }
 
     private static boolean validEvent(String value) {
         return value != null && value.matches("[A-Za-z0-9_.-]{1,80}");
+    }
+
+    /** Only protocol-owned reason codes; exception text may contain extracted content or credentials. */
+    public static String reason(Throwable error){
+        for(int i=0;error!=null&&i<6;i++){
+            String reason=fixedReason(error.getMessage());if(!reason.isEmpty())return reason;
+            if(error.getCause()==error)break;error=error.getCause();
+        }
+        return "";
+    }
+    private static String fixedReason(String value){
+        return value!=null&&value.matches("extraction_geometry_(protected|stale|cancelled|expired|unavailable|rejected|busy|invalid_reply|cleanup_pending|invalid_identity)")?value:"";
     }
 
     /** Exception messages can contain Intent extras; preserve types and frames only. */

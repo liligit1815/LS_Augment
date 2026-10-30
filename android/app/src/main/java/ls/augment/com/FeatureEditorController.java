@@ -1831,8 +1831,7 @@ final class FeatureEditorController extends NativeEditorController {
                 AppConfig.STATUSBAR_THERMAL, AppConfig.STATUSBAR_BATTERY_POWER)) {
             updates.put(AppConfig.SYSTEMUI_MASTER, "1");
         }
-        if (enabledIn(updates, AppConfig.DOUBLE_ANY_APP, AppConfig.DOUBLE_LOW_MEMORY,
-                AppConfig.BEAUTIFY_UNLIMITED_TRIAL)) {
+        if (enabledIn(updates, AppConfig.DOUBLE_ANY_APP, AppConfig.DOUBLE_LOW_MEMORY)) {
             updates.put(AppConfig.APP_MASTER, "1");
         }
         long savingGeneration = changeGeneration;
@@ -2114,7 +2113,7 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_AUDIO_GAIN:
                 return "配置保存后约 1 秒读取；首次安装或更新模块代码需重启手机";
             case MODULE_DOUBLE_APP:
-            case MODULE_BEAUTIFY: return "重启应用增强作用域后生效";
+            case MODULE_BEAUTIFY: return "开关自动生效；更新模块后重启主题商店与主题服务，再重新打开主题商店";
             case MODULE_SIGNATURE_INSTALL: return "首次安装或更新模块代码后需重启手机";
             default: return "立即生效";
         }
@@ -2136,7 +2135,7 @@ final class FeatureEditorController extends NativeEditorController {
             case MODULE_FREEFORM: case MODULE_FREEFORM_RULES: case MODULE_FREEFORM_LIMITS: return ScopeRestartDialog.DEVICE;
             case MODULE_AUDIO_GAIN: return ScopeRestartDialog.DEVICE;
             case MODULE_DOUBLE_APP:
-            case MODULE_BEAUTIFY: return ScopeRestartDialog.APPS;
+            case MODULE_BEAUTIFY: return ScopeRestartDialog.THEME;
             case MODULE_SIGNATURE_INSTALL: return ScopeRestartDialog.DEVICE;
             default: return ScopeRestartDialog.SETTINGS;
         }

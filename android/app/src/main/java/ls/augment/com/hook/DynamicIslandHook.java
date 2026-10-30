@@ -181,8 +181,9 @@ final class DynamicIslandHook {
             return true;
         }
         boolean observeHostVisibility(){
-            // OEM fullscreen and the module's hide-status-bar option use alpha,
-            // which emits no visibility callback. Compare only view properties;
+            // OEM fullscreen/root fades emit no visibility callback. Hiding status
+            // content leaves this root untouched and must not change island state.
+            // Compare only view properties;
             // unchanged frames do not query sessions/users or schedule any work.
             boolean visible=hostVisible();
             if(visible!=observedHostVisible){observedHostVisible=visible;requestRefresh();}

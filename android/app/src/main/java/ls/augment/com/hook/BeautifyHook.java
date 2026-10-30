@@ -36,9 +36,7 @@ final class BeautifyHook {
                         .intercept(chain -> {
                             Context context = FeatureSettings.from(chain.getArg(0));
                             Object type = chain.getArg(1);
-                            if (FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                                    && FeatureSettings.enabled(context,
-                                    FeatureSettings.BEAUTIFY_UNLIMITED_TRIAL)
+                            if (unlimitedEnabled(context)
                                     && type instanceof Integer && ((Integer) type) == 0) {
                                 FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_ACTIVE, "1");
                                 FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_LAST_HIT,
@@ -64,9 +62,7 @@ final class BeautifyHook {
                                 method, "beautify.unlimited_trial.expiry_job", true)
                         .intercept(chain -> {
                             Context context = FeatureSettings.from(chain.getThisObject());
-                            if (FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                                    && FeatureSettings.enabled(context,
-                                    FeatureSettings.BEAUTIFY_UNLIMITED_TRIAL)) {
+                            if (unlimitedEnabled(context)) {
                                 FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_ACTIVE, "1");
                                 FeatureSettings.diagnostic(context, FeatureSettings.BEAUTIFY_LAST_HIT,
                                         "trial_expiry_job_blocked;ts=" + System.currentTimeMillis());
@@ -191,8 +187,7 @@ final class BeautifyHook {
     }
 
     private static boolean unlimitedEnabled(Context context) {
-        return FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                && FeatureSettings.enabled(context, FeatureSettings.BEAUTIFY_UNLIMITED_TRIAL);
+        return BeautifyTrialGate.enabled(context);
     }
 
     private static void hit(Context context, String event) {

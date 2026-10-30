@@ -18,6 +18,7 @@ public final class ScopeRestartPolicy {
             case "systemui": return List.of("com.android.systemui");
             case "launcher": return List.of("com.zte.mifavor.launcher");
             case "fan": return List.of("cn.nubia.fan", "com.android.systemui");
+            case "theme": return List.of("com.zte.beautify", "com.zte.beautifyadapter");
             case "apps": return List.of(
                     "cn.nubia.neostore", "com.mi.health", "com.zte.cn.doubleapp", "com.zte.beautify",
                     "com.zte.beautifyadapter", "com.android.packageinstaller", "com.zte.zdm",

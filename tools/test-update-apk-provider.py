@@ -56,8 +56,11 @@ sources={
   boolean busy=false;try{UpdateApkProvider.beginDownload(c,"c".repeat(64),1);}catch(java.io.IOException e){busy=true;}check(busy,"one in-flight download");
   Files.write(lease.cached.toPath(),new byte[]{4});UpdateApkProvider.grant(c,lease.cached);
  }
- boolean full=false;try{UpdateApkProvider.beginDownload(c,"c".repeat(64),1);}catch(java.io.IOException e){full=true;}check(full,"cannot evict live installer to admit a third APK");
- check(p.openFile(live,"r")!=null,"quota failure preserves old installer URI");
+ try(UpdateApkProvider.DownloadLease lease=UpdateApkProvider.beginDownload(c,"c".repeat(64),1)){
+  check(lease!=null,"third update admitted while two installer grants are alive");
+  check(p.openFile(live,"r")!=null,"new download preserves old installer URI");
+  check(Files.exists(dir.resolve("verified-"+"b".repeat(64)+".apk")),"second installer package retained");
+ }
  for(int i=0;i<100;i++)c.getSharedPreferences("update-apk-grants",0).edit().putString("expired"+i,name).putLong("expired"+i+":expires",0).commit();
  UpdateApkProvider.clean(c);check(c.getSharedPreferences("update-apk-grants",0).getAll().size()==4,"stale grant pairs bounded after sweep");
  for(var entry:c.getSharedPreferences("update-apk-grants",0).getAll().entrySet())if(entry.getKey().endsWith(":expires"))c.getSharedPreferences("update-apk-grants",0).edit().putLong(entry.getKey(),0).commit();

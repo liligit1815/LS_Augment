@@ -234,8 +234,7 @@ final class BeautifyAdapterHook {
     }
 
     private static boolean unlimitedEnabled(Context context) {
-        return FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                && FeatureSettings.enabled(context, FeatureSettings.BEAUTIFY_UNLIMITED_TRIAL);
+        return BeautifyTrialGate.enabled(context);
     }
 
     private static void hit(Context context, String event) {
@@ -265,9 +264,7 @@ final class BeautifyAdapterHook {
                                 "beautify.unlimited_trial." + id, true)
                         .intercept(chain -> {
                             Context context = FeatureSettings.from(chain.getThisObject());
-                            if (FeatureSettings.enabled(context, FeatureSettings.APP_MASTER)
-                                    && FeatureSettings.enabled(context,
-                                    FeatureSettings.BEAUTIFY_UNLIMITED_TRIAL)) {
+                            if (unlimitedEnabled(context)) {
                                 FeatureSettings.diagnostic(context,
                                         FeatureSettings.BEAUTIFY_ACTIVE, "1");
                                 FeatureSettings.diagnostic(context,

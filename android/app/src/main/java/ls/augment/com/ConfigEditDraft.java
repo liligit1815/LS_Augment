@@ -66,6 +66,11 @@ final class ConfigEditDraft {
             queued.remove(edit.getKey(), edit.getValue());
         }
     }
+    boolean hasNewerEdits(Batch batch) {
+        for(Map.Entry<String,Long> edit:edits.entrySet())
+            if(!edit.getValue().equals(batch.revisions.get(edit.getKey())))return true;
+        return false;
+    }
     /** Reject only the submitted edit; a later edit must keep its own value and admission. */
     boolean reconcile(Batch batch, String key, String canonical) {
         Long submitted = batch.revisions.get(key);

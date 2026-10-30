@@ -42,8 +42,17 @@ public final class TestSignalStyleEditor {
  final UiKit ui=new UiKit();final LinearLayout content=new LinearLayout();final Switch masterControl=new Switch(this);
  final Queue main=new Queue(false),worker=new Queue(true);final Runnable autoSave=()->save();
  Map<String,String> previewBackup;boolean loading,saving,dirty,destroyed;int rerenders;
+ String saveFeedback="";Map<String,String> rejectedDraft;final Map<String,String> fieldLabels=new LinkedHashMap<>();boolean workspaceResetting;
+ void recordExplicitEdits(){draft.put(ConfigSchema.STATUSBAR_GRID,grid.serialize());}
+ String validInput(String key,String value){return ConfigSchema.normalize(key,value);}
+ static class StatusBarEditPolicy {static final String KEY="edit-policy";}
+ static class StatusBarWorkspaceSpec {static final String ROWS="rows";static boolean ownsKey(String k){return false;}}
+ boolean workspace(){return false;}String savedValue(String key){return config.get(key);}Grid editorGrid(){return grid;}
+ static class Assets {void workspaceRefreshSaved(){}}Assets workspaceAssets;void updateWorkspacePreviewLabel(){}
+ static class EnhancementOption {String key,title;}
+ static class EnhancementCatalog {static List<EnhancementOption> options(){return List.of();}}
  UiKit.Fold masterFold,sectionFold,connectivityFold,nativeBatteryFold,dualAppearanceFold;Preview preview=new Preview();
- final Grid grid=new Grid();
+ Grid grid=new Grid();
  /*METHODS*/
  void previewPreferenceChanged(String key){SharedPreferences prefs=null;/*LISTENER*/}
  void restoredGuard(){/*RESTORE_GUARD*/}
@@ -61,7 +70,7 @@ public final class TestSignalStyleEditor {
   h.toggle(h.content,DUAL,"双排信号图标");return h;
  }
  Switch signal(){return controls.get(DUAL);}
- void settle(){worker.next();main.all();}
+ void settle(){worker.all();main.all();}
  void canonical(boolean tri,boolean dual){check(config.save(Map.of(TRI,tri?"1":"0",DUAL,dual?"1":"0")).success,"external canonical update");}
  void click(boolean enabled){signal().setChecked(enabled);}
  static void blocked(TestSignalStyleEditor h,String why){
@@ -69,7 +78,7 @@ public final class TestSignalStyleEditor {
   check(!ConfigSchema.truthy(h.draft.get(DUAL)),why+": rejected dual never stays in draft");
   check(!h.draft.unsaved().containsKey(DUAL),why+": rejected dual has no restorable intent");
   check(!h.config.getBoolean(DUAL),why+": canonical dual stays disabled");
-  check(Toast.shown.contains(SignalStylePolicy.CONFLICT_MESSAGE),why+": exact useful conflict prompt");
+  check(Toast.shown.stream().anyMatch(t->t.contains(SignalStylePolicy.CONFLICT_MESSAGE)),why+": useful conflict prompt");
  }
  public static void main(String[] args){
   TestSignalStyleEditor clock=fresh(false,false);
@@ -85,8 +94,8 @@ public final class TestSignalStyleEditor {
   clock.controls.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM).setChecked(true);clock.save();
   clock.context.prefs(AppConfig.PREFS).failNext=1;clock.settle();
   check(!clock.config.getBoolean(ConfigSchema.STATUSBAR_CLOCK_CUSTOM),"failed activation never partially enables the stored clock");
-  check(clock.draft.hasPending(),"failed clock activation remains retryable");
-  clock.save();clock.settle();check(clock.config.getBoolean(ConfigSchema.SYSTEMUI_MASTER)&&clock.config.getBoolean(ConfigSchema.STATUSBAR_CLOCK_CUSTOM),"retry commits both dependencies");
+  check(!clock.controls.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM).isChecked(),"failed clock activation restores the visible switch");
+  clock.controls.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM).setChecked(true);clock.save();clock.settle();check(clock.config.getBoolean(ConfigSchema.SYSTEMUI_MASTER)&&clock.config.getBoolean(ConfigSchema.STATUSBAR_CLOCK_CUSTOM),"explicit retry commits both dependencies");
   TestSignalStyleEditor h=fresh(true,false);h.click(true);blocked(h,"already enabled three-in-one");
   check(h.worker.tasks.isEmpty()&&!h.draft.hasPending(),"blocked click never submits a save");
   h.click(true);blocked(h,"repeated conflict click");
@@ -160,6 +169,17 @@ public final class TestSignalStyleEditor {
   h=fresh(false,true);h.draft.put(STYLE,"1");h.save();h.settle();
   check(h.config.getBoolean(DUAL)&&"1".equals(h.config.get(STYLE)),"an active dual style changes without clearing the gate");
   h.click(false);h.save();h.settle();check(!h.config.getBoolean(DUAL)&&"1".equals(h.config.get(STYLE)),"disabling dual preserves saved iOS style");
+  h=fresh(false,false);h.draft.seed(OTHER,"invalid");h.click(true);h.save();h.settle();
+  check(h.config.getBoolean(DUAL),"unedited invalid legacy value does not block an independent valid switch");
+  h=fresh(false,false);h.draft.force(OTHER,"invalid");h.click(true);h.save();
+  check(!h.signal().isChecked()&&!h.config.getBoolean(DUAL),"validation failure restores all submitted switches");
+  check(h.saveFeedback.contains(OTHER)&&h.saveFeedback.contains("未保存"),"failure locates the invalid field");
+  int messages=Toast.shown.size();h.save();h.save();check(Toast.shown.size()==messages,"pause/destroy retries do not repeat rejected draft feedback");
+  h.worker.all();check(AuditLog.entries.stream().anyMatch(t->t.contains("key="+OTHER)&&t.contains("value=invalid")),"field and attempted value recorded");
+  h.draft.put(OTHER,"12");h.changed();h.save();h.settle();check(h.config.get(OTHER).equals("12"),"corrected field saves normally");
+  h=fresh(false,false);h.click(true);h.save();h.click(false);h.click(true);h.context.prefs(AppConfig.PREFS).failNext=1;h.settle();
+  check(h.signal().isChecked()&&"1".equals(h.draft.unsaved().get(DUAL)),"newer same-value edit survives older failure");
+  h.settle();check(h.config.getBoolean(DUAL),"newer revision retries independently after older failure");
   System.out.println("PASS signal editor "+checks+" assertions (real toggle/save/battery code, ConfigEditDraft and AppConfig; no device)");
  }
  static class Queue {
@@ -205,6 +225,8 @@ def main():
         'private LinearLayout toggle(LinearLayout parent,String key, String label)',
         'private void changed()',
         'private void save()',
+        'private void rejectSave(ConfigEditDraft.Batch batch,String key,String reason,boolean validation)',
+        'private String saveFieldTitle(String key)',
         'private boolean nativeBatteryEnabled()',
         'private void setBatteryMode(boolean threeInOne,boolean enabled)',
     ]
@@ -221,7 +243,7 @@ def main():
         methods += '\nprivate void refreshStoredSignalModes(){}'
     listener = body(source, 'previewPreferenceListener=(prefs,key)->')
     guard_marker = 'if(ConfigSchema.truthy(draft.get(SystemUiOptions.SIGNAL_DUAL))&&signalEnableBlocked())'
-    guard = source[source.index(guard_marker):source.index('        grid = StatusBarGridSpec.parse', source.index(guard_marker))] if guard_marker in source else ''
+    guard = source[source.index(guard_marker):source.index('        grid = ', source.index(guard_marker))] if guard_marker in source else ''
     if args.source.resolve() == (SRC / 'StatusBarEditorController.java').resolve():
         assert guard and source.index(guard_marker) < source.index('masterControl=new Switch(this)')
     helper = ROOT / 'tools/test-app-config-async.py'
@@ -234,8 +256,13 @@ def main():
     schema = schema.replace('static Map<String,String> defaults()', ''.join(f'static final String {name}="{name}";' for name in constants) + 'static Map<String,String> defaults()')
     schema = schema.replace('values.put("flag","0");', ''.join(f'values.put({name},"0");' for name in constants) + 'values.put("flag","0");')
     schema = schema.replace('values.put("flag","0");', 'values.put("ls_augment_rm_signal_dual_style","0");values.put("flag","0");')
+    schema=schema.replace('static String normalize(', 'static Set<String> booleanKeys(){return Set.of(SYSTEMUI_MASTER,STATUSBAR_CLOCK_CUSTOM,STATUSBAR_CONNECTIVITY_GROUP,"ls_augment_rm_signal_dual");}static String normalize(')
+    schema=schema.replace('return defaults().containsKey(key)?value:null;', 'return !"invalid".equals(value)&&defaults().containsKey(key)?value:null;')
     sources['ls/augment/com/ConfigSchema.java'] = schema
-    sources['ls/augment/com/SystemUiOptions.java'] = sources['ls/augment/com/SystemUiOptions.java'].replace('static final String SIGNAL_DUAL=', 'static final String PREFIX="ls_augment_rm_",ISLAND=PREFIX+"island_enabled",SIGNAL_DUAL_STYLE="ls_augment_rm_signal_dual_style";static final String SIGNAL_DUAL=')
+    sources['ls/augment/com/BuildConfig.java']='package ls.augment.com;final class BuildConfig {static final String VERSION_NAME="test";}'
+    sources['ls/augment/com/AuditLog.java']='package ls.augment.com;final class AuditLog {static final java.util.List<String> entries=new java.util.ArrayList<>();static void write(Object c,String tag,String value){entries.add(tag+":"+value);}}'
+    sources['ls/augment/com/SystemUiOptions.java'] = sources['ls/augment/com/SystemUiOptions.java'].replace('static final String SIGNAL_DUAL=', 'static final String PREFIX="ls_augment_rm_",SIGNAL_DUAL_STYLE="ls_augment_rm_signal_dual_style";static final String SIGNAL_DUAL=')
+    sources['ls/augment/com/NativeIslandMode.java']='package ls.augment.com;final class NativeIslandMode {static final String MODERN="modern";static String detect(android.content.Context c){return "legacy";}}'
     sources['ls/augment/com/TestSignalStyleEditor.java'] = TEMPLATE.replace('/*METHODS*/', methods).replace('/*FAULTS*/', scope['fault_classes']).replace('/*LISTENER*/', listener).replace('/*RESTORE_GUARD*/', guard)
     java_home = Path(os.environ.get('JAVA_HOME', r'C:/Program Files/Android/openjdk/jdk-21.0.8'))
     javac = str(java_home / 'bin/javac.exe') if os.name == 'nt' else 'javac'

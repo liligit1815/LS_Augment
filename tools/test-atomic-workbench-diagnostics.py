@@ -72,6 +72,16 @@ public final class TestAtomicWorkbenchDiagnostics {
   yes(event.getInt("window")==2&&event.getInt("display")==9&&event.getString("package").equals("example.app"),"app/window/display metadata preserved");
   yes(event.getString("errorStack").contains("IllegalStateException")&&!event.has("intentExtras")&&!event.has("token"),"allowlist and bounded error stack");
   yes(event.has("rootSequence")&&event.getInt("rootQueueCapacity")==64&&event.getLong("rootDroppedEvents")==0,"delivery counters survive client allowlist");
+  for(String code:new String[]{"protected","stale","cancelled","expired","unavailable","rejected","busy","invalid_reply"}){
+   String reason="extraction_geometry_"+code;
+   yes(AtomicWorkbenchDiagnostics.reason(new java.util.concurrent.ExecutionException(new IOException(reason))).equals(reason),"nested extraction refusal retained "+code);
+   AtomicWorkbenchDiagnostics.record(c,ResetWriteFence.generation(),"GEOMETRY_FAILURE",2,0,"",9,"",new IOException(reason));
+   yes(read(c).contains("\"errorReason\":\""+reason+"\""),"reason written to exported log");
+  }
+  JSONObject reasonEvent=new JSONObject(original.toString()).put("errorReason","extraction_geometry_busy");
+  AtomicWorkbenchDiagnostics.retainOutput(c,ResetWriteFence.generation(),0,AtomicWorkbenchDiagnostics.PREFIX+reasonEvent,token,false);
+  yes(read(c).contains("extraction_geometry_busy"),"root wire retains known reason");
+  yes(AtomicWorkbenchDiagnostics.reason(new IOException("extraction_geometry_private_payload")).isEmpty(),"unknown exception content omitted");
   yes(event.getString("rootSessionId").matches("[a-f0-9-]{36}"),"diagnostic process session survives without authentication token");
   JSONObject startRecord=new JSONObject(original.toString()).put("event","ROOT_START").put("rootSequence",1);
   JSONObject end=new JSONObject(original.toString()).put("event","ROOT_LOOP_EXIT").put("rootSequence",3);
@@ -175,6 +185,7 @@ def main():
     export = (SRC / "DiagnosticExport.java").read_text(encoding="utf-8")
     assert "appendAtomicWorkbenchLog(out,context);" in export
     sources = dict(STUBS)
+    sources['ls/augment/com/LogHistory.java']='package ls.augment.com;final class LogHistory {static final Object LOCK=new Object();static boolean old(android.content.Context c,long wall){return false;}}'
     sources["ls/augment/com/ExportHarness.java"] = """package ls.augment.com;import android.content.Context;import java.io.*;import java.nio.charset.StandardCharsets;
 final class ExportHarness {static String export(Context c){StringBuilder out=new StringBuilder();appendAtomicWorkbenchLog(out,c);return out.toString();}
 """ + "\n".join(member(export, s) for s in ("static void appendAtomicWorkbenchLog", "private static void file", "private static int lineCount")) + "}"

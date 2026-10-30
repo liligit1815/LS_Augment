@@ -13,6 +13,7 @@ public final class TestScopeRestartPolicy {
         page("group/connectivity/usb_mtp", "apps");
         page("group/notifications/statusbar", "systemui");
         page("group/lockscreen/lock_clock", "systemui");
+        page("group/lockscreen/theme_download", "theme");
         page("group/desktop/launcher_grid", "launcher");
         page("group/cooling/fan", "fan");
         page("group/atomic_workbench/workspace", "device");
@@ -21,6 +22,9 @@ public final class TestScopeRestartPolicy {
         check("device".equals(HookAppCatalog.restartScopeForRoute("diablo_coexist")), "standalone coexistence editor misses server");
         check("games".equals(HookAppCatalog.restartScopeForRoute("combo_speed")), "combo-only editor must retain local restart");
         check("systemui".equals(HookAppCatalog.restartScopeForRoute("status_layout")), "status editor inherited unrelated island sources");
+        check("theme".equals(HookAppCatalog.restartScopeForRoute("beautify")), "theme editor must restart both theme processes only");
+        check("theme".equals(HookAppCatalog.restartScopeForKey(ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL)), "trial inherited unrelated fingerprint/system restart");
+        check("am force-stop com.zte.beautify; am force-stop com.zte.beautifyadapter".equals(ScopeRestartPolicy.command("theme")), "theme restart must cover frontend and backend without reboot");
         check("device".equals(ModuleHierarchy.restartScopeForCategory("notifications")), "notification category misses island sources");
         check("device".equals(ModuleHierarchy.restartScopeForCategory("gaming")), "game category misses server");
         check("device".equals(ModuleHierarchy.restartScopeForCategory("capture")), "capture category misses SystemUI");
@@ -41,7 +45,7 @@ public final class TestScopeRestartPolicy {
                         || command.endsWith(" " + pkg) || command.contains(" " + pkg + " >/dev/null"),
                         "suggestion does not execute a reload of " + pkg + " for " + option.key);
         }
-        for (String scope : List.of("settings", "amap", "systemui", "launcher", "apps", "games", "fan"))
+        for (String scope : List.of("settings", "amap", "systemui", "launcher", "apps", "games", "fan", "theme"))
             for (String pkg : ScopeRestartPolicy.packages(scope))
                 check(HookTargetRegistry.contains(pkg), "restart restored a retired or undeclared target: " + pkg);
         check(ScopeRestartPolicy.command("apps").contains("am force-stop com.android.gallery3d;"), "gallery drag source not reloaded");

@@ -59,7 +59,7 @@ public final class AtomicWorkbenchExtractionGeometryTransport {
             }
             return b;
         }catch(IOException fixed){throw fixed;}
-        catch(Exception unavailable){throw new IOException("extraction_geometry_unavailable");}
+        catch(Exception unavailable){throw new IOException("extraction_geometry_unavailable",unavailable);}
         finally{reply.recycle();data.recycle();}
     }
     private static boolean hex(Object value,int n){return value instanceof String&&((String)value).length()==n&&((String)value).matches("[0-9a-f]+");}

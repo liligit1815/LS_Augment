@@ -20,6 +20,7 @@ import java.nio.file.Files;
 public final class UpdateApkProvider extends ContentProvider {
     private static final String PREFS = "update-apk-grants";
     private static final long GRANT_LIFETIME = 24L * 60 * 60 * 1000;
+    // Retention target for disposable APKs, not a limit on live installer grants.
     static final int MAX_GRANTS = 32, MAX_APKS = 2;
     static final long CACHE_BYTES = 4L * 1024 * 1024 * 1024;
     private static DownloadLease downloading;
@@ -75,7 +76,10 @@ public final class UpdateApkProvider extends ContentProvider {
         if(entries==null){if(root.exists())throw new IOException("update_cache_unreadable");return;}
         Arrays.sort(entries,Comparator.comparingLong(File::lastModified).reversed());
         long bytes=reserve;int count=selected!=null&&!new File(root,selected).exists()?1:0;
-        for(File file:entries)if(pinned.contains(file.getName())){bytes=Math.addExact(bytes,file.length());if(file.getName().endsWith(".apk"))count++;}
+        for(File file:entries)if(pinned.contains(file.getName())){
+            bytes=Math.addExact(bytes,file.length());
+            if(file.getName().equals(selected))count++;
+        }
         for(File file:entries) {
             String name=file.getName();if(pinned.contains(name))continue;
             boolean apk=name.matches("verified-[0-9a-f]{64}\\.apk"),part=name.matches("download-[a-f0-9-]+\\.part");
@@ -86,8 +90,9 @@ public final class UpdateApkProvider extends ContentProvider {
             if(!file.delete())throw new IOException("update_cache_cleanup_failed");
         }
         // Existing, still-live installer grants are never revoked to make room.
-        // An over-budget upgrade cache admits no new downloads until those leases expire.
-        if(selected!=null&&(count>MAX_APKS||bytes>CACHE_BYTES))throw new IOException("update_cache_busy");
+        // Live grants remain bounded by MAX_GRANTS and the total byte budget. They
+        // must not consume the two disposable cache slots and block the next update.
+        if(selected!=null&&bytes>CACHE_BYTES)throw new IOException("update_cache_busy");
     }
 
     static File directory(Context context) {

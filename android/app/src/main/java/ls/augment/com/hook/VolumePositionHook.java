@@ -152,15 +152,15 @@ final class VolumePositionHook {
                 Entrance entrance=latestEntrance.get();View button=entrance==null?null:entrance.reference.get();Window w=window.get();
                 if(button!=null&&w!=null&&view.getHeight()>0&&button.getMeasuredHeight()>0){
                     int available=w.getWindowManager().getCurrentWindowMetrics().getBounds().height()-edge.top-edge.bottom;
-                    int gap=Math.round(8*view.getResources().getDisplayMetrics().density);
-                    int limit=available-view.getHeight()-button.getMeasuredHeight()-gap;
-                    if(limit<0){
+                    int gap=Math.round(VolumeEntrancePlacement.GAP_DP*view.getResources().getDisplayMetrics().density);
+                    int vertical=nativePosition.gravity&Gravity.VERTICAL_GRAVITY_MASK;
+                    int top=vertical==Gravity.TOP?nativePosition.y:vertical==Gravity.BOTTOM?available-view.getHeight()-nativePosition.y:(available-view.getHeight())/2+nativePosition.y;
+                    int placed=VolumeEntrancePlacement.panelTop(top,available,view.getHeight(),button.getMeasuredHeight(),gap);
+                    if(placed<0){
                         nativePosition.apply(p);panel.apply(view,false,false);owned=false;
                         set(owner.get(),"mWindowGravity",p.gravity);return;
                     }
-                    int vertical=nativePosition.gravity&Gravity.VERTICAL_GRAVITY_MASK;
-                    int top=vertical==Gravity.TOP?nativePosition.y:vertical==Gravity.BOTTOM?available-view.getHeight()-nativePosition.y:(available-view.getHeight())/2+nativePosition.y;
-                    p.gravity=Gravity.TOP|(left?Gravity.LEFT:Gravity.RIGHT);p.y=Math.max(0,Math.min(top,limit));
+                    p.gravity=Gravity.TOP|(left?Gravity.LEFT:Gravity.RIGHT);p.y=placed;
                 }
                 owned=true;
             }else if(owned){nativePosition.apply(p);owned=false;}
@@ -270,27 +270,28 @@ final class VolumePositionHook {
             Rect screen=manager.getCurrentWindowMetrics().getBounds();Insets edge=insets(root);
             int height=view.getHeight(),width=view.getWidth();
             if(height<=0||width<=0){owned=false;return;}
-            int gap=Math.max(0,ringBounds.top-sliderBounds.bottom);
-            int bottom=ringBounds.bottom+gap-Math.max(0,(height-ringBounds.height())/2);
-            if(root.getHeight()<=0||height<=0||bottom+height>screen.bottom-edge.bottom){
+            int gap=Math.max(Math.round(VolumeEntrancePlacement.GAP_DP*view.getResources().getDisplayMetrics().density),ringBounds.top-sliderBounds.bottom);
+            int top=VolumeEntrancePlacement.entranceTop(sliderBounds.top,ringBounds.height(),height,gap);
+            if(root.getHeight()<=0||top<screen.top+edge.top||top+height>screen.bottom-edge.bottom){
                 // Insufficient landscape space: keep the stock window until the
                 // native main panel has a usable measured frame; never overlap it.
                 if(owned){nativePosition.apply(p);owned=false;}
-                FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime","awaiting_room_below_panel");return;
+                if(style!=null)style.restore();
+                status(view,"native_fallback:no_room_above_panel");return;
             }
             boolean left=left(view.getContext());
             int center=ringBounds.centerX();
             p.gravity=Gravity.TOP|(left?Gravity.LEFT:Gravity.RIGHT);
             // Coordinates in screen space; fit-inset origin is excluded by WM.
             p.x=Math.max(0,left?center-width/2-screen.left-edge.left:screen.right-edge.right-center-width/2);
-            p.y=Math.max(0,bottom-screen.top-edge.top);
+            p.y=Math.max(0,top-screen.top-edge.top);
             owned=true;
         }
         String lastStatus="";
         void status(View view,String value){if(!value.equals(lastStatus)){lastStatus=value;FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",value);}}
         @Override void update(){View view=reference.get();if(view==null||!view.isAttachedToWindow()||!(view.getLayoutParams() instanceof WindowManager.LayoutParams))return;
             WindowManager.LayoutParams p=(WindowManager.LayoutParams)view.getLayoutParams();Position before=new Position(p);int animations=p.windowAnimations;adjust(p);
-            if(!before.same(p)||animations!=p.windowAnimations){positionChanged=true;manager.updateViewLayout(view,p);FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",owned?"same_side_below;side="+(left(view.getContext())?"left":"right"):"native_restored");}
+            if(!before.same(p)||animations!=p.windowAnimations){positionChanged=true;manager.updateViewLayout(view,p);FeatureSettings.diagnostic(view.getContext(),"ls_augment_volume_position_runtime",owned?"same_side_above;side="+(left(view.getContext())?"left":"right"):"native_restored");}
         }
     }
     /** Reuses OEM surface and tint while retaining the native clickable view and icon. */

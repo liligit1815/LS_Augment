@@ -273,12 +273,14 @@ public final class HookAppCatalog {
     public static String restartScopeForKey(String key) {
         Target target = find(targetForKey(key));
         if (target == null || target.restartScope == null) return null;
+        if(THEME.equals(target.id)&&ScopeRestartPolicy.covers("theme",affectedPackages(key)))return "theme";
         return ScopeRestartPolicy.completeScope(target.restartScope, affectedPackages(key));
     }
 
     public static String restartScopeForRoute(String route) {
         Target target = find(targetForRoute(route));
         if (target == null) return null;
+        if("beautify".equals(route))return "theme";
         if ("super_resolution".equals(route) || "diablo_coexist".equals(route))
             return ScopeRestartPolicy.completeScope(target.restartScope,
                     Arrays.asList("system", "cn.nubia.gamelauncher", "cn.nubia.gameassist"));

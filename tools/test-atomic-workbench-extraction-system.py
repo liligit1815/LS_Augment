@@ -9,6 +9,7 @@ OLD=runpy.run_path(str(ROOT/'tools/test-atomic-workbench-extraction.py'))
 HOME=runpy.run_path(str(ROOT/'tools/test-atomic-workbench-home-hook.py'))
 S=dict(OLD['STUBS'])
 S.update({
+'android/view/Surface.java':'package android.view;public class Surface {public static final int ROTATION_0=0;}',
 'io/github/libxposed/api/XposedInterface.java':HOME['SOURCES']['io/github/libxposed/api/XposedInterface.java'],
 'ls/augment/com/hook/AugmentModule.java':HOME['SOURCES']['ls/augment/com/hook/AugmentModule.java'],
 'ls/augment/com/hook/HookTelemetry.java':'''package ls.augment.com.hook;final class HookTelemetry{static void atomicWorkbench(String level,String value,Throwable failure){}}''',

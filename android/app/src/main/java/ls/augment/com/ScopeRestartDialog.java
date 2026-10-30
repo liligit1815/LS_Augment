@@ -21,6 +21,7 @@ final class ScopeRestartDialog {
     static final String GAMES = "games";
     static final String FAN = "fan";
     static final String AMAP = "amap";
+    static final String THEME = "theme";
 
     private static final String[] LABELS = {
             "隐藏列表（系统设置）",
@@ -31,10 +32,11 @@ final class ScopeRestartDialog {
             "游戏增强（游戏空间与风扇）",
             "散热风扇（风扇服务与控制中心）",
             "高德地图（退出后重新打开）",
+            "主题商店与主题服务（重新打开主题商店）",
             "全部作用域（重启手机）"
     };
     private static final String[] IDS = {
-            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, AMAP, "all"
+            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, AMAP, THEME, "all"
     };
 
     private ScopeRestartDialog() { }

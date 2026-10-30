@@ -55,6 +55,9 @@ final class StatusBarEditorController extends NativeEditorController {
     private StatusBarGridSpec grid;
     private int tab;
     private boolean loading, saving, dirty;
+    private String saveFeedback="";
+    private Map<String,String> rejectedDraft;
+    private final Map<String,String> fieldLabels=new LinkedHashMap<>();
     private final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable autoSave=()->save();
     private Button reset;
@@ -175,7 +178,7 @@ final class StatusBarEditorController extends NativeEditorController {
         int editorHeight=Math.max(ui.dp(200),Math.min(ui.dp(560),getResources().getDisplayMetrics().heightPixels-ui.dp(220)));
         page.addView(body,embedded?new LinearLayout.LayoutParams(-1,editorHeight):new LinearLayout.LayoutParams(-1,0,1));
         if(embedded)masterFold=ui.fold(masterControl,body,true);
-        masterControl.setOnCheckedChangeListener((button,on)->{draft.put(ConfigSchema.SYSTEMUI_MASTER,on?"1":"0");changed();});
+        masterControl.setOnCheckedChangeListener((button,on)->{if(!loading){draft.put(ConfigSchema.SYSTEMUI_MASTER,on?"1":"0");changed();}});
 
         preview = new Preview();preview.setLayoutParams(new LinearLayout.LayoutParams(-1,ui.dp(62)));
         FrameLayout previewFrame=new FrameLayout(this);previewFrame.addView(preview,new FrameLayout.LayoutParams(-1,-1));body.addView(previewFrame,new LinearLayout.LayoutParams(-1,ui.dp(62)));previewHost=previewFrame;
@@ -575,6 +578,7 @@ final class StatusBarEditorController extends NativeEditorController {
         ui.choiceDialog(componentName(id)+" · 显示位置",labels,null,index->{updateItem(id,zones[index],-1,-1,null);renderKeepingScroll();});
     }
     private String runtimeMessage(){
+        if(!saveFeedback.isEmpty())return saveFeedback;
         String phone=config.diagnostic("ls_augment_statusbar_phone_last_error"),lock=config.diagnostic("ls_augment_statusbar_keyguard_last_error");
         if(!phone.isEmpty()||!lock.isEmpty())return "最近运行结果："+(!phone.isEmpty()?"顶部状态栏 · "+phone:"")+(!phone.isEmpty()&&!lock.isEmpty()?"\n":"")+(!lock.isEmpty()?"锁屏 · "+lock:"");
         return "";
@@ -1033,6 +1037,7 @@ final class StatusBarEditorController extends NativeEditorController {
     }
     private void renderKeepingScroll(){int y=configScroll.getScrollY();render(true);configScroll.post(()->configScroll.scrollTo(0,y));}
     private LinearLayout toggle(LinearLayout parent,String key, String label) {
+        fieldLabels.put(key,label);
         Switch s = new Switch(this);s.setChecked(ConfigSchema.truthy(draft.get(key)));controls.put(key,s);
         LinearLayout row=ui.featureRow(label,FeatureDescriptions.forKey(key,label),s);addFeatureBlock(parent,row);
         s.setOnCheckedChangeListener((b, checked) -> { if (!loading) {
@@ -1068,6 +1073,7 @@ final class StatusBarEditorController extends NativeEditorController {
         edit(content,key,label,false);
     }
     private EditText edit(LinearLayout parent,String key,String label,boolean numeric) {
+        fieldLabels.put(key,label);
         parent=parameterInputGroup(parent);
         parent.addView(ui.featureTitle(label, FeatureDescriptions.forKey(key,label)));
         EditText e = new EditText(this);ui.styleInput(e); e.setSingleLine(true);e.setContentDescription(label);
@@ -1122,6 +1128,7 @@ final class StatusBarEditorController extends NativeEditorController {
         advanced(parent,"clock-typography","高级：字体与排版",font);
     }
     private ParameterSlider editNumber(LinearLayout parent,String key,String label){
+        fieldLabels.put(key,label);
         parent=parameterInputGroup(parent);
         View title=ui.featureTitle(label,FeatureDescriptions.forKey(key,label));parent.addView(title);
         ParameterSlider slider=new ParameterSlider(ui,ConfigSchema.numericOption(key,label),draft.get(key),next->{
@@ -1198,6 +1205,7 @@ final class StatusBarEditorController extends NativeEditorController {
     }
     private void changed() {
         if(workspaceResetting)return;
+        rejectedDraft=null;saveFeedback="";
         if(masterFold!=null)masterFold.sync();
         if(sectionFold!=null)sectionFold.sync();
         if(connectivityFold!=null)connectivityFold.sync();
@@ -1225,29 +1233,67 @@ final class StatusBarEditorController extends NativeEditorController {
     }
     private void refreshRuntimeFeedback(){if(runtimeFeedback!=null){String message=runtimeMessage();runtimeFeedback.setText(message);runtimeFeedback.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);}}
     private void save() {
-        if (previewBackup!=null||!draft.hasPending()) return;main.removeCallbacks(autoSave);
-        if(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER))&&!positionSizeOnly()&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))&&!previewClock().valid){
-            Toast.makeText(this,"时钟格式有误，请检查当前显示排数对应的格式",Toast.LENGTH_LONG).show();return;
-        }
-        for (Map.Entry<String, String> e : draft.entrySet()) if (ConfigSchema.normalize(e.getKey(), e.getValue()) == null) {
-            Toast.makeText(this, "请检查格式或数值", Toast.LENGTH_LONG).show(); return;
-        }
+        if (previewBackup!=null||!draft.hasPending()||draft.unsaved().equals(rejectedDraft)) return;main.removeCallbacks(autoSave);
         ConfigEditDraft.Batch batch = draft.takePending();
         if(batch.values.isEmpty())return;
+        if(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER))&&!positionSizeOnly()&&ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CLOCK_CUSTOM))&&!previewClock().valid){
+            String key=validInput(ConfigSchema.STATUSBAR_CLOCK_PATTERN,draft.get(ConfigSchema.STATUSBAR_CLOCK_PATTERN))==null
+                    ?ConfigSchema.STATUSBAR_CLOCK_PATTERN:ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND;
+            rejectSave(batch,key,"时间格式无效",true);return;
+        }
+        // Unedited values are not written by this transaction. An unrelated legacy
+        // value must not prevent an independent switch from being saved.
+        for (Map.Entry<String, String> e : batch.values.entrySet()) if (ConfigSchema.normalize(e.getKey(), e.getValue()) == null) {
+            rejectSave(batch,e.getKey(),"格式或数值无效",true);return;
+        }
         saving=true;dirty=false;
         worker.execute(() -> {
             AppConfig.SaveResult result = config.save(batch.values);
             runOnUiThread(() -> {
-                boolean reverted=!result.success&&previewBackup==null
-                        &&draft.reconcile(batch,SystemUiOptions.SIGNAL_DUAL,config.get(SystemUiOptions.SIGNAL_DUAL));
-                draft.complete(batch,result.success);saving=false;dirty=draft.hasPending();
+                saving=false;
+                if(!result.success){rejectSave(batch,"",result.message,false);return;}
+                draft.complete(batch,true);dirty=draft.hasPending();saveFeedback="";rejectedDraft=null;
                 if(isDestroyed())return;
                 refreshStoredSignalModes();
-                if(reverted)renderKeepingScroll();
-                if(!result.success)Toast.makeText(this,result.message,Toast.LENGTH_LONG).show();
-                if(dirty&&(result.success||"请先关闭三合一图标".equals(result.message)))main.post(autoSave);
+                refreshRuntimeFeedback();
+                if(dirty)main.post(autoSave);
             });
         });
+    }
+    private void rejectSave(ConfigEditDraft.Batch batch,String key,String reason,boolean validation){
+        boolean reverted=false;
+        if(previewBackup==null)for(String field:batch.values.keySet())if(ConfigSchema.booleanKeys().contains(field))
+            reverted|=draft.reconcile(batch,field,config.get(field));
+        draft.complete(batch,false);dirty=draft.hasPending();
+        // A newer user edit is never rolled back or silenced by an older acknowledgement.
+        boolean newer=draft.hasNewerEdits(batch);
+        boolean retryRemaining=!validation&&"请先关闭三合一图标".equals(reason)&&dirty;
+        rejectedDraft=newer||retryRemaining?null:new LinkedHashMap<>(draft.unsaved());
+        String title=key.isEmpty()?"":saveFieldTitle(key);
+        saveFeedback="未保存："+(title.isEmpty()?"":title+"，")+reason
+                +(reverted?"；本次未保存的开关已恢复":"");
+        String value=key.isEmpty()?"":String.valueOf(batch.values.getOrDefault(key,draft.get(key)));
+        int valueLength=value.length();if(value.length()>96)value=value.substring(0,96)+"…";
+        String detail="build="+BuildConfig.VERSION_NAME+";stage="+(validation?"validation":"commit")
+                +";key="+key+";field="+title+";value="+value.replace('\n',' ').replace('\r',' ')+";value_length="+valueLength
+                +";reason="+reason+";switches_reverted="+reverted+";newer_edits="+newer;
+        worker.execute(()->AuditLog.write(this,"STATUSBAR_SAVE_FAILED",detail));
+        if(isDestroyed())return;
+        if(reverted){boolean old=loading;loading=true;try{
+            masterControl.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.SYSTEMUI_MASTER)));
+        }finally{loading=old;}renderKeepingScroll();}
+        refreshRuntimeFeedback();Toast.makeText(this,saveFeedback,Toast.LENGTH_LONG).show();
+        if(newer||retryRemaining)main.post(autoSave);
+    }
+    private String saveFieldTitle(String key){
+        String title=fieldLabels.get(key);if(title!=null)return title;
+        if(ConfigSchema.SYSTEMUI_MASTER.equals(key))return "启用状态栏自定义";
+        if(ConfigSchema.STATUSBAR_CLOCK_PATTERN.equals(key))return "时钟／第一行格式";
+        if(ConfigSchema.STATUSBAR_CLOCK_PATTERN_SECOND.equals(key))return "时钟／第二行格式";
+        if(ConfigSchema.STATUSBAR_GRID.equals(key)||StatusBarEditPolicy.KEY.equals(key))return "状态栏／组件排列";
+        if(StatusBarWorkspaceSpec.ROWS.equals(key))return "状态栏／状态栏排数";
+        for(EnhancementOption option:EnhancementCatalog.options())if(option.key.equals(key)&&!option.title.isEmpty())return option.title;
+        return key;
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         if(previewBackup!=null)cancelPreset();

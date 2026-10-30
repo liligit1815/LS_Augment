@@ -28,7 +28,6 @@ import static ls.augment.com.hook.SystemUiAdapter.*;
 final class RedMagicLegacyUiHook {
     private static final String P = SystemUiOptions.PREFIX;
     private static final Map<View, Integer> HIDDEN = new WeakHashMap<>();
-    private static final Map<View, Float> ALPHAS = new WeakHashMap<>();
     private static final Map<View, Float> KEYGUARD_TRANSITION_ALPHAS = new WeakHashMap<>();
     private static final Map<ViewGroup, ArrayList<WeakReference<View>>> BATTERY_ORDER = new WeakHashMap<>();
     private static final Map<View,int[]> BATTERY_RULES=new WeakHashMap<>();
@@ -51,7 +50,8 @@ final class RedMagicLegacyUiHook {
     static String hiddenReason(View view){
         for(View at=view;at!=null;at=at.getParent() instanceof View?(View)at.getParent():null){
             if(HIDDEN.containsKey(at)&&at.getVisibility()!=View.VISIBLE)return "模块隐藏：已设置图标、SIM 或显示位置规则";
-            if(ALPHAS.containsKey(at)&&at.getAlpha()==0||KEYGUARD_TRANSITION_ALPHAS.containsKey(at)&&at.getTransitionAlpha()==0)return "模块隐藏整个状态栏";
+            if(StatusBarContentVisibility.hidden(at))return "模块隐藏状态栏内容";
+            if(KEYGUARD_TRANSITION_ALPHAS.containsKey(at)&&at.getTransitionAlpha()==0)return "模块隐藏锁屏顶部状态栏";
             if(StatusBarGridHook.isBarRoot(at))break;
         }return "";
     }
@@ -102,7 +102,7 @@ final class RedMagicLegacyUiHook {
 
     static void applyView(View view) {
         String type = view.getClass().getSimpleName();
-        if (type.equals("PhoneStatusBarView")) alpha(view,on(view,"statusbar_hide"));
+        StatusBarContentVisibility.apply(view);
         if (type.equals("KeyguardStatusBarView")) keyguardAlpha(view,on(view,"keyguard_statusbar_hide"));
         String id = id(view); boolean hide = false, managed = false;
         if (id.equals("wifi_in") || id.equals("wifi_out") || id.equals("wifi_inout")) {hide=on(view,"hide_wifi_activity");managed=true;}
@@ -447,10 +447,6 @@ final class RedMagicLegacyUiHook {
     private static void visibility(View view,boolean hide){
         if(hide){if(!HIDDEN.containsKey(view)||view.getVisibility()!=View.GONE)HIDDEN.put(view,view.getVisibility());view.setVisibility(View.GONE);}
         else {Integer old=HIDDEN.remove(view);if(old!=null&&view.getVisibility()==View.GONE)view.setVisibility(old);}
-    }
-    private static void alpha(View view,boolean hide){
-        if(hide){if(!ALPHAS.containsKey(view))ALPHAS.put(view,view.getAlpha());view.setAlpha(0);}
-        else{Float old=ALPHAS.remove(view);if(old!=null&&view.getAlpha()==0)view.setAlpha(old);}
     }
     private static void keyguardAlpha(View view,boolean hide){
         if(hide){
