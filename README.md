@@ -2,7 +2,7 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20696`，内部版本号 `20696`，安装包已发布。** 以 [android/version.properties](android/version.properties) 为准。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。[最近发布说明](docs/releases/v2.0.0-alpha1-test20696.md)记录已上线版本的更新内容。
+**当前源码版本：`2.0.0-alpha1-test20704`，内部版本号 `20704`，尚未公开发布。** 以 [android/version.properties](android/version.properties) 为准。当前能力与限制见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。[最近发布说明](docs/releases/v2.0.0-alpha1-test20696.md)记录已上线版本的更新内容。
 
 当前在线版本为 test20696：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20696/redmagic-duo-20696.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20696)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
@@ -45,7 +45,7 @@
 
 - 最低 Android 15（API 35）；编译与目标 API 36（Android 16），原生库为 `arm64-v8a`。
 - 需要支持 **libxposed API 102** 的框架；Root 用于配置桥接、应用隐藏及部分硬件／系统操作。
-- 主要适配基准为 **NX809J／RedMagicOS 11.5.7MR1／Android 16**。风扇定速、测量和息屏延续限定已适配的 NX809J；完整亮度按实际 Root 与屏幕驱动接口判断，不再按机型名称限制。游戏性能监测按 GameAssist 16／17 的完整接口适配。具体功能按本机原厂接口决定可用性。
+- 主要适配基准为 **NX809J／RedMagicOS 11.5.7MR1／Android 16**。风扇定速与测量保留既有路径，其他路径须同时核验已审查驱动、运行中模块身份、内核及实际节点；息屏延续另按原厂策略接口检测。完整亮度按实际 Root 与屏幕驱动接口判断。游戏性能监测按 GameAssist 的完整接口适配。具体功能按本机原厂能力决定可用性。
 
 1. 安装签名正确的 APK，在框架中启用模块并配置所需作用域。
 2. 首次进入确认使用说明，按功能需要授予 Root。

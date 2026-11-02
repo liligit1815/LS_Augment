@@ -19,8 +19,7 @@ final class LauncherCleanupBombHook {
     private static final Map<View,Blast> ACTIVE=new WeakHashMap<>();
     private static final Map<View,Blast> FRAGMENT_VIEWS=new WeakHashMap<>();
     private static final Map<Object,Blast> SPRINGS=new WeakHashMap<>();
-    private static final Map<ImageView,IconBinding> ICONS=new WeakHashMap<>();
-    private static final Paint ICON_PAINT=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Map<View,IconBinding> ICONS=new WeakHashMap<>();
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
@@ -37,12 +36,15 @@ final class LauncherCleanupBombHook {
             Field overview=recents.getDeclaredField("mOverviewStateEnabled");overview.setAccessible(true);
             module.registerFeatureHook(module.prepareFeatureHook(draw,"launcher.cleanup.icon",false).intercept(chain->{
                 View view=(View)chain.getThisObject();
-                if(!FeatureSettings.enabled(view.getContext(),LauncherOptions.CLEANUP_BOMB))return chain.proceed();
-                Canvas canvas=(Canvas)chain.getArg(0);int save=canvas.save();
-                // Retain native draw side effects and focus state without painting the old icon.
-                try{canvas.clipRect(0,0,0,0);chain.proceed();}finally{canvas.restoreToCount(save);}
+                IconBinding binding=bindIcon(view);
+                if(!FeatureSettings.enabled(view.getContext(),LauncherOptions.CLEANUP_BOMB)||!binding.artwork.ready())return chain.proceed();
+                Canvas canvas=(Canvas)chain.getArg(0);
+                int save=canvas.saveLayerAlpha(0,0,view.getWidth(),view.getHeight(),0);
+                // Preserve the native draw's real clip/geometry and side effects.
+                // An empty clip can skip native work via quickReject; hide its pixels in a layer.
+                try{chain.proceed();}finally{canvas.restoreToCount(save);}
                 float radius=Math.min(view.getWidth(),view.getHeight())*.28f;
-                bomb(canvas,view.getWidth()/2f,view.getHeight()/2f,radius,ICON_PAINT);
+                binding.draw(canvas,view.getWidth()/2f,view.getHeight()/2f,radius);
                 return null;
             }));
             boolean particlesAvailable=false;
@@ -151,10 +153,10 @@ final class LauncherCleanupBombHook {
             Method imageDraw=ImageView.class.getDeclaredMethod("onDraw",Canvas.class);
             module.registerFeatureHook(module.prepareFeatureHook(imageDraw,"launcher.cleanup.image_draw",false).intercept(chain->{
                 ImageView image=(ImageView)chain.getThisObject();
-                if(!ICONS.containsKey(image)||!FeatureSettings.enabled(image.getContext(),LauncherOptions.CLEANUP_BOMB))return chain.proceed();
-                Canvas canvas=(Canvas)chain.getArg(0);int save=canvas.save();
-                try{canvas.clipRect(0,0,0,0);chain.proceed();}finally{canvas.restoreToCount(save);}
-                bomb(canvas,image.getWidth()/2f,image.getHeight()/2f,Math.min(image.getWidth(),image.getHeight())*.34f,ICON_PAINT);
+                if(!ICONS.containsKey(image)||!FeatureSettings.enabled(image.getContext(),LauncherOptions.CLEANUP_BOMB)||!ICONS.get(image).artwork.ready())return chain.proceed();
+                Canvas canvas=(Canvas)chain.getArg(0);int save=canvas.saveLayerAlpha(0,0,image.getWidth(),image.getHeight(),0);
+                try{chain.proceed();}finally{canvas.restoreToCount(save);}
+                ICONS.get(image).draw(canvas,image.getWidth()/2f,image.getHeight()/2f,Math.min(image.getWidth(),image.getHeight())*.34f);
                 return null;
             }));
             bindIconHost(module,loader,"OverviewActionsView","remove_all_button");
@@ -207,16 +209,31 @@ final class LauncherCleanupBombHook {
         if(child==null){int resource=root.getResources().getIdentifier(id,"id",root.getContext().getPackageName());child=resource==0?null:root.findViewById(resource);}
         if(!(child instanceof ImageView))return;
         CleanupExplosionSound.prepare(root.getContext());
-        ImageView image=(ImageView)child;IconBinding binding=ICONS.get(image);
-        if(binding==null){binding=new IconBinding(image);ICONS.put(image,binding);image.addOnAttachStateChangeListener(binding);if(image.isAttachedToWindow())binding.onViewAttachedToWindow(image);}
-        binding.refresh();
+        View clickHost=null;
+        try{Field host=root.getClass().getDeclaredField("mClearAllButtonLayout");host.setAccessible(true);
+            Object candidate=host.get(root);if(candidate instanceof View&&child.getParent()==candidate)clickHost=(View)candidate;
+        }catch(ReflectiveOperationException ignored){}
+        bindControl(child,clickHost).refresh();
+    }
+    private static IconBinding bindIcon(View image){
+        return bindControl(image,null);
+    }
+    private static IconBinding bindControl(View image,View clickHost){
+        IconBinding binding=ICONS.get(image);
+        if(binding==null){binding=new IconBinding(image,clickHost);ICONS.put(image,binding);image.addOnAttachStateChangeListener(binding);if(image.isAttachedToWindow())binding.onViewAttachedToWindow(image);}
+        return binding;
     }
     private static final class IconBinding implements View.OnAttachStateChangeListener {
-        final WeakReference<ImageView> view;final Runnable changed=this::refresh;boolean attached;
-        IconBinding(ImageView image){view=new WeakReference<>(image);}
-        void refresh(){ImageView image=view.get();if(image!=null)image.invalidate();}
+        final WeakReference<View> view;final CleanupIconImage artwork;final CleanupIconLayout layout;final Runnable changed=this::refresh;boolean attached;
+        IconBinding(View image,View host){view=new WeakReference<>(image);artwork=new CleanupIconImage(image);layout=new CleanupIconLayout(image,host);}
+        void refresh(){View image=view.get();if(image!=null){
+            boolean enabled=FeatureSettings.enabled(image.getContext(),LauncherOptions.CLEANUP_BOMB);
+            boolean c17=enabled&&"0".equals(FeatureSettings.snapshot(image.getContext()).get(LauncherOptions.CLEANUP_ICON_STYLE));
+            layout.update(c17);
+            artwork.update(enabled?(c17?CleanupIconImage.C17:FeatureSettings.snapshot(image.getContext()).get(LauncherOptions.CLEANUP_ICON)):"");image.invalidate();}}
+        void draw(Canvas canvas,float x,float y,float radius){artwork.draw(canvas,x,y,radius);}
         @Override public void onViewAttachedToWindow(View image){if(!attached){attached=true;FeatureSettings.addSnapshotListener(image.getContext(),changed);}refresh();}
-        @Override public void onViewDetachedFromWindow(View image){attached=false;FeatureSettings.removeSnapshotListener(changed);}
+        @Override public void onViewDetachedFromWindow(View image){attached=false;FeatureSettings.removeSnapshotListener(changed);artwork.clear();layout.update(false);}
     }
     private static final class Blast extends Drawable implements View.OnAttachStateChangeListener {
         final AugmentModule module;final View owner,root,source;final Field overview;
@@ -283,8 +300,5 @@ final class LauncherCleanupBombHook {
         @Override public void setAlpha(int alpha){}
         @Override public void setColorFilter(ColorFilter filter){}
         @Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
-    }
-    private static void bomb(Canvas canvas,float x,float y,float r,Paint paint){
-        HolographicBlastEffect.core(canvas,x,y,r,0,paint);
     }
 }

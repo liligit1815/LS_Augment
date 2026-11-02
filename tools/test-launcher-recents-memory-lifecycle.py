@@ -31,7 +31,7 @@ public class Handler {
     public static void drain(){for(int n=0;n<100;n++){Runnable ready=null;synchronized(queue){for(Map.Entry<Runnable,Long> e:queue.entrySet())if(e.getValue()<=SystemClock.now){ready=e.getKey();break;}if(ready!=null)queue.remove(ready);}if(ready==null)return;ready.run();}throw new AssertionError("unbounded immediate callbacks");}
 }''',
     'android/util/TypedValue.java': 'package android.util; public class TypedValue {public static final int COMPLEX_UNIT_SP=2;}',
-    'android/util/DisplayMetrics.java': 'package android.util; public class DisplayMetrics {public float density=1;}',
+    'android/util/DisplayMetrics.java': 'package android.util; public class DisplayMetrics {public int widthPixels,heightPixels;public float density=1,scaledDensity=1;}',
     'android/content/res/Configuration.java': '''package android.content.res;
 public class Configuration {public static final int ORIENTATION_LANDSCAPE=2,UI_MODE_NIGHT_MASK=48,UI_MODE_NIGHT_YES=32; public int orientation=1,uiMode=16;}''',
     'android/content/res/ColorStateList.java': '''package android.content.res;
@@ -43,19 +43,21 @@ import java.util.*;import android.util.DisplayMetrics;
 public class Resources {public final Configuration config=new Configuration();public final DisplayMetrics metrics=new DisplayMetrics();public final Map<String,Integer> ids=new HashMap<>();public Configuration getConfiguration(){return config;}public DisplayMetrics getDisplayMetrics(){return metrics;}public int getIdentifier(String name,String type,String pkg){return ids.getOrDefault(name,0);}}''',
     'android/content/Context.java': '''package android.content;
 import android.content.res.*;import android.app.ActivityManager;
-public class Context {public static final String ACTIVITY_SERVICE="activity";public final Resources resources=new Resources();public final ActivityManager memory=new ActivityManager();public Context getApplicationContext(){return this;}public Resources getResources(){return resources;}public String getPackageName(){return "com.android.launcher3";}public Object getSystemService(String name){return memory;}public TypedArray obtainStyledAttributes(int[] attrs){return new TypedArray();}}''',
+public class Context {public static final String ACTIVITY_SERVICE="activity";public final Resources resources=new Resources();public final ActivityManager memory=new ActivityManager();public Object getContentResolver(){return this;}public Context getApplicationContext(){return this;}public Resources getResources(){return resources;}public String getPackageName(){return "com.android.launcher3";}public Object getSystemService(String name){return memory;}public TypedArray obtainStyledAttributes(int[] attrs){return new TypedArray();}}''',
     'android/app/ActivityManager.java': '''package android.app;
 public class ActivityManager {public volatile int samples;public volatile Thread sampledThread;public static class MemoryInfo {public long totalMem,availMem;}public void getMemoryInfo(MemoryInfo out){sampledThread=Thread.currentThread();samples++;out.totalMem=8L*1024*1024*1024;out.availMem=3L*1024*1024*1024;}}''',
+    'android/provider/Settings.java': 'package android.provider;public class Settings{public static class System{public static final String FONT_SCALE="font_scale";public static float scale=1;public static float getFloat(Object resolver,String key,float fallback){return scale;}}}',
+    'android/view/Display.java': 'package android.view;public class Display{public static int physicalWidth,physicalHeight;final View root;public Display(View v){root=v.getRootView();}public void getRealMetrics(android.util.DisplayMetrics m){m.widthPixels=physicalWidth>0?physicalWidth:root.width;m.heightPixels=physicalHeight>0?physicalHeight:root.height;m.density=root.getResources().getDisplayMetrics().density;}}',
     'android/R.java': 'package android;public final class R {public static final class attr {public static final int textColorPrimary=1;}}',
     'android/graphics/Color.java': '''package android.graphics;public class Color {public static final int WHITE=0xffffffff,BLACK=0xff000000;public static int parseColor(String value){if(value==null||!value.matches("#[A-Fa-f0-9]{8}"))throw new IllegalArgumentException();return (int)Long.parseLong(value.substring(1),16);}}''',
-    'android/view/Gravity.java': 'package android.view;public class Gravity {public static final int LEFT=3,END=8388613,TOP=48,CENTER_VERTICAL=16;}',
+    'android/view/Gravity.java': 'package android.view;public class Gravity {public static final int LEFT=3,CENTER_HORIZONTAL=1,END=8388613,TOP=48,CENTER_VERTICAL=16;}',
     'android/view/View.java': '''package android.view;
 import android.content.Context;import android.content.res.Resources;
 public class View {
     public static final int VISIBLE=0,INVISIBLE=4,GONE=8,TEXT_DIRECTION_LOCALE=5,IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS=4;
     public final Context context;public ViewGroup parent;public int id,visibility=VISIBLE,windowVisibility=VISIBLE,width=1080,height=1920,accessibility,measuredHeight,measuredWidth;public float rotation;public boolean attached=true;public float alpha=1;public Object tag;public ViewGroup.LayoutParams params;
     public View(Context c){context=c;}public Context getContext(){return context;}public Resources getResources(){return context.getResources();}
-    public ViewGroup getParent(){return parent;}public View getRootView(){return parent==null?this:parent.getRootView();}
+    public Display getDisplay(){return new Display(this);}public ViewGroup getParent(){return parent;}public View getRootView(){return parent==null?this:parent.getRootView();}
     public boolean isAttachedToWindow(){return attached;}public boolean isShown(){return visibility==VISIBLE&&(parent==null||parent.isShown());}
     public int getWindowVisibility(){return windowVisibility;}public void setVisibility(int v){visibility=v;}public int getVisibility(){return visibility;}
     public void setAlpha(float v){alpha=v;}public float getAlpha(){return alpha;}public int getWidth(){return width;}public int getHeight(){return height;}
@@ -78,7 +80,7 @@ public class ViewGroup extends View {
 import android.content.Context;import android.view.ViewGroup;
 public class FrameLayout extends ViewGroup {public FrameLayout(Context c){super(c);}public static class LayoutParams extends ViewGroup.LayoutParams {public int gravity,topMargin,leftMargin;public LayoutParams(int w,int h){super(w,h);}}}''',
     'android/widget/TextView.java': '''package android.widget;
-import android.content.Context;import android.content.res.ColorStateList;import android.view.View;
+import android.content.Context;import android.content.res.ColorStateList;import android.view.View;import android.view.Gravity;
 public class TextView extends View {
     public CharSequence text="";public float size=12;public ColorStateList colors=ColorStateList.valueOf(0xccffffff);public int gravity,paddingLeft,paddingRight;public final android.graphics.Paint paint=new android.graphics.Paint();
     public TextView(Context c){super(c);}public void setGravity(int v){gravity=v;}public void setTextDirection(int v){}public void setIncludeFontPadding(boolean v){}
@@ -134,7 +136,7 @@ public class TestLauncherRecentsMemoryLifecycle {
             check(label(host)==null,"module OFF creates no visible decoration "+variant);check(context.memory.samples==0,"OFF reads no RAM");
             if(nativeMemory!=null)check(nativeMemory.alpha==0f,"module OFF suppresses legacy memory independent of native switch");
             FeatureSettings.set("custom","1");settle(host);TextView text=label(host);
-            check(FeatureSettings.diagnostics.get("ls_augment_rm_recents_memory_state").startsWith("visible;"),"visible diagnostic");check(text.text.toString().contains("总量 8.00 GB"),"ON uses physical RAM "+variant);check(context.memory.sampledThread!=Thread.currentThread(),"RAM sampled off UI thread");
+            check(FeatureSettings.diagnostics.get("ls_augment_rm_recents_memory_state").startsWith("visible;"),"visible diagnostic");check(text.text.toString().equals("3.00 GB 可用 | 8.00 GB"),"ON uses physical RAM "+variant);check(context.memory.sampledThread!=Thread.currentThread(),"RAM sampled off UI thread");
             check(recents.children.size()==1&&recents.children.get(0)==task,"pager task membership unchanged");check(host.children.size()==baseline+1,"exactly one sibling decoration");
             FeatureSettings.set("content","2");Handler.drain();check(text.text.toString().equals("可用 3.00 GB"),"snapshot updates existing text");
             for(int i=0;i<4;i++){context.resources.config.orientation=i%2==0?1:2;FeatureSettings.set("style",i<2?"0":"1");FeatureSettings.set(i<2?"simple_size":"detailed_size",""+(21+i));FeatureSettings.set(i%2==0?"portrait_height":"landscape_height",""+(111+i));FeatureSettings.set(i%2==0?"portrait_top":"landscape_top",""+(31+i));Handler.drain();check(text.size==21+i,"unified style font "+i);FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)text.params;check(p.height==111+i&&p.topMargin==31+i,"orientation geometry "+i);}
@@ -143,6 +145,8 @@ public class TestLauncherRecentsMemoryLifecycle {
             check(text.rotation==90&&rotated.leftMargin==1030&&rotated.topMargin==16,"portrait host follows landscape recents with transformed origin");
             check(rotated.height==114,"rotated recents uses landscape settings");
             module.call("setLayoutRotation",recents,270,0);Handler.drain();check(text.rotation==270&&rotated.leftMargin==50&&rotated.topMargin==1904,"reverse landscape anchor");
+            module.call("setLayoutRotation",recents,-90,0);Handler.drain();check(text.rotation==270&&rotated.height==114,"negative angle retains landscape profile");
+            module.call("setLayoutRotation",recents,450,0);Handler.drain();check(text.rotation==90&&rotated.height==114,"full-turn offset normalizes before selecting profile");
             context.resources.config.orientation=2;host.width=1920;host.height=1080;module.call("setLayoutRotation",recents,0,0);Handler.drain();check(text.rotation==0&&rotated.topMargin==50,"rotated Android window is not rotated twice");
             context.resources.config.orientation=1;host.width=1080;host.height=1920;module.call("setLayoutRotation",recents,0,0);Handler.drain();check(text.rotation==0&&rotated.topMargin==36,"return to portrait restores anchor and rotation");
             FeatureSettings.set("color_mode","1");context.resources.config.uiMode=16;module.call("onLayout",recents,false,0,0,1080,1920);Handler.drain();check(text.colors.color==0xff000000,"system light color");context.resources.config.uiMode=32;module.call("onLayout",recents,false,0,0,1080,1920);Handler.drain();check(text.colors.color==0xffffffff,"system dark color");
@@ -168,13 +172,73 @@ public class TestLauncherRecentsMemoryLifecycle {
         check(text.getPaddingLeft()+text.paint.forcedInkLeft>=0&&text.getPaddingLeft()+text.paint.forcedInkRight<=p.width-text.getPaddingRight()
                 &&p.leftMargin+p.width<host.width&&text.size==12&&"200".equals(FeatureSettings.text(context,"ls_augment_rm_recents_memory_portrait_left","")),
                 "full glyph ink fits both TextView and safe screen edge without shrinking or rewriting saved position");
+        text.paint.forcedAdvance=Float.NaN;text.paint.forcedInkLeft=0;text.paint.forcedInkRight=-1;
+        FeatureSettings.set("portrait_left","-1");FeatureSettings.set("style","1");FeatureSettings.set("content","6");
+        for(int w:new int[]{1080,1216})for(String font:new String[]{"12","22"})for(String content:new String[]{"6","2","0","5"}){
+            host.width=w;FeatureSettings.set("detailed_size",font);FeatureSettings.set("content",content);
+            module.call("onLayout",recents,false,0,0,w,2688);Handler.drain();
+            double visualCenter=p.leftMargin+text.getPaddingLeft()+(p.width-text.getPaddingLeft()-text.getPaddingRight())/2d;
+            check(Math.abs(visualCenter-w/2d)<=.5,"portrait center survives text/font/window changes");
+            ls.augment.com.LauncherMemoryGeometry measured=ls.augment.com.LauncherMemoryGeometry.parse(FeatureSettings.diagnostics.get(ls.augment.com.LauncherMemoryGeometry.KEY));
+            check(measured!=null&&measured.mismatch(w,2688,3.25f,1f,false,1,Integer.parseInt(content),Float.parseFloat(font),65).isEmpty(),"launcher measurement matches actual content");
+            check(Math.abs(measured.centerDp*3.25-p.leftMargin)<=3.25,"center tick uses measured left distance");
+            check(measured.maximumDp>=measured.centerDp&&measured.centerDp>0,"center not endpoint");
+
+            check(!text.text.toString().contains("("),"percentages contain no brackets");
+            check((text.gravity&7)==(content.equals("6")?Gravity.CENTER_HORIZONTAL:Gravity.LEFT),"format alignment reset");
+        }
+        FeatureSettings.set("content","6");Handler.drain();check(text.text.toString().equals("剩余量  3.00 GB  38%\\n已用量  5.00 GB  62%\\n总量  8.00 GB"),"new option passes through real hook");
+        FeatureSettings.set("portrait_left","25");Handler.drain();check(p.leftMargin==81,"manual dp offset restored after centering");
+        FeatureSettings.set("portrait_left","-1");FeatureSettings.set("landscape_left","16");
+        module.call("setLayoutRotation",recents,90,0);Handler.drain();check(p.topMargin==52,"portrait centering does not change landscape distance");
+        module.call("setLayoutRotation",recents,0,0);Handler.drain();check(Math.abs(p.leftMargin+text.getPaddingLeft()+(p.width-text.getPaddingLeft()-text.getPaddingRight())/2d-host.width/2d)<=.5,"portrait center restored after rotation");
+        FeatureSettings.set("portrait_top","2000");Handler.drain();
+        ls.augment.com.LauncherMemoryGeometry portrait=ls.augment.com.LauncherMemoryGeometry.parse(FeatureSettings.diagnostics.get(ls.augment.com.LauncherMemoryGeometry.KEY));
+        check(Math.abs(portrait.maximumTopDp*3.25-p.topMargin)<3.25,"portrait top bound matches actual clamp");
+        FeatureSettings.set("landscape_top","2000");FeatureSettings.set("landscape_left","2000");
+        module.call("setLayoutRotation",recents,90,0);Handler.drain();
+        ls.augment.com.LauncherMemoryGeometry horizontal=ls.augment.com.LauncherMemoryGeometry.parse(FeatureSettings.diagnostics.get(ls.augment.com.LauncherMemoryGeometry.LANDSCAPE_KEY));
+        check(horizontal!=null&&horizontal.landscape&&horizontal.heightDp==60,"landscape publishes independent measurement");
+        check(Math.abs(horizontal.maximumDp*3.25-p.topMargin)<3.25,"landscape left bound matches actual clamp");
+        check(Math.abs(horizontal.maximumTopDp*3.25-(host.width-p.leftMargin))<3.25,"landscape top bound matches actual clamp");
+        android.view.Display.physicalWidth=1216;android.view.Display.physicalHeight=2688;
+        host.width=1100;host.height=2400;module.call("setLayoutRotation",recents,0,0);Handler.drain();
+        portrait=ls.augment.com.LauncherMemoryGeometry.parse(FeatureSettings.diagnostics.get(ls.augment.com.LauncherMemoryGeometry.KEY));
+        check(portrait!=null&&portrait.displayWidth==1216&&portrait.displayHeight==2688,"host window dimensions are not display identity");
+        check(Math.abs(portrait.maximumTopDp*3.25-p.topMargin)<3.25,"smaller host still uses its own actual top bound");
         module.call("onDetachedFromWindow",recents);Handler.drain();
+        // An OEM host that already ends above navigation must not lose it twice.
+        android.view.WindowInsets.nav=new android.graphics.Insets(0,0,0,78);
+        Context insetContext=new Context();insetContext.resources.metrics.density=3.25f;
+        insetContext.resources.ids.put("navigation_bar_height",78);
+        FrameLayout insetHost=new FrameLayout(insetContext);insetHost.width=1216;insetHost.height=2610;
+        RecentsView insetRecents=new RecentsView(insetContext);insetHost.addView(insetRecents);
+        FeatureSettings.values.clear();FeatureSettings.set("custom","1");FeatureSettings.set("portrait_top","2000");
+        module.call("onAttachedToWindow",insetRecents);module.call("setOverviewStateEnabled",insetRecents,true);settle(insetHost);
+        FrameLayout.LayoutParams insetParams=(FrameLayout.LayoutParams)label(insetHost).params;
+        check(insetHost.height-insetParams.topMargin-insetParams.height>=0&&insetHost.height-insetParams.topMargin-insetParams.height<3.25,"navigation inset is subtracted only once");
+        module.call("onDetachedFromWindow",insetRecents);Handler.drain();
         if(!module.errors.isEmpty())throw new AssertionError("hook errors",module.errors.get(0));
         System.out.println("PASS LauncherRecentsMemory lifecycle "+checks+" checks; Android/Xposed boundary doubles, no device");
     }
 }''',
 }
 
+
+# Android boundaries shared with the settings-entry test. The production sizing
+# class itself is compiled in both harnesses; no duplicate range formula.
+SOURCES['android/util/TypedValue.java']=SOURCES['android/util/TypedValue.java'].replace('COMPLEX_UNIT_SP=2','COMPLEX_UNIT_SP=2,COMPLEX_UNIT_PX=0')
+SOURCES['android/content/res/Configuration.java']=SOURCES['android/content/res/Configuration.java'].replace('ORIENTATION_LANDSCAPE=2','ORIENTATION_PORTRAIT=1,ORIENTATION_LANDSCAPE=2').replace('public int orientation=1,uiMode=16;', 'public int orientation=1,uiMode=16,densityDpi=160;public Configuration(){}public Configuration(Configuration c){orientation=c.orientation;uiMode=c.uiMode;densityDpi=c.densityDpi;}')
+SOURCES['android/content/res/Resources.java']=SOURCES['android/content/res/Resources.java'].replace('public int getIdentifier(', 'public int getDimensionPixelSize(int id){return id;}public int getInteger(int id){return id==900?0:2;}public boolean getBoolean(int id){return id!=0;}public int getIdentifier(')
+SOURCES['android/content/Context.java']=SOURCES['android/content/Context.java'].replace('ACTIVITY_SERVICE="activity"','ACTIVITY_SERVICE="activity",WINDOW_SERVICE="window"').replace('public Object getSystemService(String name){return memory;}', 'public Context createConfigurationContext(Configuration c){return this;}public Context createDisplayContext(android.view.Display d){return this;}public Object getSystemService(String name){return WINDOW_SERVICE.equals(name)?new android.view.WindowManager():memory;}')
+SOURCES['android/view/View.java']=SOURCES['android/view/View.java'].replace('public void getLocationInWindow(int[] out)', 'public void getLocationOnScreen(int[] out){out[0]=0;out[1]=0;}public void getLocationInWindow(int[] out)')
+SOURCES['android/view/Display.java']=SOURCES['android/view/Display.java'].replace('public static int physicalWidth,physicalHeight;', 'public static int physicalWidth,physicalHeight,rotation;public static DisplayCutout cutout;public DisplayCutout getCutout(){return cutout;}public int getRotation(){return rotation;}')
+SOURCES['android/view/DisplayCutout.java']='package android.view;public class DisplayCutout{public int left,top,right,bottom;public int getSafeInsetLeft(){return left;}public int getSafeInsetTop(){return top;}public int getSafeInsetRight(){return right;}public int getSafeInsetBottom(){return bottom;}}'
+SOURCES['android/graphics/Typeface.java']='package android.graphics;public class Typeface{public static final Typeface DEFAULT=new Typeface();}'
+SOURCES['android/graphics/Insets.java']='package android.graphics;public class Insets{public static final Insets NONE=new Insets(0,0,0,0);public final int left,top,right,bottom;public Insets(int a,int b,int c,int d){left=a;top=b;right=c;bottom=d;}}'
+SOURCES['android/view/WindowInsets.java']='package android.view;public class WindowInsets{public static android.graphics.Insets nav=android.graphics.Insets.NONE;public android.graphics.Insets getInsetsIgnoringVisibility(int type){return nav;}public static class Type{public static int navigationBars(){return 1;}}}'
+SOURCES['android/view/WindowManager.java']='package android.view;public class WindowManager{public WindowMetrics getMaximumWindowMetrics(){return new WindowMetrics();}public static class WindowMetrics{public WindowInsets getWindowInsets(){return new WindowInsets();}}}'
+SOURCES['android/widget/TextView.java']=SOURCES['android/widget/TextView.java'].replace('public void setTextSize(int unit,float v){size=v;paint.size=v;}', 'public void setTypeface(android.graphics.Typeface t){}public void setTextScaleX(float v){}public void setLetterSpacing(float v){}public void setFontFeatureSettings(String v){}public void setLineSpacing(float a,float b){}public void setTextSize(int unit,float v){size=unit==0?v/getResources().metrics.density:v;paint.size=unit==0?v:v*getResources().metrics.density;}').replace('Math.round(size*1.3f*lines.length)', 'Math.round(paint.size*1.3f*lines.length)')
 
 def main():
     with tempfile.TemporaryDirectory(prefix='lsa-recents-memory-') as directory:
@@ -188,6 +252,8 @@ def main():
             source_root / 'ls/augment/com/hook/LauncherRecentsMemoryHook.java',
             source_root / 'ls/augment/com/LauncherMemoryPresentation.java',
             source_root / 'ls/augment/com/LauncherMemoryLayout.java',
+            source_root / 'ls/augment/com/LauncherMemoryGeometry.java',
+            source_root / 'ls/augment/com/LauncherMemorySizing.java',
         ]
         subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(root / 'classes'), *map(str, files)], check=True)
         subprocess.run(['java', '-cp', str(root / 'classes'), 'ls.augment.com.hook.TestLauncherRecentsMemoryLifecycle'], check=True)

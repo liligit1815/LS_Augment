@@ -11,7 +11,10 @@ import java.util.Arrays;
 final class FanDriverContract {
     private static final String[] HASHES={
         "96618714657d8a72fa762b58f2d3fcbc7e8ceb4dfea5aae62a3a6af60f6caf65",
-        "bd22b52f17ffbc311619288935276c1d6aa13fa9ca669b5ead6efc777b718887"
+        "bd22b52f17ffbc311619288935276c1d6aa13fa9ca669b5ead6efc777b718887",
+        // 6.6.30 driver: fan_level_store accepts 0..5; fan_speed_count reports
+        // OEM-adjusted feedback. Still require its loaded build-id and vermagic.
+        "0693fb6f722969a9cc830e58f3df7ff96c21215e5b8f665b71c374bdd03cd8cc"
     };
     static boolean verified() {
         try {

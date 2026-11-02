@@ -30,11 +30,13 @@ public final class SystemUiOptions {
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
         out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
-        out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","使用系统原生星云岛显示音乐、新通知与接通电源提醒，保留大小、位置、透明背景和图标样式设置。轻点打开来源，长按展开详情与音乐控制；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND,"system","灵动岛","使用系统原生星云岛显示音乐、新通知、接通电源提醒及所选渠道的下载进度，保留大小、位置、透明背景和图标样式设置。轻点打开来源，长按展开详情与来源操作；锁屏、息屏和隐藏状态栏时收起。首次更新需重启系统界面。"));
         out.add(EnhancementOption.toggle(ISLAND_STATUS_AVOIDANCE,"system","通知状态自动避让岛","开启时，灵动岛或星云岛出现后，状态栏按原厂逻辑折叠通知图标并为岛腾出空间。关闭时不再因岛出现而避让，图标可能与岛重叠；原有通知显示设置仍然生效。",true));
         out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","播放时显示封面与律动，暂停后短暂保留控制入口并自动收起；已暂停的旧会话不会上岛。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","新通知短暂上岛；遵循勿扰、通知重要性及锁屏隐私，不取消原通知。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电提示","刚接通电源时显示电量，5 秒后收起；持续充电、开启功能或解锁不会让提示常驻。",1,"关闭","开启"));
+        out.add(EnhancementOption.toggle(IslandDownloadConfig.ENABLED,"system","下载活动","仅显示所选通知渠道中带标准进度的持续任务。进度和按钮来自原通知，完成、结束或撤销后收起；没有操作按钮时只提供详情入口。锁屏、息屏隐藏，保留原通知。"));
+        out.add(EnhancementOption.custom(IslandDownloadConfig.CHANNELS,"system","下载通知渠道","先发起一次带进度通知的下载，再选择对应渠道。未选择渠道时不显示下载活动。","",IslandDownloadConfig::normalize));
         out.add(EnhancementOption.integer(PREFIX+"island_width","system","胶囊宽度（dp）","紧凑状态的宽度。可配合状态栏图标位置调整，避免遮挡。",120,96,240));
         out.add(EnhancementOption.integer(PREFIX+"island_height","system","胶囊高度（dp）","实际高度不超过当前状态栏。",32,20,48));
         out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));

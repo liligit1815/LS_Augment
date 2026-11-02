@@ -205,9 +205,14 @@ public final class TestNativeHomeHook {
 def main():
     sources = dict(SOURCES)
     sources["ls/augment/com/hook/TestNativeHomeHook.java"] = TEST
-    with tempfile.TemporaryDirectory(prefix="lsa-native-home-hook-") as temporary:
-        SUPPORT["compile_run"](Path(temporary), sources,
-            ["hook/AtomicWorkbenchHomeHook.java"], "ls.augment.com.hook.TestNativeHomeHook")
+    for policy in ("mutable", "creation"):
+        variant = dict(sources)
+        if policy == "creation":
+            # Same restoration assertions, with read-only policy verification instead of a setter.
+            variant["com/android/server/wm/WindowManagerService.java"] = '''package com.android.server.wm;public class WindowManagerService {public int disabled;public boolean fail;public boolean shouldShowSystemDecors(int d){if(fail)throw new IllegalStateException("decors unavailable");disabled++;return true;}}'''
+        with tempfile.TemporaryDirectory(prefix="lsa-native-home-hook-" + policy) as temporary:
+            SUPPORT["compile_run"](Path(temporary), variant,
+                ["hook/AtomicWorkbenchHomeHook.java"], "ls.augment.com.hook.TestNativeHomeHook")
 
 
 if __name__ == "__main__":

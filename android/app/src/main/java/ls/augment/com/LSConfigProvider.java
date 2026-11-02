@@ -598,8 +598,9 @@ public final class LSConfigProvider extends ContentProvider {
         if(uid!=Process.myUid()&&!(BuildConfig.DEBUG&&uid==0)
                 &&(packages==null||!java.util.Arrays.asList(packages).contains("com.zte.mifavor.launcher")))throw new java.io.FileNotFoundException("launcher only");
         if(path.size()!=2||!"icon".equals(path.get(0)))throw new java.io.FileNotFoundException("unknown icon path");
-        String hash=path.get(1);LauncherOverrides values=LauncherOverrides.parse(new AppConfig(getContext()).get(ConfigSchema.LAUNCHER_OVERRIDES));
-        boolean used=false;if(values!=null)for(LauncherOverrides.Entry e:values.entries())if(e.icon.equals(hash))used=true;
+        String hash=path.get(1);AppConfig iconConfig=new AppConfig(getContext());LauncherOverrides values=LauncherOverrides.parse(iconConfig.get(ConfigSchema.LAUNCHER_OVERRIDES));
+        boolean used=hash.matches("[0-9a-f]{64}")&&hash.equals(iconConfig.get(LauncherOptions.CLEANUP_ICON));
+        if(values!=null)for(LauncherOverrides.Entry e:values.entries())if(e.icon.equals(hash))used=true;
         if(!used)throw new java.io.FileNotFoundException("unconfigured icon");
         return android.os.ParcelFileDescriptor.open(LauncherIconStore.file(getContext(),hash),android.os.ParcelFileDescriptor.MODE_READ_ONLY);
     }

@@ -18,6 +18,8 @@ files['ls/augment/com/hook/AugmentModule.java']=files['ls/augment/com/hook/Augme
 files['android/content/ContentResolver.java']='package android.content;public class ContentResolver{}'
 files['android/provider/Settings.java']='package android.provider;public class Settings{public static class Secure{public static int getInt(android.content.ContentResolver r,String k,int d){return d;}}public static class Global extends Secure{}}'
 files.update({
+'android/os/Build.java':'package android.os;public class Build{public static class VERSION{public static int SDK_INT=37;}}',
+'android/graphics/RuntimeShader.java':'package android.graphics;public class RuntimeShader{public RuntimeShader(String code){}public void setFloatUniform(String key,float v){}}',
 'android/content/Context.java':'''package android.content;public class Context{
  public android.content.ContentResolver getContentResolver(){return new android.content.ContentResolver();}public final android.content.res.Resources resources=new android.content.res.Resources();public android.content.res.Resources getResources(){return resources;}}
 ''',
@@ -27,7 +29,7 @@ files.update({
 ''',
 'io/github/libxposed/api/XposedInterface.java': 'package io.github.libxposed.api;public interface XposedInterface{interface HookHandle{void unhook();}}',
 'android/graphics/Shader.java':'package android.graphics;public class Shader{public enum TileMode{CLAMP}}',
-'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}}',
+'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}public static RenderEffect createRuntimeShaderEffect(RuntimeShader s,String name){return new RenderEffect();}public static RenderEffect createChainEffect(RenderEffect outer,RenderEffect inner){return new RenderEffect();}}',
 'android/view/View.java':'''package android.view;public class View{
  public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}private final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.add(l);}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.remove(l);}public void detach(){attached=false;for(var l:new java.util.ArrayList<>(listeners))l.onViewDetachedFromWindow(this);}public static final int VISIBLE=0,GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
  public float sx=1,sy=1,px=200,py=50;public android.graphics.RenderEffect effect;
@@ -146,7 +148,11 @@ public class TestCascade{
   h.fromParent(new android.view.MotionEvent(0,10,front.state.mYTranslation+5));h.fromParent(new android.view.MotionEvent(3,10,400));check(!parent.disallow&&!h.isScrollingEnabled(),"CANCEL releases dispatch ownership");
   h.mOwnScrollY=h.getScrollRange();alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"lock tail full at end");
   h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"scrolled lock row is clipped below clock");
+  check(front.effect!=null,"scrolled first row gets header blur even above tail projection line");
   h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==0,"scroll back restores native clipping");
+  // This row returns to the bottom stack after scrolling back; its tail blur remains native to the feature.
+  a.keyguard=false;a.stackY=150;h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.effect!=null,"notification shade header also blurs incoming row");
+  flag(NotificationAppearanceOptions.STACK_GRADIENT,false);alg.resetViewStates(a,0);check(front.effect==null,"gradient off releases header effect");flag(NotificationAppearanceOptions.STACK_GRADIENT,true);a.keyguard=true;h.mOwnScrollY=0;
   // First (unscaled) rows need their own clip ownership; they never enter the
   // projection/blur map. The real OEM may retain a nonzero native baseline too.
   front.resetTopClip=false;front.state.clipTopAmount=7;h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"lock adds clipping above existing native seven pixels");
@@ -210,7 +216,7 @@ for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
         work=Path(folder);paths=[]
         for name,source in current.items():
             p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(source,encoding='utf-8');paths.append(p)
-        paths += [SRC/name for name in ['EnhancementOption.java','NotificationAppearanceOptions.java','NotificationCascadePolicy.java','hook/NotificationCascadeHook.java','hook/NotificationStackGate.java','hook/NativeIslandWake.java']]
+        paths += [SRC/name for name in ['EnhancementOption.java','NotificationAppearanceOptions.java','NotificationCascadePolicy.java','hook/NotificationCascadeHook.java','hook/NotificationTopBlur.java','hook/NotificationStackGate.java','hook/NativeIslandWake.java']]
         subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',folder,*map(str,paths)],check=True)
         subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestCascade',*(['missing'] if variant in ['missing','missing_clip','wrong_clip_type'] else [])],check=True)
         if variant=='legacy':subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestWake'],check=True)

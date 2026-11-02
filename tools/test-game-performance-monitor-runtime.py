@@ -29,6 +29,8 @@ FIELDS = [
     ("root", "android.view.ViewGroup", "k", "mFloatLayout"),
     ("manager", "cn.nubia.gameassist.utils.WindowManagerUtil", "w", "mWindowManager"),
     ("pointX", "int", "S", "mPointX"),
+    ("nativeItems", "ArrayList<View>", "H", "mViewList"),
+    ("nativeCount", "int", "I", "mViewsSize"),
 ]
 METHODS = [
     ("init", "void", "I", "initView", "", "", "initCore();return null;"),
@@ -73,7 +75,7 @@ public class View {
 public class ViewGroup extends View {
  public final List<View> children=new ArrayList<>();public int paddingLeft,paddingRight;
  public ViewGroup(Context c){super(c);}public int getChildCount(){return children.size();}
- public View getChildAt(int i){return children.get(i);}public void addView(View v){children.add(v);}
+ public View getChildAt(int i){return children.get(i);}public void addView(View v){children.add(v);}public void removeView(View v){children.remove(v);}
  public int getPaddingLeft(){return paddingLeft;}public int getPaddingRight(){return paddingRight;}
  public static class LayoutParams {public int width,height;public LayoutParams(int w,int h){width=w;height=h;}}
  public static class MarginLayoutParams extends LayoutParams {public int leftMargin,rightMargin;
@@ -178,7 +180,7 @@ OEM_COMMON = r"""
   c.left=CONTENT_LEFT;c.paddingLeft=PADDING_LEFT;c.paddingRight=PADDING_RIGHT;
   for(int i=0;i<5;i++){View cell=new View(context());ViewGroup.MarginLayoutParams lp=new ViewGroup.MarginLayoutParams(CELL_WIDTHS[i],20);
    lp.leftMargin=leftMargin(i);lp.rightMargin=rightMargin(i);cell.setLayoutParams(lp);c.addView(cell);}
-  content(c);background(new CornerRectangle(context()));shortBackground(new CornerRectangle(context()));
+  content(c);nativeItems(new ArrayList<>(c.children));nativeCount(c.getChildCount());background(new CornerRectangle(context()));shortBackground(new CornerRectangle(context()));
   background().setAlpha(FULL_ALPHA);shortBackground().setAlpha(SHORT_ALPHA);
   fullRoot=new ViewGroup(context());fullRoot.addView(background());fullRoot.addView(c);
   shortRoot=new ViewGroup(context());shortRoot.addView(shortBackground());
@@ -187,9 +189,9 @@ OEM_COMMON = r"""
  public void layout(){content().layoutCells();}
  private void dimensionsCore(){if(nextNativeWidth!=Integer.MIN_VALUE){fullWidth(nextNativeWidth);nextNativeWidth=Integer.MIN_VALUE;}
   currentWidth(fullWidth());}
- private void showCore(boolean value){shortened(value);root(value?shortRoot:fullRoot);
+ private void showCore(boolean value){nativeItems(new ArrayList<>(content().children));nativeCount(content().getChildCount());shortened(value);root(value?shortRoot:fullRoot);
   params().width=value?shortWidth():fullWidth();currentWidth(params().width);if(!value)layout();}
- private int stockHit(float x){int cell=currentWidth()/5;if(x<cell)return 0;if(x<2*cell)return 1;
+ private int stockHit(float x){int cell=currentWidth()/nativeCount();if(x<cell)return 0;if(x<2*cell)return 1;
   if(x<3*cell)return 2;if(x<4*cell)return 3;return 4;}
  private void stockClick(float x){animations++;if(shortened()){
   params().x-=content().getChildAt(selectedIndex()).getLeft();shortened(false);selectedIndex(-1);
@@ -427,7 +429,9 @@ public class TestMonitorRuntime {
    eq(expectedWidth(0)+4*76,o.fullWidth(),"sensor widths included");
    o.call(CLICK,1000f);check(!o.shortened(),"sensor has no nonexistent OEM compact root");
    FeatureSettings.on=false;FeatureSettings.fire();o.layout();
-   for(int i=5;i<9;i++)eq(View.GONE,o.content().getChildAt(i).getVisibility(),"extra cells hidden on disable");
+   eq(5,o.content().getChildCount(),"extra cells detached on disable");
+   eq(5,o.nativeCount(),"native hit divisor restored");eq(5,o.nativeItems().size(),"native animation list restored");
+   for(int i=0;i<5;i++)eq(i,(Integer)o.call(HIT,(i+.5f)*o.fullWidth()/5f),"disabled stock hit after sensor use "+i);
    FeatureSettings.on=true;FeatureSettings.selection=String.join(",",GamePerformanceMonitorConfig.items());
    android.util.DisplayMetrics.width=320;FeatureSettings.fire();o.layout();eq(320,o.fullWidth(),"all nine items fit current display width");
    FeatureSettings.on=false;FeatureSettings.fire();eq(PerformanceMonitorFloatingWindow.originalWidth(),o.fullWidth(),"disabling restores native geometry");
@@ -436,9 +440,10 @@ public class TestMonitorRuntime {
  }
  static void itemSpacing()throws Throwable {
   PerformanceMonitorFloatingWindow o=fixture(31,true);int nativeWidth=o.fullWidth();
-  for(int margin:new int[]{-10,0,13}){
+  for(int margin:new int[]{-25,-10,0,13}){
    FeatureSettings.margin=margin;FeatureSettings.fire();o.layout();eq(nativeWidth+4*margin,o.fullWidth(),"spacing changes actual window width");
    for(int i=0;i<5;i++)eq(PerformanceMonitorFloatingWindow.leftMargin(i)+(i==0?0:margin),((ViewGroup.MarginLayoutParams)o.content().getChildAt(i).getLayoutParams()).leftMargin,"native margin plus spacing");
+   for(int i=0;i<5;i++)eq(i,(Integer)o.call(HIT,center(o,i)),"spacing centre hits correct item "+i);
    o.call(DIM);eq(nativeWidth+4*margin,o.fullWidth(),"native resizing never recaptures custom margins");
   }
   FeatureSettings.margin=-32767;FeatureSettings.fire();o.layout();
@@ -469,7 +474,7 @@ def oem_source(variant):
     declarations = []
     names = {}
     for i, (key, kind, modern, legacy) in enumerate(FIELDS):
-        if variant == "compact":modern={"j":"d","m":"g","n":"h","o":"i","J":"D","L":"F","R":"L","v":"p","U":"O","V":"P","h":"b","k":"e","w":"q","S":"M"}[modern]
+        if variant == "compact":modern={"j":"d","m":"g","n":"h","o":"i","J":"D","L":"F","R":"L","v":"p","U":"O","V":"P","h":"b","k":"e","w":"q","S":"M","H":"B","I":"C"}[modern]
         names[key] = legacy if active == 16 else modern
         for route in routes:
             name = legacy if route == 16 else modern

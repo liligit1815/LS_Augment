@@ -353,6 +353,8 @@ public final class ConfigSchema {
         addInteger(STATUSBAR_BATTERY_TEMP_DECIMALS, 1, 0, 3);
         addInteger(STATUSBAR_CURRENT_DECIMALS, 0, 0, 3);
         addInteger(STATUSBAR_POWER_DECIMALS, 1, 0, 3);
+        addInteger(BatteryPercentagePolicy.DIGITS, 0, 0, 2);
+        addInteger(BatteryPercentagePolicy.RULE, 2, 0, 2);
         addBoolean(STATUSBAR_NOTIFICATION_TWO_ROWS, true);
         addBoolean(STATUSBAR_NETWORK_TWO_ROWS, true);
         addInteger(STATUSBAR_NETWORK_DISPLAY, 0, 0, 4);

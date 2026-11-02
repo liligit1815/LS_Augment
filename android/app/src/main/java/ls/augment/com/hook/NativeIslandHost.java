@@ -56,6 +56,8 @@ final class NativeIslandHost {
     private String glassDiagnostic="";
     private Object feature,manager,permanent,disposable;
     private View root,container,current,music,notice,charge,chargingView,noticePanel,chargePanel;
+    private View download,downloadPanel;
+    private DuoDownloadPanel downloadContent;
     private boolean acquired,originalFeature,originalEnabled,flagsOverridden;
     private int width,height,offsetX,offsetY;
     private int nativeX,nativeY,nativeWidth,nativeHeight;
@@ -112,7 +114,7 @@ final class NativeIslandHost {
         },null);
         int legacyPanel=hookNamed(module,loader,"native_island",N+"DynamicPermanentIsland","getPanelIsland",0,(o,a,r)->{
             NativeIslandHost h=active;
-            return h!=null&&h.legacyCards!=null&&h.legacyCards.owns(o)?o==h.notice?h.noticePanel:o==h.charge?h.chargePanel:PASS:PASS;
+            return h!=null&&h.legacyCards!=null&&h.legacyCards.owns(o)?o==h.notice?h.noticePanel:o==h.charge?h.chargePanel:o==h.download?h.downloadPanel:PASS:PASS;
         },null);
         int legacyVisibility=hookNamed(module,loader,"native_island",N+"DynamicPermanentIsland","updateViewVisibility",2,(o,a,r)->{
             NativeIslandHost h=active;
@@ -122,8 +124,8 @@ final class NativeIslandHost {
         },null);
         int panelVisibility=hookNamed(module,loader,"native_island",N+"DynamicPermanentIsland","updatePanelVisibility",3,(o,a,r)->{
             NativeIslandHost h=active;
-            if(h!=null&&(o==h.notice||o==h.charge)){
-                boolean show=(Boolean)a[0];View panel=o==h.notice?h.noticePanel:h.chargePanel;
+            if(h!=null&&(o==h.notice||o==h.charge||o==h.download)){
+                boolean show=(Boolean)a[0];View panel=o==h.notice?h.noticePanel:o==h.charge?h.chargePanel:h.downloadPanel;
                 try{
                     invokeStatic(N+"DynamicIslandAnimation","startPanelAlphaAnimation",new Class<?>[]{View.class,boolean.class,boolean.class},(View)o,!show,false);
                     invokeStatic(N+"DynamicIslandAnimation","startPanelAlphaAnimation",new Class<?>[]{View.class,boolean.class,boolean.class},panel,show,true);
@@ -504,6 +506,26 @@ final class NativeIslandHost {
             return true;
         }catch(Exception failure){android.util.Log.e("DuoNativeIsland","show",failure);hide();report("render_failed:"+cause(failure));return false;}
     }
+    boolean showDownload(ls.augment.com.IslandDownloadPolicy.Entry<android.service.notification.StatusBarNotification> entry,
+            Drawable icon,String app,java.util.function.BiConsumer<ls.augment.com.IslandDownloadPolicy.Entry<android.service.notification.StatusBarNotification>,android.app.PendingIntent> action){
+        if(entry==null||!acquire())return false;
+        try{
+            geometry();
+            if(download==null){
+                View compact=appIsland(),panel=appPanel();DuoDownloadPanel content=new DuoDownloadPanel(panel);
+                setAppPanel(compact,panel);download=compact;downloadPanel=panel;downloadContent=content;
+            }
+            String compact=entry.indeterminate?"下载中":entry.percent+"%";
+            if(duoCompatibility.legacyCards)text(download,"mDisplayText",compact);else call(download,"setDisplayText",compact);
+            image(download,"mDisplayIcon",icon);downloadContent.bind(entry,icon,app,action);
+            set(download,"mKeyguardIsland",false);set(download,"mIslandWidth",width);
+            download.setContentDescription(app+"，下载"+compact+"。轻点打开，长按展开");
+            download.setOnClickListener(v->click.run());download.setOnLongClickListener(v->{longClick.run();return true;});
+            if(current!=download){hide();current=download;MAIN.removeCallbacks(publish);MAIN.post(publish);}
+            else if(download.getParent()==null&&!MAIN.hasCallbacks(publish))MAIN.post(publish);
+            applyAppearance();return true;
+        }catch(Exception unavailable){hide();report("download_unavailable:"+cause(unavailable));return false;}
+    }
     private void panel(View view,String title,String subtitle,Drawable icon)throws Exception{
         text(view,"mDisplayText",title);text(view,"mDisplaySecondText",subtitle);image(view,"mDisplayIcon",icon);
         Object badge=field(view,"mDisplaySmallIcon");if(badge instanceof View)((View)badge).setVisibility(View.GONE);
@@ -556,11 +578,11 @@ final class NativeIslandHost {
                 if(current==music){
                     compactView(field(music,"mDisplayImage"),iconSize,iconSize,false);
                     compactView(field(music,"mMediaContainer"),dp(27),Math.min(dp(18),height),true);
-                }else if(current==notice){
-                    Object icon=sceneField(notice,"mDisplayIcon");if(icon instanceof View)resize((View)icon,iconSize,iconSize);
+                }else if(current==notice||current==download){
+                    Object icon=sceneField(current,"mDisplayIcon");if(icon instanceof View)resize((View)icon,iconSize,iconSize);
                 }
-                if(current==notice){
-                    Object value=sceneField(notice,"mDisplayText");if(value instanceof TextView){TextView text=(TextView)value;
+                if(current==notice||current==download){
+                    Object value=sceneField(current,"mDisplayText");if(value instanceof TextView){TextView text=(TextView)value;
                         text.setTextColor(android.graphics.Color.WHITE);text.setEllipsize(android.text.TextUtils.TruncateAt.END);
                         android.widget.FrameLayout.LayoutParams p=(android.widget.FrameLayout.LayoutParams)text.getLayoutParams();
                         p.width=Math.max(dp(24),width-dp(48));p.setMarginStart(dp(30));p.gravity=android.view.Gravity.START|android.view.Gravity.CENTER_VERTICAL;text.setLayoutParams(p);}
@@ -592,9 +614,10 @@ final class NativeIslandHost {
         p.topMargin=(height-h)/2;p.bottomMargin=0;p.setMarginStart(0);p.setMarginEnd(0);view.setLayoutParams(p);
     }
     private void glassForeground(int color){
+        if(downloadContent!=null)downloadContent.foreground(color);
         Object mediaPanel=field(music,"mMediaPanelIsland");
         for(Object view:new Object[]{field(mediaPanel,"mDisplayTitle"),field(mediaPanel,"mDisplayText"),sceneField(notice,"mDisplayText"),
-                sceneField(noticePanel,"mDisplayText"),sceneField(noticePanel,"mDisplaySecondText"),sceneField(chargePanel,"mDisplayText"),sceneField(chargePanel,"mDisplaySecondText")}){
+                sceneField(noticePanel,"mDisplayText"),sceneField(noticePanel,"mDisplaySecondText"),sceneField(chargePanel,"mDisplayText"),sceneField(chargePanel,"mDisplaySecondText"),sceneField(download,"mDisplayText")}){
             if(view instanceof TextView){TextView text=(TextView)view;text.setTextColor(color);
                 boolean glass=glassBackground!=null;text.setShadowLayer(glass?dp(1):0,0,0,color==android.graphics.Color.WHITE?0x88000000:0x88ffffff);}
         }
@@ -612,7 +635,7 @@ final class NativeIslandHost {
         catch(Exception e){report("publish_failed:"+cause(e));}
     }
     private boolean ownsSelected(Object owner){if(owner!=permanent||current==null)return false;try{return call(permanent,"getPermanentIsland")==current;}catch(Exception e){return false;}}
-    private boolean ownsView(Object view){return view!=null&&(view==music||view==notice||view==charge);}
+    private boolean ownsView(Object view){return view!=null&&(view==music||view==notice||view==charge||view==download);}
     void expand(){
         if(!visible()||!NativeIslandPanelCompat.canExpand(permanent,this::reportPanel))return;
         if(NativeIslandPanelCompat.ordinary(permanent)&&(!panelCloseAdapterInstalled||!panelTransitionsInstalled)){
@@ -634,6 +657,7 @@ final class NativeIslandHost {
         // Removing the scene or releasing the host before that callback leaves a dangling native transition.
         try{panelTransition.finish();}catch(RuntimeException e){report("panel_finish_failed:"+cause(e));}
         restoreBackgrounds();View old=current;current=null;
+        if(old==download&&downloadContent!=null)downloadContent.clear();
         if(old!=null)try{call(permanent,"removePermanentIslandInner",old);}catch(Exception e){report("remove_failed:"+cause(e));}
     }
     private void restoreBackgrounds(){

@@ -54,7 +54,7 @@ final class ConnectivityIconView extends View {
     String inputKey(){ConfigSnapshot s=FeatureSettings.snapshot(getContext());ConnectivityIconState state=sourceState();
         StringBuilder b=new StringBuilder(s.checksum).append('/').append(getLayoutDirection()).append('/').append(getResources().getDisplayMetrics().density)
                 .append('/').append(getResources().getConfiguration().fontScale).append('/').append(Objects.hashCode(StatusBarAssetsHook.typeface(this,"battery",null)))
-                .append('/').append(StatusBarAssetsHook.circleLayers(this).token).append('/').append(state.battery).append('/').append(state.charging).append('/').append(state.bypassCharging)
+                .append('/').append(StatusBarAssetsHook.circleLayers(this).token).append('/').append(state.batteryText).append('/').append(state.charging).append('/').append(state.bypassCharging)
                 .append('/').append(state.wifiKnown).append('/').append(state.wifiConnected).append('/').append(state.wifiInternet)
                 .append('/').append(state.activeDataSubscription).append('/').append(state.defaultDataSubscription);
         for(ConnectivityIconState.Sim sim:state.sims)b.append('/').append(sim.subscriptionId).append(':').append(sim.slot).append(':').append(sim.bars);
@@ -77,7 +77,7 @@ final class ConnectivityIconView extends View {
             boolean wifi=nativeState.wifiKnown;
             ConnectivityIconState current=new ConnectivityIconState(nativeState.battery,
                     nativeState.bypassCharging?ConnectivityIconState.PowerState.BYPASS:nativeState.charging?ConnectivityIconState.PowerState.CHARGING:ConnectivityIconState.PowerState.NONE,
-                    wifi,nativeState.wifiConnected,nativeState.wifiLevel,nativeState.wifiBars,nativeState.airplane,nativeState.activeDataSubscription,nativeState.defaultDataSubscription,sims,nativeState.wifiInternet);
+                    wifi,nativeState.wifiConnected,nativeState.wifiLevel,nativeState.wifiBars,nativeState.airplane,nativeState.activeDataSubscription,nativeState.defaultDataSubscription,sims,nativeState.wifiInternet).withBatteryText(nativeState.batteryText);
             for(int i=0;i<contents.length;i++)if("battery".equals(contents[i])&&hidden("battery")||"wifi".equals(contents[i])&&hidden("wifi"))contents[i]="none";
             ConnectivityIconLayout layout=ConnectivityIconLayout.read(s::get);
             StatusBarIconSpacingSpec rules=StatusBarIconSpacingSpec.parse(s.get(StatusBarIconSpacingSpec.KEY));

@@ -259,7 +259,8 @@ public final class HookAppCatalog {
             if (GameOptions.QUICK_SWITCH.equals(key) || GameOptions.SHOULDER_PIN.equals(key) || GameOptions.REDMAGIC_TIME.equals(key)
                     || GameOptions.WATERMARK_UNLIMITED.equals(key))
                 return Collections.singletonList("cn.nubia.gamelauncher");
-            if (GameOptions.COMBO_LIMITS.equals(key)) return Collections.singletonList("cn.nubia.gamehelpmodule");
+            if (GameOptions.COMBO_LIMITS.equals(key)||GameOptions.COMBO_BUTTON_SIZE_ENABLED.equals(key)
+                    ||GameOptions.COMBO_BUTTON_SIZE.equals(key)) return Collections.singletonList("cn.nubia.gamehelpmodule");
             if (GameOptions.HIGHLIGHTS.equals(key)) return Collections.singletonList("cn.nubia.gamehighlights");
             if (GameOptions.PLUGINS.equals(key)) return immutable(Arrays.asList("system", "cn.nubia.gamelauncher", "cn.nubia.gameassist"));
             if (GameOptions.HIDE_DIABLO_DIALOG.equals(key)) return immutable(Arrays.asList("cn.nubia.gameassist", "cn.zte.gamefloat"));
@@ -351,7 +352,8 @@ public final class HookAppCatalog {
         }
         if (GAME.equals(targetId)) {
             if (GameOptions.QUICK_SWITCH.equals(option.key)) return "shoulder";
-            if (GameOptions.COMBO_LIMITS.equals(option.key)) return "combo";
+            if (GameOptions.COMBO_LIMITS.equals(option.key)||GameOptions.COMBO_BUTTON_SIZE_ENABLED.equals(option.key)
+                    ||GameOptions.COMBO_BUTTON_SIZE.equals(option.key)) return "combo";
             if (GameOptions.PLUGINS.equals(option.key) || GameOptions.PERFORMANCE_MONITOR.equals(option.key)
                     || GameOptions.MONITOR_TRANSPARENCY.equals(option.key)) return "plugins";
             if (GameOptions.FREE_RECORD.equals(option.key) || GameOptions.HIGHLIGHTS.equals(option.key)

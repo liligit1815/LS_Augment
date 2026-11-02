@@ -23,6 +23,7 @@ JOURNAL = r'''package ls.augment.com;import java.util.*;
 final class AtomicWorkbenchJournal {
  static final String PACKAGE="ls.augment.com";static AtomicWorkbenchJournal latest;Record saved;boolean locked,failClear;
  AtomicWorkbenchJournal(android.content.Context c,int uid,int user,int id){latest=this;}
+ AtomicWorkbenchJournal(android.content.Context c,int uid,int user,int id,AtomicWorkbenchRecoveryScope.ReaderProfile profile){this(c,uid,user,id);}
  void acquireLock(){locked=true;}boolean isLocked(){return locked;}void releaseLock(){locked=false;}
  boolean originalStorageMissing(){return false;}boolean exists(){return saved!=null;}Record read(){return saved;}
  void clear()throws Exception{if(failClear)throw new java.io.IOException("injected cleanup failure");saved=null;}
@@ -134,6 +135,7 @@ final class FakeFocusController implements AtomicWorkbenchPlatform.FocusControll
     }''',
     "android/view/WindowManagerGlobal.java": r'''package android.view;public class WindowManagerGlobal {
      public static final WindowService service=new WindowService();public static Object getWindowManagerService(){return service;}public static class WindowService {
+      public boolean shouldShowSystemDecors(int display){return false;}public void setShouldShowSystemDecors(int display,boolean value){}
       public final java.util.Map<Integer,Integer> policies=new java.util.HashMap<>();public int forced=-1;public boolean deny;
       public void setDisplayImePolicy(int display,int policy){if(deny)throw new SecurityException("IME policy refused");policies.put(display,policy);}
       public int getDisplayImePolicy(int display){return forced>=0?forced:policies.getOrDefault(display,0);}}
@@ -181,12 +183,12 @@ public final class TestAtomicWorkbenchLaunch {
  public static class WrongReturnService {public void startActivityAsUser(IApplicationThread caller,String pkg,String feature,Intent intent,String type,IBinder token,String who,int request,int flags,ProfilerInfo profiler,Bundle options,int user){throw new AssertionError("unsupported interface invoked");}}
  static final class Fixture {
   final TaskService service=new TaskService();final Context context=new Context();final Handler handler=new Handler();final Surface surface=new Surface();final AtomicWorkbenchPlatform platform;
-  Fixture(){this(0);}Fixture(int user){SystemClock.now=1000;FakeFocusController.reset();ActivityTaskManager.service=service;AtomicWorkbenchDiagnostics.events.clear();WindowManagerGlobal.service.policies.clear();WindowManagerGlobal.service.forced=-1;WindowManagerGlobal.service.deny=false;platform=new AtomicWorkbenchPlatform(context,user*100000+10055,user,handler,2,null,new FakeFocusController(context));}
+  Fixture(){this(0);}Fixture(int user){SystemClock.now=1000;FakeFocusController.reset();ActivityTaskManager.service=service;AtomicWorkbenchDiagnostics.events.clear();WindowManagerGlobal.service.policies.clear();WindowManagerGlobal.service.forced=-1;WindowManagerGlobal.service.deny=false;platform=new AtomicWorkbenchPlatform(context,user*100000+10055,user,handler,2,null,new FakeFocusController(context));platform.configureAllocationScopeFence((target,source)->{if(target!=2||source!=-1)throw new SecurityException("fixture foreign allocation");});}
   Bundle open(){return platform.open(surface,1080,2400,420,"sample/sample.Main");}
   boolean diagnostic(String text){return AtomicWorkbenchDiagnostics.events.stream().anyMatch(event->event.contains(text));}
  }
  public static void main(String[] args)throws Exception{
-  test("guard suspension authenticates its root-owned display and restoration precedes task focus",()->{Fixture f=new Fixture();f.service.createTask=true;check(f.open().getBoolean("success"),"open failed");var display=f.context.displays.latest.display;
+  test("guard suspension authenticates its root-owned display and restoration precedes task focus",()->{Fixture f=new Fixture();f.service.createTask=true;check(f.open().getBoolean("success"),"open failed: "+AtomicWorkbenchDiagnostics.events);var display=f.context.displays.latest.display;
    f.platform.suspendInputFocus();check(FakeFocusController.display==display&&FakeFocusController.context==f.context,"guard used another display or context");
    check(!f.platform.readyForInput()&&f.platform.status().getBoolean("input_focus_suspended"),"demoted display admitted input");FakeFocusController.events.clear();
    check(f.platform.focusWindow().getBoolean("success"),"restore failed");check(FakeFocusController.events.equals(List.of("resume","focus:77")),"task focus preceded real guard removal");

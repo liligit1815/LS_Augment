@@ -3,6 +3,7 @@ from pathlib import Path
 import ast
 import re
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,11 +30,13 @@ constants = sorted(set(re.findall(r'ConfigSchema\.([A-Z][A-Z0-9_]+)', app)))
 sources['ls/augment/com/ConfigSchema.java'] = 'package ls.augment.com;import java.util.*;final class ConfigSchema {' + ''.join(
     f'static final String {name}="{name}";' for name in constants) + '''
 static Map<String,String> defaults(){Map<String,String> values=new LinkedHashMap<>();''' + ''.join(
-    f'values.put({name},"");' for name in constants) + '''values.put("flag","0");values.put("ls_augment_rm_signal_dual","0");values.put("ls_augment_rm_hide_mobile_type","0");return values;}
+    f'values.put({name},"");' for name in constants) + '''values.put(LauncherOptions.CLEANUP_ICON,"");values.put(LauncherOptions.CLEANUP_ICON_STYLE,"0");values.put("flag","0");values.put("ls_augment_rm_signal_dual","0");values.put("ls_augment_rm_hide_mobile_type","0");return values;}
 static String normalize(String key,String value){return defaults().containsKey(key)?value:null;}
 static boolean truthy(String value){return "1".equals(value)||"true".equals(value);}}
 '''
 sources.update({
+    'ls/augment/com/LauncherOptions.java': 'package ls.augment.com;final class LauncherOptions {static final String CLEANUP_ICON="cleanup_icon",CLEANUP_ICON_STYLE="cleanup_icon_style";}',
+    'ls/augment/com/NativeIslandMode.java': 'package ls.augment.com;final class NativeIslandMode {static final String MODERN="modern";static String detect(android.content.Context c){return "legacy";}}',
     # OEM competitive-key recovery is outside this transport test. Never invoke Root here.
     'ls/augment/com/CompetitiveKeyOptions.java': '''package ls.augment.com;final class CompetitiveKeyOptions {
 static final String ENABLED="competitive_enabled",NATIVE_SETTING="redmagic_competitive_key_function"; }''',
@@ -89,6 +92,14 @@ sources['ls/augment/com/TestAppConfigAsync.java'] = r'''package ls.augment.com;
 import android.content.*;import java.util.*;import java.util.concurrent.*;import java.util.concurrent.locks.ReentrantLock;
 public final class TestAppConfigAsync {
  public static void main(String[] args)throws Exception {
+  if(args.length>0&&args[0].equals("cleanup-migration")){
+  FakeContext oldCleanup=new FakeContext();oldCleanup.prefs(AppConfig.PREFS).edit().putString(LauncherOptions.CLEANUP_ICON,"a".repeat(64)).commit();
+  AppConfig upgradedCleanup=new AppConfig(oldCleanup);check(upgradedCleanup.get(LauncherOptions.CLEANUP_ICON_STYLE).equals("1")&&upgradedCleanup.get(LauncherOptions.CLEANUP_ICON).equals("a".repeat(64)),"existing custom icon migrates to custom style without losing image");
+  check(upgradedCleanup.save(Map.of(LauncherOptions.CLEANUP_ICON_STYLE,"0")).success,"select C17");
+  check(new AppConfig(oldCleanup).get(LauncherOptions.CLEANUP_ICON_STYLE).equals("0"),"explicit C17 selection survives initialization despite retained custom image");
+  check(new AppConfig(new FakeContext()).get(LauncherOptions.CLEANUP_ICON_STYLE).equals("0"),"new install defaults to C17");
+  System.out.println("PASS actual cleanup icon migration: uploaded image retained, explicit preset retained, new default C17");return;
+  }
   FakeContext context=new FakeContext();AppConfig config=new AppConfig(context);
   ConfigSnapshot cached=config.configSnapshot();
   for(int i=0;i<10000;i++)check(new AppConfig(context).configSnapshot()==cached,"unchanged preferences rebuild the snapshot");
@@ -222,4 +233,4 @@ with tempfile.TemporaryDirectory(prefix='ls-app-config-async-') as folder:
         files.append(path)
     files += [SRC / name for name in ('AppConfig.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java')]
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', folder, *map(str, files)], check=True)
-    subprocess.run(['java', '-cp', folder, 'ls.augment.com.TestAppConfigAsync'], check=True, timeout=10)
+    subprocess.run(['java', '-cp', folder, 'ls.augment.com.TestAppConfigAsync', *sys.argv[1:]], check=True, timeout=10)

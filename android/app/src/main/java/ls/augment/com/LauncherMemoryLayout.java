@@ -2,8 +2,10 @@ package ls.augment.com;
 
 /** A logical top/left region rotated inside the launcher's safe host bounds. */
 public final class LauncherMemoryLayout {
+    /** A distinct setting, never an estimated dp offset tied to one text sample. */
+    public static final int CENTER = -1;
     public final int rotation, width, height;
-    private final int left, top, right, bottom;
+    public final int left, top, right, bottom;
 
     public LauncherMemoryLayout(int degrees, int left, int top, int right, int bottom) {
         rotation = ((Math.round(degrees / 90f) * 90) % 360 + 360) % 360;
@@ -29,6 +31,12 @@ public final class LauncherMemoryLayout {
 
     public int textLeft(int requestedLeft, int labelWidth, int endInset) {
         return Math.min(Math.max(0, requestedLeft), Math.max(0, textWidth(endInset) - labelWidth));
+    }
+
+    /** Center the visible text, ignoring the label's asymmetric drawing padding. */
+    public int centeredTextLeft(int labelWidth, int startPadding, int endPadding, int endInset) {
+        int requested = Math.round((width - labelWidth - startPadding + endPadding) / 2f);
+        return textLeft(requested, labelWidth, endInset);
     }
 
     public int x(int logicalLeft, int logicalTop) {

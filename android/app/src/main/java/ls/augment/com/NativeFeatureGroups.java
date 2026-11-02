@@ -123,7 +123,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:power_reboot_modes","电源菜单高级重启",SystemUiOptions.POWER_MODES,new String[]{},"boolean","0",new Feature[]{})
         }),
         new Section("launcher","cleanup","一键清理",new Feature[]{
-            new Feature("launcher:cleanup_bomb","自定义清理图标与动画",LauncherOptions.CLEANUP_BOMB,new String[]{LauncherOptions.CLEANUP_STYLE},"boolean","0",new Feature[]{})
+            new Feature("launcher:cleanup_bomb","自定义清理图标与动画",LauncherOptions.CLEANUP_BOMB,new String[]{LauncherOptions.CLEANUP_ICON_STYLE,LauncherOptions.CLEANUP_ICON,LauncherOptions.CLEANUP_STYLE},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","gestures","侧滑返回", new Feature[]{
             new Feature("systemui:back_icon_enabled","自定义侧滑返回图标",BackGestureIconPolicy.ENABLED,
@@ -200,7 +200,7 @@ final class NativeFeatureGroups {
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
             new Feature("systemui:island_status_avoidance","通知状态自动避让岛",SystemUiOptions.ISLAND_STATUS_AVOIDANCE,new String[]{},"boolean","0",new Feature[]{}),
-            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds"},"boolean","0",new Feature[]{}),
+            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS},"boolean","0",new Feature[]{}),
             NativeIslandSceneOptions.feature()
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
@@ -290,7 +290,8 @@ final class NativeFeatureGroups {
                 new Feature(GameOptions.SHOULDER_PIN,"长按固定悬浮窗位置",GameOptions.SHOULDER_PIN,new String[]{},"boolean","0",new Feature[]{})})
         }),
         new Section("game","combo","连招录制与循环", new Feature[]{
-            new Feature("ls_augment_combo_extended_limits","扩展连招循环设置","ls_augment_combo_extended_limits",new String[]{},"boolean","0", new Feature[]{})
+            new Feature("ls_augment_combo_extended_limits","扩展连招循环设置","ls_augment_combo_extended_limits",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature(GameOptions.COMBO_BUTTON_SIZE_ENABLED,"一键连招按键大小",GameOptions.COMBO_BUTTON_SIZE_ENABLED,new String[]{GameOptions.COMBO_BUTTON_SIZE},"boolean","0",new Feature[]{})
         }),
         new Section("game","performance","游戏面板与性能模式", new Feature[]{
             new Feature("ls_augment_game_hide_diablo_dialog","隐藏破坏神模式提示","ls_augment_game_hide_diablo_dialog",new String[]{},"boolean","0", new Feature[]{}),

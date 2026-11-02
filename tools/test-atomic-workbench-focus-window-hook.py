@@ -307,13 +307,14 @@ def negatives(sources):
 
 def device_profile_shapes():
     runner = r'''package ls.augment.com.hook;public final class TestDeviceProfile {
-     public static void main(String[] args){AugmentModule module=new AugmentModule();if(AtomicWorkbenchImeHook.install(module,TestDeviceProfile.class.getClassLoader())!=2)throw new AssertionError("required actual IME dependency missing");int actual=AtomicWorkbenchFocusWindowHook.install(module,TestDeviceProfile.class.getClassLoader());boolean valid="valid".equals(args[0]);
+     public static void main(String[] args){AugmentModule module=new AugmentModule();if(AtomicWorkbenchImeHook.install(module,TestDeviceProfile.class.getClassLoader())!=2)throw new AssertionError("required actual IME dependency missing");int actual=AtomicWorkbenchFocusWindowHook.install(module,TestDeviceProfile.class.getClassLoader());boolean valid=args[0].startsWith("valid");
       if(valid?(actual!=3||module.intercepts!=6):(actual!=0||module.intercepts!=3||module.errors==0))throw new AssertionError("device profile shape did not fail closed: "+args[0]+" result="+actual+" hooks="+module.intercepts);
       if(!com.android.server.display.DisplayManagerService.roots.isEmpty())throw new AssertionError("installation instantiated a DMS owner");
       System.out.println("PASS actual device profile shape: "+args[0]);}}
     '''
     variants = {
         "valid": {},
+        "valid_private_formatter": {"com/android/server/display/DisplayDeviceInfo.java": ("public static String flagsToString", "private static String flagsToString")},
         "missing_actual_device_getter": {"com/android/server/display/DisplayManagerService.java": ("getDisplayDeviceInfoInternal(int id)", "missingDeviceInfo(int id)")},
         "missing_device_unique_field": {"com/android/server/display/DisplayDeviceInfo.java": ("uniqueId=", "missingUnique=")},
         "device_owner_wrong_primitive_type": {"com/android/server/display/DisplayDeviceInfo.java": ("public int flags=0x80,type=5,ownerUid=0;", "public int flags=0x80,type=5;public long ownerUid=0;")},

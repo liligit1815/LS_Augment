@@ -38,17 +38,17 @@ final class AudioGainHook {
         if (installed) return;
         try {
             Class<?> service = Class.forName("com.android.server.audio.AudioService", false, loader);
-            int count = 0;
-            for (Method m : service.getDeclaredMethods()) {
+            List<Method> targets=AudioGainTargets.resolve(service);
+            int count = 0;List<Integer> adjustmentSignatures=new ArrayList<>();
+            for (Method m : targets) {
                 String name = m.getName(); int argc = m.getParameterCount();
-                boolean adjust = name.equals("adjustStreamVolume") && argc == 10;
-                boolean set = name.equals("setStreamVolume") && argc == 10;
-                boolean getter = (name.equals("getStreamVolume") || name.equals("getStreamMaxVolume")
-                        || name.equals("getLastAudibleStreamVolume")) && argc == 1;
-                boolean permission = name.equals("checkNoteAppOp") && m.getReturnType() == boolean.class;
-                boolean dnd = name.equals("volumeAdjustmentAllowedByDnd") && argc == 2;
-                boolean playback = name.equals("onPlaybackConfigChange") && argc == 1;
-                if (!adjust && !set && !getter && !permission && !dnd && !playback) continue;
+                AudioGainTargets.Kind kind=AudioGainTargets.kind(m);
+                boolean adjust=kind==AudioGainTargets.Kind.ADJUST,set=kind==AudioGainTargets.Kind.SET;
+                boolean getter=kind==AudioGainTargets.Kind.CURRENT||kind==AudioGainTargets.Kind.MAXIMUM||kind==AudioGainTargets.Kind.LAST_AUDIBLE;
+                boolean permission=kind==AudioGainTargets.Kind.APP_OP,dnd=kind==AudioGainTargets.Kind.DND;
+                boolean playback=kind==AudioGainTargets.Kind.PLAYBACK;
+                int deviceArgument=AudioGainTargets.deviceArgument(m);
+                if(adjust)adjustmentSignatures.add(argc);
                 m.setAccessible(true);
                 module.registerFeatureHook(module.prepareFeatureHook(m, "audio.gain." + name + "." + argc, false).intercept(chain -> {
                     if (permission || dnd) {
@@ -57,7 +57,7 @@ final class AudioGainHook {
                         return result;
                     }
                     Object owner = chain.getThisObject(); Controller c = ensure(owner);
-                    if (c == null || INTERNAL.get() || (getter && PENDING.get() != null)) return chain.proceed();
+                    if (c == null || INTERNAL.get() || ((getter||adjust||set) && PENDING.get() != null)) return chain.proceed();
                     if (playback) {
                         Object result = chain.proceed(); Object list = chain.getArg(0);
                         if (list instanceof List) c.playback(new ArrayList<>((List<?>) list));
@@ -65,6 +65,12 @@ final class AudioGainHook {
                     }
                     int stream = (Integer) chain.getArg(0);
                     if (AudioGainPolicy.stream(stream).isEmpty() || !c.enabled() || !trusted(c.context)) return chain.proceed();
+                    // A non-null device targets a particular route/address. This
+                    // extension follows the active stream only; retain OEM handling.
+                    if(deviceArgument>=0&&chain.getArg(deviceArgument)!=null){
+                        INTERNAL.set(true);
+                        try{return chain.proceed();}finally{INTERNAL.set(false);}
+                    }
                     String route = c.route(stream);
                     int nativeMax = c.nativeVolume("getStreamMaxVolume", stream);
                     if (nativeMax <= 0 || route.isEmpty()) return chain.proceed();
@@ -98,13 +104,16 @@ final class AudioGainHook {
                         if (a.authorized && a.dndAllowed && c.nativeVolume("getStreamVolume", stream) == nativeMax
                                 && route.equals(c.route(stream))) c.setExtra(route, stream, a.requested);
                         else if (!adjust && a.authorized && a.dndAllowed && requested <= nativeMax) c.setExtra(route, stream, 0);
+                        c.readDiagnostic("adjustment","path="+(adjust?"adjust":"set")+";argc="+argc+";stream="+stream
+                                +";requested="+requested+";appOp="+a.authorized+";dnd="+a.dndAllowed
+                                +";route="+route+";extra="+c.extra(route,stream)+";native="+c.nativeVolume("getStreamVolume",stream));
                         c.notifyPanel(stream, (Integer) chain.getArg(2));
                         return result;
                     } finally { if (prior == null) PENDING.remove(); else PENDING.set(prior); }
                 })); count++;
             }
-            installed = count >= 6;
-            module.logFeatureInfo("AUDIO_GAIN_READY hooks=" + count);
+            installed = true;
+            module.logFeatureInfo("AUDIO_GAIN_READY hooks="+count+";adjustSignatures="+adjustmentSignatures+";contract=complete");
         } catch (Throwable e) { module.logFeatureError("AUDIO_GAIN_INSTALL", e); }
     }
     private static synchronized Controller ensure(Object owner) {

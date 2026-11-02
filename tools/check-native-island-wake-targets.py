@@ -43,10 +43,12 @@ for apk in args.systemui:
             missing.append('incompatible wake callback')
         if named(permanent, 'fields', 'mInteractive:'):
             missing.append('interactive engine requires native wake callback')
-        for kind, names in [('fields', ['mAODVisibility:Z', 'mIsDynamicIslandEnable:Z',
-                                        'mPayJoyControlled:Z', 'mCurRotation:I']),
+        for kind, names in [('fields', ['mAODVisibility:Z', 'mIsDynamicIslandEnable:Z', 'mCurRotation:I']),
                             ('methods', ['setAODVisibility(Z)V', 'updateRooterVisibility()V'])]:
             missing.extend(name for name in names if not instance(permanent, kind, name))
+        policy = [('fields', 'mPayJoyControlled:Z')] if named(permanent, 'fields', 'mPayJoyControlled:') else [
+            ('fields', 'mSuperPowerSave:Z'), ('methods', 'disableDynamicIsland()Z'), ('methods', 'setSuperPowerSave(Z)V')]
+        missing.extend(name for kind, name in policy if not instance(permanent, kind, name))
         if not missing:
             route = 'permanent_visibility'
     report = {'apk': str(apk), 'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),

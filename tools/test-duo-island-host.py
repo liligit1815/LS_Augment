@@ -76,7 +76,7 @@ public class NativeIslandHost {
  static int checks;static void check(boolean ok,String why){checks++;if(!ok)throw new AssertionError(why);}
  static final ClassLoader loader=NativeIslandHost.class.getClassLoader();static NativeIslandHost active;static Object initializedManager,failedDuoInitialization;
  static boolean initializedByDuo,legacyCardHooksInstalled=true;static java.lang.ref.WeakReference<View> keyguardView=new java.lang.ref.WeakReference<>(null);
- Object feature,manager,permanent,disposable;Context context=new Context();View phone=new View(context),root,container,notice,noticePanel,charge,chargePanel;
+ Object feature,manager,permanent,disposable;Context context=new Context();View phone=new View(context),root,container,notice,noticePanel,charge,chargePanel,download,downloadPanel;
  static final String N="com.zte.feature.dynamicisland.";static final Object PASS=new Object();
  interface Before{Object run(Object o,Object[] a,Object r)throws Exception;}
  static final java.util.Map<String,Before> hooks=new java.util.HashMap<>();
@@ -133,6 +133,8 @@ public class NativeIslandHost {
    check(hooks.get("getPanelIsland").run(card,new Object[0],null)==panel,"Duo notification panel not linked");
    h.charge=cards.create(false);h.chargePanel=cards.create(true);
    check(hooks.get("getPanelIsland").run(h.charge,new Object[0],null)==h.chargePanel,"Duo charging panel not linked");
+   h.download=cards.create(false);h.downloadPanel=cards.create(true);
+   check(hooks.get("getPanelIsland").run(h.download,new Object[0],null)==h.downloadPanel,"Duo download panel not linked on legacy host");
    check(hooks.get("getPanelIsland").run(foreign,new Object[0],null)==PASS,"OEM panel intercepted");
    check(hooks.get("updateViewVisibility").run(foreign,new Object[]{true,false},null)==PASS,"OEM visibility intercepted");
    check(((FrameLayout)card).children.size()==2&&((FrameLayout)panel).children.size()==3,"legacy content absent");
@@ -166,7 +168,8 @@ for name in ('NativeIslandWake', 'DuoIslandCompatibility', 'DuoIslandLegacyCards
     FILES[f'ls/augment/com/hook/{name}.java'] = (SRC / f'{name}.java').read_text(encoding='utf-8')
 
 def main():
-    variants = [('legacy', False, ''), ('modern', True, 'public static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=false;'),
+    variants = [('legacy', False, ''), ('super_power', False, 'public static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=false;'),
+                ('modern', True, 'public static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=false;'),
                 ('full', True, 'public static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=true;'),
                 ('badflag', False, 'public static int ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=0;'), ('missing_modern', True, ''),
                 ('privateflag', True, 'private static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=false;'),
@@ -178,6 +181,14 @@ def main():
             files['com/zte/tools/AppTools.java'] = 'package com.zte.tools;class Parent{private static boolean ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=false;}public class AppTools extends Parent{}'
         files['com/zte/feature/dynamicisland/DynamicPermanentIsland.java'] = ISLAND.replace('// MODERN', MODERN if modern else '')
         files['ls/augment/com/hook/NativeIslandHost.java'] = HARNESS.replace('MODERN_VALUE', str(modern).lower())
+        if label == 'super_power':
+            key = 'ls/augment/com/hook/NativeIslandHost.java'
+            files[key] = files[key].replace('mAODVisibility,mPayJoyControlled', 'mAODVisibility,mSuperPowerSave')
+            files[key] = files[key].replace('public void setAODVisibility(boolean b){}',
+                'public boolean disableDynamicIsland(){return !mIsDynamicIslandEnable||mCurRotation==1||mCurRotation==3||mAODVisibility||mSuperPowerSave;}public void setSuperPowerSave(boolean b){}public void setAODVisibility(boolean b){}')
+            # This firmware declares its fullscreen capability flag (false for
+            # the ordinary host); panel fields alone do not make it unknown.
+            files[key] = files[key].replace('rejected("unknown missing flag host",new Unknown(),false,null);', '')
         with tempfile.TemporaryDirectory(prefix='duo-host-') as d:
             folder = Path(d)
             for name, content in files.items():

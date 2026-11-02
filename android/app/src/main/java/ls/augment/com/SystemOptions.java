@@ -65,7 +65,7 @@ public final class SystemOptions {
         };
         for(String[] s:switches)o.add(EnhancementOption.toggle(key(s[0]),s[1],s[2],s[3]));
         o.add(EnhancementOption.toggle(ConfigSchema.BEAUTIFY_UNLIMITED_TRIAL,"theme","主题无限期使用",
-                "由本功能开关控制已确认试用资源的本地到期恢复流程，让原厂主题试用继续保留。更新模块后重启主题商店与主题服务，再打开主题商店，无需为本功能重启手机。不会修改支付结果、账号权益或服务器资源资格。"));
+                "开启后，支持的主题、字体详情页在下载前显示“下载”，下载后显示“使用”，通过原厂正常应用流程保留已下载资源，并拦截已确认的试用到期恢复。更新后重启主题商店与主题服务，再重新应用一次资源。关闭后恢复原厂试用流程。"));
         o.add(EnhancementOption.integer(key("lock_timeout_seconds"),"system","锁屏息屏时间（秒）","修改后在下一次锁屏等待中使用。",15,1,86400));
         String[] streams={"alarm","media","notification","ring","call"};
         String[] labels={"闹钟","媒体","通知","铃声","通话"};

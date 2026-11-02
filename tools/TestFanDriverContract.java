@@ -15,6 +15,6 @@ public final class TestFanDriverContract {
             check(!FanDriverContract.matches(image,note,release),"changed driver rejects before any write");
         }
         check(!FanDriverContract.matches(new byte[0],null,""),"missing proof rejects");
-        System.out.println("PASS audited fan drivers: 4K/16K, loaded-module identity, kernel mismatch, modified/missing proof");
+        System.out.println("PASS audited fan drivers: "+(args.length/3)+" images; loaded-module identity, kernel mismatch, modified/missing proof");
     }
 }

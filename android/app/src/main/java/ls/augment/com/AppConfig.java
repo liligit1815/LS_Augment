@@ -132,6 +132,9 @@ final class AppConfig {
                 if (!getBoolean(FREEFORM_ENABLED)) migration.putString(FREEFORM_UNLIMITED,"0").putString(FREEFORM_ALL_APPS,"0");
                 migration.commit();
             }
+            // Retain existing uploaded icons when introducing the explicit preset selector.
+            if(!prefs.contains(LauncherOptions.CLEANUP_ICON_STYLE)&&!get(LauncherOptions.CLEANUP_ICON).isEmpty())
+                migrationEditor().putString(LauncherOptions.CLEANUP_ICON_STYLE,"1").commit();
             initializePrivateDefaults();
             if (!prefs.getBoolean("notification_cascade_only_v1",false)) {
                 DurablePreferences.Editor migration=migrationEditor().putBoolean("notification_cascade_only_v1",true);

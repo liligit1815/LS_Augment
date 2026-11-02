@@ -95,6 +95,7 @@ final class IosBatteryHook {
         int level = integer(owner, "mBateryLevel", 100);
         int style = FeatureSettings.integer(owner.getContext(), SystemUiOptions.PREFIX + "battery_style", 0, 0, 6);
         boolean digits = IosBatteryPolicy.containsDigits(style, integer(owner, "mShowMode", 0));
+        boolean fractional = digits && BatteryPercentageHook.fractional(level);
         boolean charging = Boolean.TRUE.equals(field(owner, "mIsCharing"));
         boolean powerSave = IosBatteryPolicy.powerSave(gamePowerMode, Boolean.TRUE.equals(field(owner, "mIsPowerSave")));
         Object intensity = field(owner, "mDarkIntensity");
@@ -105,7 +106,7 @@ final class IosBatteryHook {
             int tint = tintValue instanceof Number ? ((Number)tintValue).intValue() : integer(meter, "mContentColor", Color.WHITE);
             dark = Color.red(tint) * .299f + Color.green(tint) * .587f + Color.blue(tint) * .114f < 128;
         }
-        String asset = IosBatteryPolicy.asset(digits, charging, powerSave, IosBatteryPolicy.performance(gamePowerMode), dark);
+        String asset = IosBatteryPolicy.asset(digits && !fractional, charging, powerSave, IosBatteryPolicy.performance(gamePowerMode), dark);
         if (!asset.equals(state.asset)) {
             IosBatteryAssets.Sheet sheet = IosBatteryAssets.cached(asset);
             if (sheet != null) state.setSheet(owner, asset, sheet, level);
@@ -132,7 +133,8 @@ final class IosBatteryHook {
         Object hollow = field(owner, "mTextHollowEffectAvailable");
         if (!state.hollowCaptured) { state.nativeHollow = Boolean.TRUE.equals(hollow); state.hollowCaptured = true; }
         set(owner, "mTextHollowEffectAvailable", false);
-        state.suppress(field(owner, "mBatteryLevelInsideView"));
+        state.suppressOrRestore(field(owner, "mBatteryLevelInsideView"), !fractional);
+        state.childHollow(field(owner, "mBatteryLevelInsideView"),fractional);
         // The iOS charging sheets already contain their charging appearance. Preserve a native bypass indicator.
         boolean bypass = integer(owner, "mChargingSeparation", 0) == 1;
         state.suppressOrRestore(field(owner, "mInsideChargeView"), !bypass);
@@ -181,6 +183,15 @@ final class IosBatteryHook {
         String asset = "", requested = "", diagnostic = "";
         boolean active, nativeHollow, hollowCaptured;
         final Map<View, Float> alphas = new WeakHashMap<>();
+        View hollowChild;Boolean childHollow;
+        void childHollow(Object raw,boolean suppress){
+            if(!(raw instanceof View))return;
+            Object current=field(raw,"mTextHollowAvailable");if(!(current instanceof Boolean))return;
+            try{
+                if(suppress){if(childHollow==null||Boolean.TRUE.equals(current))childHollow=(Boolean)current;hollowChild=(View)raw;call(raw,"setTextHollowEffectAvailable",false);}
+                else if(childHollow!=null){if(Boolean.FALSE.equals(current))call(raw,"setTextHollowEffectAvailable",childHollow);childHollow=null;hollowChild=null;}
+            }catch(ReflectiveOperationException ignored){}
+        }
         void setSheet(View owner, String name, IosBatteryAssets.Sheet sheet, int level) {
             asset = name; requested = name;
             drawable = new IosBatteryDrawable(sheet, level, owner.getResources().getDisplayMetrics().density);
@@ -192,6 +203,7 @@ final class IosBatteryHook {
             else { Float original = alphas.remove(view); if (original != null) view.setAlpha(original); }
         }
         void restore(View owner) {
+            childHollow(hollowChild,false);
             Object raw = field(owner, "mBatteryIconView");
             if (active && raw instanceof ImageView) {
                 ImageView meter = (ImageView) raw;

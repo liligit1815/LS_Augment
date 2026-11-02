@@ -26,6 +26,7 @@ spec.loader.exec_module(dex_reader)
 JAVA_TYPES = {
     'void': 'V', 'boolean': 'Z', 'int': 'I', 'float': 'F',
     'Context': 'Landroid/content/Context;',
+    'ArrayList': 'Ljava/util/ArrayList;',
     'String': 'Ljava/lang/String;',
     'android.widget.LinearLayout': 'Landroid/widget/LinearLayout;',
     'View': 'Landroid/view/View;',
@@ -149,8 +150,8 @@ def production_contracts(source):
         if not match:
             raise ValueError('Missing Access ' + java_kind + ' declarations')
         declarations[kind] = {item.strip() for item in match.group(1).split(',')}
-    if len(declarations['fields']) != 14 or len(declarations['methods']) != 13:
-        raise ValueError('Expected the complete 14-field / 13-method production contract')
+    if len(declarations['fields']) != 16 or len(declarations['methods']) != 13:
+        raise ValueError('Expected the complete 16-field / 13-method production contract')
     if not re.search(r'return\s+legacy\s*\?\s*older\s*:\s*modern\s*;', access):
         raise ValueError('Production name() selection changed; review this parser')
     resolver = re.search(r'\bstatic\s+Access\s+resolve\s*\(', access)
@@ -190,7 +191,7 @@ def production_contracts(source):
                                          'member': names[index] + suffix,
                                          'declaredRequired': True, 'expectedStatic': False})
         seen[kind].add(role)
-    if seen != declarations or any(len(profile['contracts']) != 27 for profile in profiles):
+    if seen != declarations or any(len(profile['contracts']) != 29 for profile in profiles):
         raise ValueError('Could not read every production member mapping')
     return {'source': str(source.resolve()), 'sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
             'monitorClass': monitor_type, 'profiles': profiles}
@@ -256,7 +257,7 @@ def main():
         print('  Identity: ' + json.dumps(result['identity'], ensure_ascii=False))
         print('  Complete selected profile: ' + str(result['selectedRoute']))
         for profile in result['profiles']:
-            print('  ' + profile['route'] + ': ' + str(sum(row['pass'] for row in profile['checks'])) + '/27 declared instance contracts')
+            print('  ' + profile['route'] + ': ' + str(sum(row['pass'] for row in profile['checks'])) + '/' + str(len(profile['checks'])) + ' declared instance contracts')
             if not result['pass']:
                 for row in profile['checks']:
                     if not row['pass']:

@@ -15,6 +15,9 @@ public final class GameOptions {
     public static final String MONITOR_PIN = "ls_augment_game_monitor_long_press_pin";
     public static final String SHOULDER_PIN = "ls_augment_tgk_long_press_pin";
     public static final String COMBO_LIMITS = "ls_augment_combo_extended_limits";
+    public static final String COMBO_BUTTON_SIZE_ENABLED = "ls_augment_combo_button_size_enabled";
+    public static final String COMBO_BUTTON_SIZE = "ls_augment_combo_button_size";
+    public static final int COMBO_BUTTON_SIZE_MIN=50,COMBO_BUTTON_SIZE_MAX=200,COMBO_BUTTON_SIZE_DEFAULT=100;
     public static final String HIDE_DIABLO_DIALOG = "ls_augment_game_hide_diablo_dialog";
     public static final String COLLAPSE_PANEL = "ls_augment_game_prevent_panel_collapse";
     public static final String REMEMBER_ACTIVE = "ls_augment_game_remember_active";
@@ -35,6 +38,8 @@ public final class GameOptions {
             EnhancementOption.toggle(SHOULDER_PIN,"game","长按固定悬浮窗位置","长按肩键方案快捷切换悬浮窗固定位置，再次长按解除固定；固定后仍可点击切换方案，关闭本项恢复拖动。"),
             EnhancementOption.integer(MONITOR_TRANSPARENCY,"game","背景透明度（%）","调整游戏空间性能监控弹窗的背景透明度。0% 为不透明，100% 为完全透明；文字和图标不受影响。",50,0,100),
             EnhancementOption.toggle(COMBO_LIMITS,"game","扩展连招循环设置","循环次数允许输入六位数字，循环间隔最长可设为一小时。"),
+            EnhancementOption.toggle(COMBO_BUTTON_SIZE_ENABLED,"game","一键连招按键大小","调整游戏内连招悬浮按键的大小，图标、进度圈和点击区域同步变化。修改后自动更新已显示的按键，关闭后恢复原厂大小。"),
+            EnhancementOption.integer(COMBO_BUTTON_SIZE,"game","按键大小（%）","相对于原厂按键大小调整，100% 为原厂大小。范围 50%～200%，过大时按当前屏幕可用空间缩小；不改变录制内容、播放速度和拖动操作。",COMBO_BUTTON_SIZE_DEFAULT,COMBO_BUTTON_SIZE_MIN,COMBO_BUTTON_SIZE_MAX),
             EnhancementOption.toggle(HIDE_DIABLO_DIALOG,"game","隐藏破坏神模式提示","隐藏原厂破坏神模式提示与退出悬浮提示。"),
             EnhancementOption.toggle(COLLAPSE_PANEL,"game","切换模式时保持游戏面板","切换破坏神模式或超境画质时，阻止随后的自动收起。"),
             EnhancementOption.toggle(REMEMBER_ACTIVE,"game","记住活跃模式","按游戏保留手动选择，退出游戏后不再清除。"),

@@ -41,7 +41,12 @@ def check(apk):
         missing.append('fullscreen flag type/static')
     wake = next((label for label, owner in [('manager', manager), ('permanent', pm)] if member(owner, 'methods', 'onStartedWakingUp()V')), None)
     if wake is None:
-        require(pm, 'fields', ['mAODVisibility:Z', 'mIsDynamicIslandEnable:Z', 'mPayJoyControlled:Z', 'mCurRotation:I'])
+        require(pm, 'fields', ['mAODVisibility:Z', 'mIsDynamicIslandEnable:Z', 'mCurRotation:I'])
+        if members(pm, 'fields', 'mPayJoyControlled:'):
+            require(pm, 'fields', ['mPayJoyControlled:Z'])
+        else:
+            require(pm, 'fields', ['mSuperPowerSave:Z'])
+            require(pm, 'methods', ['disableDynamicIsland()Z', 'setSuperPowerSave(Z)V'])
         require(pm, 'methods', ['setAODVisibility(Z)V', 'updateRooterVisibility()V'])
         if members(pm, 'fields', 'mInteractive:'):
             missing.append('interactive host without wake callback')

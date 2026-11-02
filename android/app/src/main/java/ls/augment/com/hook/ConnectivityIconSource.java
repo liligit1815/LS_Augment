@@ -59,7 +59,7 @@ final class ConnectivityIconSource {
         powerObserver=new android.database.ContentObserver(worker){
             @Override public void onChange(boolean selfChange){if(!closed){readPowerMode();publish();}}
         };
-        worker.post(this::start);}
+        worker.post(this::start);BatteryPercentageHook.observe(this,context);}
     private final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
         if(closed)return;
         if(Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction()))battery(intent);
@@ -295,7 +295,7 @@ final class ConnectivityIconSource {
                 radio.service!=null,radio.inService(),radio.service!=null&&radio.service.getRoaming(),
                 radio.dataConnectionKnown,radio.dataState==TelephonyManager.DATA_CONNECTED,radio.activity,radio.activityKnown,radio.networkType));
         ConnectivityIconState.PowerState power=ConnectivityIconState.powerState(plugged,charging,chargeSeparation);
-        state=new ConnectivityIconState(battery,power,wifiRead,wifiConnected,wifiLevel,wifiBars,airplane,activeData,defaultData,sims,wifiInternet);
+        state=new ConnectivityIconState(battery,power,wifiRead,wifiConnected,wifiLevel,wifiBars,airplane,activeData,defaultData,sims,wifiInternet).withBatteryText(BatteryPercentageHook.text(battery));
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_charge_input","plugged="+plugged+";status="+batteryStatus
                 +";separation="+chargeSeparation+";mode="+power+";observer="+powerObserverRegistered+";error="+powerError);
         boolean radiosReady=true;for(Radio radio:radios.values())radiosReady&=radio.listening;
@@ -310,7 +310,8 @@ final class ConnectivityIconSource {
                 .append(",levelError=").append(radio.levelError).append('}');
         FeatureSettings.diagnostic(context,"ls_augment_statusbar_signal_input",witness.toString());
         changed.run();}
-    void close(){if(closed)return;closed=true;worker.post(()->{
+    void refreshBatteryDisplay(){if(!closed)worker.post(this::publish);}
+    void close(){if(closed)return;closed=true;BatteryPercentageHook.forget(this);worker.post(()->{
         worker.removeCallbacks(wifiRecheck);
         if(powerObserverRegistered)try{context.getContentResolver().unregisterContentObserver(powerObserver);}catch(RuntimeException ignored){}
         if(connectivity!=null&&wifiCallback!=null)try{connectivity.unregisterNetworkCallback(wifiCallback);}catch(RuntimeException ignored){}

@@ -320,7 +320,8 @@ def output_support(sources, production):
     sources, production = dict(sources), list(production)
     # Resolve shared production dependencies, including mutant source copies.
     bodies=[(SRC/name).read_text(encoding="utf-8") for name in production]+list(sources.values())
-    for name, token in [("hook/AtomicWorkbenchQuickstepCapabilities.java","AtomicWorkbenchQuickstepCapabilities"),
+    for name, token in [("AtomicWorkbenchSystemDecorations.java","AtomicWorkbenchSystemDecorations"),
+                        ("hook/AtomicWorkbenchQuickstepCapabilities.java","AtomicWorkbenchQuickstepCapabilities"),
                         ("hook/HookCompatibility.java","HookCompatibility")]:
         if any(token in body for body in bodies) and name not in production and "ls/augment/com/"+name not in sources:
             production.append(name);bodies.append((SRC/name).read_text(encoding="utf-8"))
@@ -345,6 +346,8 @@ def output_support(sources, production):
         bundle = sources.get("android/os/Bundle.java")
         if bundle is not None:
             extra = ""
+            if "deepCopy(" not in bundle:
+                extra += "public Bundle deepCopy(){Bundle copy=new Bundle();for(var entry:data.entrySet()){Object value=entry.getValue();if(value instanceof Bundle)value=((Bundle)value).deepCopy();else if(value instanceof java.util.ArrayList<?>){java.util.ArrayList<Object> list=new java.util.ArrayList<>();for(Object item:(java.util.ArrayList<?>)value)list.add(item instanceof Bundle?((Bundle)item).deepCopy():item);value=list;}copy.data.put(entry.getKey(),value);}return copy;}"
             if "keySet(" not in bundle:
                 extra += "public java.util.Set<String> keySet(){return data.keySet();}"
             if " get(String " not in bundle:
@@ -352,11 +355,18 @@ def output_support(sources, production):
             if extra:
                 sources["android/os/Bundle.java"] = bundle.rsplit("}", 1)[0] + extra + "}"
         for name in ("AtomicWorkbenchOutputIdentity.java", "AtomicWorkbenchOutputProtocol.java", "AtomicWorkbenchLaunchBoundary.java",
-                     "AtomicWorkbenchTaskIdentity.java", "AtomicWorkbenchTaskOperationRequest.java"):
+                     "AtomicWorkbenchTaskIdentity.java", "AtomicWorkbenchTaskOperationRequest.java", "AtomicWorkbenchRecoveryScope.java",
+                     "AtomicWorkbenchDisplayPolicy.java", "AtomicWorkbenchSlotDomain.java",
+                     "AtomicWorkbenchBrowserSearch.java", "AtomicWorkbenchDragDeliveryPolicy.java"):
             if name not in production and 'ls/augment/com/' + name not in sources:
                 production.append(name)
         if "AtomicWorkbenchInputFocusProbe.java" not in production:
             sources.setdefault("ls/augment/com/AtomicWorkbenchInputFocusProbe.java", "package ls.augment.com;final class AtomicWorkbenchInputFocusProbe {static boolean primaryConfirmed(){throw new AssertionError(\"input proof outside this regression scope\");}}")
+        intent = sources.get('android/content/Intent.java', '')
+        if intent and 'ACTION_VIEW=' not in intent:
+            intent = intent.replace('public static final String ACTION_MAIN=', 'public static final String ACTION_VIEW="android.intent.action.VIEW",CATEGORY_BROWSABLE="android.intent.category.BROWSABLE";public static final String ACTION_MAIN=')
+            intent = intent.rsplit('}', 1)[0] + '''public Intent(String action,android.net.Uri uri){this(action);data=uri;}public ClipData getClipData(){return clip;}public android.os.Bundle getExtras(){android.os.Bundle b=new android.os.Bundle();for(var e:extras.entrySet())if(e.getValue() instanceof android.os.Bundle)b.putBundle(e.getKey(),(android.os.Bundle)e.getValue());else if(e.getValue() instanceof String)b.putString(e.getKey(),(String)e.getValue());return b;}}'''
+            sources['android/content/Intent.java'] = intent
     return sources, production
 
 

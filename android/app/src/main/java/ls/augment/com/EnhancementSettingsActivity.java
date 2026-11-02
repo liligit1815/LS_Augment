@@ -50,6 +50,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     };
     private UiKit ui;private AppConfig config;private LinearLayout body;private SharedPreferences gateMemory;
     private String group,targetId,query="",fontKey,pendingEditor;
+    private CleanupIconEditor cleanupIconEditor;
+    private Bundle cleanupIconState;
     private static final String AOD_FONT_KEY=SystemUiOptions.PREFIX+"aod_clock_font";
     // Main-thread request state only; restoring the font retires old import callbacks.
     private long aodFontGeneration,aodFontPickerGeneration;
@@ -58,6 +60,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private View queryAnchor;private Bundle editorStates;
     private ArrayAdapter<String> memoryContentAdapter;
     private View memoryColorsRow;
+    private volatile int memoryGeometryRequest;
     private SeekBar recentsRadiusSlider;
     private TextView recentsRadiusValue,recentsRadiusStatus;
     private RecentsCardRadiusUiRange recentsRadiusRange;
@@ -108,6 +111,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         gateMemory=getSharedPreferences(UI_MEMORY,MODE_PRIVATE);
         if(state!=null){
             fontKey=state.getString("fontKey");pendingEditor=state.getString("pendingEditor");editorStates=state.getBundle("editors");
+            cleanupIconState=state.getBundle("cleanupIcon");
             aodFontGeneration=state.getLong("aodFontGeneration",0);
             aodFontPickerGeneration=state.getLong("aodFontPickerGeneration",0);
             aodFontPickerPending=state.getBoolean("aodFontPickerPending",false);
@@ -402,6 +406,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                     &&f.children.length==0&&f.title.equals(parameterOption.title);
             content.addView(input(parameterOption,parentOwnsTitle),ui.wrap());
         }
+        if(GameOptions.COMBO_BUTTON_SIZE_ENABLED.equals(f.id))bindComboButtonRange();
         for(NativeFeatureGroups.Feature child:f.children)content.addView(feature(child),ui.wrap());
         syncConditionalInputs();
         UiKit.Fold fold=null;if(f.hasConfiguration()||updateLink){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
@@ -503,7 +508,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private void islandControls(LinearLayout content){
         content.setPadding(0,0,0,0);
         content.addView(ui.text("有活动时出现 · 轻点打开 · 长按展开",12,ui.muted,false),ui.margins(0,8,0,8));
-        for(String suffix:new String[]{"music","notifications","charging"}){
+        for(String suffix:new String[]{"music","notifications","charging","downloads"}){
             String key=SystemUiOptions.PREFIX+"island_"+suffix;
             EnhancementOption option=options.get(key);
             Switch control=new Switch(this);control.setTag("config:"+key);control.setChecked(ConfigSchema.truthy(value(key)));
@@ -515,6 +520,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 timing.addView(input(options.get(SystemUiOptions.PREFIX+"island_notice_seconds")),ui.wrap());content.addView(timing,ui.wrap());
                 UiKit.Fold timingFold=ui.fold(control,timing);
                 control.setOnCheckedChangeListener((button,on)->{timingFold.sync();change(key,on?"1":"0",control);});
+            }
+            if("downloads".equals(suffix)){
+                LinearLayout channels=new LinearLayout(this);channels.setOrientation(LinearLayout.VERTICAL);
+                channels.setPadding(ui.dp(12),0,0,0);
+                View editor=new IslandDownloadChannelEditor(this,ui,this::value,(k,v)->change(k,v,null)).view();
+                controls.put(IslandDownloadConfig.CHANNELS,editor);channels.addView(editor,ui.wrap());content.addView(channels,ui.wrap());
+                UiKit.Fold channelFold=ui.fold(control,channels);
+                control.setOnCheckedChangeListener((button,on)->{channelFold.sync();change(key,on?"1":"0",control);});
             }
             divider(content);
         }
@@ -581,6 +594,26 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         slider.range(range[0],range[1],range[0]==range[1]?"当前项目组合没有可调间隔":"按最近一次监测布局："+range[0]+"～"+range[1]+" dp");
         slider.bar.setEnabled("1".equals(value(GameOptions.PERFORMANCE_MONITOR))&&range[0]!=range[1]);
     }
+    private void bindComboButtonRange(){
+        View control=controls.get(GameOptions.COMBO_BUTTON_SIZE);if(!(control instanceof ParameterSlider))return;
+        ParameterSlider slider=(ParameterSlider)control;
+        SharedPreferences geometry=getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE);
+        Runnable refresh=()->{
+            if(isDestroyed())return;
+            int maximum=ComboButtonSizeConfig.maximum(geometry.getString(ComboButtonSizeConfig.GEOMETRY,""),getResources().getDisplayMetrics().density);
+            slider.range(GameOptions.COMBO_BUTTON_SIZE_MIN,maximum>=GameOptions.COMBO_BUTTON_SIZE_MIN?maximum:GameOptions.COMBO_BUTTON_SIZE_MAX,
+                    maximum>=GameOptions.COMBO_BUTTON_SIZE_MIN&&maximum<GameOptions.COMBO_BUTTON_SIZE_MAX?"按最近一次连招按键与屏幕尺寸计算":"");
+            slider.bar.setEnabled(true);
+            if(maximum>0&&maximum<GameOptions.COMBO_BUTTON_SIZE_MIN)slider.unavailable("当前屏幕无法容纳最小连招按键尺寸");
+        };
+        SharedPreferences.OnSharedPreferenceChangeListener listener=(prefs,key)->{
+            if(ComboButtonSizeConfig.GEOMETRY.equals(key))main.post(refresh);
+        };
+        control.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(View view){geometry.registerOnSharedPreferenceChangeListener(listener);refresh.run();}
+            public void onViewDetachedFromWindow(View view){geometry.unregisterOnSharedPreferenceChangeListener(listener);}
+        });
+    }
     private void memoryControls(LinearLayout content){
         String prefix="ls_augment_rm_recents_memory_";
         for(String key:new String[]{"style","content","color_mode"})content.addView(input(options.get(prefix+key)),ui.wrap());
@@ -590,6 +623,65 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 {"portrait_top","portrait_left"},{"landscape_top","landscape_left"},
                 {"portrait_height","landscape_height"}})
             memoryPair(content,prefix+pair[0],prefix+pair[1]);
+        View position=controls.get(prefix+"portrait_left");
+        position.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(View v){refreshMemoryPosition();}
+            public void onViewDetachedFromWindow(View v){memoryGeometryRequest++;}
+        });
+        applyMemoryPosition(false,null,ConfigSchema.truthy(value(prefix+"custom")));
+        applyMemoryPosition(true,null,ConfigSchema.truthy(value(prefix+"custom")));
+        refreshMemoryPosition();
+    }
+    private void refreshMemoryPosition(){
+        String prefix="ls_augment_rm_recents_memory_";
+        View control=controls.get(prefix+"portrait_left");
+        if(!(control instanceof ParameterSlider)||isDestroyed()||worker.isShutdown())return;
+        int request=++memoryGeometryRequest;
+        Display display=getDisplay();
+        int style=Integer.parseInt(value(prefix+"style"));
+        int content=Integer.parseInt(value(prefix+"content"));
+        float size=Float.parseFloat(value(prefix+(style==1?"detailed_size":"simple_size")));
+        int portraitHeight=Integer.parseInt(value(prefix+"portrait_height"));
+        int landscapeHeight=Integer.parseInt(value(prefix+"landscape_height"));
+        boolean enabled=ConfigSchema.truthy(value(prefix+"custom"));
+        worker.execute(()->{
+            if(request!=memoryGeometryRequest)return;
+            LauncherMemorySizing.Sample read=null;String failure="";
+            try{read=LauncherMemorySizing.read(this,display);}
+            catch(RuntimeException error){failure=error.getClass().getSimpleName()+":"+error.getMessage();}
+            LauncherMemorySizing.Sample sample=read;String error=failure;
+            main.post(()->{
+                if(request!=memoryGeometryRequest||isDestroyed()||control!=controls.get(prefix+"portrait_left"))return;
+                LauncherMemorySizing.Result portrait=null,landscape=null;
+                if(sample!=null){
+                    TextView text=new TextView(this);
+                    portrait=LauncherMemorySizing.measure(text,sample.screen,sample.screen.region(false),sample.total,sample.available,style,content,size,portraitHeight);
+                    landscape=LauncherMemorySizing.measure(text,sample.screen,sample.screen.region(true),sample.total,sample.available,style,content,size,landscapeHeight);
+                }
+                applyMemoryPosition(false,portrait,enabled);
+                applyMemoryPosition(true,landscape,enabled);
+                String state=sample==null?"local_calculation_failed:"+error:"local_calculation;portrait=ready;landscape=ready"
+                        +";display="+sample.screen.width+"x"+sample.screen.height+";density="+sample.screen.density+";font="+sample.screen.fontScale
+                        +";portrait_center="+portrait.centerDp+";portrait_left_max="+portrait.maximumDp+";portrait_top_max="+portrait.maximumTopDp
+                        +";landscape_left_max="+landscape.maximumDp+";landscape_top_max="+landscape.maximumTopDp;
+                getSharedPreferences(AppConfig.DIAGNOSTICS,MODE_PRIVATE).edit().putString(LauncherMemoryGeometry.UI_STATE,state).apply();
+                if(sample==null){
+                    ((ParameterSlider)control).unavailable("暂时无法读取屏幕或内存信息，正在重试");
+                    main.postDelayed(()->{if(request==memoryGeometryRequest&&control==controls.get(prefix+"portrait_left")&&control.isAttachedToWindow())refreshMemoryPosition();},2000);
+                }
+            });
+        });
+    }
+    private void applyMemoryPosition(boolean landscape,LauncherMemorySizing.Result measured,boolean enabled){
+        String prefix="ls_augment_rm_recents_memory_"+(landscape?"landscape_":"portrait_");
+        ParameterSlider left=(ParameterSlider)controls.get(prefix+"left");
+        ParameterSlider top=(ParameterSlider)controls.get(prefix+"top");
+        if(left==null||top==null)return;
+        String waiting="正在计算可调范围";
+        if(landscape)left.measuredRange(measured==null?null:measured.maximumDp,waiting,enabled);
+        else left.measuredMarker(String.valueOf(LauncherMemoryLayout.CENTER),"居中",measured==null?null:measured.centerDp,
+                measured==null?0:measured.maximumDp,waiting,enabled);
+        top.measuredRange(measured==null?null:measured.maximumTopDp,waiting,enabled);
     }
     private LinearLayout memoryPair(LinearLayout parent,String left,String right){
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setBaselineAligned(false);
@@ -672,6 +764,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 if(isFinishing()||isDestroyed()||!button.isEnabled()||!ConfigSchema.truthy(value(RecentsPrivacyOptions.ENABLED)))return;
                 change(option.key,next,button);refreshInput(option.key,next);
             }));
+        }else if(LauncherOptions.CLEANUP_ICON.equals(option.key)){
+            Bundle previous=cleanupIconEditor==null?cleanupIconState:cleanupIconEditor.state();
+            cleanupIconEditor=new CleanupIconEditor(this,ui,()->value(option.key),
+                    ()->ConfigSchema.truthy(value(LauncherOptions.CLEANUP_BOMB))&&"1".equals(value(LauncherOptions.CLEANUP_ICON_STYLE)),next->{
+                        change(option.key,next,controls.get(option.key));refreshInput(option.key,next);
+                    },previous);
+            row.addView(cleanupIconEditor,ui.wrap());controls.put(option.key,cleanupIconEditor);
+            row.setVisibility("1".equals(value(LauncherOptions.CLEANUP_ICON_STYLE))?View.VISIBLE:View.GONE);
         }else if(NotificationSummaryOptions.ASSET.equals(option.key)){
             Button button=ui.tonalButton(value(option.key).isEmpty()?"选择图片":"更换图片");row.addView(button,ui.wrap());controls.put(option.key,button);
             button.setOnClickListener(v->AppDialogs.builder(this).setTitle(option.title).setItems(new String[]{"选择图片","移除图片"},(d,i)->{
@@ -789,7 +889,15 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             });
         });
     }
+    private void syncCleanupIconStyle(){
+        if(cleanupIconEditor==null)return;
+        cleanupIconEditor.cancelPending();
+        if(cleanupIconEditor.getParent() instanceof View)
+            ((View)cleanupIconEditor.getParent()).setVisibility("1".equals(value(LauncherOptions.CLEANUP_ICON_STYLE))?View.VISIBLE:View.GONE);
+    }
     private void refreshInput(String key,String next){
+        if(LauncherOptions.CLEANUP_ICON_STYLE.equals(key))syncCleanupIconStyle();
+        if(LauncherOptions.CLEANUP_ICON.equals(key)&&cleanupIconEditor!=null){cleanupIconEditor.render(next);return;}
         View view=controls.get(key);if(view instanceof EditText){EditText field=(EditText)view;if(!next.contentEquals(field.getText()))field.setText(next);}
         else if(view instanceof ParameterSlider){((ParameterSlider)view).setValue(next);}
         else if(view instanceof SeekBar){int number=Integer.parseInt(next);((SeekBar)view).setProgress(RecentsCardRadiusOptions.OFFSET.equals(key)&&recentsRadiusRange!=null?recentsRadiusRange.clamp(number):number);if(RecentsCardRadiusOptions.OFFSET.equals(key))renderRecentsRadiusValue();}
@@ -846,12 +954,14 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         if(normalized.equals(draft.get(key))&&!pending.needsSubmission(key))return;
         draft.put(key,normalized);pending.put(key,normalized);main.removeCallbacks(autoSave);main.postDelayed(autoSave,280);
+        if(LauncherOptions.CLEANUP_ICON_STYLE.equals(key))syncCleanupIconStyle();
         if(GameOptions.MONITOR_ITEMS.equals(key)||GameOptions.PERFORMANCE_MONITOR.equals(key))refreshMonitorRange();
         if(LauncherGridSpec.ENABLED.equals(key))traceLauncherGridIntent("toggle");
         refreshAodParameterState(key);
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();
         if((SystemUiOptions.PREFIX+"island_width").equals(key)||(SystemUiOptions.PREFIX+"island_height").equals(key))refreshIslandRanges();
         if("ls_augment_rm_recents_memory_color_mode".equals(key))syncMemoryColorsVisibility();
+        if(key.startsWith("ls_augment_rm_recents_memory_")&&!key.endsWith("_left")&&!key.endsWith("_top"))refreshMemoryPosition();
         syncConditionalInputs();
         if(liftArcEditor!=null)liftArcEditor.changed(key);
     }
@@ -1066,6 +1176,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         super.onActivityResult(request,result,data);
         if(backGestureIcons!=null&&backGestureIcons.onResult(request,result,data))return;
         if(pendingEditor!=null){NativeEditorController editor=editors.get(pendingEditor);pendingEditor=null;if(editor!=null)editor.onActivityResult(request,result,data);return;}
+        if(cleanupIconEditor!=null&&cleanupIconEditor.onResult(request,result,data))return;
         if(request==85){
             if(result!=RESULT_OK||data==null||data.getData()==null||worker.isShutdown())return;
             worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){
@@ -1090,9 +1201,10 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(request!=84||result!=RESULT_OK||data==null||data.getData()==null||fontKey==null)return;
         String key=fontKey;worker.execute(()->{try(InputStream in=getContentResolver().openInputStream(data.getData())){if(in==null)throw new IllegalArgumentException("无法打开文件");String reference=ManagedFont.importFile(this,in);runOnUiThread(()->{if(isDestroyed())return;change(key,reference,controls.get(key));refreshInput(key,reference);});}catch(Exception error){runOnUiThread(()->{if(!isDestroyed())toast("字体未导入："+error.getMessage());});}});
     }
-    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&(isApplicationDirectory()||"group/audio/volume_position".equals(ModuleNavigation.route(this)))){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
+    @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&(isApplicationDirectory()||"group/audio/volume_position".equals(ModuleNavigation.route(this)))){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();refreshMemoryPosition();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
+        if(cleanupIconEditor!=null)state.putBundle("cleanupIcon",cleanupIconEditor.state());
         state.putBundle("batteryHealth",inputSession.batteryHealth.save());
         // A pending picker can return to the recreated page; an old Activity import is not resumed.
         state.putLong("aodFontGeneration",aodFontGeneration);state.putLong("aodFontPickerGeneration",aodFontPickerGeneration);

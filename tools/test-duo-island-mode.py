@@ -24,8 +24,8 @@ static int checks;static void check(boolean ok,String reason){checks++;if(!ok)th
 static class SystemUiOptions{static String ISLAND="duo";}
 static class FeatureSettings{static Map<String,String> values=new HashMap<>();static boolean enabled(Object c,String k){return "1".equals(values.get(k));}}
 static class Host{boolean duo,nativeOn;List<String> events=new ArrayList<>();void selectNative(boolean value){check(!value||!duo,"two products active");nativeOn=value;events.add("native="+value);}void acquire(){check(!nativeOn,"Duo acquired while native selected");duo=true;events.add("duo=true");}void release(){duo=false;events.add("duo=false");}}
-static class Activity{void clear(){}}
-static class State{boolean closed,enabled;Object context=new Object();Host nativeHost=new Host();Activity chargeActivity=new Activity();Map<String,String> mediaActivities=new HashMap<>();boolean option(String suffix){return true;}void listen(){}void stopListening(){}void clearNotice(){}void dismiss(){}void refresh(){}
+static class Activity{void clear(){}void configure(){}}
+static class State{boolean closed,enabled;Object context=new Object();Host nativeHost=new Host();Activity chargeActivity=new Activity(),downloads=new Activity();void downloadSnapshot(){}Map<String,String> mediaActivities=new HashMap<>();boolean option(String suffix){return true;}void listen(){}void stopListening(){}void clearNotice(){}void dismiss(){}void refresh(){}
 // CONFIGURE
 }
 static void save(Map<String,String> clean,Map<String,String> next){next.putAll(clean);

@@ -7,6 +7,8 @@ import java.util.List;
 public final class LauncherOptions {
     public static final String CLEANUP_STYLE = "ls_augment_rm_launcher_cleanup_style";
     public static final String CLEANUP_BOMB = "ls_augment_rm_launcher_cleanup_bomb";
+    public static final String CLEANUP_ICON = "ls_augment_rm_launcher_cleanup_icon";
+    public static final String CLEANUP_ICON_STYLE = "ls_augment_rm_launcher_cleanup_icon_style";
     public static final String PAGE_REORDER = "ls_augment_rm_launcher_page_reorder";
     public static final String KEEP_EMPTY = "ls_augment_rm_launcher_keep_empty";
     public static final String PAGE_INDICATOR_EDIT_ONLY = "ls_augment_rm_launcher_page_indicator_edit_only";
@@ -20,7 +22,9 @@ public final class LauncherOptions {
             EnhancementOption.toggle(LauncherGridSpec.ENABLED,"launcher","自定义桌面布局","选择桌面页面的行数与列数，支持常用预设和 n×n 方形布局。列数决定每排图标个数，行数决定每页排数；小组件会占用多格，密集布局会缩小图标与文字。若现有小组件或文件夹超出新格数，桌面会保留原布局，请先调整占用后再试。配置自动保存，预览仅为布局示意。默认关闭；开启、关闭或修改后，重启系统桌面生效。"),
             EnhancementOption.integer(LauncherGridSpec.COLUMNS,"launcher","桌面列数","每排可放置的图标格数；与行数独立设置。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_COLUMNS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
             EnhancementOption.integer(LauncherGridSpec.ROWS,"launcher","桌面行数","每页从上到下的图标排数；小组件可能占用多格。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_ROWS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
-            EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","最近任务清理按钮改为爆破核心，可选择影视爆炸或数字晶片解构；清理对象和锁定规则沿用原厂逻辑。"),
+            EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","清理图标可选择 C17 样式或自定义图片，清理动画独立选择。清理对象和锁定规则沿用原厂逻辑。更新后重启系统桌面加载功能；之后更换图标无需重启桌面。关闭后恢复原厂图标并保留已选图片。"),
+            EnhancementOption.choice(CLEANUP_ICON_STYLE,"launcher","清理图标","C17样式使用胶囊形“清除”按钮；选择自定义后上传图片。切换样式保留已上传图片。",0,"C17样式","自定义"),
+            EnhancementOption.custom(CLEANUP_ICON,"launcher","自定义清理图片","支持静态 PNG、WebP、JPEG，可裁剪或完整显示并保留透明区域。未上传图片时保留原厂清理图标。","",v->v.isEmpty()||v.matches("[0-9a-f]{64}")?v:null),
             EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎"),
             EnhancementOption.toggle(PAGE_REORDER, "launcher", "整页移动桌面",
                 "在桌面编辑模式点击“页面”，选中页面后前移、后移，或长按卡片拖动排序；图标、文件夹和组件一起移动。适配 10 系列与 11 系列桌面，修改开关后重启系统桌面生效。"),
@@ -36,7 +40,7 @@ public final class LauncherOptions {
                 "允许继续将应用拖入底部 Dock 栏，突破原厂固定数量限制。图标按实际格子的可用宽高等比例缩小，避免数量较多时重叠；数量减少或移回桌面后恢复原尺寸，点击与拖拽区域沿用原厂格子。适配 10 系列与 11 系列桌面；修改开关后重启系统桌面生效。关闭后保留已有应用及必要的尺寸适配，超出原厂数量的应用可自行移回桌面。"),
             EnhancementOption.toggle("ls_augment_rm_recents_memory_custom", "launcher", "自定义最近任务内存显示", "统一控制原厂桌面和 260005 版桌面的内存显示及文字样式。开启显示、关闭隐藏，无需开启桌面自身的内存显示开关；不改变任务卡片布局。"),
             EnhancementOption.choice("ls_augment_rm_recents_memory_style", "launcher", "内存文字样式", "", 0, "简洁单行", "详细多行"),
-            EnhancementOption.choice("ls_augment_rm_recents_memory_content", "launcher", "内存显示内容", "每个选项附显示示例；可用|总共采用紧凑单行格式。", 5, "可用、已用和总量", "可用和已用", "仅可用", "仅已用", "仅总量", "可用|总共"),
+            EnhancementOption.choice("ls_augment_rm_recents_memory_content", "launcher", "内存显示内容", "每个选项附显示示例；可用|总共采用紧凑单行格式。完整名称在详细多行下显示整数百分比。", 5, "可用、已用和总量", "可用和已用", "仅可用", "仅已用", "仅总量", "可用|总共", "剩余量、已用量、总量"),
             EnhancementOption.choice("ls_augment_rm_recents_memory_color_mode", "launcher", "内存文字颜色", "", 1, "保持现有桌面颜色", "跟随系统深浅色", "自定义深浅色"),
             EnhancementOption.color("ls_augment_rm_recents_memory_light_color", "launcher", "浅色模式内存颜色", "", "#FF000000"),
             EnhancementOption.color("ls_augment_rm_recents_memory_dark_color", "launcher", "深色模式内存颜色", "", "#FFFFFFFF"),
@@ -44,8 +48,8 @@ public final class LauncherOptions {
             EnhancementOption.decimal("ls_augment_rm_recents_memory_detailed_size", "launcher", "详细样式字号", "单位 sp；横竖屏共用。", 12, 6, 40),
             legacySize("portrait_size",12), legacySize("landscape_size",10),
             legacySize("detailed_portrait_size",12), legacySize("detailed_landscape_size",10),
-            EnhancementOption.integer("ls_augment_rm_recents_memory_portrait_left", "launcher", "竖屏内存距左侧", "单位 dp；数值越小越靠左，超出范围时停在可见边缘。", 220, 0, 2000),
-            EnhancementOption.integer("ls_augment_rm_recents_memory_landscape_left", "launcher", "横屏内存距左侧", "单位 dp；数值越小越靠左，超出范围时停在可见边缘。", 660, 0, 2000),
+            EnhancementOption.integer("ls_augment_rm_recents_memory_portrait_left", "launcher", "竖屏内存距左侧", "“居中”刻度标在当前屏幕和文字对应的居中距离处，拖动到附近会吸附，之后按文字实际宽度保持左右居中。滑离刻度恢复手动距离，最左端为 0 dp。进入设置页即可调节，调整字号、显示内容或区域高度后会自动更新范围和刻度；已有超出屏幕的距离保留保存值，并显示当前实际距离。", 220, LauncherMemoryLayout.CENTER, 2000),
+            EnhancementOption.integer("ls_augment_rm_recents_memory_landscape_left", "launcher", "横屏内存距左侧", "单位 dp；进入设置页即可按本机横屏尺寸和文字宽度调节，无需先打开横屏最近任务。原有超出范围的保存值保留，并显示当前实际距离。", 660, 0, 2000),
             EnhancementOption.integer("ls_augment_rm_recents_memory_portrait_top", "launcher", "竖屏内存距顶部", "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。", 50, 0, RECENTS_MEMORY_MAX_TOP_DP),
             EnhancementOption.integer("ls_augment_rm_recents_memory_landscape_top", "launcher", "横屏内存距顶部", "单位 dp；数值越大越靠下，超过可显示范围时停在底部。切换样式保留位置。", 28, 0, RECENTS_MEMORY_MAX_TOP_DP),
             EnhancementOption.integer("ls_augment_rm_recents_memory_portrait_height", "launcher", "竖屏内存区域高度", "单位 dp；按所选高度显示，内容较多时会缩小字号。", 65, 24, 240),

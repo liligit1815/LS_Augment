@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import io.github.libxposed.api.XposedInterface.ExceptionMode;
+import ls.augment.com.AtomicWorkbenchSystemDecorations;
 
 /** A single, authenticated lease of the real primary HOME, never a secondary launcher. */
 final class AtomicWorkbenchHomeHook {
@@ -651,8 +652,7 @@ final class AtomicWorkbenchHomeHook {
             if (!validTask(current)) throw new IllegalStateException("native_home_identity_or_attachment_unconfirmed");
             if (taskDisplay(current.task) != 0) moveSafely(module, current, 0, onTop, reason);
             if (!validTask(current) || !stableAt(current.task, 0)) throw new IllegalStateException("native_home_restore_unconfirmed");
-            if (validDisplay(current)) call(field(current.service, "mWindowManager"), "setShouldShowSystemDecors",
-                    new Class<?>[]{int.class, boolean.class}, current.displayId, false);
+            if (validDisplay(current)) AtomicWorkbenchSystemDecorations.release(field(current.service,"mWindowManager"),current.displayId);
             finishLease(current);
         } finally { RETURNING.remove(); Binder.restoreCallingIdentity(identity); }
     }

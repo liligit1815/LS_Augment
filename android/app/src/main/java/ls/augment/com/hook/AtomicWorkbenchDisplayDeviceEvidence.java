@@ -55,7 +55,10 @@ final class AtomicWorkbenchDisplayDeviceEvidence {
         virtual.setAccessible(true); virtualType = virtual.getInt(null);
         if (virtualType <= 0) throw new NoSuchFieldException("display_virtual_type");
         // R8 may remove constant fields. Validate this bit's actual system-class semantics instead.
-        Method describe = method(infoType, "flagsToString", String.class, true, int.class);
+        Method describe = infoType.getDeclaredMethod("flagsToString",int.class);
+        if(describe.getReturnType()!=String.class||!Modifier.isStatic(describe.getModifiers())
+                ||Modifier.isAbstract(describe.getModifiers()))throw new NoSuchMethodException("flagsToString signature");
+        describe.setAccessible(true);
         Object own = describe.invoke(null, OWN_CONTENT_ONLY), zero = describe.invoke(null, 0);
         if (!(own instanceof String) || !(zero instanceof String)) throw new NoSuchFieldException("display_own_content_profile");
         String token = ((String) own).trim();

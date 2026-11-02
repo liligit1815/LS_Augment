@@ -38,7 +38,15 @@ final class NativeIslandWake {
             Class<?> type=permanent.getClass();
             field(type,"mAODVisibility",boolean.class);
             field(type,"mIsDynamicIslandEnable",boolean.class);
-            field(type,"mPayJoyControlled",boolean.class);
+            if(hasField(type,"mPayJoyControlled"))field(type,"mPayJoyControlled",boolean.class);
+            else {
+                // The audited pre-interactive engine delegates visibility to
+                // disableDynamicIsland(): enable/rotation/AOD/super power save.
+                // Retain that OEM predicate, including its current power state.
+                field(type,"mSuperPowerSave",boolean.class);
+                returningMethod(type,"disableDynamicIsland",boolean.class);
+                method(type,"setSuperPowerSave",boolean.class);
+            }
             field(type,"mCurRotation",int.class);
             method(type,"setAODVisibility",boolean.class);
             return new Contract(permanent,method(type,"updateRooterVisibility"),"permanent_visibility");
@@ -59,12 +67,15 @@ final class NativeIslandWake {
         throw new NoSuchMethodException("native wake: legacy "+name+":"+expected.getSimpleName()+" unavailable");
     }
     private static Method method(Class<?> type,String name,Class<?>...args)throws NoSuchMethodException {
+        return returningMethod(type,name,void.class,args);
+    }
+    private static Method returningMethod(Class<?> type,String name,Class<?> result,Class<?>...args)throws NoSuchMethodException {
         for(Class<?> c=type;c!=null;c=c.getSuperclass())try {
             Method method=c.getDeclaredMethod(name,args);
-            if(method.getReturnType()!=void.class||Modifier.isStatic(method.getModifiers())||Modifier.isAbstract(method.getModifiers()))break;
+            if(method.getReturnType()!=result||Modifier.isStatic(method.getModifiers())||Modifier.isAbstract(method.getModifiers()))break;
             method.setAccessible(true);return method;
         }catch(NoSuchMethodException absent){/* Search inherited contracts. */}
-        throw new NoSuchMethodException("native wake: legacy "+name+":void unavailable");
+        throw new NoSuchMethodException("native wake: legacy "+name+":"+result.getSimpleName()+" unavailable");
     }
     private NativeIslandWake(){}
 }

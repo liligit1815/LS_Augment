@@ -2,7 +2,7 @@ package ls.augment.com;
 
 /** Activity precedence and expiration without Android state or side effects. */
 public final class IslandActivityPolicy {
-    public static final int NONE=0, MUSIC=1, NOTICE=2, CHARGING=3;
+    public static final int NONE=0, MUSIC=1, NOTICE=2, CHARGING=3, DOWNLOAD=4;
     public static final long CHARGE_MILLIS=5000, PAUSE_MILLIS=4000, TRANSITION_MILLIS=12000;
     public static final long MEDIA_HANDOFF_MILLIS=650;
     private IslandActivityPolicy() { }
@@ -13,6 +13,11 @@ public final class IslandActivityPolicy {
         if (charging && now < chargeUntil) return CHARGING;
         if (music) return MUSIC;
         return NONE;
+    }
+    public static int chooseWithDownload(boolean enabled,boolean visible,boolean locked,long now,
+            boolean music,boolean notice,long noticeUntil,boolean charging,long chargeUntil,boolean download){
+        int activity=choose(enabled,visible,locked,now,music,notice,noticeUntil,charging,chargeUntil);
+        return enabled&&visible&&!locked&&download&&(activity==NONE||activity==MUSIC)?DOWNLOAD:activity;
     }
     public static boolean mediaActive(int state) {
         // PlaybackState constants: playing, fast-forwarding, rewinding,

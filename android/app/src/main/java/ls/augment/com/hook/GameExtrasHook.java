@@ -344,6 +344,7 @@ final class GameExtrasHook {
     }
 
     private void combo(){
+        ComboButtonSizeHook.install(module,loader);
         try{
             Method find=View.class.getDeclaredMethod("findViewById",int.class);
             // This hook must run while disabled too, so a reused editor can recover its old bounds.

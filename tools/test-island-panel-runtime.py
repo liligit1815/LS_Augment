@@ -83,6 +83,8 @@ public class TestIslandPanel {
   // ACTION
  }
  static class OwnedHost {
+  static class DownloadContent{int clears;void clear(){clears++;}}
+  View download;DownloadContent downloadContent;
   final Handler MAIN=new Handler();final Runnable publish=()->{};final IslandPanelTransition panelTransition=new IslandPanelTransition();
   final Modern permanent=new Modern();View current=permanent.selected;int closes;boolean callbackComplete;
   void dismiss(){if(current==null||!permanent.mDynamicPanelShowing||!panelTransition.prepareClose(current))return;
@@ -146,6 +148,8 @@ public class TestIslandPanel {
   host.hide();check(host.permanent.removes==1&&host.closes==1,"production repeated hide is idempotent");
   host=new OwnedHost();host.dismiss();host.hide();
   check(host.closes==1&&host.permanent.removes==1,"existing close reused by hide");
+  host=new OwnedHost();host.download=host.current;host.downloadContent=new OwnedHost.DownloadContent();host.hide();
+  check(host.downloadContent.clears==1&&host.callbackComplete,"download controls cleared after owned close callback");
 
   Actions actions=new Actions();int[] commands={0};
   for(int i=0;i<3;i++)actions.runAction(()->commands[0]++);

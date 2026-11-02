@@ -76,6 +76,8 @@ final class IslandSettingsUiCases {
             require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_OFFSET_Y)),"New vertical offset defaults to centered");
             require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_TRANSPARENT)),"New transparent style is opt-in");
             require("0".equals(ConfigSchema.defaultValue(SystemUiOptions.ISLAND_APP_STYLE)),"App display style preserves the rounded-square default");
+            require("0".equals(ConfigSchema.defaultValue(IslandDownloadConfig.ENABLED)),"Downloads are opt-in");
+            require("".equals(ConfigSchema.defaultValue(IslandDownloadConfig.CHANNELS)),"No download channels are implicitly allowed");
             require(ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_OFFSET_Y)
                     &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_TRANSPARENT)
                     &&ConfigSchema.runtimeDefaults().containsKey(SystemUiOptions.ISLAND_APP_STYLE),"New island parameters reach the SystemUI configuration snapshot");
@@ -90,7 +92,7 @@ final class IslandSettingsUiCases {
                 render();
                 require(!master().isChecked()&&masterContent().getVisibility()==View.GONE,"Disabled master hides its settings");
                 require(!arrow(master()).isEnabled(),"Disabled master cannot expand");
-                for(String suffix:new String[]{"enabled","music","notifications","charging"}){
+                for(String suffix:new String[]{"enabled","music","notifications","charging","downloads"}){
                     String key=P+suffix;
                     require(countTag(root(),"config:"+key)==1,"One switch owns "+key);
                     require(tag("config:"+key) instanceof Switch,"Boolean uses public switch: "+key);
@@ -140,6 +142,16 @@ final class IslandSettingsUiCases {
                 noPending();return null;
             });
             settle();checkSwitchGeometry();capture("04-notification-duration");
+            main(()->{
+                String token=IslandDownloadConfig.channel(android.os.Process.myUid()/100000,"com.example.downloader","progress");
+                draft.put(IslandDownloadConfig.CHANNELS,token);
+                clickSeeded(IslandDownloadConfig.ENABLED,true);
+                require(control(IslandDownloadConfig.CHANNELS).isShown(),"Download channel selector is inside the enabled source fold");
+                clickSeeded(IslandDownloadConfig.ENABLED,false);
+                require(!control(IslandDownloadConfig.CHANNELS).isShown(),"Disabled downloads hide channel selector");
+                require(token.equals(draft.get(IslandDownloadConfig.CHANNELS)),"Disabling download activity preserves exact channel selection");
+                noPending();return null;
+            });
             main(()->{
                 Switch notifications=toggle(P+"notifications");
                 require(arrow(notifications).performClick(),"Notification parameters collapse independently");
@@ -197,7 +209,7 @@ final class IslandSettingsUiCases {
                 require(master().isChecked()&&masterContent().getVisibility()==View.GONE,"Collapsing configuration leaves island enabled");
                 require(arrow(master()).performClick(),"Master parameters reopen");
                 Map<String,String> parameters=new LinkedHashMap<>();
-                for(String suffix:new String[]{"width","height","offset_x","offset_y","transparent","app_style","notice_seconds","music","notifications","charging"})parameters.put(P+suffix,draft.get(P+suffix));
+                for(String suffix:new String[]{"width","height","offset_x","offset_y","transparent","app_style","notice_seconds","music","notifications","charging","downloads","download_channels"})parameters.put(P+suffix,draft.get(P+suffix));
                 clickSeeded(SystemUiOptions.ISLAND,false);
                 require(masterContent().getVisibility()==View.GONE&&!arrow(master()).isEnabled(),"Disabling island collapses all settings");
                 for(Map.Entry<String,String> entry:parameters.entrySet())require(entry.getValue().equals(draft.get(entry.getKey())),"Disabling island preserves "+entry.getKey());

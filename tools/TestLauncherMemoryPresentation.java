@@ -28,7 +28,7 @@ public final class TestLauncherMemoryPresentation {
         long gib = 1024L * 1024L * 1024L;
         String[][] expected = {
                 {"可用 3.00 GB  已用 5.00 GB  总量 8.00 GB", "可用 3.00 GB  已用 5.00 GB", "可用 3.00 GB", "已用 5.00 GB", "总量 8.00 GB"},
-                {"可用 3.00 GB (37.5%)\n已用 5.00 GB (62.5%)\n总量 8.00 GB", "可用 3.00 GB (37.5%)\n已用 5.00 GB (62.5%)", "可用 3.00 GB (37.5%)", "已用 5.00 GB (62.5%)", "总量 8.00 GB"}
+                {"可用 3.00 GB 37.5%\n已用 5.00 GB 62.5%\n总量 8.00 GB", "可用 3.00 GB 37.5%\n已用 5.00 GB 62.5%", "可用 3.00 GB 37.5%", "已用 5.00 GB 62.5%", "总量 8.00 GB"}
         };
         Locale previous = Locale.getDefault();
         try {
@@ -39,12 +39,29 @@ public final class TestLauncherMemoryPresentation {
                     expect(expected[style][content], LauncherMemoryPresentation.format(8 * gib, 3 * gib, style, content));
             expect("", LauncherMemoryPresentation.format(0, gib, 1, 0));
             expect("", LauncherMemoryPresentation.format(-1, 0, 0, 4));
-            expect("可用 0.00 GB (0.0%)\n已用 8.00 GB (100.0%)", LauncherMemoryPresentation.format(8 * gib, -1, 1, 1));
-            expect("可用 8.00 GB (100.0%)\n已用 0.00 GB (0.0%)", LauncherMemoryPresentation.format(8 * gib, 9 * gib, 1, 1));
+            expect("可用 0.00 GB 0.0%\n已用 8.00 GB 100.0%", LauncherMemoryPresentation.format(8 * gib, -1, 1, 1));
+            expect("可用 8.00 GB 100.0%\n已用 0.00 GB 0.0%", LauncherMemoryPresentation.format(8 * gib, 9 * gib, 1, 1));
             expect("总量 7.50 GB", LauncherMemoryPresentation.format(15 * gib / 2, gib, 0, 4));
             expect(expected[0][0], LauncherMemoryPresentation.format(8 * gib, 3 * gib, 99, 99));
+            expect("3.00 GB 可用 | 8.00 GB", LauncherMemoryPresentation.format(8 * gib, 3 * gib, 1, 5));
+            expect("剩余量  3.00 GB  38%\n已用量  5.00 GB  62%\n总量  8.00 GB", LauncherMemoryPresentation.format(8 * gib, 3 * gib, 1, 6));
+            expect("剩余量  3.00 GB  已用量  5.00 GB  总量  8.00 GB", LauncherMemoryPresentation.format(8 * gib, 3 * gib, 0, 6));
+            expect("剩余量  0.00 GB  0%\n已用量  8.00 GB  100%\n总量  8.00 GB", LauncherMemoryPresentation.format(8 * gib, -1, 1, 6));
+            expect("剩余量  8.00 GB  100%\n已用量  0.00 GB  0%\n总量  8.00 GB", LauncherMemoryPresentation.format(8 * gib, 9 * gib, 1, 6));
+            for (int screen : new int[]{360, 1080, 1216, 2688}) {
+                LauncherMemoryLayout region = new LauncherMemoryLayout(0, 0, 0, screen, 3000);
+                for (int text : new int[]{42, 131, screen - 10}) {
+                    int startPadding = 3, endPadding = 7;
+                    int left = region.centeredTextLeft(text, startPadding, endPadding, 2);
+                    double center = left + startPadding + (text - startPadding - endPadding) / 2d;
+                    if (Math.abs(center - screen / 2d) > .5) throw new AssertionError("not centered: " + center);
+                    checks++;
+                }
+                if (region.textLeft(12, 42, 2) != 12 || region.textLeft(2000, 42, 2) != Math.min(2000, screen - 44))
+                    throw new AssertionError("manual position changed");
+            }
             // Multiplying the physical byte count must never overflow percentage math.
-            expect("已用 0.00 GB (0.0%)", LauncherMemoryPresentation.format(Long.MAX_VALUE, Long.MAX_VALUE, 1, 3));
+            expect("已用 0.00 GB 0.0%", LauncherMemoryPresentation.format(Long.MAX_VALUE, Long.MAX_VALUE, 1, 3));
         } finally { Locale.setDefault(previous); }
         System.out.println("PASS LauncherMemoryPresentation " + checks + " cases");
     }

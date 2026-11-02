@@ -554,6 +554,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json-jar", type=Path)
     parser.add_argument("--profile", action="store_true", help="Print case wall/CPU timings and sampled JVM wait locations")
+    parser.add_argument("--creation-decors", action="store_true", help="Exercise WMS without a mutable system-decoration setter")
     args = parser.parse_args()
     sdk = Path(os.environ.get("ANDROID_HOME", str(ROOT / "audit-output/android-sdk"))) / "platforms/android-36/android.jar"
     jars = list((Path.home() / ".gradle/caches/modules-2/files-2.1/org.json/json").glob("*/*/*.jar"))
@@ -578,6 +579,12 @@ def main():
  @SuppressWarnings("unchecked")public ArrayList<String> getStringArrayList(String key){return (ArrayList<String>)data.get(key);}
 }'''
     sources["ls/augment/com/TestAtomicWorkbenchHome.java"] = TEST
+    if args.creation_decors:
+        name = "android/view/WindowManagerGlobal.java"
+        sources[name] = sources[name].replace("public void setShouldShowSystemDecors(int display,boolean value){decors.put(display,value);}", "")
+        name = "android/hardware/display/DisplayManager.java"
+        sources[name] = sources[name].replace("VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH=64,", "VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS=512,VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH=64,")
+        sources[name] = sources[name].replace("all.add(latest);", "WindowManagerGlobal.service.decors.put(latest.display.id,(flags&VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS)!=0);all.add(latest);")
     with tempfile.TemporaryDirectory(prefix="duo-atomic-home-") as temporary:
         work = Path(temporary)
         data = work / "cases"

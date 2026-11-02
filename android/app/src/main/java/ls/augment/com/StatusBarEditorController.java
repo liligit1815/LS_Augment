@@ -310,6 +310,7 @@ final class StatusBarEditorController extends NativeEditorController {
         LinearLayout network=column();related("general-network",network);advanced(general,"workspace-network-common","移动网络与信号",network);
         toggle(general,SystemUiOptions.PREFIX+"metrics_hide_units","温度与电量隐藏单位");related("hidden-icons",general);
         toggle(general,SystemUiOptions.PREFIX+"metrics_charging_only","仅充电时显示电流和功率");
+        batteryPercentageControls(general);
         content=outer;advanced(card,"workspace-general","通用设置",general);
         workspaceConnectivity(card);
         LinearLayout directory=column();EditText search=new EditText(this);search.setSingleLine();search.setHint("搜索名称或图标标识");search.setContentDescription("搜索系统图标");ui.styleInput(search);search.setText(workspaceQuery);directory.addView(search,ui.wrap());
@@ -320,6 +321,21 @@ final class StatusBarEditorController extends NativeEditorController {
         LinearLayout list=column();directory.addView(list,ui.wrap());populateWorkspaceDirectory(list);search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){workspaceQuery=s.toString();populateWorkspaceDirectory(list);}public void afterTextChanged(android.text.Editable e){}});
         filter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int index,long id){if(workspaceFilter!=index){workspaceFilter=index;populateWorkspaceDirectory(list);}}});
         advanced(card,"workspace-directory","独立图标配置",directory);
+    }
+    private void batteryPercentageControls(LinearLayout parent){
+        parent=parameterInputGroup(parent);
+        String digits=BatteryPercentagePolicy.DIGITS,rule=BatteryPercentagePolicy.RULE;
+        String help="状态栏、控制中心、通知中心和锁屏共用此设置。0 显示整数；系统未提供有效精确电量时保留整数。";
+        View title=ui.featureTitle("电池显示小数位",help);parent.addView(title,ui.wrap());
+        ParameterSlider precision=new ParameterSlider(ui,EnhancementOption.integer(digits,"statusbar","电池显示小数位",help,0,0,2),draft.get(digits),value->{if(!loading){draft.put(digits,value);changed();}});
+        precision.bindTitle(title);parent.addView(precision,ui.wrap());
+        parent.addView(ui.featureTitle("电池小数位显示规则","只在选定的充电或放电状态显示小数；满电、插电未充电和未知状态显示整数。"),ui.wrap());
+        Spinner choice=ui.choiceSpinner("电池小数位显示规则");choice.setTag("config:"+rule);
+        choice.setAdapter(choiceAdapter(BatteryPercentagePolicy.RULE_LABELS));choice.setSelection(number(rule));parent.addView(choice,ui.wrap());
+        choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(AdapterView<?> p){}
+            public void onItemSelected(AdapterView<?> p,View view,int index,long id){if(!loading&&index!=number(rule)){draft.put(rule,String.valueOf(index));changed();}}
+        });
     }
     private void workspaceSystemSize(LinearLayout parent){
         StatusBarGridSpec.Item item=grid.get("system_icons");Switch enabled=new Switch(this);enabled.setChecked(item.size>0);
@@ -334,6 +350,7 @@ final class StatusBarEditorController extends NativeEditorController {
             expandedComponents.put("system_icons_size",on);fold.show(on);updateItem("system_icons",null,-1,on?size:0,null);renderKeepingScroll();});
     }
     private void workspaceConnectivity(LinearLayout parent){
+        LinearLayout group=column();addFeatureBlock(parent,group);parent=group;
         Switch enabled=new Switch(this);enabled.setChecked(ConfigSchema.truthy(draft.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP)));controls.put(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,enabled);
         enabled.setTag("config:"+ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP);parent.addView(ui.featureRow("三合一图标",FeatureDescriptions.forKey(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP,"三合一图标"),enabled),ui.wrap());
         LinearLayout settings=column();parent.addView(settings,ui.wrap());

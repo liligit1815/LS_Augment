@@ -22,6 +22,7 @@ for item in manifest:
 assert sorted(item['frames'] for item in manifest) == [10, 10] + [100] * 18
 
 FILES = {
+    'ls/augment/com/hook/BatteryPercentageHook.java': 'package ls.augment.com.hook;class BatteryPercentageHook{static boolean fraction;static boolean fractional(int level){return fraction;}}',
     'android/os/Looper.java': 'package android.os;public class Looper{static final Looper MAIN=new Looper();public static Looper getMainLooper(){return MAIN;}public static Looper myLooper(){return MAIN;}}',
     'android/os/Handler.java': 'package android.os;public class Handler{public Handler(Looper l){}public boolean post(Runnable r){r.run();return true;}}',
     'android/database/ContentObserver.java': 'package android.database;import android.os.Handler;public class ContentObserver{public ContentObserver(Handler h){}public void onChange(boolean s){}}',
@@ -48,10 +49,11 @@ import android.view.View;import android.widget.ImageView;import android.graphics
 public class TestIosBatteryRuntime{
  static int checks;static void check(boolean ok,String why){checks++;if(!ok)throw new AssertionError(why);}
  public static class Colors{public int mTint=0xff000000;}
+ public static class Level extends View{public boolean mTextHollowAvailable=true;public void setTextHollowEffectAvailable(boolean value){mTextHollowAvailable=value;}}
  public static class MFVBatteryViewLayout extends View{
   public int mBateryLevel=73,mShowMode=1,mChargingSeparation;public float mDarkIntensity=1;
   public boolean mIsCharing,mIsPowerSave,mTextHollowEffectAvailable=true,childHollow=true,nativeDerivedHollow=true;public int hollowReplays;
-  public ImageView mBatteryIconView=new ImageView();public View mBatteryLevelInsideView=new View(),mInsideChargeView=new View(),mOutsideChargeView=new View();public Colors mBatteryColors=new Colors();
+  public ImageView mBatteryIconView=new ImageView();public Level mBatteryLevelInsideView=new Level();public View mInsideChargeView=new View(),mOutsideChargeView=new View();public Colors mBatteryColors=new Colors();
   MFVBatteryViewLayout(){mBatteryIconView.parent=this;}
   public void updateTextHollowEffectAvailable(boolean colors,boolean force){hollowReplays++;mTextHollowEffectAvailable=nativeDerivedHollow;childHollow=nativeDerivedHollow;try{callback("updateBattery",mBatteryIconView);callback("updateTextHollowEffectAvailable",this);}catch(Throwable t){throw new AssertionError(t);}}
  }
@@ -66,6 +68,10 @@ public class TestIosBatteryRuntime{
   IosBatteryHook.apply(v);check(icon(v).name.equals("stat_sys_battery_digital_darkmode.png"),"inside dark digit scene");check(icon(v).level==73,"current level");
   check(v.mBatteryIconView.background==null&&v.mBatteryLevelInsideView.alpha==0&&!v.mTextHollowEffectAvailable,"remove duplicate native background/text/hollow rendering");
   check(v.mInsideChargeView.alpha==0&&v.mOutsideChargeView.alpha==0,"embedded charge artwork owns indicator");
+  BatteryPercentageHook.fraction=true;IosBatteryHook.apply(v);
+  check(!icon(v).name.contains("digital")&&v.mBatteryLevelInsideView.alpha==.7f&&!v.mBatteryLevelInsideView.mTextHollowAvailable,"fractional value uses non-digit artwork and readable native text, not an integer baked into the image");
+  BatteryPercentageHook.fraction=false;IosBatteryHook.apply(v);
+  check(icon(v).name.contains("digital")&&v.mBatteryLevelInsideView.alpha==0&&v.mBatteryLevelInsideView.mTextHollowAvailable,"integer rule restores original digit artwork and child hollow state");
   v.mIsCharing=true;callback("updateBatteryLevelText",v);check(icon(v).name.equals("stat_sys_battery_charge_digit_darkmode.png"),"charging update scene");
   v.mBatteryColors.mTint=-1;v.mDarkIntensity=1;callback("onKeyguardColorChanged",v);check(icon(v).name.equals("stat_sys_battery_charge_digit.png"),"keyguard uses its actual tint, not stale dark intensity");
   config("rm_battery_style",2);IosBatteryHook.apply(v);check(icon(v).name.equals("stat_sys_battery_charge.png"),"external number uses nondigit strip");

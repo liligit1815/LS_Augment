@@ -461,9 +461,7 @@ final class AtomicWorkbenchPlatform {
     }
 
     private void enableHomeDecors() throws Exception {
-        invoke(window(), "setShouldShowSystemDecors", new Class<?>[]{int.class, boolean.class}, record.displayId, true);
-        if (!Boolean.TRUE.equals(invoke(window(), "shouldShowSystemDecors", new Class<?>[]{int.class}, record.displayId)))
-            throw new IllegalStateException("系统未启用该工作区的原生导航栏");
+        AtomicWorkbenchSystemDecorations.enable(window(),record.displayId);
     }
 
     /** Borrows the existing primary HOME; never launches SECONDARY_HOME or a replacement grid. */
@@ -1838,11 +1836,15 @@ final class AtomicWorkbenchPlatform {
      * the real wallpaper service has no Activity here and cannot access a private
      * root-owned display. OWN_CONTENT_ONLY prevents any empty-slot mirroring.
      */
-    private static int workbenchDisplayFlags() throws Exception {
+    private int workbenchDisplayFlags() throws Exception {
+        // Any owned slot can later borrow HOME without replacing its applications.
+        // Immutable WMS decoration policy therefore has to be requested at creation.
         return DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
                 | hiddenDisplayFlag("VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH")
                 | hiddenDisplayFlag("VIRTUAL_DISPLAY_FLAG_TRUSTED")
-                | hiddenDisplayFlag("VIRTUAL_DISPLAY_FLAG_OWN_FOCUS");
+                | hiddenDisplayFlag("VIRTUAL_DISPLAY_FLAG_OWN_FOCUS")
+                | (AtomicWorkbenchSystemDecorations.requiresCreationFlag(window())
+                    ?hiddenDisplayFlag("VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS"):0);
     }
 
     private static void requireDisplayPolicy(Display display) {
@@ -1869,7 +1871,7 @@ final class AtomicWorkbenchPlatform {
     // Injected host contract: no public SDK equivalent; retain runtime lookup and failure handling.
     //noinspection DiscouragedPrivateApi,PrivateApi
     private Object window() throws Exception {
-        if (windowService == null) windowService = Class.forName("android.view.WindowManagerGlobal").getDeclaredMethod("getWindowManagerService").invoke(null);
+        if (windowService == null) windowService = AtomicWorkbenchSystemDecorations.windowService();
         if (windowService == null) throw new IllegalStateException("窗口服务不可用"); return windowService;
     }
 

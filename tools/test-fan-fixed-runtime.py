@@ -21,7 +21,8 @@ public Object getSystemService(String name){return new android.os.PowerManager()
 public Intent registerReceiver(Object receiver,IntentFilter filter){return new Intent();}}
 ''',
     "android/content/ContentResolver.java": '''package android.content;public class ContentResolver {
-public android.os.Bundle call(android.net.Uri uri,String method,String arg,android.os.Bundle extras){android.os.Bundle b=new android.os.Bundle();b.putBoolean("ok",true);return b;}}
+public static String measurement="";
+public android.os.Bundle call(android.net.Uri uri,String method,String arg,android.os.Bundle extras){if(method.equals("fan_measurement"))measurement=(String)extras.get("value");android.os.Bundle b=new android.os.Bundle();b.putBoolean("ok",true);return b;}}
 ''',
     "android/content/Intent.java": 'package android.content;public class Intent {public static final String ACTION_BATTERY_CHANGED="battery";public int getIntExtra(String name,int fallback){return 300;}}',
     "android/content/IntentFilter.java": 'package android.content;public class IntentFilter {public IntentFilter(String action){}}',
@@ -79,7 +80,7 @@ public static class Owner {
  int maximum,cancel,notify;void fanMaxSpeed(){maximum++;}void fanFullSpeed(){throw new AssertionError("retired OEM full-speed feature");}
  void cancelFanFullSpeed(){cancel++;}void notifyCubeFan(){notify++;Nodes.level=Settings.System.mode==0?4:2;}
 }
-static Object controller;static Owner owner;
+static Object controller;static Owner owner;static boolean loadedDriver;
 static Object field(String name)throws Exception {Field field=controller.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(controller);}
 static void tick(){android.os.SystemClock.now+=900;
  // Motor/queue time is virtual; ensure diagnostic wall-clock throttling does not hide its state.
@@ -89,7 +90,7 @@ static void tick(){android.os.SystemClock.now+=900;
 static void create(boolean verified)throws Exception {
  FeatureSettings.diagnostics.clear();Settings.System.mode=1;Settings.System.manual=2;Nodes.enabled=1;Nodes.level=2;Nodes.writes=0;
  Nodes.pendingLevel=-1;Nodes.delayMs=0;Nodes.dropWrites=false;Nodes.rpmOverride=false;Nodes.rpm=null;android.os.PowerManager.thermal=0;
- owner=new Owner();FanCompatibilityProfile profile=FanCompatibilityProfile.resolve(verified?"NX809J":"NX769J","","",true,true,true,true,p->true);
+ owner=new Owner();FanCompatibilityProfile profile=FanCompatibilityProfile.resolve(verified?(loadedDriver?"NX799J":"NX809J"):"NX769J","","",true,true,true,true,p->true,verified&&loadedDriver);
  Class<?> type=Class.forName("ls.augment.com.hook.FanControlHook$Controller");Constructor<?> ctor=type.getDeclaredConstructors()[0];ctor.setAccessible(true);
  controller=ctor.newInstance(new AugmentModule(),Nodes.class.getMethod("write",String.class,String.class),Nodes.class.getMethod("read",String.class),profile);
  Method start=type.getDeclaredMethod("start",android.content.Context.class,Object.class);start.setAccessible(true);start.invoke(controller,new android.content.Context(),owner);
@@ -100,6 +101,7 @@ static void awaitLevel(int level){
   if(state.startsWith("controlled;kind=fixed_level;")&&state.contains(";level="+level+";")&&Nodes.level==level){check(Nodes.enabled==1,"selection preserves OEM enabled state");return;}}
  throw new AssertionError("fixed "+level+" did not apply: "+FeatureSettings.diagnostics);}
 public static void main(String[] args)throws Exception {
+ loadedDriver=args.length>0;
  FeatureSettings.values.put(FeatureSettings.GAME_MASTER,"1");FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"1");
  FeatureSettings.values.put(ConfigSchema.FAN_UNLOCK_MAX,"1");FeatureSettings.values.put(ConfigSchema.FAN_TARGET_RPM,"99999");
  FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"0");create(true);awaitLevel(1);
@@ -182,7 +184,19 @@ public static void main(String[] args)throws Exception {
   Settings.System.failKey="";tick();
   check(field("sessionLocked").equals(true)&&Nodes.writes==0,"successful reread cannot steal OEM ownership after session lock");
  }
- System.out.println("PASS production FanControlHook fixed runtime: "+checks+" checks (facade; physical RPM/timing unverified)");
+ // The admitted driver also reaches real calibration logic: sample every level,
+ // persist driver feedback and restore the original OEM level before success.
+ FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"0");create(true);
+ String request=System.currentTimeMillis()+":"+"b".repeat(32);
+ FeatureSettings.values.put(ConfigSchema.FAN_CALIBRATION_REQUEST,request);
+ android.content.ContentResolver.measurement="";
+ for(int n=0;n<150&&android.content.ContentResolver.measurement.isEmpty();n++)tick();
+ ls.augment.com.FanCalibrationData measured=ls.augment.com.FanCalibrationData.parse(android.content.ContentResolver.measurement);
+ check(measured!=null,"calibration persisted feedback for all five levels");
+ for(int n=1;n<=5;n++)check(measured.rpm(n)==Nodes.RPM[n],"calibration must use this device's feedback at level "+n);
+ check(Nodes.level==2&&Nodes.enabled==1&&owner.maximum==1&&owner.cancel==1,"calibration restores original level and OEM power ownership");
+ check(FeatureSettings.diagnostics.get("active").startsWith("measured;"),"completion requires acknowledged restoration");
+ System.out.println("PASS production FanControlHook "+(loadedDriver?"loaded-driver":"legacy-model")+" runtime: "+checks+" checks (facade; physical RPM/timing unverified)");
 }}
 ''',
 }
@@ -216,3 +230,4 @@ with tempfile.TemporaryDirectory(prefix="lsa-fan-fixed-runtime-") as directory:
         sources.append(str(path))
     subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "--release", "17", "-d", directory, *sources], check=True)
     subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanFixedRuntime"], check=True, timeout=15)
+    subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanFixedRuntime", "loaded-driver"], check=True, timeout=15)

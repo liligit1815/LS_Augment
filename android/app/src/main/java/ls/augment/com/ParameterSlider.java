@@ -24,6 +24,11 @@ final class ParameterSlider extends LinearLayout {
     private boolean tracking, cancelled, touchArmed;
     private String trackingSaved;
     private final NumericParameterEditor editor;
+    private String markerLabel, markerValue;
+    private Integer markerProgress;
+    private SliderMarkerView marker;
+    private Runnable pendingMarker;
+    private String unavailableReason;
 
     ParameterSlider(UiKit ui, EnhancementOption option, String initial, Consumer<String> changed) {
         this(ui, option, initial, changed, false);
@@ -64,17 +69,27 @@ final class ParameterSlider extends LinearLayout {
                 boolean commit=tracking&&!cancelled;tracking=false;
                 if(commitOnRelease){if(commit)changed.accept(saved);else setValue(trackingSaved!=null?trackingSaved:saved);}
                 trackingSaved=null;cancelled=false;touchArmed=false;
+                if(pendingMarker!=null){Runnable next=pendingMarker;pendingMarker=null;next.run();}
             }
             public void onProgressChanged(SeekBar s,int progress,boolean user){
-                if(!user||commitOnRelease&&cancelled)return;
-                String next=BigDecimal.valueOf(progress).divide(BigDecimal.valueOf(scale),2,RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+                if(!user||!s.isEnabled()||unavailableReason!=null||commitOnRelease&&cancelled)return;
+                if(markerProgress!=null&&tracking){
+                    float distance=Math.abs(SliderMarkerView.thumbX(bar,progress)-SliderMarkerView.thumbX(bar,markerProgress));
+                    if(distance<=ui.dp(4)){progress=markerProgress;bar.setProgress(progress);}
+                }
+                String next=markerProgress!=null&&progress==markerProgress?markerValue:
+                        BigDecimal.valueOf(progress).divide(BigDecimal.valueOf(scale),2,RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
                 String normalized=option.normalize(next);
                 if(normalized!=null){saved=normalized;render();if(!commitOnRelease||!tracking)changed.accept(normalized);}
             }
         });
         editor=NumericParameterEditor.bind(ui,bar,option.title,
                 ()->new NumericValueSpec(bar.getMin()/(double)scale,bar.getMax()/(double)scale,1.0/scale,""),
-                ()->saved,option::normalize,next->{discardEdit();setValue(next);changed.accept(next);},value);
+                ()->markerValue!=null&&markerValue.equals(saved)&&markerProgress!=null
+                        ?BigDecimal.valueOf(markerProgress).divide(BigDecimal.valueOf(scale)).toPlainString():saved,
+                next->unavailableReason==null?option.normalize(next):null,next->{discardEdit();
+                    if(markerProgress!=null&&(int)Math.round(Double.parseDouble(next)*scale)==markerProgress)next=markerValue;
+                    setValue(next);changed.accept(next);},value);
     }
     void bindTitle(View title){
         editor.addTarget(title);
@@ -87,29 +102,63 @@ final class ParameterSlider extends LinearLayout {
         addView(new NumericParameterHeader(ui,title,value),0,headerParams);
     }
     String getValue(){return saved;}
+    /** Project a semantic setting onto a measured numeric position, preserving old saved offsets. */
+    void marker(String storedValue,String label,Integer position,int maximum,String unavailable){
+        if(tracking){pendingMarker=()->marker(storedValue,label,position,maximum,unavailable);return;}
+        markerValue=storedValue;markerLabel=label;markerProgress=position==null?null:position*scale;
+        if(marker==null){marker=new SliderMarkerView(ui,bar);addView(marker,indexOfChild(bar)+1,ui.wrap());}
+        marker.setVisibility(position==null?GONE:VISIBLE);
+        if(position!=null)marker.setMarker(markerProgress,label);
+        bar.setContentDescription(option.title+(position==null?"":"，"+label+"刻度："+position));
+        range(0,maximum,position==null?unavailable:"范围：0～"+maximum+" dp");
+    }
+    void measuredMarker(String storedValue,String label,Integer position,int maximum,String waiting,boolean enabled){
+        if(tracking){pendingMarker=()->measuredMarker(storedValue,label,position,maximum,waiting,enabled);return;}
+        marker(storedValue,label,position,position==null?0:maximum,waiting);
+        if(position==null)unavailable(waiting);else bar.setEnabled(enabled);
+    }
+    void measuredRange(Integer maximum,String waiting,boolean enabled){
+        if(tracking){pendingMarker=()->measuredRange(maximum,waiting,enabled);return;}
+        range(0,maximum==null?0:maximum,maximum==null?waiting:"范围：0～"+maximum+" dp");
+        if(maximum==null)unavailable(waiting);else bar.setEnabled(enabled);
+    }
     void setError(String message){range.setText(message==null?"":message);range.setVisibility(message==null?GONE:VISIBLE);}
     private void cancelPendingEdit(){
         if(commitOnRelease&&(tracking||touchArmed)){cancelled=true;if(trackingSaved!=null)setValue(trackingSaved);}
     }
-    void discardEdit(){cancelPendingEdit();tracking=false;trackingSaved=null;touchArmed=false;}
+    void discardEdit(){cancelPendingEdit();tracking=false;trackingSaved=null;touchArmed=false;
+        if(pendingMarker!=null){Runnable next=pendingMarker;pendingMarker=null;next.run();}}
     @Override protected void onDetachedFromWindow(){
-        cancelPendingEdit();tracking=false;trackingSaved=null;cancelled=false;touchArmed=false;super.onDetachedFromWindow();
+        cancelPendingEdit();tracking=false;trackingSaved=null;cancelled=false;touchArmed=false;pendingMarker=null;super.onDetachedFromWindow();
     }
     @Override public void onWindowFocusChanged(boolean focused){
         if(!focused)cancelPendingEdit();else if(cancelled){tracking=false;trackingSaved=null;cancelled=false;}
+        if(!focused&&marker!=null){tracking=false;if(pendingMarker!=null){Runnable next=pendingMarker;pendingMarker=null;next.run();}}
         super.onWindowFocusChanged(focused);
     }
     void setValue(String next){
-        saved=next;bar.setProgress((int)Math.round(Double.parseDouble(next)*scale));render();
+        saved=next;
+        boolean semantic=markerValue!=null&&markerValue.equals(saved);
+        bar.setVisibility(semantic&&markerProgress==null?GONE:VISIBLE);
+        bar.setProgress(semantic&&markerProgress!=null?markerProgress:(int)Math.round(Double.parseDouble(next)*scale));render();
     }
     void range(int minimum,int maximum,String explanation){
+        unavailableReason=null;
         bar.setMin(Math.min(bar.getMin(),minimum*scale));bar.setMax(maximum*scale);bar.setMin(minimum*scale);setValue(saved);
         range.setText(explanation);range.setVisibility(explanation.isEmpty()?GONE:VISIBLE);
     }
-    void unavailable(String reason){bar.setEnabled(false);range.setText(reason);range.setVisibility(VISIBLE);}
+    void unavailable(String reason){unavailableReason=reason;bar.setEnabled(false);range.setText(reason);range.setVisibility(VISIBLE);render();}
     private void render(){
         String shown=new BigDecimal(saved).stripTrailingZeros().toPlainString();
         int requested=(int)Math.round(Double.parseDouble(saved)*scale);
+        if(unavailableReason!=null){
+            if(markerValue!=null&&markerValue.equals(saved))shown=markerLabel;
+            value.setText("已保存："+shown+" · 待测量");bar.setStateDescription(shown+"，"+unavailableReason);return;
+        }
+        if(markerValue!=null&&markerValue.equals(saved)){
+            shown=markerLabel+(markerProgress==null?"（待测量）":" · "+BigDecimal.valueOf(markerProgress).divide(BigDecimal.valueOf(scale)).stripTrailingZeros().toPlainString()+" dp");
+            value.setText("当前："+shown);bar.setStateDescription(shown);return;
+        }
         String actual=BigDecimal.valueOf(bar.getProgress()).divide(BigDecimal.valueOf(scale),2,RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
         value.setText(requested==bar.getProgress()?"当前："+shown:"已保存："+shown+" · 当前实际："+actual);
         bar.setStateDescription(shown);

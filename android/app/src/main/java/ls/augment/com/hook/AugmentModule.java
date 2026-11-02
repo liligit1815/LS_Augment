@@ -577,7 +577,9 @@ public final class AugmentModule extends RootEarlyModule {
     private synchronized void installBeautifyFeatureHooks(ClassLoader classLoader) {
         if (beautifyHooksInstalled) return;
         BeautifyCompatibilityProbe.run(this, classLoader);
-        beautifyHooksInstalled = BeautifyHook.install(this, classLoader) > 0;
+        int installed = BeautifyHook.install(this, classLoader);
+        installed += BeautifyPreviewHook.install(this, classLoader);
+        beautifyHooksInstalled = installed > 0;
     }
 
     private synchronized void installBeautifyAdapterFeatureHooks(ClassLoader classLoader) {

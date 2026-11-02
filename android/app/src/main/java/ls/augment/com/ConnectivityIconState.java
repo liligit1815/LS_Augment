@@ -33,6 +33,7 @@ public final class ConnectivityIconState {
         public boolean activityOut(){return dataActivity==2||dataActivity==3;}
     }
     public final int battery, wifiLevel,wifiBars;
+    public final String batteryText;
     public final int activeDataSubscription, defaultDataSubscription;
     public final boolean wifiKnown;
     public final WifiInternet wifiInternet;
@@ -56,6 +57,11 @@ public final class ConnectivityIconState {
     }
     public ConnectivityIconState(int battery,PowerState power,boolean wifiKnown,boolean wifiConnected,int wifiLevel,int wifiBars,
             boolean airplane,int activeDataSubscription,int defaultDataSubscription,List<Sim> input,WifiInternet wifiInternet){
+        this(battery,power,wifiKnown,wifiConnected,wifiLevel,wifiBars,airplane,activeDataSubscription,defaultDataSubscription,input,wifiInternet,battery<0?"—":String.valueOf(battery));
+    }
+    private ConnectivityIconState(int battery,PowerState power,boolean wifiKnown,boolean wifiConnected,int wifiLevel,int wifiBars,
+            boolean airplane,int activeDataSubscription,int defaultDataSubscription,List<Sim> input,WifiInternet wifiInternet,String text){
+        this.batteryText=text;
         this.wifiInternet=wifiKnown&&wifiConnected&&wifiInternet!=null?wifiInternet:WifiInternet.UNKNOWN;
         this.battery=battery<0?-1:Math.min(100,battery);this.charging=power==PowerState.CHARGING;
         this.bypassCharging=power==PowerState.BYPASS;
@@ -72,6 +78,8 @@ public final class ConnectivityIconState {
         sims=Collections.unmodifiableList(new ArrayList<>(sorted.subList(0,Math.min(2,sorted.size()))));
     }
     public static ConnectivityIconState unknown(){return new ConnectivityIconState(-1,PowerState.NONE,false,false,0,false,-1,-1,Collections.emptyList());}
+    public ConnectivityIconState withBatteryText(String text){return text==null||text.isEmpty()||batteryText.equals(text)?this:
+        new ConnectivityIconState(battery,bypassCharging?PowerState.BYPASS:charging?PowerState.CHARGING:PowerState.NONE,wifiKnown,wifiConnected,wifiLevel,wifiBars,airplane,activeDataSubscription,defaultDataSubscription,sims,wifiInternet,text);}
     public Sim simForSubscription(int id){for(Sim sim:sims)if(sim.subscriptionId==id)return sim;return null;}
     public Sim simForSlot(int slot){for(Sim sim:sims)if(sim.slot==slot)return sim;return null;}
     public Sim activeDataSim(){return simForSubscription(activeDataSubscription);}
@@ -81,7 +89,7 @@ public final class ConnectivityIconState {
     public int litDots(int row){return row<0||row>=sims.size()||airplane?0:Math.max(0,sims.get(row).level);}
     public int barCount(int row){return row<0||row>=sims.size()?4:sims.get(row).bars;}
     public float batteryFraction(){return Math.max(0,battery)/100f;}
-    public String description(){StringBuilder s=new StringBuilder(battery<0?"电量未读取":"电量 "+battery+"%");
+    public String description(){StringBuilder s=new StringBuilder(battery<0?"电量未读取":"电量 "+batteryText+"%");
         if(bypassCharging)s.append("，旁路充电");else if(charging)s.append("，正在充电");s.append(!wifiKnown?"，Wi-Fi 状态未读取":wifiConnected?"，Wi-Fi 信号 "+wifiLevel+"/"+wifiBars:"，Wi-Fi 未连接");
         if(wifiKnown&&wifiConnected){if(wifiInternet==WifiInternet.NO_INTERNET)s.append("，无互联网");
             else if(wifiInternet==WifiInternet.UNKNOWN)s.append("，联网状态未读取");}

@@ -74,6 +74,9 @@ public final class TestNativeFeatureGroups {
         for(String invalid:new String[]{"-1","2","circle","true",""})require(appStyle.normalize(invalid)==null,"island app style rejects invalid value: "+invalid);
         NativeFeatureGroups.Feature island=find(SystemUiOptions.ISLAND_APP_STYLE);
         require("systemui:island_enabled".equals(island.id)&&SystemUiOptions.ISLAND.equals(island.toggleKey),"app display style belongs to the island feature and its master switch");
+        require(find(IslandDownloadConfig.ENABLED)==island&&find(IslandDownloadConfig.CHANNELS)==island,"download settings remain in the existing island feature");
+        require("0".equals(OPTIONS.get(IslandDownloadConfig.ENABLED).defaultValue),"downloads default off");
+        require("".equals(OPTIONS.get(IslandDownloadConfig.CHANNELS).defaultValue),"downloads default to no selected channels");
         System.out.println("Native feature grouping and value gates: OK ("+seen.size()+" options)");
     }
     private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(f.allKeys().contains(key))return f;throw new AssertionError("missing feature "+key);}

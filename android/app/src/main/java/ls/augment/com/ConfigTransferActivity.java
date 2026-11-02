@@ -181,6 +181,7 @@ public final class ConfigTransferActivity extends Activity {
     private static Set<String> noticeHashes(Map<String,String> values){Set<String> hashes=new LinkedHashSet<>(StatusBarAssetReferences.statusbarIcons(values));hashes.addAll(StatusBarAssetReferences.fonts(values));return hashes;}
     private static Set<String> iconHashes(JSONObject values)throws Exception{
         Set<String> hashes=new HashSet<>();String tile=values.optString(ConfigSchema.TILE_ICON);if(!tile.isEmpty())hashes.add(tile);
+        String cleanup=values.optString(LauncherOptions.CLEANUP_ICON);if(!cleanup.isEmpty())hashes.add(cleanup);
         for(int side=0;side<2;side++)for(String slot:new String[]{"asset","background_asset"}){
             String hash=values.optString(BackGestureIconPolicy.key(side,slot));if(!hash.isEmpty())hashes.add(hash);
         }

@@ -1,17 +1,13 @@
 package ls.augment.com.hook;
 
-import android.app.ActivityManager;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -28,6 +24,8 @@ import java.util.concurrent.Executors;
 
 import ls.augment.com.LauncherMemoryPresentation;
 import ls.augment.com.LauncherMemoryLayout;
+import ls.augment.com.LauncherMemoryGeometry;
+import ls.augment.com.LauncherMemorySizing;
 import ls.augment.com.LauncherOptions;
 
 /** Adds only a Recents decoration; the native pager and task geometry stay native. */
@@ -111,6 +109,9 @@ final class LauncherRecentsMemoryHook {
         boolean ownsNative, closed, memoryPending;
         long totalBytes, availableBytes, sampledAt;
         String lastDiagnostic = "";
+        String lastPortraitGeometry = "";
+        String lastLandscapeGeometry = "";
+        LauncherMemorySizing.Screen memoryScreen;
         String lastDiagnosticReason = "";
         long lastDiagnosticAt;
         int rotation;
@@ -187,13 +188,13 @@ final class LauncherRecentsMemoryHook {
                 host.addView(label);
             }
             requestMemory();
-            if (totalBytes <= 0) { hide(); report("waiting_memory"); return; }
+            if (totalBytes <= 0 || memoryScreen == null) { hide(); report("waiting_memory"); return; }
 
-            rotation = recentsRotation(view);
-            LauncherMemoryLayout region = contentRegion(host, rotation);
-            rotation = region.rotation;
+            rotation = ((Math.round(recentsRotation(view)/90f)*90)%360+360)%360;
             boolean sideways = rotation == 90 || rotation == 270;
             landscape = (view.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) != sideways;
+            LauncherMemoryLayout region = contentRegion(host, rotation);
+            rotation = region.rotation;
             boolean detailed = FeatureSettings.integer(context, PREFIX + "style", 0, 0, 1) == 1;
             String orientation = landscape ? "landscape_" : "portrait_";
             float size = FeatureSettings.decimal(context, PREFIX + (detailed ? "detailed_size" : "simple_size"),
@@ -202,37 +203,29 @@ final class LauncherRecentsMemoryHook {
             int height = FeatureSettings.integer(context, PREFIX + orientation + "height",
                     defaultHeight, 24, landscape ? 200 : 240);
             int top = FeatureSettings.integer(context, PREFIX + orientation + "top", landscape?28:50, 0, LauncherOptions.RECENTS_MEMORY_MAX_TOP_DP);
-            int left = FeatureSettings.integer(context, PREFIX + orientation + "left", landscape?660:220, 0, 2000);
-            int content = FeatureSettings.integer(context, PREFIX + "content", 5, 0, 5);
-            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
-            String text = LauncherMemoryPresentation.format(totalBytes, availableBytes, detailed ? 1 : 0, content);
-            if (!text.contentEquals(label.getText())) label.setText(text);
+            int left = FeatureSettings.integer(context, PREFIX + orientation + "left", landscape?660:220,
+                    landscape ? 0 : LauncherMemoryLayout.CENTER, 2000);
+            int content = FeatureSettings.integer(context, PREFIX + "content", 5, 0, LauncherMemoryPresentation.FULL_LABELS);
+            LauncherMemorySizing.Result measured=LauncherMemorySizing.measure(label,memoryScreen,region,
+                    totalBytes,availableBytes,detailed?1:0,content,size,height);
             label.setTextColor(color(view));
-            // Keep complete glyph ink inside the label, then leave a small gap
-            // at the logical safe edge. A measured text advance alone can cut
-            // off the final glyph when a saved left position is clamped.
-            int endInset = Math.max(1, dp(view, 2));
-            int width = region.textWidth(endInset);
-            // The selected height is the actual height. If a detailed value
-            // wraps, reduce its text size to fit instead of silently overriding
-            // the user's minimum with the natural text height.
-            int availableHeight = region.height;
-            int targetHeight = Math.min(dp(view, height), availableHeight);
-            int neededWidth = measureLabel(text, width, endInset);
-            int contentHeight = Math.max(1, targetHeight - label.getPaddingTop() - label.getPaddingBottom());
-            if (label.getMeasuredHeight() > targetHeight && label.getMeasuredHeight() > 0) {
-                float fitted = Math.max(6f, size * contentHeight / label.getMeasuredHeight());
-                if (fitted < size) {
-                    label.setTextSize(TypedValue.COMPLEX_UNIT_SP, fitted);
-                    neededWidth = measureLabel(text, width, endInset);
+            int neededWidth=measured.width,neededHeight=measured.height;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) label.getLayoutParams();
+            // Use the same integer-dp limits shown by the settings editor.
+            int topPixels=memoryScreen.px(Math.min(top,measured.maximumTopDp));
+            int leftPixels=!landscape&&left==LauncherMemoryLayout.CENTER?measured.centerPx
+                    :memoryScreen.px(Math.max(0,Math.min(left,measured.maximumDp)));
+            if(view.getDisplay()!=null){
+                android.util.DisplayMetrics screen=new android.util.DisplayMetrics();
+                view.getDisplay().getRealMetrics(screen);
+                String geometry=new LauncherMemoryGeometry(screen.widthPixels,screen.heightPixels,screen.density,
+                        memoryScreen.density,memoryScreen.density*memoryScreen.fontScale,memoryScreen.fontScale,landscape,
+                        detailed?1:0,content,size,height,measured.centerDp,measured.maximumDp,measured.maximumTopDp).encode();
+                if(!geometry.equals(landscape?lastLandscapeGeometry:lastPortraitGeometry)){
+                    if(landscape)lastLandscapeGeometry=geometry;else lastPortraitGeometry=geometry;
+                    FeatureSettings.diagnostic(context,landscape?LauncherMemoryGeometry.LANDSCAPE_KEY:LauncherMemoryGeometry.KEY,geometry);
                 }
             }
-            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) label.getLayoutParams();
-            int neededHeight = targetHeight;
-            // Keep the user's saved distance, but clamp this layout to its actual
-            // visible region. Rotation and density changes recalculate the bound.
-            int topPixels = Math.min(dp(view, top), Math.max(0, availableHeight - targetHeight));
-            int leftPixels = region.textLeft(dp(view, left), neededWidth, endInset);
             // The handler angle is relative to the host. Do not rotate a second
             // time when Android has already rotated the whole launcher window.
             int hostLeft = region.x(leftPixels, topPixels) - host.getPaddingLeft();
@@ -258,28 +251,6 @@ final class LauncherRecentsMemoryHook {
             main.postDelayed(update, 2000);
         }
 
-        int measureLabel(String text, int maxWidth, int drawingInset) {
-            Paint paint = label.getPaint();
-            Rect ink = new Rect();
-            float advance = 0;
-            int inkLeft = 0, inkRight = 0;
-            for (int start = 0; start < text.length();) {
-                int end = text.indexOf('\n', start);
-                if (end < 0) end = text.length();
-                advance = Math.max(advance, paint.measureText(text, start, end));
-                paint.getTextBounds(text, start, end, ink);
-                inkLeft = Math.min(inkLeft, ink.left);
-                inkRight = Math.max(inkRight, ink.right);
-                start = end + 1;
-            }
-            label.setPadding(Math.max(0, -inkLeft), 0, drawingInset, 0);
-            int measuredWidth = Math.min(maxWidth,
-                    LauncherMemoryLayout.drawingWidth(advance, inkLeft, inkRight, drawingInset));
-            label.measure(View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-            return measuredWidth;
-        }
-
         int recentsRotation(View view) throws ReflectiveOperationException {
             if (orientationGetter == null) return 0;
             Object handler = orientationGetter.invoke(view);
@@ -295,26 +266,16 @@ final class LauncherRecentsMemoryHook {
             int left = host.getPaddingLeft(), top = host.getPaddingTop();
             int right = host.getWidth() - host.getPaddingRight();
             int bottom = host.getHeight() - host.getPaddingBottom();
-            android.view.WindowInsets insets = host.getRootWindowInsets();
-            View root = host.getRootView();
-            if (insets != null && root.getHeight() > 0) {
-                android.graphics.Insets safe = insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars()
-                        | android.view.WindowInsets.Type.displayCutout());
-                int[] hostLocation = new int[2], rootLocation = new int[2];
-                host.getLocationInWindow(hostLocation);
-                root.getLocationInWindow(rootLocation);
-                // Both bounds are in window coordinates, so a host already inset
-                // above the navigation bar is not inset a second time.
-                // Keep the existing unrotated top/left settings anchored to the
-                // host; a rotated overlay also needs the other safe edges.
-                if (rotation != 0) {
-                    left = Math.max(left, rootLocation[0] + safe.left - hostLocation[0]);
-                    top = Math.max(top, rootLocation[1] + safe.top - hostLocation[1]);
-                }
-                right = Math.min(right, rootLocation[0] + root.getWidth() - safe.right - hostLocation[0]);
-                bottom = Math.min(bottom, rootLocation[1] + root.getHeight() - safe.bottom - hostLocation[1]);
-            }
-            return new LauncherMemoryLayout(rotation, left, top, right, bottom);
+            boolean sideways=rotation==90||rotation==270;
+            boolean physicalLandscape=landscape!=sideways;
+            LauncherMemoryLayout screen=memoryScreen.region(landscape,rotation,0,0,
+                    physicalLandscape?memoryScreen.height:memoryScreen.width,
+                    physicalLandscape?memoryScreen.width:memoryScreen.height);
+            int[] location=new int[2];host.getLocationOnScreen(location);
+            // Intersect in screen coordinates: an already inset OEM host must
+            // not lose the navigation bar height a second time.
+            return new LauncherMemoryLayout(rotation,Math.max(left,screen.left-location[0]),Math.max(top,screen.top-location[1]),
+                    Math.min(right,screen.right-location[0]),Math.min(bottom,screen.bottom-location[1]));
         }
 
         // These local values distinguish a missing hook from a gated/unsampled label.
@@ -394,24 +355,23 @@ final class LauncherRecentsMemoryHook {
             if (memoryPending || (totalBytes > 0 && SystemClock.elapsedRealtime() - sampledAt < 1900)) return;
             memoryPending = true;
             MEMORY_WORKER.execute(() -> {
-                ActivityManager.MemoryInfo sample = new ActivityManager.MemoryInfo();
-                try {
-                    ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-                    if (manager != null) manager.getMemoryInfo(sample);
-                } catch (RuntimeException error) { module.logFeatureError("LAUNCHER_RECENTS_MEMORY_SAMPLE", error); }
+                LauncherMemorySizing.Sample read=null;
+                View view=owner.get();
+                try { if(view!=null)read=LauncherMemorySizing.read(context,view.getDisplay()); }
+                catch(RuntimeException error){module.logFeatureError("LAUNCHER_RECENTS_MEMORY_SAMPLE",error);}
+                LauncherMemorySizing.Sample sample=read;
                 main.post(() -> {
                     memoryPending = false;
                     if (closed) return;
                     sampledAt = SystemClock.elapsedRealtime();
-                    if (sample.totalMem > 0) {
-                        totalBytes = sample.totalMem;
-                        availableBytes = sample.availMem;
-                    }
+                    if(sample!=null){memoryScreen=sample.screen;totalBytes=sample.total;availableBytes=sample.available;}
                     main.removeCallbacks(update);
-                    main.postDelayed(update, sample.totalMem > 0 ? 0 : 2000);
+                    main.postDelayed(update, sample!=null ? 0 : 2000);
                 });
             });
         }
+
+
 
         void hideNative() {
             if (nativeContainer == null) return;
@@ -434,6 +394,8 @@ final class LauncherRecentsMemoryHook {
 
         void hide() {
             if (label != null) label.setVisibility(View.GONE);
+            // Re-entering Recents republishes current measurements after cache/log resets.
+            lastPortraitGeometry="";lastLandscapeGeometry="";
         }
 
         void removeLabel() {

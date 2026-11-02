@@ -131,7 +131,7 @@ public final class ConnectivityIconPainter {
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);p.setTypeface(typeface!=null?typeface:Typeface.create("sans-serif",Typeface.BOLD));
         for(int region=0;region<3;region++)if(ConnectivityIconLayout.content(contents,region).equals("battery")){
             float fit=ConnectivityIconLayout.contentFit("battery",region,contentScale(scales,region)),u=diameter/100;
-            String text=state.battery<0?"—":String.valueOf(state.battery);p.setTextSize(32);
+            String text=state.batteryText;p.setTextSize(32);
             float measured=p.measureText(text);if(measured>52){p.setTextSize(32*52/measured);measured=p.measureText(text);}
             boolean symbol=state.battery>=0&&(state.charging||state.bypassCharging);float extra=symbol?15:0;
             Paint.FontMetrics fm=p.getFontMetrics();float baseline=-(fm.ascent+fm.descent)/2;
@@ -197,7 +197,7 @@ public final class ConnectivityIconPainter {
     }
     private void battery(Canvas canvas,ConnectivityIconState state,int color,int symbolColor,ConnectivityIconLayout layout,float fitted){
         paint.setStyle(Paint.Style.FILL);paint.setColor(color);paint.setTextSize(32);
-        String text=state.battery<0?"—":String.valueOf(state.battery);
+        String text=state.batteryText;
         float measured=paint.measureText(text);
         if(measured>52){paint.setTextSize(32*52/measured);measured=paint.measureText(text);}
         boolean showSymbol=state.battery>=0&&(state.charging||state.bypassCharging);

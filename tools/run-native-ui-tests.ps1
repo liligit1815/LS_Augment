@@ -16,6 +16,8 @@ $taskSources+=Join-Path $PSScriptRoot 'TestHookTargetRegistry.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestScopeRestartPolicy.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestModuleFeatureSearch.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestLauncherIndicatorSettings.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestLauncherMemorySettings.java'
+$taskSources+=Join-Path $PSScriptRoot 'TestLauncherMemoryGeometry.java'
 $taskSources+=Join-Path $PSScriptRoot 'TestStatusBarIconLayout.java'
 $taskSources+=Join-Path $taskJava 'RecentsCardRadiusRange.java'
 $taskSources+=Join-Path $taskJava 'RecentsCardRadiusUiRange.java'
@@ -29,6 +31,10 @@ if($LASTEXITCODE -ne 0){throw 'Recents radius range checks failed'}
 if($LASTEXITCODE -ne 0){throw 'Recents radius UI range checks failed'}
 & java -cp $taskClasses ls.augment.com.TestLauncherIndicatorSettings
 if($LASTEXITCODE -ne 0){throw 'Launcher indicator setting checks failed'}
+& java -cp $taskClasses ls.augment.com.TestLauncherMemorySettings
+if($LASTEXITCODE -ne 0){throw 'Launcher memory setting checks failed'}
+& java -cp $taskClasses ls.augment.com.TestLauncherMemoryGeometry
+if($LASTEXITCODE -ne 0){throw 'Launcher memory geometry checks failed'}
 & java -cp $taskClasses ls.augment.com.TestNativeFeatureGroups
 if($LASTEXITCODE -ne 0){throw 'Native feature group checks failed'}
 & java -cp $taskClasses ls.augment.com.TestHiddenEntrySession

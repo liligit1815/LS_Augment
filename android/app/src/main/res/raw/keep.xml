@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Looked up by name from the module package while running inside the launcher. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@raw/cleanup_explosion" />
+    tools:keep="@raw/cleanup_explosion,@drawable/cleanup_c17" />

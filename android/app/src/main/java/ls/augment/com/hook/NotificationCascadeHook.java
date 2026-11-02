@@ -154,8 +154,8 @@ final class NotificationCascadeHook {
         return true;
     }
     private final class Frame {
-        final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space;
-        final Object algorithm,ambient;final String reason;int spacePasses;
+        final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space,header;
+        final Object algorithm,ambient;final String reason;int spacePasses,headerRows;
         final StringBuilder rowGeometry=new StringBuilder();
         final boolean gradient;
         Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
@@ -164,6 +164,7 @@ final class NotificationCascadeHook {
             gradient=FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true);
             int measured=access.maxHeight.getInt(host);if(measured<=0)measured=host.getHeight();
             top=keyguard?((Number)access.stackY.invoke(ambient)).floatValue():0;
+            header=Math.max(0,((Number)access.stackY.invoke(ambient)).floatValue());
             float capacity=access.lockSpace.getFloat(algorithm);
             space=capacity>0?capacity:((Number)access.stackHeight.invoke(ambient)).floatValue();
             end=Math.max(top,Math.min(Math.min(host.getHeight(),measured)-48*density,keyguard?top+space:Float.MAX_VALUE));
@@ -218,10 +219,14 @@ final class NotificationCascadeHook {
                 int original=access.clipTop.getInt(state);
                 if(clip>original){topClips.put(row,new TopClip(original,clip));access.clipTop.setInt(state,clip);}
             }
-            if(nativeY<=frame.start){recordGeometry(frame,row,state,i,nativeY);continue;}
+            float topEdge=frame.header-nativeY;
+            boolean topBlur=frame.gradient&&scroll>0&&topEdge+28*frame.density>0&&topEdge<height;
+            if(nativeY<=frame.start&&!topBlur){recordGeometry(frame,row,state,i,nativeY);continue;}
             Owned baseline=owned.get(row);
             if(baseline==null){baseline=new Owned(row,access.scaleX.getFloat(state),access.scaleY.getFloat(state));owned.put(row,baseline);}
-            retained.add(row);stacked++;
+            retained.add(row);
+            if(nativeY<=frame.start){baseline.blur(row,0,topEdge,28*frame.density);if(baseline.band>0)frame.headerRows++;recordGeometry(frame,row,state,i,nativeY);continue;}
+            stacked++;
             access.y.setFloat(state,card.y);access.scaleX.setFloat(state,baseline.scaleX*card.scale);access.scaleY.setFloat(state,baseline.scaleY*card.scale);
             float nativeAlpha=((Number)access.alphaGet.invoke(state)).floatValue();
             if(card.alpha>0&&nativeAlpha>0)visibleProjected++;
@@ -230,7 +235,7 @@ final class NotificationCascadeHook {
             if(card.alpha==0)access.hidden.setBoolean(state,true);
             access.clipBottom.setInt(state,0);
             row.setPivotX(row.getWidth()/2f);row.setPivotY(0);
-            baseline.blur(row,card.blur);
+            baseline.blur(row,card.blur,topBlur?topEdge:0,topBlur?28*frame.density:0);
             recordGeometry(frame,row,state,i,nativeY);
         }
         for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==frame.host&&!retained.contains(row))release(row);
@@ -300,7 +305,7 @@ final class NotificationCascadeHook {
                 stage+";surface="+(frame.keyguard?"lock":"shade")+";rows="+rows+";visible_projected="+applied+";passes="+evidence.passes
                 +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll
                 +";native_range="+original+";effective_range="+Math.max(original,surface.required)+";start="+frame.start+";end="+frame.end
-                +";lock_space="+frame.space+";privacy=native;observed_at="+now);
+                +";lock_space="+frame.space+";header="+frame.header+";header_blurred_rows="+frame.headerRows+";privacy=native;observed_at="+now);
         // Closing the shade must not erase the last usable expanded layout.
         // The timestamp/surface keep this explicitly historical after dismissal.
         if(frame.enabled&&rows>0&&frame.rowGeometry.length()>0&&!stage.startsWith("unavailable"))
@@ -309,12 +314,25 @@ final class NotificationCascadeHook {
                     +";rows="+rows+";scroll="+scroll+";start="+frame.start+";end="+frame.end+frame.rowGeometry);
     }
     private static final class Owned {
-        final float scaleX,scaleY,pivotX,pivotY;float radius;
+        final float scaleX,scaleY,pivotX,pivotY;float radius,edge,band;NotificationTopBlur topBlur;
+        boolean shaderUnavailable;
         Owned(View row,float x,float y){scaleX=x;scaleY=y;pivotX=row.getPivotX();pivotY=row.getPivotY();}
         void blur(View row,float requested){
+            blur(row,requested,0,0);
+        }
+        void blur(View row,float requested,float top,float width){
             float next=row.isHardwareAccelerated()?Math.round(requested*2)/2f:0;
-            if(radius==next)return;radius=next;
-            row.setRenderEffect(next>0?RenderEffect.createBlurEffect(next,next,Shader.TileMode.CLAMP):null);
+            float nextBand=row.isHardwareAccelerated()&&android.os.Build.VERSION.SDK_INT>=33&&!shaderUnavailable?width:0;
+            float nextEdge=Math.round(top*2)/2f;
+            if(radius==next&&band==nextBand&&(nextBand==0||edge==nextEdge))return;
+            radius=next;band=nextBand;edge=nextEdge;
+            RenderEffect effect=next>0?RenderEffect.createBlurEffect(next,next,Shader.TileMode.CLAMP):null;
+            if(band>0)try{
+                if(topBlur==null)topBlur=new NotificationTopBlur();
+                RenderEffect header=topBlur.effect(edge,band);
+                effect=effect==null?header:RenderEffect.createChainEffect(header,effect);
+            }catch(RuntimeException unsupported){shaderUnavailable=true;band=0;FeatureSettings.diagnostic(row.getContext(),"ls_augment_notification_top_blur_runtime","shader_unavailable:"+unsupported.getClass().getSimpleName());}
+            row.setRenderEffect(effect);
         }
     }
     private static final class Access {
