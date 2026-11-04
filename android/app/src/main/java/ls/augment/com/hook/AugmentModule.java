@@ -439,7 +439,6 @@ public final class AugmentModule extends RootEarlyModule {
         }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
-            AtomicWorkbenchQuickstepHook.install(this, param.getClassLoader());
             LauncherResetHook.install(this);
             LauncherGridHook.install(this, param.getClassLoader());
             LauncherCustomizationHook.install(this, param.getClassLoader());
@@ -533,7 +532,8 @@ public final class AugmentModule extends RootEarlyModule {
         // One optional adapter must never prevent the other SystemUI features loading.
         installSystemUiStage("power", () -> PowerMenuModesHook.install(this, classLoader));
         installSystemUiStage("core", () -> SystemUiHook.install(this, classLoader));
-        installSystemUiStage("workbench_decor_transparency", () -> AtomicWorkbenchDecorTransparency.install(this, classLoader));
+        if (SYSTEMUI_PACKAGE.equals(processName)) installSystemUiStage("redmagic_step",
+                () -> ls.augment.com.step.StepRuntime.install(this, classLoader, false));
         installSystemUiStage("liftarc", () -> LiftArcHooks.install(this, classLoader));
         installSystemUiStage("tile_icon", () -> OwnTileIconHook.install(this, classLoader));
         installSystemUiStage("fan_tile", () -> FanTileHook.install(this, classLoader));
@@ -670,14 +670,7 @@ public final class AugmentModule extends RootEarlyModule {
             SystemRulesHook.install(this, classLoader);
             BatteryRefreshRateHook.install(this, classLoader);
             CompetitiveKeyHook.install(this, classLoader);
-            AtomicWorkbenchImeHook.install(this, classLoader);
-            AtomicWorkbenchFocusWindowHook.install(this, classLoader);
-            AtomicWorkbenchEditorEvidenceHook.install(this, classLoader);
-            AtomicWorkbenchGestureHook.install(this, classLoader);
-            AtomicWorkbenchTaskOperationHook.install(this, classLoader);
-            AtomicWorkbenchExtractionEvidenceHook.install(this, classLoader);
-            AtomicWorkbenchNotificationEvidenceHook.install(this, classLoader);
-            AtomicWorkbenchMediaSessionEvidenceHook.install(this, classLoader);
+            ls.augment.com.step.StepRuntime.install(this, classLoader, true);
             updateSystemServerLifecycle(source, true, "");
         } catch (Throwable error) {
             String detail = error.getClass().getSimpleName() + ":" + safeMessage(error);
@@ -697,10 +690,21 @@ public final class AugmentModule extends RootEarlyModule {
         publishSystemServerLifecycle();
     }
 
+    public boolean stepEnabled(Context context) {
+        return FeatureSettings.enabled(context, ls.augment.com.AtomicWorkbenchConfig.ENABLED);
+    }
+
+    public void observeStep(Context context, Runnable changed) {
+        FeatureSettings.addSnapshotListener(context, changed);
+    }
+
+    public void loadStepInputLibrary() {
+        TgkRapidFireNative.loadModuleLibrary(getModuleApplicationInfo());
+    }
+
     private boolean systemServerHooksReady() {
         return freeformHooksInstalled && tgkRapidFireSystemHooksInstalled
-                && signatureMismatchInstallHooksInstalled && AtomicWorkbenchImeHook.isInstalled()
-                && AtomicWorkbenchFocusWindowHook.isInstalled();
+                && signatureMismatchInstallHooksInstalled && ls.augment.com.step.StepRuntime.isInstalled();
     }
 
     /** Publish a bounded boot witness; diagnostics never enable a feature. */

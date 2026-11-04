@@ -19,8 +19,8 @@ public final class NativeIslandSceneOptions {
     }
     public static List<EnhancementOption> options() {
         List<EnhancementOption> options = new ArrayList<>();
-        options.add(EnhancementOption.toggle(ENABLED, "systemui", "星云岛场景支持",
-                "开启星云岛后，可展开选择需要支持的场景。关闭本项恢复原厂场景选择；各场景仍须具备原厂接口，未知结构保持原生行为。"));
+        options.add(EnhancementOption.toggle(ENABLED, "systemui", "场景补全",
+                "开启灵动岛后，可展开选择需要支持的场景。关闭本项恢复原厂场景选择；各场景仍须具备原厂接口，未知结构保持原生行为。"));
         for (int i = 0; i < IDS.length; i++) options.add(EnhancementOption.toggle(key(IDS[i]), "systemui", LABELS[i],
                 "transfer".equals(IDS[i])
                         ? "系统互传发送或接收文件时显示真实进度。轻点展开，点进度控件取消本次传输。需启用系统互传作用域并通过原厂能力检测。"
@@ -41,14 +41,14 @@ public final class NativeIslandSceneOptions {
                         : "cycling".equals(IDS[i])
                         ? "显示原厂建议识别的骑行时长、还车中和骑行结束状态。轻点展开；正文或图标打开来源骑行应用，“还车”由原厂一步助手操作该平台，结果以实际车辆和平台状态为准。需启用原厂建议服务、共享单车提醒及其作用域，并等待原厂还车能力就绪；开启本项不会自行识别骑行或启动还车。"
                         : ("ai_writing".equals(IDS[i]) || "taxi".equals(IDS[i]) || "takeout".equals(IDS[i]) || "train_12306".equals(IDS[i]) || "train_travel".equals(IDS[i]))
-                        ? "控制魔力岛中对应原厂服务的实时卡片，保留原厂操作。需启用来源服务；开启后随新的业务状态更新显示，不会自行生成订单或行程。旧版缺少相应接口时不可用。"
-                        : "允许此场景在星云岛显示。开启后随下一次场景状态更新生效；缺少原厂能力时保留原生行为并记录原因。"));
+                        ? "控制灵动岛中对应原厂服务的实时卡片，保留原厂操作。需启用来源服务；开启后随新的业务状态更新显示，不会自行生成订单或行程。旧版缺少相应接口时不可用。"
+                        : "允许此场景在灵动岛显示。开启后随下一次场景状态更新生效；缺少原厂能力时保留原生行为并记录原因。"));
         return options;
     }
     public static NativeFeatureGroups.Feature feature() {
         NativeFeatureGroups.Feature[] children = new NativeFeatureGroups.Feature[IDS.length];
         for (int i = 0; i < IDS.length; i++) children[i] = new NativeFeatureGroups.Feature(key(IDS[i]), LABELS[i], key(IDS[i]), new String[0], "boolean", "0", new NativeFeatureGroups.Feature[0]);
-        return new NativeFeatureGroups.Feature(ENABLED, "星云岛场景支持", ENABLED, new String[0], "boolean", "0", children);
+        return new NativeFeatureGroups.Feature(ENABLED, "场景补全", ENABLED, new String[0], "boolean", "0", children);
     }
     private NativeIslandSceneOptions() { }
 }

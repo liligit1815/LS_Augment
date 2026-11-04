@@ -84,7 +84,7 @@ final class ModuleNavigation {
         }
         switch (route) {
             case "atomic_workbench":destination=AtomicWorkbenchSettingsActivity.class;break;
-            case "atomic_workbench_apps":case "atomic_workbench_app_sort":destination=AtomicWorkbenchAppsActivity.class;break;
+            case "atomic_workbench_apps":case "atomic_workbench_app_sort":destination=ls.augment.com.step.QuickPinsActivity.class;break;
             case "competitive_key":destination=CompetitiveKeySettingsActivity.class;break;
             case "home":case "settings":case "about":
                 owner.startActivity(new Intent(owner,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("tab",route));return;

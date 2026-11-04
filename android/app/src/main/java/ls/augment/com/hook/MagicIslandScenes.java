@@ -80,9 +80,10 @@ final class MagicIslandScenes {
         cards=typed(host.getClass(),"mAppIslandList",Map.class);
     }
     void start(){active=this;FeatureSettings.addSnapshotListener(context,changed);refresh();}
-    private boolean selected(){return !closed&&FeatureSettings.enabled(context,ConfigSchema.NATIVE_ISLAND_SELECTED)
-            &&!FeatureSettings.enabled(context,SystemUiOptions.ISLAND)&&NativeIslandMode.enabled(context,NativeIslandMode.MODERN);}
+    private boolean selected(){return !closed&&FeatureSettings.enabled(context,SystemUiOptions.ISLAND);}
     private boolean denied(String key){String scene=MagicIslandPolicy.scene(key);
+        if(selected()&&("media".equals(scene)||"charging".equals(scene))
+                &&!FeatureSettings.enabled(context,SystemUiOptions.PREFIX+"island_"+("media".equals(scene)?"music":"charging")))return true;
         return selected()&&scene!=null&&FeatureSettings.enabled(context,NativeIslandSceneOptions.ENABLED)
                 &&!FeatureSettings.enabled(context,NativeIslandSceneOptions.key(scene));}
     void refresh(){

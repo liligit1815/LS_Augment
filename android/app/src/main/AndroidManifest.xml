@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Required by hide management, DoubleApp expansion and shoulder app discovery. -->
+    <permission android:name="ls.augment.com.STEP_CONTROL" android:protectionLevel="signature" />
+    <uses-permission android:name="ls.augment.com.STEP_CONTROL" />
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -46,6 +48,8 @@
         <activity android:name=".ContributorsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".SupportActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ModuleLicensesActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".StepBarcodeActivity" android:permission="android.permission.STATUS_BAR_SERVICE"
+            android:taskAffinity="ls.augment.com.step.scan" android:excludeFromRecents="true" android:exported="true" />
 
         <activity android:name=".HideMenuActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".ExtraDimSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
@@ -54,17 +58,14 @@
         <activity android:name=".EnhancementSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".CompetitiveKeySettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".AtomicWorkbenchSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
-        <activity android:name=".AtomicWorkbenchAppsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
-        <activity android:name=".AtomicWorkbenchExtractionActivity" android:exported="false"
-            android:excludeFromRecents="true" android:taskAffinity=""
-            android:theme="@style/Theme.LSAugment.Floating" />
-        <!-- Portrait is part of the workbench input/display coordinate contract.
-             Runtime size/rotation checks still reject unsupported host geometry. -->
-        <activity android:name=".AtomicWorkbenchActivity" android:theme="@style/Theme.LSAugment.Settings"
-            tools:ignore="LockedOrientationActivity,DiscouragedApi"
-            android:screenOrientation="portrait" android:launchMode="singleTask"
-            android:taskAffinity="ls.augment.com.atomic_workbench" android:autoRemoveFromRecents="true"
-            android:resizeableActivity="true" android:exported="false" />
+        <activity android:name=".step.QuickPinsActivity" android:exported="false"
+            android:excludeFromRecents="true" android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity android:name=".step.LocalLyricsActivity" android:exported="true"
+            android:permission="android.permission.STATUS_BAR_SERVICE" android:excludeFromRecents="true"
+            android:taskAffinity="ls.augment.com.step.lyrics" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <provider android:name=".step.WorkspacePrefsProvider" android:authorities="ls.augment.com.step.preferences"
+            android:exported="true" android:permission="android.permission.STATUS_BAR_SERVICE" />
         <activity android:name=".LauncherCompatibilityActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity
             android:name=".SettingsActivity"
@@ -142,17 +143,6 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-        </service>
-
-        <service android:name=".AtomicWorkbenchPasteService"
-            android:exported="true"
-            android:label="@string/atomic_workbench_paste_service"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data android:name="android.accessibilityservice"
-                android:resource="@xml/atomic_workbench_accessibility" />
         </service>
 
         <receiver

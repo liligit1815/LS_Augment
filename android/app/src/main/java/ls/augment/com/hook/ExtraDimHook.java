@@ -22,8 +22,6 @@ final class ExtraDimHook {
             Class<?> base=Class.forName("com.android.server.SystemService",false,loader);
             Class<?> manager=Class.forName("com.android.server.display.color.DisplayTransformManager",false,loader);
             Method apply=service.getDeclaredMethod("applyTint",tint,boolean.class);
-            Method activated=tint.getDeclaredMethod("setActivated",Boolean.class);
-            Method matrix=reduction.getDeclaredMethod("setMatrix",int.class);
             Method available=reduction.getDeclaredMethod("isAvailable",Context.class);
             Method state=tint.getDeclaredMethod("isActivated");
             Method strength=reduction.getDeclaredMethod("getStrength");
@@ -38,7 +36,7 @@ final class ExtraDimHook {
             Field user=service.getDeclaredField("mCurrentUser");
             Field nativeHandler=service.getDeclaredField("mHandler");
             Field controller=service.getDeclaredField("mReduceBrightColorsTintController");
-            for(Method method:new Method[]{apply,activated,matrix,available,state,strength,expected,level,actual,local,dump,nativeActivation,nativeStrength})method.setAccessible(true);
+            for(Method method:new Method[]{apply,available,state,strength,expected,level,actual,local,dump,nativeActivation,nativeStrength})method.setAccessible(true);
             user.setAccessible(true);controller.setAccessible(true);nativeHandler.setAccessible(true);
             module.registerFeatureHook(module.prepareFeatureHook(apply,"extra_dim.transform",false).intercept(chain -> {
                 Object target=chain.getArg(0);
@@ -47,9 +45,12 @@ final class ExtraDimHook {
                     Context ctx=(Context)context.invoke(instance);
                     ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
                     if(request.owned && Boolean.TRUE.equals(available.invoke(target,ctx))) {
-                        int nativeAmount=nativeStrength(ctx,request.strength);
-                        matrix.invoke(target,nativeAmount);activated.invoke(target,Boolean.valueOf(request.active));
-                        FeatureSettings.diagnostic(ctx,"ls_augment_extra_dim_runtime","user="+current+";owned=1;requested="+(request.active?1:0)+";strength="+request.strength+";nativeStrength="+nativeAmount+";model="+Build.MODEL);
+                        // applyTint can follow a newer native Settings callback while
+                        // our asynchronous ownership snapshot still contains the old
+                        // request. Never overwrite the live controller here: doing so
+                        // bypasses the listener that rebuilds automatic-brightness curves.
+                        int nativeAmount=(Integer)strength.invoke(target);
+                        FeatureSettings.diagnostic(ctx,"ls_augment_extra_dim_runtime","user="+current+";owned=1;requested="+(request.active?1:0)+";strength="+request.strength+";nativeStrength="+nativeAmount+";active="+(Boolean.TRUE.equals(state.invoke(target))?1:0)+";sync=native_callbacks;model="+Build.MODEL);
                     }
                 }catch(ReflectiveOperationException | RuntimeException error){module.logFeatureError("EXTRA_DIM_STATE",error);}
                 return chain.proceed();
@@ -125,13 +126,12 @@ final class ExtraDimHook {
                 if (user.getInt(instance) != current || nativeHandler.get(instance) != handler) return;
                 Object target = controller.get(instance);
                 if (target == null) return;
-                if (!owned) {
-                    // Reset may restore Settings while an older cached request is still in
-                    // the controller. Reload only this native feature through its own
-                    // callbacks so ROM defaults/range mapping remain authoritative.
-                    nativeStrength.invoke(instance);
-                    nativeActivation.invoke(instance, false);
-                }
+                // Both acquisition/refresh and release use the same native path.
+                // These callbacks reread current-user Settings, use ROM calibration
+                // and notify the display power listener before applying the matrix.
+                // The boolean is the native user-initiated flag, NOT the desired state.
+                nativeStrength.invoke(instance);
+                nativeActivation.invoke(instance, false);
                 apply.invoke(instance, target, true);
             } catch (ReflectiveOperationException | RuntimeException error) { module.logFeatureError("EXTRA_DIM_REFRESH", error); }
         });

@@ -30,5 +30,13 @@
     "note": "Original upstream application launcher icon bytes; manifest references @mipmap/ic_launcher.",
     "bytes": 28268,
     "sha256": "7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6"
+  },
+  {
+    "project": "MiStep",
+    "file": "mistep.png",
+    "source": "https://github.com/JIUSIS/MiStep/blob/55172b5a0afc92320a2bed98114d388f8db62e95/module/src/main/res/mipmap-xhdpi/ic_launcher.png",
+    "note": "Original upstream application launcher icon bytes.",
+    "bytes": 21560,
+    "sha256": "3B949A7A6847ACCEFF819EDC0E34B635FBA858DB9FF1E52E4F41465B0464DFCF"
   }
 ]

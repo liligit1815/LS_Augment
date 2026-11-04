@@ -196,8 +196,7 @@ final class NativeIslandNfcTransferCards {
     }
     private boolean configured(Context context) throws IllegalAccessException {
         String excluded = Settings.System.getString(context.getContentResolver(), "dynamic_island_keys_close");
-        return !nativeSupport.getBoolean(null) && FeatureSettings.enabled(context, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                && !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
+        return !nativeSupport.getBoolean(null) && FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
                 && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
                 && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(SCENE))
                 && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1

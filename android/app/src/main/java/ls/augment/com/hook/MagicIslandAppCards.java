@@ -83,8 +83,7 @@ final class MagicIslandAppCards {
                 ||published.isEmpty()&&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(c));
     }
     private boolean selected(Context c){return modern(c)
-            &&NativeIslandMode.enabled(c,NativeIslandMode.MODERN)&&FeatureSettings.enabled(c,ConfigSchema.NATIVE_ISLAND_SELECTED)
-            &&!FeatureSettings.enabled(c,SystemUiOptions.ISLAND);}
+            &&NativeIslandMode.enabled(c,NativeIslandMode.MODERN)&&FeatureSettings.enabled(c, SystemUiOptions.ISLAND);}
     private void report(Object pusher,String state,AugmentModule module){
         try{Context c=context(pusher);if(c==null||!modern(c))return;
             long sourceVersion=c.getPackageManager().getPackageInfo(source,0).lastUpdateTime;

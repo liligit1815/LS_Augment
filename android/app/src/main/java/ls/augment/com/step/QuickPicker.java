@@ -1,0 +1,143 @@
+package ls.augment.com.step;
+
+import android.app.Dialog;
+import android.content.Context;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Bundle;
+import android.text.*;
+import android.view.*;
+import android.widget.*;
+import java.util.*;
+
+/** The standalone settings entry and the physical workspace open the same selection surface. */
+final class QuickPicker {
+    static final String TITLE="RedMagicDuoStepPicker";
+    interface Commit { boolean write(LinkedHashSet<String> keys); }
+    final Dialog dialog;
+    final Context ctx;
+    final LinkedHashSet<String> chosen;
+    final ArrayList<QuickCatalog.App> shown=new ArrayList<>(), all;
+    final TextView count;
+    final EditText search;
+    final ListView list;
+    final BaseAdapter adapter;
+
+    QuickPicker(Context base, boolean overlay, List<QuickCatalog.App> catalog, Collection<String> pins,
+                android.graphics.Bitmap wallpaper, Commit commit, Runnable closed) {
+        // TYPE_STATUS_BAR_SUB_PANEL is SystemUI's dialog layer. Ordinary application
+        // overlays sit beneath the native status bar drawn inside the scaled main pane.
+        final int panelType=2017;
+        if(overlay){
+            android.view.Display display=base.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
+            Context physical=base.createDisplayContext(display).createWindowContext(panelType,null);
+            ctx=new android.view.ContextThemeWrapper(physical,StepMaterial.dark(base)?
+                    android.R.style.Theme_Material_Dialog_NoActionBar:android.R.style.Theme_Material_Light_Dialog_NoActionBar);
+        }else ctx=base;
+        chosen=new LinkedHashSet<>(pins);all=new ArrayList<>(catalog);
+        java.text.Collator sorter=java.text.Collator.getInstance();
+        all.sort((a,b)->{int byName=sorter.compare(a.label,b.label);return byName==0?a.key.compareTo(b.key):byName;});
+        dialog=new Dialog(ctx,StepMaterial.dark(ctx)?android.R.style.Theme_Material_Dialog_NoActionBar:
+                android.R.style.Theme_Material_Light_Dialog_NoActionBar);
+        dialog.setCanceledOnTouchOutside(true); dialog.setOnDismissListener(d->closed.run());
+        FrameLayout card=new FrameLayout(ctx);card.setBackground(StepMaterial.glass(ctx,true,24));
+        card.setClipToOutline(true);
+        if(wallpaper!=null){ImageView wall=StepMaterial.wallView(ctx);wall.setImageBitmap(wallpaper);wall.setAlpha(.27f);card.addView(wall,-1,-1);}
+        LinearLayout body=new LinearLayout(ctx);body.setOrientation(1);int pad=dp(16);body.setPadding(pad,pad,pad,pad);
+        card.addView(body,-1,-1);
+        LinearLayout header=new LinearLayout(ctx);header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title=StepMaterial.label(ctx,"自定义快捷应用",20,true);title.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        header.addView(title,new LinearLayout.LayoutParams(0,-1,1));
+        TextView cross=StepMaterial.label(ctx,"×",23,false);cross.setContentDescription("关闭，不保存");cross.setOnClickListener(v->dialog.dismiss());
+        header.addView(cross,dp(44),-1);body.addView(header,-1,dp(44));
+        TextView desc=StepMaterial.label(ctx,"按选择顺序，固定在应用栏最前",13,false);desc.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        body.addView(desc,-1,dp(28));
+        search=new EditText(ctx); search.setSingleLine(); search.setTextSize(15); search.setTextColor(StepMaterial.ink(ctx));
+        search.setHint("搜索应用");search.setContentDescription("搜索快捷应用");search.setBackground(StepMaterial.glass(ctx,false,15));
+        search.setPadding(pad,0,pad,0); body.addView(search,-1,dp(44));
+        count=StepMaterial.label(ctx,"",13,true);count.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);body.addView(count,-1,dp(30));
+        list=new ListView(ctx);list.setDivider(null);body.addView(list,new LinearLayout.LayoutParams(-1,0,1));
+        adapter=new BaseAdapter() {
+            public int getCount(){return shown.size();} public Object getItem(int i){return shown.get(i);}
+            public long getItemId(int i){return i;}
+            public View getView(int i,View recycled,ViewGroup parent) {
+                QuickCatalog.App app=shown.get(i);
+                CheckedTextView row=(CheckedTextView) android.view.LayoutInflater.from(ctx).inflate(android.R.layout.simple_list_item_multiple_choice,parent,false);
+                row.setText(app.label);row.setTextSize(15);row.setTextColor(StepMaterial.ink(ctx));row.setChecked(chosen.contains(app.key));
+                int order=new ArrayList<>(chosen).indexOf(app.key)+1;
+                row.setCheckMarkDrawable(new OrderMark(order));
+                row.setContentDescription(app.label+(order>0?"，固定第"+order+"位":"，未固定"));
+                try {
+                    android.graphics.drawable.Drawable icon=app.info.getBadgedIcon(ctx.getResources().getDisplayMetrics().densityDpi);
+                    if(icon!=null){icon.setBounds(0,0,dp(27),dp(27));row.setCompoundDrawablePadding(dp(10));row.setCompoundDrawables(icon,null,null,null);}
+                } catch(RuntimeException ignored){}
+                row.setMinHeight(dp(46));return row;
+            }
+        };
+        list.setAdapter(adapter);
+        list.setOnItemClickListener((p,v,i,id)->{String key=shown.get(i).key;if(!chosen.remove(key))chosen.add(key);refresh();});
+        search.addTextChangedListener(new TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int a,int b,int c){} public void afterTextChanged(Editable s){}
+            public void onTextChanged(CharSequence s,int a,int b,int c){refresh();}
+        });
+        LinearLayout footer=new LinearLayout(ctx);body.addView(footer,-1,dp(44));
+        TextView cancel=StepMaterial.label(ctx,"取消",16,false);cancel.setOnClickListener(v->dialog.dismiss());
+        TextView done=StepMaterial.label(ctx,"完成",16,true);done.setTextColor(0xff286cd8);done.setOnClickListener(v->{
+            if(commit.write(new LinkedHashSet<>(chosen)))dialog.dismiss();
+            else Toast.makeText(ctx,"配置已变化或无法保存，请重开选择器",Toast.LENGTH_SHORT).show();
+        });
+        footer.addView(cancel,new LinearLayout.LayoutParams(0,-1,1));footer.addView(done,new LinearLayout.LayoutParams(0,-1,1));
+        body.setFocusableInTouchMode(true);body.requestFocus();dialog.setContentView(card);
+        Window w=dialog.getWindow();if(overlay)w.setType(panelType);
+        w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);lp.gravity=Gravity.CENTER;lp.dimAmount=.28f;w.setAttributes(lp);
+        w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        Rect screen=ctx.getSystemService(WindowManager.class).getCurrentWindowMetrics().getBounds();
+        int preferred=Math.min(dp(540),Math.round(screen.height()*.76f));
+        int width=Math.min(dp(430),Math.round(screen.width()*.90f));
+        w.setLayout(width,preferred);
+        // A floating window may stay the same size when the IME appears. Use the
+        // physical IME insets, keeping both action buttons above its upper edge.
+        w.getDecorView().setOnApplyWindowInsetsListener((v,insets)->{
+            int ime=insets.getInsets(WindowInsets.Type.ime()).bottom;
+            WindowInsets physical=ctx.getSystemService(WindowManager.class).getCurrentWindowMetrics().getWindowInsets();
+            int keyboard=Math.max(ime,physical.getInsets(WindowInsets.Type.ime()).bottom);
+            int available=screen.height()-keyboard-physical.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).top-dp(16);
+            int size=Math.min(preferred,Math.max(dp(170),available));
+            if(w.getAttributes().height!=size)w.setLayout(width,size);
+            return v.onApplyWindowInsets(insets);
+        });
+        refresh();
+    }
+    void refresh(){
+        String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);
+        shown.clear();for(QuickCatalog.App app:all)if(app.label.toLowerCase(Locale.ROOT).contains(query)||app.key.toLowerCase(Locale.ROOT).contains(query))shown.add(app);
+        count.setText("已选 "+chosen.size()+" 个");adapter.notifyDataSetChanged();
+    }
+    int dp(int n){return StepMaterial.dp(ctx,n);}
+    final class OrderMark extends android.graphics.drawable.Drawable{
+        final int order;final android.graphics.Paint paint=new android.graphics.Paint(1);
+        OrderMark(int value){order=value;}
+        @Override public int getIntrinsicWidth(){return dp(24);}
+        @Override public int getIntrinsicHeight(){return dp(24);}
+        @Override public void draw(android.graphics.Canvas canvas){
+            android.graphics.Rect rect=getBounds();float x=rect.exactCenterX(),y=rect.exactCenterY();
+            paint.setColor(order>0?0xff377ee1:0xff8795a0);paint.setStyle(order>0?android.graphics.Paint.Style.FILL:android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));canvas.drawCircle(x,y,dp(10),paint);
+            if(order>0){paint.setColor(-1);paint.setTextAlign(android.graphics.Paint.Align.CENTER);paint.setTextSize(dp(order>99?9:12));
+                canvas.drawText(String.valueOf(order),x,y-(paint.ascent()+paint.descent())/2,paint);}
+        }
+        @Override public void setAlpha(int alpha){paint.setAlpha(alpha);}
+        @Override public void setColorFilter(android.graphics.ColorFilter filter){paint.setColorFilter(filter);}
+        @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
+    }
+    void show(){
+        dialog.show();View content=dialog.getWindow().getDecorView().findViewById(android.R.id.content);
+        if(content!=null){content.setAlpha(0);content.setScaleX(.97f);content.setScaleY(.97f);
+            content.animate().alpha(1).scaleX(1).scaleY(1).setDuration(180).start();}
+    }
+    void close(){dialog.dismiss();}
+    Bundle draft(){Bundle b=new Bundle();b.putStringArrayList("draft",new ArrayList<>(chosen));b.putString("search",search.getText().toString());return b;}
+}

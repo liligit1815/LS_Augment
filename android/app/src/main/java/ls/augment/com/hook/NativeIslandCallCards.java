@@ -213,8 +213,7 @@ final class NativeIslandCallCards {
     private boolean enabled() throws IllegalAccessException {
         Context c = context;
         boolean allowed = c != null && resources && !hardware.getBoolean(null) && !transportFailed
-                && FeatureSettings.enabled(c, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                && !FeatureSettings.enabled(c, SystemUiOptions.ISLAND)
+                && FeatureSettings.enabled(c, SystemUiOptions.ISLAND)
                 && FeatureSettings.enabled(c, NativeIslandSceneOptions.ENABLED)
                 && FeatureSettings.enabled(c, NativeIslandSceneOptions.key("call"))
                 && Settings.System.getInt(c.getContentResolver(), "dynamic_island_switch_state", 0) == 1

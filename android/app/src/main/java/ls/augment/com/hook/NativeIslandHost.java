@@ -58,6 +58,7 @@ final class NativeIslandHost {
     private View root,container,current,music,notice,charge,chargingView,noticePanel,chargePanel;
     private View download,downloadPanel;
     private DuoDownloadPanel downloadContent;
+    private DuoCompactText downloadLabel;
     private boolean acquired,originalFeature,originalEnabled,flagsOverridden;
     private int width,height,offsetX,offsetY;
     private int nativeX,nativeY,nativeWidth,nativeHeight;
@@ -67,6 +68,7 @@ final class NativeIslandHost {
     private NativeIslandScenes nativeScenes;
     private NativeIslandFullscreen nativeFullscreen;
     private MagicIslandScenes magicScenes;
+    private DuoNotificationCards notificationCards;
     private DuoIslandCompatibility duoCompatibility;
     private DuoIslandLegacyCards legacyCards;
     private boolean nativeRequested;
@@ -136,6 +138,12 @@ final class NativeIslandHost {
         legacyCardHooksInstalled=legacyPanel>0&&legacyVisibility>0&&panelVisibility>0;
         count+=legacyPanel+legacyVisibility+panelVisibility;
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onPermanentIslandPanelCloseAnimationStart",0,(o,a,r)->{
+            View closingBar=DuoNotificationCards.closingStatusBar(o);
+            if(closingBar!=null){
+                NativeIslandHost owner=nativeOwner;
+                if(owner!=null&&owner.phone==closingBar)owner.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
+                invokeStatic(N+"DynamicIslandAnimation","startStatusBarAnimation",new Class<?>[]{View.class,boolean.class},closingBar,true);
+            }
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){
                 if(h.glassBackground==null)h.restoreBackgrounds();h.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
                 if(h.ownsSelected(o)&&NativeIslandPanelCompat.ordinary(o))
@@ -222,7 +230,7 @@ final class NativeIslandHost {
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onDynamicIslandSettingsChanged",1,null,(o,a,r)->{
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){h.originalEnabled=(Boolean)a[0];set(o,"mIsDynamicIslandEnable",true);}return PASS;
         });
-        return count+NativeIslandScenes.install(module,loader);
+        return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader);
     }
 
     private static void rotateOrdinary(Object owner,int rotation){
@@ -313,20 +321,26 @@ final class NativeIslandHost {
     private static void rememberBaseline(Object feature,boolean enabled){
         if(!baselineKnown){baselineKnown=true;baselineFeature=enabled;nativeFeature=feature;}
     }
-    /** Hand back the same OEM engine without Duo events, dimensions or click handlers. */
+    /** Own the native engine; the display backend is an implementation detail, never a product selection. */
     void selectNative(boolean selected){
+        boolean wasRequested=nativeRequested;
         nativeRequested=selected;
         if(!selected){
+            if(notificationCards!=null){notificationCards.close();notificationCards=null;}
+            if(wasRequested)FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"inactive");
+            if(wasRequested&&!FeatureSettings.enabled(context,SystemUiOptions.ISLAND))NativeIslandSettingsHook.synchronize(context,false);
             if(magicScenes!=null){magicScenes.close();magicScenes=null;}
             cancelNativeWait();
-            if(nativeFullscreen!=null){try{nativeFullscreen.restore();}catch(Exception e){report("native_fullscreen_exit_failed:"+cause(e));}nativeFullscreen=null;}
+            if(nativeFullscreen!=null){try{
+                if(!FeatureSettings.enabled(context,SystemUiOptions.ISLAND))nativeFullscreen.apply(false);else nativeFullscreen.restore();
+            }catch(Exception e){report("native_fullscreen_exit_failed:"+cause(e));}nativeFullscreen=null;}
             if(nativeOwner==this){
                 if(nativeScenes!=null){nativeScenes.close();nativeScenes=null;}
                 nativeSelected=false;
                 nativeOwner=null;
                 set(nativeFeature,"mEnabled",baselineFeature);
                 Object pm=field(field(nativeFeature,"mDynamicIslandManager"),"mPermanentIslandManager");
-                if(!baselineFeature&&pm!=null)try{call(pm,"onDynamicIslandSettingsChanged",false);}catch(Exception e){report("native_exit_failed:"+cause(e));}
+                if((!baselineFeature||!FeatureSettings.enabled(context,SystemUiOptions.ISLAND))&&pm!=null)try{call(pm,"onDynamicIslandSettingsChanged",false);}catch(Exception e){report("native_exit_failed:"+cause(e));}
             }
             return;
         }
@@ -358,9 +372,9 @@ final class NativeIslandHost {
             if(!set(f,"mEnabled",true)||!Boolean.TRUE.equals(call(f,"enabled")))
                 throw new IllegalStateException("native_feature_enable_not_applied");
             nativeSelected=true;nativeOwner=this;
-            boolean on=android.provider.Settings.System.getInt(context.getContentResolver(),fullscreen?"dynamic_island_function_switch":"dynamic_island_switch_state",0)==1;
-            if(nativeFullscreen!=null)nativeFullscreen.apply(android.provider.Settings.System.getInt(
-                    context.getContentResolver(),"dynamic_island_function_switch",0)==1);
+            boolean on=true;
+            NativeIslandSettingsHook.synchronize(context,true);
+            if(nativeFullscreen!=null)nativeFullscreen.apply(true);
             call(pm,"onDynamicIslandSettingsChanged",on);
             android.app.KeyguardManager guard=context.getSystemService(android.app.KeyguardManager.class);
             call(pm,"onKeyguardStateChanged",guard==null||guard.isKeyguardLocked());
@@ -373,9 +387,14 @@ final class NativeIslandHost {
                 try{magicScenes=new MagicIslandScenes(context,pm);magicScenes.start();}
                 catch(Exception unavailable){FeatureSettings.diagnostic(context,ls.augment.com.MagicIslandPolicy.CAPABILITY,"unavailable:"+unavailable.getMessage());}
             }
-            report("native_selected;enabled="+on+";feature="+call(f,"enabled")+";windowAttached=true;duo=false;fullscreen="+fullscreen
+            if(notificationCards==null)try{
+                notificationCards=new DuoNotificationCards((Context)field(m,"mContext"),loader,pm,fullscreen,click,phone);
+                FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"ready:"+ls.augment.com.BuildConfig.VERSION_CODE);
+            }catch(Exception missing){FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"unavailable:"+cause(missing));}
+            report("duo_owner;enabled="+on+";feature="+call(f,"enabled")+";windowAttached=true;duo=true;fullscreen="+fullscreen
                     +";scene_extensions="+(fullscreen?(magicScenes!=null?"fullscreen_native_scenes":"fullscreen_native_only"):"capability_checked"));
         }catch(Exception failure){
+            if(notificationCards!=null){notificationCards.close();notificationCards=null;}
             cancelNativeWait();
             if(magicScenes!=null){magicScenes.close();magicScenes=null;}
             if(nativeScenes!=null){nativeScenes.close();nativeScenes=null;}
@@ -387,6 +406,7 @@ final class NativeIslandHost {
                 if(!baselineFeature&&pm!=null)try{call(pm,"onDynamicIslandSettingsChanged",false);}catch(Exception ignored){}
             }
             report("native_selection_unavailable:"+cause(failure));
+            FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"unavailable:"+cause(failure));
         }
     }
     private void awaitNativeWindow(View view){
@@ -410,6 +430,7 @@ final class NativeIslandHost {
     void close(){selectNative(false);release();}
 
     void nativeForegroundChanged(){if(nativeScenes!=null)nativeScenes.foregroundChanged();}
+    boolean managesNativeScenes(){return nativeSelected&&nativeOwner==this;}
 
     // Measure the host's actual system inset resource; the existing missing-ID fallback is required across OEM layouts.
     // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
@@ -451,6 +472,7 @@ final class NativeIslandHost {
         return legacyCards!=null&&legacyCards.owns(owner)?legacyCards.member(owner,name):field(owner,name);
     }
     boolean show(int kind,String title,String subtitle,String compact,Drawable icon,boolean playing,int battery,MediaController controller){
+        if(managesNativeScenes())return notificationCards!=null&&notificationCards.show(title,subtitle,compact,icon);
         if(!acquire())return false;
         try{
             geometry();View next;
@@ -508,15 +530,19 @@ final class NativeIslandHost {
     }
     boolean showDownload(ls.augment.com.IslandDownloadPolicy.Entry<android.service.notification.StatusBarNotification> entry,
             Drawable icon,String app,java.util.function.BiConsumer<ls.augment.com.IslandDownloadPolicy.Entry<android.service.notification.StatusBarNotification>,android.app.PendingIntent> action){
+        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showDownload(entry,icon,app,action);
         if(entry==null||!acquire())return false;
         try{
             geometry();
             if(download==null){
                 View compact=appIsland(),panel=appPanel();DuoDownloadPanel content=new DuoDownloadPanel(panel);
+                Object label=sceneField(compact,"mDisplayText");
+                downloadLabel=label instanceof TextView?new DuoCompactText((TextView)label):null;
                 setAppPanel(compact,panel);download=compact;downloadPanel=panel;downloadContent=content;
             }
             String compact=entry.indeterminate?"下载中":entry.percent+"%";
-            if(duoCompatibility.legacyCards)text(download,"mDisplayText",compact);else call(download,"setDisplayText",compact);
+            if(downloadLabel!=null)downloadLabel.bind(DuoCompactText.fileName(entry.source.getNotification()),compact);
+            else if(duoCompatibility.legacyCards)text(download,"mDisplayText",compact);else call(download,"setDisplayText",compact);
             image(download,"mDisplayIcon",icon);downloadContent.bind(entry,icon,app,action);
             set(download,"mKeyguardIsland",false);set(download,"mIslandWidth",width);
             download.setContentDescription(app+"，下载"+compact+"。轻点打开，长按展开");
@@ -525,6 +551,11 @@ final class NativeIslandHost {
             else if(download.getParent()==null&&!MAIN.hasCallbacks(publish))MAIN.post(publish);
             applyAppearance();return true;
         }catch(Exception unavailable){hide();report("download_unavailable:"+cause(unavailable));return false;}
+    }
+    boolean showNotice(android.service.notification.StatusBarNotification source,String title,String subtitle,String app,Drawable icon,
+            java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action){
+        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action);
+        return show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),icon,false,0,null);
     }
     private void panel(View view,String title,String subtitle,Drawable icon)throws Exception{
         text(view,"mDisplayText",title);text(view,"mDisplaySecondText",subtitle);image(view,"mDisplayIcon",icon);
@@ -626,9 +657,17 @@ final class NativeIslandHost {
         }
     }
     private void resize(View view,int w,int h){ViewGroup.LayoutParams p=view.getLayoutParams();if(p!=null&&(p.width!=w||p.height!=h)){p.width=w;p.height=h;view.setLayoutParams(p);}}
-    boolean visible(){return acquired&&current!=null&&root!=null&&root.isShown()&&(expanded()||current.isShown());}
-    boolean expanded(){return ownsSelected(permanent)&&Boolean.TRUE.equals(field(permanent,"mDynamicPanelShowing"));}
-    boolean ownsStatusBarFade(){return acquired&&(expanded()||android.os.SystemClock.uptimeMillis()<statusBarFadeUntil);}
+    boolean visible(){return notificationCards!=null?notificationCards.visible():acquired&&current!=null&&root!=null&&root.isShown()&&(expanded()||current.isShown());}
+    boolean readyForFirstExpansion(){
+        if(notificationCards!=null)return notificationCards.readyForFirstExpansion();
+        return visible()&&ownsSelected(permanent)&&!Boolean.TRUE.equals(field(permanent,"mAnimProcessing"))
+                &&!Boolean.TRUE.equals(field(permanent,"mPriorityProcessing"));
+    }
+    boolean expanded(){return notificationCards!=null?notificationCards.expanded():ownsSelected(permanent)&&Boolean.TRUE.equals(field(permanent,"mDynamicPanelShowing"));}
+    boolean ownsStatusBarFade(){
+        if(notificationCards==null&&!acquired)return false;
+        return expanded()||android.os.SystemClock.uptimeMillis()<statusBarFadeUntil;
+    }
     private void publishCurrent(){
         if(!acquired||current==null||active!=this)return;
         try{call(permanent,"addPermanentIslandInner",current);MAIN.post(this::applyAppearance);}
@@ -637,6 +676,7 @@ final class NativeIslandHost {
     private boolean ownsSelected(Object owner){if(owner!=permanent||current==null)return false;try{return call(permanent,"getPermanentIsland")==current;}catch(Exception e){return false;}}
     private boolean ownsView(Object view){return view!=null&&(view==music||view==notice||view==charge||view==download);}
     void expand(){
+        if(notificationCards!=null){notificationCards.expand();return;}
         if(!visible()||!NativeIslandPanelCompat.canExpand(permanent,this::reportPanel))return;
         if(NativeIslandPanelCompat.ordinary(permanent)&&(!panelCloseAdapterInstalled||!panelTransitionsInstalled)){
             reportPanel("panel_capability_missing:close_hooks");return;
@@ -648,10 +688,12 @@ final class NativeIslandHost {
         call(permanent,"showPermanentPanelIsland");MAIN.postDelayed(observe,500);
     }catch(Exception e){report("expand_failed:"+cause(e));}}
     void dismiss(){
+        if(notificationCards!=null){notificationCards.dismiss();return;}
         if(!acquired||current==null||!expanded())return;
         try{call(field(permanent,"mDynamicAnimation"),"startPermanentPanelCloseAnimation",current,false,false);}catch(Exception e){report("collapse_failed:"+cause(e));}
     }
     void hide(){
+        if(notificationCards!=null){notificationCards.hide();return;}
         MAIN.removeCallbacks(publish);dismiss();
         // end() dispatches the owned close callback while the manager, panel and getter hooks are still alive.
         // Removing the scene or releasing the host before that callback leaves a dangling native transition.

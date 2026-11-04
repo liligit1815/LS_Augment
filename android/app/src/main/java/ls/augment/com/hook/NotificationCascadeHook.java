@@ -132,7 +132,7 @@ final class NotificationCascadeHook {
         catch(ReflectiveOperationException failure){return false;}
     }
     private static final class Surface {
-        Frame frame;int required,touchDepth;boolean gesture,parentHeld;final Evidence[] evidence={new Evidence(),new Evidence()};
+        Frame frame;NotificationTopBlur headerBlur;int required,touchDepth;boolean gesture,parentHeld;final Evidence[] evidence={new Evidence(),new Evidence()};
     }
     private void endGesture(ViewGroup host,Surface surface){
         surface.gesture=false;
@@ -141,12 +141,24 @@ final class NotificationCascadeHook {
     private Surface surface(ViewGroup host){
         Surface present=surfaces.get(host);if(present!=null)return present;
         Surface created=new Surface();surfaces.put(host,created);
+        created.headerBlur=new NotificationTopBlur(host,new NotificationTopBlur.Source(){
+            public boolean active(){Frame frame=created.frame;return live(frame)&&!frame.keyguard
+                    &&FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true)
+                    &&accessScroll(host)>0;}
+            public boolean eligible(View row)throws ReflectiveOperationException{
+                Object state=access.state.invoke(row);
+                return NotificationCascadeHook.this.eligible(row)&&!access.hidden.getBoolean(state)&&!access.gone.getBoolean(state);
+            }
+            public int clip(View row)throws ReflectiveOperationException{return ((Number)access.getClipTop.invoke(row)).intValue();}
+            public void clip(View row,int value)throws ReflectiveOperationException{access.setClipTop.invoke(row,value);}
+        });
         host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
             public void onViewAttachedToWindow(View v){}
             public void onViewDetachedFromWindow(View v){clear(host);surfaces.remove(host);host.removeOnAttachStateChangeListener(this);}
         });
         return created;
     }
+    private int accessScroll(ViewGroup host){try{return access.scroll.getInt(host);}catch(IllegalAccessException unavailable){return 0;}}
     private static final class Evidence {long passes,appliedPasses,lastAppliedAt,lastReportAt;String lastStage="";}
     private boolean eligible(View row)throws ReflectiveOperationException{
         if(!access.row.isInstance(row)||row.getVisibility()==View.GONE)return false;
@@ -155,7 +167,7 @@ final class NotificationCascadeHook {
     }
     private final class Frame {
         final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space,header;
-        final Object algorithm,ambient;final String reason;int spacePasses,headerRows;
+        final Object algorithm,ambient;final String reason;int spacePasses;
         final StringBuilder rowGeometry=new StringBuilder();
         final boolean gradient;
         Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
@@ -219,13 +231,10 @@ final class NotificationCascadeHook {
                 int original=access.clipTop.getInt(state);
                 if(clip>original){topClips.put(row,new TopClip(original,clip));access.clipTop.setInt(state,clip);}
             }
-            float topEdge=frame.header-nativeY;
-            boolean topBlur=frame.gradient&&scroll>0&&topEdge+28*frame.density>0&&topEdge<height;
-            if(nativeY<=frame.start&&!topBlur){recordGeometry(frame,row,state,i,nativeY);continue;}
+            if(nativeY<=frame.start){recordGeometry(frame,row,state,i,nativeY);continue;}
             Owned baseline=owned.get(row);
             if(baseline==null){baseline=new Owned(row,access.scaleX.getFloat(state),access.scaleY.getFloat(state));owned.put(row,baseline);}
             retained.add(row);
-            if(nativeY<=frame.start){baseline.blur(row,0,topEdge,28*frame.density);if(baseline.band>0)frame.headerRows++;recordGeometry(frame,row,state,i,nativeY);continue;}
             stacked++;
             access.y.setFloat(state,card.y);access.scaleX.setFloat(state,baseline.scaleX*card.scale);access.scaleY.setFloat(state,baseline.scaleY*card.scale);
             float nativeAlpha=((Number)access.alphaGet.invoke(state)).floatValue();
@@ -235,10 +244,11 @@ final class NotificationCascadeHook {
             if(card.alpha==0)access.hidden.setBoolean(state,true);
             access.clipBottom.setInt(state,0);
             row.setPivotX(row.getWidth()/2f);row.setPivotY(0);
-            baseline.blur(row,card.blur,topBlur?topEdge:0,topBlur?28*frame.density:0);
+            baseline.blur(row,card.blur);
             recordGeometry(frame,row,state,i,nativeY);
         }
         for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==frame.host&&!retained.contains(row))release(row);
+        surface.headerBlur.update(rows);
         if(prior!=surface.required){access.scrollability.invoke(frame.host);if(prior>surface.required)access.clampScroll.invoke(frame.host);}
         String stage=rows.isEmpty()?"no_visible_rows":visibleProjected>0?"applied":"layout_only";
         report(frame,stage+";stacked="+stacked+";excluded_native="+excluded+";space_passes="+frame.spacePasses,rows.size(),visibleProjected,scroll);
@@ -259,7 +269,7 @@ final class NotificationCascadeHook {
             try{restoreTopClip(row,access.state.invoke(row),true);}
             catch(ReflectiveOperationException error){FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_cascade_clip_restore","unavailable;error="+error.getClass().getSimpleName());}
         }
-        Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;endGesture(host,surface);
+        Surface surface=surfaces.get(host);if(surface!=null){boolean changed=surface.required!=0;surface.required=0;surface.frame=null;surface.headerBlur.clear();endGesture(host,surface);
             if(changed)try{access.scrollability.invoke(host);access.clampScroll.invoke(host);}catch(ReflectiveOperationException ignored){}}}
     private void release(View row){Owned baseline=owned.remove(row);if(baseline==null)return;baseline.blur(row,0);
         // A detached row can be recycled before another native reset pass.
@@ -305,7 +315,7 @@ final class NotificationCascadeHook {
                 stage+";surface="+(frame.keyguard?"lock":"shade")+";rows="+rows+";visible_projected="+applied+";passes="+evidence.passes
                 +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll
                 +";native_range="+original+";effective_range="+Math.max(original,surface.required)+";start="+frame.start+";end="+frame.end
-                +";lock_space="+frame.space+";header="+frame.header+";header_blurred_rows="+frame.headerRows+";privacy=native;observed_at="+now);
+                +";lock_space="+frame.space+";stack_header="+frame.header+";clock_backdrop="+surface.headerBlur.evidence()+";privacy=native;observed_at="+now);
         // Closing the shade must not erase the last usable expanded layout.
         // The timestamp/surface keep this explicitly historical after dismissal.
         if(frame.enabled&&rows>0&&frame.rowGeometry.length()>0&&!stage.startsWith("unavailable"))
@@ -314,24 +324,13 @@ final class NotificationCascadeHook {
                     +";rows="+rows+";scroll="+scroll+";start="+frame.start+";end="+frame.end+frame.rowGeometry);
     }
     private static final class Owned {
-        final float scaleX,scaleY,pivotX,pivotY;float radius,edge,band;NotificationTopBlur topBlur;
-        boolean shaderUnavailable;
+        final float scaleX,scaleY,pivotX,pivotY;float radius;
         Owned(View row,float x,float y){scaleX=x;scaleY=y;pivotX=row.getPivotX();pivotY=row.getPivotY();}
         void blur(View row,float requested){
-            blur(row,requested,0,0);
-        }
-        void blur(View row,float requested,float top,float width){
             float next=row.isHardwareAccelerated()?Math.round(requested*2)/2f:0;
-            float nextBand=row.isHardwareAccelerated()&&android.os.Build.VERSION.SDK_INT>=33&&!shaderUnavailable?width:0;
-            float nextEdge=Math.round(top*2)/2f;
-            if(radius==next&&band==nextBand&&(nextBand==0||edge==nextEdge))return;
-            radius=next;band=nextBand;edge=nextEdge;
+            if(radius==next)return;
+            radius=next;
             RenderEffect effect=next>0?RenderEffect.createBlurEffect(next,next,Shader.TileMode.CLAMP):null;
-            if(band>0)try{
-                if(topBlur==null)topBlur=new NotificationTopBlur();
-                RenderEffect header=topBlur.effect(edge,band);
-                effect=effect==null?header:RenderEffect.createChainEffect(header,effect);
-            }catch(RuntimeException unsupported){shaderUnavailable=true;band=0;FeatureSettings.diagnostic(row.getContext(),"ls_augment_notification_top_blur_runtime","shader_unavailable:"+unsupported.getClass().getSimpleName());}
             row.setRenderEffect(effect);
         }
     }

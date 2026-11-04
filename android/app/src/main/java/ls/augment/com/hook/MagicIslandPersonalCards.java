@@ -64,8 +64,7 @@ final class MagicIslandPersonalCards {
     }
     private boolean nativeMode(Context c){try{return c!=null&&Boolean.TRUE.equals(nativeSupport.invoke(null,c));}catch(Exception missing){return false;}}
     private boolean denied(Context c,String scene){
-        return nativeMode(c)&&FeatureSettings.enabled(c,ConfigSchema.NATIVE_ISLAND_SELECTED)
-                &&!FeatureSettings.enabled(c,SystemUiOptions.ISLAND)&&NativeIslandMode.enabled(c,NativeIslandMode.MODERN)
+        return nativeMode(c)&&FeatureSettings.enabled(c, SystemUiOptions.ISLAND)&&NativeIslandMode.enabled(c,NativeIslandMode.MODERN)
                 &&FeatureSettings.enabled(c,NativeIslandSceneOptions.ENABLED)&&!FeatureSettings.enabled(c,NativeIslandSceneOptions.key(scene));
     }
     private String scene(Object adapter){for(Map.Entry<Class<?>,String> entry:scenes.entrySet())if(entry.getKey().isInstance(adapter))return entry.getValue();return null;}

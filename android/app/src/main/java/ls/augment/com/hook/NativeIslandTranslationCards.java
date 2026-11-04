@@ -185,8 +185,7 @@ final class NativeIslandTranslationCards {
         }
         void schedule() { main.removeCallbacks(refresh); main.post(refresh); }
         boolean enabled(String scene) throws Exception {
-            return !nativeFull(owner) && FeatureSettings.enabled(context, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                    && !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
+            return !nativeFull(owner) && FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
                     && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
                     && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(scene))
                     && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1

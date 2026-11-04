@@ -132,7 +132,8 @@ public final class ContributorsActivity extends Activity {
                     || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
             if (!"https://github.com/ReChronoRain/HyperCeiler".equals(address)
                     && !"https://github.com/miyupyxh/LiftArc".equals(address)
-                    && !"https://github.com/LAOBILAXI233/onestep_on_hyper".equals(address)) return null;
+                    && !"https://github.com/LAOBILAXI233/onestep_on_hyper".equals(address)
+                    && !"https://github.com/JIUSIS/MiStep".equals(address)) return null;
             return new Intent(Intent.ACTION_VIEW, Uri.parse(address)).addCategory(Intent.CATEGORY_BROWSABLE);
         } catch (IllegalArgumentException error) { return null; }
     }

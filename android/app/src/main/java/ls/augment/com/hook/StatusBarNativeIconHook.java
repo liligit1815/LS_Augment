@@ -3,11 +3,14 @@ package ls.augment.com.hook;
 import android.view.View;
 import android.view.ViewGroup;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
 /** Keep the OEM visibility model, but isolate its single-row animation coordinates. */
 final class StatusBarNativeIconHook {
     private StatusBarNativeIconHook() { }
+    private static Class<?> capacityType;
+    static boolean supportsCapacity(View container){return capacityType!=null&&capacityType.isInstance(container);}
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
@@ -18,10 +21,14 @@ final class StatusBarNativeIconHook {
             Method calculate=type.getDeclaredMethod("calculateIconTranslations");
             java.lang.reflect.Field underflow=type.getDeclaredField("mNeedsUnderflow");
             java.lang.reflect.Field restrict=type.getDeclaredField("mShouldRestrictIcons");
+            if(calculate.getReturnType()!=void.class||Modifier.isStatic(calculate.getModifiers())
+                    ||underflow.getType()!=boolean.class||Modifier.isStatic(underflow.getModifiers())
+                    ||restrict.getType()!=boolean.class||Modifier.isStatic(restrict.getModifiers()))
+                throw new NoSuchMethodException("StatusIconContainer requires instance calculateIconTranslations():void and boolean mNeedsUnderflow/mShouldRestrictIcons");
             underflow.setAccessible(true);restrict.setAccessible(true);
             module.registerFeatureHook(module.prepareFeatureHook(calculate,"systemui.grid.bluetooth_capacity",true).intercept(chain->{
                 View view=(View)chain.getThisObject();
-                if(!StatusBarGridHook.ownsIconLayout(view))return chain.proceed();
+                if(!StatusBarGridHook.ownsSystemIconCapacity(view))return chain.proceed();
                 // The grid packs every eligible icon, including native Bluetooth and
                 // expanded dual signals. Its capacity is independent of icon artwork;
                 // retain OEM data/blocked/ignored filtering, not single-row overflow.
@@ -30,7 +37,7 @@ final class StatusBarNativeIconHook {
                 try{return chain.proceed();}
                 finally{underflow.setBoolean(view,oldUnderflow);restrict.setBoolean(view,oldRestrict);}
             }));
-            module.deoptimize(calculate);count++;
+            capacityType=type;module.deoptimize(calculate);count++;
             Method layout=type.getDeclaredMethod("onLayout",boolean.class,int.class,int.class,int.class,int.class);
             module.deoptimize(layout);
         }catch(ReflectiveOperationException error){module.logFeatureError("GRID_BLUETOOTH_CAPACITY",error);}

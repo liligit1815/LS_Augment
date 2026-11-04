@@ -103,6 +103,14 @@ final class StatusBarGridHook {
         State state=stateFor(view);
         return state!=null&&state.active&&state.editPolicy.full&&!state.packingSuspended&&!state.positionOnly();
     }
+    /** A rows-only edit owns capacity for the system icons it packs, independently of other layout edits. */
+    static boolean ownsSystemIconCapacity(View container) {
+        State state=stateFor(container);
+        if(state==null||!state.active||state.packingSuspended||state.positionOnly())return false;
+        return state.editPolicy.full||(container==state.nativeCapacityContainer
+                &&StatusBarNativeIconHook.supportsCapacity(container)
+                &&state.editPolicy.owns("system_icons","rows")&&state.two("system_icons"));
+    }
     static boolean configuredIconLayout(View view){State state=stateFor(view);return state!=null&&state.active&&state.editPolicy.full&&!state.positionOnly();}
     static void invalidateLayout(View view){State state=stateFor(view);if(state!=null)state.layoutDirty=true;}
     static boolean ownsConnectivityReplacement(View view){State state=stateFor(view);return state!=null&&state.active&&!state.packingSuspended&&state.connectivityPlaced();}
@@ -565,9 +573,10 @@ final class StatusBarGridHook {
             View container=findClass(root,"StatusIconContainer");
             boolean retryPass=packingCapacityBlock!=null&&!packingCapacityBlock.nativePassRequested;
             if(container==null){resetNativeIconCapacity();if(retryPass){packingCapacityBlock.nativePassRequested=true;root.requestLayout();}return true;}
-            boolean owned=ownsIconLayout(container);
-            if(nativeCapacityContainer==container&&nativeCapacityOwner!=null&&nativeCapacityOwner==owned&&!retryPass)return true;
-            nativeCapacityContainer=container;nativeCapacityOwner=owned;
+            if(nativeCapacityContainer!=container){nativeCapacityContainer=container;nativeCapacityOwner=null;}
+            boolean owned=ownsSystemIconCapacity(container);
+            if(nativeCapacityOwner!=null&&nativeCapacityOwner==owned&&!retryPass)return true;
+            nativeCapacityOwner=owned;
             if(retryPass)packingCapacityBlock.nativePassRequested=true;
             // Ownership changes must reach this child's OEM onLayout even if its
             // bounds did not change. Draw after that normal traversal, not before.
@@ -696,8 +705,8 @@ final class StatusBarGridHook {
                 || !FeatureSettings.enabled(context,ConfigSchema.STATUSBAR_NOTIFICATION_HIDE));}
         void layout(){if(!active||applying||root.getWidth()==0||root.getHeight()==0)return;applying=true;
             try {
-                if(!editPolicy.full){layoutSelective();return;}
                 if(holdRejectedCapacity())return;
+                if(!editPolicy.full){layoutSelective();return;}
                 applyHeight(FeatureSettings.integer(context,ConfigSchema.STATUSBAR_HEIGHT_DP,0,ConfigSchema.STATUSBAR_HEIGHT_MIN_DP,ConfigSchema.STATUSBAR_HEIGHT_MAX_DP));
                 layoutFrames++;
                 circleTrial=false;circleNative.clear();
@@ -928,8 +937,10 @@ final class StatusBarGridHook {
                 selectiveNative(units,hidden,id,id,parent);return;
             }
             ViewGroup group=(ViewGroup)parent;int index=0;
+            boolean systemContainer=id.equals("system_icons")&&(StatusBarNativeIconHook.supportsCapacity(group)
+                    ||group.getClass().getSimpleName().equals("StatusIconContainer"));
             for(int i=0;i<group.getChildCount();i++){View child=group.getChildAt(i);
-                if(id.equals("system_icons")&&group.getClass().getSimpleName().equals("StatusIconContainer")&&!StatusBarIconLayoutHook.eligible(group,child))continue;
+                if(systemContainer&&!StatusBarIconLayoutHook.eligibleForPlacement(group,child))continue;
                 if(RedMagicSystemUiHook.isCollapsedSignal(child)||StatusBarAssetsHook.hiddenByPolicy(child))continue;
                 String semantic=id.equals("system_icons")?StatusBarIconLayoutHook.semanticId(child):"notifications_"+index++;
                 if(semantic==null||semantic.isEmpty())semantic=id+"_"+i;

@@ -318,8 +318,7 @@ final class AtomicWorkbenchAmapHook {
     private static boolean enabled() {
         Context context = FeatureSettings.from(null);
         return context != null && AtomicWorkbenchAmapData.PACKAGE.equals(context.getPackageName())
-                && FeatureSettings.enabled(context, AtomicWorkbenchConfig.ENABLED)
-                && FeatureSettings.enabled(context, AtomicWorkbenchConfig.SHOW_MEDIA, true);
+                && FeatureSettings.enabled(context, AtomicWorkbenchConfig.ENABLED);
     }
 
     private static void watchConfigurationSafely() {

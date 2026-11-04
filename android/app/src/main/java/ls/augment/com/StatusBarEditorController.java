@@ -325,7 +325,7 @@ final class StatusBarEditorController extends NativeEditorController {
     private void batteryPercentageControls(LinearLayout parent){
         parent=parameterInputGroup(parent);
         String digits=BatteryPercentagePolicy.DIGITS,rule=BatteryPercentagePolicy.RULE;
-        String help="状态栏、控制中心、通知中心和锁屏共用此设置。0 显示整数；系统未提供有效精确电量时保留整数。";
+        String help="状态栏、控制中心、通知中心和锁屏共用此设置。0 位显示整数。选择 1 或 2 位时优先显示原厂小数，也可根据电荷计数估算。两种数据都不可用时显示整数。";
         View title=ui.featureTitle("电池显示小数位",help);parent.addView(title,ui.wrap());
         ParameterSlider precision=new ParameterSlider(ui,EnhancementOption.integer(digits,"statusbar","电池显示小数位",help,0,0,2),draft.get(digits),value->{if(!loading){draft.put(digits,value);changed();}});
         precision.bindTitle(title);parent.addView(precision,ui.wrap());

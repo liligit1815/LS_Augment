@@ -78,8 +78,7 @@ final class NativeIslandRecorderSource {
     }
 
     private boolean requested(Context context) throws Exception {
-        return FeatureSettings.enabled(context, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                && !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
+        return FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
                 && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
                 && FeatureSettings.enabled(context, NativeIslandSceneOptions.key("record"))
                 && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1

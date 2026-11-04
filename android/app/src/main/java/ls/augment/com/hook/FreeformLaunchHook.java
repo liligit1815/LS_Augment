@@ -57,13 +57,17 @@ final class FreeformLaunchHook {
                 method.setAccessible(true);
                 module.registerFeatureHook(module.prepareFeatureHook(method,"freeform.launch.redirect",true).intercept(chain->{
                     Object[] args=chain.getArgs().toArray();Launch launch=null;
-                    try{launch=prepare(chain.getThisObject(),args);}
+                    try{launch=prepare(module,chain.getThisObject(),args);}
                     catch(Throwable failure){module.logFeatureError("FREEFORM_REDIRECT_PREPARE",failure);
                         FeatureSettings.diagnostic(context(field(chain.getThisObject(),"mService")),
                                 "ls_augment_freeform_redirect_error",failure.toString());}
                     if(launch==null)return chain.proceed();
                     Launch previous=ACTIVE.get();ACTIVE.set(launch);
-                    try{return chain.proceed(args);}
+                    try{
+                        Object result=chain.proceed(args);
+                        if(launch.login)FreeformLoginTrace.launched(module,chain.getThisObject(),args[0],launch.caller,result);
+                        return result;
+                    }
                     finally{if(previous==null)ACTIVE.remove();else ACTIVE.set(previous);}
                 }));
                 module.deoptimize(method);count++;
@@ -71,11 +75,12 @@ final class FreeformLaunchHook {
             // Callers can inline the result cancellation and target-task computation.
             for(Method method:starter.getDeclaredMethods())if(method.getName().equals("setInitialState")
                     ||method.getName().equals("startActivityUnchecked"))module.deoptimize(method);
+            FreeformLoginTrace.install(module,record);
             module.logFeatureInfo("FREEFORM_REDIRECT_READY hooks="+count);return count>2?count:0;
         }catch(Throwable failure){module.logFeatureError("FREEFORM_REDIRECT_UNAVAILABLE",failure);return 0;}
     }
 
-    private static Launch prepare(Object starter,Object[] args)throws ReflectiveOperationException{
+    private static Launch prepare(AugmentModule module,Object starter,Object[] args)throws ReflectiveOperationException{
         Object service=field(starter,"mService");Context context=context(service);
         ConfigSnapshot snapshot=FeatureSettings.snapshot(context);
         boolean login=ConfigSchema.truthy(snapshot.get(ConfigSchema.FREEFORM_GAME_LOGIN));
@@ -87,6 +92,7 @@ final class FreeformLaunchHook {
         Object target=args[0],source=args[1];if(target==null)return null;
         if(source==null)source=foregroundCaller(starter,target);
         if(source==null)return skip(context,target,"no_foreground_caller");
+        FreeformLoginTrace.returning(module,source,target);
         Object targetInfo=field(target,"info"),sourceInfo=field(source,"info"),rawIntent=field(target,"intent");
         if(!(targetInfo instanceof ActivityInfo)||!(sourceInfo instanceof ActivityInfo)||!(rawIntent instanceof Intent))return null;
         ActivityInfo to=(ActivityInfo)targetInfo,from=(ActivityInfo)sourceInfo;
@@ -120,7 +126,7 @@ final class FreeformLaunchHook {
         markWindowReply.invoke(null,target);
         // Retain the same Intent object, extras and URI grants; only add task separation.
         // Result-based auth keeps resultTo via the two narrowly scoped hooks above.
-        Launch launch=new Launch(starter,field(target,"resultTo")!=null);
+        Launch launch=new Launch(starter,field(target,"resultTo")!=null,login&&FreeformLaunchPolicy.loginTarget(to.packageName,to.name),from.packageName);
         FeatureSettings.diagnostic(context,"ls_augment_freeform_redirect_last_hit",from.packageName+" -> "+to.packageName);
         args[5]=options;intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return launch;
@@ -144,7 +150,7 @@ final class FreeformLaunchHook {
                 ||(info.applicationInfo.flags&ApplicationInfo.FLAG_IS_GAME)!=0;
     }
     private static final class Launch{
-        final Object starter;final boolean resultExpected;
-        Launch(Object starter,boolean resultExpected){this.starter=starter;this.resultExpected=resultExpected;}
+        final Object starter;final boolean resultExpected,login;final String caller;
+        Launch(Object starter,boolean resultExpected,boolean login,String caller){this.starter=starter;this.resultExpected=resultExpected;this.login=login;this.caller=caller;}
     }
 }

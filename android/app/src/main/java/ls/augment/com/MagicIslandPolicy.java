@@ -40,11 +40,11 @@ public final class MagicIslandPolicy {
         return "";
     }
     public static String unavailable(String id){
-        if("face".equals(id))return "已核验固件在魔力岛模式跳过人脸岛，不能用旧版开关启用";
-        if("torch".equals(id))return "已核验固件只有旧版手电筒岛，魔力岛拒绝此类视图";
+        if("face".equals(id))return "已核验固件在灵动岛模式跳过人脸岛，不能用旧版开关启用";
+        if("torch".equals(id))return "已核验固件只有旧版手电筒岛，灵动岛拒绝此类视图";
         if("low_power".equals(id)||"bluetooth".equals(id)||"headset".equals(id))
-            return "已核验固件在魔力岛模式停用旧版短时提示岛，未提供对应魔力岛卡片";
-        return "当前魔力岛分支尚未核验此场景，保留原厂行为";
+            return "已核验固件在灵动岛模式停用旧版短时提示岛，未提供对应灵动岛卡片";
+        return "当前灵动岛分支尚未核验此场景，保留原厂行为";
     }
     private MagicIslandPolicy(){}
 }

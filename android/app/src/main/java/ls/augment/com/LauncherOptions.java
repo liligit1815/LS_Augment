@@ -25,7 +25,7 @@ public final class LauncherOptions {
             EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","清理图标可选择 C17 样式或自定义图片，清理动画独立选择。清理对象和锁定规则沿用原厂逻辑。更新后重启系统桌面加载功能；之后更换图标无需重启桌面。关闭后恢复原厂图标并保留已选图片。"),
             EnhancementOption.choice(CLEANUP_ICON_STYLE,"launcher","清理图标","C17样式使用胶囊形“清除”按钮；选择自定义后上传图片。切换样式保留已上传图片。",0,"C17样式","自定义"),
             EnhancementOption.custom(CLEANUP_ICON,"launcher","自定义清理图片","支持静态 PNG、WebP、JPEG，可裁剪或完整显示并保留透明区域。未上传图片时保留原厂清理图标。","",v->v.isEmpty()||v.matches("[0-9a-f]{64}")?v:null),
-            EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎"),
+            EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。原厂动画：使用桌面原有清理动画，保留所选清理图标。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎","原厂动画"),
             EnhancementOption.toggle(PAGE_REORDER, "launcher", "整页移动桌面",
                 "在桌面编辑模式点击“页面”，选中页面后前移、后移，或长按卡片拖动排序；图标、文件夹和组件一起移动。适配 10 系列与 11 系列桌面，修改开关后重启系统桌面生效。"),
             EnhancementOption.toggle(KEEP_EMPTY, "launcher", "允许空白桌面",

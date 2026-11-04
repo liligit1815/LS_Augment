@@ -224,10 +224,8 @@ final class NativeIslandCards {
         int previousScenes = enabledScenes;
         ready = !closed && !failed && selected == this && root.isAttachedToWindow() && sameUser()
                 && Boolean.TRUE.equals(field(permanent, "mIsDynamicIslandEnable"))
-                && FeatureSettings.enabled(context, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                && !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
-                && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
-                && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1;
+                && FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
+                && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED);
         int mask = 0;
         for (String scene : new String[]{"countdown", "record", "meeting", "ai", "transfer", "nfc_transfer", "call", "calendar_meeting", "scenic_guide", "nearby_charging", "cycling", "flight", "preflight_battery", "weather_travel"})
             if (!failedScenes.contains(scene) && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(scene)))

@@ -92,8 +92,7 @@ final class NativeIslandClockSource {
     }
 
     private boolean requested(Context context) {
-        if (context == null || !FeatureSettings.enabled(context, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                || FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
+        if (context == null || !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
                 || !FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
                 || !FeatureSettings.enabled(context, NativeIslandSceneOptions.key("countdown"))) return false;
         try {

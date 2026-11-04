@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.22.1)
 
-project(lsaugment_tgk LANGUAGES CXX)
+project(lsaugment_tgk LANGUAGES C CXX)
 
 add_library(lsaugment_tgk SHARED
-        tgk_rapid_native.cpp)
+        tgk_rapid_native.cpp
+        step_input.c)
 
 target_compile_features(lsaugment_tgk PRIVATE cxx_std_17)
 target_compile_options(lsaugment_tgk PRIVATE

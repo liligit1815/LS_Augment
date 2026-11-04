@@ -111,6 +111,7 @@ final class LiquidGlassControlCenterHook {
         WeakReference<Surface> touched = new WeakReference<>(null);
         boolean attached, enabled, opaque, lessMotion, renderersFailed,preDrawPrepared;
         int priorityOwned;
+        long visibleAt=-1,firstReadyMs=-1;
         String lastDiagnostic = "";
 
         State(View view) { reference = new WeakReference<>(view); }
@@ -203,6 +204,7 @@ final class LiquidGlassControlCenterHook {
                     }
                 }
                 if(total==0){
+                    visibleAt=-1;firstReadyMs=-1;
                     // Retain bound off-page materials so page entry can invalidate
                     // their display lists without waiting for a new parent draw.
                     if(outside==0)clear();
@@ -210,6 +212,8 @@ final class LiquidGlassControlCenterHook {
                     diagnostic(panel,(outside>0?"no_visible_controls":priorityOwned>0?"appearance_priority":"native_controls_unavailable")+":ready=0/0;failed=0;outside="+outside);
                     return;
                 }
+                if(visibleAt<0)visibleAt=SystemClock.uptimeMillis();
+                if(ready>0&&firstReadyMs<0)firstReadyMs=SystemClock.uptimeMillis()-visibleAt;
                 if (!stopFailedCapture()) {
                     // A newly available native control can recover independently of failed ones.
                     if (renderersFailed) {
@@ -321,6 +325,7 @@ final class LiquidGlassControlCenterHook {
             }
         }
         void clear() {
+            visibleAt=-1;firstReadyMs=-1;
             touched.clear();
             for (Surface surface : liveSurfaces()) surface.restore(); surfaces.clear();
             if (source != null && !renderersFailed) source.release(); source = null; renderersFailed = false;
@@ -342,7 +347,7 @@ final class LiquidGlassControlCenterHook {
         }
         void diagnostic(View view, String value) {
             if(ControlCenterGlassTargets.modern(view))value+=";adapter=mfv_qs;host="+view.getWidth()+"x"+view.getHeight();
-            value += ";build=" + ls.augment.com.BuildConfig.VERSION_CODE + ";geometry=viewport_v2";
+            value += ";build=" + ls.augment.com.BuildConfig.VERSION_CODE + ";geometry=viewport_v2;first_ready_ms="+firstReadyMs;
             if (value.equals(lastDiagnostic)) return; lastDiagnostic = value;
             if(enabled)FeatureSettings.diagnostic(view.getContext(), "ls_augment_rm_glass_cc_last_enabled", value);
             FeatureSettings.diagnostic(view.getContext(), "ls_augment_rm_glass_cc_state", value);

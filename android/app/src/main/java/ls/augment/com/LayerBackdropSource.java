@@ -55,20 +55,24 @@ public final class LayerBackdropSource implements LiquidGlassDrawable.BackdropSo
     public String failureReason(){return failure;}
     @Override public long revision(){return revision;}
     public void setRegion(Rect localBounds){
-        if(!region.equals(localBounds)){region.set(localBounds);generation++;frame=null;frameAt=0;}
+        if(!region.equals(localBounds)){region.set(localBounds);generation++;drop("region_changed");}
     }
     /** Schedules at most one asynchronous capture; never blocks drawing on Binder/GPU readback. */
     public void request(){
         View view=hostView();long now=SystemClock.uptimeMillis();
         if(view==null||blocked||pending||region.isEmpty()||!view.isShown()||view.getWindowVisibility()!=View.VISIBLE)return;
-        long interval=unchanged>=3?1000:MIN_INTERVAL;
-        if(now-requestedAt<interval){schedule(interval-(now-requestedAt));return;}
         if(!untransformed(view)){drop("transformed_host");return;}
         view.getLocationOnScreen(location);
         screenRegion.set(region);screenRegion.offset(location[0],location[1]);
         if(view.getDisplay()==null){drop("display_unavailable");return;}
         view.getDisplay().getRealSize(displaySize);
         if(screenRegion.left<0||screenRegion.top<0||screenRegion.right>displaySize.x||screenRegion.bottom>displaySize.y){drop("offscreen_region");return;}
+        // The 1s static-scene cadence applies only while that frame is usable.
+        // A panel returning from its opening translation must not wait on an old
+        // offscreen crop's idle timer before requesting its first visible frame.
+        if(frame!=null&&(!screenRegion.equals(frameRegion)||now-frameAt>MAX_FRAME_AGE))drop("frame_geometry_or_age_changed");
+        long interval=unchanged>=3?1000:MIN_INTERVAL;
+        if(now-requestedAt<interval){schedule(interval-(now-requestedAt));return;}
         final Exclusions excluded;
         try{excluded=exclusions(view);}catch(ReflectiveOperationException|RuntimeException error){block("layer_exclusion_unavailable");return;}
         final Rect crop=new Rect(screenRegion);final long epoch=generation;
@@ -108,7 +112,7 @@ public final class LayerBackdropSource implements LiquidGlassDrawable.BackdropSo
     public void release(){released=true;generation++;frame=null;frameLayers=null;frameAt=0;retainedConsumer=null;retainedListener=null;MAIN.removeCallbacks(poll);}
     private View hostView(){View view=host.get();return released||view==null||!view.isAttachedToWindow()?null:view;}
     private void schedule(long delay){MAIN.removeCallbacks(poll);if(!released&&!blocked)MAIN.postDelayed(poll,Math.max(1,delay));}
-    private void drop(String reason){frame=null;frameLayers=null;frameAt=0;failure=reason;}
+    private void drop(String reason){frame=null;frameLayers=null;frameAt=0;unchanged=0;lastSignature=0;failure=reason;}
     private void block(String reason){blocked=true;drop(reason);MAIN.removeCallbacks(poll);View v=host.get();if(v!=null)v.invalidate();}
 
 

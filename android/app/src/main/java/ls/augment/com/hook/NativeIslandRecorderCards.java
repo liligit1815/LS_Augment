@@ -208,8 +208,7 @@ final class NativeIslandRecorderCards {
             Activity instance = activity.get();
             return !closed && instance != null && !instance.isFinishing()
                     && !Boolean.TRUE.equals(fullScreen.invoke(null))
-                    && FeatureSettings.enabled(instance, ConfigSchema.NATIVE_ISLAND_SELECTED)
-                    && !FeatureSettings.enabled(instance, SystemUiOptions.ISLAND)
+                    && FeatureSettings.enabled(instance, SystemUiOptions.ISLAND)
                     && FeatureSettings.enabled(instance, NativeIslandSceneOptions.ENABLED)
                     && FeatureSettings.enabled(instance, NativeIslandSceneOptions.key("record"))
                     && Settings.System.getInt(instance.getContentResolver(), "dynamic_island_switch_state", 0) == 1

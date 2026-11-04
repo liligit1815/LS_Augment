@@ -27,12 +27,11 @@ final class NativeIslandControl {
             if(!context.getSharedPreferences(AppConfig.DIAGNOSTICS,0).edit()
                     .putString(NativeIslandMode.DIAGNOSTIC,NativeIslandMode.stamp(context,mode)).commit())return result;
             java.util.Map<String,String> selection=new java.util.LinkedHashMap<>();
-            selection.put(ConfigSchema.NATIVE_ISLAND_SELECTED,enabled?"1":"0");
-            if(NativeIslandMode.MODERN.equals(mode))selection.put(SystemUiOptions.ISLAND,"0");
+            selection.put(SystemUiOptions.ISLAND,enabled?"1":"0");
             AppConfig.SaveResult saved = new AppConfig(context).save(selection);
             result.putBoolean("ok", saved.success);
             result.putString("message", saved.message);
-        } catch (Exception unavailable) { result.putString("message", "星云岛联动保存失败"); }
+        } catch (Exception unavailable) { result.putString("message", "灵动岛开关联动保存失败"); }
         return result;
     }
 }

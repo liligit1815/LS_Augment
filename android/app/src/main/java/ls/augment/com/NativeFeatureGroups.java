@@ -200,7 +200,7 @@ final class NativeFeatureGroups {
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
             new Feature("systemui:island_status_avoidance","通知状态自动避让岛",SystemUiOptions.ISLAND_STATUS_AVOIDANCE,new String[]{},"boolean","0",new Feature[]{}),
-            new Feature("systemui:island_enabled","灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS},"boolean","0",new Feature[]{}),
+            new Feature("systemui:island_enabled","红魔Duo灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS,SystemUiOptions.ISLAND_FIRST_EXPAND},"boolean","0",new Feature[]{}),
             NativeIslandSceneOptions.feature()
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{

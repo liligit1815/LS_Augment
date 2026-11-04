@@ -118,6 +118,11 @@ final class LauncherCleanupBombHook {
                 View view=(View)chain.getThisObject();
                 if(!FeatureSettings.enabled(view.getContext(),LauncherOptions.CLEANUP_BOMB)
                         ||!ValueAnimator.areAnimatorsEnabled()||!view.isAttachedToWindow())return chain.proceed();
+                // Append value 2 so existing bomb/particle choices keep their meaning.
+                // Icons have their own binding; the native path never captures cards,
+                // changes duration, defers completion or plays our sound.
+                String animation=FeatureSettings.snapshot(view.getContext()).get(LauncherOptions.CLEANUP_STYLE);
+                if(!"0".equals(animation)&&!"1".equals(animation))return chain.proceed();
                 if(ACTIVE.containsKey(view))return chain.proceed();
                 // DragLayer remains stable while native cards translate out of RecentsView.
                 // Exit/detach cleanup still bounds the overlay to this overview session.
@@ -129,7 +134,7 @@ final class LauncherCleanupBombHook {
                     for(android.view.ViewParent parent=view.getParent();parent instanceof View;parent=parent.getParent()){
                         if(parent.getClass().getName().endsWith(".DragLayer")){overlayRoot=(View)parent;break;}
                     }
-                    blast=new Blast(module,view,overlayRoot,source,overview,canShatter&&"1".equals(FeatureSettings.snapshot(view.getContext()).get(LauncherOptions.CLEANUP_STYLE)));
+                    blast=new Blast(module,view,overlayRoot,source,overview,canShatter&&"1".equals(animation));
                     ACTIVE.put(view,blast);
                     if(!canShatter)blast.start();
                 }catch(Throwable error){

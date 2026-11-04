@@ -17,9 +17,14 @@ public final class BatteryPercentagePolicy {
         return raw>0&&raw<=10000&&level>=0&&level<=100&&Math.abs(raw-level*100)<=150;
     }
     public static String format(int level,int raw,int digits,int rule,int status){
+        return formatReading(level,validRaw(raw,level)?raw:-1,digits,rule,status);
+    }
+    public static String formatReading(int level,int hundredths,int digits,int rule,int status){
         if(level<0||level>100)return "";
-        if(digits<1||digits>2||!matches(rule,status)||!validRaw(raw,level))return Integer.toString(level);
-        return BigDecimal.valueOf(raw,2).setScale(digits,RoundingMode.HALF_UP).toPlainString();
+        if(level==100||digits<1||digits>2||!matches(rule,status)||hundredths<0||hundredths>10000
+                ||Math.abs(hundredths-level*100)>150)return Integer.toString(level);
+        BigDecimal rounded=BigDecimal.valueOf(hundredths,2).setScale(digits,RoundingMode.HALF_UP);
+        return rounded.intValue()==100?"100":rounded.toPlainString();
     }
     private BatteryPercentagePolicy(){}
 }

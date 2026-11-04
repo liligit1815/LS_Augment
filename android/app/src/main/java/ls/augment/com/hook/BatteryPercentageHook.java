@@ -4,8 +4,12 @@ import android.content.*;
 import android.os.*;
 import android.view.View;
 import android.widget.TextView;
+import java.io.IOException;
 import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ForkJoinPool;
 import ls.augment.com.BatteryPercentagePolicy;
 import static ls.augment.com.hook.SystemUiAdapter.field;
 
@@ -17,9 +21,29 @@ final class BatteryPercentageHook {
     private static final Map<ConnectivityIconSource,Boolean> SOURCES=new WeakHashMap<>();
     private static final Map<View,Width> WIDTHS=new WeakHashMap<>();
     private static Context context;
+    private static final long RAW_AGE_MS = 30_000;
+    private static final long POLL_MS = 5_000;
+    private static final BatteryChargeEstimate ESTIMATE = new BatteryChargeEstimate();
+    private static boolean interactive, polling;
+    private static long pollSession, counterSequence, nextFullRead;
+    private static String lastDisplay="";
     private static final class Reading{
-        final int level,status,raw;final long rawAt;
-        Reading(int level,int status,int raw,long at){this.level=level;this.status=status;this.raw=raw;rawAt=at;}
+        final int level,status,raw,estimate;
+        final long rawAt,counterAt;
+        Reading(int level,int status,int raw,long at){
+            this.level=level;this.status=status;this.raw=raw;rawAt=at;
+            estimate=ESTIMATE.value();counterAt=ESTIMATE.sampledAt();
+        }
+        boolean hasRaw(long now){
+            if(!BatteryPercentagePolicy.validRaw(raw,level)||now-rawAt>RAW_AGE_MS)return false;
+            // An advancing counter can take over between OEM bursts. A silent counter
+            // or one sampled before the OEM event carries no newer information.
+            return now-rawAt<POLL_MS || counterAt<=rawAt || estimate<0 || estimate==raw;
+        }
+        int precise(long now){
+            if(hasRaw(now))return raw;
+            return now-counterAt<=BatteryChargeEstimate.MAX_SAMPLE_AGE_MS?estimate:-1;
+        }
     }
     private static volatile Reading reading=new Reading(-1,-1,0,0);
     private static boolean queued,refreshing;
@@ -73,11 +97,25 @@ final class BatteryPercentageHook {
             if(getter.getReturnType()!=int.class||setter.getReturnType()!=void.class||!Modifier.isStatic(getter.getModifiers())||!Modifier.isStatic(setter.getModifiers()))throw new NoSuchMethodException("raw battery contract");
             module.registerFeatureHook(module.prepareFeatureHook(setter,"battery.percentage.raw",false).intercept(chain->{
                 Object result=chain.proceed();int value=(Integer)chain.getArg(0);
-                MAIN.post(()->{Reading old=reading;reading=new Reading(old.level,old.status,BatteryPercentagePolicy.validRaw(value,old.level)?value:0,SystemClock.elapsedRealtime());schedule();MAIN.removeCallbacks(EXPIRE);MAIN.postDelayed(EXPIRE,30001);});return result;
+                long received=SystemClock.elapsedRealtime();
+                MAIN.post(()->oemSample(value,received));return result;
             }));module.deoptimize(setter);
         }catch(ReflectiveOperationException|LinkageError missing){module.logFeatureError("BATTERY_PERCENTAGE_PRECISE_SOURCE_UNAVAILABLE",missing);}
     }
-    private static final Runnable EXPIRE=()->{Reading old=reading;reading=new Reading(old.level,old.status,0,0);schedule();};
+    private static final Runnable EXPIRE=BatteryPercentageHook::schedule;
+    private static void oemSample(int value,long received){
+        Reading old=reading;
+        int raw=BatteryPercentagePolicy.validRaw(value,old.level)?value:0;
+        counterSequence++;
+        if(raw>0)ESTIMATE.anchor(raw,received);
+        reading=new Reading(old.level,old.status,raw,received);
+        expireRaw(received,raw);
+        schedule();
+    }
+    private static void expireRaw(long at,int raw){
+        MAIN.removeCallbacks(EXPIRE);
+        if(raw>0)MAIN.postDelayed(EXPIRE,Math.max(0,at+RAW_AGE_MS+1-SystemClock.elapsedRealtime()));
+    }
     private static final class Width{int nativeWidth,applied;Width(int width){nativeWidth=width;}}
     private static void restoreWidths(View view){for(String name:new String[]{"mBatteryLevelInsideView","mBatteryIconView"}){Object child=field(view,name);if(child instanceof View)width((View)child,0);}}
     private static void width(View view,int wanted){
@@ -93,9 +131,16 @@ final class BatteryPercentageHook {
         if(Looper.myLooper()!=Looper.getMainLooper()){MAIN.post(()->start(ctx));return;}
         if(context!=null)return;context=ctx.getApplicationContext();if(context==null)context=ctx;
         try{
-            Intent sticky=context.registerReceiver(new BroadcastReceiver(){public void onReceive(Context c,Intent i){battery(i);}},new IntentFilter(Intent.ACTION_BATTERY_CHANGED),null,MAIN,Context.RECEIVER_EXPORTED);
+            PowerManager power=context.getSystemService(PowerManager.class);
+            interactive=power!=null&&power.isInteractive();
+            IntentFilter filter=new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            filter.addAction(Intent.ACTION_SCREEN_ON);filter.addAction(Intent.ACTION_SCREEN_OFF);
+            Intent sticky=context.registerReceiver(new BroadcastReceiver(){public void onReceive(Context c,Intent i){
+                if(Intent.ACTION_BATTERY_CHANGED.equals(i.getAction()))battery(i);
+                else{interactive=Intent.ACTION_SCREEN_ON.equals(i.getAction());updatePolling();}
+            }},filter,null,MAIN,Context.RECEIVER_EXPORTED);
             if(sticky!=null)battery(sticky);
-            FeatureSettings.addSnapshotListener(context,BatteryPercentageHook::schedule);
+            FeatureSettings.addSnapshotListener(context,()->MAIN.post(()->{updatePolling();schedule();}));
         }catch(RuntimeException failure){FeatureSettings.diagnostic(context,"ls_augment_battery_percentage_runtime","battery_receiver_unavailable:"+failure.getClass().getSimpleName());}
     }
     private static void battery(Intent intent){
@@ -103,19 +148,65 @@ final class BatteryPercentageHook {
         int nextStatus=intent.getIntExtra(BatteryManager.EXTRA_STATUS,-1);
         int next=intent.getIntExtra(BatteryManager.EXTRA_LEVEL,-1),scale=intent.getIntExtra(BatteryManager.EXTRA_SCALE,100);
         if(next<0||scale<=0||next>scale)return;
+        long now=SystemClock.elapsedRealtime();
         Reading old=reading;int level=Math.round(next*100f/scale),raw=old.raw;long at=old.rawAt;
+        int counter=intent.getIntExtra("charge_counter",-1);
+        if(counter<=0){
+            int alternate=intent.getIntExtra("chg_counter",-1);
+            if(alternate>=0)counter=alternate;
+        }
+        if(counter>=0)counterSequence++;
+        ESTIMATE.sample(level,counter,intent.getIntExtra("chg_full",-1),now);
         if(old.status!=nextStatus||!BatteryPercentagePolicy.validRaw(raw,level))raw=0;
-        if(scale>100){int precise=(int)Math.round(next*10000d/scale);if(BatteryPercentagePolicy.validRaw(precise,level)){raw=precise;at=SystemClock.elapsedRealtime();}}
+        if(scale>100){
+            int precise=(int)Math.round(next*10000d/scale);
+            if(BatteryPercentagePolicy.validRaw(precise,level)){raw=precise;at=now;ESTIMATE.anchor(raw,now);expireRaw(at,raw);}
+        }
+        if(nextStatus==BatteryManager.BATTERY_STATUS_FULL&&level==100)ESTIMATE.anchor(10_000,now);
         reading=new Reading(level,nextStatus,raw,at);
+        updatePolling();
         schedule();
+    }
+    private static final Runnable POLL=BatteryPercentageHook::pollCounter;
+    private static void updatePolling(){
+        boolean wanted=interactive&&context!=null&&FeatureSettings.integer(context,BatteryPercentagePolicy.DIGITS,0,0,2)>0
+                &&BatteryPercentagePolicy.matches(FeatureSettings.integer(context,BatteryPercentagePolicy.RULE,2,0,2),reading.status);
+        if(polling==wanted)return;
+        polling=wanted;pollSession++;
+        MAIN.removeCallbacks(POLL);
+        if(wanted)MAIN.post(POLL);
+    }
+    private static void pollCounter(){
+        if(!polling)return;
+        long session=pollSession,sequence=counterSequence,now=SystemClock.elapsedRealtime();
+        boolean readFull=!ESTIMATE.hasFull()&&now>=nextFullRead;
+        if(readFull)nextFullRead=now+300_000;
+        ForkJoinPool.commonPool().execute(()->{
+            long counter=-1,full=-1;
+            try{
+                BatteryManager manager=context.getSystemService(BatteryManager.class);
+                if(manager!=null)counter=manager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
+            }catch(RuntimeException unavailable){/* Broadcast counters may still be available. */}
+            if(readFull)try{
+                full=Long.parseLong(Files.readAllLines(Paths.get("/sys/class/power_supply/battery/charge_full")).get(0).trim());
+            }catch(IOException|RuntimeException unavailable){/* OEM broadcasts may supply the learned full capacity. */}
+            long charge=counter,capacity=full;
+            MAIN.post(()->{
+                if(session!=pollSession)return;
+                Reading old=reading;
+                ESTIMATE.sample(old.level,sequence==counterSequence?charge:-1,capacity,SystemClock.elapsedRealtime());
+                reading=new Reading(old.level,old.status,old.raw,old.rawAt);
+                if(old.estimate!=reading.estimate || !lastDisplay.equals(text(reading.level)))schedule();
+                MAIN.postDelayed(POLL,charge<0&&!ESTIMATE.hasFull()?RAW_AGE_MS:POLL_MS);
+            });
+        });
     }
     static String text(int fallback){
         Reading sample=reading;int current=sample.level>=0?sample.level:fallback;
         Context ctx=context;if(ctx==null)return current<0?"":Integer.toString(current);
         int digits=FeatureSettings.integer(ctx,BatteryPercentagePolicy.DIGITS,0,0,2);
         int rule=FeatureSettings.integer(ctx,BatteryPercentagePolicy.RULE,2,0,2);
-        int precise=SystemClock.elapsedRealtime()-sample.rawAt<=30000?sample.raw:0;
-        return BatteryPercentagePolicy.format(current,precise,digits,rule,sample.status);
+        return BatteryPercentagePolicy.formatReading(current,sample.precise(SystemClock.elapsedRealtime()),digits,rule,sample.status);
     }
     static boolean fractional(int fallback){return text(fallback).contains(".");}
     static void observe(ConnectivityIconSource source,Context ctx){MAIN.post(()->{start(ctx);SOURCES.put(source,Boolean.TRUE);source.refreshBatteryDisplay();});}
@@ -131,7 +222,11 @@ final class BatteryPercentageHook {
             }
             for(Map.Entry<Object,Method> entry:new ArrayList<>(INDICATIONS.entrySet()))try{entry.getValue().invoke(entry.getKey(),false);}catch(ReflectiveOperationException ignored){}
             Reading sample=reading;
-            if(context!=null)FeatureSettings.diagnostic(context,"ls_augment_battery_percentage_runtime","display="+text(sample.level)+";level="+sample.level+";raw="+sample.raw+";status="+sample.status+";source="+(fractional(sample.level)?"oem_hundredths":"system_integer")+";meters="+METERS.size());
+            if(context!=null){
+                String display=text(sample.level);lastDisplay=display;
+                String source=display.contains(".")?(sample.hasRaw(SystemClock.elapsedRealtime())?"oem_hundredths":"charge_counter"):"system_integer";
+                FeatureSettings.diagnostic(context,"ls_augment_battery_percentage_runtime","display="+display+";level="+sample.level+";raw="+sample.raw+";status="+sample.status+";source="+source+";estimate="+sample.estimate+";hasFull="+ESTIMATE.hasFull()+";meters="+METERS.size());
+            }
         }finally{refreshing=false;}
     }
     private static Method method(Class<?> type,String name,Class<?> result,Class<?>...params)throws ReflectiveOperationException{

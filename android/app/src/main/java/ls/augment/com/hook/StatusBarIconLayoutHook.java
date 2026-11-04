@@ -432,12 +432,13 @@ final class StatusBarIconLayoutHook {
         int gap=number(field(parent,"mIconSpacing"),0);
         for(int i=0;i<parent.getChildCount();i++){View child=parent.getChildAt(i);if(!eligible(parent,child))continue;eligible.add(child);if(!StatusBarIconOrderPolicy.hint(semanticId(child))){coreCount++;occupied+=extent(child)+gap;}}
         int originalMax=Integer.MAX_VALUE;
-        if(Boolean.TRUE.equals(field(parent,"mShouldRestrictIcons")))originalMax=staticNumber(parent.getClass(),"MAX_ICONS",Integer.MAX_VALUE);
+        boolean gridCapacity=StatusBarGridHook.ownsSystemIconCapacity(parent);
+        if(!gridCapacity&&Boolean.TRUE.equals(field(parent,"mShouldRestrictIcons")))originalMax=staticNumber(parent.getClass(),"MAX_ICONS",Integer.MAX_VALUE);
         int capacity=originalMax==Integer.MAX_VALUE?Integer.MAX_VALUE:Math.max(0,originalMax-coreCount);
         if(limit>0)capacity=Math.min(capacity,limit);
         // OEM adds spacing between cells, never after the final cell. Give back
         // that last gap when fitting per-cell (extent + gap) costs.
-        float room=measuring||StatusBarGridHook.ownsIconLayout(parent)?Float.POSITIVE_INFINITY:Math.max(0,parent.getWidth()-parent.getPaddingLeft()-parent.getPaddingRight()-occupied+gap);
+        float room=measuring||gridCapacity?Float.POSITIVE_INFINITY:Math.max(0,parent.getWidth()-parent.getPaddingLeft()-parent.getPaddingRight()-occupied+gap);
         List<View> ranked=StatusBarIconOrderPolicy.prioritize(eligible,StatusBarIconLayoutHook::semanticId,FeatureSettings.snapshot(parent.getContext()).get(StatusBarIconOrderPolicy.ORDER));
         Set<View> kept=StatusBarIconOrderPolicy.fitHints(eligible,StatusBarIconLayoutHook::semanticId,child->extent(child)+gap,FeatureSettings.snapshot(parent.getContext()).get(StatusBarIconOrderPolicy.ORDER),capacity,room);
         List<String> excluded=new ArrayList<>();for(View child:ranked)if(!kept.contains(child)){Object slot=invoke(child,"getSlot");if(slot instanceof String&&!excluded.contains(slot))excluded.add((String)slot);}
@@ -458,6 +459,11 @@ final class StatusBarIconLayoutHook {
         if(child.getVisibility()!=View.VISIBLE||!Boolean.TRUE.equals(invoke(child,"isIconVisible"))||Boolean.TRUE.equals(invoke(child,"isIconBlocked")))return false;
         Object ignored=field(parent,"mIgnoredSlots"),slot=invoke(child,"getSlot");
         return !(ignored instanceof Collection&&((Collection<?>)ignored).contains(slot))&&!StatusBarAssetsHook.hiddenByPolicy(child)&&!StatusBarAssetsHook.isHidden(child,semanticId(child));
+    }
+    static boolean eligibleForPlacement(ViewGroup parent,View child){
+        // After OEM layout the temporary priority exclusions have been restored.
+        // A data-visible slot may still have an explicitly hidden presentation.
+        return eligible(parent,child)&&!Integer.valueOf(2).equals(invoke(child,"getVisibleState"));
     }
     private static void applyNativeInsets(ViewGroup parent){
         if(StatusBarGridHook.ownsIconLayout(parent))return;

@@ -176,6 +176,10 @@ final class TgkRapidFireNative {
 
     // Absolute loading is required by injected loaders; canonical package lib path and APK entry SHA-256 are checked before System.load.
     //noinspection UnsafeDynamicallyLoadedCode
+    static void loadModuleLibrary(ApplicationInfo info) {
+        loadLibrary(info, info == null ? null : info.nativeLibraryDir, NATIVE_LIBRARY_NAME, LIBRARY_NAME);
+    }
+
     private static void loadLibrary(ApplicationInfo info, String nativeDir,
             String fileName, String libraryName) {
         Set<File> candidates = new LinkedHashSet<>();

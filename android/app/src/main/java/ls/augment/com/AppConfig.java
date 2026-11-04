@@ -136,6 +136,13 @@ final class AppConfig {
             if(!prefs.contains(LauncherOptions.CLEANUP_ICON_STYLE)&&!get(LauncherOptions.CLEANUP_ICON).isEmpty())
                 migrationEditor().putString(LauncherOptions.CLEANUP_ICON_STYLE,"1").commit();
             initializePrivateDefaults();
+            if (!prefs.getBoolean("duo_island_unified_owner_v1", false)) {
+                boolean enabled = DuoIslandPolicy.migratedEnabled(getBoolean(SystemUiOptions.ISLAND),
+                        getBoolean(ConfigSchema.NATIVE_ISLAND_SELECTED));
+                migrationEditor().putString(SystemUiOptions.ISLAND, enabled ? "1" : "0")
+                        .putString(ConfigSchema.NATIVE_ISLAND_SELECTED, "0")
+                        .putBoolean("duo_island_unified_owner_v1", true).commit();
+            }
             if (!prefs.getBoolean("notification_cascade_only_v1",false)) {
                 DurablePreferences.Editor migration=migrationEditor().putBoolean("notification_cascade_only_v1",true);
                 for(String suffix:new String[]{"big","small","style","complete_count","step","inset"})
@@ -319,17 +326,7 @@ final class AppConfig {
                 }
             }
             next.putAll(clean);
-            if(ConfigSchema.truthy(clean.get(SystemUiOptions.ISLAND))
-                    &&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(context)))
-                return rejected(updates,"当前魔力岛显示分支尚不支持Duo自定义岛，请使用原厂魔力岛");
-            // Last explicit selection wins, atomically. Keep every appearance parameter.
-            if (ConfigSchema.truthy(clean.get(ConfigSchema.NATIVE_ISLAND_SELECTED))) {
-                clean.put(SystemUiOptions.ISLAND, "0");
-                next.put(SystemUiOptions.ISLAND, "0");
-            } else if (ConfigSchema.truthy(clean.get(SystemUiOptions.ISLAND))) {
-                clean.put(ConfigSchema.NATIVE_ISLAND_SELECTED, "0");
-                next.put(ConfigSchema.NATIVE_ISLAND_SELECTED, "0");
-            }
+            DuoIslandPolicy.normalizeSelection(clean, next);
             // Both entry points publish the same state under the same lock. A
             // stale Settings page cannot enable dual signals over three-in-one.
             if (ConfigSchema.truthy(clean.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))) {

@@ -339,6 +339,8 @@ final class NativeIslandScenes {
         NativeIslandScenes owner=selected;
         if(owner==null||!owner.usable()||island==null)return false;
         String id=NativeIslandSceneOptions.id(island.getClass());
+        if(("media".equals(id)||"charging".equals(id))&&!FeatureSettings.enabled(owner.context,
+                ls.augment.com.SystemUiOptions.PREFIX+"island_"+("media".equals(id)?"music":"charging")))return true;
         return id!=null&&owner.supportedScenes.contains(id)&&FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.ENABLED)
                 &&!FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.key(id));
     }

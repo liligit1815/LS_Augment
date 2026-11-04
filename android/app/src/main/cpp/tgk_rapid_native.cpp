@@ -444,12 +444,15 @@ void onNativeLibraryLoaded(const char*, void*) {
 
 }  // namespace
 
+extern "C" void step_input_set_hook(int (*hook)(void*, void*, void**));
+
 // Modern LSPosed calls this entry for libraries declared in
 // META-INF/xposed/native_init.list. Its hook backend already lives inside the
 // framework and does not depend on private linker symbols from the vendor ROM.
 extern "C" [[gnu::visibility("default")]] [[gnu::used]]
 NativeOnModuleLoaded native_init(const NativeAPIEntries* entries) {
     if (entries == nullptr || entries->hook_func == nullptr) return nullptr;
+    if (entries->version >= 1) step_input_set_hook(entries->hook_func);
     g_nativeApiVersion.store(entries->version, std::memory_order_release);
     g_unhookFunction.store(entries->unhook_func, std::memory_order_release);
     g_hookFunction.store(entries->hook_func, std::memory_order_release);
