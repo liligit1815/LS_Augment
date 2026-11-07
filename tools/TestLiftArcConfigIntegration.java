@@ -62,7 +62,7 @@ public final class TestLiftArcConfigIntegration {
         ConfigTransferActivity activity=TestTransferActionHost.host("import",null);
         TestTransferActionHost.flush(activity);
         JSONObject exported=invokeExport(activity),settings=exported.getJSONObject("settings");
-        check("LS_Augment.settings".equals(exported.optString("format"))&&exported.optInt("version")==1,"existing backup format changed");
+        check("LS_Augment.settings".equals(exported.optString("format"))&&exported.optInt("version")==2&&exported.optJSONObject(AtomicWorkbenchAppPreferencesTransfer.SECTION)!=null,"current backup envelope includes workbench app preferences");
         for(String key:keys)check(values.get(key).equals(settings.getString(key)),"real export omits/changes "+key);
         TestTransferActionHost.prepare(activity,new JSONObject(exported.toString()));
         Map<String,String> imported=parsedUpdates(LiftArcOptions.ENABLED);

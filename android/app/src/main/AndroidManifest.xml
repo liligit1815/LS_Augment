@@ -58,6 +58,7 @@
         <activity android:name=".EnhancementSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".CompetitiveKeySettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".AtomicWorkbenchSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".StepGestureGuideActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".step.QuickPinsActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />

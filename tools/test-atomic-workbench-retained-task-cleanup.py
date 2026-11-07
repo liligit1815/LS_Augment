@@ -53,7 +53,7 @@ def base_files(source):
  f['ls/augment/com/AtomicWorkbenchProtocol.java']='package ls.augment.com;import java.security.MessageDigest;import java.nio.charset.StandardCharsets;final class AtomicWorkbenchProtocol{static final int VERSION=1;'+MEMBER(protocol,'static boolean sameToken(')+'}'
  for name in ('AtomicWorkbenchTaskAuthority.java','hook/AtomicWorkbenchTaskOperationHook.java','hook/AtomicWorkbenchSystemRootAuthority.java'):
   f['ls/augment/com/'+name]=source[name].read_text(encoding='utf-8')
- for name in BROKER['MODELS']['PRODUCTION']:
+ for name in BROKER['MODELS']['PRODUCTION']+['AtomicWorkbenchSlotDomain.java']:
   f['ls/augment/com/'+name]=(ROOT/SRC/name).read_text(encoding='utf-8')
  root=source['AtomicWorkbenchRoot.java'].read_text(encoding='utf-8')
  metadata=MEMBER(root,'private Bundle systemSessionMetadata(')
@@ -105,7 +105,7 @@ def files(source):
  platform+='\n'.join(MEMBER(text,s) for s in ['void prepareTaskOperation(','void finishTaskOperation(','void cancelPreparedTaskOperation('])
  platform+='\n void synchronizeTaskOperationBinding(AtomicWorkbenchTaskIdentity id){requireDisplayIdentity();}\n}'
  f['ls/augment/com/AtomicWorkbenchPlatform.java']=platform
- for name in OPS['MODELS']['PRODUCTION']+['AtomicWorkbenchJournal.java','AtomicWorkbenchTaskOperations.java','AtomicWorkbenchTaskShelfStore.java','AtomicWorkbenchRecoveryScope.java','AtomicWorkbenchTaskReferenceRequest.java','AtomicWorkbenchTaskReferenceResult.java','AtomicWorkbenchTaskReferenceSnapshot.java']:
+ for name in OPS['MODELS']['PRODUCTION']+['AtomicWorkbenchRecoveryOwners.java','ResetWriteFence.java','AtomicWorkbenchSlotDomain.java','AtomicWorkbenchJournal.java','AtomicWorkbenchTaskOperations.java','AtomicWorkbenchTaskShelfStore.java','AtomicWorkbenchRecoveryScope.java','AtomicWorkbenchTaskReferenceRequest.java','AtomicWorkbenchTaskReferenceResult.java','AtomicWorkbenchTaskReferenceSnapshot.java']:
   f['ls/augment/com/'+name]=(ROOT/SRC/name).read_text(encoding='utf-8')
  f['ls/augment/com/TaskOpsBridge.java']=(FIXTURES/'AtomicWorkbenchRetainedTaskCleanupDurable.java.inc').read_text(encoding='utf-8')
  f['ls/augment/com/AtomicWorkbenchProtocol.java']=f['ls/augment/com/AtomicWorkbenchProtocol.java'].replace('VERSION=1;', 'VERSION=1,WINDOW_COUNT=4;')

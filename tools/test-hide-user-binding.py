@@ -24,9 +24,10 @@ REAL = ("RootHideManager", "HideUserIdentity", "HideRecoveryIdentity", "HideTarg
         "HideMutationRecorder", "HideBatchExecutor", "HideRecoveryJournal",
         "HidePackageSnapshot", "UserResolution", "ScreenAutomationPolicy",
         "HideRootClient", "HideRootPendingStore", "HideRootProtocol",
-        "HideRestoreGrantLedger", "HideRestoreGrantStore")
+        "HideRestoreGrantLedger", "HideRestoreGrantStore", "HideTargetStore", "HideTargetController", "HideManualClient", "ResetWriteFence")
 
 STUBS = {
+    'android/os/SystemClock.java': 'package android.os;public class SystemClock {public static long elapsedRealtime(){return System.nanoTime()/1000000;}}',
     'android/os/Process.java': 'package android.os;public class Process {public static int myUid(){return 10001;}}',
     'ls/augment/com/HidePrivateStorage.java': PRIVATE_STORAGE_STUB,
 "android/content/SharedPreferences.java": r'''package android.content;
@@ -155,6 +156,31 @@ class RootShell {
   Matcher m=Pattern.compile("(?m)^"+key+"='([^']*)'$").matcher(command);
   if(!m.find())throw new AssertionError("missing fixed operation variable "+key);return m.group(1);
  }
+ static String targetDocument;
+ static final List<HideTargetStore.Snapshot> documents=new ArrayList<>();
+ static boolean recorded(RootHideManager.Target target,HideTargetStore.OperationStatus state){
+  return documents.stream().flatMap(snapshot->snapshot.records.stream()).anyMatch(row->row.userId==target.userId&&row.userSerial==target.userSerial&&row.packageName.equals(target.packageName)&&row.lastOperation!=null&&row.lastOperation.status==state);
+ }
+ static boolean failed(RootHideManager.Target target){return recorded(target,HideTargetStore.OperationStatus.FAILED);}
+ static boolean succeeded(RootHideManager.Target target){return recorded(target,HideTargetStore.OperationStatus.SUCCEEDED);}
+
+ static Result targetStore(String command,String input){
+  String mode=variable(command,"MODE");String value=mode.equals("LEGACY")?HideRecoveryEmergency.root:targetDocument;
+  String kind="DATA";String row;
+  if(mode.equals("CAS")){
+   String existing=value==null?"ABSENT":HideTargetStore.sha256(value);
+   if(!existing.equals(variable(command,"EXPECTED")))return wire(0,"LSAT_STORE1\nCONFLICT\nLSAT_STORE_END\n");
+   if(!HideTargetStore.sha256(input).equals(variable(command,"PROPOSED")))throw new AssertionError("proposal hash");
+   HideTargetStore.Snapshot next=HideTargetStore.parse(input);
+   boolean pending=next.records.stream().anyMatch(entry->entry.lastOperation!=null&&entry.lastOperation.status==HideTargetStore.OperationStatus.PENDING);
+   if(pending&&journalDeny)return wire(0,"LSAT_STORE1\nCONFLICT\nLSAT_STORE_END\n");
+   value=targetDocument=input;documents.add(next);kind="APPLIED";
+   if(pending&&afterPrepared!=null){Runnable callback=afterPrepared;afterPrepared=null;callback.run();}
+   if(HideRecoveryEmergency.afterWrite!=null){Runnable callback=HideRecoveryEmergency.afterWrite;HideRecoveryEmergency.afterWrite=null;callback.run();}
+  }
+  row=value==null||mode.equals("LEGACY")&&value.isEmpty()?"ABSENT":kind+"|"+HideTargetStore.sha256(value)+"|"+Base64.getEncoder().encodeToString(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  return wire(0,"LSAT_STORE1\n"+row+"\nLSAT_STORE_END\n");
+ }
  static Result pending(String command){
   String mode=variable(command,"MODE"),key=variable(command,"KEY");
   List<String> rows=slotRecords.computeIfAbsent(key,k->new ArrayList<>()),done=slotTerminals.computeIfAbsent(key,k->new ArrayList<>());
@@ -199,6 +225,7 @@ class RootShell {
  static Result run(String command,String input,long timeout,int max){
   commands.add(command);Context c=TestHideUserBinding.ctx;
   if(deny)return new Result(126,"denied",false);
+  if(command.contains("/v2/manual-targets-v1"))return targetStore(command,input);
   if(command.startsWith("MODE='"))return pending(command);
   if(command.startsWith("/system/bin/cmd package '"+HideRootProtocol.COMMAND+"'"))return transaction(command);
   if(command.contains("printf 'uid='"))return ok("uid=0|provider=Root");
@@ -229,7 +256,7 @@ class RootShell {
    Matcher pkg=Pattern.compile("/system/bin/dumpsys package '([^']+)'").matcher(command);if(!pkg.find())throw new AssertionError("identity package absent");
    // Actual HideRecoveryIdentity parses this finite Android dump shape; it is not a fake hash getter.
    StringBuilder dump=new StringBuilder("Packages:\n  Package ["+pkg.group(1)+"] (abcdef):\n    appId=10001\n");
-   for(int id:c.users.actual.keySet())dump.append("    User ").append(id).append(": installed=true\n      firstInstallTime=2025-01-01 00:00:00\n");
+   for(int id:c.users.actual.keySet())dump.append("    User ").append(id).append(": installed=").append(!missing.contains(id+":"+pkg.group(1))).append(" hidden=").append(hidden.contains(id+":"+pkg.group(1))).append("\n      firstInstallTime=2025-01-01 00:00:00\n");
    return ok(dump+"LSA_PACKAGE_IDENTITY_END:0");
   }
   if(command.contains("LSA_BEGIN:")){
@@ -266,18 +293,18 @@ public class TestHideUserBinding {
  static final String PKG="org.example.app";
  static void reset(){
   ctx=new Context();ctx.users.actual.put(0,0L);ctx.users.actual.put(12,42L);ctx.users.actual.put(999,10L);
-  manager=new RootHideManager(ctx);AppConfig.values.clear();AppConfig.values.put(AppConfig.HIDE_MASTER,"true");
+  RootShell.targetDocument=null;RootShell.documents.clear();AppConfig.values.clear();AppConfig.values.put(AppConfig.HIDE_MASTER,"true");
   AppConfig.values.put(AppConfig.AUTOMATION_ENABLED,"true");AppConfig.values.put(AppConfig.AUTOMATION_SCOPE,"all");AppConfig.saves=0;
   RootShell.pmCalls=RootShell.snapshots=RootShell.identities=0;RootShell.deny=RootShell.inventoryFail=RootShell.supplementalInventoryFail=RootShell.journalDeny=RootShell.identityUnknown=false;
   RootShell.afterPrepared=RootShell.afterSnapshot=RootShell.afterInventory=RootShell.beforePm=RootShell.afterPm=null;
   RootShell.journal.clear();RootShell.commands.clear();RootShell.hidden.clear();RootShell.missing.clear();
   RootShell.requests.clear();RootShell.reserved.clear();RootShell.outcomes.clear();RootShell.slotRecords.clear();RootShell.slotTerminals.clear();
   HideRecoveryArchive.raw.clear();HideRecoveryArchive.after=null;HideRecoveryEmergency.afterWrite=null;HideRecoveryEmergency.root="";
-  RuntimeStateStore.hidden="old";RuntimeStateStore.aggregate="";RuntimeStateStore.writes=0;
+  RuntimeStateStore.hidden="old";RuntimeStateStore.aggregate="";RuntimeStateStore.writes=0;manager=new RootHideManager(ctx);
  }
  static RootHideManager.Target bound(int id,long serial){return new RootHideManager.Target(id,serial,PKG);}
  static Set<RootHideManager.Target> set(RootHideManager.Target... t){return new LinkedHashSet<>(Arrays.asList(t));}
- static void select(RootHideManager.Target... t){AppConfig.values.put(AppConfig.HIDE_TARGETS,HideTargetCodec.encode(set(t)));}
+ static void select(RootHideManager.Target... t){AppConfig.values.put(AppConfig.HIDE_TARGETS,HideTargetCodec.encode(set(t)));check(manager.refreshTargets().success,"fixture did not migrate saved selection");}
  static void check(boolean ok,String msg){if(!ok)throw new AssertionError(msg);}
  static void noWrites(){check(RootShell.pmCalls==0&&RootShell.journal.isEmpty(),"unexpected PM/journal mutation");}
  static void test(String name,Runnable task){reset();try{task.run();passed++;System.out.println("PASS "+name);}catch(Throwable e){failed++;System.out.println("FAIL "+name+": "+e);e.printStackTrace(System.out);}}
@@ -306,25 +333,25 @@ public class TestHideUserBinding {
   test("import requires pending and accepts missing users",()->{check(!manager.validateImportTargets(set(bound(12,42))).success,"bound import authorized");RootHideManager.Target t=new RootHideManager.Target(77,123,PKG,false);check(manager.validateImportTargets(set(t)).success,"pending missing import rejected");});
   test("pending save preserves unavailable user without binding",()->{RootHideManager.Target t=new RootHideManager.Target(77,123,PKG,false);select(t);check(manager.saveTargets(set(t)).success,"pending save blocked");check(AppConfig.values.get(AppConfig.HIDE_TARGETS).equals(t.encode()),"pending changed");noWrites();});
   test("stale existing binding is retained on ordinary save",()->{RootHideManager.Target t=bound(12,41);select(t);check(manager.saveTargets(set(t)).success,"stale existing selection discarded");check(manager.targets().contains(t),"stale binding replaced");noWrites();});
-  test("new stale binding is rejected before store",()->{check(!manager.saveTargets(set(bound(12,41))).success,"stale new save accepted");check(AppConfig.saves==0&&HideRecoveryArchive.raw.isEmpty(),"new stale writes");});
-  test("save archives exact original and new encoded proposal",()->{String old="12:"+PKG;AppConfig.values.put(AppConfig.HIDE_TARGETS,old);RootHideManager.Target t=bound(12,42);check(manager.saveTargets(set(t)).success,"bound save failed");check(HideRecoveryArchive.raw.get(0).equals(old)&&HideRecoveryArchive.raw.get(1).equals(t.encode()),"archive lost original/proposal");});
+  test("new stale binding is rejected before store",()->{check(manager.refreshTargets().success,"setup");String before=RootShell.targetDocument;int writes=AppConfig.saves;check(!manager.saveTargets(set(bound(12,41))).success,"stale new save accepted");check(before.equals(RootShell.targetDocument)&&writes==AppConfig.saves,"new stale writes");});
+  test("save archives exact original and new encoded proposal",()->{String old="12:"+PKG;AppConfig.values.put(AppConfig.HIDE_TARGETS,old);RootHideManager.Target t=bound(12,42);check(manager.saveTargets(set(t)).success,"bound save failed");check(HideRecoveryArchive.raw.get(0).equals(old)&&manager.targets().contains(t)&&AppConfig.values.get(AppConfig.HIDE_TARGETS).equals(t.encode()),"archive lost original/proposal");});
   test("user replaced during archive prevents private commit",()->{HideRecoveryArchive.after=()->ctx.users.actual.put(12,43L);check(!manager.saveTargets(set(bound(12,42))).success&&AppConfig.saves==0,"archive race saved");noWrites();});
   test("user replaced during root write prevents private commit",()->{HideRecoveryEmergency.afterWrite=()->ctx.users.actual.put(12,43L);check(!manager.saveTargets(set(bound(12,42))).success&&AppConfig.saves==0,"root-write race saved");check(!HideRecoveryArchive.raw.isEmpty(),"race lost records");noWrites();});
   test("unqueryable new target fails instead of being dropped",()->{ctx.pm.fail=true;RootShell.inventoryFail=true;check(!manager.saveTargets(set(bound(12,42))).success&&AppConfig.saves==0,"unknown target silently dropped");});
-  test("normal hide records saved lifetime",()->{RootHideManager.Target t=bound(12,42);select(t);check(manager.hide(t).success,"normal hide failed");check(RootShell.pmCalls==1&&RootShell.journal.size()==2,"hide protocol incomplete");for(HideRecoveryJournal.Entry e:RootShell.journal)check(e.userSerial==42,"journal rebound");check(RuntimeStateStore.hidden.equals(t.encode()),"mirror omitted binding");});
+  test("normal hide records saved lifetime",()->{RootHideManager.Target t=bound(12,42);select(t);var normal=manager.hide(t);check(normal.success,"normal hide failed: "+normal.message+" requests="+RootShell.requests.size()+" document="+RootShell.targetDocument);check(RootShell.pmCalls==1&&RootShell.recorded(t,HideTargetStore.OperationStatus.PENDING)&&RootShell.succeeded(t),"hide protocol incomplete");check(RootShell.requests.stream().allMatch(request->request.serial==42),"wire request rebound");check(RuntimeStateStore.hidden.equals(t.encode()),"mirror omitted binding");});
   test("unknown package evidence cannot prepare typed hide",()->{RootShell.identityUnknown=true;check(!manager.hide(bound(12,42)).success,"unknown evidence accepted");check(RootShell.requests.isEmpty(),"unknown evidence reached typed PREPARE");noWrites();});
-  test("durable prepared user change blocks PM",()->{RootHideManager.Target t=bound(12,42);RootShell.afterPrepared=()->ctx.users.actual.put(12,43L);check(!manager.hide(t).success,"prepared race allowed");check(RootShell.pmCalls==0&&RootShell.journal.size()==1,"prepared not retained");});
+  test("durable prepared user change blocks PM",()->{RootHideManager.Target t=bound(12,42);RootShell.afterPrepared=()->ctx.users.actual.put(12,43L);check(!manager.hide(t).success,"prepared race allowed");check(RootShell.pmCalls==0&&RootShell.recorded(t,HideTargetStore.OperationStatus.PENDING)&&RootShell.failed(t),"prepared not retained");});
   test("prepared persistence denial is zero PM",()->{RootShell.journalDeny=true;check(!manager.hide(bound(12,42)).success,"denied journal allowed");check(RootShell.pmCalls==0,"PM without prepared");});
-  test("typed batch retains each original lifetime at service boundary",()->{select(bound(0,0),bound(12,42));RootShell.afterPm=()->ctx.users.actual.put(12,43L);check(!manager.hideAll(false).success,"later target reused earlier check");check(RootShell.pmCalls==1&&!RootShell.hidden.contains("12:"+PKG),"replacement user mutated");List<HideRootProtocol.Request> hide=RootShell.requests.stream().filter(r->r.verb==HideRootProtocol.Verb.HIDE).toList();check(hide.size()==2&&hide.get(0).userId==0&&hide.get(0).serial==0&&hide.get(1).userId==12&&hide.get(1).serial==42,"batch request silently rebound or bypassed typed entry");check(RootShell.outcomes.get(hide.get(1).nonce)==HideRootProtocol.Outcome.REJECTED_BEFORE_WRITE,"service did not reject second lifetime");});
-  test("post-PM lifetime mismatch records ERROR and stops",()->{RootHideManager.Target t=bound(12,42);RootShell.afterPm=()->ctx.users.actual.put(12,43L);check(!manager.hide(t).success,"post race reported success");check(RootShell.journal.get(1).state.equals("ERROR"),"post identity not ERROR");});
-  test("repeat hidden creates no extra journal",()->{RootHideManager.Target t=bound(12,42);check(manager.hide(t).success&&manager.hide(t).success,"repeat failed");check(RootShell.pmCalls==1&&RootShell.journal.size()==2,"repeat reclaims state");});
-  test("same package per-user remains separate",()->{select(bound(0,0),bound(12,42),bound(999,10));check(manager.hideAll(false).success,"multiuser hide failed");check(RootShell.pmCalls==3&&RootShell.journal.size()==6,"user identities collapsed");});
+  test("typed batch retains each original lifetime at service boundary",()->{select(bound(0,0),bound(12,42));RootShell.afterPm=()->ctx.users.actual.put(12,43L);check(!manager.hideAll(false).success,"later target reused earlier check");check(RootShell.pmCalls==1&&!RootShell.hidden.contains("12:"+PKG),"replacement user mutated");List<HideRootProtocol.Request> hide=RootShell.requests.stream().filter(r->r.verb==HideRootProtocol.Verb.HIDE).toList();check(hide.size()==1&&hide.get(0).userId==0&&hide.get(0).serial==0,"batch request silently rebound or bypassed typed entry");check(RootShell.requests.stream().noneMatch(request->request.userId==12&&request.verb==HideRootProtocol.Verb.HIDE),"service did not reject second lifetime");});
+  test("post-PM lifetime mismatch records ERROR and stops",()->{RootHideManager.Target t=bound(12,42);RootShell.afterPm=()->ctx.users.actual.put(12,43L);check(!manager.hide(t).success,"post race reported success");check(RootShell.failed(t),"post identity not ERROR");});
+  test("repeat hidden creates no extra journal",()->{RootHideManager.Target t=bound(12,42);check(manager.hide(t).success&&manager.hide(t).success,"repeat failed");check(RootShell.pmCalls==1&&RootShell.requests.stream().filter(request->request.verb==HideRootProtocol.Verb.HIDE).count()==1&&RootShell.succeeded(t),"repeat reclaims state");});
+  test("same package per-user remains separate",()->{select(bound(0,0),bound(12,42),bound(999,10));check(manager.hideAll(false).success,"multiuser hide failed");check(RootShell.pmCalls==3&&RootShell.succeeded(bound(0,0))&&RootShell.succeeded(bound(12,42))&&RootShell.succeeded(bound(999,10)),"user identities collapsed");});
   test("automation refuses stale selection",()->{select(bound(12,41));ctx.getSharedPreferences(AppConfig.DIAGNOSTICS,0).edit().putString("root_last_state","GRANTED").apply();check(!manager.runScreenOffAutomation().success,"automation rebound");noWrites();});
   test("tile toggle reports identity error before deciding action",()->{select(bound(12,41));RootHideManager.OperationResult r=manager.toggleAll();check(!r.success&&!r.reviewRequired,"toggle masked user mismatch as recovery request");noWrites();});
   test("mirror removes stale and pending targets",()->{RootHideManager.Target current=bound(0,0);select(current,bound(12,41),new RootHideManager.Target(999,PKG));RootShell.hidden.add("0:"+PKG);check(!manager.syncMirrors().success,"errors masked");check(RuntimeStateStore.hidden.equals(current.encode())&&RuntimeStateStore.aggregate.equals("ERROR"),"stale mirror retained");});
-  test("invalid selection cannot become empty success",()->{AppConfig.values.put(AppConfig.HIDE_TARGETS,"broken-version");check(!manager.selectionStatus().valid&&manager.summary().aggregate==RootHideManager.Aggregate.ERROR,"invalid became empty");check(!manager.hideAll(false).success&&!manager.syncMirrors().success,"invalid operation succeeded");check(RuntimeStateStore.hidden.isEmpty()&&AppConfig.values.get(AppConfig.HIDE_TARGETS).equals("broken-version"),"invalid raw changed or mirror kept");noWrites();});
+  test("invalid selection cannot become empty success",()->{AppConfig.values.put(AppConfig.HIDE_TARGETS,"broken-version");check(!manager.selectionStatus().valid&&manager.summary().aggregate==RootHideManager.Aggregate.ERROR,"invalid became empty");check(!manager.hideAll(false).success&&!manager.syncMirrors().success,"invalid operation succeeded");check(RuntimeStateStore.hidden.isEmpty()&&RuntimeStateStore.aggregate.equals("ERROR")&&!manager.selectionStatus().valid&&AppConfig.values.get(AppConfig.HIDE_TARGETS).equals("broken-version")&&RootShell.targetDocument==null,"invalid raw changed or became authoritative");noWrites();});
   test("recovery remains stopped",()->{check(!manager.show(bound(12,42)).success&&!manager.showAll().success&&!manager.emergencyRestore().success,"recovery reopened");noWrites();});
-  test("final client check cannot authorize replacement at typed service boundary",()->{RootShell.beforePm=()->ctx.users.actual.put(12,43L);check(!manager.hide(bound(12,42)).success,"replacement reported success");List<HideRootProtocol.Request> hide=RootShell.requests.stream().filter(r->r.verb==HideRootProtocol.Verb.HIDE).toList();check(hide.size()==1&&hide.get(0).userId==12&&hide.get(0).serial==42,"original serial not carried to service");check(RootShell.pmCalls==0&&!RootShell.hidden.contains("12:"+PKG),"replacement mutated despite service rejection");check(RootShell.outcomes.get(hide.get(0).nonce)==HideRootProtocol.Outcome.REJECTED_BEFORE_WRITE,"not an authoritative modeled rejection");check(RootShell.journal.size()==2&&RootShell.journal.get(1).state.equals("ERROR"),"original attempt observation missing");});
+  test("final client check cannot authorize replacement at typed service boundary",()->{RootShell.beforePm=()->ctx.users.actual.put(12,43L);check(!manager.hide(bound(12,42)).success,"replacement reported success");List<HideRootProtocol.Request> hide=RootShell.requests.stream().filter(r->r.verb==HideRootProtocol.Verb.HIDE).toList();check(hide.size()==1&&hide.get(0).userId==12&&hide.get(0).serial==42,"original serial not carried to service");check(RootShell.pmCalls==0&&!RootShell.hidden.contains("12:"+PKG),"replacement mutated despite service rejection");check(RootShell.outcomes.get(hide.get(0).nonce)==HideRootProtocol.Outcome.REJECTED_BEFORE_WRITE,"not an authoritative modeled rejection");check(RootShell.recorded(bound(12,42),HideTargetStore.OperationStatus.PENDING)&&RootShell.failed(bound(12,42)),"original attempt observation missing");});
   System.out.println("Backend user binding: "+passed+" passed, "+failed+" failed; actual manager/client/store/protocol, modeled transport/service boundary; no ART or fsync proof.");
   if(failed!=0)System.exit(1);
  }

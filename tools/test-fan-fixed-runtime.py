@@ -21,8 +21,8 @@ public Object getSystemService(String name){return new android.os.PowerManager()
 public Intent registerReceiver(Object receiver,IntentFilter filter){return new Intent();}}
 ''',
     "android/content/ContentResolver.java": '''package android.content;public class ContentResolver {
-public static String measurement="";
-public android.os.Bundle call(android.net.Uri uri,String method,String arg,android.os.Bundle extras){if(method.equals("fan_measurement"))measurement=(String)extras.get("value");android.os.Bundle b=new android.os.Bundle();b.putBoolean("ok",true);return b;}}
+public static String measurement="";public static boolean driverProof;
+public android.os.Bundle call(android.net.Uri uri,String method,String arg,android.os.Bundle extras){if(method.equals("fan_measurement"))measurement=(String)extras.get("value");android.os.Bundle b=new android.os.Bundle();b.putBoolean("ok",true);if(method.equals("fan_driver_proof")){b.putBoolean("verified",driverProof);b.putString("state",driverProof?"verified":"loaded_note_unavailable");}return b;}}
 ''',
     "android/content/Intent.java": 'package android.content;public class Intent {public static final String ACTION_BATTERY_CHANGED="battery";public int getIntExtra(String name,int fallback){return 300;}}',
     "android/content/IntentFilter.java": 'package android.content;public class IntentFilter {public IntentFilter(String action){}}',
@@ -31,7 +31,7 @@ public android.os.Bundle call(android.net.Uri uri,String method,String arg,andro
     "android/os/Build.java": 'package android.os;public class Build {public static String DEVICE="NX809J",MODEL="NX809J",PRODUCT="NX809J";public static class VERSION {public static int SDK_INT=35;}public static class VERSION_CODES {public static final int Q=29;}}',
     "android/os/Bundle.java": '''package android.os;public class Bundle extends java.util.HashMap<String,Object> {
 public void putBoolean(String key,boolean value){put(key,value);}public void putString(String key,String value){put(key,value);}
-public boolean getBoolean(String key){return Boolean.TRUE.equals(get(key));}}
+public String getString(String key){return (String)get(key);}public boolean getBoolean(String key){return Boolean.TRUE.equals(get(key));}}
 ''',
     "android/os/SystemClock.java": 'package android.os;public class SystemClock {public static long now;public static long elapsedRealtime(){return now;}}',
     "android/os/PowerManager.java": 'package android.os;public class PowerManager {public static final int THERMAL_STATUS_SEVERE=3;public static int thermal;public int getCurrentThermalStatus(){return thermal;}}',
@@ -80,7 +80,8 @@ public static class Owner {
  int maximum,cancel,notify;void fanMaxSpeed(){maximum++;}void fanFullSpeed(){throw new AssertionError("retired OEM full-speed feature");}
  void cancelFanFullSpeed(){cancel++;}void notifyCubeFan(){notify++;Nodes.level=Settings.System.mode==0?4:2;}
 }
-static Object controller;static Owner owner;static boolean loadedDriver;
+public static class ChildOwner extends Owner {}
+static Object controller;static Owner owner;static boolean loadedDriver,probeDriver;
 static Object field(String name)throws Exception {Field field=controller.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(controller);}
 static void tick(){android.os.SystemClock.now+=900;
  // Motor/queue time is virtual; ensure diagnostic wall-clock throttling does not hide its state.
@@ -90,7 +91,8 @@ static void tick(){android.os.SystemClock.now+=900;
 static void create(boolean verified)throws Exception {
  FeatureSettings.diagnostics.clear();Settings.System.mode=1;Settings.System.manual=2;Nodes.enabled=1;Nodes.level=2;Nodes.writes=0;
  Nodes.pendingLevel=-1;Nodes.delayMs=0;Nodes.dropWrites=false;Nodes.rpmOverride=false;Nodes.rpm=null;android.os.PowerManager.thermal=0;
- owner=new Owner();FanCompatibilityProfile profile=FanCompatibilityProfile.resolve(verified?(loadedDriver?"NX799J":"NX809J"):"NX769J","","",true,true,true,true,p->true,verified&&loadedDriver);
+ owner=probeDriver?new ChildOwner():new Owner();
+ FanCompatibilityProfile profile=probeDriver?FanCompatibilityProfile.resolve("NX819J","","",true,true,true,true,p->true,false):FanCompatibilityProfile.resolve(verified?(loadedDriver?"NX799J":"NX809J"):"NX769J","","",true,true,true,true,p->true,verified&&loadedDriver);
  Class<?> type=Class.forName("ls.augment.com.hook.FanControlHook$Controller");Constructor<?> ctor=type.getDeclaredConstructors()[0];ctor.setAccessible(true);
  controller=ctor.newInstance(new AugmentModule(),Nodes.class.getMethod("write",String.class,String.class),Nodes.class.getMethod("read",String.class),profile);
  Method start=type.getDeclaredMethod("start",android.content.Context.class,Object.class);start.setAccessible(true);start.invoke(controller,new android.content.Context(),owner);
@@ -104,6 +106,12 @@ public static void main(String[] args)throws Exception {
  loadedDriver=args.length>0;
  FeatureSettings.values.put(FeatureSettings.GAME_MASTER,"1");FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"1");
  FeatureSettings.values.put(ConfigSchema.FAN_UNLOCK_MAX,"1");FeatureSettings.values.put(ConfigSchema.FAN_TARGET_RPM,"99999");
+ probeDriver=true;android.os.Build.DEVICE=android.os.Build.MODEL=android.os.Build.PRODUCT="NX819J";
+ FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"3");create(true);tick();
+ check(Nodes.writes==0&&FeatureSettings.diagnostics.get("active").contains("driver_proof=loaded_note_unavailable"),"unreadable loaded driver leaves the OEM in control and records the missing capability");
+ android.content.ContentResolver.driverProof=true;android.os.SystemClock.now+=31_000;awaitLevel(3);
+ select(5);select(1);check(owner.maximum==1&&owner.cancel==1&&owner.notify==1,"worker revalidates inherited OEM power and restoration after driver proof recovers");
+ probeDriver=false;android.os.Build.DEVICE=android.os.Build.MODEL=android.os.Build.PRODUCT="NX809J";
  FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"0");create(true);awaitLevel(1);
  check(Nodes.level==1,"legacy RPM selection zero becomes level one and ignores requested RPM");
  for(int level=1;level<=5;level++)select(level);

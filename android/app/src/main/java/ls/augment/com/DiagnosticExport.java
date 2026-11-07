@@ -106,7 +106,10 @@ final class DiagnosticExport {
                 RootShell.run("dumpsys activity exit-info com.android.systemui",null,6,128*1024),128*1024);
         source(out,"DUO_EXIT_INFO; app process only, not complete app_process Root death evidence; match reproduction time",
                 RootShell.run("dumpsys activity exit-info ls.augment.com",null,6,128*1024),128*1024);
+        source(out,"RECORDER_EXIT_INFO; historical entries; match PID, user and reproduction time",
+                RootShell.run("dumpsys activity exit-info com.android.ztescreenshot",null,6,128*1024),128*1024);
         }else out.append("historical_exit_summaries=OMITTED_AFTER_LOG_CLEAR; new failures are collected from post-clear logs\n");
+        appendRecorderEvidence(out,context,historyCutoff);
         appendLogcat(out,"CLEANUP_CRASH_GRAPHICS_LOGCAT",DiagnosticLogcat.cleanup(start,historyCutoff,
                 (command,timeout,limit)->RootShell.run(command,null,timeout,limit)),ai,shoulder);
         if(shoulder)file(out,context,"SHOULDER_DETAIL","detail-SHOULDER.log",512*1024,"SHOULDER");
@@ -154,6 +157,16 @@ final class DiagnosticExport {
     }
     private static void appendAppCrashLog(StringBuilder out,Context context) {
         out.append(AppCrashDiagnostics.readForExport(context));
+    }
+    private static void appendRecorderEvidence(StringBuilder out,Context context,long cutoff){
+        try{
+            int uid=context.getPackageManager().getApplicationInfo(RecorderCrashEvidence.PACKAGE,0).uid;
+            if(uid/100000!=android.os.Process.myUid()/100000)throw new SecurityException("recorder_user");
+            String command="CLASSPATH="+RootShell.quote(context.getApplicationInfo().sourceDir)
+                    +" exec /system/bin/app_process /system/bin ls.augment.com.RecorderCrashEvidence "+uid+" "+cutoff;
+            source(out,"RECORDER_CRASH_EVIDENCE; package/UID filtered Java and native summaries; history boundary enforced",
+                    RootShell.run(command,null,10,112*1024),112*1024);
+        }catch(Exception missing){out.append("\nRECORDER_CRASH_EVIDENCE status=UNAVAILABLE;error=").append(missing.getClass().getSimpleName()).append('\n');}
     }
 
     private static void appendLauncherCrashHistory(StringBuilder out,Context context) {

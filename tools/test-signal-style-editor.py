@@ -275,7 +275,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(code, encoding='utf-8')
             paths.append(path)
-        paths += [SRC / name for name in ('AppConfig.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java', 'SignalStylePolicy.java', 'ConfigEditDraft.java')]
+        paths += [SRC / name for name in ('AppConfig.java', 'DuoIslandPolicy.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java', 'SignalStylePolicy.java', 'ConfigEditDraft.java')]
         subprocess.run([javac, '-encoding', 'UTF-8', '--release', '17', '-d', folder, *map(str, paths)], check=True)
         subprocess.run([java, '-cp', folder, 'ls.augment.com.TestSignalStyleEditor'], check=True, timeout=20)
 

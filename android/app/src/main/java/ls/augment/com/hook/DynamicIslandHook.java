@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import ls.augment.com.IslandActivityPolicy;
 import ls.augment.com.IslandDownloadPolicy;
+import ls.augment.com.IslandNoticeRules;
 import ls.augment.com.SystemUiOptions;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
@@ -103,6 +104,8 @@ final class DynamicIslandHook {
                 MAIN.post(()->{for(State state:new ArrayList<>(STATES.values())){
                     state.downloads.removed(removed);state.requestRefresh();
                     if(state.downloads.activities.get(key)==null)state.announcedDownloads.remove(key);
+                    if(state.notice!=null&&key.equals(state.notice.getKey())
+                            &&(removed.getUid()!=state.notice.getUid()||removed.getPostTime()<state.notice.getPostTime()))continue;
                     if(key.equals(state.firstKey))state.cancelFirst();
                     state.noticeHistory.remove(key);state.withdrawNotice(key);
                 }});
@@ -123,7 +126,7 @@ final class DynamicIslandHook {
         });
         count+=hookListenerLifecycle(module,loader,"onListenerDisconnected",owner->{
             MAIN.post(()->{if(notificationListener.get()!=owner)return;notificationListener.clear();
-                for(State state:new ArrayList<>(STATES.values())){state.downloads.clear();state.requestRefresh();}});
+                for(State state:new ArrayList<>(STATES.values())){state.downloads.clear();state.clearNotice();state.requestRefresh();}});
         });
         module.logFeatureInfo("DYNAMIC_ISLAND_READY hooks="+count+",taskHooks="+taskHooks);
         return count+taskHooks;
@@ -159,6 +162,7 @@ final class DynamicIslandHook {
         final List<MediaController> controllers=new ArrayList<>();
         final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();
         final Map<String,Integer> noticeHistory=new LinkedHashMap<>();
+        IslandNoticeRules noticeRules=IslandNoticeRules.parse("");
         final IslandActivityPolicy.ChargingActivity chargeActivity=new IslandActivityPolicy.ChargingActivity();
         // Query the current user's list again: a delayed callback from the previous
         // user must never republish that user's media after a user switch.
@@ -184,7 +188,7 @@ final class DynamicIslandHook {
                 }else if(Intent.ACTION_SCREEN_OFF.equals(intent.getAction())||USER_SWITCHED.equals(intent.getAction())){
                     downloads.clear();download=null;
                     clearNotice();chargeActivity.clear();mediaActivities.clear();dismiss();
-                    if(USER_SWITCHED.equals(intent.getAction())){stopMediaListening();listenMedia();}
+                    if(USER_SWITCHED.equals(intent.getAction())){noticeHistory.clear();stopMediaListening();listenMedia();}
                 }
                 if(Intent.ACTION_USER_PRESENT.equals(intent.getAction())||Intent.ACTION_SCREEN_ON.equals(intent.getAction())
                         ||USER_SWITCHED.equals(intent.getAction()))restoreDownloadSnapshot();
@@ -195,6 +199,7 @@ final class DynamicIslandHook {
         int battery,activity,ownerUser=-1;
         long noticeUntil;String lastState="";
         StatusBarNotification notice;MediaController media;
+        StatusBarNotification snoozeRequested;
         Bitmap cachedArt;Drawable cachedArtDrawable,cachedAppIcon;String cachedIconPackage="",popupContent="";
         MediaSession.Token artworkSession;long artworkMissingSince=-1;boolean holdingArtwork;
         String title="",subtitle="";Drawable icon;boolean playing;
@@ -232,11 +237,12 @@ final class DynamicIslandHook {
         boolean locked(){return keyguard!=null&&keyguard.isKeyguardLocked();}
         void configure(){
             if(closed)return;cancelFirst();boolean next=FeatureSettings.enabled(context,SystemUiOptions.ISLAND);
+            noticeRules=IslandNoticeRules.parse(FeatureSettings.text(context,IslandNoticeRules.KEY,""));
             if(next!=enabled){
                 enabled=next;if(enabled)listen();else {stopListening();nativeHost.release();}
             }
             nativeHost.selectNative(next);
-            if(!option("notifications"))clearNotice();
+            if(!option("notifications")||notice!=null&&noticeMode(notice)==IslandNoticeRules.OFF)clearNotice();
             if(!option("charging"))chargeActivity.clear();
             if(!option("music"))mediaActivities.clear();
             downloads.configure();restoreDownloadSnapshot();
@@ -268,7 +274,10 @@ final class DynamicIslandHook {
             notice(sbn,rankings);requestRefresh();
         }
         void scheduleFirst(String key,int kind){
-            if(!FeatureSettings.enabled(context,SystemUiOptions.ISLAND_FIRST_EXPAND)||!hostVisible())return;
+            int mode=kind==IslandActivityPolicy.NOTICE&&notice!=null?noticeMode(notice):IslandNoticeRules.INHERIT;
+            boolean expand=mode==IslandNoticeRules.EXPAND||mode==IslandNoticeRules.INHERIT
+                    &&FeatureSettings.enabled(context,SystemUiOptions.ISLAND_FIRST_EXPAND);
+            if(!expand||!hostVisible())return;
             cancelFirst();firstKey=key;firstKind=kind;entryWaits=0;
             firstDiagnostic("new:"+kind);
             MAIN.postDelayed(firstExpansion,350);
@@ -377,6 +386,9 @@ final class DynamicIslandHook {
             }catch(ReflectiveOperationException|RuntimeException unavailable){return null;}
         }
         boolean sameSession(MediaController first,MediaController second){return first!=null&&second!=null&&first.getSessionToken().equals(second.getSessionToken());}
+        int noticeMode(StatusBarNotification source){
+            return noticeRules==null?IslandNoticeRules.OFF:noticeRules.resolve(ownerUser,source.getPackageName(),source.getNotification().getChannelId());
+        }
         void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map){
             if(closed||!enabled||screenOff||!option("notifications")||locked()||power==null||!power.isInteractive())return;
             Notification n=sbn.getNotification();
@@ -386,7 +398,7 @@ final class DynamicIslandHook {
             if(user<0||(sbn.getUserId()!=user&&sbn.getUserId()!=-1)||n.visibility==Notification.VISIBILITY_SECRET
                     ||(n.flags&(Notification.FLAG_GROUP_SUMMARY|Notification.FLAG_ONGOING_EVENT))!=0
                     ||n.extras==null||n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
-                    ||!allowedRanking(sbn.getKey(),map)){withdrawNotice(sbn.getKey());return;}
+                    ||noticeMode(sbn)==IslandNoticeRules.OFF||!allowedRanking(sbn.getKey(),map)){withdrawNotice(sbn.getKey());return;}
             CharSequence text=n.extras.getCharSequence(Notification.EXTRA_TEXT),heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
             if(TextUtils.isEmpty(text)&&TextUtils.isEmpty(heading)){withdrawNotice(sbn.getKey());return;}
             // Keep a bounded, content-free fingerprint after expiration: a
@@ -416,7 +428,7 @@ final class DynamicIslandHook {
         }
         int currentUser(){try{return (Integer)Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null);}catch(Exception ignored){return -1;}}
         void withdrawNotice(String key){if(notice!=null&&notice.getKey().equals(key)){clearNotice();refresh();}}
-        void clearNotice(){notice=null;noticeUntil=0;}
+        void clearNotice(){notice=null;snoozeRequested=null;noticeUntil=0;}
         void refresh(){
             MAIN.removeCallbacks(tick);if(closed)return;
             try{refreshState();}catch(RuntimeException failure){
@@ -453,7 +465,7 @@ final class DynamicIslandHook {
                 String compact=activity==IslandActivityPolicy.NOTICE?appLabel(notice.getPackageName()):title;
                 boolean shown=activity==IslandActivityPolicy.DOWNLOAD
                         ?nativeHost.showDownload(download,icon,appLabel(download.source.getPackageName()),this::downloadAction)
-                        :activity==IslandActivityPolicy.NOTICE?nativeHost.showNotice(notice,title,subtitle,compact,icon,this::noticeAction)
+                        :activity==IslandActivityPolicy.NOTICE?nativeHost.showNotice(notice,title,subtitle,compact,icon,this::noticeAction,this::snoozeNotice)
                         :nativeHost.show(activity,title,subtitle,compact,icon,playing,battery,media);
                 if(!shown){diagnostic("native_unavailable");return;}
                 diagnostic("activity="+next+",playing="+playing);
@@ -516,7 +528,9 @@ final class DynamicIslandHook {
             }catch(RuntimeException ignored){}
             if(intent==null){expand();return;}
             if(activity==IslandActivityPolicy.DOWNLOAD){downloadAction(download,intent);dismiss();return;}
-            if(activity==IslandActivityPolicy.NOTICE)noticeAction(notice,intent);else openNotice(intent);
+            if(activity==IslandActivityPolicy.NOTICE){
+                if(!noticeAction(notice,intent))return;
+            }else if(!openNotice(intent))return;
             dismiss();
             if(activity==IslandActivityPolicy.NOTICE){clearNotice();refresh();}
         }
@@ -549,30 +563,54 @@ final class DynamicIslandHook {
                 MAIN.removeCallbacks(collapse);if(nativeHost.expanded())MAIN.postDelayed(collapse,8000);
             }catch(RuntimeException unavailable){openDiagnostic("download_action_unavailable:"+unavailable.getClass().getSimpleName());}
         }
-        void noticeAction(StatusBarNotification source,PendingIntent intent){
-            if(source==null||intent==null||notice==null||activity!=IslandActivityPolicy.NOTICE||!nativeHost.visible()
-                    ||!source.getKey().equals(notice.getKey())||source.getUid()!=notice.getUid()||source.getPostTime()!=notice.getPostTime())return;
-            NotificationListenerService listener=notificationListener.get();
-            try{
-                if(listener==null)return;StatusBarNotification[] active=listener.getActiveNotifications();
-                if(active==null)return;
-                for(StatusBarNotification current:active){
-                    if(!source.getKey().equals(current.getKey())||source.getUid()!=current.getUid()
-                            ||source.getPostTime()!=current.getPostTime()||source.getUserId()!=current.getUserId()
-                            ||!allowedRanking(current.getKey(),listener.getCurrentRanking()))continue;
-                    Notification n=current.getNotification();
-                    if(n.visibility==Notification.VISIBILITY_SECRET)return;
-                    boolean allowed=intent.equals(n.contentIntent);
-                    for(Notification.Action button:IslandDownloadSource.actions(n))allowed|=intent.equals(button.actionIntent);
-                    if(allowed)openNotice(intent);return;
-                }
-            }catch(RuntimeException failure){openDiagnostic("notice_action_unavailable:"+failure.getClass().getSimpleName());}
+        StatusBarNotification activeNotice(StatusBarNotification source,NotificationListenerService listener){
+            if(source==null||source!=notice||listener==null||closed||!enabled||!option("notifications")||screenOff||locked()
+                    ||power==null||!power.isInteractive()||ownerUser<0||ownerUser!=currentUser()
+                    ||activity!=IslandActivityPolicy.NOTICE||!nativeHost.visible()||!hostVisible()
+                    ||android.os.SystemClock.elapsedRealtime()>=noticeUntil)return null;
+            StatusBarNotification[] active=listener.getActiveNotifications(new String[]{source.getKey()});
+            if(active==null)return null;
+            for(StatusBarNotification current:active){
+                if(current==null||!source.getKey().equals(current.getKey())||source.getUid()!=current.getUid()
+                        ||source.getPostTime()!=current.getPostTime()||source.getUserId()!=current.getUserId()
+                        ||!source.getPackageName().equals(current.getPackageName())
+                        ||current.getUserId()!=ownerUser&&current.getUserId()!=-1)continue;
+                Notification n=current.getNotification();
+                if(java.util.Objects.equals(n.getChannelId(),source.getNotification().getChannelId())
+                        &&n.visibility!=Notification.VISIBILITY_SECRET&&n.extras!=null&&!n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+                        &&(n.flags&(Notification.FLAG_GROUP_SUMMARY|Notification.FLAG_ONGOING_EVENT))==0
+                        &&noticeMode(current)!=IslandNoticeRules.OFF&&allowedRanking(current.getKey(),listener.getCurrentRanking()))return current;
+            }
+            return null;
         }
-        void openNotice(PendingIntent intent){
+        boolean noticeAction(StatusBarNotification source,PendingIntent intent){
+            if(intent==null)return false;
+            try{
+                StatusBarNotification current=activeNotice(source,notificationListener.get());
+                if(current==null||source==snoozeRequested)return false;
+                Notification n=current.getNotification();
+                boolean allowed=intent.equals(n.contentIntent);
+                for(Notification.Action button:IslandDownloadSource.actions(n))allowed|=intent.equals(button.actionIntent);
+                return allowed&&openNotice(intent);
+            }catch(RuntimeException failure){openDiagnostic("notice_action_unavailable:"+failure.getClass().getSimpleName());}
+            return false;
+        }
+        void snoozeNotice(StatusBarNotification source){
+            if(source==null||source==snoozeRequested)return;
+            try{
+                NotificationListenerService listener=notificationListener.get();
+                StatusBarNotification current=activeNotice(source,listener);
+                if(current==null||!current.isClearable())return;
+                listener.snoozeNotification(current.getKey(),15*60_000L);
+                snoozeRequested=source; // System removal and repost remain authoritative.
+                openDiagnostic("snooze_requested");
+            }catch(RuntimeException failure){openDiagnostic("snooze_unavailable:"+failure.getClass().getSimpleName());}
+        }
+        boolean openNotice(PendingIntent intent){
             openDiagnostic("clicked");
             try{
                 if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||intent==null
-                        ||ownerUser<0||currentUser()!=ownerUser){openDiagnostic("blocked");return;}
+                        ||ownerUser<0||currentUser()!=ownerUser){openDiagnostic("blocked");return false;}
                 // Like the native notification click path, explicitly grant the
                 // sender's launch privileges for this user action. SystemUI has
                 // a status-bar window, not necessarily a foreground Activity.
@@ -582,9 +620,10 @@ final class DynamicIslandHook {
                 intent.send(context,0,null,null,null,null,options.toBundle());
                 // send() can return even if the platform rejects a launch. This
                 // diagnostic records submission, not a verified foreground app.
-                openDiagnostic("submitted");
+                openDiagnostic("submitted");return true;
             }catch(PendingIntent.CanceledException failure){openDiagnostic("canceled");}
             catch(RuntimeException failure){openDiagnostic("failed:"+failure.getClass().getSimpleName());}
+            return false;
         }
         void openDiagnostic(String state){FeatureSettings.diagnostic(context,"ls_augment_island_open",state+";at="+SystemClock.elapsedRealtime());}
         int dp(int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}

@@ -15,6 +15,7 @@ missing recorder helpers come from current source, but cannot replace that metho
 """
 from pathlib import Path
 from hide_private_test_support import PRIVATE_STORAGE_STUB
+import sys
 import argparse
 import contextlib
 import json
@@ -389,6 +390,23 @@ def main():
     production["HidePrivateStorage.java"] = PRIVATE_STORAGE_STUB
     current_manager = (args.source_dir / "RootHideManager.java").read_text(encoding="utf-8")
     manager = args.manager_source.read_text(encoding="utf-8") if args.manager_source else current_manager
+    # The current manager dispatches fresh, single-use commands. Exercise its actual
+    # dispatcher plus the retained Recorder and transaction client independently.
+    if "HideTargetController.forCheckedBatch(" in manager:
+        if args.artifacts:
+            args.artifacts.mkdir(parents=True, exist_ok=False)
+        with (contextlib.nullcontext(args.artifacts) if args.artifacts else tempfile.TemporaryDirectory(prefix="lsa-hide-recorder-")) as temporary:
+            directory = Path(temporary)
+            recorder = dict(production)
+            recorder["TestHideMutationRecorder.java"] = RECORDER_TEST
+            client = dict(production)
+            client["TestHideRootTransactions.java"] = args.client_test.read_text(encoding="utf-8")
+            recorder_ok = compile_and_run(directory / "recorder", recorder, "TestHideMutationRecorder", args.javac, args.java)
+            client_ok = compile_and_run(directory / "client", client, "TestHideRootTransactions", args.javac, args.java, shell)
+            dispatch = subprocess.run([sys.executable, str(ROOT / "tools/test-hide-configured-batch.py"), "--manager-source",
+                                       str(args.manager_source or (args.source_dir / "RootHideManager.java")),
+                                       "--javac", args.javac, "--java", args.java], check=False)
+        return 0 if recorder_ok and client_ok and dispatch.returncode == 0 else 1
     members = [member(manager, "private HideBatchExecutor.Outcome<Target> executeBatch(")]
     for signature in ("private HideBatchExecutor.CommandResult recordHide(",):
         # Legacy executeBatch directly invokes RootShell. Supplying helpers that

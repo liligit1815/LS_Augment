@@ -57,7 +57,7 @@ final class NativeIslandHost {
     private Object feature,manager,permanent,disposable;
     private View root,container,current,music,notice,charge,chargingView,noticePanel,chargePanel;
     private View download,downloadPanel;
-    private DuoDownloadPanel downloadContent;
+    private DuoDownloadPanel downloadContent,noticeContent;
     private DuoCompactText downloadLabel;
     private boolean acquired,originalFeature,originalEnabled,flagsOverridden;
     private int width,height,offsetX,offsetY;
@@ -515,7 +515,7 @@ final class NativeIslandHost {
             }else{
                 if(notice==null){notice=appIsland();noticePanel=appPanel();setAppPanel(notice,noticePanel);}
                 if(duoCompatibility.legacyCards)text(notice,"mDisplayText",compact);else call(notice,"setDisplayText",compact);
-                image(notice,"mDisplayIcon",icon);panel(noticePanel,title,subtitle,icon);next=notice;
+                image(notice,"mDisplayIcon",icon);if(noticeContent==null)panel(noticePanel,title,subtitle,icon);next=notice;
             }
             set(next,"mKeyguardIsland",false);set(next,"mIslandWidth",width);
             next.setContentDescription("灵动岛："+compact+"。轻点打开，长按展开");
@@ -553,9 +553,16 @@ final class NativeIslandHost {
         }catch(Exception unavailable){hide();report("download_unavailable:"+cause(unavailable));return false;}
     }
     boolean showNotice(android.service.notification.StatusBarNotification source,String title,String subtitle,String app,Drawable icon,
-            java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action){
-        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action);
-        return show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),icon,false,0,null);
+            java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action,
+            java.util.function.Consumer<android.service.notification.StatusBarNotification> remind){
+        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action,remind);
+        if(!show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),icon,false,0,null))return false;
+        try{
+            if(noticeContent==null)noticeContent=new DuoDownloadPanel(noticePanel);
+            noticeContent.bindNotice(source,icon,app,action,remind);
+            applyAppearance();
+        }catch(Exception unavailable){report("notice_controls_unavailable:"+cause(unavailable));}
+        return true;
     }
     private void panel(View view,String title,String subtitle,Drawable icon)throws Exception{
         text(view,"mDisplayText",title);text(view,"mDisplaySecondText",subtitle);image(view,"mDisplayIcon",icon);
@@ -646,6 +653,7 @@ final class NativeIslandHost {
     }
     private void glassForeground(int color){
         if(downloadContent!=null)downloadContent.foreground(color);
+        if(noticeContent!=null)noticeContent.foreground(color);
         Object mediaPanel=field(music,"mMediaPanelIsland");
         for(Object view:new Object[]{field(mediaPanel,"mDisplayTitle"),field(mediaPanel,"mDisplayText"),sceneField(notice,"mDisplayText"),
                 sceneField(noticePanel,"mDisplayText"),sceneField(noticePanel,"mDisplaySecondText"),sceneField(chargePanel,"mDisplayText"),sceneField(chargePanel,"mDisplaySecondText"),sceneField(download,"mDisplayText")}){
@@ -700,6 +708,7 @@ final class NativeIslandHost {
         try{panelTransition.finish();}catch(RuntimeException e){report("panel_finish_failed:"+cause(e));}
         restoreBackgrounds();View old=current;current=null;
         if(old==download&&downloadContent!=null)downloadContent.clear();
+        if(old==notice&&noticeContent!=null)noticeContent.clear();
         if(old!=null)try{call(permanent,"removePermanentIslandInner",old);}catch(Exception e){report("remove_failed:"+cause(e));}
     }
     private void restoreBackgrounds(){

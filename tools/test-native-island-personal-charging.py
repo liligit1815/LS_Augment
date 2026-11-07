@@ -29,7 +29,7 @@ public static void main(String[] args)throws Exception {
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalCharging.class.getClassLoader());
 check(module.errors==0&&AugmentModule.hooks.size()==18,"three adapters share inherited channel hook; charging requires its actual instance callback");
 Context context=new Context();CardManager manager=new CardManager();StarryIslandCardRender renderer=start(context,manager);
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);FeatureSettings.change("scenic_guide",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);FeatureSettings.change("scenic_guide",true);
 MeetingCard meeting=new MeetingCard();ElectronicGuideCard scenic=new ElectronicGuideCard();ChargingReminderCard charging=new ChildCharging();
 renderer.render(List.of(meeting,scenic,charging));check(renderer.selected.equals(List.of(meeting,scenic)),"charging defaults off independently");
 FeatureSettings.change("nearby_charging",true);check(renderer.selected.equals(List.of(meeting,scenic,charging)),"charging enable reuses real source card including subclass");

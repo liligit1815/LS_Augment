@@ -1,4 +1,5 @@
 """Offline ownership/input primitives for the finite A/B row collector."""
+from regression_journal_io import replace_flushed_file
 from pathlib import Path
 import json
 import os
@@ -24,7 +25,7 @@ def atomic(path, value):
     with temporary.open('w', encoding='utf-8', newline='\n') as out:
         json.dump(value, out, ensure_ascii=False, indent=2)
         out.write('\n'); out.flush(); os.fsync(out.fileno())
-    os.replace(temporary, path)
+    replace_flushed_file(temporary,path)
 
 
 def difference(a, b):

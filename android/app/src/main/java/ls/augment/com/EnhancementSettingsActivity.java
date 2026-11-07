@@ -38,6 +38,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final Map<String,Button> aodParameterRestores=new LinkedHashMap<>();
     private final Runnable autoSave=this::flush;
     private Dialog islandAppStyleDialog;
+    private IslandNoticeRuleEditor noticeRuleEditor;
     private boolean bindingIslandMaster;
     private UiKit.Fold nativeScenesFold;
     private SharedPreferences islandPreferences;
@@ -515,7 +516,12 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             control.setOnCheckedChangeListener((button,on)->change(key,on?"1":"0",control));
             if("notifications".equals(suffix)){
                 LinearLayout timing=new LinearLayout(this);timing.setOrientation(LinearLayout.VERTICAL);timing.setPadding(ui.dp(12),0,0,0);
-                timing.addView(input(options.get(SystemUiOptions.PREFIX+"island_notice_seconds")),ui.wrap());content.addView(timing,ui.wrap());
+                timing.addView(input(options.get(SystemUiOptions.PREFIX+"island_notice_seconds")),ui.wrap());
+                noticeRuleEditor=new IslandNoticeRuleEditor(this,ui,()->value(IslandNoticeRules.KEY),
+                        next->change(IslandNoticeRules.KEY,next,null));
+                View rules=noticeRuleEditor.view();
+                controls.put(IslandNoticeRules.KEY,rules);
+                timing.addView(rules,ui.wrap());content.addView(timing,ui.wrap());
                 UiKit.Fold timingFold=ui.fold(control,timing);
                 control.setOnCheckedChangeListener((button,on)->{timingFold.sync();change(key,on?"1":"0",control);});
             }
@@ -881,6 +887,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             ((View)cleanupIconEditor.getParent()).setVisibility("1".equals(value(LauncherOptions.CLEANUP_ICON_STYLE))?View.VISIBLE:View.GONE);
     }
     private void refreshInput(String key,String next){
+        if(IslandNoticeRules.KEY.equals(key)&&noticeRuleEditor!=null){noticeRuleEditor.render();return;}
         if(LauncherOptions.CLEANUP_ICON_STYLE.equals(key))syncCleanupIconStyle();
         if(LauncherOptions.CLEANUP_ICON.equals(key)&&cleanupIconEditor!=null){cleanupIconEditor.render(next);return;}
         View view=controls.get(key);if(view instanceof EditText){EditText field=(EditText)view;if(!next.contentEquals(field.getText()))field.setText(next);}

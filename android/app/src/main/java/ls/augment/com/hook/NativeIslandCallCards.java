@@ -91,7 +91,7 @@ final class NativeIslandCallCards {
         Method capability = require(feature, "isSupportIslandCardMode", boolean.class);
         Method initialize = require(manager, "init", void.class, Context.class);
         Method destroy = require(manager, "destroy", void.class);
-        Method wait = require(manager, "tryWaitLauncherIslandEnterAnimEndThenShow", boolean.class, Context.class, boolean.class);
+        Method wait = launcherWait(manager);
         Method connect = require(producer, "connect", boolean.class), disconnect = require(producer, "disconnect", void.class);
         Method push = require(producer, "pushCard", boolean.class, message), update = require(producer, "updateCard", boolean.class, message);
         Method remove = require(producer, "removeCard", boolean.class, String.class);
@@ -119,7 +119,7 @@ final class NativeIslandCallCards {
             try { return chain.proceed(chain.getArgs().toArray()); }
             finally { if (prior == null) originalNotification.remove(); else originalNotification.set(prior); }
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(wait, "rm.call.native_cards.launcher_wait", false).intercept(chain -> {
+        if (wait != null) module.registerFeatureHook(module.prepareFeatureHook(wait, "rm.call.native_cards.launcher_wait", false).intercept(chain -> {
             // Ordinary SystemUI has no matching full-screen launcher transition callback.
             if (!hardware.getBoolean(null) && enabled()) return false;
             return chain.proceed(chain.getArgs().toArray());
@@ -277,6 +277,19 @@ final class NativeIslandCallCards {
         finally { syncing = false; }
     }
     private void report(String detail) { FeatureSettings.diagnostic(context, "ls_augment_native_island_call_cards", detail); }
+    private static Method launcherWait(Class<?> manager) throws ReflectiveOperationException {
+        Method wait = NativeIslandSceneContract.method(manager, "tryWaitLauncherIslandEnterAnimEndThenShow",
+                boolean.class, Context.class, boolean.class);
+        if (wait != null && !Modifier.isStatic(wait.getModifiers())) return wait;
+        // The newer OEM path builds/updates the small card directly. Verify that
+        // complete path before omitting the older launcher-animation interception.
+        for (Method method : new Method[]{require(manager, "showIslandCardForActiveCallInternal", void.class, Context.class),
+                require(manager, "createSmallIsland", void.class), require(manager, "updateSmallIsland", void.class)})
+            if (Modifier.isStatic(method.getModifiers())) throw new NoSuchMethodException("instance:" + method.getName());
+        Field pushed = field(manager, "mHasPushedCard", boolean.class);
+        if (Modifier.isStatic(pushed.getModifiers())) throw new NoSuchFieldException("instance:mHasPushedCard");
+        return null;
+    }
     private static Method require(Class<?> type, String name, Class<?> result, Class<?>... args) throws NoSuchMethodException {
         Method m = NativeIslandSceneContract.method(type, name, result, args);
         if (m == null) throw new NoSuchMethodException(type.getName() + "." + name); return m;

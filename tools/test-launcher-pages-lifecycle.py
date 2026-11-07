@@ -232,21 +232,21 @@ append_members('ls/augment/com/hook/TestLauncherPagesLifecycle.java', '''
     static void testPrivateStateRecovery()throws Throwable {
         setup();enable();own().edit().putString("order","20,10").putBoolean("keep_empty",true).apply();
         LauncherOwnedStateClient.available=false;bind(10,20);order(10,20);
-        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==1,"initial unavailable private state preserves native binding");
+        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==0,"initial unavailable private state preserves native binding");
         int writes=own().writes;View first=ws.n(10),second=ws.n(20);int strips=ws.stripCalls;
         c().attach(ws);c().configurationChanged();
-        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==1&&LauncherOwnedStateClient.readyCalls>0,"later unavailable lifecycles never repeat blocking startup wait");
+        check(c().prefs==null&&LauncherOwnedStateClient.blockingCalls==0&&LauncherOwnedStateClient.readyCalls>0,"later unavailable lifecycles never repeat blocking startup wait");
         check(own().writes==writes&&ws.stripCalls==strips,"unavailable retry cannot write saved order or strip pages");
         LauncherOwnedStateClient.publishReady();Handler.drain();
         check(c().prefs==own(),"normal configuration lifecycle receives the recovered private record");
         order(20,10);check(ws.n(10)==first&&ws.n(20)==second,"automatic recovery reuses existing page views and item positions");
         check(own().writes==writes&&own().getString("order","").equals("20,10")&&ws.stripCalls==strips,"ready callback applies migrated order before any save");
-        bind(10,20);order(20,10);check(LauncherOwnedStateClient.blockingCalls==1,"next normal native binding uses recovered order without another blocking read");
+        bind(10,20);order(20,10);check(LauncherOwnedStateClient.blockingCalls==0,"next normal native binding uses recovered order without another blocking read");
 
         setup();enable();LauncherOwnedStateClient.available=false;bind(10,20);
         LauncherOwnedStateClient.available=true;com.android.launcher3.menu.MenuContainer menu=new com.android.launcher3.menu.MenuContainer(context);menu.g=launcher;
         module.call("G",menu);check(c().prefs==own()&&menu.m.findViewWithTag("ls_augment.pages.entry")!=null,"normal edit menu attach also acquires a now-ready record");
-        check(LauncherOwnedStateClient.blockingCalls==1,"menu recovery remains nonblocking");order(10,20);Handler.drain();
+        check(LauncherOwnedStateClient.blockingCalls==0,"menu recovery remains nonblocking");order(10,20);Handler.drain();
     }
     static void unavailableLayout()throws Throwable {
         setup();enable();own().edit().putString("order","20,30,10").putString("empty_origins",manual("30")).putBoolean("keep_empty",true).apply();

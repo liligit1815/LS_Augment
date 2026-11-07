@@ -218,6 +218,7 @@ public final class TestDiagnosticReliability {
   reader.replies.add(raw(0,"1791706885.000 4595 4595 I LS_Augment: current",true,false,false));
   DiagnosticLogcat.Collection current=DiagnosticLogcat.module(now,false,false,reader);
   yes(reader.commands.size()==1&&current.fallback==null,"matching time window does not broaden collection");
+  yes(reader.commands.get(0).contains("RedMagicDuoStep:I"),"Step route and recovery events are included without enabling verbose logs");
   yes(current.sinceWall==now-30*60*1000&&reader.commands.get(0).contains(" -T "),"actual time window preserved");
   reader=new LogcatReader();reader.replies.add(raw(0,"--------- beginning of main",true,false,false));
   DiagnosticLogcat.Collection cleared=DiagnosticLogcat.module(now,false,false,now-1000,reader);

@@ -58,6 +58,7 @@ public Bundle call(android.net.Uri uri,String method,String arg,Bundle extras){
  b.putBoolean("hardwareValid",true);b.putLong("sampledAt",1000);b.putInt("enabled",enabled);b.putInt("level",level);b.putInt("rpm",rpm);
  java.util.concurrent.CountDownLatch gate=readRelease;if(gate!=null){readEntered.countDown();try{gate.await();}catch(InterruptedException e){throw new AssertionError(e);}}return b;}}
 """,
+"android/content/res/Configuration.java": fixture["android/content/res/Configuration.java"],
 "android/content/res/Resources.java": fixture["android/content/res/Resources.java"],
 "android/content/res/ColorStateList.java": "package android.content.res;public class ColorStateList {public static ColorStateList valueOf(int color){return new ColorStateList();}public int getColorForState(int[] state,int fallback){return fallback;}}",
 "android/graphics/drawable/Drawable.java": """package android.graphics.drawable;public class Drawable {private final android.graphics.Rect bounds=new android.graphics.Rect();

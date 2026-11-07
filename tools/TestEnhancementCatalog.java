@@ -10,6 +10,10 @@ public final class TestEnhancementCatalog {
                 LiftArcOptions.key("parallax"),LiftArcOptions.key("release_return"),
                 LiftArcOptions.key("flick_unlock"),LiftArcOptions.key("arc_enabled"),
                 LiftArcOptions.key("arc_dim"));
+        Set<String> enabledDefaults=new HashSet<>(enabledLiftArcParameters);
+        enabledDefaults.addAll(Set.of(SystemUiOptions.ISLAND_STATUS_AVOIDANCE,
+                NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,
+                NotificationAppearanceOptions.STACK_GRADIENT));
         Set<String> booleanDefaults=new HashSet<>();
         for(EnhancementOption option:EnhancementCatalog.options()) {
             check(keys.add(option.key),"duplicate option "+option.key);
@@ -17,11 +21,11 @@ public final class TestEnhancementCatalog {
             check(ConfigSchema.contains(option.key),"missing schema "+option.key);
             if(option.kind==EnhancementOption.Kind.BOOLEAN){
                 booleanDefaults.add(option.key);
-                String expected=enabledLiftArcParameters.contains(option.key)?"1":"0";
+                String expected=enabledDefaults.contains(option.key)?"1":"0";
                 check(expected.equals(option.defaultValue),"unexpected toggle default "+option.key);
             }
         }
-        check(booleanDefaults.containsAll(enabledLiftArcParameters),"LiftArc parameter defaults remain in the catalog");
+        check(booleanDefaults.containsAll(enabledDefaults),"all default-on parameters remain in the catalog");
         check("0".equals(LiftArcOptions.option("enabled").defaultValue),"LiftArc master must default off");
         Map<String,String> previous=new LinkedHashMap<>();previous.put(ConfigSchema.AI_TRIGGER_ENABLED,"1");previous.put(ConfigSchema.STATUSBAR_CLOCK_ROWS,"2");
         ConfigSnapshot upgraded=ConfigSnapshot.create(3,12345,previous);

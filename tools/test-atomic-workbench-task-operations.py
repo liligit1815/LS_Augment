@@ -18,8 +18,9 @@ SOURCES['android/os/SystemClock.java'] = BROKER['SOURCES']['android/os/SystemClo
 SOURCES['android/os/IBinder.java'] = BROKER['SOURCES']['android/os/IBinder.java']
 SOURCES['ls/augment/com/AtomicWorkbenchEngine.java'] = r'''package ls.augment.com;import android.os.*;
 final class AtomicWorkbenchEngine {
- interface TaskController{Bundle change(Bundle b);Bundle query(String id);Bundle shelf();Bundle cancel(String id);Bundle cleanup();void maintain();boolean hasPending();boolean blocksWindow(int id);default void refreshStorageScope(){}default boolean storageScopeUnverified(){return false;}default String storageScopeReason(){return "";}default Bundle manageReferences(Bundle b){throw new AssertionError("unexpected reference route");}}
+ interface TaskController{void requireAllocationScope(int target,int source)throws Exception;AtomicWorkbenchRecoveryScope.ReaderProfile recoveryDomain();Bundle change(Bundle b);Bundle query(String id);Bundle shelf();Bundle cancel(String id);Bundle cleanup();void maintain();boolean hasPending();boolean blocksWindow(int id);default void refreshStorageScope(){}default boolean storageScopeUnverified(){return false;}default String storageScopeReason(){return "";}default Bundle manageReferences(Bundle b){throw new AssertionError("unexpected reference route");}}
  final AtomicWorkbenchPlatform[] windows={new AtomicWorkbenchPlatform(0),new AtomicWorkbenchPlatform(1),new AtomicWorkbenchPlatform(2),new AtomicWorkbenchPlatform(3)};long revision;boolean parked;
+ AtomicWorkbenchRecoveryOwners recoveryOwners(){return AtomicWorkbenchRecoveryOwners.low4(this);}
  boolean uiParked(){return parked;}long taskInputRevision(){return revision;}AtomicWorkbenchPlatform taskPlatform(int id){return id<0||id>3?null:windows[id];}boolean taskWindowRecovering(int id){return false;}
  Bundle cancelTaskWindowInput(int id,long expected){Bundle b=new Bundle();b.putBoolean("success",expected==revision&&!parked);if(b.getBoolean("success"))revision++;return b;}
 }'''
@@ -29,6 +30,7 @@ final class AtomicWorkbenchPlatform{
  static final String[] SESSIONS={"11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222","33333333-3333-3333-3333-333333333333","44444444-4444-4444-4444-444444444444"};
  final int slot;boolean live=true,retained,failFinish;int taskCount;String disposition="";final Map<String,String> phases=new HashMap<>();int prepares,finishes,syncs;
  AtomicWorkbenchPlatform(int s){slot=s;}
+ int recoveryWindowId(){return slot;} AtomicWorkbenchRecoveryScope.ReaderProfile recoveryReaderProfile(){return AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4;}
  boolean hasLiveDisplay(){return live;}boolean hasTaskJournalSession(String s){return live&&SESSIONS[slot].equals(s);}
  Bundle taskWindowIdentity(){if(!live)throw new SecurityException();Bundle b=new Bundle();b.putInt("window_id",slot);b.putString("window_session",SESSIONS[slot]);b.putInt("display_id",88+slot);b.putString("display_name","vd"+slot);b.putString("display_unique","unique"+slot);return b;}
  void prepareTaskOperation(AtomicWorkbenchTaskOperationRequest r,boolean receiving,String phase,String lease){prepares++;phases.put(r.operationId,phase);}
@@ -38,6 +40,7 @@ final class AtomicWorkbenchPlatform{
 }'''
 SOURCES['ls/augment/com/AtomicWorkbenchTaskAuthority.java'] = r'''package ls.augment.com;import android.os.*;import java.util.*;
 final class AtomicWorkbenchTaskAuthority{
+ Bundle capacity(int user){throw new AssertionError("unexpected high-slot allocation in LOW4 fixture");}
  final AtomicWorkbenchEngine engine;final AtomicWorkbenchTaskShelfStore store;final Map<String,AtomicWorkbenchTaskOperationRequest> requests=new HashMap<>();final Map<String,Bundle> proofs=new HashMap<>();final Map<String,AtomicWorkbenchTaskIdentity> tasks=new HashMap<>();
  int applies,prepares;boolean expirePrepared,loseReply,hideUnknown,failQuery,failCleanup,failPrimary,driftPrimary;String previousLease="";
  AtomicWorkbenchTaskAuthority(AtomicWorkbenchEngine e,AtomicWorkbenchTaskShelfStore s){engine=e;store=s;}

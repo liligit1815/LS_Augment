@@ -82,19 +82,22 @@ public final class HideRecoveryActivity {
     'ls/augment/com/AppConfig.java': '''package ls.augment.com;import android.content.Context;
 final class AppConfig {
     static final String TILE_ENABLED="tile";AppConfig(Context c){}
-    boolean getBoolean(String key){return true;}
+    static boolean enabled=true;boolean getBoolean(String key){return enabled;}
 }''',
     'ls/augment/com/AuditLog.java': 'package ls.augment.com;import android.content.Context;final class AuditLog {static void write(Context c,String tag,String message){}}',
     'ls/augment/com/TilePresentation.java': 'package ls.augment.com;import android.content.Context;import android.service.quicksettings.Tile;final class TilePresentation {static void apply(Context c,Tile tile,String state){}}',
     'ls/augment/com/RootHideManager.java': '''package ls.augment.com;import android.content.Context;
 final class RootHideManager {
-    static int backendTouches;
-    RootHideManager(Context c){backendTouches++;throw new AssertionError("Recovery launch must not instantiate a PM/Root backend");}
-    OperationResult toggleAll(){throw new AssertionError("Unexpected package-state operation");}
-    RootStatus rootStatus(){throw new AssertionError("Unexpected Root probe");}
+    static int backendTouches;static boolean current,failAction;static volatile int calls;
+    static volatile java.util.concurrent.CountDownLatch gate;
+    RootHideManager(Context c){backendTouches++;if(!current)throw new AssertionError("Recovery launch must not instantiate a PM/Root backend");}
+    OperationResult toggleAll(){if(!current)throw new AssertionError("Unexpected package-state operation");calls++;
+        try{if(gate!=null&&!gate.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("test gate");}catch(InterruptedException e){throw new AssertionError(e);}
+        if(failAction)throw new IllegalStateException("controlled");return new OperationResult(true,false,"done");}
+    RootStatus rootStatus(){if(!current)throw new AssertionError("Unexpected Root probe");return new RootStatus();}
     ConflictState conflictState(){throw new AssertionError("Unexpected Root probe");}
     Summary summary(){throw new AssertionError("Unexpected package-state query");}
-    enum RootState {GRANTED,DENIED}enum Aggregate {ERROR,EMPTY,ALL_VISIBLE}
+    enum RootState {GRANTED,DENIED}enum Aggregate {ERROR,EMPTY,MISSING,ALL_VISIBLE}
     static final class RootStatus {RootState state;String provider,message;}
     static final class ConflictState {
         ConflictState(boolean a,boolean b,String text){}boolean hasConflict(){return false;}
@@ -134,8 +137,33 @@ public final class TestHideRecoveryTile {
             check(tile.launchedPending.requestCode==204,"PendingIntent request code changed");
         }
     }
+    static void await(java.util.function.BooleanSupplier condition)throws Exception{
+        long until=System.nanoTime()+5_000_000_000L;
+        while(!condition.getAsBoolean()){if(System.nanoTime()>until)throw new AssertionError("tile action timeout");Thread.sleep(2);}
+    }
+    static void toggleCases()throws Exception{
+        RootHideManager.current=true;
+        for(int sdk:new int[]{28,33,34,36}){
+            int count=RootHideManager.calls;AugmentTileService tile=fresh(sdk,true);
+            tile.onClick();tile.onClick();check(tile.unlockRequests==1&&RootHideManager.calls==count,"locked click changed state");
+            tile.cancelUnlock();tile.onStartListening();check(RootHideManager.calls==count,"cancel changed state");
+            tile.unlockFailure=new IllegalStateException("controlled");tile.onClick();tile.unlockFailure=null;tile.onClick();
+            check(tile.unlockCallback!=null,"failed unlock prevented retry");
+            tile.onDestroy();tile.finishUnlock();check(RootHideManager.calls==count,"destroyed tile acted on late unlock");
+            tile=fresh(sdk,false);AppConfig.enabled=false;tile.onClick();check(RootHideManager.calls==count,"disabled tile acted");
+            AppConfig.enabled=true;RootHideManager.gate=new java.util.concurrent.CountDownLatch(1);RootHideManager.failAction=true;
+            tile.onClick();await(()->RootHideManager.calls==count+1);tile.onClick();
+            check(RootHideManager.calls==count+1,"duplicate action during pending operation");RootHideManager.gate.countDown();
+            var inFlight=AugmentTileService.class.getDeclaredField("IN_FLIGHT");inFlight.setAccessible(true);
+            var busy=(java.util.concurrent.atomic.AtomicBoolean)inFlight.get(null);await(()->!busy.get());
+            RootHideManager.failAction=false;RootHideManager.gate=null;tile=fresh(sdk,true);tile.onClick();tile.finishUnlock();
+            await(()->RootHideManager.calls==count+2&&!busy.get());
+            check(tile.intentLaunches==0&&tile.pendingLaunches==0&&PendingIntent.created==0,"toggle leaked a recovery launch");
+        }
+        System.out.println("Tile toggle passed "+checks+" assertions on API 28/33/34/36");
+    }
     public static void main(String[] args)throws Exception {
-        open=AugmentTileService.class.getDeclaredMethod("openRecovery");open.setAccessible(true);
+        try{open=AugmentTileService.class.getDeclaredMethod("openRecovery");}catch(NoSuchMethodException current){toggleCases();return;}open.setAccessible(true);
         for(int sdk:new int[]{28,33,34,36}){
             AugmentTileService tile=fresh(sdk,false);invoke(tile);
             launched(tile,sdk);check(tile.unlockRequests==0,"unlocked tile prompted for unlock");

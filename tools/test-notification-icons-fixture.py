@@ -56,6 +56,13 @@ def block(source,marker):
     return source[start:i]
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Run the C17 regression and verify its frozen predecessor")
+    parser.add_argument('--historical-fixture-dir', type=Path,
+                        default=(OUT/'historical-fixture' if (OUT/'historical-fixture').is_dir()
+                                 else ROOT/'out/full-function-audit-20261004/c17-runtime-fixture'),
+                        help='Directory containing the original build.json and c17-runtime-fixture.apk')
+    historical = parser.parse_args().historical_fixture_dir
     OUT.mkdir(exist_ok=True);text=SOURCE.read_text('utf-8');old=(OUT/'before-C17RuntimeFixtureCases.java').read_text('utf-8')
     # All legacy bytes remain pinned except the exact receiver and asynchronous cleanup fixes.
     # Both APK build routes already require API 35, so the API <33 branch was dead.
@@ -85,11 +92,16 @@ def main():
             assert a.count(current_receiver)==1 and b.count(legacy_receiver)==1
             assert a.count(cleanup_wait)==1
             assert a.count(cleanup_end)==1
-            assert a.replace(current_receiver,legacy_receiver).replace(cleanup_wait,b'').replace(cleanup_end,cleanup_end+b'sendStatus("finished");')==b,name+' changed beyond reviewed receiver/cleanup fixes'
+            # Freshly launched media players may be observed by default. Only the explicit
+            # fixture flag can opt out of that observation during notification-only runs.
+            guarded=b'                if(!"true".equals(String.valueOf(args.get("skipActiveSession"))))observeActiveSession();'
+            original=b'                observeActiveSession();'
+            assert a.count(guarded)==1 and b.count(original)==1
+            assert a.replace(guarded,original).replace(current_receiver,legacy_receiver).replace(cleanup_wait,b'').replace(cleanup_end,cleanup_end+b'sendStatus("finished");')==b,name+' changed beyond reviewed receiver/cleanup fixes'
         else:
             assert a==b,name+' default bytes changed'
         chunks[name]={'sha256':hashlib.sha256(a).hexdigest(),'bytes':len(a),'byteEqual':a==b,
-                      'onlyReviewedReceiverAndCleanupChanges':name=='Fixture'}
+                      'onlyReviewedFixtureChanges':name=='Fixture'}
     policy=block(text,'    static final class IconTimeline {')
     cleanup=block(text,'    static final class NotificationCleanup {')
     variants=[('actual',policy),('late-arrival-catchup',policy.replace('elapsed>=updateAfter*1000L?MISSED:','')),
@@ -118,13 +130,25 @@ def main():
     assert 'if(notifyReturned>=(updated?timeline.removeAfter:timeline.updateAfter)*1000L)' in runtime
     assert 'IconTimeline.owns(' in runtime and 'Context.RECEIVER_NOT_EXPORTED' in runtime
     assert runtime.count('"/"+nonce+"/"+ID+')>=3 and 'setData(Uri.parse("duo-c17-icons://"+runId+' in runtime
-    old_build=ROOT/'out/full-function-audit-20261004/c17-runtime-fixture/build.json';build=json.loads(old_build.read_text('utf-8'))
+    print(f"Passed current icon timeline, {len(results)-1} negative controls and receiver ownership checks.", flush=True)
+    old_build = historical/'build.json'
+    historical_apk = historical/'c17-runtime-fixture.apk'
+    expected_build = '30c3b4ccd612e8cb9e5f38064add2ff4e6703e319f7c8e73149611e07299573d'
+    expected_apk = 'f3beeefd1a1f8f9b723e0b42e5233e97180b790eec334cdfce5373c06db3427b'
+    for artifact, expected in ((old_build,expected_build),(historical_apk,expected_apk)):
+        actual = hashlib.sha256(artifact.read_bytes()).hexdigest() if artifact.is_file() else 'missing'
+        if actual != expected:
+            raise RuntimeError(f'C17 frozen artifact {artifact}: expected {expected}, found {actual}. '
+                               'Pass --historical-fixture-dir with the original pair.')
+    build=json.loads(old_build.read_text('utf-8'))
     assert build['sourceSha256']==hashlib.sha256(old_bytes).hexdigest()
-    assert hashlib.sha256(Path(build['apk']).read_bytes()).hexdigest()==build['sha256']=='f3beeefd1a1f8f9b723e0b42e5233e97180b790eec334cdfce5373c06db3427b'
+    assert Path(build['apk']).name == historical_apk.name and build['sha256'] == expected_apk
     result={'status':'pass','sourceSha256':hashlib.sha256(current_bytes).hexdigest(),'legacyBytes':chunks,'actual':results[0],
         'negativeMutants':results[1:],'legacyBuildJsonSha256':hashlib.sha256(old_build.read_bytes()).hexdigest(),
         'legacyApkUnchanged':True,'deviceUsed':False,'apkBuilt':False,'legacyTestsRerun':False,
         'limits':['Executed actual pure schedule/identity methods; runtime Android service calls are static contracts only','SmallIcon rendering/eligible membership and actual cleanup need fresh owned-device evidence']}
-    (OUT/'checks.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    report = ROOT/'audit-output/notification-icons-fixture/checks.json'
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(result,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()

@@ -123,7 +123,8 @@ public class GfrcRecoveryClient {
  public static final Map<String,String> values=new LinkedHashMap<>();
  public static final Map<String,Integer> counts=new LinkedHashMap<>();
  public static final Map<String,Set<Integer>> failures=new HashMap<>(),dropped=new HashMap<>();
- public static String read(Context context){return values.get(KEY);}
+ static RuntimeException readFailure;
+ public static String read(Context context){if(readFailure!=null)throw readFailure;return values.get(KEY);}
  public static void write(Context context,String expected,String payload){
   if(!Objects.equals(expected,values.get(KEY)))throw new IllegalStateException("owner_changed");
   int count=counts.merge(KEY,1,Integer::sum);
@@ -202,6 +203,13 @@ public class TestSuperResolutionRuntime {
    check(SystemProperties.durableChecks==3,"all restart restoration writes use durable original values");
    System.out.println("PASS fresh JVM restart recovery: "+checks+" checks");return;
   }
+  test("startup provider and update handoff",()->{
+   reset();GfrcRecoveryClient.readFailure=new IllegalArgumentException("Unknown authority ls.augment.com.config");
+   tick();check(state().startsWith("state=waiting_provider|")&&SystemProperties.writes.isEmpty(),"cold start holds mutations");
+   GfrcRecoveryClient.readFailure=new IllegalStateException("source_version");
+   tick();check(state().startsWith("state=waiting_system_server_restart|")&&SystemProperties.writes.isEmpty(),"mixed builds never acquire native ownership");
+   GfrcRecoveryClient.readFailure=null;tick();desiredProperties();
+  });
   test("verified snapshot, both gates, and native-extension availability",()->{
    reset();FeatureSettings.verified=false;tick();check(state().startsWith("state=waiting_config|"),"unverified config waits");check(SystemProperties.writes.isEmpty()&&journal()==null,"unverified config has no ownership or native writes");
    FeatureSettings.verified=true;FeatureSettings.current.values.put(FeatureSettings.GAME_MASTER,"0");tick();check(state().startsWith("state=disabled|"),"master gate disables");
@@ -430,6 +438,7 @@ def main():
         fixture = directory / "gpp_app_list"
         # Only redirect the IO pathname in a temporary copy; transaction code is unchanged.
         assert production.count('"/system/etc/gpp_app_list"') == 1
+        files["ls/augment/com/hook/ConfigReadRetry.java"] = (MAIN / "hook/ConfigReadRetry.java").read_text(encoding="utf-8")
         files["ls/augment/com/hook/SuperResolutionRuntimeHook.java"] = production.replace('"/system/etc/gpp_app_list"', json.dumps(fixture.as_posix()))
         sources = []
         for name, content in files.items():

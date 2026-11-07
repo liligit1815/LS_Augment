@@ -34,13 +34,18 @@ for path in sorted(HOOK.glob('*.java')):
     for sink in SINKS:
         check(not re.search(sink, code), f'{path.name}: unaudited host disk writer {sink}')
     if '.getSharedPreferences(' in source:
-        check(path.name in ('LauncherOwnedStateClient.java','NativeIslandRecoveryClient.java'), f'{path.name}: new host preferences source')
+        if path.name == 'FloatingPositionLock.java':
+            calls = re.findall(r'getSharedPreferences\s*\(([^)]*)\)',code)
+            check(bool(calls) and all(re.fullmatch(r'"duo_overlay_positions"\s*,\s*0',args) for args in calls),
+                  'overlay lock may open only its private host position file')
+        else:
+            check(path.name in ('LauncherOwnedStateClient.java','NativeIslandRecoveryClient.java'), f'{path.name}: new host preferences source')
         if path.name == 'NativeIslandRecoveryClient.java':
             check('private static final String LEGACY="ls_augment_native_record_recovery";' in source, 'recorder legacy namespace changed')
             check('legacy.edit().clear().commit()' in source and 'app.deleteSharedPreferences(LEGACY)' in source, 'recorder migration must delete host preferences')
             check(source.count('.edit()') == 1 and 'result.getBoolean("migrated")' in source, 'recorder host write must be acknowledgement-gated deletion only')
             check(source.count('.getSharedPreferences(') == 1, 'new recorder host preferences source')
-        else:
+        elif path.name == 'LauncherOwnedStateClient.java':
             check('legacy.prefs.edit().clear().commit()' in source, 'legacy prefs deletion lost')
             check(source.count('.getSharedPreferences(') == 1, 'new launcher host prefs source')
             check(source.count('.prefs.edit()') == 1, 'new launcher legacy mutation')

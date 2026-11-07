@@ -41,7 +41,7 @@ public static void main(String[] args)throws Exception {
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalComposite.class.getClassLoader());
 check(module.errors==0,"optional wrapper contract installs without errors");
 Context context=new Context();CardManager manager=new CardManager();EventProcessor processor=new EventProcessor();
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
 processor.registerCardRenders(manager,context);Handler.flush();StarryIslandCardRender renderer=(StarryIslandCardRender)manager.renders.get(0);
 MeetingCard live=new MeetingCard();live.info.data.put("toTime",Double.valueOf(System.currentTimeMillis()+60000));
 CopiedDefault copied=new CopiedDefault();renderer.render(List.of(new Base4x2Card(copied,copied)));
@@ -91,7 +91,7 @@ import com.zte.briefagent.event.scene.meeting.card.MeetingCard;import com.zte.br
 public class TestUnknownComposite {public static void main(String[] args){
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestUnknownComposite.class.getClassLoader());
 if(module.errors!=0)throw new AssertionError("optional wrapper must not break direct cards");
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
 Context c=new Context();CardManager m=new CardManager();new EventProcessor().registerCardRenders(m,c);Handler.flush();
 StarryIslandCardRender r=(StarryIslandCardRender)m.renders.get(0);MeetingCard card=new MeetingCard();r.render(List.of(card));
 if(!r.selected.equals(List.of(card)))throw new AssertionError("direct path lost");

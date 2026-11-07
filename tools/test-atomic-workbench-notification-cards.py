@@ -12,10 +12,12 @@ import tempfile
 BASE = runpy.run_path(str(Path(__file__).with_name('test-atomic-workbench-card-pager.py')))
 SRC, SUPPORT = BASE['SRC'], BASE['SUPPORT']
 NAMES = ('AtomicWorkbenchCardPageModel', 'AtomicWorkbenchCardPager', 'AtomicWorkbenchNotificationCardData',
-         'AtomicWorkbenchNotificationCardsModel', 'AtomicWorkbenchNotificationCards')
+         'AtomicWorkbenchNotificationCardsModel', 'AtomicWorkbenchNotificationActionData', 'AtomicWorkbenchNotificationCards')
 SOURCES = dict(BASE['SOURCES'])
 SOURCES['android/os/Bundle.java'] = SOURCES['android/os/Bundle.java'].replace('public int size()', 'public <T> void putParcelableArrayList(String k,java.util.ArrayList<T> v){values.put(k,v);}public int size()')
+SOURCES['ls/augment/com/R.java'] = SOURCES['ls/augment/com/R.java'].rsplit('}',1)[0]+"""public static class string {public static final int status_atomicworkbenchnotificationcards_4=4;}}"""
 SOURCES['android/content/Context.java'] = '''package android.content;public class Context {
+ public String getString(int id,Object... args){if(id!=4)throw new AssertionError(id);return String.format("查看记录（%1$s）",args);}
  final android.content.res.Resources resources=new android.content.res.Resources();
  public android.content.res.Resources getResources(){return resources;}public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}}'''
 SOURCES['android/content/pm/PackageManager.java'] = '''package android.content.pm;public class PackageManager {
@@ -29,7 +31,7 @@ SOURCES['android/view/View.java'] = '''package android.view;import android.conte
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8,IMPORTANT_FOR_ACCESSIBILITY_NO=2,IMPORTANT_FOR_ACCESSIBILITY_YES=1,TEXT_DIRECTION_LTR=3;
  public interface OnClickListener {void onClick(View v);}public OnClickListener click;
  public Object tag,layout;public CharSequence description;public int visibility=0;public boolean enabled=true;public ViewParent parent;
- public View(Context c){}public ViewParent getParent(){return parent;}public void setTag(Object v){tag=v;}public Object getTag(){return tag;}
+ private final Context context;public View(Context c){context=c;}public Context getContext(){return context;}public ViewParent getParent(){return parent;}public void setTag(Object v){tag=v;}public Object getTag(){return tag;}
  public void setVisibility(int v){visibility=v;}public int getVisibility(){return visibility;}public void setEnabled(boolean v){enabled=v;}public boolean isEnabled(){return enabled;}
  public void setContentDescription(CharSequence v){description=v;}public void setPadding(int a,int b,int c,int d){}public void setMinimumHeight(int v){}public void setMinimumWidth(int v){}
  public void setLayoutParams(Object v){layout=v;}public Object getLayoutParams(){return layout;}public void setImportantForAccessibility(int v){}public void setTextDirection(int v){}
@@ -163,9 +165,9 @@ def run(overrides=None, quiet=False):
             content=(SRC/(name+'.java')).read_text(encoding='utf-8')
             if overrides and name in overrides: content=overrides[name]
             path=work/'ls/augment/com'/f'{name}.java';path.write_text(content,encoding='utf-8');files.append(str(path))
-        built=subprocess.run([SUPPORT['JAVAC'],'--release','17','-encoding','UTF-8','-d',str(work),*files],capture_output=True,text=True,timeout=60,env=SUPPORT['ENV'])
+        built=subprocess.run([SUPPORT['JAVAC'], "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8",'--release','17','-encoding','UTF-8','-d',str(work),*files],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=60,env=SUPPORT['ENV'])
         if built.returncode: raise RuntimeError(built.stdout+built.stderr)
-        result=subprocess.run([SUPPORT['JAVA'],'-cp',str(work),'ls.augment.com.NotificationCardsHarness'],capture_output=True,text=True,timeout=30,env=SUPPORT['ENV'])
+        result=subprocess.run([SUPPORT['JAVA'],'-cp',str(work),'ls.augment.com.NotificationCardsHarness'],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=30,env=SUPPORT['ENV'])
         if not quiet: print(result.stdout,end='')
         return result
 

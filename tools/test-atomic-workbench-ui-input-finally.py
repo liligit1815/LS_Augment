@@ -24,8 +24,8 @@ def between(source, start, end):
 
 
 def pieces(source):
-    cleanup = between(source, '        } finally {\n            // Identity failures',
-                      '\n        return report.put("recoveryConfirmed"')
+    cleanup = '        } finally {\n' + between(source, '            // Identity failures',
+                      '\n        boolean permissionsUnchanged =')
     fixture = between(source, '    private Bundle awaitFixture(', '\n    private void control(')
     click = between(source, '        main(() -> {\n            View tile =',
                     '\n        AtomicReference<Bundle> result =')
@@ -41,6 +41,13 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 
 public class ActualFinally {
+ boolean extractionConfigChanged,extractionConfigRestored;
+ final Map<String,String> extractionConfigBefore=new HashMap<>();
+ static final class AppConfig{static final class SaveResult{boolean success=true;}
+  Map<String,String> values=new HashMap<>();SaveResult save(Map<String,String> next){values.putAll(next);return new SaveResult();}
+  String get(String key){return values.get(key);}}
+ final AppConfig config=new AppConfig();
+
  static final String PKG="fixture.two";
  static int cases, assertions;
  final Map<String,Long> attemptedLaunches=new LinkedHashMap<>();
@@ -190,7 +197,7 @@ def mutations(source):
         '            main(() -> { activity.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); return null; });\n            ownsSession = true;')
     # Reintroduce the original unprotected unregister sequence in an audit copy.
     tail = between(source, '            } finally {\n                try {\n                    if (registered)',
-                   '\n        return report.put("recoveryConfirmed"')
+                   '\n        boolean permissionsUnchanged =')
     yield 'unregister_skips_quick', replace_one(source, tail,
         '''            } finally {
                 if (registered) target.unregisterReceiver(receiver);

@@ -40,7 +40,7 @@ public static void main(String[] args)throws Exception {
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalGuide.class.getClassLoader());
 check(module.errors==0&&AugmentModule.hooks.size()==17,"two adapters share one inherited channel hook");
 Context context=new Context();CardManager manager=new CardManager();StarryIslandCardRender renderer=start(context,manager);
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
 MeetingCard meeting=new MeetingCard();ElectronicGuideCard guide=new ChildGuide();
 renderer.render(List.of(meeting,guide));check(renderer.selected.equals(List.of(meeting)),"guide remains off independently of calendar");
 FeatureSettings.change("scenic_guide",true);check(renderer.selected.equals(List.of(meeting,guide)),"guide enable uses actual current source card and inherited card class");

@@ -46,8 +46,15 @@ final class FanPowerLease {
         if (oemOff) restore(false);
     }
 
+    static Method find(Class<?> type,String name) throws NoSuchMethodException {
+        for(Class<?> current=type;current!=null;current=current.getSuperclass()){
+            try{return current.getDeclaredMethod(name);}catch(NoSuchMethodException inherited){ }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
     private static void invoke(Object owner, String name) throws Exception {
-        Method method = owner.getClass().getDeclaredMethod(name);
+        Method method = find(owner.getClass(), name);
         method.setAccessible(true);
         method.invoke(owner);
     }

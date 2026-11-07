@@ -35,9 +35,10 @@ public final class TestPairedStatusBarRows {
             Map<String,StatusBarGridLayout.Box> zero=StatusBarGridLayout.pack(nodes,180,height,0,0,0,0,0,0,0);
             Map<String,StatusBarGridLayout.Box> negative=StatusBarGridLayout.pack(nodes,180,height,0,0,0,0,gap,0,0);
             StatusBarGridLayout.Box up=negative.get("up"),down=negative.get("down");
-            require(Math.abs(up.y-zero.get("up").y)<.001f&&Math.abs(down.y-zero.get("down").y)<.001f,"unsafe negative gap uses safe row edges");
+            float expectedGap=Math.max(gap,-height/4f);
+            require(Math.abs(down.y-up.y-up.height-expectedGap)<.001f,"configured negative gap uses measured inner edges");
             require(Math.abs(up.height-zero.get("up").height)<.001f&&Math.abs(down.width-zero.get("down").width)<.001f,"negative gap preserves glyph size");
-            require(down.y>=up.y+up.height-.001f,"negative preference must not overlap measured content");
+            require(up.y>zero.get("up").y && down.y<zero.get("down").y,"only the intentional overlap moves both rows inward");
             require(up.y>=0&&down.y+down.height<=height,"negative gap remains inside the bar");
             cases++;
         }

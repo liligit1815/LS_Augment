@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20704,
-    "versionName": "2.0.0-alpha1-test20704",
+    "versionCode": 20714,
+    "versionName": "2.0.0-alpha1-test20714",
     "minSdk": 35,
-    "publishedAt": "2026-11-02T05:23:35Z",
-    "notes": "- 新增电池小数位设置，支持 0、1、2 位及仅放电、仅充电、充放电三种规则，统一状态栏、控制中心、通知中心和锁屏电量显示。\n- 新增一键连招按键大小调节，图标、进度圈与点击区域同步缩放。\n- 新增灵动岛下载活动，可选择通知渠道，查看进度并使用原通知操作。\n- 新增 C17 清理图标和自定义图片，修复清理图标导致最近任务卡片异常的问题。\n- 修复自定义性能监测点击相邻项目、音量无法继续增加的问题。\n- 补齐堆叠通知上滑至顶部时间区域的高斯模糊效果。\n- 完善灵动岛旧版接口与风扇档位、转速测量适配。\n- 优化最近任务内存显示，新增完整名称三行样式，自动计算位置范围并提供居中刻度。\n- 优化主题与字体的下载、使用流程，完善红魔Step工作区导航栏接口适配。\n- 修正电池设置标题对齐，统一通用设置、三合一图标和独立图标配置的间距与分隔方式。\n- 更新后请重启系统界面、系统桌面及对应功能的作用域。",
+    "publishedAt": "2026-11-04T07:33:41Z",
+    "notes": "- 修改红魔Step实现\n- 修改灵动岛实现\n- 修复已知Bug 新增未知Bug\n- 优化资源占用量 提升系统流畅性",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20704/redmagic-duo-20704.apk",
-      "size": 15732939,
-      "sha256": "575abc42b3dfd1fbd4e6ba8695ff4878b726bbd3ca572ebb968a316897847b10",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20714/redmagic-duo-20714.apk",
+      "size": 16130719,
+      "sha256": "8a6db89bc4719056555323f7d38aa22b54c7c21925ba9fdd719d4c5adba383d3",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }

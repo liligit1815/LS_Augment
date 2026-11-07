@@ -81,7 +81,7 @@ public class TestCardHost {
  setPanel=Island.class.getMethod("setPanelIsland",ViewGroup.class);click=Island.class.getMethod("handleIslandClick");
  add=Manager.class.getMethod("addPermanentIslandInner",ViewGroup.class);remove=Manager.class.getMethod("removePermanentIsland",ViewGroup.class);
  show=Manager.class.getMethod("showPermanentPanelIsland");throttle=Manager.class.getMethod("forceNotClick");windowHeight=Manager.class.getMethod("updateDynamicWindowHeightParams",boolean.class);
- selected=this;FeatureSettings.flags.put("native",true);FeatureSettings.flags.put("master",true);FeatureSettings.flags.put("countdown",true);configurationChanged();}
+ selected=this;FeatureSettings.flags.put("duo",true);FeatureSettings.flags.put("master",true);FeatureSettings.flags.put("countdown",true);configurationChanged();}
  // PRODUCTION
  public static void main(String[] args)throws Exception {TestCardHost h=new TestCardHost();check(h.ready,"fully selected live host ready");
  Message unknown=new Message();unknown.pkg="other";Method callback=Listener.class.getMethod("onCardCreated",Object.class);h.dispatch(callback,new Object[]{unknown});

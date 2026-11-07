@@ -19,7 +19,8 @@ final class GfrcRecoveryClient {
 
     static String read(Context context) throws Exception {
         requireWorker();
-        String saved = request(context, "gfrc_recovery_read", new Bundle()).getString("payload");
+        String saved = ConfigReadRetry.read(() ->
+                request(context, "gfrc_recovery_read", new Bundle())).getString("payload");
         if (migrated) return saved;
         // Only the new system_server hook migrates its own obsolete journal.
         // App-side copying while an older hook still writes it could save stale ownership.

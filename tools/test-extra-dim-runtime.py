@@ -85,29 +85,82 @@ public class TestExtraDimControl{
  }
 }''',
 }
-# The supplied NX789J service maps the UI percentage to 25..65 before setMatrix.
-# Exercise a real internal-level controller rather than an identity-mapping facade.
+# Model the native callback contract, including its independent power listener.
 files['android/content/res/Resources.java']='''package android.content.res;public class Resources{
 public int getIdentifier(String n,String t,String p){return n.endsWith("Min")?1:n.endsWith("Max")?2:0;}
 public static int minimum=25,maximum=65;public int getInteger(int id){return id==1?minimum:maximum;}}'''
 files['android/content/Context.java']=files['android/content/Context.java'].replace('public final ContentResolver',
     'public android.content.res.Resources getResources(){return new android.content.res.Resources();}public final ContentResolver')
-files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace('c.strength==80','c.strength==57').replace('c.strength==20','c.strength==33')
-files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace(
-    'ExtraDimRuntime.Snapshot proof=',
-    '''check(c.strength==57,"UI 80 maps to native 57 on NX789J");
-  s.context.resolver.settings.put("0:reduce_bright_colors_level","100");m.invoke(s,"applyTint",c,true);
-  check(c.strength==65&&ExtraDimRuntime.parse(dump(m,s)).strength==100,"100 percent never bypasses native 65 maximum, readback retains requested percentage");
-  c.strength=100;check(!ExtraDimRuntime.parse(dump(m,s)).transform,"raw 100 cannot be falsely acknowledged as calibrated 100 percent");
-  s.context.resolver.settings.put("0:reduce_bright_colors_level","80");m.invoke(s,"applyTint",c,true);
-  ExtraDimRuntime.Snapshot proof=''')
-files['ls/augment/com/hook/TestExtraDimHook.java']=files['ls/augment/com/hook/TestExtraDimHook.java'].replace(
-    'System.out.println("PASS ExtraDimHook:',
-    '''s.mCurrentUser=0;ExtraDimOwnershipClient.owned.add(0);s.context.resolver.settings.put("0:reduce_bright_colors_level","80");s.context.resolver.settings.put("0:reduce_bright_colors_activated","1");
-  for(int[] range:new int[][]{{0,100},{25,65},{10,90}}){android.content.res.Resources.minimum=range[0];android.content.res.Resources.maximum=range[1];m.invoke(s,"applyTint",c,true);
-   check(c.strength==(int)(range[0]+(range[1]-range[0])*.8f),"each ROM supplies its own native dim calibration");
-   check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"percentage readback stays consistent across native ranges");}
-  System.out.println("PASS ExtraDimHook:''')
+files['com/android/server/display/color/ColorDisplayService.java']='''package com.android.server.display.color;
+public class ColorDisplayService extends com.android.server.SystemService{
+ public int mCurrentUser;public final android.os.Handler mHandler=new android.os.Handler();
+ public final ReduceBrightColorsTintController mReduceBrightColorsTintController=new ReduceBrightColorsTintController();
+ public int applications,activationNotifications,strengthNotifications,powerStrength;public boolean powerActive;
+ public void applyTint(TintController target,boolean immediate){applications++;manager.setColorMatrix(target.getLevel(),target.getMatrix());}
+ private void dumpInternal(java.io.PrintWriter w){w.println("Native color service");}
+ public void onReduceBrightColorsActivationChanged(boolean userInitiated){
+  mReduceBrightColorsTintController.active="1".equals(context.resolver.settings.get(mCurrentUser+":reduce_bright_colors_activated"));
+  powerActive=mReduceBrightColorsTintController.active;activationNotifications++;
+ }
+ public void onReduceBrightColorsStrengthLevelChanged(){
+  String v=context.resolver.settings.get(mCurrentUser+":reduce_bright_colors_level");
+  int min=android.content.res.Resources.minimum,max=android.content.res.Resources.maximum;
+  mReduceBrightColorsTintController.strength=v==null?44:min+(int)((max-min)*Math.max(0,Math.min(100,Integer.parseInt(v)))/100f);
+  powerStrength=mReduceBrightColorsTintController.strength;strengthNotifications++;
+ }
+ public boolean resetDuringSetup;
+ public void setUp(){onReduceBrightColorsStrengthLevelChanged();onReduceBrightColorsActivationChanged(false);if(resetDuringSetup)mReduceBrightColorsTintController.active=false;}
+ public static class TintHandler{public void handleMessage(android.os.Message m){}}
+}'''
+files['ls/augment/com/hook/ExtraDimOwnershipClient.java']=files['ls/augment/com/hook/ExtraDimOwnershipClient.java'].replace(
+ 'static State peek(', 'static State stale;static State peek(').replace('callback=r;c.resolver', 'callback=r;if(stale!=null)return stale;c.resolver')
+files['ls/augment/com/hook/TestExtraDimHook.java']=r'''package ls.augment.com.hook;
+import com.android.server.display.color.*;import ls.augment.com.ExtraDimRuntime;import java.io.*;
+public class TestExtraDimHook{
+ static int checks;static void check(boolean yes,String label){checks++;if(!yes)throw new AssertionError(label);}
+ static String dump(AugmentModule m,ColorDisplayService s)throws Throwable{StringWriter text=new StringWriter();m.invoke(s,"dumpInternal",new PrintWriter(text));return text.toString();}
+ static void settings(ColorDisplayService s,boolean active,int amount){s.context.resolver.settings.put(s.mCurrentUser+":reduce_bright_colors_activated",active?"1":"0");s.context.resolver.settings.put(s.mCurrentUser+":reduce_bright_colors_level",String.valueOf(amount));}
+ static void nativeUpdate(AugmentModule m,ColorDisplayService s)throws Throwable{s.onReduceBrightColorsStrengthLevelChanged();s.onReduceBrightColorsActivationChanged(false);m.invoke(s,"applyTint",s.mReduceBrightColorsTintController,true);}
+ public static void main(String[] args)throws Throwable{
+  AugmentModule m=new AugmentModule();ExtraDimHook.install(m,TestExtraDimHook.class.getClassLoader());
+  check(m.hooks.size()==3,"NX789J installs by native capabilities instead of the NX809J whitelist");
+  ColorDisplayService s=new ColorDisplayService();ReduceBrightColorsTintController c=s.mReduceBrightColorsTintController;
+  ExtraDimOwnershipClient.owned.add(0);settings(s,true,80);nativeUpdate(m,s);
+  check(c.active&&c.strength==57&&s.powerActive&&s.powerStrength==57,"native calibration updates controller and brightness listener together");
+  check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"mapped request requires live transform readback");
+  s.manager.setColorMatrix(250,TintController.identity());check(!ExtraDimRuntime.parse(dump(m,s)).transform,"controller alone does not establish output");
+  c.active=false;check(!ExtraDimRuntime.parse(dump(m,s)).transform,"inactive identity matrix cannot acknowledge an owned enable request");
+  s.resetDuringSetup=true;m.invoke(s,"setUp");check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"setup repairs a reset controller through native callbacks");s.resetDuringSetup=false;
+  // Native Settings callbacks can overtake the private provider refresh.
+  ExtraDimOwnershipClient.stale=new ExtraDimOwnershipClient.State(true,true,80);settings(s,false,100);nativeUpdate(m,s);
+  check(!c.active&&!s.powerActive&&c.strength==65&&s.powerStrength==65,"stale ON cache cannot re-enable a native OFF or alter its brightness curve");
+  ExtraDimOwnershipClient.stale=new ExtraDimOwnershipClient.State(true,false,100);settings(s,true,20);nativeUpdate(m,s);
+  check(c.active&&s.powerActive&&c.strength==33&&s.powerStrength==33,"stale OFF/strength cache cannot override newer native ON/strength");
+  ExtraDimOwnershipClient.stale=null;
+  settings(s,false,100);dump(m,s);int notifications=s.activationNotifications;
+  ExtraDimOwnershipClient.callback.accept(true);
+  check(!c.active&&!s.powerActive&&c.strength==65&&s.powerStrength==65&&s.activationNotifications==notifications+1,"owned refresh invokes native power notification before matrix");
+  check(ExtraDimRuntime.parse(dump(m,s)).matches(0,false,100),"off matrix and power state agree");
+  ExtraDimOwnershipClient.owned.remove(0);settings(s,false,25);ExtraDimOwnershipClient.callback.accept(false);
+  check(!c.active&&!s.powerActive&&c.strength==35&&s.powerStrength==35,"release also uses native calibrated callbacks");
+  s.context.resolver.settings.clear();ExtraDimOwnershipClient.callback.accept(false);check(c.strength==44,"absent baseline retains native default");
+  c.strength=27;c.active=false;m.invoke(s,"applyTint",c,true);check(c.strength==27&&!c.active,"unowned apply is unchanged");
+  TintController night=new TintController();night.active=true;m.invoke(s,"applyTint",night,true);check(night.active&&night.getLevel()==100,"other tint unaffected");
+  ExtraDimOwnershipClient.owned.add(0);settings(s,true,80);c.available=false;m.invoke(s,"applyTint",c,true);
+  check(!c.active&&c.strength==27&&!ExtraDimRuntime.parse(dump(m,s)).available,"missing native availability cannot invent a pipeline");c.available=true;
+  s.mCurrentUser=10;ExtraDimOwnershipClient.owned.add(10);settings(s,true,35);nativeUpdate(m,s);
+  check(ExtraDimRuntime.parse(dump(m,s)).matches(10,true,35)&&!ExtraDimRuntime.parse(dump(m,s)).matches(0,true,35),"foreground-user isolation");
+  dump(m,s);s.mCurrentUser=0;notifications=s.activationNotifications;ExtraDimOwnershipClient.callback.accept(true);
+  check(s.activationNotifications==notifications,"stale user callback cannot mutate current user");
+  for(int[] range:new int[][]{{0,100},{25,65},{10,90}}){android.content.res.Resources.minimum=range[0];android.content.res.Resources.maximum=range[1];
+   settings(s,true,80);nativeUpdate(m,s);check(c.strength==(int)(range[0]+(range[1]-range[0])*.8f),"ROM-provided native range");
+   check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"calibrated range and transform verification retained");}
+  settings(s,false,100);m.invoke(s,"setUp");m.invoke(s,"applyTint",c,true);
+  check(!c.active&&!s.powerActive&&ExtraDimRuntime.parse(dump(m,s)).matches(0,false,100),"native setup does not reapply stale controller state");
+  c.strength=100;check(!ExtraDimRuntime.parse(dump(m,s)).transform,"uncalibrated strength still rejected");
+  check(m.errors==0,"native callback paths complete");System.out.println("PASS ExtraDimHook: "+checks+" native callback/race/readback checks (no hardware evidence)");
+ }
+}'''
 with tempfile.TemporaryDirectory(prefix='duo-extra-dim-') as folder:
     work=Path(folder);sources=[]
     for name,source in files.items():

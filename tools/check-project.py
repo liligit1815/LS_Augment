@@ -264,6 +264,7 @@ def check_scope():
         'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',
         'cn.nubia.fan',
         'com.mi.health', 'com.autonavi.minimap', 'com.zte.mifavor.launcher',
+        'com.zte.mifavor.zsearch',
         'com.android.gallery3d',
         'cn.nubia.gamehelperline', 'cn.nubia.gamehelpmodule',
         'com.android.packageinstaller', 'com.zte.zdm', 'com.zte.mifavor.weather',

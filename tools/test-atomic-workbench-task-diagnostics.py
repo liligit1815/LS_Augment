@@ -152,7 +152,7 @@ def ipc_sources():
     module = sources['ls/augment/com/hook/AugmentModule.java']
     module = module.replace('public int errors;', 'public int errors,deopts,registrations,failRegistration;')
     module = module.replace('public void registerFeatureHook(Method h){}', 'public void registerFeatureHook(Method h){if(++registrations==failRegistration)throw new IllegalStateException("SENSITIVE_TASK_CONTENT");}')
-    module = module.replace('public void deoptimize(Method m){', 'public void deoptimize(Method m){deopts++;')
+    module = module.replace('public boolean deoptimize(Method m){', 'public boolean deoptimize(Method m){deopts++;')
     sources['ls/augment/com/hook/AugmentModule.java'] = module
     # Separate successful authentication from the existing subsequent current-session check.
     auth = sources['ls/augment/com/hook/AtomicWorkbenchSystemRootAuthority.java']

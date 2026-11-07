@@ -46,5 +46,5 @@ assert 'setRenderEffect(' in background
 assert controller.count('setRenderEffect(')==1, 'Blur must stay on the isolated backdrop'
 assert 'layers.addView(backdrop' in controller and 'layers.addView(content' in controller
 ui=(JAVA/'UiKit.java').read_text(encoding='utf-8')
-assert 'appearance.detailBody(this,scroll,body)' in ui
+assert 'appearance.detailBody(this,scroll,body)' in ''.join(ui.split())
 print('Feature forms remain separate from the background blur layer')

@@ -18,6 +18,9 @@ public final class WorkspaceMotion {
         if(source<0)return selected;
         return source==selected?-1:source;
     }
+    public static boolean targetLeft(boolean left,int outgoing,int promoted){
+        return outgoing>=0 && promoted>=0?!left:left;
+    }
     public static boolean acceptsRelease(float outward,float vertical,int width,int minimum,int slop){
         return outward>=Math.max(width*.28f,Math.max(minimum,3f*slop))
                 && outward>=Math.abs(vertical)*1.5f;

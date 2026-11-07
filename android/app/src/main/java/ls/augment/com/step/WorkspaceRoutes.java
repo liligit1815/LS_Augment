@@ -72,8 +72,12 @@ final class WorkspaceRoutes {
             try{
                 if(!host.closing && !host.closed){
                     if(host.fence.busy() && SystemClock.uptimeMillis()<limit){host.main.postDelayed(this,30);return;}
-                    ActivityManager.RunningTaskInfo now=host.focused();
-                    ok=now!=null && now.taskId==id && token.equals(field(now,"token")) && (Integer)call(now,"getWindowingMode")==1;
+                    // The original launcher call is still waiting for this reply.
+                    // Its focus notification may follow only after that call resumes.
+                    // Confirm the exact completed role handoff, independently of focus.
+                    ActivityManager.RunningTaskInfo now=host.info(id);
+                    ok=!host.fence.busy() && host.slots.index(id)<0 && now!=null && now.taskId==id
+                            && token.equals(field(now,"token")) && (Integer)call(now,"getWindowingMode")==1;
                 }
             }catch(RuntimeException ignored){}
             done.accept(ok);
@@ -94,67 +98,132 @@ final class WorkspaceRoutes {
         reply.send(0,new Bundle());
     }
     static void installDesktop(ClassLoader cl){
+        installLauncherApps(cl);
         try{
             Class<?> service=Class.forName("com.android.server.wm.ActivityTaskManagerService",false,cl);
             Class<?> caller=Class.forName("android.app.IApplicationThread",false,cl),profile=Class.forName("android.app.ProfilerInfo",false,cl);
             Class<?>[] args={caller,String.class,String.class,Intent.class,String.class,IBinder.class,String.class,
                     int.class,int.class,profile,Bundle.class};
             Class<?>[] asUser=java.util.Arrays.copyOf(args,args.length+1);asUser[11]=int.class;
-            Method start=OwnershipBridge.method(service,"startActivity",args),user=OwnershipBridge.method(service,"startActivityAsUser",asUser);
-            Method recent=OwnershipBridge.method(service,"startActivityFromRecents",int.class,Bundle.class);
-            int front=ActivityManager.class.getField("START_TASK_TO_FRONT").getInt(null);
-            for(Method method:new Method[]{start,user,recent}){
-                if(method.getReturnType()!=int.class)continue;
+            String[] names={"startActivity","startActivityAsUser","startActivityFromRecents"};
+            Class<?>[][] signatures={args,asUser,new Class<?>[]{int.class,Bundle.class}};
+            for(int n=0;n<names.length;n++){
+                Method method;
+                try{method=OwnershipBridge.method(service,names[n],signatures[n]);}
+                catch(NoSuchMethodException missing){report(null,0,"桌面启动能力缺失："+names[n],-1);continue;}
+                if(method.getReturnType()!=int.class || java.lang.reflect.Modifier.isStatic(method.getModifiers()))continue;
+                final boolean recents=n==2;
+                StepHooks.module.deoptimize(method);
                 StepHooks.hookMethod(method,new StepHook(){@Override protected void beforeHookedMethod(MethodHookParam p){
-                    try{if(before(p.args,method==recent) && method!=recent)p.setResult(front);}
-                    catch(Throwable e){/* Unrecognised launch semantics always continue through the original call. */}
+                    // The launch still owns its security checks, result token and
+                    // onNewIntent delivery after the exact task returns to main.
+                    try{before(p.args,recents);}
+                    catch(Throwable e){if(NativeWorkspaceGuard.active)diagnostic("DESKTOP_ROUTE","native_fallback;entry="+method.getName()+";error="+e.getClass().getSimpleName());}
                 }});
+                diagnostic("DESKTOP_ROUTE","entry_installed;owner=ATMS;entry="+method.getName());
             }
         }catch(ReflectiveOperationException|LinkageError e){report(null,0,"桌面／最近任务接口未接入："+e,-1);}
     }
+    /** LauncherApps delegates to ATMS.LocalService, bypassing the public ATMS hooks. */
+    static void installLauncherApps(ClassLoader cl){
+        try{
+            Class<?> impl=Class.forName("com.android.server.pm.LauncherAppsService$LauncherAppsImpl",false,cl);
+            Class<?> caller=Class.forName("android.app.IApplicationThread",false,cl);
+            Method access=OwnershipBridge.method(impl,"canAccessProfile",int.class,String.class);
+            Method intent=OwnershipBridge.method(impl,"getMainActivityLaunchIntent",ComponentName.class,UserHandle.class,boolean.class);
+            if(access.getReturnType()!=boolean.class || intent.getReturnType()!=Intent.class)throw new NoSuchMethodException("LauncherApps validation");
+            int installed=0;
+            for(boolean withToken:new boolean[]{true,false}){
+                Class<?>[] signature=withToken
+                        ?new Class<?>[]{IBinder.class,caller,String.class,String.class,ComponentName.class,android.graphics.Rect.class,Bundle.class,UserHandle.class}
+                        :new Class<?>[]{caller,String.class,String.class,ComponentName.class,android.graphics.Rect.class,Bundle.class,UserHandle.class};
+                Method start;
+                try{start=OwnershipBridge.method(impl,"startActivityAsUser",signature);}
+                catch(NoSuchMethodException absent){continue;}
+                if(start.getReturnType()!=void.class || java.lang.reflect.Modifier.isStatic(start.getModifiers()))continue;
+                final int offset=withToken?1:0;
+                StepHooks.module.deoptimize(start);
+                StepHooks.hookMethod(start,new StepHook(){@Override protected void beforeHookedMethod(MethodHookParam p){
+                    if(!NativeWorkspaceGuard.active || NativeWorkspaceGuard.ending)return;
+                    try{
+                        ComponentName component=(ComponentName)p.args[3+offset];UserHandle user=(UserHandle)p.args[6+offset];
+                        if(component==null || user==null){routeSkip("launcherapps_missing_target");return;}
+                        int target=WorkspaceUsers.id(user);
+                        if(!Boolean.TRUE.equals(access.invoke(p.thisObject,target,"Step desktop route"))
+                                || intent.invoke(p.thisObject,component,user,true)==null){routeSkip("launcherapps_native_validation");return;}
+                        routeNative(component,target,-1,(String)p.args[1+offset],(Bundle)p.args[5+offset]);
+                        // Always preserve the original security checks and launch intent delivery.
+                    }catch(Exception|LinkageError unavailable){report(null,0,"桌面副任务归还未接入："+unavailable.getClass().getSimpleName(),-1);}
+                }});installed++;
+                diagnostic("DESKTOP_ROUTE","entry_installed;owner=LauncherApps;token="+withToken);
+            }
+            if(installed==0)throw new NoSuchMethodException("LauncherApps.startActivityAsUser signature");
+        }catch(ReflectiveOperationException|LinkageError unavailable){report(null,0,"桌面 LauncherApps 接口未接入："+unavailable,-1);}
+    }
     static boolean before(Object[] args,boolean recents)throws Exception{
-        if(!NativeWorkspaceGuard.active || NativeWorkspaceGuard.ending || Wm.handler==null || Looper.myLooper()==Wm.handler.getLooper()
-                || Thread.holdsLock(Wm.lock) || !interactive(Wm.context))return false;
-        int uid=Binder.getCallingUid();if(uid==android.os.Process.myUid())return false;
-        PackageManager pm=Wm.context.getPackageManager();Intent home=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
-        ResolveInfo defaultHome=pm.resolveActivity(home,PackageManager.MATCH_DEFAULT_ONLY);
-        if(defaultHome==null || defaultHome.activityInfo==null || defaultHome.activityInfo.applicationInfo.uid!=uid
-                || (defaultHome.activityInfo.applicationInfo.flags&ApplicationInfo.FLAG_SYSTEM)==0)return false;
-        String launcher=defaultHome.activityInfo.packageName;int callerUser=WorkspaceUsers.id(UserHandle.getUserHandleForUid(uid));
-        int user=!recents && args.length>11?(Integer)args[11]:callerUser;
-        if(callerUser!=NativeWorkspaceGuard.principal || !WorkspaceUsers.allows(Wm.context,callerUser,user))return false;
-        Bundle options=(Bundle)args[recents?1:10];
-        if(options!=null){
-            ActivityOptions opt=(ActivityOptions)StepMembers.callStaticMethod(ActivityOptions.class,"fromBundle",options);
-            if(opt==null || (Integer)call(opt,"getLaunchWindowingMode")!=0 || opt.getLaunchDisplayId()>0 || opt.getLaunchBounds()!=null)return false;
-        }
         ComponentName component=null;
         if(!recents){
             Intent i=(Intent)args[3];
-            if(!launcher.equals(args[1]) || args[4]!=null || args[5]!=null || (Integer)args[7]>=0 || (Integer)args[8]!=0
-                    || args[9]!=null
+            // Activity.startActivity supplies its own resultTo token even with
+            // requestCode == -1. Launcher metadata extras also belong to the
+            // original launch; neither makes an ordinary MAIN launch a result request.
+            if(args[4]!=null || args[6]!=null || (Integer)args[7]>=0 || (Integer)args[8]!=0 || args[9]!=null
                     || i==null || !Intent.ACTION_MAIN.equals(i.getAction()) || !i.hasCategory(Intent.CATEGORY_LAUNCHER)
-                    || i.getData()!=null || i.getSelector()!=null || i.getExtras()!=null && !i.getExtras().isEmpty()
+                    || i.getData()!=null || i.getSelector()!=null
                     || (i.getFlags() & (Intent.FLAG_ACTIVITY_CLEAR_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-                            |Intent.FLAG_ACTIVITY_NEW_DOCUMENT|Intent.FLAG_ACTIVITY_FORWARD_RESULT))!=0 || (component=i.getComponent())==null)return false;
+                            |Intent.FLAG_ACTIVITY_NEW_DOCUMENT|Intent.FLAG_ACTIVITY_FORWARD_RESULT))!=0 || (component=i.getComponent())==null)return routeSkip("intent_contract");
         }
+        int callerUser=WorkspaceUsers.id(UserHandle.getUserHandleForUid(Binder.getCallingUid()));
+        return routeNative(component,!recents && args.length>11?(Integer)args[11]:callerUser,
+                recents?(Integer)args[0]:-1,recents?null:(String)args[1],(Bundle)args[recents?1:10]);
+    }
+    static boolean routeNative(ComponentName component,int user,int recentId,String callingPackage,Bundle options)throws Exception{
+        boolean recents=recentId>=0;
+        if(!NativeWorkspaceGuard.active || NativeWorkspaceGuard.ending)return false;
+        if(Wm.handler==null || Looper.myLooper()==Wm.handler.getLooper() || Thread.holdsLock(Wm.lock))return routeSkip("native_thread_or_lock");
+        if(!interactive(Wm.context))return routeSkip("not_interactive");
+        int uid=Binder.getCallingUid();if(uid==android.os.Process.myUid())return routeSkip("system_caller");
+        PackageManager pm=Wm.context.getPackageManager();Intent home=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo defaultHome=pm.resolveActivity(home,PackageManager.MATCH_DEFAULT_ONLY);
+        if(defaultHome==null || defaultHome.activityInfo==null || defaultHome.activityInfo.applicationInfo.uid!=uid
+                || (defaultHome.activityInfo.applicationInfo.flags&ApplicationInfo.FLAG_SYSTEM)==0)return routeSkip("caller_not_native_home");
+        String launcher=defaultHome.activityInfo.packageName;int callerUser=WorkspaceUsers.id(UserHandle.getUserHandleForUid(uid));
+        if(!recents && !launcher.equals(callingPackage))return routeSkip("caller_package");
+        if(callerUser!=NativeWorkspaceGuard.principal || !routeUserAllowed(callerUser,user))
+            return routeSkip("user_scope;caller="+callerUser+";owner="+NativeWorkspaceGuard.principal+";target="+user);
+        if(options!=null){
+            ActivityOptions opt=(ActivityOptions)StepMembers.callStaticMethod(ActivityOptions.class,"fromBundle",options);
+            if(opt==null)return routeSkip("invalid_options");
+            int mode=(Integer)call(opt,"getLaunchWindowingMode");
+            if(mode!=0 && mode!=1 || opt.getLaunchDisplayId()>0 || opt.getLaunchBounds()!=null){
+                diagnostic("DESKTOP_ROUTE","native_options;mode="+mode+";display="+opt.getLaunchDisplayId()+";bounded="+(opt.getLaunchBounds()!=null));return false;
+            }
+        }
+        // Some apps replace their launcher/splash activity and rewrite the task's
+        // base intent. Match that case only when the OS confirms exactly one
+        // enabled launcher entry, then require one live task in this user below.
+        // Query LauncherApps before taking the WM lock (it calls other services).
+        boolean singleEntry=!recents && singleLauncherEntry(component,user);
         Bundle event;ResultReceiver host;CountDownLatch latch=new CountDownLatch(1);AtomicBoolean success=new AtomicBoolean();
         synchronized(Wm.lock){
-            if(NativeWorkspaceGuard.pendingCommit!=null || NativeWorkspaceGuard.flip!=null || NativeWorkspaceGuard.events==null)return false;
+            if(NativeWorkspaceGuard.pendingCommit!=null || NativeWorkspaceGuard.flip!=null || NativeWorkspaceGuard.events==null)return routeSkip("handoff_busy_or_host_missing");
             Object focus=field(Wm.display,"mCurrentFocus");
             Object front=focus==null?null:call(focus,"getTask");
-            if(!recents && (front==null || (Integer)call(front,"getActivityType")!=2))return false;
-            NativeWorkspaceGuard.SavedTask candidate=null;
+            if(!recents && (front==null || (Integer)call(front,"getActivityType")!=2))return routeSkip("focus_not_home");
+            NativeWorkspaceGuard.SavedTask candidate=null,related=null;
+            int exactCount=0,relatedCount=0;
             for(int id:NativeWorkspaceGuard.slots.snapshot()){
                 NativeWorkspaceGuard.SavedTask r=NativeWorkspaceGuard.saved.get(id);
-                if(r==null || !r.dirty || (recents ? r.id!=(Integer)args[0] || !WorkspaceUsers.allows(Wm.context,callerUser,r.user) : r.user!=user)
+                if(r==null || !r.dirty || (recents ? r.id!=recentId || !routeUserAllowed(callerUser,r.user) : r.user!=user)
                         || NativeWorkspaceGuard.liveTask(r.id,r.token)!=r.task)continue;
                 ActivityManager.RunningTaskInfo t=(ActivityManager.RunningTaskInfo)call(r.task,"getTaskInfo");
-                if(t.baseActivity==null || !recents && !component.equals(t.baseActivity)
-                        || (Integer)call(t,"getWindowingMode")!=6)continue;
-                if(candidate!=null)return false;candidate=r;
+                if(t.baseActivity==null || (Integer)call(t,"getWindowingMode")!=6)continue;
+                if(recents || launchComponentMatches(component,t)){candidate=r;exactCount++;}
+                else if(singleEntry && component.getPackageName().equals(t.baseActivity.getPackageName())){related=r;relatedCount++;}
             }
-            if(candidate==null)return false;
+            if(exactCount>1 || exactCount==0 && relatedCount>1){diagnostic("DESKTOP_ROUTE","ambiguous_tasks");return false;}
+            if(candidate==null && relatedCount==1)candidate=related;
+            if(candidate==null){diagnostic("DESKTOP_ROUTE","no_matching_side_task;singleEntry="+singleEntry);return false;}
             ActivityManager.RunningTaskInfo t=(ActivityManager.RunningTaskInfo)call(candidate.task,"getTaskInfo");
             host=NativeWorkspaceGuard.events;event=NativeWorkspaceGuard.base();
             event.putString("pkg",t.baseActivity.getPackageName());event.putInt("id",t.taskId);event.putInt("routeUser",candidate.user);
@@ -162,9 +231,57 @@ final class WorkspaceRoutes {
             event.putParcelable("routeReply",remote(new ResultReceiver(Wm.handler){
                 protected void onReceiveResult(int code,Bundle data){success.set(code==1);latch.countDown();}
             }));
+            diagnostic("DESKTOP_ROUTE","matched;task="+candidate.id+";path="+(exactCount>0?"exact_component":"single_launcher_entry"));
         }
         host.send(96,event);
         // Do not hold the WM lock or the service handler while Shell commits the original surfaces.
-        return latch.await(2500,TimeUnit.MILLISECONDS) && success.get();
+        boolean restored=latch.await(2500,TimeUnit.MILLISECONDS) && success.get();
+        if(restored)synchronized(Wm.lock){
+            NativeWorkspaceGuard.SavedTask current=NativeWorkspaceGuard.saved.get(event.getInt("id"));
+            restored=NativeWorkspaceGuard.active && !NativeWorkspaceGuard.ending && current!=null && !current.dirty
+                    && event.getParcelable("token").equals(current.token)
+                    && NativeWorkspaceGuard.liveTask(current.id,current.token)==current.task
+                    && (Integer)call(current.task,"getWindowingMode")==1;
+        }
+        report(null,0,"桌面副任务路由：task="+event.getInt("id")+"；restored="+restored,event.getInt("id"));
+        return restored;
+    }
+    static boolean routeUserAllowed(int owner,int user){
+        // The caller has already been authenticated as the native HOME package.
+        // Foreground/profile state is a server-owned read: do not make its privileged
+        // service queries inherit the launcher's Binder identity. Restore that exact
+        // identity before dispatching or continuing the original native launch.
+        long identity=Binder.clearCallingIdentity();
+        try{return WorkspaceUsers.allows(Wm.context,owner,user);}
+        finally{Binder.restoreCallingIdentity(identity);}
+    }
+    static boolean routeSkip(String reason){
+        if(NativeWorkspaceGuard.active && !NativeWorkspaceGuard.ending){
+            long now=SystemClock.uptimeMillis();
+            synchronized(RouteNotes.last){
+                Long before=RouteNotes.last.get(reason);
+                if(before!=null && now-before<1000)return false;
+                RouteNotes.last.put(reason,now);
+            }
+            diagnostic("DESKTOP_ROUTE","native_continue;reason="+reason);
+        }
+        return false;
+    }
+    static final class RouteNotes {static final java.util.Map<String,Long> last=new java.util.HashMap<>();}
+    static boolean launchComponentMatches(ComponentName component,ActivityManager.RunningTaskInfo task){
+        return component!=null && (component.equals(task.baseActivity) || component.equals(task.origActivity)
+                || task.baseIntent!=null && component.equals(task.baseIntent.getComponent()));
+    }
+    static boolean singleLauncherEntry(ComponentName component,int user){
+        if(component==null)return false;
+        long identity=Binder.clearCallingIdentity();
+        try{
+            LauncherApps launcher=Wm.context.getSystemService(LauncherApps.class);
+            UserHandle profile=(UserHandle)StepMembers.callStaticMethod(UserHandle.class,"of",user);
+            if(launcher==null || !launcher.isActivityEnabled(component,profile))return false;
+            java.util.List<LauncherActivityInfo> entries=launcher.getActivityList(component.getPackageName(),profile);
+            return entries!=null && entries.size()==1 && component.equals(entries.get(0).getComponentName());
+        }catch(RuntimeException|LinkageError missing){diagnostic("DESKTOP_ROUTE","launcher_entry_unavailable;error="+missing.getClass().getSimpleName());return false;}
+        finally{Binder.restoreCallingIdentity(identity);}
     }
 }

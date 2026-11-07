@@ -1,10 +1,14 @@
 """Exercise the real installer forwarding hook with deterministic lifecycle/config races."""
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JAVA = Path('C:/Program Files/Java/jdk-17/bin')
+JAVAC = shutil.which('javac')
+if not JAVAC:
+    raise RuntimeError('Installer regression requires a JDK on PATH')
+JAVA = Path(JAVAC).with_name('java' + Path(JAVAC).suffix)
 sources = {
  'android/content/Context.java': 'package android.content; public class Context {}',
  'android/content/ComponentName.java': '''package android.content; public class ComponentName {
@@ -85,5 +89,5 @@ with tempfile.TemporaryDirectory(prefix='ls-installer-startup-') as directory:
     for name, content in sources.items():
         file = base/name; file.parent.mkdir(parents=True, exist_ok=True); file.write_text(content, encoding='utf-8')
     source = ROOT/'android/app/src/main/java/ls/augment/com/hook/InstallerStartupHook.java'
-    subprocess.run([str(JAVA/'javac.exe'), '-encoding', 'UTF-8', '-d', str(base), str(source), *map(str,base.rglob('*.java'))],check=True)
-    subprocess.run([str(JAVA/'java.exe'), '-cp', str(base), 'ls.augment.com.hook.InstallerStartupTest'],check=True)
+    subprocess.run([JAVAC, '-encoding', 'UTF-8', '-d', str(base), str(source), *map(str,base.rglob('*.java'))],check=True)
+    subprocess.run([str(JAVA), '-cp', str(base), 'ls.augment.com.hook.InstallerStartupTest'],check=True)

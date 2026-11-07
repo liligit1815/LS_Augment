@@ -61,7 +61,7 @@ EXTRA_TEST = r'''
     android.os.Process.uid=uid;try{return provider.call(method,arg,extras);}finally{android.os.Process.uid=old;}};
    android.os.Process.uid=0;Bundle registered=root.register();check(registered.getBoolean("success")&&registered.getBinder("owner")==pending.owner,"actual registration failed");
    check(root.providerResetGeneration==ResetWriteFence.generation(),"registered Root lost Provider reset generation");
-   f=new Fixture(user);f.platform=new AtomicWorkbenchPlatform(f.context,uid,user,f.handler,0,root::read);success(f.show());
+   f=new Fixture(user);f.platform=new AtomicWorkbenchPlatform(f.context,uid,user,f.handler,0,root::read);f.platform.configureAllocationScopeFence(f::requireFixtureAllocation);success(f.show());
    query=new Bundle();query.putInt("window_id",0);query.putInt("display_id",f.home.displayId);query.putInt("home_task_id",41);
    query.putString("unique_id",f.disk(0).getString("unique_id"));query.putString("display_name",f.context.displays.latest.display.name);
    SystemClock.now=2000;good="HR1|20564|"+f.home.displayId+"|"+query.getString("unique_id")+"|41|2000|true|true|true||1500|1500|1600|"+System.nanoTime();publish(good);

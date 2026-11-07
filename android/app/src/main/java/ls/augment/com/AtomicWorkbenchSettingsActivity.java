@@ -26,10 +26,10 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private long generation;
     private int request;
-    private boolean busy, rendering, topSupported;
+    private boolean busy, rendering, topSupported, resumed;
     private AppConfig config;
     private UiKit ui;
-    private Switch master, upper;
+    private Switch master, upper, pageIndicator;
     private Button check, count;
     private TextView status;
     private UiKit.Fold fold;
@@ -54,6 +54,9 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         check = ui.tonalButton("检查工作台接入");
         check.setOnClickListener(v -> probe(false));
         card.addView(check, ui.wrap());
+        Button guide=ui.textButton("手势引导");
+        guide.setOnClickListener(v->startActivity(new Intent(this,StepGestureGuideActivity.class)));
+        card.addView(guide,ui.wrap());
 
         LinearLayout layout = ui.preferenceCard();
         body.addView(layout, ui.margins(0, 8, 0, 0));
@@ -63,8 +66,15 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         layout.addView(count, ui.wrap());
         upper = new Switch(this);
         layout.addView(ui.featureRow("顶部副工作区", "需要系统支持原屏顶部窗口。启用时最多可设四个侧边副区。", upper), ui.wrap());
+        pageIndicator = new Switch(this);
+        pageIndicator.setTag("config:" + StepConfig.PAGE_INDICATOR);
+        layout.addView(ui.featureRow("页面指示器", "在红魔 Step 标题上方显示顶部面板的页数和当前位置。", pageIndicator), ui.wrap());
         layout.addView(ui.preferenceRow("atomic_workbench_apps", "快捷应用",
                 "选择工作台快捷栏中显示的应用", () -> startActivity(new Intent(this, QuickPinsActivity.class))), ui.wrap());
+        layout.addView(ui.featureTitle("音乐与歌词",
+                "优先使用本机红魔原生音乐卡片，并跟随系统当前媒体会话；原厂不支持的播放器或缺失接口使用兼容控件。\n\n"
+                + "歌词优先取自播放器。缺失时自动匹配网易云音乐、酷狗、汽水音乐和 LRCLIB，点击歌词可重试、选来源或导入本地歌词。在线查询会向所查询来源发送歌名、歌手、时长，以及对应来源可识别的歌曲编号；不发送剪贴板、应用页面或账号凭据。\n\n"
+                + "查询结果仅缓存在当前进程内，切换系统用户时清空。无需额外勾选播放器作用域。进度跳转、输出设备和歌词是否可用，取决于播放器、系统接口及网络服务。"), ui.wrap());
         layout.addView(ui.featureTitle("退出与恢复", "底部上滑可在主区回桌面选应用。退出工作台时显示主区应用，主区为空则回桌面。再次进入时只恢复仍在后台运行的原任务。"), ui.wrap());
         fold = ui.fold(master, layout);
         fold.show(state != null && state.getBoolean("expanded"));
@@ -76,12 +86,23 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         upper.setOnCheckedChangeListener((v, on) -> {
             if (!rendering) saveLayout(StepConfig.sideCount(this), on);
         });
+        pageIndicator.setOnCheckedChangeListener((v, on) -> {
+            if (!rendering) commit(() -> StepConfig.savePageIndicator(this, on), on ? "页面指示器已显示。" : "页面指示器已隐藏。");
+        });
         status.setText("可检查当前系统框架与系统界面是否已加载本版工作台。");
         render();
     }
 
     @Override protected void onResume() {
-        super.onResume(); render();
+        super.onResume(); resumed=true; render();
+        if(StepConfig.enabled(this) && StepGestureGuideActivity.needsOffer(this)){
+            StepRuntime.query(this,"com.android.systemui",new ResultReceiver(main){
+                @Override protected void onReceiveResult(int code,Bundle answer){
+                    if(!isDestroyed() && resumed && code==1 && answer!=null
+                            && answer.getInt("version")==BuildConfig.VERSION_CODE)StepGestureGuideActivity.offer(AtomicWorkbenchSettingsActivity.this);
+                }
+            });
+        }
         StepRuntime.query(this, "android", new ResultReceiver(main) {
             @Override protected void onReceiveResult(int code, Bundle data) {
                 if (isDestroyed()) return;
@@ -95,6 +116,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         super.onSaveInstanceState(out);
         out.putBoolean("expanded", fold.content.getVisibility() == View.VISIBLE);
     }
+    @Override protected void onPause(){resumed=false;super.onPause();}
     @Override protected void onDestroy() { request++; main.removeCallbacksAndMessages(null); super.onDestroy(); }
 
     private void render() {
@@ -108,6 +130,8 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         count.setEnabled(available);
         upper.setChecked(StepConfig.upper(this));
         upper.setEnabled(available && sides < 5 && (topSupported || upper.isChecked()));
+        pageIndicator.setChecked(StepConfig.pageIndicator(this));
+        pageIndicator.setEnabled(available);
         fold.sync();
         rendering = false;
     }
@@ -134,6 +158,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
             main.post(() -> {
                 if (isDestroyed()) return;
                 busy = false; status.setText(ok ? message : "配置未保存，请重新打开此页再试。"); render();
+                if(ok && resumed && StepConfig.enabled(this))StepGestureGuideActivity.offer(this);
             });
         });
     }

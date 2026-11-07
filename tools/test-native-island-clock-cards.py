@@ -96,7 +96,7 @@ files.update({
  check(module.errors==0&&AugmentModule.hooks.size()==12,"complete contracts before source hooks");
  AlarmApplication app=new AlarmApplication();app.onCreate();Handler.flush();
  check(!FeatureUtils.isSupportLiveIslandFullScreen(),"default preserves ordinary mode");
- FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("countdown",true);
+ FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("countdown",true);
  check(!FeatureUtils.isSupportLiveIslandFullScreen(),"config alone cannot fabricate display capability");
  NativeIslandCardClient.ready=true;recover(app);
  check(FeatureUtils.isSupportLiveIslandFullScreen(),"live host enables real OEM producer");
@@ -115,7 +115,7 @@ files.update({
  m.end=(long)Integer.MAX_VALUE+1;check(!FeatureUtils.isSupportLiveIslandFullScreen(),"actual deadline overflow falls back");m.end=31000;
  m.time=Integer.MAX_VALUE;check(!FeatureUtils.isSupportLiveIslandFullScreen(),"duration plus uptime overflow falls back");m.time=30000;
  android.provider.Settings.System.value=0;check(!FeatureUtils.isSupportLiveIslandFullScreen(),"system master respected");android.provider.Settings.System.value=1;
- FeatureSettings.change("duo",true);check(!FeatureUtils.isSupportLiveIslandFullScreen(),"custom island remains exclusive");FeatureSettings.change("duo",false);
+ FeatureSettings.change("duo",false);check(!FeatureUtils.isSupportLiveIslandFullScreen(),"unified master OFF disables supplemental source");FeatureSettings.change("duo",true);
  new CountdownShortTimeService().timeUp();m.mIslandManager.startNotificationCard(app,30000);m.state=0;m.expired=true;
  CountdownAlertFloatService alert=new CountdownAlertFloatService();alert.onStartCommand(new Intent("ring").putExtra("countdown_ringtone_only",true),0,1);
  CardMessage expiry=p.last;recover(app);check(p.last==expiry&&m.state==0&&m.expired,"reconnect republishes same real expiry, preserving chronometer origin");

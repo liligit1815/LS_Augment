@@ -227,6 +227,17 @@ public final class TestConfigSnapshot {
     private static void verifyDiagnosticReasons(ConfigSnapshot snapshot) throws Exception {
         String raw=snapshot.serialize();
         String body=new String(java.util.Base64.getUrlDecoder().decode(raw.split("\\.",3)[2]),java.nio.charset.StandardCharsets.UTF_8);
+        String futureKey="ls_augment_future_test";
+        String additional=signBody(body+futureKey+"=MQ\n");
+        if(ConfigSnapshot.parseForAutomation(additional,false).snapshot!=null)
+            throw new AssertionError("unknown same-build key accepted");
+        ConfigSnapshot compatible=ConfigSnapshot.parseForAutomation(additional,true).snapshot;
+        if(compatible==null || compatible.get(futureKey)!=null
+                || !snapshot.get(ConfigSchema.HIDE_MASTER).equals(compatible.get(ConfigSchema.HIDE_MASTER)))
+            throw new AssertionError("additive provider field changed automation input");
+        if(ConfigSnapshot.parseForAutomation(signBody(body+futureKey+"=MQ\n"+futureKey+"=MA\n"),true).snapshot!=null
+                || ConfigSnapshot.parseForAutomation(withoutExactKeys(snapshot,ConfigSchema.HIDE_MASTER),true).snapshot!=null)
+            throw new AssertionError("duplicate or incomplete newer configuration accepted");
         expectReason(null,"payload_missing");
         expectReason("x".repeat(256*1024+1),"payload_too_large");
         expectReason("PRIVATE_PAYLOAD","envelope_invalid");

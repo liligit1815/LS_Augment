@@ -897,7 +897,7 @@ public class HideAppsActivity extends Activity implements ModuleNavigation.Ances
     }
 
     private boolean canOperate(boolean hide){
-        return selectionReady&&!selectionLoading&&!loading&&!saving&&!dirty&&!operating
+        return !isFinishing()&&!isDestroyed()&&selectionReady&&!selectionLoading&&!loading&&!saving&&!dirty&&!operating
                 &&rootGranted&&(!hide||rootReady&&master.isChecked());
     }
 

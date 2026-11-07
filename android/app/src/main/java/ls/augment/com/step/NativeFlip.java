@@ -1,12 +1,10 @@
 package ls.augment.com.step;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ValueAnimator;
 import android.content.Intent;
 import android.os.Parcelable;
 import android.os.ResultReceiver;
 import android.view.SurfaceControl;
+import android.view.Choreographer;
 import android.view.animation.PathInterpolator;
 import static ls.augment.com.step.NativeWorkspaceGuard.*;
 import static ls.augment.com.step.StepRuntime.*;
@@ -19,17 +17,23 @@ final class NativeFlip {
     final SurfaceControl band;
     final Parcelable[] lanes;
     final SurfaceControl[] hints;
+    final NativeBackdrop backdrop;
     final SavedTask[] actors=new SavedTask[SideSlots.MAX_COUNT+1];
     final SurfaceControl[] surfaces=new SurfaceControl[actors.length];
     final WorkspaceMotion[] starts=new WorkspaceMotion[actors.length], ends=new WorkspaceMotion[actors.length];
-    ValueAnimator animator;
-    boolean attached, committed;
+    Choreographer clock;
+    Choreographer.FrameCallback callback;
+    SurfaceControl.Transaction animationTx;
+    final PathInterpolator easing=new PathInterpolator(.22f,.7f,.12f,1);
+    long firstFrameNanos,lastFrameNanos,maxFrameGapNanos;
+    boolean attached, committed, ownsTransforms;
     int frames;
 
     NativeFlip(Intent i) {
         selected=i.getIntExtra("slot",-1); outgoing=i.getIntExtra("task",-1); promoted=i.getIntExtra("previous",-1);
-        count=i.getIntExtra("visible",0);targetLeft=promoted<0?sideLeft:!sideLeft;
-        if(!SideSlots.validCount(count) || selected<0 || selected>=count || promoted< -1 || outgoing<0
+        count=i.getIntExtra("visible",0);targetLeft=WorkspaceMotion.targetLeft(sideLeft,outgoing,promoted);
+        if(!SideSlots.validCount(count) || selected<0 || selected>=count || promoted< -1 || outgoing< -1
+                || outgoing<0 && promoted<0 || i.getBooleanExtra("background",false)
                 || slots.task(selected)!=promoted || i.getBooleanExtra("leftSide",!sideLeft)!=sideLeft)
             throw new IllegalStateException("交换格或方向已经变化");
         float density=Wm.context.getResources().getDisplayMetrics().density;
@@ -53,10 +57,12 @@ final class NativeFlip {
             if(actor==null || (k>0 && !actor.dirty) || !WorkspaceUsers.allows(Wm.context,principal,actor.user))
                 throw new IllegalStateException("参与换边的原任务不可用");
             starts[k]=WorkspaceMotion.place(from,k-1,count);
+            if(k==0 && Wm.ownedSpec!=null)starts[k]=new WorkspaceMotion(from.mainX,StepMembers.getFloatField(Wm.ownedSpec,"offsetY"),from.mainScale);
             ends[k]=WorkspaceMotion.place(to,WorkspaceMotion.destinationSlot(k-1,selected),count);
             surfaces[k]=(SurfaceControl)call(actor.task,"getSurfaceControl");
         }
-        if(!actors[0].token.equals(i.getParcelableExtra("token")))throw new IllegalStateException("主任务令牌已变更");
+        if(actors[0]!=null && !actors[0].token.equals(i.getParcelableExtra("token")))throw new IllegalStateException("主任务令牌已变更");
+        backdrop=outgoing>=0 && promoted<0?new NativeBackdrop(i,actors[0]):null;
         validate();
     }
     void validate() {
@@ -71,71 +77,90 @@ final class NativeFlip {
                 throw new IllegalStateException("换边任务身份或模式变化："+r.id);
             validSurface(lanes[k]);
         }
-        if(!Boolean.TRUE.equals(field(call(actors[0].task,"getTaskInfo"),"isFocused")))
+        if(actors[0]!=null && !Boolean.TRUE.equals(field(call(actors[0].task,"getTaskInfo"),"isFocused")))
             throw new IllegalStateException("换边期间主任务失去焦点");
     }
     void start(ResultReceiver reply) {
-        actors[0].dirty=true; // Includes a fullscreen task temporarily moved before the role WCT.
+        WorkspaceIme.cancel();
+        if(actors[0]!=null)actors[0].dirty=true; // Includes a fullscreen task moved before the role WCT.
         Wm.handler.postDelayed(()->{
             if(flip==this && !ending)finish("换边等待宿主落位超时");
-        },3500);
-        try {
-            frame(0,true,false,reply);
-        }catch(Throwable error){finish("原任务转场失败："+error);}
+        },5000);
+        Runnable begin=()->{
+            if(flip!=this || ending)return;
+            try {frame(0,true,false,reply);}
+            catch(Throwable error){finish("原任务转场失败："+error);}
+        };
+        WorkspaceImeHandoff.prepare(this,()->{
+            if(backdrop!=null)backdrop.prepare(this,begin);else begin.run();
+        });
     }
     private void animate(ResultReceiver reply){
         if(flip!=this || ending)return;
         try{
-            animator=ValueAnimator.ofFloat(0,1);
-            animator.setDuration(300);animator.setInterpolator(new PathInterpolator(.34f,.69f,.1f,1));
-            animator.addUpdateListener(a->{
-                if(flip!=this || ending)return;
-                try{synchronized(Wm.lock){frame((Float)a.getAnimatedValue(),false,false,reply);}}
-                catch(Throwable error){finish("换边画面中断："+error);}
-            });
-            animator.addListener(new AnimatorListenerAdapter(){
-                @Override public void onAnimationEnd(Animator a){
-                    if(flip!=NativeFlip.this || ending)return;
-                    try{synchronized(Wm.lock){frame(1,false,true,reply);}}
-                    catch(Throwable error){finish("换边末帧失败："+error);}
+            clock=Choreographer.getInstance();
+            callback=new Choreographer.FrameCallback(){
+                @Override public void doFrame(long nanos){
+                    if(callback!=this || flip!=NativeFlip.this || ending)return;
+                    if(firstFrameNanos==0)firstFrameNanos=nanos;
+                    if(lastFrameNanos!=0)maxFrameGapNanos=Math.max(maxFrameGapNanos,nanos-lastFrameNanos);
+                    lastFrameNanos=nanos;
+                    float time=Math.min(1f,(nanos-firstFrameNanos)/320_000_000f);
+                    try{
+                        synchronized(Wm.lock){frame(easing.getInterpolation(time),false,time==1,reply);}
+                        if(time<1 && callback==this)clock.postFrameCallback(this);
+                    }catch(Throwable error){finish("换边画面中断："+error);}
                 }
-            });
-            animator.start();
+            };
+            clock.postFrameCallback(callback);
         }catch(Throwable error){finish("原任务转场失败："+error);}
     }
     void frame(float progress,boolean first,boolean last,ResultReceiver reply) throws Exception {
         if(!Wm.active || field(Wm.display,"mMagnificationSpec")!=Wm.ownedSpec)
             throw new IllegalStateException("换边时原屏缩放已被其他窗口接管");
         if(first || last)validate();
-        try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
+        if(animationTx==null)animationTx=new SurfaceControl.Transaction();
+        SurfaceControl.Transaction tx=animationTx;
+        {
             if(hints!=null && hints.length==2){
                 if(hints[0]!=null && hints[0].isValid())tx.setAlpha(hints[0],targetLeft==sideLeft?1:1-progress);
                 if(hints[1]!=null && hints[1].isValid())tx.setAlpha(hints[1],progress);
             }
 
-            if(first)tx.setVisibility(band,true);
+            if(first){
+                // With all actors isolated, remove ancestor magnification in the
+                // SAME transaction that moves them to physical animation lanes.
+                // Until this point HOME preparation still needs the native main
+                // transform. A logical flip request alone cannot remove it.
+                ownsTransforms=true;
+                stageMagnification(tx);
+                tx.setVisibility(band,true);
+            }
             for(int k=0;k<actors.length;k++){
                 SavedTask r=actors[k];if(r==null)continue;
                 SurfaceControl sc=surfaces[k];
-                if(!sc.isValid() || call(r.task,"getParent")!=r.parent
-                        || (Integer)call(call(r.task,"getSurfaceControl"),"getLayerId")!=r.layerId
-                        || (Integer)call(r.task,"getWindowingMode")!=(k==0?1:6))
+                SurfaceControl lane=(SurfaceControl)lanes[k];
+                if(!sc.isValid() || !lane.isValid())
                     throw new IllegalStateException("动画中的任务父层已变更："+r.id);
                 if(first){
-                    if(k==0)call(r.task,"clearMagnificationSpec",tx);
-                    tx.reparent(sc,(SurfaceControl)lanes[k]);
+                    // Preview tasks can retain descendant specs from an earlier
+                    // native launch. Every actor enters the physical lane at unity.
+                    call(r.task,"clearMagnificationSpec",tx);
+                    tx.reparent(sc,lane).setScale(sc,1,1).setPosition(sc,0,0).setAlpha(sc,1).setVisibility(sc,true);
                     call(tx,"setWindowCrop",sc,logical);
                 }
                 WorkspaceMotion pos=starts[k].towards(ends[k],progress);
-                call(tx,"setMatrix",sc,pos.scale,0f,0f,pos.scale);
-                tx.setPosition(sc,pos.x,pos.y-from.top).setAlpha(sc,1).setVisibility(sc,true);
+                // Animate our container, not the task surface that WM may reposition.
+                // Identity/mode checks stay at both transaction boundaries.
+                tx.setScale(lane,pos.scale,pos.scale).setPosition(lane,pos.x,pos.y-from.top);
             }
             if(first)SurfaceCommit.observe(tx,Wm.handler::post,()->animate(reply));
             if(last)SurfaceCommit.observe(tx,Wm.handler::post,()->{
                 if(flip!=this || ending)return;
                 committed=true;
                 android.os.Bundle b=base();b.putBoolean("targetLeft",targetLeft);
-                respond(reply,0,b,"主副同步换边末帧已提交；帧数="+frames);
+                respond(reply,0,b,"工作区转场末帧已提交；路径="+(outgoing<0?"副区展开":"主副交换")
+                        +"；回调帧数="+frames+"；最大回调间隔ms="+(maxFrameGapNanos/1_000_000f)+"；非屏幕呈现帧率");
             });
             tx.apply();attached=true;frames++;
         }
@@ -156,10 +181,14 @@ final class NativeFlip {
             call(tx,"setMatrix",sc,end.scale,0f,0f,end.scale);
             tx.setPosition(sc,end.x-to.sideX,end.y-to.top);
         }
-        tx.setVisibility(band,false);
+        // A returning task leaves a transparent band with only the empty-cell
+        // backing. SystemUI removes it after its actual slot frame commits.
+        if(outgoing>=0)tx.setVisibility(band,false);
     }
     void cancelAnimator(){
-        if(animator!=null){animator.removeAllUpdateListeners();animator.removeAllListeners();animator.cancel();animator=null;}
+        if(clock!=null && callback!=null)clock.removeFrameCallback(callback);
+        callback=null;
+        if(animationTx!=null){animationTx.close();animationTx=null;}
     }
     boolean moves(SavedTask r){
         for(SavedTask actor:actors)if(actor==r)return true;

@@ -26,6 +26,13 @@ final class AppSelectionDialog {
     private AppSelectionDialog() { }
     static AlertDialog show(Activity activity, UiKit ui, String title,
             String initial, Consumer<String> onSave) {
+        return show(activity, ui, title, initial, false, onSave);
+    }
+    static AlertDialog pick(Activity activity, UiKit ui, String knownPackages, Consumer<String> onPick) {
+        return show(activity, ui, "选择通知应用", knownPackages, true, onPick);
+    }
+    private static AlertDialog show(Activity activity, UiKit ui, String title,
+            String initial, boolean single, Consumer<String> onSave) {
         Set<String> selected = new TreeSet<>(AppPackageSet.parse(initial));
         Set<String> initialSelection = new TreeSet<>(selected);
         ArrayList<Item> items = new ArrayList<>(), visible = new ArrayList<>();
@@ -37,7 +44,7 @@ final class AppSelectionDialog {
         search.setHint("搜索应用名称或包名");
         body.addView(search, new LinearLayout.LayoutParams(-1, -2));
         ListView list = new ListView(activity);
-        list.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
+        list.setChoiceMode(single ? ListView.CHOICE_MODE_NONE : ListView.CHOICE_MODE_MULTIPLE);
         body.addView(list, new LinearLayout.LayoutParams(-1, ui.dp(330)));
         Runnable render = () -> {
             String query = search.getText().toString().trim().toLowerCase(Locale.ROOT);
@@ -50,26 +57,28 @@ final class AppSelectionDialog {
                 labels.add(item.label + "\n" + item.pkg);
             }
             list.setAdapter(new ArrayAdapter<>(activity,
-                    android.R.layout.simple_list_item_multiple_choice, labels));
+                    single ? android.R.layout.simple_list_item_1 : android.R.layout.simple_list_item_multiple_choice, labels));
             list.clearChoices();
-            for (int i = 0; i < visible.size(); i++) {
+            if (!single) for (int i = 0; i < visible.size(); i++) {
                 list.setItemChecked(i, selected.contains(visible.get(i).pkg));
             }
         };
-        list.setOnItemClickListener((parent, view, position, id) -> {
-            String pkg = visible.get(position).pkg;
-            if (list.isItemChecked(position)) selected.add(pkg); else selected.remove(pkg);
-        });
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
             @Override public void afterTextChanged(Editable value) { }
         });
-        AlertDialog dialog = AppDialogs.builder(activity).setTitle(title).setView(body)
-                .setNegativeButton("取消", null).setNeutralButton("清空选择", null)
-                .setPositiveButton("确定", (ignored, which) -> onSave.accept(String.join(";", selected)))
-                .create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+        AlertDialog.Builder builder = AppDialogs.builder(activity).setTitle(title).setView(body)
+                .setNegativeButton("取消", null);
+        if (!single) builder.setNeutralButton("清空选择", null)
+                .setPositiveButton("确定", (ignored, which) -> onSave.accept(String.join(";", selected)));
+        AlertDialog dialog = builder.create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            String pkg = visible.get(position).pkg;
+            if (single) { dialog.dismiss(); onSave.accept(pkg); }
+            else if (list.isItemChecked(position)) selected.add(pkg); else selected.remove(pkg);
+        });
+        if (!single) dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
                 .setOnClickListener(view -> { selected.clear(); render.run(); }));
         dialog.show();
         new Thread(() -> {
@@ -77,6 +86,8 @@ final class AppSelectionDialog {
             try {
                 PackageManager pm = activity.getPackageManager();
                 LinkedHashMap<String, ApplicationInfo> applications = new LinkedHashMap<>();
+                if (single) for (ApplicationInfo info : pm.getInstalledApplications(0))
+                    applications.put(info.packageName, info);
                 // Match getLaunchIntentForPackage's INFO/LAUNCHER scope without
                 // relying on OEM-restricted enumeration of all installed apps.
                 for (String category : new String[]{Intent.CATEGORY_INFO, Intent.CATEGORY_LAUNCHER}) {
@@ -94,10 +105,14 @@ final class AppSelectionDialog {
                     if (applications.containsKey(packageName)) continue;
                     try {
                         applications.put(packageName, pm.getApplicationInfo(packageName, 0));
-                    } catch (PackageManager.NameNotFoundException ignored) { }
+                    } catch (PackageManager.NameNotFoundException ignored) {
+                        if (single) discovered.add(new Item(packageName, packageName));
+                    }
                 }
                 for (ApplicationInfo info : applications.values()) {
-                    if (!info.enabled || (info.flags & ApplicationInfo.FLAG_INSTALLED) == 0) continue;
+                    if (single && IslandNoticeRules.app(android.os.Process.myUid()/100000, info.packageName).isEmpty()) continue;
+                    if ((!info.enabled || (info.flags & ApplicationInfo.FLAG_INSTALLED) == 0)
+                            && !(single && initialSelection.contains(info.packageName))) continue;
                     discovered.add(new Item(info.packageName, String.valueOf(pm.getApplicationLabel(info))));
                 }
                 discovered.sort(Comparator.comparing((Item item) -> item.label,

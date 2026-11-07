@@ -254,7 +254,7 @@ with tempfile.TemporaryDirectory(prefix='cases-', dir=OUTPUT) as temporary:
         return {'case':case,'passed':run.returncode==0,'stdout':run.stdout.strip(),'stderr':run.stderr.strip()}
     # Every process has its own root, so fixtures may run concurrently without
     # sharing state. This keeps the Windows shell startup cost bounded.
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=1 if os.name=='nt' else 4) as executor:
         results = list(executor.map(run_case, jobs))
     for run in results:
         print(run['stdout'])

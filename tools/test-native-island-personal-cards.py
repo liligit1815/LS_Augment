@@ -126,7 +126,7 @@ check(renderer.mCardPusher.mClient==null&&context.resolver.unstable==0,"disabled
 check(context.requiredPermission.equals("android.permission.STATUS_BAR_SERVICE"),"recovery receiver requires SystemUI permission");
 check(context.resolver.observers==1&&FeatureSettings.listeners.size()==1,"single lifecycle observer set");
 check(!EnvironmentConfig.enableStarryIsland(context),"registration override not leaked");
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);
 MeetingCard live=new MeetingCard(),expired=new MeetingCard(),other=new MeetingCard(),hidden=new MeetingCard(),noChannel=new MeetingCard();
 expired.info.data.put("toTime",System.currentTimeMillis()-1);other.type=CardType.TRAVEL_FLIGHT_PLAN;hidden.info.hidden=true;noChannel.info.channel=0;
 check(!live.supportsChannel(8)&&live.supportsChannel(4),"native reminder channels remain unchanged before rendering");
@@ -163,7 +163,7 @@ check(renderer.selected.isEmpty(),"ended meeting is not replayed after host reco
 live.info.data.put("toTime",System.currentTimeMillis()+60000L);renderer.render(List.of(live));renderer.render(List.of());
 FeatureSettings.change("calendar_meeting",false);FeatureSettings.change("calendar_meeting",true);check(renderer.selected.isEmpty(),"removed business does not reappear");
 NativeIslandCardClient.live=false;renderer.render(List.of(live));check(renderer.selected.isEmpty(),"unavailable host gets no fabricated card");
-NativeIslandCardClient.live=true;FeatureSettings.change("duo",true);check(renderer.selected.isEmpty(),"custom island selection excludes native cards");FeatureSettings.change("duo",false);
+NativeIslandCardClient.live=true;FeatureSettings.change("duo",false);check(renderer.selected.isEmpty(),"unified master OFF disables supplemental source");FeatureSettings.change("duo",true);
 ContentProviderClient owned=renderer.mCardPusher.mClient,foreign=new ContentProviderClient();renderer.mCardPusher.mClient=foreign;int callbacks=renderer.mCardPusher.unregistered;
 FeatureSettings.change("calendar_meeting",false);check(owned.closed&&!foreign.closed&&renderer.mCardPusher.mClient==foreign&&callbacks==renderer.mCardPusher.unregistered,"replacement connection and its callback belong to external installer");
 FeatureSettings.change("calendar_meeting",true);check(renderer.selected.isEmpty(),"foreign connection cannot be adopted");

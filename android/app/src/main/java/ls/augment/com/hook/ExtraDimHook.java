@@ -73,7 +73,7 @@ final class ExtraDimHook {
                         Object transforms=local.invoke(instance,manager);
                         float[] wanted=(float[])expected.invoke(target);
                         float[] applied=transforms==null?null:(float[])actual.invoke(transforms,(Integer)level.invoke(target));
-                        verified=mapped && transforms!=null && ExtraDimRuntime.sameTransform(on,nativeAmount,wanted,applied);
+                        verified=mapped && (!request.owned || request.active == on) && transforms!=null && ExtraDimRuntime.sameTransform(on,nativeAmount,wanted,applied);
                     }
                     writer.println(ExtraDimRuntime.PREFIX+"user="+current+";available="+(supported?1:0)+";active="+(on?1:0)+";strength="+amount+";transform="+(verified?1:0));
                     writer.println("LSA_EXTRA_DIM_NATIVE_V1 user="+current+";owned="+(request.owned?1:0)+";nativeStrength="+nativeAmount+";mapping="+(mapped?1:0));
@@ -100,7 +100,8 @@ final class ExtraDimHook {
                         Object instance=chain.getThisObject();Context ctx=(Context)context.invoke(instance);int current=user.getInt(instance);
                         Object target=controller.get(instance);
                         ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
-                        if(request.owned && target!=null && Boolean.TRUE.equals(available.invoke(target,ctx)))apply.invoke(instance,target,true);
+                        if(request.owned && target!=null && Boolean.TRUE.equals(available.invoke(target,ctx)))
+                            syncNative(instance, target, nativeStrength, nativeActivation, apply);
                     }catch(ReflectiveOperationException | RuntimeException error){module.logFeatureError("EXTRA_DIM_SETUP",error);}
                     return result;
                 }));
@@ -130,10 +131,13 @@ final class ExtraDimHook {
                 // These callbacks reread current-user Settings, use ROM calibration
                 // and notify the display power listener before applying the matrix.
                 // The boolean is the native user-initiated flag, NOT the desired state.
-                nativeStrength.invoke(instance);
-                nativeActivation.invoke(instance, false);
-                apply.invoke(instance, target, true);
+                syncNative(instance, target, nativeStrength, nativeActivation, apply);
             } catch (ReflectiveOperationException | RuntimeException error) { module.logFeatureError("EXTRA_DIM_REFRESH", error); }
         });
+    }
+    private static void syncNative(Object instance, Object target, Method strength, Method activation, Method apply) throws ReflectiveOperationException {
+        strength.invoke(instance);
+        activation.invoke(instance, false);
+        apply.invoke(instance, target, true);
     }
 }

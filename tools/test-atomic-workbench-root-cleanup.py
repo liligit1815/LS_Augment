@@ -28,7 +28,7 @@ root_methods=[member(ROOT_CODE,s) for s in ('private Bundle systemSessionMetadat
  'private void requestRecovery(String reason)', 'private synchronized void scheduleRecovery()',
  'private void finishLater()', 'private final Runnable recover =')]
 root_methods[-1]+=';'
-engine_methods=[member(ENGINE_CODE,s) for s in ('Bundle close(boolean focusPrimaryHome)', 'boolean hasRecoveryPending()')]
+engine_methods=[member(ENGINE_CODE,s) for s in ('Bundle close(boolean focusPrimaryHome)', 'boolean hasRecoveryPending()', 'private boolean recoveryOwnersUnverified()')]
 
 TEST=OPS['TEST'].split(' public static void main(String[]args)',1)[0]+r'''
  static final class Chain {
@@ -92,6 +92,7 @@ def sources():
  authority=authority.replace('Bundle cleanup(){Bundle b=base();', 'Bundle cleanup()throws Exception {cleanupCalls++;if(root!=null){authCalls++;root.auth();}Bundle b=base();')
  s['ls/augment/com/AtomicWorkbenchTaskAuthority.java']=authority
  e=s['ls/augment/com/AtomicWorkbenchEngine.java'].replace('import android.os.*;', 'import android.os.*;import java.util.ArrayList;');e=e.rstrip()[:-1]+r'''
+ final AtomicWorkbenchRecoveryScope.ReaderProfile recoveryReader=AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4;
  TaskController taskController;final AtomicWorkbenchPlatform legacy=new AtomicWorkbenchPlatform(-1);int activeWindow=-1,focusedWindow=-2,unusedObservation;boolean[] recovering=new boolean[4];long inputRevision;
  boolean taskStorageUnverified(){return taskController!=null&&taskController.storageScopeUnverified();}
  Bundle restoreHomes(int ignored,boolean restore){return null;}Bundle decorate(int id,Bundle b){return new Bundle(b);}
@@ -102,7 +103,7 @@ def sources():
  # This injected counter is observation only. Store an exact extracted copy separately below.
  s['ls/augment/com/AtomicWorkbenchEngine.java']=e
  p=s['ls/augment/com/AtomicWorkbenchPlatform.java'];p=p.rstrip()[:-1]+r'''
- static int fullCloses;boolean hasRecoveryPending(){return false;}boolean physicalHomeReturned(){return false;}
+ boolean hasStartupFailure(){return false;}static int fullCloses;boolean hasRecoveryPending(){return false;}boolean physicalHomeReturned(){return false;}
  Bundle close(){fullCloses++;live=false;Bundle b=new Bundle();b.putBoolean("success",true);b.putBoolean("recovery_pending",false);return b;}
  Bundle focusPrimaryHome(){return close();}Bundle status(){Bundle b=new Bundle();b.putBoolean("success",true);return b;}
 }''';s['ls/augment/com/AtomicWorkbenchPlatform.java']=p
@@ -120,6 +121,7 @@ final class RootClose implements IBinder {public void linkToDeath(IBinder.DeathR
  long providerSession=7,providerResetGeneration=2;int appUid=10055,userId,recoveryAttempt,finishes;String token="a".repeat(64),closeReason="none";
  AtomicWorkbenchEngine backend;final Handler engine=new Handler();final Runnable maintainWindows=()->{},checkOwner=()->{};
  final Quit engineThread=new Quit();static class Quit{void quitSafely(){}}static class Optional{void close(){}void maintain(){}}
+ Bundle recoveryState(Bundle state){if(backend.recoveryReader!=AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4)throw new AssertionError("low4 cleanup fixture");return state;}
  Optional pasteHost,media,notifications;void clearInputs(){}void clearExtractionGeometry(){}void ensureTaskBackend(boolean explicit){}AtomicWorkbenchEngine backend(){return backend;}
  void lifecycle(String event,String detail,Throwable error){if(event.equals("ROOT_FINISH"))finishes++;}
  static Bundle failureState(Throwable error,boolean pending){Bundle b=new Bundle();b.putBoolean("success",false);b.putBoolean("recovery_pending",pending);return b;}
@@ -129,7 +131,7 @@ final class RootClose implements IBinder {public void linkToDeath(IBinder.DeathR
  s['ls/augment/com/TestTaskOperations.java']=TEST
  return s
 
-PRODUCTION=M['PRODUCTION']+['AtomicWorkbenchTaskShelfStore.java','AtomicWorkbenchRecoveryScope.java','AtomicWorkbenchTaskReferenceRequest.java','AtomicWorkbenchTaskReferenceResult.java','AtomicWorkbenchTaskReferenceSnapshot.java']
+PRODUCTION=M['PRODUCTION']+['AtomicWorkbenchRecoveryOwners.java','ResetWriteFence.java','AtomicWorkbenchSlotDomain.java','AtomicWorkbenchTaskShelfStore.java','AtomicWorkbenchRecoveryScope.java','AtomicWorkbenchTaskReferenceRequest.java','AtomicWorkbenchTaskReferenceResult.java','AtomicWorkbenchTaskReferenceSnapshot.java']
 JAR=next((Path.home()/'.gradle/caches/modules-2/files-2.1/org.json/json').glob('*/*/*.jar'))
 def execute(out,body,test_override=None,base_override=None):
  out.mkdir();data=out/'data';data.mkdir();s=base_override if base_override is not None else sources();s=dict(s)

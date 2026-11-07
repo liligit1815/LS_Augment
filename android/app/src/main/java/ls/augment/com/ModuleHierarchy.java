@@ -35,7 +35,7 @@ public final class ModuleHierarchy {
         Section tiles=section("notifications","brightness_tiles","亮度条与通用磁贴");add(tiles,"systemui:qs_brightness_percent");entry(tiles,"extra_dim");
         add(section("notifications","panel_carrier_search","面板运营商与搜索"),"systemui:qs_carrier","systemui:carrier_notification","systemui:carrier_control","systemui:qs_search","systemui:qs_browser");
         add(section("notifications","notification_alerts","通知提醒"),"ls_augment_rm_notification_quiet_unlocked");
-        add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim");
+        add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim",LauncherOptions.SEARCH_NO_SCRIM);
         add(section("desktop","desktop_clock","桌面组件"),"ls_augment_rm_desktop_clock_enabled","ls_augment_rm_desktop_clock_period","ls_augment_rm_weather_time_period",LauncherOptions.WIDGET_RESIZE);
         add(section("desktop","launcher_grid","桌面布局与页面"),"launcher:launcher_grid","ls_augment_rm_launcher_page_reorder","ls_augment_rm_launcher_keep_empty",LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,LauncherOptions.NEW_APPS_LAST_PAGE);
         Section icons=section("desktop","launcher","图标与名称");add(icons,"launcher:hide_minors");entry(icons,"launcher_custom");
@@ -187,7 +187,7 @@ public final class ModuleHierarchy {
     public static String singleChild(String route){String alias=ALIASES.get(route);if(alias!=null)return alias;if(route.startsWith("target-")){List<Section> list=sections(route.substring(7));if(list.size()==1)return list.get(0).route();}Section s=group(route);return s!=null&&!hasInlineEditors(s)&&s.features.isEmpty()&&s.deviceSettings.isEmpty()&&s.entries.size()==1?s.entries.get(0):null;}
     public static String resolve(String route){if(route==null)return "home";Set<String> visited=new HashSet<>();String next=route;while(visited.add(next)){String child=singleChild(next);if(child==null)return next;next=child;}return route;}
     private static String immediateParent(String route){
-        if("atomic_workbench_session".equals(route)||"atomic_workbench_apps".equals(route)
+        if("atomic_workbench_session".equals(route)||"atomic_workbench_apps".equals(route)||"atomic_workbench_guide".equals(route)
                 ||"atomic_workbench_app_sort".equals(route))return "atomic_workbench";
         if("icon_crop".equals(route))return "group/desktop/launcher";if("gesture_icon_crop".equals(route))return "group/interaction/gestures";if("tile_icon_crop".equals(route))return "hide_apps";if("rapid_compatibility".equals(route))return "group/gaming/shoulder";
         if(StatusBarPages.surface(route)!=null)return "status_surfaces";if("status_surfaces".equals(route)||Arrays.asList(StatusBarPages.ROUTES).contains(route))return "status_legacy";if(route.startsWith("asset/"))return "status_assets";if(Arrays.asList("hide_apps","automation","tile").contains(route))return "hide";
@@ -201,6 +201,7 @@ public final class ModuleHierarchy {
     public static String title(String route){
         if("feature_search".equals(route))return "搜索";
         if("atomic_workbench".equals(route))return "红魔Step";
+        if("atomic_workbench_guide".equals(route))return "手势引导";
         if("atomic_workbench_session".equals(route))return "运行工作台";
         if("atomic_workbench_apps".equals(route))return "应用列表显示";
         if("atomic_workbench_app_sort".equals(route))return "应用列表排序";

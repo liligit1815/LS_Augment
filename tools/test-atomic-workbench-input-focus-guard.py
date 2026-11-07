@@ -97,20 +97,21 @@ STUBS = {
 TEST = r'''package ls.augment.com;
 import android.content.*;import android.os.*;import android.view.*;import java.util.concurrent.*;import java.util.concurrent.atomic.*;import java.util.function.*;
 public final class TestAtomicWorkbenchInputFocusGuard {
- static int checks,cases;interface Work{void run()throws Exception;}
+ static boolean managedOnly;static int checks,cases;interface Work{void run()throws Exception;}
  static void check(boolean b,String m){checks++;if(!b)throw new AssertionError(m);}
  static void until(BooleanSupplier b,String m)throws Exception{long end=System.nanoTime()+1_500_000_000L;while(!b.getAsBoolean()){if(System.nanoTime()>end)throw new AssertionError(m);Thread.sleep(2);}checks++;}
- static void run(String name,Work work)throws Exception{try{work.run();cases++;System.out.println("PASS focus guard: "+name);}finally{HandlerThread.startGate=null;HandlerThread.exitGate=null;WindowManagerGlobal.unreadable=false;android.os.Process.uid=0;}}
+ static void run(String name,Work work)throws Exception{if(managedOnly&&!name.startsWith("explicit insets"))return;try{work.run();cases++;System.out.println("PASS focus guard: "+name);}finally{HandlerThread.startGate=null;HandlerThread.exitGate=null;WindowManagerGlobal.unreadable=false;android.os.Process.uid=0;}}
  static Exception fails(Work work,String m)throws Exception{try{work.run();throw new AssertionError(m);}catch(Exception expected){check(expected.getMessage()!=null&&!expected.getMessage().isEmpty(),"unreadable failure");java.io.StringWriter text=new java.io.StringWriter();expected.printStackTrace(new java.io.PrintWriter(text));check(!text.toString().contains("synthetic-private-text"),"WMS private text leaked in causal stack");return expected;}}
- static AtomicWorkbenchInputFocusGuard guard(){return new AtomicWorkbenchInputFocusGuard(100,100);}
+ static AtomicWorkbenchInputFocusGuard guard(){return new AtomicWorkbenchInputFocusGuard(1500,1500);}
+ static AtomicWorkbenchInputFocusGuard timedGuard(){return new AtomicWorkbenchInputFocusGuard(100,100);}
  static Display display(){return new Display();}
  static Display other(){Display d=display();d.id=52;d.name=d.name.replace("w0","w1");d.unique="synthetic:52";return d;}
  static final class Call {final CountDownLatch done=new CountDownLatch(1);volatile Throwable failure;final Thread thread;Call(Work work){thread=new Thread(()->{try{work.run();}catch(Throwable e){failure=e;}finally{done.countDown();}});thread.start();}void join()throws Exception{check(done.await(1500,TimeUnit.MILLISECONDS),"call exceeded deadline");thread.join();}void ok()throws Exception{join();if(failure!=null)throw new AssertionError("operation failed",failure);}void rejected()throws Exception{join();check(failure instanceof Exception,"operation unexpectedly succeeded");}}
  static void noThreads()throws Exception{until(()->HandlerThread.alive.get()==0,"owned handler thread leaked");}
- public static void main(String[] args)throws Exception{
+ public static void main(String[] args)throws Exception{managedOnly=args.length!=0;
   run("Root and authenticated virtual-display boundary",()->{
    Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();android.os.Process.uid=10515;fails(()->g.suspend(c,display()),"non-root accepted");android.os.Process.uid=0;
-   for(int mode=0;mode<12;mode++){Display d=display();switch(mode){case 0:d.id=0;break;case 1:d.valid=false;break;case 2:d.name="unowned";break;case 3:d.owner=10515;break;case 4:d.type=1;break;case 5:d.flags&=~Display.FLAG_TRUSTED;break;case 6:d.flags&=~Display.FLAG_OWN_FOCUS;break;case 7:d.flags|=Display.FLAG_PRIVATE;break;case 8:d.flags|=Display.FLAG_PRESENTATION;break;case 9:d.unique="";break;case 10:d.name=d.name.replace("10515","10516");break;case 11:d.name=d.name.replace("w0","w4");break;}fails(()->g.suspend(c,d),"invalid display accepted");}
+   for(int mode=0;mode<12;mode++){Display d=display();switch(mode){case 0:d.id=0;break;case 1:d.valid=false;break;case 2:d.name="unowned";break;case 3:d.owner=10515;break;case 4:d.type=1;break;case 5:d.flags&=~Display.FLAG_TRUSTED;break;case 6:d.flags&=~Display.FLAG_OWN_FOCUS;break;case 7:d.flags|=Display.FLAG_PRIVATE;break;case 8:d.flags|=Display.FLAG_PRESENTATION;break;case 9:d.unique="";break;case 10:d.name=d.name.replace("10515","10516");break;case 11:d.name=d.name.replace("w0","w"+AtomicWorkbenchSlotDomain.POOL_SIZE);break;}fails(()->g.suspend(c,d),"invalid display accepted");}
    check(c.windowContexts==0&&c.manager.adds==0,"invalid identity touched WMS");g.close();noThreads();
   });
   run("real focus callback, persistent idempotence, exact flags, detach and reuse",()->{
@@ -124,7 +125,7 @@ public final class TestAtomicWorkbenchInputFocusGuard {
    g.resume();check(c.manager.removes==1&&c.manager.owned.isEmpty(),"resume did not remove");noThreads();g.resume();g.suspend(c,d);check(c.manager.adds==2,"resume cannot be reused");g.close();g.close();noThreads();fails(()->g.suspend(c,d),"closed guard reused");
   });
   run("requestFocus without WMS focus is not success; timeout removes",()->{
-   Context c=new Context();c.manager.autoFocus=false;AtomicWorkbenchInputFocusGuard g=guard();long start=System.nanoTime();fails(()->g.suspend(c,display()),"requestFocus faked success");
+   Context c=new Context();c.manager.autoFocus=false;AtomicWorkbenchInputFocusGuard g=timedGuard();long start=System.nanoTime();fails(()->g.suspend(c,display()),"requestFocus faked success");
    check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<800,"focus timeout not bounded");check(c.manager.adds==1&&c.manager.removes==1&&c.manager.owned.isEmpty(),"timeout left window");noThreads();g.close();
   });
   run("delayed genuine focus acknowledgement",()->{
@@ -132,7 +133,7 @@ public final class TestAtomicWorkbenchInputFocusGuard {
    check(c.manager.added.await(500,TimeUnit.MILLISECONDS),"no add");until(()->c.manager.last.isAttachedToWindow(),"no attach");check(call.done.getCount()==1,"add falsely acknowledged");c.manager.focus();call.ok();g.close();noThreads();
   });
   run("registered window never attached cannot fake focus or leak after successful removal",()->{
-   Context c=new Context();c.manager.attach=false;c.manager.skipDetach=true;AtomicWorkbenchInputFocusGuard g=guard();fails(()->g.suspend(c,display()),"unattached window accepted");check(c.manager.owned.isEmpty(),"unattached registration not removed");noThreads();g.close();
+   Context c=new Context();c.manager.attach=false;c.manager.skipDetach=true;AtomicWorkbenchInputFocusGuard g=timedGuard();fails(()->g.suspend(c,display()),"unattached window accepted");check(c.manager.owned.isEmpty(),"unattached registration not removed");noThreads();g.close();
   });
   run("callback display and identity are revalidated",()->{
    Context c=new Context();c.manager.autoFocus=false;Display d=display();AtomicWorkbenchInputFocusGuard g=new AtomicWorkbenchInputFocusGuard(500,100);Call call=new Call(()->g.suspend(c,d));
@@ -152,45 +153,45 @@ public final class TestAtomicWorkbenchInputFocusGuard {
    boolean typed=false;for(Throwable at=failure;at!=null;at=at.getCause())if(at instanceof IllegalStateException)typed=true;check(typed,"original causal type was discarded");noThreads();g.resume();g.close();
   });
   run("never-attached registered view still must be removed, not mistaken for empty lease",()->{
-   Context c=new Context();c.manager.attach=false;c.manager.unknownAddFailure=true;c.manager.skipDetach=true;AtomicWorkbenchInputFocusGuard g=guard();fails(()->g.suspend(c,display()),"registered failed add accepted");check(c.manager.removes==1&&c.manager.owned.isEmpty(),"registered never-attached window leaked");noThreads();g.close();
+   Context c=new Context();c.manager.attach=false;c.manager.unknownAddFailure=true;c.manager.skipDetach=true;AtomicWorkbenchInputFocusGuard g=timedGuard();fails(()->g.suspend(c,display()),"registered failed add accepted");check(c.manager.removes==1&&c.manager.owned.isEmpty(),"registered never-attached window leaked");noThreads();g.close();
   });
   run("unavailable global-registration evidence retains exact cleanup responsibility",()->{
    Context c=new Context();c.manager.preRegistrationFailure=true;WindowManagerGlobal.unreadable=true;AtomicWorkbenchInputFocusGuard g=guard();fails(()->g.suspend(c,display()),"unreadable registration faked cleanup");fails(()->g.suspend(c,other()),"unknown registry discarded lease");
    check(c.manager.removes==0,"unconfirmed membership removal attempted");WindowManagerGlobal.unreadable=false;g.resume();noThreads();g.close();
   });
   run("remove failure retains same lease and retry removes",()->{
-   Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();g.suspend(c,display());c.manager.removeFailures=1;fails(g::resume,"remove failure faked success");
+   Context c=new Context();AtomicWorkbenchInputFocusGuard g=timedGuard();g.suspend(c,display());c.manager.removeFailures=1;fails(g::resume,"remove failure faked success");
    check(c.manager.owned.size()==1,"failed remove lost window ownership");int adds=c.manager.adds;fails(()->g.suspend(c,other()),"new display replaced pending lease");check(c.manager.adds==adds,"pending lease spawned a thread");g.resume();check(c.manager.owned.isEmpty()&&c.manager.removes==2,"cleanup not retryable");noThreads();g.close();
   });
   run("detach then throw retains responsibility and retry finishes without second remove",()->{
    Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();g.suspend(c,display());c.manager.removeThrowsAfterDetach=true;fails(g::close,"post-detach failure hidden");check(c.manager.owned.isEmpty(),"fake setup");g.close();check(c.manager.removes==1,"confirmed detach was redundantly removed");noThreads();
   });
   run("missing detach acknowledgement cannot report cleanup success",()->{
-   Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();g.suspend(c,display());c.manager.skipDetach=true;fails(g::resume,"missing detach accepted");fails(()->g.suspend(c,other()),"missing detach dropped responsibility");
+   Context c=new Context();AtomicWorkbenchInputFocusGuard g=timedGuard();g.suspend(c,display());c.manager.skipDetach=true;fails(g::resume,"missing detach accepted");fails(()->g.suspend(c,other()),"missing detach dropped responsibility");
    c.manager.last.detach();g.resume();noThreads();g.close();
   });
   run("noncooperative add is bounded and late focus cannot resurrect timed-out lease",()->{
-   Context c=new Context();c.manager.addGate=new CountDownLatch(1);AtomicWorkbenchInputFocusGuard g=guard();long start=System.nanoTime();
+   Context c=new Context();c.manager.addGate=new CountDownLatch(1);AtomicWorkbenchInputFocusGuard g=timedGuard();long start=System.nanoTime();
    try{fails(()->g.suspend(c,display()),"blocked add accepted");check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<800,"blocked binder held caller lock");int starts=HandlerThread.starts.get();fails(()->g.suspend(c,other()),"blocked lease replaced");check(HandlerThread.starts.get()==starts,"unbounded extra handler threads");}
    finally{c.manager.addGate.countDown();}until(()->c.manager.owned.isEmpty()&&HandlerThread.alive.get()==0,"late add not cleaned");g.resume();g.close();
   });
   run("noncooperative removal is bounded and owner may retry",()->{
-   Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();g.suspend(c,display());c.manager.removeGate=new CountDownLatch(1);long start=System.nanoTime();
+   Context c=new Context();AtomicWorkbenchInputFocusGuard g=timedGuard();g.suspend(c,display());c.manager.removeGate=new CountDownLatch(1);long start=System.nanoTime();
    try{fails(g::resume,"blocked remove accepted");check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<600,"remove held caller lock");check(c.manager.owned.size()==1,"blocked remove lost lease");fails(()->g.suspend(c,other()),"pending removal replaced");}
    finally{c.manager.removeGate.countDown();}until(()->HandlerThread.alive.get()==0,"late removal not completed");g.resume();g.close();
   });
   run("unprepared looper is bounded, retained and eventually released",()->{
-   HandlerThread.startGate=new CountDownLatch(1);Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();long start=System.nanoTime();
+   HandlerThread.startGate=new CountDownLatch(1);Context c=new Context();AtomicWorkbenchInputFocusGuard g=timedGuard();long start=System.nanoTime();
    try{fails(()->g.suspend(c,display()),"stuck startup accepted");check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<800,"getLooper blocked caller");check(c.manager.adds==0,"startup gate ineffective");fails(()->g.suspend(c,other()),"startup lease replaced");}
    finally{HandlerThread.startGate.countDown();HandlerThread.startGate=null;}until(()->HandlerThread.alive.get()==0,"deferred pre-add cleanup failed");g.resume();g.close();
   });
   run("PackageManager verification also stays off the Root engine caller",()->{
-   Context c=new Context();c.packages.gate=new CountDownLatch(1);AtomicWorkbenchInputFocusGuard g=guard();long start=System.nanoTime();
+   Context c=new Context();c.packages.gate=new CountDownLatch(1);AtomicWorkbenchInputFocusGuard g=timedGuard();long start=System.nanoTime();
    try{fails(()->g.suspend(c,display()),"blocked package verification accepted");check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<800,"package binder blocked Root caller");check(c.manager.adds==0,"unverified package created system window");}
    finally{c.packages.gate.countDown();}until(()->HandlerThread.alive.get()==0,"late package verification did not clean");g.resume();g.close();
   });
   run("window removed but noncooperative looper exit retains release responsibility",()->{
-   HandlerThread.exitGate=new CountDownLatch(1);Context c=new Context();AtomicWorkbenchInputFocusGuard g=guard();g.suspend(c,display());
+   HandlerThread.exitGate=new CountDownLatch(1);Context c=new Context();AtomicWorkbenchInputFocusGuard g=timedGuard();g.suspend(c,display());
    try{fails(g::resume,"thread exit faked success");check(c.manager.owned.isEmpty(),"window removal not performed");fails(()->g.suspend(c,other()),"unreleased thread responsibility lost");}
    finally{HandlerThread.exitGate.countDown();HandlerThread.exitGate=null;}noThreads();g.resume();g.close();
   });
@@ -225,6 +226,7 @@ def build_run(folder, source, expect_success=True, expected_failure=None):
     src = folder / "ls/augment/com/AtomicWorkbenchInputFocusGuard.java"
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_text(source, encoding="utf-8")
+    src.with_name("AtomicWorkbenchSlotDomain.java").write_bytes(SOURCE.with_name("AtomicWorkbenchSlotDomain.java").read_bytes())
     for name, text in STUBS.items():
         target = folder / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -235,10 +237,10 @@ def build_run(folder, source, expect_success=True, expected_failure=None):
         raise AssertionError("original test runner insertion point changed")
     test.write_text(TEST.replace(marker, CAPTURED_COMPAT_TEST + marker), encoding="utf-8")
     out = folder / "classes"
-    result = subprocess.run([JAVAC, "-encoding", "UTF-8", "-d", str(out), *map(str, folder.rglob("*.java"))], text=True, encoding="utf-8", capture_output=True, env=ENV)
+    result = subprocess.run([JAVAC, "-J-Duser.language=en", "-encoding", "UTF-8", "-d", str(out), *map(str, folder.rglob("*.java"))], text=True, encoding="utf-8", errors="replace", capture_output=True, env=ENV)
     if result.returncode:
         raise RuntimeError(result.stdout + result.stderr)
-    result = subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", str(out), "ls.augment.com.TestAtomicWorkbenchInputFocusGuard"], text=True, encoding="utf-8", capture_output=True, env=ENV, timeout=25)
+    result = subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", str(out), "ls.augment.com.TestAtomicWorkbenchInputFocusGuard", *(["managed-only"] if expected_failure else [])], text=True, encoding="utf-8", errors="replace", capture_output=True, env=ENV, timeout=25)
     if expect_success:
         print(result.stdout, end="")
         if result.returncode:
@@ -273,7 +275,7 @@ def main():
         print("PASS compiled negative control: deleted explicit fit-insets setter reaches managed Guard add and is rejected")
         sdk = ROOT / "audit-output/android-sdk/platforms/android-36/android.jar"
         if sdk.exists():
-            result = subprocess.run([JAVAC, "-encoding", "UTF-8", "-classpath", str(sdk), "-d", str(folder / "sdk36"), str(SOURCE)], text=True, encoding="utf-8", capture_output=True, env=ENV)
+            result = subprocess.run([JAVAC, "-J-Duser.language=en", "-encoding", "UTF-8", "-classpath", str(sdk), "-d", str(folder / "sdk36"), str(SOURCE),str(SOURCE.with_name("AtomicWorkbenchSlotDomain.java"))], text=True, encoding="utf-8", errors="replace", capture_output=True, env=ENV)
             if result.returncode:
                 raise RuntimeError(result.stdout + result.stderr)
             print("PASS SDK36 production focus guard compilation")

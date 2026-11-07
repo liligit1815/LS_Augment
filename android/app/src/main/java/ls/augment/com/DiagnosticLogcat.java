@@ -26,13 +26,13 @@ final class DiagnosticLogcat {
     }
     static Collection cleanup(long now,long historyCutoff,Reader reader){
         return collect(Math.max(now-10*60*1000,historyCutoff),768*1024,
-                "LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS+"AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader,historyCutoff);
+                "LS_Augment:I DuoStartup:I DuoAtomic:I RedMagicDuoStep:I "+SHOULDER_TAGS+"AndroidRuntime:E libc:F DEBUG:F ActivityManager:I WindowManager:W DisplayManagerService:I VirtualDisplayAdapter:I MediaProjectionManagerService:I OpenGLRenderer:W SurfaceFlinger:W BufferQueueProducer:E '*:S'",reader,historyCutoff);
     }
     static Collection module(long now,boolean ai,boolean shoulder,Reader reader){
         return module(now,ai,shoulder,0,reader);
     }
     static Collection module(long now,boolean ai,boolean shoulder,long historyCutoff,Reader reader){
-        return collect(Math.max(now-30*60*1000,historyCutoff),1024*1024,"DuoStartup:I LSPosedContext:E LSPosedBridge:E LS_Augment:I DuoAtomic:I "+SHOULDER_TAGS
+        return collect(Math.max(now-30*60*1000,historyCutoff),1024*1024,"DuoStartup:I LSPosedContext:E LSPosedBridge:E LS_Augment:I DuoAtomic:I RedMagicDuoStep:I "+SHOULDER_TAGS
                 +(ai?"LS_Augment_AI:I ":"")+"'*:S'",reader,historyCutoff);
     }
     private static Collection collect(long since,int limit,String tags,Reader reader,long historyCutoff){

@@ -1,5 +1,6 @@
 """Execute the production batch dispatcher with deterministic command boundaries."""
 from pathlib import Path
+import argparse
 import importlib.util
 import subprocess
 import tempfile
@@ -8,7 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("extract", ROOT / "tools/test-hide-automation-scope.py")
 extract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(extract)
-source = (ROOT / "android/app/src/main/java/ls/augment/com/RootHideManager.java").read_text(encoding="utf-8")
+parser = argparse.ArgumentParser()
+parser.add_argument('--manager-source', type=Path, default=ROOT / "android/app/src/main/java/ls/augment/com/RootHideManager.java")
+parser.add_argument('--javac', default='javac')
+parser.add_argument('--java', default='java')
+options = parser.parse_args()
+source = options.manager_source.read_text(encoding="utf-8")
 method = extract.member(source, "private HideBatchExecutor.Outcome<Target> executeBatch(Set<Target> targets, boolean hide) {")
 method += "\n" + extract.member(source, "private HideBatchExecutor.Outcome<Target> executeBatch(Set<Target> targets, boolean hide,")
 method += "\n" + extract.member(source, "private static void reportProgress(")
@@ -34,6 +40,7 @@ class RootHideManager {
  static class OperationResult {final boolean success; final String message;OperationResult(boolean s,String m){success=s;message=m;}static OperationResult failure(String m){return new OperationResult(false,m);}}
  METHOD
  HideBatchExecutor.Outcome<Target> run(boolean hide){return executeBatch(new LinkedHashSet<>(List.of(new Target(0),new Target(10),new Target(999))),hide);}
+ HideBatchExecutor.Outcome<Target> many(){LinkedHashSet<Target> targets=new LinkedHashSet<>();for(int i=0;i<20;i++)targets.add(new Target(i));return executeBatch(targets,true);}
  HideBatchExecutor.Outcome<Target> empty(){return executeBatch(Set.of(),false);}
 }
 public class TestConfiguredBatch {
@@ -48,6 +55,8 @@ public class TestConfiguredBatch {
   HideTargetController.reset();result=m.run(true);check(result.success.size()==3);calls("hide:0","hide:10","hide:999");
   HideTargetController.reset();HideTargetController.badHide=10;result=m.run(true);check(result.success.size()==1&&result.failures.size()==2);calls("hide:0","hide:10");
   HideTargetController.reset();result=m.empty();check(result.success.isEmpty()&&result.failures.isEmpty());calls();
+  HideTargetController.reset();result=m.many();check(result.success.size()==20&&result.failures.isEmpty()&&HideTargetController.calls.size()==20);
+  HideTargetController.reset();HideTargetController.badHide=8;result=m.many();check(result.success.size()==8&&result.failures.size()==12&&HideTargetController.calls.size()==9);
   System.out.println("PASS "+checks+" configured batch assertions: multi-space show/hide, invalid target, partial failure, stop without retry, empty selection.");
  }
 }
@@ -56,5 +65,5 @@ with tempfile.TemporaryDirectory(prefix="lsa-configured-batch-") as directory:
     folder = Path(directory)
     target = folder / "TestConfiguredBatch.java"
     target.write_text(java, encoding="utf-8")
-    subprocess.run(["javac", "-encoding", "UTF-8", "--release", "17", "-d", directory, str(target)], check=True)
-    subprocess.run(["java", "-cp", directory, "TestConfiguredBatch"], check=True)
+    subprocess.run([options.javac, "-encoding", "UTF-8", "--release", "17", "-d", directory, str(target)], check=True)
+    subprocess.run([options.java, "-cp", directory, "TestConfiguredBatch"], check=True)

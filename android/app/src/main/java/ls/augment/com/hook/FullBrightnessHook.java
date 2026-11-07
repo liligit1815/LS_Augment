@@ -31,6 +31,13 @@ final class FullBrightnessHook {
     static String label(SeekBar bar) {
         State s = state(bar); return s != null && s.expanded ? calibratedLabel(s.position) : null;
     }
+    private static int sliderMin() {
+        return BrightnessRange.sliderMin(snapshot.getInt("nativeMinimum",BrightnessRange.NATIVE_MIN));
+    }
+    private static int sliderMax() {
+        return BrightnessRange.sliderMax(snapshot.getInt("nativeMaximum",BrightnessRange.NATIVE_MAX),
+                snapshot.getInt("physicalMaximum",BrightnessRange.DRIVER_MAX));
+    }
     private static String calibratedLabel(int position) {
         return BrightnessRange.label(position, snapshot.getInt("nativeMaximum", BrightnessRange.NATIVE_MAX),
                 snapshot.getInt("physicalMaximum", BrightnessRange.DRIVER_MAX));
@@ -86,7 +93,7 @@ final class FullBrightnessHook {
                     if (s == null || s.internal) return chain.proceed();
                     if (setter.equals("setMax")) s.nativeMax = (Integer)chain.getArg(0); else s.nativeMin=(Integer)chain.getArg(0);
                     if (!s.expanded) return chain.proceed();
-                    return chain.proceed(new Object[]{setter.equals("setMax") ? BrightnessRange.SLIDER_MAX : 0});
+                    return chain.proceed(new Object[]{setter.equals("setMax") ? sliderMax() : sliderMin()});
                 })); count++;
             }
             Method progress = ProgressBar.class.getDeclaredMethod("setProgressInternal",int.class,boolean.class,boolean.class);
@@ -116,7 +123,7 @@ final class FullBrightnessHook {
                     Object[] args=chain.getArgs().toArray();
                     if(name.equals("setRange")) {
                         s.nativeMin=Math.round((Float)args[0]);s.nativeMax=Math.round((Float)args[1]);
-                        if(s.expanded){args[0]=0f;args[1]=(float)BrightnessRange.SLIDER_MAX;}
+                        if(s.expanded){args[0]=(float)sliderMin();args[1]=(float)sliderMax();}
                         return chain.proceed(args);
                     }
                     if(!s.expanded)return chain.proceed();
@@ -236,7 +243,7 @@ final class FullBrightnessHook {
                 try {
                     if (enabled) {
                         position=BrightnessRange.fromNative(bar.getProgress(),nativeMin,nativeMax);
-                        expanded=true;range(bar,0,BrightnessRange.SLIDER_MAX);progress(bar,position);
+                        expanded=true;range(bar,sliderMin(),sliderMax());progress(bar,position);
                     } else {
                         int normal=BrightnessRange.toNative(position,nativeMin,nativeMax);
                         expanded=false;range(bar,nativeMin,nativeMax);progress(bar,normal);
@@ -257,6 +264,7 @@ final class FullBrightnessHook {
                     +";expanded="+expanded+";nativeRange="+nativeMin+":"+nativeMax
                     +";adapter="+bar.getClass().getSimpleName()+";checked="+snapshot.getBoolean("checked")
                     +";probe="+snapshot.getString("probeState")+";driverMaximum="+snapshot.getString("driverMaximum")
+                    +";endpointObservation="+snapshot.getString("endpointObservation")
                     +";error="+snapshot.getString("error");
             if(!reported.equals(result)){
                 reported=result;

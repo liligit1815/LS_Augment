@@ -31,6 +31,7 @@ final class ExtraDimOwnershipClient {
         final Context context; final int user; final Handler handler; final java.util.function.Consumer<Boolean> changed;
         final AtomicBoolean queued = new AtomicBoolean();
         final AtomicLong invalidations = new AtomicLong();
+        long appliedGeneration;
         volatile State state = State.EMPTY;
         volatile boolean loaded;
         volatile long retryAfter;
@@ -109,12 +110,14 @@ final class ExtraDimOwnershipClient {
                 if (amount > 100) throw new IllegalStateException("invalid native strength");
                 next = new State(true, "1".equals(active), amount);
             }
+            if (observedGeneration != binding.invalidations.get()) return;
             binding.failures = 0; binding.loaded = true;
-            publish(binding, next);
+            publish(binding, next, next.owned && observedGeneration != binding.appliedGeneration);
+            binding.appliedGeneration = observedGeneration;
         } catch (RuntimeException unavailable) {
             binding.loaded = false;
             binding.retryAfter = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            publish(binding, State.EMPTY);
+            publish(binding, State.EMPTY, false);
             retry = ++binding.failures <= 3;
         } finally {
             binding.queued.set(false);
@@ -122,8 +125,8 @@ final class ExtraDimOwnershipClient {
             else if (retry) schedule(binding, 500L * binding.failures);
         }
     }
-    private static void publish(Binding binding, State next) {
-        if (current != binding || binding.state.same(next)) return;
+    private static void publish(Binding binding, State next, boolean reapply) {
+        if (current != binding || (!reapply && binding.state.same(next))) return;
         binding.state = next;
         binding.handler.post(() -> {
             if (current == binding && binding.state == next) binding.changed.accept(next.owned);

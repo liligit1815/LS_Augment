@@ -23,6 +23,11 @@ import android.view.View;import android.view.Gravity;import android.widget.Frame
 final class ResetWriteFence {static boolean stale(long generation){return false;}}
 final class AtomicWorkbenchClient {int clears;void clearGestureTarget(){clears++;}}
 public class TestLayoutInput {
+ static class Motion {boolean running(){return false;}} Motion windowMotion;
+ static class PendingApp {boolean dispatched;final Plan plan=new Plan();} static class Plan {int windowId;}
+ PendingApp pendingAppSurfaceLaunch;
+ void continuePendingAppSurfaceLaunch(){if(pendingAppSurfaceLaunch!=null)throw new AssertionError("unexpected pending surface launch");}
+
  static class Model {int main;boolean desktop;int mainWindowId(){return main;}boolean desktopVisible(){return desktop;}}
  static class Surface extends View {boolean valid=true;Surface getHolder(){return this;}boolean isValid(){return valid;}}
  static class Slot {final View frame=new View();final Surface surface=new Surface();int displayWidth=1080,displayHeight=2400;boolean ready=true,outputAwaitingFrame;}

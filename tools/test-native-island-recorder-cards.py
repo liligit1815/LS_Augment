@@ -72,7 +72,7 @@ files.update({
  check(m.errors==0&&AugmentModule.hooks.size()==8,"contracts complete before registering hooks");RecordingActivity a=new InheritedActivity();a.onCreate(null);Handler.flush();
  check(a.fragment==null&&a.observers==3&&a.mIslandCardHandler!=null&&!CardPusherHelper.isConnected,"observers bind before pager fragment becomes current, without fabricating an enabled scene");a.fragment=new androidx.fragment.app.Fragment();
  check(NativeIslandScenePolicy.SOURCE_SYNC_PERMISSION.equals(a.requiredPermission),"recovery requires platform sender permission");
- NativeIslandCardClient.ready=true;FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("record",true);
+ NativeIslandCardClient.ready=true;FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("record",true);
  check(CardPusherHelper.isConnected&&CardPusherHelper.listener==a&&CardPusher.INSTANCE.stable==0&&a.resolver.unstable==1,"OEM callbacks use live unstable connection");
  a.mIsAppInForeground=false;RecordAndRecognitionService.setState(2);Handler.flush();a.updateIslandCardByAppState();
  check(CardPusherHelper.sent==0,"ordinary audio is not replaced by the three-button transcription card");

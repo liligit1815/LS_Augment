@@ -2,11 +2,11 @@ import icons from './current-status-icons.json';
 /** Prototype proposal only. These destinations do not change Android navigation. */
 export const statusDesignGroups = [
   {
-    title: '状态栏布局与交互',
+    title: '状态栏属性',
     entries: [
       {
         route: 'status_arrangement',
-        title: '状态栏布局',
+        title: '状态栏属性',
         summary: '布局方案、图标位置与顺序、单双排与留白',
       },
       {
@@ -58,6 +58,7 @@ export const statusDesignTitles: Record<string, string> = Object.fromEntries(
   ),
 );
 statusDesignTitles.status_layout = '状态栏自定义';
+statusDesignTitles.status_icons = '系统图标';
 Object.assign(statusDesignTitles, {
   status_clock: '时钟',
   status_network: '网速与网络设置',

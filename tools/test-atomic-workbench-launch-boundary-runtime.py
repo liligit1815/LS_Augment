@@ -53,7 +53,7 @@ TEST = r'''
 MUTATIONS = [
  ("INITIAL_FINAL_DIRECT", 'AtomicWorkbenchLaunchBoundary.require(component.flattenToString());\n                dispatched = true;\n                startResult = AtomicWorkbenchLaunchBridge.start(tasks(), intent, options.toBundle(), userId);\n            }\n            diagnostic("launch_return"', 'dispatched = true;\n                startResult = AtomicWorkbenchLaunchBridge.start(tasks(), intent, options.toBundle(), userId);\n            }\n            diagnostic("launch_return"', 'initial direct escaped final expiry'),
  ("RECENTS_FINAL_CHECK", 'AtomicWorkbenchLaunchBoundary.require(component.flattenToString());\n                dispatched = true;\n                Object started = invoke(tasks(), "startActivityFromRecents"', 'dispatched = true;\n                Object started = invoke(tasks(), "startActivityFromRecents"', 'initial recents escaped final expiry'),
- ("HOME_FINAL_DIRECT", '.setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);\n                AtomicWorkbenchLaunchBoundary.require(component.flattenToString());\n                dispatched = true;', '.setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);\n                dispatched = true;', 'existing HOME direct escaped final expiry'),
+ ("HOME_FINAL_DIRECT", '.setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);\n                requireAllocationScope(null);\n                AtomicWorkbenchLaunchBoundary.require(component.flattenToString());\n                dispatched = true;', '.setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);\n                requireAllocationScope(null);\n                dispatched = true;', 'existing HOME direct escaped final expiry'),
  ("FOCUS_FINAL_CHECK", 'AtomicWorkbenchLaunchBoundary.require(selected.flattenToString());\n                dispatched = true;', 'dispatched = true;', 'focus app escaped final expiry'),
  ("EARLY_ADMISSION_PRECEDES_VD", 'AtomicWorkbenchLaunchBoundary.require(component.flattenToString());\n        } catch (Exception denied)', '} catch (Exception denied)', 'initial direct early admission changed VD task or journal'),
  ("HOME_REJECT_RESTORES_TASK_EVIDENCE", 'record.tasks.clear(); record.tasks.addAll(previousTasks);', '', 'late expiry changed original HOME lease or journal'),
@@ -81,5 +81,5 @@ if __name__=="__main__":
         main()
         for index,(label,_,_,expected) in enumerate(MUTATIONS):
             result=subprocess.run([sys.executable,__file__,"--mutate",str(index)],capture_output=True,text=True,timeout=150,env=SUPPORT["ENV"])
-            assert result.returncode!=0 and expected in result.stdout+result.stderr,"uncaught final Launcher mutation: "+label
+            assert result.returncode!=0 and expected in result.stdout+result.stderr,"uncaught final Launcher mutation: "+label+"\n"+result.stdout+result.stderr
             print("PASS rejected Launcher boundary negative:",label)

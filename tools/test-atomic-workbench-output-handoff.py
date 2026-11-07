@@ -46,13 +46,13 @@ public final class TestOutputHandoff {
 
 def main():
     production = {name: (SRC / name).read_text(encoding='utf-8') for name in (
-        'AtomicWorkbenchSurfaceHandoff.java', 'AtomicWorkbenchWorkspaceModel.java')}
+        'AtomicWorkbenchSurfaceHandoff.java', 'AtomicWorkbenchWorkspaceModel.java', 'AtomicWorkbenchPoolTopology.java','AtomicWorkbenchSlotDomain.java')}
     variants = [('production', production, None)]
     for label, filename, old, new, failure in (
         ('CLAIM_MUST_MOVE_OWNERSHIP', 'AtomicWorkbenchSurfaceHandoff.java', 'pending = null;\n        return result;', 'return result;', 'waiter released an owned producer'),
         ('CANCELLED_QUEUE_MUST_NOT_CLAIM', 'AtomicWorkbenchSurfaceHandoff.java', 'if (closed || claimed)', 'if (claimed)', 'late claim admitted'),
-        ('FOCUS_RETURN_MUST_KEEP_SIDE_ORDER', 'AtomicWorkbenchWorkspaceModel.java', 'mainExpanded = expanded;\n        revision++;', 'mainExpanded = expanded;\n        int swap = sides[0]; sides[0] = sides[1]; sides[1] = swap;\n        revision++;', 'expansion changed window roles'),
-        ('DESKTOP_MUST_END_EXPANSION', 'AtomicWorkbenchWorkspaceModel.java', 'public void showDesktop() {\n        mainExpanded = false;', 'public void showDesktop() {', 'desktop retained expansion'),
+        ('FOCUS_RETURN_MUST_KEEP_SIDE_ORDER', 'AtomicWorkbenchWorkspaceModel.java', 'mainExpanded = expanded; revision++;', 'mainExpanded = expanded; roles = topology().placementProposal(sideWindowId(0), sideWindowId(1)); revision++;', 'expansion changed window roles'),
+        ('DESKTOP_MUST_END_EXPANSION', 'AtomicWorkbenchWorkspaceModel.java', 'int id = mainWindowId(); mainExpanded = false;', 'int id = mainWindowId();', 'desktop retained expansion'),
     ):
         assert old in production[filename], label
         changed = dict(production); changed[filename] = changed[filename].replace(old, new, 1)

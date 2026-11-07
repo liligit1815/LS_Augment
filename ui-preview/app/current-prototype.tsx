@@ -64,10 +64,11 @@ import { canonicalParent, resolveGroup, resolveDestination, navigationLevel, sin
 import { DetailBreadcrumb } from './current-detail-navigation';
 import { CurrentStatusCanvas } from './current-status-canvas';
 import { StatusDesignPage } from './current-status-design';
+import { resetStatusValues } from './current-status-plans';
+import { StatusPresetProvider } from './current-status-workspace';
 import { isStatusDesignRoute, statusDesignTitles } from './current-status-navigation';
 import {
   AssetWorkspaceProvider,
-  CurrentStatusAssets,
 } from './current-status-assets';
 import { CurrentMaintenance } from './current-maintenance';
 import { CurrentBackground } from './current-background';
@@ -341,6 +342,7 @@ export default function CurrentPrototype() {
   };
   const model = {
     values,
+    resetStatusConfiguration: () => setValues(current => resetStatusValues(current, defaults)),
     set: (key: string, value: string) => {
       recordEvent('setting_changed', key, value);
       setValues((v) => ({ ...v, [key]: value }));
@@ -651,19 +653,12 @@ export default function CurrentPrototype() {
         section={group.section}
       />
     );
-  } else if (isStatusDesignRoute(route)) {
+  } else if (isStatusDesignRoute(route) || route === 'status_assets' || route.startsWith('asset/')) {
     content = <StatusDesignPage route={route}/>;
   } else if (route === 'extra_dim') {
     content = <ExtraDimEditor />;
   } else if (route === 'status_canvas') {
     content = <CurrentStatusCanvas />;
-  } else if (route === 'status_assets' || route.startsWith('asset/')) {
-    content = (
-      <CurrentStatusAssets
-        key={route}
-        id={route.startsWith('asset/') ? route.slice(6) : undefined}
-      />
-    );
   } else if (settingTitles[route])
     content = <CurrentSettingsPage route={route} />;
   else if (editorTitles[route]) content = <CurrentEditor route={route} />;
@@ -696,6 +691,7 @@ export default function CurrentPrototype() {
         value={{ route, state: presentation, set: setPresentationValue }}
       >
         <AssetWorkspaceProvider>
+        <StatusPresetProvider>
           <main className="c-stage">
             <div className="c-caption">
               红魔Duo · 可交互原型 ·{' '}
@@ -771,7 +767,7 @@ export default function CurrentPrototype() {
                   />
                 )}
                 {!isMain && (
-                  <div className="d-page-path"><DetailBreadcrumb route={route} /></div>
+                  <div className="d-page-path"><DetailBreadcrumb route={['status_icons','status_notifications','status_assets'].includes(route) ? 'status_layout' : route} /></div>
                 )}
                 <div
                   ref={scroller}
@@ -807,6 +803,7 @@ export default function CurrentPrototype() {
               </div>
             </div>
           </main>
+        </StatusPresetProvider>
         </AssetWorkspaceProvider>
       </PresentationContext.Provider>
     </CurrentContext.Provider>

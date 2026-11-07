@@ -8,7 +8,7 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 
 /** Read-only proof for audited 0..5 drivers; node names alone never authorize writes. */
-final class FanDriverContract {
+public final class FanDriverContract {
     private static final String[] HASHES={
         "96618714657d8a72fa762b58f2d3fcbc7e8ceb4dfea5aae62a3a6af60f6caf65",
         "bd22b52f17ffbc311619288935276c1d6aa13fa9ca669b5ead6efc777b718887",
@@ -16,6 +16,27 @@ final class FanDriverContract {
         // OEM-adjusted feedback. Still require its loaded build-id and vermagic.
         "0693fb6f722969a9cc830e58f3df7ff96c21215e5b8f665b71c374bdd03cd8cc"
     };
+    // ELF .note.gnu.build-id and vermagic from each audited image above.
+    private static final String[] NOTES={
+        "3e93bad95b41c372af9b2cb5fedf3887395f514b", "32845c5c3948a5838f61b8d9c16942ecef1365fa",
+        "a0711bd15d5c7ecb30f8f2e6a41d874e018c4d22"
+    };
+    private static final String[] RELEASES={
+        "6.18.21-android17-5-maybe-dirty-4k", "6.18.21-android17-5-maybe-dirty-16k",
+        "6.6.30-android15-8-maybe-dirty-4k"
+    };
+    public static String proofStatus(String output) {
+        String[] lines=output.trim().split("\\r?\\n");
+        for (int i=0;i<RELEASES.length;i++) {
+            if (!RELEASES[i].equals(lines[0])) continue;
+            if (lines.length<2 || lines[1].isEmpty()) return "loaded_note_unavailable";
+            if (!("040000001400000003000000474e5500"+NOTES[i]).equals(lines[1])) return "loaded_build_id_mismatch";
+            if (lines.length<3) return "driver_file_unavailable";
+            for (int n=2;n<lines.length;n++) if (HASHES[i].equals(lines[n])) return "verified";
+            return "driver_digest_mismatch";
+        }
+        return "running_kernel_unverified";
+    }
     static boolean verified() {
         try {
             byte[] loaded=Files.readAllBytes(Path.of("/sys/module/soc_fan/notes/.note.gnu.build-id"));

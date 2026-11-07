@@ -11,7 +11,9 @@ public final class WorkspaceLayout {
         int column=Math.round((width + 3f*gap - 2f*gap*width/height)/4f);
         sideWidth=column-gap;
         int threeRowTop=Math.round((float)height*column/width);
-        top=width>height?Math.max(threeRowTop,Math.min(height/2,Math.round(140*density))):threeRowTop;
+        // Two 44dp action rows also need room for the existing control/music page.
+        // Both the native display owner and SystemUI derive the same physical geometry.
+        top=Math.max(threeRowTop,Math.min(height/2,Math.round(208*density)));
         railHeight=height-top;
         if (sideWidth<=0 || railHeight<=4*gap) throw new IllegalArgumentException("副格尺寸不足");
         mainScale=Math.min((float)(width-column)/width,(float)railHeight/height);

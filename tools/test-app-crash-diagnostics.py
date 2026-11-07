@@ -15,6 +15,13 @@ MEMBER = runpy.run_path(str(HERE / "test-atomic-workbench-lifecycle.py"))["membe
 SRC = SUPPORT["SRC"]
 
 SOURCES = {
+    'ls/augment/com/AppUpdater.java': '''package ls.augment.com; final class AppUpdater {
+        AppUpdater(android.content.Context context){} void beginForegroundSession(){} void resume(){}
+        void pause(android.app.Activity activity){} void attach(android.app.Activity activity){} }''',
+    'ls/augment/com/OnboardingActivity.java': '''package ls.augment.com; class OnboardingActivity extends android.app.Activity {
+        static boolean needsConsent(android.app.Activity activity){return false;} }''',
+    'ls/augment/com/TransientCacheMaintenance.java': 'package ls.augment.com;final class TransientCacheMaintenance {static void request(android.content.Context c){}}',
+
     "android/content/pm/ApplicationInfo.java": "package android.content.pm;public class ApplicationInfo {public int uid=10515;}",
     "android/content/Context.java": r'''package android.content;public class Context {
  public java.io.File data;public String pkg="ls.augment.com";public android.content.pm.ApplicationInfo info=new android.content.pm.ApplicationInfo();
@@ -114,7 +121,7 @@ def main():
         work = Path(temporary)
         SUPPORT["compile_run"](work, {**SOURCES, "ls/augment/com/TestAppCrashDiagnostics.java": TEST,
                                      "ls/augment/com/AppCrashExportHarness.java": harness},
-                               ["AppCrashDiagnostics.java", "AugmentApplication.java", "ResetWriteFence.java"],
+                               ["AppCrashDiagnostics.java", "AugmentApplication.java", "AppUpdatePolicy.java", "ResetWriteFence.java"],
                                "ls.augment.com.TestAppCrashDiagnostics")
         data = work / "retained-app"
         for mode in ("write", "read"):

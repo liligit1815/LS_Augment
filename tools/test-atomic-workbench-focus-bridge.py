@@ -128,10 +128,10 @@ def build_run(folder, guard, bridge, positive=True):
     (package / "AtomicWorkbenchFocusBridge.java").write_text(bridge, encoding="utf-8")
     (package / "AtomicWorkbenchSlotDomain.java").write_text((SOURCE / "AtomicWorkbenchSlotDomain.java").read_text(encoding="utf-8"), encoding="utf-8")
     (package / "TestAtomicWorkbenchFocusBridge.java").write_text(TEST, encoding="utf-8")
-    result = subprocess.run([JAVAC, "-encoding", "UTF-8", "-d", str(folder / "classes"), *map(str, folder.rglob("*.java"))], capture_output=True, text=True, encoding="utf-8", env=ENV)
+    result = subprocess.run([JAVAC, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", "-d", str(folder / "classes"), *map(str, folder.rglob("*.java"))], capture_output=True, text=True, encoding="utf-8", errors="replace", env=ENV)
     if result.returncode:
         raise RuntimeError(result.stdout + result.stderr)
-    result = subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", str(folder / "classes"), "ls.augment.com.TestAtomicWorkbenchFocusBridge"], capture_output=True, text=True, encoding="utf-8", env=ENV, timeout=25)
+    result = subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", str(folder / "classes"), "ls.augment.com.TestAtomicWorkbenchFocusBridge"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=ENV, timeout=25)
     if positive:
         print(result.stdout, end="")
         if result.returncode:
@@ -155,7 +155,7 @@ def main():
                 raise AssertionError("negative mutation had no effect")
             build_run(folder / f"negative-{index}", guard, mutated, False)
             print("PASS negative control: " + name)
-        result = subprocess.run([JAVAC, "-encoding", "UTF-8", "-classpath", str(ROOT / "audit-output/android-sdk/platforms/android-36/android.jar"), "-d", str(folder / "sdk36"), str(SOURCE / "AtomicWorkbenchInputFocusGuard.java"), str(SOURCE / "AtomicWorkbenchFocusBridge.java")], capture_output=True, text=True, encoding="utf-8", env=ENV)
+        result = subprocess.run([JAVAC, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", "-classpath", str(ROOT / "audit-output/android-sdk/platforms/android-36/android.jar"), "-d", str(folder / "sdk36"), str(SOURCE / "AtomicWorkbenchInputFocusGuard.java"), str(SOURCE / "AtomicWorkbenchFocusBridge.java"), str(SOURCE / "AtomicWorkbenchSlotDomain.java")], capture_output=True, text=True, encoding="utf-8", errors="replace", env=ENV)
         if result.returncode:
             raise RuntimeError(result.stdout + result.stderr)
         print("PASS SDK36 production managed bridge and guard compilation")

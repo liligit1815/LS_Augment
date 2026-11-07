@@ -34,7 +34,26 @@ for apk in args.systemui:
     for name,owner,options in [('alpha',S,['setAlpha(F)V','setAlpha(FLjava/lang/String;)V']),('gesture',R,['isUserLocked()Z','isUserSwipingToExpandRow()Z'])]:
         matches=[s for s in options if found(owner,'methods',s)];routes[name]=matches
         if not matches:missing.append(name)
-    report={'apk':str(apk),'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'checked':len(checked),'routes':routes,'missing':missing,'passed':not missing}
+    header='Lcom/zte/controlcenter/widget/CCHeaderView;'
+    header_fields={}
+    for name in ['panelType','mClockView','mDateView']:
+        owner=header
+        while owner in classes:
+            matches=[s for s,flags in classes[owner]['fields'].items() if s.startswith(name+':') and not flags&8]
+            if matches:
+                header_fields[name]=matches[0].split(':',1)[1];break
+            owner=classes[owner]['parent']
+    def text_view(kind):
+        seen=set()
+        while kind and kind not in seen:
+            if kind=='Landroid/widget/TextView;':return True
+            seen.add(kind);kind=classes.get(kind,{}).get('parent')
+        return False
+    if header_fields.get('panelType')!='I':missing.append('clock_backdrop.panelType:I')
+    for name in ['mClockView','mDateView']:
+        if not text_view(header_fields.get(name)):missing.append('clock_backdrop.'+name+':TextView_subclass')
+    report={'apk':str(apk),'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'checked':len(checked),'routes':routes,
+            'clockBackdropFields':header_fields,'missing':missing,'passed':not missing}
     reports.append(report);print(json.dumps(report,ensure_ascii=False))
 if args.output:args.output.write_text(json.dumps(reports,ensure_ascii=False,indent=2),encoding='utf-8')
 if any(not r['passed'] for r in reports):raise SystemExit(1)

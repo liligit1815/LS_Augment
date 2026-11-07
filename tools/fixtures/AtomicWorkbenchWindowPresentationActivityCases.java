@@ -4,6 +4,15 @@ import static ls.augment.com.AtomicWorkbenchWindowLayoutPlan.*;import static ls.
 
 /** Actual Activity adapter methods inserted by the driver; only Android boundaries are doubled. */
 public final class AtomicWorkbenchWindowPresentationActivityCases {
+ boolean resumed=true,textDeliveryActive;
+ PendingAppSurfaceLaunch pendingAppSurfaceLaunch;
+ void syncWorkspaceOutputs(){if(pendingAppSurfaceLaunch!=null)throw new AssertionError("unexpected output resync during presentation");}
+ void placeAppAt(AtomicWorkbenchAppRepository.App app,int target){throw new AssertionError("unexpected exact placement in presentation fixture");}
+ void chooseAppDestination(AtomicWorkbenchAppRepository.App app){showStatus("choose destination");}
+ static final class Motion {boolean running(){return false;}void close(){}}
+ Motion windowMotion;
+ void beginWindowMotion(Object source){windowMotion=new Motion();}
+
  static int cases,checks;interface Case{void run()throws Exception;}static void yes(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}static void test(String n,Case c)throws Exception{c.run();cases++;System.out.println("PASS actual window Activity: "+n);}
  final AtomicWorkbenchWorkspaceModel model=new AtomicWorkbenchWorkspaceModel();final AtomicWorkbenchWindowPresentationPolicy presentationPolicy=new AtomicWorkbenchWindowPresentationPolicy();
  final FrameLayout workspace=new FrameLayout();final View desktop=new View(),homeTransitionCover=new View(),status=new View(),appBack=new View();
@@ -42,7 +51,7 @@ public final class AtomicWorkbenchWindowPresentationActivityCases {
 
  static class Ui{int dp(int n){return n;}}
  static class Swipe{boolean enabled;void setEnabled(boolean b){enabled=b;}int sign;void setOutwardSign(int n){sign=n;}}
- static class Surface extends View{boolean valid=true,configured=true;long frames=3,producer=1000000000L,observed=2000000000L;long frameCount(){return frames;}long lastFrameTimestampNanos(){return producer;}long lastFrameObservedNanos(){return observed;}boolean isFrameFromConfiguredGeometry(){return configured;}String diagnosticState(){return "fixture-buffer";}int configuredWidth=1080,configuredHeight=2400;Surface getHolder(){return this;}android.view.Surface getSurface(){return new android.view.Surface();}boolean isValid(){return valid;}boolean isAvailable(){return valid;}void setFixedSize(int w,int h){throw new AssertionError("presentation resized native buffer");}}
+ static class Surface extends View{boolean valid=true,configured=true;long frames=3,producer=1000000000L,observed=2000000000L;long frameCount(){return frames;}long lastFrameTimestampNanos(){return producer;}long lastFrameObservedNanos(){return observed;}boolean isFrameFromConfiguredGeometry(){return configured;}String diagnosticState(){return "fixture-buffer";}int configuredWidth=1080,configuredHeight=2400;Surface getHolder(){return this;}android.view.Surface getSurface(){return new android.view.Surface();}boolean isValid(){return valid;}boolean isAvailable(){return valid;}void setFixedSize(int w,int h){if(w!=configuredWidth||h!=configuredHeight)throw new AssertionError("presentation resized native buffer: "+w+"x"+h);}}
  final class Slot{final int id;final FrameLayout frame=new FrameLayout();final Surface surface=new Surface();final View shield=new View();final Swipe swipe=new Swipe();boolean ready=true,outputAwaitingFrame,nativeHome,retainedEmptyTaskDisplay;int surfaceLifecycle=1,homeTaskId=69,presentedHomeTaskId=-1,presentedHomeSurfaceLifecycle=-1,presentedHomeDisplayId=-1;String presentedHomeDisplayUniqueId="";long homeReadinessGenerationNanos=900000000L,homeReadinessRequestNanos=800000000L,presentedHomeReadinessGenerationNanos=-1,presentedHomeProducerTimestampNanos=-1,presentedHomeDrawBoundary=-1;AtomicWorkbenchTaskUiSnapshot lastTaskSnapshot;long taskSnapshotElapsed;boolean mediaBusy;long mediaGeneration=1;Runnable mediaPoll=()->{};boolean canPollMedia(){return active&&!closing&&!destroyed;}void updateMediaButtons(){}void scheduleMedia(){}void applyMediaState(Bundle b){}
  int displayWidth=1080,displayHeight=2400,displayId;String displayName,displayUniqueId,windowSession,message;
   Slot(int n){id=n;displayId=88+n;displayName="vd-"+n;displayUniqueId="unique-"+n;windowSession="00000000-0000-0000-0000-"+String.format("%012d",n);surface.params.gravity=Gravity.CENTER;}

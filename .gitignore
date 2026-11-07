@@ -117,7 +117,6 @@ design-qa.md
 !/docs/examples/redmagic-duo.json
 !/docs/releases/
 /docs/releases/*
-!/docs/releases/v2.0.0-alpha1-test20704.md
 
 # 图标提取原件留在本地，仓库保留实际使用的图标及来源记录
 /contributors-site/icons/liftarc-original-vector.xml
@@ -164,3 +163,7 @@ design-qa.md
 /NebulaAIOS*/
 /1157/
 /红魔11.5.7/
+
+# 原厂解包与独立实验副本，仅供本地分析
+/12.0.5/
+/tools/step-form-test/

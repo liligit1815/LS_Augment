@@ -2,13 +2,16 @@
 
 No APK build, device access, configuration writes, or copied picker implementation.
 """
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JAVA = Path('C:/Program Files/Java/jdk-17/bin')
+JAVA = Path(os.environ.get('JAVA_HOME', 'C:/Program Files/Android/openjdk/jdk-21.0.8')) / 'bin'
 SOURCES = {
+    'android/os/Process.java': 'package android.os;public class Process{public static int myUid(){return 10001;}}',
+    'ls/augment/com/AppDialogs.java': 'package ls.augment.com;class AppDialogs{static android.app.AlertDialog.Builder builder(android.app.Activity a){return new android.app.AlertDialog.Builder(a);}}',
     'android/content/Context.java': 'package android.content; public class Context {}',
     'android/content/Intent.java': '''package android.content;
 public class Intent {
@@ -91,7 +94,7 @@ public class AdapterView<T> extends android.view.View {
     'android/widget/ListView.java': '''package android.widget;
 import android.content.Context; import java.util.*;
 public class ListView extends AdapterView<Object> {
- public static final int CHOICE_MODE_MULTIPLE=2; public static ListView last;
+ public static final int CHOICE_MODE_NONE=0,CHOICE_MODE_MULTIPLE=2; public static ListView last;
  public ArrayAdapter<String> adapter; public int publications;
  private final Set<Integer> checked=new HashSet<>(); private OnItemClickListener listener;
  public ListView(Context c){last=this;} public void setChoiceMode(int m){}
@@ -139,7 +142,7 @@ public class AlertDialog implements DialogInterface {
  }
 }''',
     'android/R.java': '''package android; public class R {public static class layout {
- public static final int simple_list_item_multiple_choice=1;}}''',
+ public static final int simple_list_item_1=2,simple_list_item_multiple_choice=1;}}''',
     'ls/augment/com/UiKit.java': 'package ls.augment.com; public class UiKit {public int dp(int value){return value;}}',
     'ls/augment/com/AppSelectionTest.java': r'''package ls.augment.com;
 import android.app.*;import android.content.*;import android.content.pm.*;import android.widget.*;
@@ -152,7 +155,11 @@ public class AppSelectionTest {
  static class FakePm extends PackageManager {
   final Thread owner=Thread.currentThread();final Map<String,List<ResolveInfo>> resolvers=new HashMap<>();
   final Map<String,ApplicationInfo> known=new HashMap<>();final List<String> queried=new ArrayList<>(),lookedUp=new ArrayList<>();
-  CountDownLatch gate;boolean fail;
+  CountDownLatch gate;boolean fail,allowInventory;
+  public List<ApplicationInfo> getInstalledApplications(int flags){
+   check(allowInventory && Thread.currentThread()!=owner,"unexpected full inventory or UI-thread query");
+   return new ArrayList<>(known.values());
+  }
   public List<ResolveInfo> queryIntentActivities(Intent intent,int flags){
    check(Thread.currentThread()!=owner,"package query moved onto UI thread");
    check(Intent.ACTION_MAIN.equals(intent.action)&&flags==0,"query scope changed");
@@ -221,7 +228,12 @@ public class AppSelectionTest {
 
   saved.clear();pm=fixture();pm.fail=true;int toasts=Toast.shown;a=show(pm,"app.alpha",saved);a.drain();
   check(Toast.shown==toasts+1&&ListView.last.publications==0&&saved.isEmpty(),"query error published a partial list or saved");
-  System.out.println("AppSelection: real source passed resolver-only enumeration, duplicate aliases, INFO-only, selected headless/missing, enabled/installed/system scope, label/package search, hidden selections, cancel, clear, late worker lifecycle and query failure checks");
+  pm=fixture();pm.allowInventory=true;saved.clear();a=new Activity();a.pm=pm;
+  AppSelectionDialog.pick(a,new UiKit(),"app.missing",saved::add);a.drain();
+  check(packages().containsAll(List.of("app.headless","app.missing")) && !packages().contains("app.disabled"),"notification picker lost headless/saved packages or showed a disabled source");
+  ListView.last.clickItem(packages().indexOf("app.headless"));
+  check(saved.equals(List.of("app.headless"))&&!AlertDialog.last.isShowing(),"one notification source must be returned immediately");
+  System.out.println("AppSelection: passed multi-select resolver, search and lifecycle cases plus single-source notification inventory and selection");
  }
 }''',
 }
@@ -233,8 +245,9 @@ with tempfile.TemporaryDirectory(prefix='ls-app-selection-') as directory:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source, encoding='utf-8')
     production = ROOT / 'android/app/src/main/java/ls/augment/com'
-    subprocess.run([str(JAVA / 'javac.exe'), '-encoding', 'UTF-8', '--release', '17',
+    subprocess.run([str(JAVA / 'javac'), '-encoding', 'UTF-8', '--release', '17',
                     '-d', str(base), str(production / 'AppSelectionDialog.java'),
-                    str(production / 'AppPackageSet.java'), *map(str, base.rglob('*.java'))], check=True)
-    subprocess.run([str(JAVA / 'java.exe'), '-cp', str(base),
+                    str(production / 'AppPackageSet.java'), str(production / 'IslandNoticeRules.java'),
+                    str(production / 'IslandDownloadConfig.java'), *map(str, base.rglob('*.java'))], check=True)
+    subprocess.run([str(JAVA / 'java'), '-cp', str(base),
                     'ls.augment.com.AppSelectionTest'], check=True, timeout=30)

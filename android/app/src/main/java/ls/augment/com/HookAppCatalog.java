@@ -82,7 +82,7 @@ public final class HookAppCatalog {
             target(SETTINGS, "系统设置", "显示与时间、USB 连接及开发者选项", "settings",
                     "com.android.settings"),
             target(LAUNCHER, "系统桌面", "桌面行列布局、图标名称、页面与最近任务", "launcher",
-                    "com.zte.mifavor.launcher"),
+                    "com.zte.mifavor.launcher", "com.zte.mifavor.zsearch"),
             target(GAME, "游戏空间与游戏助手", "肩键、连招、游戏面板、超分与破坏神模式", "games",
                     "cn.nubia.gamelauncher", "cn.nubia.gameassist", "cn.nubia.gamehelpmodule",
                     "cn.nubia.gamehelperline", "cn.zte.gamefloat", "cn.nubia.gamehighlights"),
@@ -216,6 +216,7 @@ public final class HookAppCatalog {
 
     /** Cooperating hook packages for the option, useful for scope diagnostics. */
     public static List<String> affectedPackages(String key) {
+        if (LauncherOptions.SEARCH_NO_SCRIM.equals(key)) return Collections.singletonList("com.zte.mifavor.zsearch");
         if (NativeIslandSceneOptions.ENABLED.equals(key) || ConfigSchema.NATIVE_ISLAND_SELECTED.equals(key)
                 || SystemUiOptions.ISLAND.equals(key))
             return immutable(Arrays.asList("com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent", "com.zte.ai.knowledge"));
@@ -272,6 +273,7 @@ public final class HookAppCatalog {
 
     /** Suggested actions must reload every cooperating process, not just the setting's home. */
     public static String restartScopeForKey(String key) {
+        if (LauncherOptions.SEARCH_NO_SCRIM.equals(key)) return "search";
         Target target = find(targetForKey(key));
         if (target == null || target.restartScope == null) return null;
         if(THEME.equals(target.id)&&ScopeRestartPolicy.covers("theme",affectedPackages(key)))return "theme";

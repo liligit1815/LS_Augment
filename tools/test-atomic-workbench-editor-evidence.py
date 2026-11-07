@@ -119,9 +119,11 @@ def main():
     module = (SUPPORT["SRC"] / "hook/AugmentModule.java").read_text(encoding="utf-8")
     readiness = module.split("private boolean systemServerHooksReady()", 1)[1].split("\n    }", 1)[0]
     assert "AtomicWorkbenchEditorEvidenceHook" not in readiness
-    assert "AtomicWorkbenchFocusWindowHook.isInstalled()" in readiness
-    assert "AtomicWorkbenchEditorEvidenceHook.install(this, classLoader)" in module
-    print("PASS paste evidence remains optional to global readiness; P0 focus guard remains required")
+    assert "ls.augment.com.step.StepRuntime.isInstalled()" in readiness
+    assert "AtomicWorkbenchEditorEvidenceHook.install(" not in module
+    step=(SUPPORT["SRC"]/"step/StepRuntime.java").read_text(encoding="utf-8")
+    assert "if(server) installed=Wm.install(loader);" in step
+    print("PASS optional legacy editor evidence and Step window-manager readiness are independent")
     if args.negative_controls:
         negatives(sources, production)
 

@@ -60,7 +60,7 @@ final class FanControlHook {
                     Build.DEVICE, Build.PRODUCT, Build.MODEL,
                     hasVoidMethod(type, "fanMaxSpeed"), hasVoidMethod(type, "fanFullSpeed"),
                     hasVoidMethod(type, "cancelFanFullSpeed"), hasVoidMethod(type, "notifyCubeFan"),
-                    path -> new File("/" + path).exists(), FanDriverContract.verified());
+                    path -> new File("/" + path).exists(), false);
             Controller installedController = new Controller(module, writeNode, readNode, profile);
             controller = installedController;
 
@@ -147,7 +147,10 @@ final class FanControlHook {
         private final AugmentModule module;
         private final Method writeNode;
         private final Method readNode;
-        private final FanCompatibilityProfile profile;
+        private volatile FanCompatibilityProfile profile;
+        private long nextProof;
+        private int proofAttempts;
+        private volatile String proofState="pending";
         private final Object lock = new Object();
         private HandlerThread thread;
         private Handler handler;
@@ -196,7 +199,8 @@ final class FanControlHook {
                     + ";power_method=" + profile.powerMethod
                     + ";speed_interface=" + (profile.allowsLevelWrites() ? "level" : "oem_api")
                     + ";level_writes=" + (profile.allowsLevelWrites() ? 1 : 0)
-                    + ";reason=" + profile.reason;
+                    + ";reason=" + profile.reason + ";driver_proof=" + proofState
+                    + ";running_kernel=" + System.getProperty("os.version","unknown").replaceAll("[^A-Za-z0-9._+\\-]","_");
         }
 
         void start(Context newContext, Object newOwner) {
@@ -243,7 +247,7 @@ final class FanControlHook {
         }
 
         void enableRequested(Object requestOwner, boolean enabled) {
-            if (profile.allowsLevelWrites() || (owner != null && owner != requestOwner)) return;
+            if (!profile.supported() || profile.allowsLevelWrites() || (owner != null && owner != requestOwner)) return;
             oemOffRequested = !enabled;
             try { powerLease.nativeEnableRequested(enabled); }
             catch (Throwable error) { report("oem_off_power_release", error); }
@@ -285,6 +289,7 @@ final class FanControlHook {
                 wakeAtStart = wakeGeneration;
             }
             boolean keepRunning = true;
+            long nextPoll = POLL_MS;
             try {
                 Context current = context;
                 if (shuttingDown) {
@@ -293,10 +298,37 @@ final class FanControlHook {
                     keepRunning = false;
                     return;
                 }
+                if (current!=null && "loaded_driver_contract_unverified".equals(profile.reason)) {
+                    long now=android.os.SystemClock.elapsedRealtime();
+                    if(now>=nextProof){
+                        nextProof=now+30_000L;
+                        proofAttempts++;
+                        boolean localNodes = new File("/"+FAN_LEVEL).exists() && new File("/"+FAN_RPM).exists()
+                                && new File("/"+FanCompatibilityProfile.KERNEL+"fan_enable").exists();
+                        boolean verified=localNodes && FanDriverContract.verified();
+                        proofState=verified?"local_verified":"provider_unavailable";
+                        if(!verified)try{
+                            android.os.Bundle answer=current.getContentResolver().call(
+                                    android.net.Uri.parse("content://ls.augment.com.config"),"fan_driver_proof",null,null);
+                            verified=answer!=null && answer.getBoolean("verified");
+                            if(answer!=null && answer.getString("state")!=null)proofState=answer.getString("state");
+                        }catch(RuntimeException unavailable){ /* Provider may still be starting. */ }
+                        if(verified){
+                            Class<?> type=owner.getClass();
+                            profile=FanCompatibilityProfile.resolve(Build.DEVICE,Build.PRODUCT,Build.MODEL,
+                                    hasVoidMethod(type,"fanMaxSpeed"),hasVoidMethod(type,"fanFullSpeed"),
+                                    hasVoidMethod(type,"cancelFanFullSpeed"),hasVoidMethod(type,"notifyCubeFan"),
+                                    path->new File("/"+path).exists() || readInt(path).valid,true);
+                            FeatureSettings.diagnostic(current,FeatureSettings.FAN_CONTROL_INSTALLED,
+                                    "hooks="+hookCount+";device="+Build.DEVICE+capabilityDiagnostic());
+                        }
+                    }
+                }
                 if (current == null || !profile.supported()) {
                     safeRelease("unsupported_device", false);
-                    status("idle;reason=" + profile.reason + ";device=" + Build.DEVICE, 10_000L);
-                    keepRunning = false;
+                    status("idle;reason=" + profile.reason + ";device=" + Build.DEVICE + ";driver_proof=" + proofState, 10_000L);
+                    keepRunning=current!=null && proofAttempts<3 && "loaded_driver_contract_unverified".equals(profile.reason);
+                    nextPoll=Math.max(POLL_MS,nextProof-android.os.SystemClock.elapsedRealtime());
                     return;
                 }
 
@@ -519,7 +551,7 @@ final class FanControlHook {
                             // must not leave a second independent polling loop,
                             // or be discarded as the idle worker shuts down.
                             executingHandler.removeCallbacks(this);
-                            executingHandler.postDelayed(this, POLL_MS);
+                            executingHandler.postDelayed(this, wakeGeneration!=wakeAtStart?POLL_MS:nextPoll);
                         } else {
                             handler = null;
                             HandlerThread currentThread = thread;
@@ -817,7 +849,7 @@ final class FanControlHook {
 
     private static boolean hasVoidMethod(Class<?> type, String name) {
         try {
-            Method method = type.getDeclaredMethod(name);
+            Method method = FanPowerLease.find(type,name);
             return method.getReturnType() == void.class
                     && !java.lang.reflect.Modifier.isStatic(method.getModifiers())
                     && !java.lang.reflect.Modifier.isAbstract(method.getModifiers());

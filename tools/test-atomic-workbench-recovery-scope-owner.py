@@ -32,7 +32,6 @@ final class AtomicWorkbenchTaskAuthority{
 
 PLATFORM_EXTRA = r'''
  AtomicWorkbenchRecoveryScope.ReaderProfile reader=AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4;
- AtomicWorkbenchPlatform(android.content.Context c,int uid,int user,Handler h,int id,ReadinessReader r,FocusController f,AtomicWorkbenchRecoveryScope.ReaderProfile reader){this(c,uid,user,h,id,r,f);this.reader=reader;}
  int recoveryWindowId(){return id;}AtomicWorkbenchRecoveryScope.ReaderProfile recoveryReaderProfile(){return reader;}
  interface AllocationScopeFence{void require(int target,int source)throws Exception;}AllocationScopeFence allocationScopeFence;
  void configureAllocationScopeFence(AllocationScopeFence fence){allocationScopeFence=fence;}
@@ -137,8 +136,6 @@ def sources():
     # Use the actual recovery projection. Only the unrelated authentication
     # transport is controlled; scope, ownership and finish guards stay production.
     root = (MODELS['SRC'] / 'AtomicWorkbenchRoot.java').read_text(encoding='utf-8')
-    projection = TASK['LIFECYCLE']['member'](root, 'private Bundle recoveryState(')
-    values['ls/augment/com/ScopeRoot.java'] = values['ls/augment/com/ScopeRoot.java'].rsplit('}',1)[0] + projection + 'Bundle retainedTaskCleanupMetadata(){throw new AssertionError("unexpected retained authentication transport");}}'
     return values
 
 

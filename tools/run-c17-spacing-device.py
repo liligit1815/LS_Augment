@@ -11,6 +11,7 @@ import contextlib
 import datetime as dt
 import json
 import os
+from regression_journal_io import replace_flushed_file
 from pathlib import Path
 import re
 import struct
@@ -39,7 +40,7 @@ def atomic_json(path, value):
         json.dump(value, stream, ensure_ascii=False, indent=2)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    replace_flushed_file(temporary,path)
 
 
 def source_version():

@@ -41,10 +41,10 @@ import org.json.JSONObject;
 
 /** Pure hosted-document acceptance; temporary Resources/DOM reads never write module or system settings. */
 final class ContributorsReferencesUiCases implements Application.ActivityLifecycleCallbacks {
-    private static final String[] PROJECTS={"HyperCeiler","LiftArc","红魔助手","Van Step"};
-    private static final String[] PROJECT_URLS={"https://github.com/ReChronoRain/HyperCeiler","https://github.com/miyupyxh/LiftArc",null,"https://github.com/LAOBILAXI233/onestep_on_hyper"};
-    private static final String[] ICON_MIMES={"image/webp","image/svg+xml","image/svg+xml","image/webp"};
-    private static final String[] ICON_SHA256={"0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8","6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157","DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457","7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6"};
+    private static final String[] PROJECTS={"HyperCeiler","LiftArc","红魔助手","Van Step","MiStep","HyperIsland"};
+    private static final String[] PROJECT_URLS={"https://github.com/ReChronoRain/HyperCeiler","https://github.com/miyupyxh/LiftArc",null,"https://github.com/LAOBILAXI233/onestep_on_hyper","https://github.com/JIUSIS/MiStep","https://github.com/1812z/HyperIsland"};
+    private static final String[] ICON_MIMES={"image/webp","image/svg+xml","image/svg+xml","image/webp","image/png","image/svg+xml"};
+    private static final String[] ICON_SHA256={"0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8","6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157","DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457","7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6","3B949A7A6847ACCEFF819EDC0E34B635FBA858DB9FF1E52E4F41465B0464DFCF","65E229517528FDE3E0B09DB8717C825A26B940431DBC01CB9E542963A3CD0086"};
     private static final String THANKS_DESCRIPTION="红魔Duo使用了以下开源项目的部分或全部内容，感谢这些项目的开发者提供的大力支持（排名顺序不分先后）。";
     private static final String[] REMOVED={"卒迹","绀漓丨Sevtinge","红魔助手开发团队","HyperCeiler开发团队"};
     private static final String[] DONORS={"kj2548","福福","隐隐约约月","夕梦月初","ninemans","停！别浪费时间聊天","萌爱oo","ღ᭄爱莉瑟琳ঞৣ"};
@@ -88,7 +88,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             scenario("01-normal",1.0f,false);scenario("02-large-font",1.5f,false);scenario("03-landscape",1.0f,true);
             require(screenshots.length()==6,"Three scenarios each saved top and bottom screenshots");
             require(webScrollObserved,"An overflowing scenario exercised the WebView's own scroll");
-            require(interceptedProjectIntents==9,"All three scenarios exercised all three real project link taps with external Intents intercepted");
+            require(interceptedProjectIntents==15,"All three scenarios exercised all five real project link taps with external Intents intercepted");
         }catch(Throwable error){failure=error;}
         finally{
             try{
@@ -109,7 +109,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
                 .put("systemDisplaySettingsChanged",false).put("fontScaleRestored",fontRestored).put("originalFontScale",originalFontScale)
                 .put("previewOnly",previewOnly).put("source",previewOnly?"local-web-preview":"apk-hosted-document")
                 .put("remoteProjectOpened",false).put("remotePagePublished",false).put("featureEfficacyChecked",false)
-                .put("projectBrowserIntentsIntercepted",interceptedProjectIntents).put("projectTapNavigationChecked",interceptedProjectIntents==6)
+                .put("projectBrowserIntentsIntercepted",interceptedProjectIntents).put("projectTapNavigationChecked",interceptedProjectIntents==15)
                 .put("webScrollObserved",webScrollObserved).put("layouts",layouts).put("screenshots",screenshots).put("directory",directory.getAbsolutePath());
         if(failure!=null)report.put("failure",android.util.Log.getStackTraceString(failure));
         Files.write(new File(directory,"report.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
@@ -209,7 +209,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
         }
         require(cssColor(ui.muted).equals(dom.getString("descriptionColor")),"Thanks description uses the common muted color");
         require(Math.abs((dom.getDouble("firstProjectTop")-dom.getDouble("descriptionBottom"))*cssToDp-16)<.6,"Description to project list keeps 16dp");
-        require(dom.getInt("projectLinkCount")==3,"The three repository rows have semantic links");
+        require(dom.getInt("projectLinkCount")==5,"The five repository rows have semantic links");
         for(int i=0;i<rows.length();i++){
             JSONObject row=rows.getJSONObject(i);
             require(row.getInt("descriptionCount")==0,"Project row contains no descriptions or version/license small text");
@@ -225,7 +225,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             }else require(row.isNull("href")&&"div".equals(row.getString("semantic")),"红魔助手 remains a static name without an invented link");
         }
         require(!dom.getString("text").contains("1.0.22")&&!dom.getString("text").contains("GPL-3.0"),"Version and license small text was removed from the webpage");
-        require(exact(dom.getJSONArray("projects"),PROJECTS),"Only HyperCeiler, LiftArc, 红魔助手 and Van Step appear in the project list");
+        require(exact(dom.getJSONArray("projects"),PROJECTS),"Only HyperCeiler, LiftArc, 红魔助手, Van Step, MiStep and HyperIsland appear in the project list");
         require(exact(dom.getJSONArray("donors"),DONORS),"All eight original donors remain in order");
         require(dom.getInt("oldPeople")==0&&!arrayContains(dom.getJSONArray("headings"),"贡献者"),"Old contributors heading and people-list structure are absent");
         for(String removed:REMOVED)require(!dom.getString("text").contains(removed),"Removed contributor is absent: "+removed);
@@ -266,7 +266,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
         for(String address:rejected)require(ContributorsActivity.projectLinkIntent(address,true,true,false)==null,"Non-exact repository address is rejected: "+address);
     }
     private JSONArray checkInlineIconSources(String html)throws Exception{
-        Matcher icons=Pattern.compile("class=\"project-icon\"\\s+src=\"data:(image/(?:webp|svg\\+xml));base64,([A-Za-z0-9+/=]+)\"").matcher(html);
+        Matcher icons=Pattern.compile("class=\"project-icon\"\\s+src=\"data:(image/(?:png|webp|svg\\+xml));base64,([A-Za-z0-9+/=]+)\"").matcher(html);
         JSONArray result=new JSONArray();
         for(int index=0;index<PROJECTS.length;index++){
             require(icons.find(),"The actual hosted HTML contains an inline original icon for "+PROJECTS[index]);
@@ -277,7 +277,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
             require(ICON_SHA256[index].equalsIgnoreCase(hex.toString()),"Inline icon bytes match the recorded original source SHA256");
             result.put(new JSONObject().put("project",PROJECTS[index]).put("mime",icons.group(1)).put("bytes",image.length).put("sha256",hex.toString()));
         }
-        require(!icons.find(),"Only the four requested project icons are present");return result;
+        require(!icons.find(),"Only the six requested project icons are present");return result;
     }
     private void checkProjectTaps(Activity page)throws Exception{
         List<Intent> attempts=new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -303,7 +303,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
                 }
                 require(main(()->page.hasWindowFocus()&&!web(page).getSettings().getJavaScriptEnabled()),"Browser interception preserves the visible JS-disabled host");
             }
-            layouts.getJSONObject(layouts.length()-1).put("projectTapIntentsIntercepted",3).put("staticProjectDoesNotNavigate",true);
+            layouts.getJSONObject(layouts.length()-1).put("projectTapIntentsIntercepted",5).put("staticProjectDoesNotNavigate",true);
         }finally{runner.removeMonitor(monitor);}
     }
     private void tapProject(Activity page,int index)throws Exception{

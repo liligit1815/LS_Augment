@@ -83,7 +83,7 @@ files.update({
  MeetingSystemUiResolver meeting=MeetingSystemUiResolver.INSTANCE;visible(m,meeting,1);CardMessage live=new CardMessage("transcription",37);
  check("original".equals(send(m,live))&&m.cardPusher.cards.isEmpty(),"original coroutine result preserved with enhancement off");
  check(NativeIslandScenePolicy.SOURCE_SYNC_PERMISSION.equals(m.appCtx.requiredPermission),"recovery only accepts platform-authorized sender");
- FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("meeting",true);
+ FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("meeting",true);
  check(m.cardPusher.cards.get("transcription")==live&&live.time==37&&m.appCtx.resolver.unstable==1,"enabling reuses genuine latest producer message and unstable IPC");
  check(Integer.valueOf(0).equals(m.appCtx.resolver.values.get("meeting_visible_status"))&&meeting.isVisible(),"new card withdraws old duplicate but preserves real source visibility");
  visible(m,meeting,1);check(meeting.isVisible()&&Integer.valueOf(0).equals(m.appCtx.resolver.values.get("meeting_visible_status")),"ordinary visibility updates cannot duplicate card");

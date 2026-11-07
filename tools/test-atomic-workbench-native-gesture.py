@@ -46,7 +46,7 @@ def main():
              "private static boolean sameGestureTarget(", "static synchronized boolean nativeGestureActive(",
              "private Bundle controlNativeGesture(", "private Bundle readGestureTarget(")
     files = dict(FILES)
-    files["ls/augment/com/AtomicWorkbenchProtocol.java"] = files["ls/augment/com/AtomicWorkbenchProtocol.java"].replace("WINDOW_COUNT=4", "WINDOW_COUNT=4,WINDOW_POOL_COUNT=8")
+    assert "WINDOW_POOL_COUNT" in files["ls/augment/com/AtomicWorkbenchProtocol.java"]
     files["ls/augment/com/AtomicWorkbenchProvider.java"] = HEAD + "\n".join(MEMBER(SOURCE, name) for name in names) + TEST
     files.pop("ls/augment/com/TestGestureProvider.java")
     with tempfile.TemporaryDirectory(prefix="lsa-native-gesture-") as temporary:

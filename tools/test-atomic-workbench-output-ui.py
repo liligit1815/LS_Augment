@@ -1,4 +1,5 @@
 """Execute actual Activity output batches with controlled Binder and UI scheduling."""
+import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -7,16 +8,18 @@ import tempfile
 BASE = runpy.run_path(str(Path(__file__).with_name('test-atomic-workbench-lifecycle.py')))
 SUPPORT, SRC, member = BASE['SUPPORT'], BASE['SRC'], BASE['member']
 HEAD = r'''package ls.augment.com;import android.os.Bundle;import android.view.Surface;import java.util.*;
+import ls.augment.com.AtomicWorkbenchWindowPresentationPolicy.Roles;
 final class AtomicWorkbenchSurface {static final class Output {}}
 final class ResetWriteFence {static boolean staleValue;static boolean stale(long generation){return staleValue;}}
 final class AtomicWorkbenchClient {
+ static ArrayList<Bundle> recoveryPoolWindows(Bundle b){return AtomicWorkbenchProtocol.recoveryPoolWindows(b);}
  final ArrayList<Bundle> windows=new ArrayList<>();final List<String> calls=new ArrayList<>();boolean parked,failResume,failStatus,throwUpdate;int failSide=-1,closes,updates;long lastGeneration;
  Runnable updateHook;
- AtomicWorkbenchClient(){for(int i=0;i<4;i++){Bundle b=new Bundle();b.putInt("window_id",i);b.putInt("display_id",10+i);b.putInt("user_id",0);b.putString("display_name","owned-"+i);b.putString("display_unique_id","unique-"+i);b.putBoolean("output_attached",true);b.putBoolean("output_attached_known",true);windows.add(b);}}
+ AtomicWorkbenchClient(){for(int i=0;i<4;i++){Bundle b=new Bundle();b.putInt("window_id",i);b.putInt("display_id",10+i);b.putString("window_session",new UUID(1L,i+1L).toString());b.putInt("user_id",0);b.putString("display_name","owned-"+i);b.putString("display_unique_id","unique-"+i);b.putBoolean("output_attached",true);b.putBoolean("output_attached_known",true);windows.add(b);}}
  void clearGestureTarget(){calls.add("clear");}
  Bundle resumeUi(long generation){calls.add("resume");checkSequence(generation);if(!failResume)parked=false;Bundle b=status();b.putBoolean("success",!failResume);return b;}
  Bundle focusHostInput(){calls.add("host");return status();}
- Bundle status(){Bundle b=new Bundle();b.putBoolean("success",!failStatus);b.putBoolean("ui_parked",parked);ArrayList<Bundle> copy=new ArrayList<>();for(Bundle w:windows)copy.add(new Bundle(w));b.putParcelableArrayList("windows",copy);return b;}
+ Bundle status(){Bundle b=new Bundle();b.putBoolean("success",!failStatus);b.putBoolean("ui_parked",parked);ArrayList<Bundle> copy=new ArrayList<>();for(Bundle w:windows)copy.add(new Bundle(w));Map<Integer,Bundle> rows=new LinkedHashMap<>();for(Bundle row:copy)rows.put(row.getInt("window_id",-1),row);return AtomicWorkbenchProtocol.recoveryState(CapacityFixtureState.raw(b,rows),AtomicWorkbenchRecoveryScope.ReaderProfile.FULL8);}
  Bundle updateOutput(int id,Bundle expected,long generation,Surface surface)throws Exception{checkSequence(generation);calls.add("output:"+id+":"+(surface!=null));updates++;if(throwUpdate)throw new Exception("fixed");
   Bundle w=windows.get(id);boolean success=id!=failSide;w.putBoolean("output_attached",success&&surface!=null);w.putBoolean("output_attached_known",true);if(updateHook!=null){Runnable hook=updateHook;updateHook=null;hook.run();}Bundle b=new Bundle(w);b.putBoolean("success",success);b.putString("message","fixed output failure");return b;}
  Bundle parkUi(long generation){checkSequence(generation);calls.add("park");parked=true;for(Bundle w:windows)w.putBoolean("output_attached",false);return status();}
@@ -40,6 +43,9 @@ public final class TestOutputUi {
  boolean active=true,destroyed,closing,recoveryPending,waitingForCleanup,outputsSyncing,outputsParked,outputFocusPending,outputsNeedRetry,outputSyncAgain,surfaceUnavailable,busy,hostDialogActive,mainLayoutPresented,layoutMatches=true;
  long outputTransition,outputSequence,sessionGeneration=1,launchGeneration=7;int focusedWindow,renders,polls,media,tries,hostRequests;String status,operationNotice;Runnable deferred;
  final AtomicWorkbenchLifecyclePolicy.Gate lifecycleGate=new AtomicWorkbenchLifecyclePolicy.Gate();
+ static class PendingAppSurfaceLaunch {boolean dispatched,outputSyncRequested;AtomicWorkbenchWorkspaceModel.LaunchPlan plan;}
+ PendingAppSurfaceLaunch pendingAppSurfaceLaunch;int emptySideSlots=3;
+ void cancelPendingAppSurfaceLaunch(boolean redraw){pendingAppSurfaceLaunch=null;}
  final boolean[] pendingHomeSurfaces=new boolean[COUNT];
  TestOutputUi(){for(int i=0;i<4;i++)model.commitLaunch(model.planLaunch("app"+i+"/.Main"));}
  void cancelGesture(){}void invalidateMainLayout(int id){mainLayoutPresented=false;}boolean mainLayoutMatches(int id){return layoutMatches;}
@@ -63,7 +69,7 @@ TEST = r'''
  public static void main(String[] args){
   test("same-Activity stop parks outputs while retaining all task and window identities",()->{var f=new TestOutputUi();var original=f.client;int main=f.model.mainWindowId();int[] sides={f.model.sideWindowId(0),f.model.sideWindowId(1),f.model.sideWindowId(2)};f.stopped();f.WORKER.all();f.main.all();check(f.client==original&&f.model.appCount()==4&&f.model.mainWindowId()==main,"stop discarded workspace");for(int i=0;i<3;i++)check(f.model.sideWindowId(i)==sides[i],"stop changed side order");check(original.parked&&original.closes==0&&original.calls.contains("park"),"stop closed instead of parking");});
   test("stop before a queued reconnect prevents obsolete resume and attach",()->{var f=new TestOutputUi();f.syncWorkspaceOutputs();f.stopped();f.WORKER.all();f.main.all();check(!f.client.calls.contains("resume")&&f.client.updates==0&&f.client.parked,"stopped UI resumed old output");check(f.outputsParked&&!f.outputsSyncing&&f.hostRequests==0,"stopped batch published input");});
-  test("stop and start before the worker runs cannot revive a prior batch",()->{var f=new TestOutputUi();f.syncWorkspaceOutputs();f.stopped();f.restarted();f.WORKER.one();check(!f.client.calls.contains("resume")&&f.client.updates==0,"prior transition revived when Activity became active again");f.WORKER.all();f.main.all();check(!f.outputsParked&&f.client.updates==4,"new transition did not reconnect");});
+  test("stop and start before the worker runs cannot revive a prior batch",()->{var f=new TestOutputUi();f.syncWorkspaceOutputs();f.stopped();f.restarted();f.WORKER.one();check(!f.client.calls.contains("resume")&&f.client.updates==0,"prior transition revived when Activity became active again");f.WORKER.all();f.main.all();check(!f.outputsParked&&f.client.updates==4,"new transition did not reconnect: "+f.status+" calls="+f.client.calls);});
   test("failed resume cannot release a deferred mutation merely because ui_parked is false",()->{var f=new TestOutputUi();f.client.failResume=true;f.client.parked=false;final int[] mutations={0};f.deferred=()->mutations[0]++;f.syncWorkspaceOutputs();f.WORKER.all();f.main.all();check(f.outputsParked&&mutations[0]==0&&f.deferred!=null&&f.hostRequests==0,"failed resume released deferred mutation");});
   test("expanded presentation detaches sides and returns with the same four identities",()->{var f=new TestOutputUi();int main=f.model.mainWindowId();String[] components=new String[4];for(int i=0;i<4;i++)components[i]=f.model.component(i);f.setMainExpanded(true);f.WORKER.all();f.main.all();check(f.model.mainExpanded(),"expand not applied");for(int i=0;i<4;i++)check(f.client.windows.get(i).getBoolean("output_attached")== (i==main),"side not detached");f.settle();f.setMainExpanded(false);f.WORKER.all();f.main.all();for(int i=0;i<4;i++)check(f.client.windows.get(i).getBoolean("output_attached")&&components[i].equals(f.model.component(i)),"return replaced a task or lost output");check(f.client.closes==0&&f.model.mainWindowId()==main,"presentation closed or promoted another window");});
   test("an admitted producer can reuse its complete buffer after a pure View layout change",()->{var f=new TestOutputUi();f.syncWorkspaceOutputs();f.WORKER.all();f.main.all();Slot s=f.slots[f.model.mainWindowId()];s.surface.configured=false;check(s.outputRetainsProducer&&!s.outputAwaitingFrame,"existing producer became fake new frame");f.settle();check(f.hostRequests==1,"static admitted producer was deadlocked awaiting an unrequested redraw");});
@@ -86,7 +92,9 @@ TEST = r'''
 
 def main():
     activity = (SRC / 'AtomicWorkbenchActivity.java').read_text(encoding='utf-8')
-    signatures = ('private void setMainExpanded', 'private void finishOutputPresentation',
+    capacity = runpy.run_path(str(Path(__file__).with_name('test-atomic-workbench-window-presentation-integration.py')))
+    contracts = capacity['activity_sources']()
+    signatures = ('private Roles presentationRoles()', 'private boolean outputPresented(', 'private static Bundle poolStatus(', 'private static ArrayList<Bundle> poolWindowsOrNull(', 'private void setMainExpanded', 'private void finishOutputPresentation',
                   'private void syncWorkspaceOutputs', 'private boolean outputSessionCurrent',
                   'private static Bundle findWindow', 'private static Bundle outputIdentity',
                   'private void parkWorkspaceOutputs', 'private void onWindowSurfaceDestroyed')
@@ -109,15 +117,17 @@ def main():
     for label, current, expected in variants:
         with tempfile.TemporaryDirectory(prefix='lsa-output-ui-') as temporary:
             work = Path(temporary)
-            files = {'android/os/Bundle.java': SUPPORT['BUNDLE'],
+            files = {k:contracts[k] for k in ('android/os/Bundle.java','android/content/ComponentName.java','ls/augment/com/CapacityFixtureState.java','ls/augment/com/AtomicWorkbenchProtocol.java','ls/augment/com/AtomicWorkbenchRecoveryScope.java')}
+            files.update({
                      'android/view/Surface.java': 'package android.view; public final class Surface { public int releases; public void release(){if(++releases>1)throw new AssertionError("duplicate release");}}',
-                     'ls/augment/com/TestOutputUi.java': current + TEST}
+                     'ls/augment/com/TestOutputUi.java': current + TEST})
             paths = []
             for name, value in files.items():
                 path = work / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value, encoding='utf-8'); paths.append(str(path))
-            subprocess.run([SUPPORT['JAVAC'], '--release', '17', '-encoding', 'UTF-8', '-d', str(work),
+            subprocess.run([SUPPORT['JAVAC'], '--release', '17', '-encoding', 'UTF-8', '-cp', str(capacity['_CAPACITY_JSON']), '-d', str(work),
+                            *[str(SRC / (name + '.java')) for name in ('AtomicWorkbenchSlotDomain', 'AtomicWorkbenchPoolTopology', 'AtomicWorkbenchCapacityLayoutPlan')],
                             str(SRC / 'AtomicWorkbenchWorkspaceModel.java'), str(SRC / 'AtomicWorkbenchLifecyclePolicy.java'), str(SRC / 'AtomicWorkbenchWindowPresentationPolicy.java'), str(SRC / 'AtomicWorkbenchWindowLayoutPlan.java'), *paths], check=True, timeout=60, env=SUPPORT['ENV'])
-            result = subprocess.run([SUPPORT['JAVA'], '-Dfile.encoding=UTF-8', '-cp', str(work), 'ls.augment.com.TestOutputUi'], encoding='utf-8', errors='replace', capture_output=True, timeout=30, env=SUPPORT['ENV'])
+            result = subprocess.run([SUPPORT['JAVA'], '-Dfile.encoding=UTF-8', '-cp', str(work)+os.pathsep+str(capacity['_CAPACITY_JSON']), 'ls.augment.com.TestOutputUi'], encoding='utf-8', errors='replace', capture_output=True, timeout=30, env=SUPPORT['ENV'])
             if expected is None:
                 print(result.stdout, end=''); print(result.stderr, end=''); result.check_returncode()
             else:

@@ -1,4 +1,4 @@
-"""Execute production recovery archiving in isolated Git Bash directories.
+"""Execute production recovery archiving in isolated Bash directories.
 
 Compiles HideRecoveryArchive and RootShell; never calls real RootShell.run or su.
 A host fsync shim flushes regular files with Python os.fsync. Directory calls
@@ -16,7 +16,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
-BASH = Path(r'C:\Program Files\Git\bin\bash.exe')
+BASH = Path(r'C:\Program Files\Git\bin\bash.exe') if os.name == 'nt' else Path('/bin/bash')
 ROOT_ASSIGNMENT = 'ROOT="${LSA_PRIVATE_ROOT:?}/v2"'
 SUCCESS = b'LSA_RECOVERY_ARCHIVE_OK'
 SOURCE_FILES = {'targets': 'targets.conf', 'backup': 'targets.backup.conf',
@@ -39,12 +39,14 @@ def bash(script, *, stdin=b'', env=None, cwd=None):
         # Parallel writers each launch the host Python fsync adapter. Windows
         # process startup under other regression jobs needs a larger harness
         # deadline; the production transport timeout is unchanged.
-        timeout=240,
+        timeout=600 if os.name == "nt" else 240,
     )
 
 
 def posix(path):
     # absolute(), rather than resolve(), keeps a symlink under test a symlink.
+    if os.name != 'nt':
+        return str(path.absolute())
     result = subprocess.run(
         [str(BASH), '--noprofile', '--norc', '-c', 'cygpath -u -- "$1"',
          'archive-test', str(path.absolute())],
@@ -66,7 +68,7 @@ class ArchiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not BASH.is_file():
-            raise RuntimeError(f'Required real Git Bash is unavailable: {BASH}')
+            raise RuntimeError(f'Required Bash is unavailable: {BASH}')
         cls.temporary = tempfile.TemporaryDirectory(prefix='ls-hide-archive-')
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.workspace = Path(cls.temporary.name)
@@ -115,7 +117,7 @@ for arg in sys.argv[1:]:
         log.write(("directory-call-only " if path.is_dir() else "file-fsync ") + str(path) + "\\n")
     if not path.is_dir():
         # Windows _commit requires a writable descriptor.
-        fd = os.open(path, os.O_RDWR | os.O_BINARY)
+        fd = os.open(path, os.O_RDWR | getattr(os, 'O_BINARY', 0))
         try:
             os.fsync(fd)
         finally:

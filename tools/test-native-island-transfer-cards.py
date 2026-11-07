@@ -74,7 +74,7 @@ files.update({
  Context c=new Context();o m=(o)AugmentModule.invoke(null,o.class,"x",new Class<?>[]{Context.class},c);CardPusher p=m.a;Object originalActions=p.originalActions;ContentProviderClient stable=p.mClient;
  check(!gate()&&c.resolver.unstable==0&&p.mClient==stable,"default preserves original source and does not enable card publishing");
  check(NativeIslandScenePolicy.SOURCE_SYNC_PERMISSION.equals(c.requiredPermission)&&c.resolver.observers==2,"configuration and authenticated host recovery registered");
- FeatureSettings.change("native",true);FeatureSettings.change("master",true);check(!gate(),"transfer requires its independent scene switch");
+ FeatureSettings.change("duo",true);FeatureSettings.change("master",true);check(!gate(),"transfer requires its independent scene switch");
  NativeIslandCardClient.ready=false;FeatureSettings.change("transfer",true);check(!gate(),"no first activation without live verified display");
  NativeIslandCardClient.ready=true;check(gate(),"explicit selection with live host enables actual OEM producer");
  CardMessage first=new CardMessage("share_transfer",17);check(send(p,"pushCard",first)&&p.cards.get("share_transfer")==first&&first.progress==17,"genuine progress payload is forwarded unchanged");
@@ -91,7 +91,7 @@ files.update({
  android.provider.Settings.System.excluded="share_transfer";FeatureSettings.change("transfer",true);check(!gate()&&p.cards.isEmpty(),"OEM transfer close-list is honored independently");
  android.provider.Settings.System.excluded=null;FeatureSettings.change("transfer",true);send(p,"pushCard",first);
  android.provider.Settings.System.value=0;FeatureSettings.change("transfer",true);check(!gate()&&p.cards.isEmpty(),"native system switch withdraws transfer");android.provider.Settings.System.value=1;
- FeatureSettings.change("duo",true);check(!gate(),"custom island mode excludes this OEM host");FeatureSettings.change("duo",false);
+ FeatureSettings.change("duo",false);check(!gate(),"unified master OFF disables supplemental source");FeatureSettings.change("duo",true);
  CardPusher unrelated=new CardPusher(c);unrelated.mTargetPackage="launcher";unrelated.connect();check(send(unrelated,"pushCard",new CardMessage("share_transfer",1))&&unrelated.originalConnects==1,"unrelated producer remains entirely native");
  CardMessage unknown=new CardMessage("other_card",9);p.connect();check(send(p,"pushCard",unknown)&&p.cards.containsKey("other_card"),"unknown messages retain native SDK path");p.cards.remove("other_card");p.mClient.close();p.mClient=null;
  c.resolver.fail=true;check(!send(p,"pushCard",latest),"failed unstable connection never advertises success");c.resolver.fail=false;recover(c);check(p.cards.get("share_transfer")==latest,"later host discovery retries actual latest source message");

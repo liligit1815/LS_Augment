@@ -10,6 +10,12 @@ spec=importlib.util.spec_from_file_location('boot_core',ROOT/'tools/test-boot-cr
 core=importlib.util.module_from_spec(spec);spec.loader.exec_module(core)
 SOURCES=dict(core.STUBS)
 SOURCES.update({
+    'ls/augment/com/AppUpdater.java': '''package ls.augment.com; final class AppUpdater {
+        AppUpdater(android.content.Context context){} void beginForegroundSession(){} void resume(){}
+        void pause(android.app.Activity activity){} void attach(android.app.Activity activity){} }''',
+    'ls/augment/com/OnboardingActivity.java': '''package ls.augment.com; class OnboardingActivity extends android.app.Activity {
+        static boolean needsConsent(android.app.Activity activity){return false;} }''',
+
 'ls/augment/com/LogHistory.java':'package ls.augment.com;final class LogHistory {static long cutoff(android.content.Context c){return 0;}}',
 'ls/augment/com/TransientCacheMaintenance.java':'package ls.augment.com;final class TransientCacheMaintenance {static void request(android.content.Context c){}}',
 'android/content/pm/ApplicationInfo.java':'''package android.content.pm;public class ApplicationInfo{public int uid;public String packageName,deviceProtectedDataDir,sourceDir="/private/module's app.apk";}''',
@@ -79,7 +85,7 @@ def main():
         folder=Path(temporary);files=[]
         for name,text in {**SOURCES,'ls/augment/com/BootEvidenceLifecycleTest.java':TEST}.items():
             p=folder/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,'utf-8');files.append(p)
-        files += [core.SRC/(n+'.java') for n in ('CrashStackTrace','SystemUiCrashJournal','BootEvidenceArchive','BootEvidenceCapture','DiagnosticBootReceiver','DiagnosticCaptureService','AugmentApplication')]
+        files += [core.SRC/(n+'.java') for n in ('CrashStackTrace','SystemUiCrashJournal','BootEvidenceArchive','BootEvidenceCapture','DiagnosticBootReceiver','DiagnosticCaptureService','AugmentApplication','AppUpdatePolicy')]
         subprocess.run([str(core.JDK/'javac'),'-encoding','UTF-8','--release','17','-d',temporary,*map(str,files)],check=True)
         subprocess.run([str(core.JDK/'java'),'-cp',temporary,'ls.augment.com.BootEvidenceLifecycleTest',str(folder/'data')],check=True,timeout=25)
 

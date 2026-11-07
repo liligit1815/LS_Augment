@@ -111,9 +111,8 @@ assert(freeform.startsWith('<section class="c-card c-feature-group d-setting-gro
 assert.equal((freeform.match(/class="c-card /g) || []).length, 1);
 assert.equal((freeform.match(/class="c-feature"/g) || []).length, 4);
 assert.equal((freeform.match(/role="switch"/g) || []).length, 4);
-for (const title of ['游戏登录跳转以小窗打开', '全应用支持小窗']) {
-  assert(toggles.get(title).children, title + ' retains its in-page app picker');
-}
+assert(toggles.get('全应用支持小窗').children, 'retain in-page picker for OEM exclusions');
+assert.equal(toggles.get('登录跳转以小窗打开').children, undefined, 'authorization redirects apply to every app');
 assert.equal(toggles.get('解除小窗数量上限').children, undefined);
 assert.equal(toggles.get('打开第三方应用以小窗打开').children, undefined);
 assert.deepEqual(destinations, [], 'editing must not navigate to another page');

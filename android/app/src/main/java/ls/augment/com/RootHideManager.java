@@ -623,10 +623,10 @@ final class RootHideManager {
         try {
             if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
             OperationResult loaded = refreshTargets();
-            if (!loaded.success) return loaded;
-            if (!selectionStatus().valid) {
+            if (!loaded.success || !selectionStatus().valid) {
+                if (ResetWriteFence.stale(actionGeneration)) return OperationResult.failure(RESET_REQUIRED);
                 RootShell.Result cleared = RuntimeStateStore.publishHidden(context, "", Aggregate.ERROR.name());
-                return OperationResult.failure("应用选择无法解析，已保留原内容"
+                return OperationResult.failure((loaded.success ? "应用选择无法解析，已保留原内容" : loaded.message)
                         + (cleared.isSuccess() ? "；有效隐藏镜像已清空" : "；镜像清除失败：" + cleared.publicError()));
             }
             Map<Target, State> states = queryStates(targets());

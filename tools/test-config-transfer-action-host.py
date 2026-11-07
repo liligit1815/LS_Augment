@@ -212,6 +212,7 @@ final class ScopeRestartDialog {static final String DEVICE="device";static andro
 final class BuildConfig {static final String VERSION_NAME="offline";}
 final class AuditLog {static final List<String> events=new ArrayList<>();static void write(Context c,String event,String detail){events.add(event);}}
 final class ScreenAutomation {static void sync(Context c){throw new AssertionError("automation write forbidden");}}
+final class LauncherOptions {static final String CLEANUP_ICON="ls_augment_rm_launcher_cleanup_icon";}
 final class LauncherIconStore {static File file(Context c,String hash){return new File(c.getCacheDir(),"missing-icon-"+hash);}static File directory(Context c){throw new AssertionError("media directory write forbidden");}}
 final class ManagedFont {static final int MAX_BYTES=4*1024*1024;static File file(Context c,String hash){return new File(c.getCacheDir(),"missing-font-"+hash);}
  static void validate(String hash,byte[] bytes)throws IOException {if(bytes.length==0)throw new IOException("bad font");}static void store(Context c,String hash,byte[] bytes){throw new AssertionError("font store forbidden");}}

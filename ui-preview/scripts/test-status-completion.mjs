@@ -37,6 +37,98 @@ const root = path.resolve('app');
 const p = await import(url(path.join(root, 'current-status-policy.ts')));
 const l = await import(url(path.join(root, 'current-status-placement.ts')));
 const r = await import(url(path.join(root, 'current-status-recovery.ts')));
+const plans = await import(url(path.join(root, 'current-status-plans.ts')));
+const fixture = {
+  ls_augment_systemui_master: '1',
+  ls_augment_statusbar_clock_custom: '1',
+  ls_augment_statusbar_height_dp: '40',
+  ls_augment_statusbar_connectivity_group: '1',
+  ls_augment_rm_signal_dual: '1',
+  ls_augment_rm_privacy_hide: '1',
+  ls_augment_rm_statusbar_hide: '1',
+  ls_augment_statusbar_artwork_v1: 'old artwork',
+  ls_augment_statusbar_fonts_v1: 'old fonts',
+  ls_augment_notification_summary_enabled: '1',
+  ls_augment_notification_summary_asset: 'old summary image',
+  'status:assets:preview-v1': 'old asset plan',
+  'status:cpu:on': '1',
+  'status:notifications:zone': '1',
+  'prototype:display-order:bluetooth': '7',
+  'prototype:icon-size:bluetooth': '24',
+  'prototype:status:layout-backup': 'old backup',
+  'prototype:visibility:keyguard:bluetooth': 'hide',
+  'prototype:spacing:control:notifications:top': '8',
+  ls_augment_rm_notification_stack: '1',
+  ls_augment_launcher_grid: 'unchanged',
+  'ui:theme': 'unchanged',
+};
+const fixtureBefore = structuredClone(fixture);
+const factory = plans.resetStatusValues(fixture, fixture);
+assert.deepEqual(
+  fixture,
+  fixtureBefore,
+  'reset does not mutate the current values',
+);
+for (const key of [
+  'ls_augment_systemui_master',
+  'ls_augment_statusbar_clock_custom',
+  'ls_augment_rm_signal_dual',
+  'ls_augment_rm_privacy_hide',
+  'ls_augment_rm_statusbar_hide',
+  'ls_augment_notification_summary_enabled',
+  'status:cpu:on',
+])
+  assert.equal(factory[key], '0', key);
+for (const key of [
+  'status:assets:preview-v1',
+  'prototype:display-order:bluetooth',
+  'prototype:icon-size:bluetooth',
+  'prototype:status:layout-backup',
+  'prototype:visibility:keyguard:bluetooth',
+  'prototype:spacing:control:notifications:top',
+])
+  assert.equal(factory[key], undefined, key);
+for (const key of [
+  'ls_augment_statusbar_artwork_v1',
+  'ls_augment_statusbar_fonts_v1',
+  'ls_augment_notification_summary_asset',
+])
+  assert.equal(factory[key], '');
+assert.equal(factory.ls_augment_rm_notification_stack, '1');
+assert.equal(factory.ls_augment_launcher_grid, 'unchanged');
+assert.equal(factory['ui:theme'], 'unchanged');
+assert.equal(factory[p.rowModeKey], '1');
+assert.deepEqual(
+  plans.resetStatusValues(factory, fixture),
+  factory,
+  'reset is idempotent',
+);
+// The browser rehydrates built-in initial values; they must not restore the old demo customization.
+const initial = {
+  ls_augment_statusbar_clock_custom: '1',
+  'status:cpu:on': '1',
+  ls_augment_rm_hide_mobile_type: '1',
+};
+const reloaded = { ...initial, ...plans.resetStatusValues(fixture, initial) };
+assert.equal(reloaded['status:cpu:on'], '0');
+assert.equal(reloaded.ls_augment_statusbar_clock_custom, '0');
+assert.equal(reloaded.ls_augment_rm_hide_mobile_type, '0');
+assert.deepEqual(
+  plans.statusPresets.map((preset) => preset.title),
+  ['简洁单排', '常规双排'],
+);
+for (const preset of plans.statusPresets) {
+  const applied = { ...fixture, ...plans.presetChanges(preset) };
+  assert.equal(applied.ls_augment_systemui_master, '1');
+  assert.equal(applied[p.rowModeKey], preset.id === 'single' ? '1' : '2');
+  assert.equal(
+    applied['status:assets:preview-v1'],
+    fixture['status:assets:preview-v1'],
+  );
+  assert.equal(applied['status:notifications:zone'], '1');
+  assert.equal(applied['prototype:display-order:bluetooth'], '7');
+  assert.equal(applied.ls_augment_statusbar_connectivity_group, '1');
+}
 let v = {
   [p.rowModeKey]: '2',
   ls_augment_systemui_master: '1',
@@ -44,6 +136,42 @@ let v = {
   'status:notifications:order': '3',
 };
 const original = structuredClone(v);
+// Numeric order changes only the chosen item and survives visibility / zone changes.
+const numeric = { ...v, [l.numericOrderKey('bluetooth')]: '7' };
+assert.equal(l.readPlacement(numeric, 'bluetooth').order, 7);
+assert.equal(
+  l.readPlacement(numeric, 'notifications').order,
+  l.readPlacement(v, 'notifications').order,
+);
+assert.equal(
+  l.readPlacement(
+    { ...numeric, [l.placementKey('bluetooth', 'zone')]: '6' },
+    'bluetooth',
+  ).order,
+  7,
+);
+assert.equal(
+  l.readPlacement(
+    { ...numeric, ls_augment_rm_hidden_icon_slots: 'bluetooth' },
+    'bluetooth',
+  ).order,
+  7,
+);
+const tie = [
+  { id: 'wifi', order: 7 },
+  { id: 'bluetooth', order: 7 },
+];
+assert.deepEqual(
+  [...tie].reverse().sort(l.comparePlacementOrder),
+  tie.sort(l.comparePlacementOrder),
+);
+assert.equal(
+  l.readPlacement(
+    { ...v, [l.numericOrderKey('bluetooth')]: '1000' },
+    'bluetooth',
+  ).order,
+  l.readPlacement(v, 'bluetooth').order,
+);
 v = { ...v, ...l.movePlacement(v, 'bluetooth', 0, 'notifications') };
 assert.equal(l.readPlacement(v, 'bluetooth').zone, 0);
 assert(

@@ -109,7 +109,7 @@ public class TestProbe {
   input(c,0,5510,5510,0);input(c,2,5510,5517,0);boolean propagated=false;
   try{input(c,3,5510,5520,0);}catch(IllegalStateException expected){propagated=true;}
   check(propagated&&t.errors==1&&t.phase.equals("native_error"),"native CANCEL exception propagates and never certifies success");
-  check(get("trackedView")==null,"actual terminal callback releases the View reference immediately");Handler.drain();
+  check(((java.lang.ref.WeakReference<?>)get("trackedView")).get()==null,"actual terminal callback releases the View reference immediately");Handler.drain();
   check(FeatureSettings.diagnostics.get(BackGestureProbeTrace.KEY).contains("native_error"),"cancel error is explicitly labelled after completion");
   SystemClock.now=5600;t=arm();FeatureSettings.diagnostics.clear();c=new GestureController();input(c,0,5610,5610,0);input(c,1,5610,5620,0);Handler.drain();
   check(t.phase.equals("up_not_cancel")&&FeatureSettings.diagnostics.isEmpty(),"unexpected UP cannot publish a CANCEL observation");
@@ -130,7 +130,7 @@ public class TestProbe {
   }
  }
  static void rollback()throws Exception{
-  set("installed",false);set("receiver",null);set("armed",null);set("trackedView",null);AugmentModule bad=new AugmentModule();bad.failAt=4;
+  set("installed",false);set("receiver",null);set("armed",null);set("trackedView",new java.lang.ref.WeakReference<>(null));AugmentModule bad=new AugmentModule();bad.failAt=4;
   BackGestureProbeHook.install(bad,TestProbe.class.getClassLoader());check(!(Boolean)get("installed")&&bad.removed==3,"partial diagnostic installation unhooks all own callbacks");
   BackGestureProbeHook.attach(new Context());check(get("receiver")==null,"unavailable adapter never registers receiver");
   AugmentModule.active=new AugmentModule();BackGestureProbeHook.install(AugmentModule.active,TestProbe.class.getClassLoader());Context blocked=new Context();blocked.failRegistration=true;BackGestureProbeHook.attach(blocked);check(get("receiver")==null&&get("context")==null,"receiver registration error is diagnostic unavailable");

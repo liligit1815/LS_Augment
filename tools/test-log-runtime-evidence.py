@@ -118,6 +118,23 @@ public class TestComboCacheEvidence {
  static Path source,cache;static int checks;
  static void yes(boolean b,String m){checks++;if(!b)throw new AssertionError(m);}
  static ComboMotionPrivateScaler.Result scale(float rate)throws Exception{return ComboMotionPrivateScaler.scale(cache.toFile(),ComboMotionPrivateScaler.Request.capture(cache.toFile(),source.toString(),rate,0L));}
+ static ComboMotionPrivateScaler.Result repair(Path output)throws Exception {
+  byte[] previous=Files.readAllBytes(output), original=Files.readAllBytes(source);
+  ComboMotionPrivateScaler.Result result=scale(2);
+  // NTFS can deny the atomic replacement immediately after the fixture injects corruption.
+  // A denied write must publish nothing. Other errors and permanent denial still fail.
+  if(System.getProperty("os.name").startsWith("Windows")) {
+   for(int delay:new int[]{20,50,100,250,500}) {
+    if(result.success||!"AccessDeniedException".equals(result.error))break;
+    yes(!result.cacheHit&&Arrays.equals(previous,Files.readAllBytes(output))
+       &&Arrays.equals(original,Files.readAllBytes(source)),"denied replacement preserved both files");
+    Thread.sleep(delay);
+    result=scale(2);
+   }
+  }
+  yes(result.success&&!result.cacheHit,"corrupt cache must be rebuilt: "+result.error);
+  return result;
+ }
  static void write(Path p,String value)throws Exception{Files.writeString(p,value,StandardCharsets.UTF_8);}
  static String recording(long end){return "{\"name\":\"macro\",\"events\":[{\"sampleEventTime\":1000,\"downTime\":1000,\"action\":0},{\"sampleEventTime\":"+end+",\"downTime\":1000,\"action\":1}]}";}
  public static void main(String[] a)throws Exception {
@@ -134,15 +151,15 @@ public class TestComboCacheEvidence {
    ComboMotionPrivateScaler.Result memory=disk.asPublishedHit();
    yes(memory.evidenceSource.equals("MEMORY_CACHE")&&memory.sourceSpanMs==2000&&memory.outputSpanMs==1000,"memory retains metrics");
    JSONObject damaged=new JSONObject(bytes);damaged.getJSONArray("events").getJSONObject(1).put("sampleEventTime",1500);write(output,damaged.toString());
-   ComboMotionPrivateScaler.Result repaired=scale(2);
+   ComboMotionPrivateScaler.Result repaired=repair(output);
    yes(repaired.success&&!repaired.cacheHit&&repaired.outputSpanMs==1000&&Files.readString(output).equals(bytes),"double-scaled cache rebuilt from original");
    damaged=new JSONObject(bytes);damaged.getJSONArray("events").getJSONObject(1).put("action",0);write(output,damaged.toString());
-   yes(!scale(2).cacheHit&&Files.readString(output).equals(bytes),"wrong release action cache rejected");
+   yes(!repair(output).cacheHit&&Files.readString(output).equals(bytes),"wrong release action cache rejected");
    damaged=new JSONObject(bytes);damaged.put("name","other macro");write(output,damaged.toString());
-   yes(!scale(2).cacheHit&&Files.readString(output).equals(bytes),"wrong OEM metadata cache rejected");
+   yes(!repair(output).cacheHit&&Files.readString(output).equals(bytes),"wrong OEM metadata cache rejected");
    damaged=new JSONObject(bytes);damaged.getJSONArray("events").remove(1);write(output,damaged.toString());
-   yes(!scale(2).cacheHit,"missing release cache rejected");
-   write(output,"broken");yes(scale(2).success&&!scale(2).evidenceSource.equals("UNKNOWN"),"broken cache recovers");
+   yes(!repair(output).cacheHit&&Files.readString(output).equals(bytes),"missing release cache rejected");
+   write(output,"broken");yes(repair(output).success&&!scale(2).evidenceSource.equals("UNKNOWN"),"broken cache recovers");
    FileTime saved=Files.getLastModifiedTime(source);write(source,recording(5000));Files.setLastModifiedTime(source,saved);
    ComboMotionPrivateScaler.Result changed=scale(2);
    yes(changed.success&&!changed.cacheIdentity.equals(first.cacheIdentity)&&changed.sourceSpanMs==4000&&changed.outputSpanMs==2000,"same-size and mtime content change invalidates identity");

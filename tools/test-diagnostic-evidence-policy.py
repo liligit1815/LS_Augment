@@ -218,6 +218,7 @@ public final class TestFeatureDiagnosticAdapters {
         class Builder { Handle intercept(Hooker value) { callback=value;return new Handle(); } }
         Builder prepareFeatureHook(Method method,String id,boolean before) { return new Builder(); }
         void registerFeatureHook(Handle handle) {}
+        void logFeatureInfo(String message){}
         void logFeatureError(String message,Throwable error) { throw new AssertionError(message,error); }
     }
     static class OemHooks {

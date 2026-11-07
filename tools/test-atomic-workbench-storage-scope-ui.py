@@ -27,7 +27,7 @@ def member(source, signature):
 
 BUNDLE = '''package android.os;import java.util.*;public class Bundle {
  public static final Object CREATOR=new Object();final Map<String,Object>d=new HashMap<>();public Bundle(){}public Bundle(Bundle b){d.putAll(b.d);}
- public Object get(String k){return d.get(k);}public void putString(String k,String v){d.put(k,v);}public void putBoolean(String k,boolean v){d.put(k,v);}public void putInt(String k,int v){d.put(k,v);}public void remove(String k){d.remove(k);}public void put(String k,Object v){d.put(k,v);}public void setClassLoader(ClassLoader l){}
+ public boolean containsKey(String k){return d.containsKey(k);}public java.util.Set<String> keySet(){return d.keySet();}public int getInt(String k){return d.get(k) instanceof Integer?(Integer)d.get(k):0;}public boolean getBoolean(String k){return getBoolean(k,false);}public String getString(String k){return getString(k,null);}public Object get(String k){return d.get(k);}public void putString(String k,String v){d.put(k,v);}public void putBoolean(String k,boolean v){d.put(k,v);}public void putInt(String k,int v){d.put(k,v);}public void remove(String k){d.remove(k);}public void put(String k,Object v){d.put(k,v);}public void setClassLoader(ClassLoader l){}
  public String getString(String k,String v){return d.get(k) instanceof String?(String)d.get(k):v;}public boolean getBoolean(String k,boolean v){return d.get(k) instanceof Boolean?(Boolean)d.get(k):v;}
 }'''
 
@@ -39,7 +39,7 @@ class Queue {
  void run(){Runnable r=jobs.poll();if(r!=null)r.run();}void drain(){int n=0;while(!jobs.isEmpty()){if(++n>100)throw new AssertionError("queue replay");run();}}void tick(){if(!delayed.isEmpty()){Runnable r=delayed.keySet().iterator().next();delayed.remove(r);r.run();}}
 }
 class ResetWriteFence {static long now=5;static boolean stale(long n){return n!=now;}}
-class AtomicWorkbenchProtocol {static final int WINDOW_COUNT=4,TX_STATUS=3;}
+class AtomicWorkbenchProtocol {static final int WINDOW_COUNT=4,WINDOW_POOL_COUNT=8,TX_STATUS=3; PROTOCOL_DOMAIN}
 class View {static final int GONE=8,VISIBLE=0;}
 class TextUtils {static boolean equals(CharSequence a,CharSequence b){return Objects.equals(a==null?null:a.toString(),b==null?null:b.toString());}}
 class TextView {String text="";int visibility=View.GONE,sets,visibilityChanges;CharSequence getText(){return text;}void setText(String s){text=s;sets++;}int getVisibility(){return visibility;}void setVisibility(int v){visibility=v;visibilityChanges++;}}
@@ -115,6 +115,10 @@ def sources():
     cm = ['Bundle statusForStorageRecheck(', 'static int taskStorageScope(', 'private Bundle request(',
           'private Bundle requestOnEndpoint(', 'private IBinder requireEndpoint(', 'private static void requireWorkerThread(']
     click = member(activity, 'status.setOnClickListener(view ->')
+    protocol = (SRC / 'AtomicWorkbenchProtocol.java').read_text(encoding='utf-8')
+    keys = re.findall(r'private static final java\.util\.Set<String> RECOVERY_.*?;', protocol, re.S)
+    domain = '\n'.join([*keys, *(member(protocol, signature) for signature in
+        ('private static Bundle recoveryOwner(', 'static boolean completeRecoveryDomain(', 'private static boolean validRecoveryOwner('))])
     click_body = click[click.index('{')+1:-1]
     return {
         'android/os/Bundle.java': BUNDLE,
@@ -122,7 +126,7 @@ def sources():
         'android/os/RemoteException.java': 'package android.os;public class RemoteException extends Exception{public RemoteException(String s){super(s);}}',
         'android/os/Parcel.java': 'package android.os;public class Parcel{public static int recycled;public Bundle result;public static Parcel obtain(){return new Parcel();}public void readException(){}public Bundle readTypedObject(Object creator){return result;}public void recycle(){recycled++;}}',
         'android/os/Looper.java': 'package android.os;public class Looper{public static boolean onMain;static final Looper MAIN=new Looper();public static Looper getMainLooper(){return MAIN;}public static Looper myLooper(){return onMain?MAIN:null;}}',
-        'ls/augment/com/AtomicWorkbenchActivity.java': SUPPORT + CLIENT_HEAD + '\n'.join(member(client, m) for m in cm) + '}\n' + ACTIVITY_HEAD + '\n'.join(member(activity, m) for m in am) + '\nvoid clickStatus(){' + click_body + '}\n' + TEST,
+        'ls/augment/com/AtomicWorkbenchActivity.java': SUPPORT.replace('PROTOCOL_DOMAIN', domain) + CLIENT_HEAD + '\n'.join(member(client, m) for m in cm) + '}\n' + ACTIVITY_HEAD + '\n'.join(member(activity, m) for m in am) + '\nvoid clickStatus(){' + click_body + '}\n' + TEST,
     }, activity, client
 
 CONTROLS = [

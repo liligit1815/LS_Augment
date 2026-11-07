@@ -43,6 +43,7 @@ final class SuperResolutionRuntimeHook {
     private static Method propertySet;
     // All accesses belong to the single native worker. The provider also applies CAS.
     private static String ownerRevision;
+    private static long providerWaitStarted;
 
     private SuperResolutionRuntimeHook() { }
 
@@ -92,7 +93,24 @@ final class SuperResolutionRuntimeHook {
                     && ConfigSchema.truthy(snapshot.get(GameOptions.PLUGINS));
             String boot = ModuleRuntimeStatus.bootId();
             if (!boot.matches("[a-fA-F0-9-]{36}")) throw new IllegalStateException("boot_identity_unavailable");
-            Owner owner = readOwner(context);
+            Owner owner;
+            try {
+                owner = readOwner(context);
+                providerWaitStarted = 0;
+            } catch (Exception unavailable) {
+                if ("source_version".equals(unavailable.getMessage())) {
+                    providerWaitStarted = 0;
+                    publish(context, "waiting_system_server_restart", "");
+                    return;
+                }
+                if (!ConfigReadRetry.transientProviderFailure(unavailable)
+                        && !"owner_provider_unavailable".equals(unavailable.getMessage())) throw unavailable;
+                long now = System.nanoTime();
+                if (providerWaitStarted == 0) providerWaitStarted = now;
+                if (now - providerWaitStarted >= TimeUnit.MINUTES.toNanos(2)) throw unavailable;
+                publish(context, "waiting_provider", "");
+                return;
+            }
             if (owner != null && !boot.equals(owner.boot)) {
                 // These properties are not persistent. A prior boot's values must
                 // never overwrite the current boot's native defaults or other owners.

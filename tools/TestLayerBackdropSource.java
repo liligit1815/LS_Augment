@@ -76,6 +76,21 @@ public final class TestLayerBackdropSource {
         Handler.advance(200);image=result();image.bitmap.pixels[1]=0xffeeeeee;complete(image);
         check(source.revision()!=revision,"localized pixel change refreshes optical texture");
         host.shown=false;Handler.advance(1201);check(!source.isValid(),"hidden stale source cannot render");source.release();
+
+        // A static scene is allowed to poll slowly, but an old crop must not
+        // impose that slow cadence on a newly visible control-center frame.
+        for(int change=0;change<3;change++){
+            source=fresh();request(source);complete(result());
+            for(int i=0;i<3;i++){Handler.advance(200);complete(result());}
+            int calls=service.calls;Handler.advance(200);
+            if(change==0)host.x=12;
+            else if(change==1)source.setRegion(new Rect(0,0,90,55));
+            else{host.scaleX=.8f;source.request();host.scaleX=1;}
+            request(source);
+            check(service.calls==calls+1,"invalid crop/size/transition resets 1s idle cadence "+change);
+            complete(result());check(source.isValid(),"new first frame still passes geometry/layer checks "+change);
+            source.release();
+        }
         System.out.println("LayerBackdropSource runtime: exclusions, callback races, timeout, lifecycle, safety and revision passed (Android facade; no GPU validation)");
     }
 }

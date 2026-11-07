@@ -40,7 +40,7 @@ public static void main(String[] args)throws Exception {
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalCycling.class.getClassLoader());
 check(module.errors==0&&AugmentModule.hooks.size()==20,"four scenes share channel; native capability parsing is observed");
 Context context=new Context();CardManager manager=new CardManager();StarryIslandCardRender renderer=start(context,manager);
-FeatureSettings.change("native",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);FeatureSettings.change("scenic_guide",true);FeatureSettings.change("nearby_charging",true);
+FeatureSettings.change("duo",true);FeatureSettings.change("master",true);FeatureSettings.change("calendar_meeting",true);FeatureSettings.change("scenic_guide",true);FeatureSettings.change("nearby_charging",true);
 MeetingCard meeting=new MeetingCard();ElectronicGuideCard scenic=new ElectronicGuideCard();ChargingReminderCard charging=new ChargingReminderCard();ReturnBikeCard bike=new ChildBike();
 List<ICard> all=List.of(meeting,scenic,charging,bike);renderer.render(all);check(renderer.selected.equals(List.of(meeting,scenic,charging)),"bike defaults off");
 FeatureSettings.change("cycling",true);check(renderer.selected.equals(List.of(meeting,scenic,charging))&&FeatureSettings.diagnostics.get("cycling_source_capability").contains("return_bike_tool_not_registered"),"class presence alone does not advertise working return support");

@@ -53,6 +53,9 @@ TEXTURE["android/view/TextureView.java"] = TEXTURE["android/view/TextureView.jav
 
 PRESENTATION_HEAD = r'''package ls.augment.com;import android.os.*;import java.util.*;import static ls.augment.com.AtomicWorkbenchWindowPresentationPolicy.*;
 public class TestPresentation {
+ static class WindowMotion{void close(){}}WindowMotion windowMotion;
+ void beginWindowMotion(Runnable after){if(after!=null)after.run();}
+
  // Presentation-only boundary: these older fixtures never return storage-scope metadata.
  // The actual scope observer/typed facts/pinned transport are executed by test-atomic-workbench-storage-scope-ui.py.
  int scopeObservationCallbacks,scopeCancellationCallbacks;
@@ -79,7 +82,7 @@ public class TestPresentation {
  AtomicWorkbenchWorkspaceModel model=new AtomicWorkbenchWorkspaceModel();List<String> events=new ArrayList<>();String status,operationNotice;int renders,polls;
  static class Queue {List<Runnable> values=new ArrayList<>();void removeCallbacks(Runnable r){values.removeIf(v->v==r);}void post(Runnable r){values.add(r);}void postDelayed(Runnable r,long delay){values.add(r);}void execute(Runnable r){values.add(r);}void drain(){List<Runnable> copy=new ArrayList<>(values);values.clear();copy.forEach(Runnable::run);}}
  Queue main=new Queue(),WORKER=new Queue();Runnable homePresentationPoll=this::pollHomePresentation;
- static class AtomicWorkbenchClient {void clearGestureTarget(){}Bundle state=new Bundle();Bundle status(){return state;}}AtomicWorkbenchClient client=new AtomicWorkbenchClient();
+ static class AtomicWorkbenchClient {static ArrayList<Bundle> recoveryPoolWindows(Bundle state){return AtomicWorkbenchProtocol.recoveryPoolWindows(state);}void clearGestureTarget(){}Bundle state=new Bundle();Bundle status(){return state;}}AtomicWorkbenchClient client=new AtomicWorkbenchClient();
  int coverDismisses,focusCalls,homeCalls,lastFocused=-1;void lifecycleDiagnostic(String e,String d){events.add(e+" "+d);}void dismissHomeTransitionCover(){coverDismisses++;}void captureHomeTransitionCover(){}void showStatus(String s){status=s;}void renderWorkspace(){renders++;}void schedulePoll(){polls++;}
  int lastHomeSide=-99;boolean canInteract(){return active&&!destroyed&&!closing&&!busy&&!recoveryPending;}void focusWindow(int id){focusCalls++;lastFocused=id;busy=true;}void showNativeHome(int side){homeCalls++;lastHomeSide=side;busy=true;}
  Object pendingTaskOperation;int taskQueries;void queryPendingTaskOperation(){taskQueries++;}
@@ -176,7 +179,7 @@ PROVIDER = {
     "android/database/Cursor.java": "package android.database;public interface Cursor {}",
     "android/net/Uri.java": "package android.net;public class Uri {}",
     "ls/augment/com/ResetWriteFence.java": "package ls.augment.com;public class ResetWriteFence {static boolean blocked,owner;static long generation=1;static boolean blocked(){return blocked;}static boolean owns(){return owner;}static boolean active(){return blocked;}static long generation(){return generation;}}",
-    "ls/augment/com/AtomicWorkbenchProtocol.java": "package ls.augment.com;public class AtomicWorkbenchProtocol {static final String AUTHORITY=\"ls.augment.com.workbench\",PACKAGE=\"ls.augment.com\",REGISTER=\"register_root\";static final int VERSION=1,WINDOW_COUNT=4;static boolean sameToken(String a,String b){return a!=null&&a.equals(b);}}",
+    "ls/augment/com/AtomicWorkbenchProtocol.java": "package ls.augment.com;public class AtomicWorkbenchProtocol {static final int WINDOW_POOL_COUNT=AtomicWorkbenchSlotDomain.POOL_SIZE;static final String AUTHORITY=\"ls.augment.com.workbench\",PACKAGE=\"ls.augment.com\",REGISTER=\"register_root\";static final int VERSION=1,WINDOW_COUNT=4;static boolean sameToken(String a,String b){return a!=null&&a.equals(b);}}",
     "ls/augment/com/TestGestureProvider.java": r'''package ls.augment.com;import android.os.*;import android.content.*;import android.content.pm.*;
 public class TestGestureProvider {static int checks,cases;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}interface Case{void run();}static void denied(Case c){boolean denied=false;try{c.run();}catch(SecurityException|IllegalArgumentException e){denied=true;}check(denied,"unauthorized route disclosure");}
  static void test(Case c){SystemClock.now+=10000;ResetWriteFence.blocked=false;ResetWriteFence.generation=1;Binder.caller=10066;PackageManager.homeUid=10066;c.run();cases++;}
@@ -192,7 +195,7 @@ public class TestGestureProvider {static int checks,cases;static void check(bool
  test(()->{Fixture f=new Fixture();f.publish();AtomicWorkbenchProvider.clearGestureTarget(f.pending);check(!f.read().getBoolean("active"),"stopped UI route retained");f.end();});
  test(()->{Fixture f=new Fixture();f.publish();f.end();Fixture next=new Fixture();check(!next.read().getBoolean("active"),"new session inherited old main");AtomicWorkbenchProvider.publishGestureTarget(f.pending,9,1,77,"unique");check(!next.read().getBoolean("active"),"retired owner wrote new route");next.publish();AtomicWorkbenchProvider.clearGestureTarget(f.pending);check(next.read().getBoolean("active"),"retired owner cleared new route");next.end();});
  test(()->{Fixture f=new Fixture();f.publish();check("unique".equals(f.read().getString("display_unique_id")),"Root-confirmed display identity was lost");for(String bad:new String[]{null,"","with spaces","x".repeat(257)}){AtomicWorkbenchProvider.publishGestureTarget(f.pending,9,2,77,bad);check(!f.read().getBoolean("active"),"invalid display identity accepted");}f.end();});
- test(()->{Fixture f=new Fixture();for(int[] v:new int[][]{{0,0,77},{9,-1,77},{9,4,77},{9,0,-1}}){AtomicWorkbenchProvider.publishGestureTarget(f.pending,v[0],v[1],v[2],"unique");check(!f.read().getBoolean("active"),"invalid target accepted");}f.end();});
+ test(()->{Fixture f=new Fixture();for(int[] v:new int[][]{{0,0,77},{9,-1,77},{9,AtomicWorkbenchSlotDomain.POOL_SIZE,77},{9,0,-1}}){AtomicWorkbenchProvider.publishGestureTarget(f.pending,v[0],v[1],v[2],"unique");check(!f.read().getBoolean("active"),"invalid target accepted");}f.end();});
  test(()->{Fixture f=new Fixture();Binder.caller=10066;denied(()->f.provider.call("register_root",null,new Bundle()));f.end();});
  System.out.println("GESTURE PROVIDER RESULT "+cases+" cases; "+checks+" assertions");}}
 ''',
@@ -230,11 +233,11 @@ def main():
         diagnostics = (SRC / "AtomicWorkbenchDiagnostics.java").read_text(encoding="utf-8")
         safe_method = diagnostics[diagnostics.index("    static String safe("):diagnostics.index("    private static void append(")]
         body = PRESENTATION_HEAD + "\n".join(MEMBER(activity, name) for name in (
-            "private Roles presentationRoles()", "private Lease presentationLease(", "private boolean confirmPresentationPromotion(", "private void invalidatePresentationGeometry()", "private boolean completeHomePresentation()", "private void pollHomePresentation()", "private void clearHomePresentation()", "private boolean canReuseHomeFrame(Slot slot)",
+            "private static Bundle poolStatus(", "private static ArrayList<Bundle> poolWindowsOrNull(", "private Roles presentationRoles()", "private Lease presentationLease(", "private boolean confirmPresentationPromotion(", "private void invalidatePresentationGeometry()", "private boolean completeHomePresentation()", "private void pollHomePresentation()", "private void clearHomePresentation()", "private boolean canReuseHomeFrame(Slot slot)",
             "private static long homeDrawBoundary(Bundle state)", "private static String readinessText(Bundle state, String key)", "private String homePresentationDetail(Slot slot, String reason)", "private void homePresentationDiagnostic(String event, Slot slot, String reason, String extra)", "private void showDesktop()", "private void retryHomePresentation()", "private void beginHomePresentation(int id, int request)", "private boolean prepareHomeSurface(Slot slot)")) + MEMBER(activity, "status.setOnClickListener(view -> ").replace("status.setOnClickListener(view -> ", "void statusClick()", 1) + safe_method + PRESENTATION_TEST
         body = body.replace("// ACTUAL_SURFACE_DIAGNOSTIC", MEMBER((SRC / "AtomicWorkbenchSurface.java").read_text(encoding="utf-8"), "String diagnosticState()"))
-        SUPPORT["compile_run"](work / "presentation", {**COMMON, "ls/augment/com/TestPresentation.java": body},
-                               ["AtomicWorkbenchWorkspaceModel.java","AtomicWorkbenchWindowPresentationPolicy.java","AtomicWorkbenchWindowLayoutPlan.java"], "ls.augment.com.TestPresentation")
+        SUPPORT["compile_run"](work / "presentation", {**COMMON, "android/content/ComponentName.java": SUPPORT["migration_sources"]()["android/content/ComponentName.java"], "ls/augment/com/TestPresentation.java": body},
+                               ["AtomicWorkbenchWorkspaceModel.java","AtomicWorkbenchWindowPresentationPolicy.java","AtomicWorkbenchWindowLayoutPlan.java","AtomicWorkbenchProtocol.java"], "ls.augment.com.TestPresentation")
         cover = COVER_HEAD + MEMBER(activity, "private void captureHomeTransitionCover()") + MEMBER(activity, "private void dismissHomeTransitionCover()") + COVER_TEST
         SUPPORT["compile_run"](work / "cover", {"ls/augment/com/TestCover.java": cover}, ["AtomicWorkbenchWorkspaceModel.java"], "ls.augment.com.TestCover")
         provider = dict(PROVIDER)

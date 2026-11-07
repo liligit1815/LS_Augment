@@ -1,5 +1,6 @@
 """Execute actual media bridge source, favorite, progress and notification boundaries."""
 from pathlib import Path
+import os
 import argparse
 import os
 import runpy
@@ -9,7 +10,7 @@ import tempfile
 BASE = runpy.run_path(str(Path(__file__).with_name("test-atomic-workbench-media.py")))
 ROOT, SRC, STUBS = BASE["ROOT"], BASE["SRC"], BASE["STUBS"]
 JDK = Path(os.environ.get("JAVA_HOME", "C:/Program Files/Android/openjdk/jdk-21.0.8"))
-PRODUCTION = ["AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol"]
+PRODUCTION = ["AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol", "AtomicWorkbenchSlotDomain", "AtomicWorkbenchRecoveryScope"]
 
 TEST = r'''package ls.augment.com;
 import android.app.*;import android.content.*;import android.content.pm.*;import android.os.*;import android.media.*;import android.media.session.*;import android.service.notification.*;import android.graphics.*;import java.util.*;
@@ -83,9 +84,9 @@ def run(work, mutation=None):
     files = []
     for name, value in all_sources.items():
         path = work / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value, encoding="utf-8"); files.append(str(path))
-    compiled = subprocess.run([str(JDK / "bin/javac.exe"), "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "--release", "17", "-encoding", "UTF-8", "-d", str(work / "classes"), *files], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
+    compiled = subprocess.run([str(JDK / "bin/javac.exe"), "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "--release", "17", "-encoding", "UTF-8", "-cp", BASE["host_json_jar"](), "-d", str(work / "classes"), *files], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
     if compiled.returncode: raise AssertionError(compiled.stdout + compiled.stderr)
-    return subprocess.run([str(JDK / "bin/java.exe"), "-cp", str(work / "classes"), "ls.augment.com.TestMediaExtended"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
+    return subprocess.run([str(JDK / "bin/java.exe"), "-cp", os.pathsep.join((str(work/"classes"),BASE["host_json_jar"]())), "ls.augment.com.TestMediaExtended"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
 
 
 def main():

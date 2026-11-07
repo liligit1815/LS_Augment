@@ -24,15 +24,21 @@ final class BatteryPercentageHook {
     private static final long RAW_AGE_MS = 30_000;
     private static final long POLL_MS = 5_000;
     private static final BatteryChargeEstimate ESTIMATE = new BatteryChargeEstimate();
+    // Independent baselines prevent cached HAL readings and a live kernel gauge
+    // from being subtracted from one another on dual-cell devices.
+    private static final BatteryChargeEstimate GAUGE = new BatteryChargeEstimate();
     private static boolean interactive, polling;
-    private static long pollSession, counterSequence, nextFullRead;
+    private static long pollSession, counterSequence, nextFullRead, nextGaugeRead;
     private static String lastDisplay="";
     private static final class Reading{
         final int level,status,raw,estimate;
         final long rawAt,counterAt;
+        final boolean directGauge;
         Reading(int level,int status,int raw,long at){
             this.level=level;this.status=status;this.raw=raw;rawAt=at;
-            estimate=ESTIMATE.value();counterAt=ESTIMATE.sampledAt();
+            directGauge=GAUGE.value()>=0 && (ESTIMATE.value()<0 || GAUGE.sampledAt()>ESTIMATE.sampledAt());
+            BatteryChargeEstimate selected=directGauge?GAUGE:ESTIMATE;
+            estimate=selected.value();counterAt=selected.sampledAt();
         }
         boolean hasRaw(long now){
             if(!BatteryPercentagePolicy.validRaw(raw,level)||now-rawAt>RAW_AGE_MS)return false;
@@ -106,11 +112,16 @@ final class BatteryPercentageHook {
     private static void oemSample(int value,long received){
         Reading old=reading;
         int raw=BatteryPercentagePolicy.validRaw(value,old.level)?value:0;
-        counterSequence++;
-        if(raw>0)ESTIMATE.anchor(raw,received);
+        if(raw==old.raw)return;
+        if(raw>0)anchor(raw,received);
         reading=new Reading(old.level,old.status,raw,received);
         expireRaw(received,raw);
         schedule();
+    }
+    private static void anchor(int precise,long at){
+        counterSequence++;
+        ESTIMATE.anchor(precise,at);
+        GAUGE.anchor(precise,at);
     }
     private static void expireRaw(long at,int raw){
         MAIN.removeCallbacks(EXPIRE);
@@ -160,9 +171,9 @@ final class BatteryPercentageHook {
         if(old.status!=nextStatus||!BatteryPercentagePolicy.validRaw(raw,level))raw=0;
         if(scale>100){
             int precise=(int)Math.round(next*10000d/scale);
-            if(BatteryPercentagePolicy.validRaw(precise,level)){raw=precise;at=now;ESTIMATE.anchor(raw,now);expireRaw(at,raw);}
+            if(BatteryPercentagePolicy.validRaw(precise,level)){raw=precise;at=now;if(raw!=old.raw || old.status!=nextStatus){anchor(raw,now);expireRaw(at,raw);}else at=old.rawAt;}
         }
-        if(nextStatus==BatteryManager.BATTERY_STATUS_FULL&&level==100)ESTIMATE.anchor(10_000,now);
+        if(nextStatus==BatteryManager.BATTERY_STATUS_FULL&&level==100)anchor(10_000,now);
         reading=new Reading(level,nextStatus,raw,at);
         updatePolling();
         schedule();
@@ -176,9 +187,15 @@ final class BatteryPercentageHook {
         MAIN.removeCallbacks(POLL);
         if(wanted)MAIN.post(POLL);
     }
+    private static long readGauge(String attribute){
+        try{return Long.parseLong(Files.readAllLines(Paths.get("/sys/class/power_supply/battery",attribute)).get(0).trim());}
+        catch(IOException|RuntimeException unavailable){return -1;}
+    }
     private static void pollCounter(){
         if(!polling)return;
         long session=pollSession,sequence=counterSequence,now=SystemClock.elapsedRealtime();
+        Reading started=reading;
+        boolean readDirect=now>=nextGaugeRead;
         boolean readFull=!ESTIMATE.hasFull()&&now>=nextFullRead;
         if(readFull)nextFullRead=now+300_000;
         ForkJoinPool.commonPool().execute(()->{
@@ -187,14 +204,17 @@ final class BatteryPercentageHook {
                 BatteryManager manager=context.getSystemService(BatteryManager.class);
                 if(manager!=null)counter=manager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
             }catch(RuntimeException unavailable){/* Broadcast counters may still be available. */}
-            if(readFull)try{
-                full=Long.parseLong(Files.readAllLines(Paths.get("/sys/class/power_supply/battery/charge_full")).get(0).trim());
-            }catch(IOException|RuntimeException unavailable){/* OEM broadcasts may supply the learned full capacity. */}
+            long direct=readDirect?readGauge("charge_counter"):-1;
+            if(readFull)full=readGauge("charge_full");
             long charge=counter,capacity=full;
             MAIN.post(()->{
                 if(session!=pollSession)return;
                 Reading old=reading;
-                ESTIMATE.sample(old.level,sequence==counterSequence?charge:-1,capacity,SystemClock.elapsedRealtime());
+                long at=SystemClock.elapsedRealtime();
+                ESTIMATE.sample(old.level,sequence==counterSequence?charge:-1,capacity,at);
+                if(readDirect && direct<0)nextGaugeRead=at+300_000;
+                if(old.level==started.level && old.status==started.status && (old.raw==0 || old.rawAt==started.rawAt))
+                    GAUGE.sample(old.level,direct,ESTIMATE.capacity(),at);
                 reading=new Reading(old.level,old.status,old.raw,old.rawAt);
                 if(old.estimate!=reading.estimate || !lastDisplay.equals(text(reading.level)))schedule();
                 MAIN.postDelayed(POLL,charge<0&&!ESTIMATE.hasFull()?RAW_AGE_MS:POLL_MS);
@@ -224,7 +244,7 @@ final class BatteryPercentageHook {
             Reading sample=reading;
             if(context!=null){
                 String display=text(sample.level);lastDisplay=display;
-                String source=display.contains(".")?(sample.hasRaw(SystemClock.elapsedRealtime())?"oem_hundredths":"charge_counter"):"system_integer";
+                String source=display.contains(".")?(sample.hasRaw(SystemClock.elapsedRealtime())?"oem_hundredths":sample.directGauge?"sysfs_charge_counter":"charge_counter"):"system_integer";
                 FeatureSettings.diagnostic(context,"ls_augment_battery_percentage_runtime","display="+display+";level="+sample.level+";raw="+sample.raw+";status="+sample.status+";source="+source+";estimate="+sample.estimate+";hasFull="+ESTIMATE.hasFull()+";meters="+METERS.size());
             }
         }finally{refreshing=false;}

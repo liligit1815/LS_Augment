@@ -6,6 +6,7 @@ from pathlib import Path
 import argparse
 import os
 import runpy
+import os
 import subprocess
 import tempfile
 
@@ -14,7 +15,9 @@ HOME = runpy.run_path(str(Path(__file__).with_name("test-atomic-workbench-home-h
 ROOT, SRC, JDK = BASE["ROOT"], BASE["SRC"], BASE["JDK"]
 PRODUCTION = BASE["PRODUCTION"] + ["hook/AtomicWorkbenchMediaEvidenceReflect", "hook/AtomicWorkbenchNotificationRecords",
     "hook/AtomicWorkbenchNotificationEvidenceHook", "hook/AtomicWorkbenchMediaSessionEvidenceHook", "hook/AtomicWorkbenchSystemRootAuthority",
-    "AtomicWorkbenchNotificationRecord", "AtomicWorkbenchNotificationEvidenceClient", "AtomicWorkbenchNotifications"]
+    "AtomicWorkbenchNotificationRecord", "AtomicWorkbenchNotificationEvidenceClient", "AtomicWorkbenchNotifications",
+    "AtomicWorkbenchNotificationActionClient", "AtomicWorkbenchNotificationOpenRequest",
+    "hook/AtomicWorkbenchNotificationAdapter", "hook/HookCompatibility"]
 STUBS = dict(BASE["STUBS"])
 for name in ("io/github/libxposed/api/XposedInterface.java", "ls/augment/com/hook/AugmentModule.java"):
     STUBS[name] = HOME["SOURCES"][name]
@@ -122,7 +125,7 @@ public class TestMediaEvidence {
  static Bundle request(String source){Bundle b=new Bundle();b.putInt("schema",1);b.putString("request_id",String.format("%032x",++ids));b.putString("source_id",source);b.putString("track_id","");b.putLong("created_elapsed",10000);b.putLong("deadline_elapsed",15000);return b;}
  public static void main(String[] args)throws Throwable{
   MediaBootstrap.install();
-  test("actual private TX plus shared fresh authority proves notification-only controller",()->{F f=new F();AtomicWorkbenchMediaSessionEvidenceClient.Evidence e=f.proof();yes(e!=null,"live record not proved");yes(ContentResolver.calls==2,"fresh Provider fences missing");yes(f.binder.originals==0,"private transaction leaked to AIDL");Bundle s=f.state();yes(s.getBoolean("has_session")&&s.getString("controller_origin").equals("verified_notification")&&s.getBoolean("can_play"),"proved inactive controller unavailable");Bundle r=f.media.command("play",s.getString("session_id"));yes(f.player.controls.play==1&&r.getBoolean("action_dispatched")&&!r.getBoolean("action_verified"),"real proven transport not dispatched or void claimed verified");});
+  test("actual private TX plus shared fresh authority proves notification-only controller",()->{F f=new F();AtomicWorkbenchMediaSessionEvidenceClient.Evidence e=f.proof();yes(e!=null,"live record not proved");yes(ContentResolver.calls==2,"fresh Provider fences missing");yes(f.binder.originals==0,"private transaction leaked to AIDL");Bundle s=f.state();yes(s.getBoolean("has_session")&&s.getString("controller_origin").equals("verified_notification")&&s.getBoolean("can_play"),"proved inactive controller unavailable: "+s.values);Bundle r=f.media.command("play",s.getString("session_id"));yes(f.player.controls.play==1&&r.getBoolean("action_dispatched")&&!r.getBoolean("action_verified"),"real proven transport not dispatched or void claimed verified");});
   for(String cause:List.of("not_registered","destroyed","uid","user","package","token","controller","notification_missing","notification_uid","notification_user","notification_package","notification_token","secret","summary"))test("actual records reject "+cause,()->{F f=new F();switch(cause){case "not_registered":f.service.record=null;break;case "destroyed":f.service.record.mDestroyed=true;break;case "uid":f.service.record.mOwnerUid++;break;case "user":f.service.record.mUserId++;break;case "package":f.service.record.mPackageName="other.app";break;case "token":f.service.record.mSessionToken=new MediaSession.Token(1010123,9999);break;case "controller":f.service.record.mController=null;break;case "notification_missing":f.nms.remove(f.record);break;case "notification_uid":f.notification.uid++;break;case "notification_user":f.notification.user++;break;case "notification_package":f.notification.pkg="other.app";break;case "notification_token":f.notification.notification.extras.putParcelable(Notification.EXTRA_MEDIA_SESSION,new MediaSession.Token(1010123,9999));break;case "secret":f.notification.notification.visibility=-1;break;default:f.notification.notification.flags=512;}yes(f.proof()==null,"unsafe live proof accepted");yes(!f.state().getBoolean("has_session")&&f.player.controls.total()==0,"unproved token became authority");});
   for(String cause:List.of("caller_uid","caller_pid","dead_endpoint","dead_owner","reset","foreground","principal_user","cleanup"))test("Root principal rejects "+cause,()->{F f=new F();switch(cause){case "caller_uid":Binder.uid=1010555;break;case "caller_pid":Binder.pid=99;break;case "dead_endpoint":f.endpoint.alive=false;break;case "dead_owner":f.owner.alive=false;break;case "reset":ContentResolver.current=false;break;case "foreground":ActivityManager.current=11;break;case "principal_user":f.auth.putInt("user",11);break;default:f.auth.putBoolean("cleanupOnly",true);}yes(f.proof()==null,"invalid principal minted discovery authority");});
   test("notification update preserves lifetime and increments revision",()->{F f=new F();var first=f.proof();StatusBarNotification n=notification(f.player);f.notification=n;f.record=new NotificationRecord(n);f.nms.publish(f.record);var second=f.proof();yes(first!=null&&second!=null&&first.sameLifetime(second)&&!first.same(second)&&second.notificationRevision==first.notificationRevision+1,"ordinary update identity wrong");});
@@ -160,6 +163,11 @@ BINDER_FLAGS_HELPERS = ' static Parcel stageMediaPacket(F f){Parcel d=Parcel.obt
 TEST=TEST.replace('  System.out.println("MEDIA EVIDENCE RESULT "',BINDER_FLAGS_TEST+'  System.out.println("MEDIA EVIDENCE RESULT "',1)
 _wire_end=TEST.rfind('}');TEST=TEST[:_wire_end]+BINDER_FLAGS_HELPERS+TEST[_wire_end:]
 
+STUBS['android/app/INotificationManager.java'] = STUBS['android/app/INotificationManager.java'].replace('interface INotificationManager {', 'interface INotificationManager { abstract class Stub implements android.os.IBinder {}')
+STUBS['ls/augment/com/hook/AtomicWorkbenchNotificationActionsBroker.java']='package ls.augment.com.hook;class AtomicWorkbenchNotificationActionsBroker{static final int TX=0xD04E0A;static void prepare(ClassLoader l){}static void handle(Object s,android.os.Parcel d,android.os.Parcel r){throw new AssertionError("actions outside evidence scope");}}'
+_nms='com/android/server/notification/NotificationManagerService$13.java'
+STUBS[_nms]=STUBS[_nms].replace('implements IBinder','extends android.app.INotificationManager.Stub')
+
 def run(work, mutation=None, sdk=False):
     sources = dict(STUBS)
     sources["ls/augment/com/TestMediaEvidence.java"] = TEST
@@ -170,16 +178,16 @@ def run(work, mutation=None, sdk=False):
             value = value.replace(mutation[1], mutation[2])
         sources["ls/augment/com/" + name + ".java"] = value
     if sdk:
-        sources = {k: v for k, v in sources.items() if k.startswith(("io/github/", "ls/augment/com/hook/AugmentModule.java", "ls/augment/com/AtomicWorkbenchDiagnostics.java")) or k in ["ls/augment/com/" + n + ".java" for n in PRODUCTION]}
+        sources = {k: v for k, v in sources.items() if k=="ls/augment/com/hook/AtomicWorkbenchNotificationActionsBroker.java" or k.startswith(("io/github/", "ls/augment/com/hook/AugmentModule.java", "ls/augment/com/AtomicWorkbenchDiagnostics.java")) or k in ["ls/augment/com/" + n + ".java" for n in PRODUCTION]}
     files = []
     for name, value in sources.items():
         path = work / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value, encoding="utf-8"); files.append(str(path))
     cmd = [str(JDK / "bin/javac.exe"), "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "--release", "17", "-encoding", "UTF-8", "-d", str(work / "classes")]
-    if sdk: cmd += ["-cp", str(ROOT / "audit-output/android-sdk/platforms/android-36/android.jar")]
+    cmd += ["-cp", str(ROOT/"audit-output/android-sdk/platforms/android-36/android.jar") if sdk else BASE["BASE"]["host_json_jar"]()]
     result = subprocess.run(cmd + files, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
     if result.returncode: raise AssertionError(result.stdout + result.stderr)
     if sdk: return result
-    return subprocess.run([str(JDK / "bin/java.exe"), "-cp", str(work / "classes"), "ls.augment.com.TestMediaEvidence"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
+    return subprocess.run([str(JDK / "bin/java.exe"), "-cp", os.pathsep.join((str(work/"classes"),BASE["BASE"]["host_json_jar"]())), "ls.augment.com.TestMediaEvidence"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=45)
 
 
 def main():

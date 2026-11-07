@@ -67,7 +67,11 @@ public class TestRecentsRadiusLoadingUi {
     SharedPreferences getSharedPreferences(String name,int mode){return preferences;}
     TestRecentsRadiusLoadingUi getApplicationContext(){return this;}
     Display getDisplay(){return display;} Resources getResources(){return resources;}
+    static final class R{static class string{static final int status_enhancementsettingsactivity_13=13;}}
+    static class ResourceContext{String getString(int key,Object value){if(key!=13)throw new AssertionError(key);return "圆角偏移 "+value;}}
+    static class NumericParameterEditor {static void linear(Ui ui,SeekBar bar,String title,double first,double step,String unit,View... targets){}}
     void build(){
+        TextView parameterTitle=new TextView();
         /*RESET*/
         recentsRadiusValue=new TextView();
         EnhancementOption option=RecentsCardRadiusOptions.options().get(1);
@@ -213,7 +217,7 @@ public class TestRecentsRadiusLoadingUi {
     static class Display {void getRealMetrics(android.util.DisplayMetrics m){m.widthPixels=1216;m.heightPixels=2688;}}
     static class Resources {android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}
     static class View {static final int VISIBLE=0,GONE=8;int visibility=VISIBLE;void setTag(Object tag){}void setVisibility(int v){if(onWorker)throw new AssertionError("widget write on worker");visibility=v;}}
-    static class TextView extends View {String text="";boolean everVisible;void setText(String s){text=s;record();}@Override void setVisibility(int v){super.setVisibility(v);record();}void record(){if(visibility==VISIBLE&&!text.isEmpty())everVisible=true;}}
+    static class TextView extends View {ResourceContext getContext(){return new ResourceContext();}String text="";boolean everVisible;void setText(String s){text=s;record();}@Override void setVisibility(int v){super.setVisibility(v);record();}void record(){if(visibility==VISIBLE&&!text.isEmpty())everVisible=true;}}
     static class LinearLayout extends View {void addView(View v,Object params){}}
     static class Ui {int muted,accent;SeekBar slider(){return new SeekBar(this);}TextView text(String t,int size,int color,boolean bold){TextView v=new TextView();v.setText(t);return v;}Object wrap(){return null;}int dp(int value){return value;}}
     static class SeekBar extends View {

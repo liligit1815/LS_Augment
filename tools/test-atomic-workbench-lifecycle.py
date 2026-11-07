@@ -87,6 +87,7 @@ final class RootHarness {
 
 CLIENT_HEAD = r'''package ls.augment.com;import android.os.*;import java.util.*;
 final class AtomicWorkbenchClient {
+ boolean nativeGestureActive(){return false;}
  final Object navigationLock=new Object();long navigationGeneration;boolean navigationStopped;
  boolean closed,dead,failRequest,requestKillsEndpoint;int homeCalls;AtomicWorkbenchClient recoveryClient;IBinder endpoint=new IBinder(){};
  Object pending=new Object(),deathRecipient=new Object();String observedReason,recoveryReason;int calls,reconnects;
@@ -182,7 +183,17 @@ final class ResetWriteFence {static boolean staleValue;static boolean stale(long
 final class AtomicWorkbenchCleanup {static final List<AtomicWorkbenchClient> owners=new ArrayList<>();
  static void take(AtomicWorkbenchClient c,String reason){AtomicWorkbenchLifecyclePolicy.requireReason(reason);c.setFailureListener(null);if(!owners.contains(c))owners.add(c);}
  static boolean pending(){return !owners.isEmpty();}}
+final class AtomicWorkbenchGestureGuide {static void entered(ActivityHarness host,long when){}}
 final class ActivityHarness extends ActivityBase {
+ boolean resumed=true;
+ static java.lang.ref.WeakReference<ActivityHarness> extractionHost=new java.lang.ref.WeakReference<>(null);
+ static class AppPlacementDrag {boolean ended;}AppPlacementDrag appPlacementDrag;
+ static class WindowMotion {boolean running(){return false;}void close(){}}WindowMotion windowMotion;
+ void beginWindowMotion(Runnable after){if(after!=null)main.post(after);}
+ static class PendingAppSurfaceLaunch {boolean dispatched,outputSyncRequested;int request,session;AtomicWorkbenchWorkspaceModel.LaunchPlan plan;}
+ PendingAppSurfaceLaunch pendingAppSurfaceLaunch;
+ void cancelPendingAppSurfaceLaunch(boolean redraw){if(pendingAppSurfaceLaunch!=null&&!pendingAppSurfaceLaunch.dispatched)pendingAppSurfaceLaunch=null;}
+
  // Presentation-only boundary: these older fixtures never return storage-scope metadata.
  // The actual scope observer/typed facts/pinned transport are executed by test-atomic-workbench-storage-scope-ui.py.
  int scopeObservationCallbacks,scopeCancellationCallbacks;
@@ -530,7 +541,7 @@ def main():
     sources["ls/augment/com/TestLifecycle.java"] = TEST
     activity = (SRC / "AtomicWorkbenchActivity.java").read_text(encoding="utf-8")
     body = ACTIVITY_HEAD + "\n".join(member(activity, signature) for signature in (
-        "private Roles presentationRoles()", "private Lease presentationLease(", "private Receipt beginPresentationFocus(", "private Receipt proposalPresentation(", "private Receipt bindPresentationReply(", "private boolean confirmPresentationPromotion(", "private void invalidatePresentationGeometry()", "private void dispatchEntrySide()", "private void requireCurrentEntry(", "private static final class EntryRejected", "private boolean mutationAllowed", "private void completeOperation", "private void resumeDeferredOperation", "private void onWindowSurfaceDestroyed", "private void showNativeHome(int emptySide)",
+        "private Roles presentationRoles()", "private Lease presentationLease(", "private Receipt beginPresentationFocus(", "private Receipt proposalPresentation(", "private Receipt bindPresentationReply(", "private Receipt bindHomePresentationReply(", "private boolean confirmPresentationPromotion(", "private void invalidatePresentationGeometry()", "private void dispatchEntrySide()", "private void requireCurrentEntry(", "private static final class EntryRejected", "private boolean mutationAllowed", "private void completeOperation", "private void resumeDeferredOperation", "private void onWindowSurfaceDestroyed", "private void showNativeHome(int emptySide)",
         "@Override protected void onStart()", "@Override public void onWindowFocusChanged", "@Override public boolean dispatchTouchEvent", "@Override protected void onStop()", "private void scheduleLifecycleClose",
         "private void requestCloseAll(boolean finishWhenRestored)", "private void requestCloseAll(boolean finishWhenRestored, String requestedReason)",
         "private void retireSession", "private void showCleanupPending", "private void refreshCleanupWait", "private static Bundle cleanupPending()",
@@ -538,12 +549,12 @@ def main():
         "private boolean canInteract()", "private boolean mainReady()", "private boolean shouldCloseExitedWindow(int id, Bundle window)", "private void syncWorkspaceOutputs", "private boolean outputSessionCurrent", "private static Bundle findWindow", "private static Bundle outputIdentity", "private void parkWorkspaceOutputs", "private void resumePendingHomeAfterOutputs", "private void clearHomePresentation", "private void beginHomePresentation", "@Override protected void onDestroy()"))
     body += member(activity, "private void focusWindow(int id, EntryProof proof)").replace("private void focusWindow(int id, EntryProof proof)", "private void actualFocusWindow(int id, EntryProof proof)", 1)
     for signature, header in (
-        ("private void launchSourceApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof, AtomicWorkbenchWorkspaceOpenRequest mediaOpen)", "void launchDone(int request,Bundle response,AtomicWorkbenchWorkspaceModel.LaunchPlan plan,boolean openAttempted,int taskId){launchDone(request,response,plan,openAttempted,taskId,null);}\nvoid launchDone(int request,Bundle response,AtomicWorkbenchWorkspaceModel.LaunchPlan plan,boolean openAttempted,int taskId,AtomicWorkbenchMediaOpenRequest mediaRequest){AtomicWorkbenchWorkspaceOpenRequest mediaOpen=AtomicWorkbenchWorkspaceOpenRequest.media(mediaRequest);Slot slot=slots[plan.windowId];Receipt launchPresentation=presentationPolicy.begin(plan.windowId,sessionGeneration,request,presentationRoles(),presentationLease(plan.windowId));EntryProof proof=null;"),
+        ('private void launchSourceApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof,\n            AtomicWorkbenchWorkspaceOpenRequest mediaOpen, int exactTarget)', "void launchDone(int request,Bundle response,AtomicWorkbenchWorkspaceModel.LaunchPlan plan,boolean openAttempted,int taskId){launchDone(request,response,plan,openAttempted,taskId,null);}\nvoid launchDone(int request,Bundle response,AtomicWorkbenchWorkspaceModel.LaunchPlan plan,boolean openAttempted,int taskId,AtomicWorkbenchMediaOpenRequest mediaRequest){AtomicWorkbenchWorkspaceOpenRequest mediaOpen=AtomicWorkbenchWorkspaceOpenRequest.media(mediaRequest);Slot slot=slots[plan.windowId];Receipt launchPresentation=presentationPolicy.begin(plan.windowId,sessionGeneration,request,presentationRoles(),presentationLease(plan.windowId));long session=sessionGeneration;EntryProof proof=null;"),
         ("private void focusWindow(int id, EntryProof proof)", "void focusDone(int request,Bundle response,int id,AtomicWorkbenchClient connected){Receipt presentation=beginPresentationFocus(id,request);"),
         ("private void focusSourceAppWindow(int id, ComponentName component, AtomicWorkbenchWorkspaceOpenRequest mediaOpen, EntryProof proof)", "void appFocusDone(int request,Bundle response,int id,AtomicWorkbenchClient connected){appFocusDone(request,response,id,connected,null);}\nvoid appFocusDone(int request,Bundle response,int id,AtomicWorkbenchClient connected,AtomicWorkbenchMediaOpenRequest mediaRequest){AtomicWorkbenchWorkspaceOpenRequest mediaOpen=AtomicWorkbenchWorkspaceOpenRequest.media(mediaRequest);Receipt presentation=beginPresentationFocus(id,request);"),
         ("private void showNativeHome(int emptySide)", "void homeDone(int request,Bundle response,int id){Slot slot=slots[id];Receipt presentation=beginPresentationFocus(id,request);if(client!=null&&response.getInt(\"display_id\",-1)>0){Bundle w=client.rootWindow(id);w.putInt(\"display_id\",response.getInt(\"display_id\"));w.putBoolean(\"native_home\",true);}"),
         ("private void switchToDesktop(int emptySide)", "void desktopDone(int request,Bundle response,int emptySide,AtomicWorkbenchClient connected){"),
-        ("private void requestCloseWindow(int id)", "void closeDone(int request,Bundle response,int id,AtomicWorkbenchClient connected){"),
+        ("private void requestCloseWindow(int id, Runnable afterRecovery)", "void closeDone(int request,Bundle response,int id,AtomicWorkbenchClient connected){Runnable afterRecovery=null;"),
     ):
         body += header + callback(activity, signature) + "}\n"
     sources["ls/augment/com/ActivityHarness.java"] = body + ACTIVITY_TEST

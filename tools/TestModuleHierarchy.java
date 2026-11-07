@@ -23,6 +23,7 @@ public final class TestModuleHierarchy {
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-atomic_workbench")),"Workbench Home entry opens its editor directly");
         require("atomic_workbench".equals(ModuleHierarchy.resolve("target-amap")),"Navigation source opens the existing Step editor");
         require(ModuleHierarchy.path("atomic_workbench").equals(Arrays.asList("home","atomic_workbench")),"Workbench is a first-level category without an empty intermediate page");
+        require(ModuleHierarchy.path("atomic_workbench_guide").equals(Arrays.asList("home","atomic_workbench","atomic_workbench_guide")),"Gesture guide retains the Step settings breadcrumb");
         require(ModuleHierarchy.path("atomic_workbench_session").equals(Arrays.asList("home","atomic_workbench","atomic_workbench_session")),"Running workspace retains its settings parent");
         require("atomic_workbench".equals(ModuleHierarchy.categoryForRoute("atomic_workbench")),"Workbench search has the same first-level owner");
         require("atomic_workbench".equals(ModuleHierarchy.categoryForRoute("atomic_workbench_session")),"Running workspace remains in the first-level workbench category");
@@ -89,6 +90,7 @@ public final class TestModuleHierarchy {
         owner("ls_augment_rm_usb_mode_enabled","group/connectivity/usb_connection");owner("ls_augment_rm_notification_quiet_unlocked","group/notifications/notification_alerts");
         owner("ls_augment_rm_qs_volume_percent","group/audio/volume_panel");owner(BrightnessRange.ENABLED,"group/system_settings/display");
         owner("ls_augment_rm_third_party_launcher","group/desktop/default_launcher");owner("ls_augment_rm_third_party_recents_no_scrim","group/desktop/default_launcher");owner("ls_augment_rm_weather_time_period","group/desktop/desktop_clock");
+        owner(LauncherOptions.SEARCH_NO_SCRIM,"group/desktop/default_launcher");
         owner(LauncherOptions.WIDGET_RESIZE,"group/desktop/desktop_clock");owner(LauncherOptions.DOCK_UNLIMITED,"group/desktop/dock_glass");
         owner(LauncherOptions.NEW_APPS_LAST_PAGE,"group/desktop/launcher_grid");
         owner(LauncherOptions.PAGE_INDICATOR_EDIT_ONLY,"group/desktop/launcher_grid");

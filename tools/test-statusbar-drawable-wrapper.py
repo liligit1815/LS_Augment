@@ -51,7 +51,7 @@ FILES = {
     'ls/augment/com/hook/TestAssetResourceIdentity.java': '''package ls.augment.com.hook;
         import android.graphics.*;import android.graphics.drawable.Drawable;import java.util.*;import java.lang.ref.WeakReference;
         public final class TestAssetResourceIdentity {
-            static class View {}
+            static class View { static final int NO_ID=-1; }
             static class WifiStandardHook {static int nativeResource(ImageView view){return 0;}}
             static class StatusBarWifiAssetSpacingHook {static boolean allowed=true;static boolean allowArtwork(View view){return allowed;}}
             static class Resources {String getResourceEntryName(int id){return "signal_"+id;}}

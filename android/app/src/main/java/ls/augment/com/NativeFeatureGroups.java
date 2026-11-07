@@ -200,7 +200,7 @@ final class NativeFeatureGroups {
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
             new Feature("systemui:island_status_avoidance","通知状态自动避让岛",SystemUiOptions.ISLAND_STATUS_AVOIDANCE,new String[]{},"boolean","0",new Feature[]{}),
-            new Feature("systemui:island_enabled","红魔Duo灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS,SystemUiOptions.ISLAND_FIRST_EXPAND},"boolean","0",new Feature[]{}),
+            new Feature("systemui:island_enabled","红魔Duo灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS,IslandNoticeRules.KEY,SystemUiOptions.ISLAND_FIRST_EXPAND},"boolean","0",new Feature[]{}),
             NativeIslandSceneOptions.feature()
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
@@ -351,6 +351,7 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_third_party_launcher","允许设置第三方默认桌面","ls_augment_rm_third_party_launcher",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("launcher","default_apps","默认桌面", new Feature[]{
+            new Feature(LauncherOptions.SEARCH_NO_SCRIM,"禁用搜索时遮罩",LauncherOptions.SEARCH_NO_SCRIM,new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_rm_third_party_recents_no_scrim","禁用第三方桌面最近任务遮罩","ls_augment_rm_third_party_recents_no_scrim",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("screenshot","capture","截图与录屏画面", new Feature[]{

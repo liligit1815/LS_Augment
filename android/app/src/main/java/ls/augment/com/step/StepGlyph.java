@@ -11,6 +11,7 @@ final class StepGlyph extends View {
     int accent;
     StepGlyph(Context c,String glyph,String label,Runnable action) {
         super(c);this.glyph=glyph;setContentDescription(label);setFocusable(true);
+        StepMaterial.feedback(this);
         setOnClickListener(v->action.run());pen.setStrokeCap(Paint.Cap.ROUND);pen.setStrokeJoin(Paint.Join.ROUND);
     }
     void line(Canvas c,float... xy){Path path=new Path();path.moveTo(xy[0],xy[1]);for(int i=2;i<xy.length;i+=2)path.lineTo(xy[i],xy[i+1]);c.drawPath(path,pen);}
@@ -21,6 +22,13 @@ final class StepGlyph extends View {
         switch(glyph){
             case "prev":line(c,15,5,8,12,15,19);break;
             case "next":line(c,9,5,16,12,9,19);break;
+            case "mainLeft":case "mainRight":
+                c.drawRoundRect(2,3,22,21,2,2,pen);
+                float divider="mainLeft".equals(glyph)?17:7;line(c,divider,3,divider,21);
+                float center="mainLeft".equals(glyph)?9:15;
+                float direction="mainLeft".equals(glyph)?-1:1;
+                line(c,center-2*direction,8,center+2*direction,12,center-2*direction,16);
+                break;
             case "exitLeft":line(c,12,5,5,12,12,19);line(c,5,12,21,12);break;
             case "exitRight":line(c,12,5,19,12,12,19);line(c,3,12,19,12);break;
             case "close":line(c,5,5,19,19);line(c,19,5,5,19);break;
@@ -34,9 +42,11 @@ final class StepGlyph extends View {
                 c.drawRoundRect(5,5,19,22,2,2,pen);c.drawRoundRect(9,2,15,7,1,1,pen);
                 line(c,9,12,15,12);line(c,9,16,13,16);break;
             case "screenshot":
+                c.drawCircle(5,7,3,pen);c.drawCircle(5,17,3,pen);
+                line(c,7.5f,8.5f,20,21);line(c,7.5f,15.5f,20,3);break;
             case "scan":
                 line(c,3,9,3,3,9,3);line(c,15,3,21,3,21,9);line(c,21,15,21,21,15,21);line(c,9,21,3,21,3,15);
-                if("scan".equals(glyph))line(c,6,12,18,12);else c.drawRoundRect(7,7,17,17,1,1,pen);break;
+                line(c,6,12,18,12);break;
             case "pay":
                 c.drawRoundRect(2,5,22,19,2,2,pen);line(c,6,9,6,15);line(c,10,9,10,14);
                 line(c,13,9,13,15);line(c,17,9,17,14);break;

@@ -26,12 +26,9 @@ final class QuickPicker {
 
     QuickPicker(Context base, boolean overlay, List<QuickCatalog.App> catalog, Collection<String> pins,
                 android.graphics.Bitmap wallpaper, Commit commit, Runnable closed) {
-        // TYPE_STATUS_BAR_SUB_PANEL is SystemUI's dialog layer. Ordinary application
-        // overlays sit beneath the native status bar drawn inside the scaled main pane.
-        final int panelType=2017;
         if(overlay){
             android.view.Display display=base.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
-            Context physical=base.createDisplayContext(display).createWindowContext(panelType,null);
+            Context physical=StepMaterial.statusBarPanelContext(base,display);
             ctx=new android.view.ContextThemeWrapper(physical,StepMaterial.dark(base)?
                     android.R.style.Theme_Material_Dialog_NoActionBar:android.R.style.Theme_Material_Light_Dialog_NoActionBar);
         }else ctx=base;
@@ -44,7 +41,7 @@ final class QuickPicker {
         FrameLayout card=new FrameLayout(ctx);card.setBackground(StepMaterial.glass(ctx,true,24));
         card.setClipToOutline(true);
         if(wallpaper!=null){ImageView wall=StepMaterial.wallView(ctx);wall.setImageBitmap(wallpaper);wall.setAlpha(.27f);card.addView(wall,-1,-1);}
-        LinearLayout body=new LinearLayout(ctx);body.setOrientation(1);int pad=dp(16);body.setPadding(pad,pad,pad,pad);
+        LinearLayout body=new LinearLayout(ctx);body.setOrientation(LinearLayout.VERTICAL);int pad=dp(16);body.setPadding(pad,pad,pad,pad);
         card.addView(body,-1,-1);
         LinearLayout header=new LinearLayout(ctx);header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title=StepMaterial.label(ctx,"自定义快捷应用",20,true);title.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
@@ -89,7 +86,7 @@ final class QuickPicker {
         });
         footer.addView(cancel,new LinearLayout.LayoutParams(0,-1,1));footer.addView(done,new LinearLayout.LayoutParams(0,-1,1));
         body.setFocusableInTouchMode(true);body.requestFocus();dialog.setContentView(card);
-        Window w=dialog.getWindow();if(overlay)w.setType(panelType);
+        Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
         w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);lp.gravity=Gravity.CENTER;lp.dimAmount=.28f;w.setAttributes(lp);

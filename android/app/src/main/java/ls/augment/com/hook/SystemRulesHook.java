@@ -29,6 +29,11 @@ final class SystemRulesHook {
     private static final Set<ClassLoader> LOADERS=Collections.newSetFromMap(new WeakHashMap<>());
     private static volatile Object keyguardMonitor;
     private static volatile Field keyguardShowing;
+    private static volatile ReportedKeyguardMemory reportedKeyguard;
+    private static final class ReportedKeyguardMemory {
+        final Object owner,state;final Field showing,service;
+        ReportedKeyguardMemory(Object owner,Object state,Field showing,Field service){this.owner=owner;this.state=state;this.showing=showing;this.service=service;}
+    }
     private static volatile Object assistantOwner;
 
     // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
@@ -246,7 +251,10 @@ final class SystemRulesHook {
     private static int installKeyguardMemory(AugmentModule module,ClassLoader loader){
         int count=0;String name="com.android.server.policy.keyguard.KeyguardStateMonitor";
         try{
-            Class<?> type=Class.forName(name,false,loader);Field showing=type.getDeclaredField("mIsShowing");
+            Class<?> type;
+            try { type=Class.forName(name,false,loader); }
+            catch (ClassNotFoundException newerDelegate) { return installReportedKeyguard(module,loader); }
+            Field showing=type.getDeclaredField("mIsShowing");
             if(showing.getType()!=boolean.class||!java.lang.reflect.Modifier.isVolatile(showing.getModifiers()))return 0;
             showing.setAccessible(true);keyguardShowing=showing;
             for(Constructor<?> constructor:type.getDeclaredConstructors()){
@@ -269,8 +277,33 @@ final class SystemRulesHook {
         return count;
     }
     private static Boolean keyguardShowing(){
+        ReportedKeyguardMemory reported=reportedKeyguard;
+        if(reported!=null)try{
+            if(reported.state==null)return null;
+            boolean showing=reported.showing.getBoolean(reported.state);
+            return reported.service.get(reported.owner)==null?null:showing;
+        }catch(IllegalAccessException|IllegalArgumentException unavailable){return null;}
         Object monitor=keyguardMonitor;Field showing=keyguardShowing;if(monitor==null||showing==null)return null;
         try{return showing.getBoolean(monitor);}catch(IllegalAccessException|IllegalArgumentException unavailable){return null;}
+    }
+    private static int installReportedKeyguard(AugmentModule module,ClassLoader loader)throws ReflectiveOperationException{
+        String name="com.android.server.policy.keyguard.KeyguardServiceDelegate";
+        Class<?> type=Class.forName(name,false,loader),reported=Class.forName(name+"$KeyguardReportedState",false,loader);
+        Field state=type.getDeclaredField("mKeyguardReportedState"),showing=reported.getDeclaredField("showing"),service=type.getDeclaredField("mKeyguardService");
+        if(state.getType()!=reported||!java.lang.reflect.Modifier.isFinal(state.getModifiers())||showing.getType()!=boolean.class||!java.lang.reflect.Modifier.isVolatile(showing.getModifiers())
+                ||java.lang.reflect.Modifier.isStatic(state.getModifiers())||java.lang.reflect.Modifier.isStatic(showing.getModifiers())
+                ||java.lang.reflect.Modifier.isStatic(service.getModifiers())||!service.getType().getName().equals("com.android.internal.policy.IKeyguardService"))
+            throw new NoSuchFieldException("reported keyguard state/service contract");
+        Constructor<?> constructor=type.getDeclaredConstructor(Context.class,Class.forName(name+"$StateCallback",false,loader));
+        state.setAccessible(true);showing.setAccessible(true);service.setAccessible(true);constructor.setAccessible(true);
+        module.registerFeatureHook(HookTelemetry.observe(module.hook(constructor),constructor)
+                .setId("ls_augment.api102.rm.keyguard.reported_memory").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain->{Object result=chain.proceed();Object owner=chain.getThisObject(),value=state.get(owner);
+                    reportedKeyguard=new ReportedKeyguardMemory(owner,value,showing,service);
+                    return result;}));
+        // The delegate owns user filtering and resets this very state on service
+        // death. A disconnected owner is unknown even if a late callback arrives.
+        return 1;
     }
     private static int installAssistantCache(AugmentModule module,ClassLoader loader){
         String type="com.android.server.policy.PhoneWindowManager";int count=0;

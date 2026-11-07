@@ -42,27 +42,26 @@ public class TestMagicSettingHook{
  public static void main(String[] args)throws Throwable{
   boolean modern=args[0].equals("modern");com.zte.tools.AppTools.ZTE_FEATURE_LIVE_ISLAND_FULL_SCREEN=modern;
   Context c=new Context();c.resolver.settings.put("dynamic_island_function_switch",1);c.resolver.settings.put("dynamic_island_switch_state",0);
-  AugmentModule module=new AugmentModule();check(NativeIslandSettingsHook.install(module,TestMagicSettingHook.class.getClassLoader())==1,"selection contract missing");
-  if(modern){
-   FeatureSettings.verified=false;NativeIslandSettingsHook.attach(c);flush();check(c.resolver.calls.isEmpty(),"startup imported an unverified snapshot");
-   FeatureSettings.verified=true;FeatureSettings.changed();flush();check(c.resolver.calls.size()==1&&c.resolver.calls.get(0).getBoolean("enabled"),"existing modern ON not imported");
-   check("fullscreen".equals(c.resolver.calls.get(0).getString("mode","")),"modern mode missing from publication");
-   NativeIslandSettingsHook.attach(c);flush();check(c.resolver.calls.size()==1,"startup publication repeated");
-   DynamicIslandSwitchFullScreenSettingsFragment page=new DynamicIslandSwitchFullScreenSettingsFragment();page.context=c;
-   page.isSubSwitchOn("media_island");flush();check(c.resolver.calls.size()==1,"browsing selected island");
-   SwitchPreference pref=new SwitchPreference();pref.checked=false;module.call(page,"handleSubSwitchPreference",new Class[]{String.class,SwitchPreference.class},"media_island",pref);flush();
-   check(c.resolver.calls.size()==1,"turning one source OFF deselected the entire island");
-   pref.checked=true;module.call(page,"handleSubSwitchPreference",new Class[]{String.class,SwitchPreference.class},"media_island",pref);flush();check(c.resolver.calls.size()==2,"explicit ON did not reconcile");
-   c.resolver.settings.put("dynamic_island_function_switch",0);c.resolver.observer.onChange(false);flush();check(!c.resolver.calls.get(c.resolver.calls.size()-1).getBoolean("enabled"),"native global OFF not propagated");
-   c.resolver.failures=2;c.resolver.settings.put("dynamic_island_function_switch",1);int before=c.resolver.calls.size();c.resolver.observer.onChange(false);flush();
-   check(c.resolver.calls.size()==before+3&&c.resolver.settings.get("dynamic_island_function_switch")==1,"startup retries lost native state");
-  }else{
-   NativeIslandSettingsHook.attach(c);flush();check(c.resolver.calls.isEmpty(),"legacy stored state selected native automatically");
-   DynamicIslandSwitchSettingsFragment page=new DynamicIslandSwitchSettingsFragment();page.context=c;
-   module.call(page,"updateDynamicIslandSwitchState",new Class[]{int.class},1);flush();check(c.resolver.calls.size()==1&&c.resolver.calls.get(0).getBoolean("enabled")&&!c.resolver.calls.get(0).containsKey("mode"),"legacy explicit ON protocol changed");
-   module.call(page,"updateDynamicIslandSwitchState",new Class[]{int.class},0);flush();check(!c.resolver.calls.get(1).getBoolean("enabled"),"legacy OFF lost");
-   c.resolver.failures=1;module.call(page,"updateDynamicIslandSwitchState",new Class[]{int.class},1);flush();check(c.resolver.settings.get("dynamic_island_switch_state")==0&&!page.mDynamicIslandSwitchPref.checked,"failed legacy handover not rolled back");
-  }
+  AugmentModule module=new AugmentModule();NativeIslandSettingsHook.install(module,TestMagicSettingHook.class.getClassLoader());
+  String key=modern?"dynamic_island_function_switch":"dynamic_island_switch_state";
+  c.resolver.settings.put(key,1);
+  FeatureSettings.verified=false;NativeIslandSettingsHook.attach(c);flush();check(c.resolver.calls.isEmpty(),"unverified startup imported state");
+  FeatureSettings.verified=true;NativeIslandSettingsHook.attach(c);flush();check(c.resolver.calls.isEmpty(),"page entry imported stale selection");
+  FeatureSettings.flags.put("duo",true);NativeIslandSettingsHook.synchronize(c,true);c.resolver.observer.onChange(false);flush();
+  check(c.resolver.calls.isEmpty(),"same-state feedback saved another snapshot");
+  c.resolver.settings.put(key,0);c.resolver.observer.onChange(false);flush();
+  check(c.resolver.calls.size()==1&&!c.resolver.calls.get(0).getBoolean("enabled"),"system OFF did not publish unified switch");
+  check((modern?"fullscreen":"ordinary").equals(c.resolver.calls.get(0).getString("mode","")),"wrong runtime backend");
+  FeatureSettings.flags.put("duo",false);NativeIslandSettingsHook.synchronize(c,false);c.resolver.observer.onChange(false);flush();
+  check(c.resolver.calls.size()==1,"system OFF feedback loop");
+  c.resolver.settings.put(key,1);c.resolver.observer.onChange(false);flush();
+  check(c.resolver.calls.size()==2&&c.resolver.calls.get(1).getBoolean("enabled"),"system ON did not publish unified switch");
+  FeatureSettings.flags.put("duo",true);NativeIslandSettingsHook.synchronize(c,true);flush();
+  check(c.resolver.settings.get(key)==1,"Duo ON failed to synchronize native backend");
+  FeatureSettings.flags.put("duo",false);NativeIslandSettingsHook.synchronize(c,false);flush();
+  check(c.resolver.settings.get(key)==0,"Duo OFF failed to synchronize native backend");
+  FeatureSettings.verified=false;NativeIslandSettingsHook.synchronize(c,true);
+  check(c.resolver.settings.get(key)==0,"unverified configuration wrote system settings");
   System.out.println("PASS production "+args[0]+" selection hooks: "+checks+" assertions");
  }}'''
 files['android/app/Activity.java']='package android.app;import android.content.*;public class Activity extends Context{public void runOnUiThread(Runnable r){r.run();}public boolean isDestroyed(){return false;}}'

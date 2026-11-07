@@ -5,14 +5,8 @@ import runpy, tempfile
 base=runpy.run_path(str(Path(__file__).with_name('test-atomic-workbench-media-evidence.py')))
 # Reuse the wire/authority facades, with current dependencies for this focused reader test.
 # Media transport and the newer notification-action protocol have their own suites.
-base['PRODUCTION'].extend(['AtomicWorkbenchSlotDomain','AtomicWorkbenchNotificationActionClient','AtomicWorkbenchNotificationOpenRequest','hook/HookCompatibility'])
 stubs=base['STUBS']
-stubs['android/app/INotificationManager.java']='package android.app;public interface INotificationManager{abstract class Stub implements android.os.IBinder{}}'
-stubs['ls/augment/com/AtomicWorkbenchRecoveryScope.java']='package ls.augment.com;class AtomicWorkbenchRecoveryScope{enum ReaderProfile{LOW4,FULL8}}'
-stubs['ls/augment/com/hook/AtomicWorkbenchNotificationActionsBroker.java']='package ls.augment.com.hook;class AtomicWorkbenchNotificationActionsBroker{static final int TX=0xD04E0A;static void prepare(ClassLoader l){}static void handle(Object s,android.os.Parcel d,android.os.Parcel r){throw new AssertionError("actions outside evidence scope");}}'
-stubs['android/os/Bundle.java']=stubs['android/os/Bundle.java'].rsplit('}',1)[0]+'''public Bundle deepCopy(){return new Bundle(this);}public void putBundle(String k,Bundle b){values.put(k,b);}public Bundle getBundle(String k){return (Bundle)values.get(k);}@SuppressWarnings("unchecked") public <T> java.util.ArrayList<T> getParcelableArrayList(String k){return (java.util.ArrayList<T>)values.get(k);}}'''
 key='com/android/server/notification/NotificationManagerService$13.java'
-stubs[key]=stubs[key].replace('implements IBinder','extends android.app.INotificationManager.Stub')
 test=base['TEST']
 start=test.index(' public static void main(')
 opening=test.index('{',start);depth=1;end=opening+1

@@ -2,7 +2,7 @@
 Does not run Gradle, SDK compilation, ADB, or any old suite.
 """
 from pathlib import Path
-import importlib.util, subprocess, json, hashlib, argparse, datetime, tempfile
+import importlib.util, subprocess, json, hashlib, argparse, datetime, tempfile, os
 
 ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'android/app/src/main/java/ls/augment/com'
@@ -57,9 +57,14 @@ public final class FirstTouchCases extends BaseActivity {
  static final java.util.concurrent.atomic.AtomicInteger NATIVE_SHIELD_DIAGNOSTIC_PENDING=new java.util.concurrent.atomic.AtomicInteger();
  static final java.util.concurrent.atomic.AtomicLong NATIVE_SHIELD_DIAGNOSTIC_DROPPED=new java.util.concurrent.atomic.AtomicLong();
  final AtomicWorkbenchWorkspaceModel model=new AtomicWorkbenchWorkspaceModel();final AtomicWorkbenchWindowPresentationPolicy presentationPolicy=new AtomicWorkbenchWindowPresentationPolicy();
+ boolean resumed=true,appPackagesRegistered;Object appPackages;void unregisterReceiver(Object receiver){throw new AssertionError("receiver not registered in shield fixture");}
+ java.lang.ref.WeakReference<FirstTouchCases> extractionHost=new java.lang.ref.WeakReference<>(null);
+ static class Motion {boolean running(){return false;}void close(){}}Motion windowMotion;
+ static class Drag{boolean ended;}Drag appPlacementDrag;
+ boolean nativeGestureActive(){return false;}void cancelPendingAppSurfaceLaunch(boolean redraw){}
  final FrameLayout workspace=new FrameLayout();final View desktop=new View(),homeTransitionCover=new View(),status=new View(),appBack=new View();final Ui ui=new Ui();
- final Slot[] slots=new Slot[4];final ArrayList<Integer> focuses=new ArrayList<>();final AtomicWorkbenchClient client=new AtomicWorkbenchClient();
- static final int COUNT=4;final String[]pendingTaskAllocations=new String[4];final boolean[]pendingHomeSurfaces=new boolean[4];String operationNotice;
+ final Slot[] slots=new Slot[COUNT];final ArrayList<Integer> focuses=new ArrayList<>();final AtomicWorkbenchClient client=new AtomicWorkbenchClient();
+ static final int COUNT=AtomicWorkbenchSlotDomain.POOL_SIZE;final String[]pendingTaskAllocations=new String[COUNT];final boolean[]pendingHomeSurfaces=new boolean[COUNT];String operationNotice;
  int epoch=1,emptySideSlots=3,focusedWindow=0;long sessionGeneration=8,launchGeneration=7,pollGeneration,taskStorageProbeInFlight,taskSnapshotElapsed,extractionInputRevision;
  boolean active=true,destroyed,closing,surfaceUnavailable,outputsSyncing,outputsParked,recoveryPending,busy,waitingForCleanup,exitRequested,polling,presentationNeedsRetry;
  boolean hostDialogActive,hostDragActive,textDeliveryActive,hostTouchActive;int hostInputPending,gestureWindow=-1,gestureDisplay=-1;
@@ -70,8 +75,8 @@ public final class FirstTouchCases extends BaseActivity {
  Hooks pasteCoordinator,transfer,closeDialog,settingsDialog;Hooks lifecycleGate=new Hooks();int parked;int pointerTarget=2;long downTime;Runnable afterDown,beforeUp;
  static class Ui{int dp(int x){return x;}}static class Hooks{void cancelAll(){}void setForeground(boolean b){}void dismiss(){}void stopped(){}}
  static class ResetWriteFence{static boolean stale(long g){return false;}}
- static class AtomicWorkbenchTaskUiSnapshot{AtomicWorkbenchTaskUiSnapshot(Bundle b){}}
- static class AtomicWorkbenchClient{int clears,touches,reads;Bundle status(){Bundle b=new Bundle();b.putBoolean("success",true);b.putInt("focused_window_id",-1);b.putParcelableArrayList("windows",new ArrayList<Bundle>());return b;}Bundle taskShelfState(){reads++;return new Bundle();}void clearGestureTarget(){clears++;}void touchWindow(int id,MotionEvent e){touches++;}}
+ static class AtomicWorkbenchTaskUiSnapshot{AtomicWorkbenchTaskUiSnapshot(Bundle b,AtomicWorkbenchRecoveryScope.ReaderProfile profile){}}
+ static class AtomicWorkbenchClient{boolean nativeGestureActive(){return false;}int clears,touches,reads;static ArrayList<Bundle> recoveryPoolWindows(Bundle b){return AtomicWorkbenchProtocol.recoveryPoolWindows(b);}Bundle status(){Bundle b=new Bundle();b.putBoolean("success",true);b.putInt("focused_window_id",-1);Map<Integer,Bundle> owners=new LinkedHashMap<>();for(int id=0;id<4;id++){Bundle w=new Bundle();w.putInt("window_id",id);w.putInt("display_id",20+id);w.putString("window_session",new UUID(1,id+1).toString());w.putString("display_name","fixture-"+id);w.putString("display_unique_id","unique-"+id);owners.put(id,w);}return AtomicWorkbenchProtocol.recoveryState(CapacityFixtureState.raw(b,owners),AtomicWorkbenchRecoveryScope.ReaderProfile.FULL8);}Bundle taskShelfState(){reads++;return new Bundle();}void clearGestureTarget(){clears++;}void touchWindow(int id,MotionEvent e){touches++;}}
  static class Surface extends View{Surface getHolder(){return this;}boolean isValid(){return true;}boolean valid=true;}
  final class Slot{final int id;final FrameLayout frame=new FrameLayout();final Surface surface=new Surface();final View shield=new View();final AtomicWorkbenchSideSwipe swipe;
   int displayWidth=1216,displayHeight=2688,displayId;String displayName,displayUniqueId,windowSession;boolean retainedEmptyTaskDisplay,ready=true,outputAwaitingFrame,nativeHome,wasActive;
@@ -84,7 +89,7 @@ public final class FirstTouchCases extends BaseActivity {
   void clear(){ready=false;displayId=-1;}
  }
  final ArrayList<AtomicWorkbenchSideSwipePolicy.Action> actions=new ArrayList<>();
- FirstTouchCases(){for(int i=0;i<4;i++)slots[i]=new Slot(i);for(int i=0;i<4;i++)model.setHostedWindow(i,true);model.promote(0);workspace.width=1216;workspace.height=560;layoutWorkspace();syncShieldBounds();mainLayoutPresented=true;
+ FirstTouchCases(){for(int i=0;i<COUNT;i++)slots[i]=new Slot(i);for(int i=0;i<4;i++)model.setHostedWindow(i,true);model.promote(0);workspace.width=1216;workspace.height=560;layoutWorkspace();syncShieldBounds();mainLayoutPresented=true;
   route=e->{Slot s=slots[pointerTarget];if(e.getActionMasked()==0&&afterDown!=null){Runnable r=afterDown;afterDown=null;r.run();}if(e.getActionMasked()==1&&beforeUp!=null){Runnable r=beforeUp;beforeUp=null;r.run();}
    MotionEvent local=new MotionEvent(e.action,e.rawX-s.frame.left,e.rawY-s.frame.top,e.rawX,e.rawY,e.time,e.pointers);local.downTime=e.downTime;
    try{return s.shield.dispatchTouchEvent(local);}finally{local.recycle();}};
@@ -125,7 +130,7 @@ SIGNATURES=['private static final class NativeShieldLayoutHold','private void be
  'private void finishNativeShieldTouch(','private void postNativeShieldLayoutFlush(','private void nativeShieldLayoutDiagnostic(',
  'private void layoutWorkspace()','private void prepareMainLayout(','private void invalidateMainLayout(',
  'private boolean mainLayoutMatches(','private void invalidatePresentationGeometry()','private void setSlotVisible(','private void place(',
- 'private Roles presentationRoles()','private Lease presentationLease(','private boolean canInteract()',
+ 'private static Bundle poolStatus(', 'private static ArrayList<Bundle> poolWindowsOrNull(', 'private boolean outputPresented(', 'private Roles presentationRoles()','private Lease presentationLease(','private boolean canInteract()',
  'private void cancelGesture()','private void clearGesture()','@Override public boolean dispatchTouchEvent(',
  '@Override protected void onStop()','private void pollStatus()']
 
@@ -146,7 +151,10 @@ def sources(activity):
  'android/view/Gravity.java':P.GRAVITY,
  'ls/augment/com/AtomicWorkbenchDiagnostics.java':'package ls.augment.com;public class AtomicWorkbenchDiagnostics{public static void record(android.content.Context c,long g,String e,int w,int u,String p,int d,String t,Throwable x){}}',
  'ls/augment/com/FirstTouchCases.java':fixture})
- for name in ['AtomicWorkbenchSideSwipe.java','AtomicWorkbenchSideSwipePolicy.java','AtomicWorkbenchWorkspaceModel.java','AtomicWorkbenchWindowLayoutPlan.java','AtomicWorkbenchWindowPresentationPolicy.java']:
+ contracts=P.activity_sources()
+ for key in ('android/os/Bundle.java','android/content/ComponentName.java','ls/augment/com/CapacityFixtureState.java','ls/augment/com/AtomicWorkbenchProtocol.java','ls/augment/com/AtomicWorkbenchRecoveryScope.java'):
+  files[key]=contracts[key]
+ for name in ['AtomicWorkbenchPoolTopology.java','AtomicWorkbenchCapacityLayoutPlan.java','AtomicWorkbenchSlotDomain.java','AtomicWorkbenchSideSwipe.java','AtomicWorkbenchSideSwipePolicy.java','AtomicWorkbenchWorkspaceModel.java','AtomicWorkbenchWindowLayoutPlan.java','AtomicWorkbenchWindowPresentationPolicy.java']:
   files['ls/augment/com/'+name]=(SRC/name).read_text(encoding='utf-8')
  return files
 
@@ -154,11 +162,11 @@ def run(folder,activity):
  folder.mkdir(exist_ok=False);files=sources(activity);paths=[]
  for name,text in files.items():
   p=folder/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8');paths.append(str(p))
- cmd=[str(JDK/'javac.exe'),'-J-Dfile.encoding=UTF-8','--release','17','-encoding','UTF-8','-d',str(folder/'classes'),*paths]
+ cmd=[str(JDK/'javac.exe'),'-J-Dfile.encoding=UTF-8','--release','17','-encoding','UTF-8','-cp',str(P._CAPACITY_JSON),'-d',str(folder/'classes'),*paths]
  c=subprocess.run(cmd,capture_output=True,timeout=45);(folder/'javac-stdout.txt').write_bytes(c.stdout);(folder/'javac-stderr.txt').write_bytes(c.stderr)
  r=None
  if c.returncode==0:
-  r=subprocess.run([str(JDK/'java.exe'),'-cp',str(folder/'classes'),'ls.augment.com.FirstTouchCases'],capture_output=True,timeout=30)
+  r=subprocess.run([str(JDK/'java.exe'),'-cp',str(folder/'classes')+os.pathsep+str(P._CAPACITY_JSON),'ls.augment.com.FirstTouchCases'],capture_output=True,timeout=30)
   (folder/'stdout.txt').write_bytes(r.stdout);(folder/'stderr.txt').write_bytes(r.stderr)
  result={'compileExit':c.returncode,'runtimeExit':r.returncode if r else None,'status':'PASS' if r and r.returncode==0 else 'FAIL','javaSources':len(paths),'actualActivityMethods':SIGNATURES+['void fitSurface()','shield.setOnClickListener','frame.addOnLayoutChangeListener'],'boundary':'ACTUAL_EXTRACTED_METHODS_AND_ACTUAL_SIDESWIPE; CONTROLLED_VIEW_LOOPER_AND_ROOT_FOCUS_SINK; NOT_ANDROID_RUNTIME_OR_ROOT_ACK'}
  (folder/'summary.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');return result

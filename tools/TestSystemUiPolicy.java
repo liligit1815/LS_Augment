@@ -25,7 +25,7 @@ public final class TestSystemUiPolicy {
         for(EnhancementOption option:SystemUiOptions.options()){
             check(keys.add(option.key),"duplicate key "+option.key);
             check(option.normalize(option.defaultValue)!=null,"invalid default "+option.key);
-            if(option.kind==EnhancementOption.Kind.BOOLEAN)check(option.defaultValue.equals("0"),"opt in default "+option.key);
+            if(option.kind==EnhancementOption.Kind.BOOLEAN)check(option.defaultValue.equals(SystemUiOptions.ISLAND_STATUS_AVOIDANCE.equals(option.key)?"1":"0"),"expected default "+option.key);
         }
         System.out.println("SystemUI policy and option checks passed ("+keys.size()+" options)");
     }

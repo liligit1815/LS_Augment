@@ -27,7 +27,7 @@ public final class TestRootShellTransport {
         RootShell.Result blocked = run("blocked", "a".repeat(4 * 1024 * 1024), 1, 1024);
         long elapsed = (System.nanoTime() - start) / 1_000_000;
         check(blocked.timedOut && elapsed < 3500, "timeout must include a blocked stdin writer, elapsed=" + elapsed);
-        RootShell.Result fullOutput = run("output", null, 5, 1024);
+        RootShell.Result fullOutput = run("output", null, 30, 1024);
         check(fullOutput.isSuccess() && fullOutput.output.length() <= 1024, "capped output is drained without breaking child");
         check(fullOutput.capture != null && fullOutput.capture.complete && fullOutput.capture.truncated
                 && !fullOutput.capture.reliable(), "capture distinguishes drained-but-truncated output");

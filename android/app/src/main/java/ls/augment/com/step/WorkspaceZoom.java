@@ -16,6 +16,7 @@ final class WorkspaceZoom {
     static void start(boolean enter,long starts,ResultReceiver reply){
         if(enter==entered || motion!=null || flip!=null || !interactive(Wm.context))
             throw new IllegalStateException("当前工作区不能切换缩放");
+        WorkspaceIme.cancel();
         WorkspaceLayout layout=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft);
         IBinder expected=owner;ValueAnimator run=ValueAnimator.ofFloat(enter?0:1,enter?1:0);
         motion=run;run.setInterpolator(new PathInterpolator(.34f,.69f,.1f,1));run.setDuration(300);
@@ -35,7 +36,7 @@ final class WorkspaceZoom {
                     Wm.moveSpec(enter?layout.mainScale:1,enter?layout.mainX:0,enter?layout.top:0);
                     Object tx=call(Wm.display,"getPendingTransaction");trackCommit(tx,group);call(tx,"apply");
                 }
-                group.seal();awaitCommit(group,expected,SystemClock.uptimeMillis()+1200,()->respond(reply,0,base(),"工作区缩放末帧已提交"),
+                group.seal();awaitCommit(group,expected,SystemClock.uptimeMillis()+1200,()->{respond(reply,0,base(),"工作区缩放末帧已提交");WorkspaceIme.request();},
                         ()->finish("主屏缩放末帧未确认"));
             }catch(Throwable error){finish("主屏转场提交失败："+error);}
         }});

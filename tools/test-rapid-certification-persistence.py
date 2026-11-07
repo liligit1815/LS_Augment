@@ -6,7 +6,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
 STUBS = {
-    'android/content/Context.java': '''package android.content; public class Context {
+    'android/content/Context.java': '''package android.content; public class Context {public Context getApplicationContext(){return this;}
  public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}
 }''',
     'android/content/pm/PackageInfo.java': '''package android.content.pm; public class PackageInfo {

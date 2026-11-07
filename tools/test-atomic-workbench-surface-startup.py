@@ -36,6 +36,11 @@ HEAD = r'''package ls.augment.com;
 import android.graphics.SurfaceTexture;import android.os.SystemClock;import android.content.Intent;import java.util.*;
 import static ls.augment.com.AtomicWorkbenchWindowLayoutPlan.*;import static ls.augment.com.AtomicWorkbenchWindowPresentationPolicy.*;
 public class TestSurfaceStartup {
+ static class Motion {boolean running(){return false;}} Motion windowMotion;
+ static class PendingApp {boolean dispatched;final Plan plan=new Plan();} static class Plan {int windowId;}
+ PendingApp pendingAppSurfaceLaunch;
+ void continuePendingAppSurfaceLaunch(){if(pendingAppSurfaceLaunch!=null)throw new AssertionError("unexpected pending surface launch");}
+
  static class Gate {boolean surfaceMissing(){return false;}}Gate lifecycleGate=new Gate();
  static class ResetWriteFence {static long current;static long generation(){return current;}static boolean stale(long g){return g!=current;}}
  static class AtomicWorkbenchCleanup {static boolean pending(){return false;}}

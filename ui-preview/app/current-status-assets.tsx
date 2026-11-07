@@ -27,6 +27,7 @@ import icons from './current-status-icons.json';
 import { Button, Card, useModel } from './current-ui';
 import { LayoutNumber } from './current-status-sheet';
 import { NativeFold } from './current-native-controls';
+import { isStatusDesignRoute } from './current-status-navigation';
 export const ASSETS_KEY = 'status:assets:preview-v1';
 type Binding = {
   image: string;
@@ -38,7 +39,7 @@ type Binding = {
   mirror: boolean;
   originalColor?: boolean;
 };
-type AssetPlan = {
+export type AssetPlan = {
   bindings: Record<string, Binding>;
   fonts: Record<string, string>;
   visibility: Record<string, boolean>;
@@ -58,11 +59,13 @@ const Context = createContext<{
   update: (next: AssetPlan | ((current: AssetPlan) => AssetPlan)) => void;
   apply: () => void;
   discard: () => void;
+  clear: () => void;
   undo: () => void;
   canUndo: boolean;
   redo: () => void;
   canRedo: boolean;
 }>(null!);
+export const useStatusAssetDraft = () => useContext(Context);
 export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
   const m = useModel(),
     raw = m.values[ASSETS_KEY] || '';
@@ -101,7 +104,7 @@ export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [saved]);
   useEffect(() => {
     m.registerNavigationGuard?.((next) => {
-      if (!dirty || next === 'status_assets' || next.startsWith('asset/'))
+      if (!dirty || isStatusDesignRoute(next) || next === 'status_assets' || next.startsWith('asset/'))
         return true;
       m.dialog(
         '素材草稿尚未应用',
@@ -144,6 +147,14 @@ export function AssetWorkspaceProvider({ children }: { children: ReactNode }) {
         update,
         apply,
         discard,
+        clear: () => {
+          const next = empty();
+          latestDraft.current = next;
+          setDraft(next);
+          setSaved(next);
+          setHistory([]);
+          setFuture([]);
+        },
         undo: () => {
           setFuture([...future, draft]);
           latestDraft.current = history.at(-1)!;

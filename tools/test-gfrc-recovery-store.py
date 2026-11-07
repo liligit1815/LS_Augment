@@ -287,7 +287,7 @@ def main():
         Bundle call(String method,String arg,Bundle extras){Bundle result=new Bundle();''' + route + '''return result;}}
     '''
     files['ls/augment/com/TestGfrcRecoveryStore.java'] = HARNESS
-    for name in ('GfrcRecoveryStore.java', 'DurablePreferences.java', 'ResetWriteFence.java', 'hook/GfrcRecoveryClient.java'):
+    for name in ('GfrcRecoveryStore.java', 'DurablePreferences.java', 'ResetWriteFence.java', 'hook/GfrcRecoveryClient.java', 'hook/ConfigReadRetry.java'):
         files['ls/augment/com/' + name] = (MAIN / name).read_text(encoding='utf-8')
     dependency = json_dependency()
     with tempfile.TemporaryDirectory(prefix='lsa-gfrc-private-') as temporary:

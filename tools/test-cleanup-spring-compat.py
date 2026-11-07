@@ -24,6 +24,7 @@ public static void main(String[] args)throws Throwable{AugmentModule m=new Augme
  r=new RecentsView();AugmentModule.call(r.utils,RecentsDismissUtils.class,"createTaskDismissSpringAnimation",new Class[]{TaskView.class,boolean.class,RecentsDismissUtils.DismissedTaskData.class,boolean.class,boolean.class},r.selected,true,new RecentsDismissUtils.DismissedTaskData(),false,true);check(r.selected.alpha==1&&r.utils.calls==1);
  r=new RecentsView();r.fail=true;try{AugmentModule.call(r,RecentsView.class,"dismissAllTasks",new Class[]{View.class},new View());throw new AssertionError();}catch(IllegalStateException expected){}check(r.calls==1&&r.overlay.items.isEmpty());
  FeatureSettings.on=false;r=new RecentsView();AugmentModule.call(r,RecentsView.class,"dismissAllTasks",new Class[]{View.class},new View());check(r.calls==1&&r.selected.alpha==1);
+ FeatureSettings.on=true;FeatureSettings.style="2";ValueAnimator previous=ValueAnimator.last;r=new RecentsView();AugmentModule.call(r,RecentsView.class,"dismissAllTasks",new Class[]{View.class},new View());check(r.calls==1&&r.utils.calls==1&&r.selected.alpha==1&&r.protectedCard.alpha==1&&r.overlay.items.isEmpty()&&ValueAnimator.last==previous);
  System.out.println("native spring cleanup checks="+n);}}
 '''
 java=Path('C:/Program Files/Android/openjdk/jdk-21.0.8/bin')

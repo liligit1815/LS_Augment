@@ -26,7 +26,8 @@ HELPERS = r'''
   &&disk.getString("store_epoch").equals("b".repeat(32))&&disk.getJSONObject("recovery_scope").getString("phase").equals("LEGACY_ONLY")
   &&disk.getJSONArray("retirement_outbox").length()==0&&disk.getLong("revision")==revision,"writer discarded or changed private header");
   var read=f.store.read();check(read.storageSchema==2&&read.storeEpoch.equals("b".repeat(32))&&read.recoveryScope.poolLimit==4,"header not retained in snapshot");}
- static void scopeReject(Run action)throws Exception{boolean caught=false;try{action.run();}catch(IOException e){caught=true;check(e.getMessage().equals("shelf_scope_unsupported_full_scope"),"reader floor lost precise reason: "+e);}
+ static void scopeReject(Run action)throws Exception{scopeReject(action,"shelf_scope_unsupported_full_scope");}
+ static void scopeReject(Run action,String reason)throws Exception{boolean caught=false;try{action.run();}catch(IOException e){caught=true;check(e.getMessage().equals(reason),"reader floor lost precise reason: "+e);}
   check(caught,"four-window reader accepted the full eight-identity scope");}
 '''
 
@@ -51,9 +52,9 @@ EXTRA = r'''
    check(actual.operationId.equals(prior.operationId)&&actual.leaseId.equals(prior.leaseId)&&actual.metadata.sameOperation(prior.metadata)&&actual.observedIdentity.equals(primary),"rollback refreshed or rebound original identity");
   });
   test("current high marker admission is impossible before any durable or resource side effect",()->{Fixture f=new Fixture();int syncs=Os.fileSyncs,dirs=Os.directorySyncs,renames=Os.renames;
-   scopeReject(()->f.store.requireHighScope(0));check(!Files.exists(f.file)&&Os.fileSyncs==syncs&&Os.directorySyncs==dirs&&Os.renames==renames,"unsupported reader wrote a high permit");
-   f.store.save(0,List.of());byte[] v1=f.bytes();scopeReject(()->f.store.requireHighScope(1));check(Arrays.equals(v1,f.bytes()),"rejected high admission changed v1");
-   f.write(version2(f.disk()).toString());byte[] v2=f.bytes();scopeReject(()->f.store.requireHighScope(1));check(Arrays.equals(v2,f.bytes()),"rejected high admission changed v2");
+   scopeReject(()->f.store.requireHighScope(0),"shelf_high_allocation_unconfirmed");check(!Files.exists(f.file)&&Os.fileSyncs==syncs&&Os.directorySyncs==dirs&&Os.renames==renames,"unsupported reader wrote a high permit");
+   f.store.save(0,List.of());byte[] v1=f.bytes();scopeReject(()->f.store.requireHighScope(1),"shelf_high_allocation_unconfirmed");check(Arrays.equals(v1,f.bytes()),"rejected high admission changed v1");
+   f.write(version2(f.disk()).toString());byte[] v2=f.bytes();scopeReject(()->f.store.requireHighScope(1),"shelf_high_allocation_unconfirmed");check(Arrays.equals(v2,f.bytes()),"rejected high admission changed v2");
   });
   test("high and draining empty envelopes are rejected by every actual writer",()->{for(String phase:new String[]{"HIGH_REQUIRED","DRAINING"}){Fixture f=new Fixture();f.store.save(0,List.of());f.write(high(version2(f.disk()),phase).toString());byte[] before=f.bytes();
    scopeReject(f.store::read);scopeReject(()->f.store.save(1,List.of()));scopeReject(()->f.store.update(1,record(1,Phase.PREPARED,LeaseState.NONE)));scopeReject(()->f.store.remove(1,hex(3001)));
@@ -101,8 +102,7 @@ def sources():
     values['android/os/IBinder.java'] = 'package android.os;public interface IBinder{boolean isBinderAlive();boolean transact(int c,Parcel d,Parcel r,int f)throws Exception;}'
     values['android/os/Parcel.java'] = 'package android.os;public class Parcel{public static Parcel obtain(){return new Parcel();}public void writeInterfaceToken(String s){}public void writeInt(int i){}public void writeString(String s){}public void readException(){}public Bundle readTypedObject(Object c){throw new AssertionError("unexpected live endpoint");}public void recycle(){}}'
     values['ls/augment/com/AtomicWorkbenchProvider.java'] = 'package ls.augment.com;final class AtomicWorkbenchProvider{static class Pending{android.os.IBinder endpoint;String token;}static Pending existingForReset(){return null;}static boolean hasLiveEndpoint(){return false;}static void remove(Pending p){throw new AssertionError("unexpected provider removal");}}'
-    values['ls/augment/com/ResetWriteFence.java'] = 'package ls.augment.com;final class ResetWriteFence{static boolean owns(){return true;}}'
-    values['ls/augment/com/AtomicWorkbenchProtocol.java'] = 'package ls.augment.com;final class AtomicWorkbenchProtocol{static final String DESCRIPTOR="fixed";static final int VERSION=1,TX_CLOSE=1;static android.os.Bundle failure(String m){android.os.Bundle b=new android.os.Bundle();b.putBoolean("success",false);b.putString("message",m);return b;}}'
+    values['ls/augment/com/ResetWriteFence.java'] = 'package ls.augment.com;final class ResetWriteFence{static boolean owns(){return true;}static long generation(){return 1;}}'
     values['ls/augment/com/AtomicWorkbenchClient.java'] = 'package ls.augment.com;final class AtomicWorkbenchClient{static AtomicWorkbenchClient connect(android.content.Context c){return new AtomicWorkbenchClient();}android.os.Bundle close(){android.os.Bundle b=new android.os.Bundle();b.putBoolean("success",false);b.putBoolean("recovery_pending",true);return b;}}'
     with zipfile.ZipFile(ARCHIVE) as archive:
         name = 'android/app/src/main/java/ls/augment/com/AtomicWorkbenchTaskShelfStore.java'
@@ -115,24 +115,28 @@ def sources():
     test = test.replace(' public static void main(String[] args)', HELPERS + '\n public static void main(String[] args)')
     test = test.replace('  System.out.println("TASK SHELF STORE RESULT', EXTRA + '\n  System.out.println("RECOVERY SCOPE STORE RESULT')
     values['ls/augment/com/TestRecoveryScopeStore.java'] = test
+    engine=runpy.run_path(str(Path(__file__).with_name('test-atomic-workbench-engine.py')))
+    values['android/content/ComponentName.java']=engine['migration_sources']()['android/content/ComponentName.java']
+    values['android/os/Bundle.java']=values['android/os/Bundle.java'].rsplit('}',1)[0]+'public int getInt(String key){Object v=data.get(key);return v instanceof Integer?(Integer)v:0;}public boolean containsKey(String key){return data.containsKey(key);}}'
+    values,_=engine['output_support'](values,['AtomicWorkbenchProtocol.java'])
     return values
 
 
 def main():
     jars = list((Path.home() / '.gradle/caches/modules-2/files-2.1/org.json/json').glob('*/*/*.jar'))
-    production = MODELS['PRODUCTION'] + ['AtomicWorkbenchTaskShelfStore.java', 'AtomicWorkbenchRecoveryScope.java', 'AtomicWorkbenchReset.java']
+    production = MODELS['PRODUCTION'] + ['AtomicWorkbenchTaskShelfStore.java', 'AtomicWorkbenchRecoveryScope.java', 'AtomicWorkbenchReset.java', 'AtomicWorkbenchProtocol.java','OwnedFileCleaner.java']
     values = sources()
     with tempfile.TemporaryDirectory(prefix='duo-recovery-scope-store-') as tmp:
         work = Path(tmp); data = work / 'data'; data.mkdir()
         MODELS['compile_run'](work / 'base', values, production, 'ls.augment.com.TestRecoveryScopeStore', (data,), str(jars[0]))
         controls = [
-            ('required full reader gate', 'AtomicWorkbenchRecoveryScope.java', 'if (requiresHighScopeReader()) throw new IOException("shelf_scope_unsupported_full_scope");', ''),
-            ('preserve header for ordinary writers', 'AtomicWorkbenchTaskShelfStore.java', 'return new Snapshot(revision,records,previous.storageSchema,previous.storeEpoch,previous.recoveryScope);', 'return new Snapshot(revision,records);'),
-            ('preserve header for rollback', 'AtomicWorkbenchTaskShelfStore.java', 'writeSnapshot(derive(current,expectedRevision+1,records))', 'writeSnapshot(new Snapshot(expectedRevision+1,records))'),
+            ('required full reader gate', 'AtomicWorkbenchRecoveryScope.java', 'if (requiresHighScopeReader() && reader != ReaderProfile.FULL8)\n            throw new IOException("shelf_scope_unsupported_full_scope");', ''),
+            ('preserve header for ordinary writers', 'AtomicWorkbenchTaskShelfStore.java', 'return new Snapshot(revision,records,previous.storageSchema,previous.storeEpoch,previous.recoveryScope,reader,!previous.scopeConsistent);', 'return new Snapshot(revision,records,reader,!previous.scopeConsistent);'),
+            ('preserve header for rollback', 'AtomicWorkbenchTaskShelfStore.java', 'writeSnapshot(derive(current,expectedRevision+1,records))', 'writeSnapshot(new Snapshot(expectedRevision+1,records,reader,!current.scopeConsistent))'),
             ('reject unknown retirement outbox', 'AtomicWorkbenchTaskShelfStore.java', 'if(((JSONArray)outbox).length()!=0) throw new IOException("shelf_retirement_reader_required");', ''),
             ('exact v2 family', 'AtomicWorkbenchTaskShelfStore.java', 'jsonKeys(json,"schema","owner_uid","user_id","revision","store_epoch","recovery_scope","records","retirement_outbox");', ''),
             ('exact scope keys', 'AtomicWorkbenchRecoveryScope.java', '!keys.equals(new HashSet<>(Arrays.asList("schema", "pool_limit", "phase", "epoch")))', 'false'),
-            ('v2 envelope durability never skips directory sync', 'AtomicWorkbenchTaskShelfStore.java', 'checkDirectory(); syncDirectory();', 'checkDirectory();'),
+            ('v2 envelope durability never skips directory sync', 'AtomicWorkbenchTaskShelfStore.java', 'renamed=true;\n            checkDirectory(); syncDirectory();', 'renamed=true;\n            checkDirectory();'),
             ('v2 envelope durability never skips file sync', 'AtomicWorkbenchTaskShelfStore.java', 'output.flush(); Os.fsync(fd);', 'output.flush();'),
             ('current-disk revision CAS', 'AtomicWorkbenchTaskShelfStore.java', 'expected!=previous.revision', 'false'),
             ('Reset cannot discard unreadable scope', 'AtomicWorkbenchReset.java', 'throw new IOException("任务暂存恢复责任尚未核对，不能清除记录", unavailable);', 'return false;'),

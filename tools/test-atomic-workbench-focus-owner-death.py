@@ -26,7 +26,7 @@ STUBS = {
 HEAD = r'''package ls.augment.com;import android.os.*;import android.content.Context;import android.view.WindowManagerGlobal;import java.lang.reflect.Method;
 public final class AtomicWorkbenchRoot extends Binder {
  Context context=new Context();IBinder owner=new Binder();int userId,appUid=10515,providerCalls,events;String token="private";long providerSession=123;
- static final class AtomicWorkbenchProtocol {static final int WINDOW_COUNT=4,VERSION=5;}
+ static final class AtomicWorkbenchProtocol {static final int WINDOW_COUNT=4,WINDOW_POOL_COUNT=8,VERSION=5;}
  static final class AtomicWorkbenchProvider {static final String FOCUS_CONTROL="focus_control";}
  Bundle callWorkbenchProvider(int user,String method,Bundle value){providerCalls++;Bundle b=new Bundle();b.putBoolean("success",true);return b;}
  void lifecycle(String event,String detail,Throwable error){events++;}
@@ -57,7 +57,7 @@ TEST = r'''
   test("resume cannot use dead-owner final-close proof",()->{var r=dead();blocked(r,"resume",identity());check(WindowManagerGlobal.service.calls==0,"resume queried release proof");});
   test("suspend cannot use dead-owner final-close proof",()->{var r=dead();blocked(r,"suspend",identity());check(WindowManagerGlobal.service.calls==0,"suspend queried release proof");});
   test("invalid IDs do not query server or clear cleanup",()->{for(int id:new int[]{-1,0}){var r=dead();Bundle q=identity();q.putInt("display_id",id);blocked(r,"close",q);}
-   for(int slot:new int[]{-1,4}){var r=dead();Bundle q=identity();q.putInt("window_id",slot);blocked(r,"close",q);}check(WindowManagerGlobal.service.calls==0,"invalid identity reached WMS");});
+   for(int slot:new int[]{-1,AtomicWorkbenchProtocol.WINDOW_POOL_COUNT}){var r=dead();Bundle q=identity();q.putInt("window_id",slot);blocked(r,"close",q);}check(WindowManagerGlobal.service.calls==0,"invalid identity reached WMS");});
   test("unbound or null request cannot certify any cleanup",()->{var r=dead();r.owner=null;check(r.confirmDeadFocusOwnerCleanup("close",identity())==null,"unbound owner accepted");
    check(dead().confirmDeadFocusOwnerCleanup("close",null)==null,"missing identity accepted");});
   test("owner becoming alive invalidates final proof",()->{var r=dead();WindowManagerGlobal.service.after=()->((Binder)r.owner).alive=true;

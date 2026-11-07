@@ -14,8 +14,12 @@ public final class BrightnessRange {
         return driver(value, NATIVE_MAX, DRIVER_MAX);
     }
     public static boolean calibrated(int minimum, int maximum, int driverMaximum) {
-        return minimum > 1 && maximum > minimum && driverMaximum > maximum && driverMaximum <= 1_000_000;
+        return minimum >= 1 && maximum > minimum && driverMaximum >= maximum && driverMaximum <= 1_000_000
+                && (minimum > 1 || maximum < driverMaximum);
     }
+    public static int sliderMin(int minimum) { return minimum == 1 ? NORMAL_START : 0; }
+    public static int sliderMax(int maximum, int physical) { return maximum == physical ? NORMAL_END : SLIDER_MAX; }
+
     public static int driver(int value, int nativeMaximum, int driverMaximum) {
         value = clamp(value);
         if (value < NORMAL_START) return 1;

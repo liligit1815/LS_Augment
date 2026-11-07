@@ -59,7 +59,7 @@ def member(source, signature):
 
 def activity_sources():
     source=(SRC/'AtomicWorkbenchActivity.java').read_text(encoding='utf-8')
-    signatures=['private void layoutWorkspace()', 'private void prepareMainLayout(', 'private void invalidateMainLayout(',
+    signatures=['private final class PendingAppSurfaceLaunch', 'private void continuePendingAppSurfaceLaunch(', 'private void cancelPendingAppSurfaceLaunch(', 'private void layoutWorkspace()', 'private void prepareMainLayout(', 'private void invalidateMainLayout(',
         'private boolean mainLayoutMatches(', 'private boolean onWorkspacePreDraw()', 'private void setSlotVisible(',
         'private void place(', 'private Roles presentationRoles()', 'private Lease presentationLease(',
         'private Receipt beginPresentationFocus(', 'private Receipt proposalPresentation(', 'private Receipt bindPresentationReply(',
@@ -76,7 +76,7 @@ def activity_sources():
         'private void rejectIncoming(', 'private static void clearEntryExtras(',
         'private void launchApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof,',
         'private void launchApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof)',
-        'private void launchSourceApp(', 'private void focusSourceAppWindow(', 'private boolean workspaceOpenDescriptorCurrent(']
+        'private void launchSourceApp(', 'private void launchSourceApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof,\n            AtomicWorkbenchWorkspaceOpenRequest mediaOpen, int exactTarget)', 'private void focusSourceAppWindow(', 'private boolean workspaceOpenDescriptorCurrent(']
     fixture=(ROOT/'tools/fixtures/AtomicWorkbenchWindowPresentationActivityCases.java').read_text(encoding='utf-8')
     fixture=fixture.replace('import android.os.Bundle;','import android.os.Bundle;import android.os.SystemClock;import android.content.ComponentName;import android.content.Intent;')
     # Only host dependencies: retain the real extracted readTaskSnapshot catch/body.
@@ -165,10 +165,10 @@ def negative_controls(folder, policy, activity):
        '        if (proof == null)', '        if (SystemClock.elapsedRealtime() >= 0) return "";\n        if (proof == null)', 'expired queued entry changed work or survived')
     am('OPEN-before-direction-admission','private void tryIncoming()',
        'if (pendingLayoutProof != null) return;', '', 'task proposal escaped pending side admission')
-    am('launch-OPEN-ACK-premature-flip','private void launchSourceApp(',
+    am('launch-OPEN-ACK-premature-flip','private void launchSourceApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof,\n            AtomicWorkbenchWorkspaceOpenRequest mediaOpen, int exactTarget)',
        'final Receipt launchPresentation = proposalPresentation(launchBefore);',
        'final Receipt launchPresentation = proposalPresentation(launchBefore); presentationPolicy.confirm(launchPresentation,sessionGeneration,epoch+1,presentationRoles(),presentationLease(plan.windowId));', 'launch precommit incorrectly flipped or dispatched synchronously')
-    am('late-entry-after-authorization-not-rechecked','private void launchSourceApp(',
+    am('late-entry-after-authorization-not-rechecked','private void launchSourceApp(AtomicWorkbenchAppRepository.App app, int taskId, EntryProof proof,\n            AtomicWorkbenchWorkspaceOpenRequest mediaOpen, int exactTarget)',
        'if (proof != null || taskId > 0) requireCurrentEntry(proof);\n                    if (mediaOpen', 'if (mediaOpen', 'late original-task entry dispatched an OPEN/focus/cleanup')
     am('automatic-focus-window-ignores-proof','private void focusWindow(int id, EntryProof proof)',
        'if (proof != null) requireCurrentEntry(proof);', '', 'expired automatic existing-app entry dispatched focus or changed role',occurrences=2)

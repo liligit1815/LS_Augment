@@ -1,6 +1,6 @@
 """Run the production recovery journal model, wrapper, and generated shell.
 
-Requires javac/java and real Git Bash. All executable scripts use temporary host
+Requires javac/java and Bash. All executable scripts use temporary host
 paths; no su/adb/real RootShell.run. The explicit fsync adapter calls os.fsync for
 regular files but only records directory requests. NTFS does not establish
 Android directory durability, SELinux behavior, or power-loss safety.
@@ -35,7 +35,7 @@ def captured_run(argv, **kwargs):
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = ROOT / 'android/app/src/main/java/ls/augment/com'
-BASH = Path(r'C:\Program Files\Git\bin\bash.exe')
+BASH = Path(r'C:\Program Files\Git\bin\bash.exe') if os.name == 'nt' else Path('/bin/bash')
 ROOT_ASSIGNMENT = 'ROOT="${LSA_PRIVATE_ROOT:?}/v2"'
 SUCCESS = b'LSA_RECOVERY_JOURNAL_OK'
 OWNER = 'aaaa0000-0000-0000-0000-000000000001'
@@ -51,10 +51,12 @@ def bash(script, *, stdin=b'', env=None):
     if env is not None:
         env = dict(env, LSA_TEST_PATH=env['PATH'])
     return captured_run([str(BASH), '--noprofile', '--norc', '-c', script],
-                          input=stdin, capture_output=True, env=env, timeout=240)
+                          input=stdin, capture_output=True, env=env, timeout=600 if os.name == "nt" else 240)
 
 
 def posix(path):
+    if os.name != 'nt':
+        return str(path.absolute())
     result = captured_run([str(BASH), '--noprofile', '--norc', '-c',
                              'cygpath -u -- "$1"', 'journal-test', str(path.absolute())],
                             capture_output=True, check=True, timeout=10)
@@ -82,7 +84,7 @@ class JournalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not BASH.is_file():
-            raise RuntimeError(f'Real Git Bash required: {BASH}')
+            raise RuntimeError(f'Bash required: {BASH}')
         if ARTIFACTS is None:
             cls.temporary = tempfile.TemporaryDirectory(prefix='ls-hide-journal-')
             cls.addClassCleanup(cls.temporary.cleanup)
@@ -130,7 +132,7 @@ for arg in sys.argv[1:]:
     with open(os.environ["LSA_TEST_FSYNC_LOG"], "a", encoding="utf-8") as log:
         log.write(("directory-call-only " if path.is_dir() else "file-fsync ") + str(path) + "\\n")
     if not path.is_dir():
-        fd = os.open(path, os.O_RDWR | os.O_BINARY)
+        fd = os.open(path, os.O_RDWR | getattr(os, 'O_BINARY', 0))
         try:
             os.fsync(fd)
         finally:

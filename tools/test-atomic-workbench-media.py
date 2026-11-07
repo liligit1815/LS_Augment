@@ -101,6 +101,13 @@ STUBS = {
  events.add(event+"|"+user+"|"+component+"|"+detail+"|"+stack.substring(0,Math.min(4096,stack.length())));}}""",
 }
 
+def host_json_jar():
+    cached = Path.home()/".gradle/caches/modules-2/files-2.1/org.json/json/20240303"
+    jars = sorted(cached.glob("*/json-20240303.jar")) or sorted((ROOT/"audit-output").glob("*/dependencies/json-20240303.jar"))
+    if not jars:
+        raise FileNotFoundError("Host media regression requires the cached org.json 20240303 jar")
+    return str(jars[0])
+
 STUBS = runpy.run_path(str(Path(__file__).with_name("atomic-workbench-media-boundaries.py")))["extend"](STUBS)
 
 TEST = r'''package ls.augment.com;
@@ -280,9 +287,9 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             files.append(path)
-        files += [SRC / (name + ".java") for name in ("AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol")]
-        subprocess.run([javac, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", "--release", "17", "-d", tmp, *map(str, files)], check=True)
-        subprocess.run([java, "-cp", tmp, "ls.augment.com.TestAtomicWorkbenchMedia"], check=True, timeout=30)
+        files += [SRC / (name + ".java") for name in ("AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol", "AtomicWorkbenchSlotDomain", "AtomicWorkbenchRecoveryScope")]
+        subprocess.run([javac, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", "--release", "17", "-cp", host_json_jar(), "-d", tmp, *map(str, files)], check=True)
+        subprocess.run([java, "-cp", os.pathsep.join((tmp,host_json_jar())), "ls.augment.com.TestAtomicWorkbenchMedia"], check=True, timeout=30)
     run_sources(STUBS, TEST)
 
     # Remove real reflection targets, rather than simulating every mismatch with
@@ -318,7 +325,7 @@ public class TestAtomicWorkbenchMedia {public static void main(String[] args){Co
             stub = Path(tmp) / "AtomicWorkbenchDiagnostics.java"
             stub.write_text(STUBS["ls/augment/com/AtomicWorkbenchDiagnostics.java"], encoding="utf-8")
             subprocess.run([javac, "-J-Duser.language=en", "-J-Dfile.encoding=UTF-8", "-encoding", "UTF-8", "--release", "17", "-cp", str(args.android_jar), "-d", tmp,
-                            str(stub), *[str(SRC / (name + ".java")) for name in ("AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol")]], check=True)
+                            str(stub), *[str(SRC / (name + ".java")) for name in ("AtomicWorkbenchMedia", "AtomicWorkbenchMediaSources", "AtomicWorkbenchMediaProgress", "AtomicWorkbenchMediaObservers", "AtomicWorkbenchMediaSessionEvidenceClient", "AtomicWorkbenchProtocol", "AtomicWorkbenchSlotDomain", "AtomicWorkbenchRecoveryScope")]], check=True)
         print("PASS production media bridge compiles against installed Android SDK")
 
 

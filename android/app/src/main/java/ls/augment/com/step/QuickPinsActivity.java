@@ -25,7 +25,7 @@ public final class QuickPinsActivity extends Activity {
                     if(state!=null)picker.search.setText(state.getString("search",""));
                     picker.show();
                 });
-            }catch(RuntimeException|LinkageError error){runOnUiThread(()->{android.widget.Toast.makeText(this,"当前用户的应用目录不可用",0).show();finish();});}
+            }catch(RuntimeException|LinkageError error){runOnUiThread(()->{android.widget.Toast.makeText(this,"当前用户的应用目录不可用",android.widget.Toast.LENGTH_SHORT).show();finish();});}
         },"DuoStepQuickPicker").start();
     }
     @Override protected void onSaveInstanceState(Bundle out){

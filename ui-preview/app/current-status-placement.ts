@@ -89,6 +89,25 @@ export function placementItems(v: Values) {
   }
   return result;
 }
+const orderIds = [
+  ...new Set([...Object.keys(componentNames), ...icons.map((icon) => icon.id)]),
+];
+export const numericOrderKey = (id: string) => 'prototype:display-order:' + id;
+function legacyOrder(v: Values, id: string) {
+  return Number(
+    v[placementKey(id, 'order')] ||
+      (!(id in componentNames)
+        ? Number(v['status:system_icons:order'] || 2) +
+          icons.findIndex((icon) => icon.id === id) / 100
+        : Object.keys(componentNames).indexOf(id)),
+  );
+}
+export function comparePlacementOrder(
+  a: { id: string; order: number },
+  b: { id: string; order: number },
+) {
+  return a.order - b.order || orderIds.indexOf(a.id) - orderIds.indexOf(b.id);
+}
 export function readPlacement(v: Values, id: string) {
   const ordinary = !(id in componentNames);
   const zone = Number(
@@ -96,13 +115,20 @@ export function readPlacement(v: Values, id: string) {
       (ordinary ? v['status:system_icons:zone'] : undefined) ||
       defaultZone(id),
   );
-  const order = Number(
-    v[placementKey(id, 'order')] ||
-      (ordinary
-        ? Number(v['status:system_icons:order'] || 2) +
-          icons.findIndex((i) => i.id === id) / 100
-        : Object.keys(componentNames).indexOf(id)),
-  );
+  const stored = Number(v[numericOrderKey(id)]);
+  const legacy = legacyOrder(v, id);
+  // Assign stable integer defaults in the same relative order as the old model.
+  // Use the complete directory, so visibility and ownership changes never renumber items.
+  const order =
+    Number.isInteger(stored) && stored >= 1 && stored <= 999
+      ? stored
+      : 1 +
+        orderIds.filter(
+          (other) =>
+            legacyOrder(v, other) < legacy ||
+            (legacyOrder(v, other) === legacy &&
+              orderIds.indexOf(other) < orderIds.indexOf(id)),
+        ).length;
   return { zone, order };
 }
 export function effectiveZone(v: Values, id: string) {
@@ -121,8 +147,11 @@ export function placementPeers(
       (i) =>
         Math.floor(readPlacement(v, i.id).zone / 3) === Math.floor(zone / 3),
     )
-    .sort(
-      (a, b) => readPlacement(v, a.id).order - readPlacement(v, b.id).order,
+    .sort((a, b) =>
+      comparePlacementOrder(
+        { ...a, ...readPlacement(v, a.id) },
+        { ...b, ...readPlacement(v, b.id) },
+      ),
     );
 }
 /** Move relative to another item; normalize order without losing saved rows. */

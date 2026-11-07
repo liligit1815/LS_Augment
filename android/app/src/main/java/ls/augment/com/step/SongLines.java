@@ -35,6 +35,22 @@ public final class SongLines {
         if(lines.isEmpty() && !text.trim().startsWith("[") && !text.trim().startsWith("{"))plain=text.trim();
     }
     public boolean empty(){return lines.isEmpty() && plain.isEmpty();}
+    public static final class Display {
+        public final String text;
+        public final int currentStart,currentEnd;
+        Display(String text,int start,int end){this.text=text;currentStart=start;currentEnd=end;}
+    }
+    public Display display(long ms,boolean previous){
+        Map.Entry<Long,String> now=lines.floorEntry(ms);
+        if(now==null)return new Display(lines.isEmpty()?plain:lines.firstEntry().getValue(),-1,-1);
+        StringBuilder text=new StringBuilder();
+        Map.Entry<Long,String> before=previous?lines.lowerEntry(now.getKey()):null;
+        if(before!=null)text.append(before.getValue().split("\n",2)[0]).append('\n');
+        int start=text.length();text.append(now.getValue());int end=text.length();
+        Map.Entry<Long,String> next=lines.higherEntry(now.getKey());
+        if(next!=null)text.append('\n').append(next.getValue().split("\n",2)[0]);
+        return new Display(text.toString(),start,end);
+    }
     public Map.Entry<Long,String> current(long ms){return lines.floorEntry(ms);}
     public List<Map.Entry<Long,String>> nearby(long ms){
         List<Map.Entry<Long,String>> rows=new ArrayList<>(3);

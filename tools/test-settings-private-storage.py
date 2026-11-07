@@ -142,7 +142,14 @@ observed_direct, observed_shell = set(), set()
 for name, text in sources.items():
     for write in direct_writes(text):
         observed_direct.add(name)
-        require(name in DIRECT_FILES and permitted_direct(write),
+        mode_write = (name=='hook/NativeIslandSettingsHook.java'
+                      and write==('System','<dynamic:NativeIslandMode.key(mode)>','enabled?1:0','putInt'))
+        if mode_write:
+            mode=sources['NativeIslandMode.java']
+            require('if(!NativeIslandMode.known(mode)' in text and
+                    re.search(r'key\(String mode\)\s*\{\s*return MODERN.equals\(mode\)\?"dynamic_island_function_switch":"dynamic_island_switch_state";\s*\}',mode),
+                    'OEM island switch must select one of the two known factory settings')
+        require(name in DIRECT_FILES and (mode_write or permitted_direct(write)),
                 f'Unaudited Settings write in {name}: {write}')
         if write[1]=='dynamic_island_switch_state':
             require(name=='hook/NativeIslandSettingsHook.java' and 'if(ok)' in text

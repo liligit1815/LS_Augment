@@ -76,9 +76,9 @@ export function NotificationEditor({
           help="开启时显示状态栏通知图标；关闭时隐藏通知区域，包括已启用的通知汇总。原通知不删除，位置、顺序、大小、数量、边距与汇总配置均保留，重新开启后恢复。"
         />
         {!visible && (
-          <p className="c-native-note" role="status">
+          <output className="c-native-note">
             通知图标已隐藏，通知汇总也暂不显示；全部配置保留。
-          </p>
+          </output>
         )}
         <NativeSelect
           name={key('two_rows')}
@@ -90,13 +90,13 @@ export function NotificationEditor({
           ]}
         />
         {requestedDual && (single || positionOnly) && (
-          <p className="c-native-note" role="status">
+          <output className="c-native-note">
             双排配置已保留；
             {positionOnly
               ? '“仅调整位置和大小”已开启'
               : '当前整栏为单排／跟随系统'}
             ，目前按单排显示。
-          </p>
+          </output>
         )}
         {requestedDual && (
           <NativeFold
@@ -111,7 +111,7 @@ export function NotificationEditor({
               dp（整栏共享）。
             </p>
             <Button secondary onClick={() => m.go('status_arrangement')}>
-              前往状态栏布局调整行间距
+              前往状态栏属性调整行间距
             </Button>
           </NativeFold>
         )}

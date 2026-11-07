@@ -10,9 +10,21 @@ import android.view.Gravity;
 import android.widget.*;
 
 final class StepMaterial {
+    // TYPE_STATUS_BAR_SUB_PANEL is the SystemUI window above the scaled main pane.
+    // Android exposes createWindowContext but omits this privileged type from its SDK IntDef.
+    static final int STATUS_BAR_SUB_PANEL = 2017;
+    @android.annotation.SuppressLint("WrongConstant")
+    static Context statusBarPanelContext(Context base, android.view.Display display) {
+        return base.createDisplayContext(display).createWindowContext(STATUS_BAR_SUB_PANEL, null);
+    }
     static int dp(Context c,float n){return Math.round(c.getResources().getDisplayMetrics().density*n);}
     static boolean dark(Context c){return (c.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;}
     static int ink(Context c){return dark(c)?0xfff1f4f7:0xff1a2634;}
+    static void feedback(android.view.View view){
+        Context c=view.getContext();GradientDrawable mask=new GradientDrawable();
+        mask.setColor(Color.WHITE);mask.setCornerRadius(dp(c,8));
+        view.setForeground(ls.augment.com.ControlFeedback.ripple(dark(c)?0xff72bbff:0xff1f74c5,null,mask));
+    }
     static GradientDrawable glass(Context c,boolean solid,int radius) {
         int[] colors=dark(c)?new int[]{solid?0xf0414954:0xb048525c,solid?0xfa272e38:0xbb293440}
                              :new int[]{solid?0xf4f3f7fc:0xccf4f7fa,solid?0xf2d9e2ed:0xc4d5e2ee};

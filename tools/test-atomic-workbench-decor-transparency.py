@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 B=runpy.run_path(str(ROOT/'tools/test-atomic-workbench-extraction-system.py'))
 G=B['run'].__globals__
 S=G['S']
+S['android/annotation/SuppressLint.java']='package android.annotation;public @interface SuppressLint { String[] value(); }'
 S.pop('ls/augment/com/hook/AtomicWorkbenchDecorTransparency.java')
 G['FILES'].append('hook/AtomicWorkbenchDecorTransparency.java')
 S['android/graphics/Rect.java']=S['android/graphics/Rect.java'].replace('public boolean contains(', 'public int width(){return right-left;}public int height(){return bottom-top;}public boolean isEmpty(){return right<=left||bottom<=top;}public boolean contains(',1)

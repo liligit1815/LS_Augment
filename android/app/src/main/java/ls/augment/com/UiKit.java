@@ -1095,8 +1095,7 @@ final class UiKit {
 
     Drawable pressable(Drawable content) {
         {}
-        return new RippleDrawable(ColorStateList.valueOf(Color.argb(38,
-                Color.red(accent), Color.green(accent), Color.blue(accent))), content, null);
+        return ControlFeedback.ripple(accent, content, null);
     }
 
     int dp(int value) {

@@ -53,7 +53,7 @@ final class QuickCatalog {
             try{entries=c.getSystemService(LauncherApps.class).getActivityList(null,u);}catch(SecurityException unavailable){continue;}
             for(LauncherActivityInfo info:entries){
                 ComponentName component=info.getComponentName();
-                if(!u.equals(info.getUser()) || StepRuntime.PACKAGE.equals(component.getPackageName()))continue;
+                if(!u.equals(info.getUser()))continue;
                 App app=new App(info,clone || usage==null?null:usage.get(component.getPackageName()),clone,serial);
                 if(seen.add(app.key))apps.add(app);
             }

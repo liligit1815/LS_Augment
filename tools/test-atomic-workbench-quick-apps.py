@@ -16,6 +16,8 @@ SRC = SUPPORT["SRC"]
 member = LIFECYCLE["member"]
 
 SOURCES = {
+    "android/view/DragEvent.java": "package android.view;public class DragEvent{public static final int ACTION_DRAG_ENDED=4,ACTION_DROP=3;public int getAction(){return ACTION_DRAG_ENDED;}public Object getLocalState(){return null;}}",
+    "android/content/ClipData.java": "package android.content;public class ClipData{public ClipData(String label,String[] mime,Item item){}public static class Item{public Item(String text){}}}",
     "android/content/Context.java": "package android.content;public class Context {public Object getResources(){return null;}}",
     "android/content/ComponentName.java": r'''package android.content;public final class ComponentName {
  final String pkg,cls;public ComponentName(String pkg,String cls){this.pkg=pkg;this.cls=cls;}
@@ -28,6 +30,10 @@ SOURCES = {
     "android/view/Gravity.java": "package android.view;public class Gravity {public static final int CENTER=17,CENTER_VERTICAL=16;}",
     "android/view/View.java": r'''package android.view;import android.content.Context;public class View {
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8,IMPORTANT_FOR_ACCESSIBILITY_NO=2;
+ public interface LongClick {boolean click(View view);}public void setOnLongClickListener(LongClick listener){}
+ public interface DragListener{boolean onDrag(View view,DragEvent event);}public void setOnDragListener(DragListener listener){}
+ public static class DragShadowBuilder{public DragShadowBuilder(View v){}}
+ public boolean startDragAndDrop(android.content.ClipData clip,DragShadowBuilder shadow,Object state,int flags){return false;}public void cancelDragAndDrop(){}
  public interface OnClickListener {void onClick(View value);}public OnClickListener click;public Object tag,background,layout;public CharSequence description;public boolean enabled=true;public int visibility=VISIBLE;
  public View(Context context){}public void setTag(Object value){tag=value;}public Object getTag(){return tag;}
  public void setVisibility(int value){visibility=value;}public int getVisibility(){return visibility;}
@@ -81,13 +87,19 @@ final class AtomicWorkbenchTransfer {void bindDropTarget(View target,Supplier<St
 HEAD = r'''package ls.augment.com;
 import android.content.*;import android.graphics.drawable.Drawable;import android.view.*;import android.widget.*;import android.text.TextUtils;import java.util.*;
 public final class QuickAppsHarness extends Context {
+ static final String APP_PLACEMENT_MIME="application/vnd.ls.augment.workspace-app";
+ static class AppPlacementDrag{boolean ended;AppPlacementDrag(AtomicWorkbenchAppRepository.App app){}}
+ AppPlacementDrag appPlacementDrag;boolean hostDragActive;
+ static class MainQueue{void postDelayed(Runnable task,long ms){throw new AssertionError("unexpected successful drag");}}final MainQueue main=new MainQueue();
+ void onAppPlacementDrag(int slot,DragEvent event){}void cancelGesture(){}void invalidateExtractionGeometry(){}
+
  static int cases,checks;static final int COUNT=4;
  static void check(boolean value,String reason){checks++;if(!value)throw new AssertionError(reason);}
  interface Case {void run();}static void test(String name,Case body){body.run();cases++;System.out.println("PASS production quick-apps: "+name);}
  final UiKit ui=new UiKit(this);final AppConfig config=new AppConfig();final AtomicWorkbenchWorkspaceModel model=new AtomicWorkbenchWorkspaceModel();
  final AtomicWorkbenchTransfer transfer=new AtomicWorkbenchTransfer();
  final ArrayList<AtomicWorkbenchAppRepository.App> apps=new ArrayList<>();
- static final class Slot {final int id,displayId,taskId;boolean retainedEmptyTaskDisplay;String topComponent="";final Object surface=new Object();final ArrayList<String> runningPackages=new ArrayList<>();Slot(int id){this.id=id;displayId=100+id;taskId=1000+id;}}
+ static final class Slot {void clearDropHover(){}final int id,displayId,taskId;boolean retainedEmptyTaskDisplay;String topComponent="";final Object surface=new Object();final ArrayList<String> runningPackages=new ArrayList<>();Slot(int id){this.id=id;displayId=100+id;taskId=1000+id;}}
  final Slot[] slots={new Slot(0),new Slot(1),new Slot(2),new Slot(3)};
  final LinearLayout root=new LinearLayout(this),mediaCard=new LinearLayout(this);HorizontalScrollView appStripScroll;LinearLayout appStrip;
  boolean quickOpenApps,appsLoaded=true,showMedia,mediaEnabled,mediaRetryRequired,appListRequested,nativeHomePending,interactable=true;

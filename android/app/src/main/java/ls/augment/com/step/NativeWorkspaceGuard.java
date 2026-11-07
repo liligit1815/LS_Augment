@@ -22,8 +22,8 @@ final class NativeWorkspaceGuard {
     static final Map<Integer, SavedTask> saved = new LinkedHashMap<>();
     static final java.util.LinkedHashSet<String> retired = new java.util.LinkedHashSet<>();
     static boolean registered, ending;
-    static int systemUiUid=-1, rejectedSenders, transitionReplays, committedOperations, completedRecoveries, finishTransactionReplays, sideFocusExclusions;
-    static boolean transactionReplaySupported;
+    static java.lang.reflect.Method replayPending;
+    static int systemUiUid=-1, rejectedSenders, transitionReplays, committedOperations, completedRecoveries, sideFocusExclusions;
     static Class<?> physicalTaskType;
     static final String SYSTEM_CONTROL="android.permission.MANAGE_ACTIVITY_TASKS";
     static volatile boolean active;
@@ -109,7 +109,7 @@ final class NativeWorkspaceGuard {
                     }catch(RuntimeException|LinkageError ignored){}
                 }
                 @Override protected void beforeHookedMethod(MethodHookParam p){observe();}
-                @Override protected void afterHookedMethod(MethodHookParam p){observe();GameInput.refreshUnderLock();}
+                @Override protected void afterHookedMethod(MethodHookParam p){observe();GameInput.refreshUnderLock();WorkspaceIme.request();}
             });
             for(java.lang.reflect.Method method:focusMethods){
                 if(method.getReturnType()!=boolean.class||java.lang.reflect.Modifier.isStatic(method.getModifiers()))
@@ -123,6 +123,7 @@ final class NativeWorkspaceGuard {
                             if (slots.index(id) < 0) return;
                             SavedTask record=saved.get(id);
                             if(call(p.thisObject,"getDisplayContent")==Wm.display
+                                    && (Integer)call(task,"getWindowingMode")==6
                                     &&SideFocus.excludes(active,ending,id,id,record==null?null:record.task,task,record!=null&&record.dirty)){
                                 p.setResult(false);sideFocusExclusions++;
                             }
@@ -131,27 +132,11 @@ final class NativeWorkspaceGuard {
                 });
             }
             Class<?> transition=StepMembers.findClass("com.android.server.wm.Transition",loader);
-            Class<?> transactionType=Class.forName("android.view.SurfaceControl$Transaction",false,loader);
-            java.lang.reflect.Method replayTransaction=TransitionCompletion.transactionReplay(Wm.display.getClass(),transactionType);
-            transactionReplaySupported=replayTransaction!=null;
-            if(replayTransaction!=null){
-                Class<?> displayType=Class.forName("com.android.server.wm.DisplayContent",false,loader);
-                Class<?> displayArray=java.lang.reflect.Array.newInstance(displayType,0).getClass();
-                java.lang.reflect.Method build=OwnershipBridge.method(transition,"buildFinishTransaction",transactionType,
-                        Class.forName("android.window.TransitionInfo",false,loader),displayArray);
-                if(build.getReturnType()!=void.class||java.lang.reflect.Modifier.isStatic(build.getModifiers()))
-                    throw new NoSuchMethodException("Unknown native finish transaction contract");
-                StepHooks.hookMethod(build,new StepHook(){
-                    @Override protected void afterHookedMethod(MethodHookParam p){
-                        if(p.hasThrowable()||!active||ending||!Thread.holdsLock(Wm.lock)
-                                ||field(Wm.display,"mMagnificationSpec")!=Wm.ownedSpec)return;
-                        boolean owns=false;for(Object display:(Object[])p.args[2])if(display==Wm.display)owns=true;
-                        if(!owns)return;
-                        try{replayTransaction.invoke(Wm.display,p.args[0]);finishTransactionReplays++;}
-                        catch(Throwable error){final IBinder expected=owner;Wm.handler.post(()->{if(owner==expected)finish("原厂结束事务同步失败");});}
-                    }
-                });
-            }
+            replayPending=TransitionCompletion.transactionReplay(Wm.display.getClass(),
+                    Class.forName("android.view.SurfaceControl$Transaction",false,loader));
+            // Shell may apply its finish transaction after this session exits. Writing
+            // workspace matrices to that transaction can resurrect a cleared display
+            // transform. Reconcile on native completion against the live owner below.
             java.lang.reflect.Method finish=TransitionCompletion.resolve(transition,
                     StepMembers.findClassIfExists("com.android.server.wm.ActionChain",loader));
             StepHooks.hookMethod(finish,new StepHook(){
@@ -174,6 +159,9 @@ final class NativeWorkspaceGuard {
             Class<?> wc = StepMembers.findClass("com.android.server.wm.WindowContainer", loader);
             Class<?> tx = StepMembers.findClass("android.view.SurfaceControl$Transaction", loader);
             Class<?> spec = StepMembers.findClass("android.view.MagnificationSpec", loader);
+            if(OwnershipBridge.method(wc,"shouldMagnify").getReturnType()!=boolean.class
+                    || OwnershipBridge.method(wc,"clearMagnificationSpec",tx).getReturnType()!=void.class)
+                throw new NoSuchMethodException("原生缩放归属迁移接口");
             try{
                 Class<?> task=Class.forName("com.android.server.wm.Task",false,loader);
                 if(OwnershipBridge.method(task,"getWindowingMode").getReturnType()==int.class
@@ -184,10 +172,11 @@ final class NativeWorkspaceGuard {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     if (!active) return;
                     try {
-                        if(PhysicalIme.ownsContainer(p.thisObject) || physicalNativeWindow(p.thisObject)){
+                        if(PhysicalIme.ownsContainer(p.thisObject) || PhysicalFingerprint.window(p.thisObject) || physicalNativeWindow(p.thisObject)){
                             if(field(p.thisObject,"mLastMagnificationSpec")!=null)call(p.thisObject,"clearMagnificationSpec",p.args[0]);
                             p.setResult(null);
-                        }else if (ownsTask(p.thisObject)) p.setResult(null);
+                        }else if (ownsMagnification(p.thisObject)) p.setResult(null);
+                        else normalizeMagnificationOwner(p.thisObject,p.args[0],p.args[1]);
                     } catch (Throwable error) {
                         final IBinder expected = owner;
                         Wm.handler.post(() -> { if (owner == expected) finish("侧窗缩放能力失效"); });
@@ -205,7 +194,15 @@ final class NativeWorkspaceGuard {
             Wm.context.registerReceiver(new BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
                     // Check framework-provided sender identity before reading any payload.
-                    if(!WorkspaceCaller.trusted(systemUiUid,getSentFromUid())){rejectedSenders++;return;}
+                    if(!WorkspaceCaller.trusted(systemUiUid,getSentFromUid())){
+                        rejectedSenders++;
+                        if(rejectedSenders==1)diagnostic("SENDER_REJECTED","expected_uid="+systemUiUid+";delivered_uid="+getSentFromUid());
+                        return;
+                    }
+                    if ("probe".equals(i.getStringExtra("operation"))) {
+                        // Capability-only query; it never enables or begins a workspace.
+                        answer(i,registered,"系统框架");return;
+                    }
                     if ("readiness".equals(i.getStringExtra("operation"))) {
                         answer(i,registered && StepRuntime.enabled,"系统框架");return;
                     }
@@ -213,7 +210,8 @@ final class NativeWorkspaceGuard {
                 }
             }, new IntentFilter(ACTION), SYSTEM_CONTROL, Wm.handler, Context.RECEIVER_EXPORTED);
             registered = true;
-            LocalLandscape.install(loader); PhysicalIme.install(loader); WorkspaceResize.install(loader);WorkspaceResize.installUpperBounds(loader); EdgeHandoff.install(loader);
+            try{WorkspaceGestureGate.installServer();}catch(RuntimeException missing){report(null,0,"工作区手势状态通道不可用："+missing,-1);}
+            LocalLandscape.install(loader); PhysicalIme.install(loader); WorkspaceIme.install(loader); PhysicalFingerprint.install(loader); WorkspaceResize.install(loader);WorkspaceResize.installUpperBounds(loader); EdgeHandoff.install(loader);
             WorkspaceRoutes.installDesktop(loader);WorkspaceRecents.install(loader);WorkspaceRecents.installShade(loader);
         } catch (Throwable error) { report(null, -1, "原任务恢复入口注册失败: " + error, -1); }
     }
@@ -279,15 +277,41 @@ final class NativeWorkspaceGuard {
         SavedTask upper=NativeTopTask.upper;
         if(!ending && upper!=null && upper.dirty && upper.task==candidate)return true;
         NativeFlip moving=flip;
-        if (!ending && moving!=null && moving.actors[0].task==candidate) return true;
+        if (!ending && moving!=null)for(SavedTask actor:moving.actors)
+            if(actor!=null && actor.task==candidate)return true;
         // applyMagnificationSpec is invoked for non-Task containers too.
         for (int slot = 0; slot < SideSlots.MAX_COUNT; slot++) {
             int id = slots.task(slot);
             if (id < 0) continue;
             SavedTask record = saved.get(id);
-            if (record != null && record.dirty && record.task == candidate) return true;
+            // An OEM launch can promote this exact task before Shell reports it.
+            // Its fullscreen transition must no longer inherit preview isolation.
+            if (record != null && record.dirty && record.task == candidate
+                    && (Integer)call(candidate,"getWindowingMode")==6) return true;
         }
         return false;
+    }
+    static boolean ownsMagnification(Object candidate) {
+        if(!ownsTask(candidate))return false;
+        NativeFlip moving=flip;
+        // The outgoing fullscreen task stays on its native parent while HOME
+        // draws. Keep magnifying it until the first animation transaction also
+        // reparents it; logical ownership still blocks competing operations.
+        if(!ending && moving!=null && !moving.ownsTransforms && moving.actors[0]!=null
+                && moving.actors[0].task==candidate)return false;
+        return true;
+    }
+    static void normalizeMagnificationOwner(Object container,Object transaction,Object spec) {
+        if(!Wm.active || spec==null || spec!=Wm.ownedSpec
+                || field(Wm.display,"mMagnificationSpec")!=spec
+                || call(container,"getDisplayContent")!=Wm.display)return;
+        // Native applyMagnificationSpec returns immediately when a parent can own
+        // the transform. It does not clear the former child owners in that branch.
+        // Clear their cached transforms in THIS transaction before native applies
+        // the one parent transform; otherwise the last preview returning produces M*M.
+        // Physical/preview owners are excluded by the caller and shouldMagnify.
+        if(Boolean.TRUE.equals(call(container,"shouldMagnify")))
+            call(container,"clearMagnificationSpec",transaction);
     }
     static boolean physicalNativeWindow(Object task){
         if(!active || physicalTaskType==null || !physicalTaskType.isInstance(task) || call(task,"getDisplayContent")!=Wm.display)return false;
@@ -296,6 +320,7 @@ final class NativeWorkspaceGuard {
     }
     static Bundle base() {
         Bundle b = new Bundle(); b.putString("session", session);
+        b.putBoolean("homeBackdropAvailable",WorkspaceReadmit.available);
         b.putString("state", ending ? "RESTORING" : active ? "ACTIVE" : "RESTORED");
         b.putLong("elapsed",android.os.SystemClock.elapsedRealtime()-startedAt);
         b.putIntArray("slots", slots.snapshot()); return b;
@@ -364,6 +389,10 @@ final class NativeWorkspaceGuard {
                     flip.start(reply);
                 }
             }
+            else if ("position".equals(action)) {
+                applyingRoles=true;
+                position(intent,reply);
+            }
             else if ("renew".equals(action)) {
                 if(!renewable || !interactive(Wm.context) || owner==null || !owner.isBinderAlive())
                     throw new IllegalStateException("当前会话不能续期");
@@ -403,13 +432,28 @@ final class NativeWorkspaceGuard {
                     respond(reply,0,b,"此任务保留原窗口："+refused.getMessage());
                 }
             }
+            else if ("adoptPromotion".equals(action)) {
+                // A native launcher may promote a leased task through an OEM
+                // launch path. Validate that exact task before relinquishing it.
+                synchronized(Wm.lock){
+                    if(!canAdoptPromotion(intent))throw new IllegalStateException("系统切回主区的任务身份未确认");
+                }
+                applyingRoles=true;
+                roles(new Intent(intent).putExtra("task",-1).putExtra("previous",intent.getIntExtra("task",-1))
+                        .putExtra("externalPromotion",true),reply);
+            }
             else if ("roles".equals(action)) {
                 applyingRoles = true;
                 roles(intent, reply);
             }
             else if ("replay".equals(action)) {
-                synchronized (Wm.lock) { replay(); }
-                respond(reply, 0, base(), "主屏缩放与输入已重新同步");
+                CommitBarrier group=pendingCommit=new CommitBarrier();
+                IBinder expected=owner;
+                synchronized (Wm.lock) { replay(group,null); }
+                group.seal();
+                awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,
+                        ()->respond(reply,0,base(),"主屏缩放与输入事务已提交"),
+                        ()->finish("主屏缩放交接提交未确认"));
             } else if ("end".equals(action)) {
                 hostPage=intent.getIntExtra("page",0);hostTopFace=intent.getBooleanExtra("topFace",false);
                 finish(!intent.getBooleanExtra("retain",false)?"手动退出":intent.getBooleanExtra("homeExit",false)?"桌面暂挂":"工作区暂挂");
@@ -442,6 +486,10 @@ final class NativeWorkspaceGuard {
         OwnershipBridge.method(transaction, "setBounds", token, Rect.class);
         OwnershipBridge.method(transaction, "setBoundsChangeTransaction", token, Class.forName("android.view.SurfaceControl$Transaction", false, cl));
         OwnershipBridge.method(Wm.display.getClass(), "reapplyMagnificationSpec");
+        // This cache is part of the inverse operation, so reject unknown layouts
+        // before enabling magnification or borrowing any original task surface.
+        WorkspaceTransform.requireCache(Class.forName("com.android.server.wm.WindowContainer",false,cl),
+                Class.forName("android.view.MagnificationSpec",false,cl));
         WorkspaceZoom.entered=false;principal=WorkspaceUsers.foreground();
         if(principal<0 || i.getIntExtra("user",-1)!=principal)throw new IllegalStateException("当前用户未核实");
         owner = candidate; session = candidateSession; lastSequence = i.getLongExtra("sequence", 0);
@@ -480,6 +528,7 @@ final class NativeWorkspaceGuard {
         }
         b.putBoolean("left",sideLeft);b.putInt("page",readmitting.page);b.putBoolean("topFace",readmitting.topFace);
         PhysicalIme.refreshParent();
+        WorkspaceGestureGate.keepAlive(owner);
         if(LocalLandscape.available)LocalLandscape.watch(owner);
         b.putIntArray("retained",readmitting.idsFor(user->WorkspaceUsers.allows(Wm.context,principal,user)));
         respond(reply, 0, b, "工作区已准备；90秒恢复计时由系统服务持有");
@@ -503,7 +552,7 @@ final class NativeWorkspaceGuard {
                 task!=call(task,"getRootTask") || !runningActivity(task) || ownsTask(task))return;
         ActivityManager.RunningTaskInfo t=(ActivityManager.RunningTaskInfo)call(task,"getTaskInfo");
         int type=(Integer)call(t,"getActivityType"),user=(Integer)field(t,"userId");
-        if((type==1 || type==2) && t.topActivity!=null && !PACKAGE.equals(t.topActivity.getPackageName()) && WorkspaceUsers.allows(Wm.context,principal,user)){
+        if((type==1 || type==2) && t.topActivity!=null && WorkspaceUsers.allows(Wm.context,principal,user)){
             lastMain=new TaskIdentity(t.taskId,user,(Integer)field(t,"displayId"),field(t,"token"));lastMainTask=task;
             if(type==1){
                 lastStandard=lastMain;homeSince=0;lastStandardManual=LocalLandscape.manualApp!=null && call(LocalLandscape.manualApp,"getTask")==task;
@@ -567,7 +616,6 @@ final class NativeWorkspaceGuard {
             ActivityManager.RunningTaskInfo info = (ActivityManager.RunningTaskInfo) call(task, "getTaskInfo");
             if ((Integer) call(info, "getActivityType") != 1 || (Integer) call(info, "getWindowingMode") != 1
                     || from<0 && !StepMembers.getBooleanField(info, "isFocused") || (!WorkspaceResize.available && !StepMembers.getBooleanField(info, "isResizeable")) || info.topActivity == null
-                    || PACKAGE.equals(info.topActivity.getPackageName())
                     || Boolean.TRUE.equals(call(task, "isAlwaysOnTop")) || Boolean.TRUE.equals(call(task, "isForceTranslucent"))
                     || !Boolean.TRUE.equals(call(task, "isFocusable")) || StepMembers.getIntField(task, "mForceHiddenFlags") != 0)
                 throw new IllegalStateException("当前应用不是可收纳的普通全屏任务");
@@ -609,6 +657,9 @@ final class NativeWorkspaceGuard {
     }
     static void validSurface(Object value) { if (value == null || !Boolean.TRUE.equals(call(value, "isValid"))) throw new IllegalStateException("任务图层已失效"); }
     static void restore(Object wct, SavedTask r, CommitBarrier group) throws Exception {
+        restore(wct,r,group,null);
+    }
+    static void restore(Object wct, SavedTask r, CommitBarrier group,Object sharedSurface) throws Exception {
         Object task = liveTask(r.id, r.token);
         if (task == null) { r.dirty = false; return; }
         ActivityManager.RunningTaskInfo now = (ActivityManager.RunningTaskInfo) call(task, "getTaskInfo");
@@ -629,14 +680,62 @@ final class NativeWorkspaceGuard {
         if(ending && flip!=null && flip.moves(r))return;
         Object surface = call(task, "getSurfaceControl"), parent = call(r.parent, "getSurfaceControl");
         validSurface(surface); validSurface(parent);
-        Object st = surfaceTransaction();
+        Object st = sharedSurface==null?surfaceTransaction():sharedSurface;
         call(st, "reparent", surface, parent);
-        call(st, "setMatrix", surface, 1f, 0f, 0f, 1f);
-        call(st, "setPosition", surface, (float) r.position.x, (float) r.position.y);
+        // The returned task is already the new main, not a fullscreen frame
+        // waiting for a later magnification replay to shrink it again.
+        WorkspaceLayout target=!ending && Wm.active && field(Wm.display,"mMagnificationSpec")==Wm.ownedSpec && (r.requestedMode==0 || r.requestedMode==1)
+                ?flip!=null?flip.to:new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft):null;
+        stageMainTransform(r,st,surface,target);
         call(st, "setWindowCrop", surface, (Object) null);
         call(st, "setAlpha", surface, 1f); call(st, "show", surface);
-        trackCommit(st,group);
-        call(wct, "setBoundsChangeTransaction", r.token, st);
+        if(sharedSurface==null){trackCommit(st,group);call(wct, "setBoundsChangeTransaction", r.token, st);}
+    }
+    static void stageMainTransform(SavedTask r,Object st,Object surface,WorkspaceLayout target)throws Exception{
+        java.lang.reflect.Field cache=StepMembers.findField(r.task.getClass(),"mLastMagnificationSpec");
+        // A native replay may move the spec between Task and TaskDisplayArea.
+        // Raw .75 on a task below a .75 parent produces a .5625-sized frame.
+        WorkspaceTransform inherited=new WorkspaceTransform(1,0,0);
+        if(target!=null){
+            int depth=0;
+            for(Object p=r.parent;p!=null && p!=Wm.display;p=call(p,"getParent")){
+                if(++depth>32)throw new IllegalStateException("任务父层链异常");
+                Object spec=field(p,"mLastMagnificationSpec");
+                if(spec!=null)inherited=inherited.then(new WorkspaceTransform(
+                        StepMembers.getFloatField(spec,"scale"),StepMembers.getFloatField(spec,"offsetX"),
+                        StepMembers.getFloatField(spec,"offsetY")));
+            }
+        }
+        WorkspaceTransform physical=target==null?new WorkspaceTransform(1,0,0)
+                :new WorkspaceTransform(target.mainScale,target.mainX,target.top);
+        WorkspaceTransform local=physical.inside(inherited);
+        // Keep the native cache consistent with the staged matrix. Without it,
+        // clearMagnificationSpec skips this task when the parent takes the scale.
+        Object spec=local.identity()?null:Wm.newSpec(local.scale,local.x,local.y);
+        if(spec!=null && !cache.getType().isInstance(spec))throw new IllegalStateException("原生缩放缓存类型变化");
+        call(r.task,"clearMagnificationSpec",st);
+        call(st,"setMatrix",surface,local.scale,0f,0f,local.scale);
+        call(st,"setPosition",surface,r.position.x+local.x,r.position.y+local.y);
+        cache.set(r.task,spec);
+    }
+    static boolean canAdoptPromotion(Intent i){
+        int id=i.getIntExtra("task",-1),slot=i.getIntExtra("slot",-1);
+        SavedTask r=saved.get(id);
+        if(!active || ending || flip!=null || pendingCommit!=null || slot<0 || slot>=SideSlots.MAX_COUNT
+                || slots.task(slot)!=id || r==null || !r.dirty || !r.token.equals(i.getParcelableExtra("token"))
+                || !WorkspaceUsers.allows(Wm.context,principal,r.user))return false;
+        return isPromotedTask(r);
+    }
+    static boolean isPromotedTask(SavedTask r){
+        if(!Wm.active || field(Wm.display,"mMagnificationSpec")!=Wm.ownedSpec)return false;
+        Object task=liveTask(r.id,r.token);
+        if(task!=r.task || task!=call(task,"getRootTask") || call(task,"getParent")!=r.parent
+                || call(task,"getDisplayContent")!=Wm.display || (Integer)call(task,"getWindowingMode")!=1
+                || (Integer)call(task,"getActivityType")!=1
+                || (Integer)call(call(task,"getSurfaceControl"),"getLayerId")!=r.layerId)return false;
+        ActivityManager.RunningTaskInfo info=(ActivityManager.RunningTaskInfo)call(task,"getTaskInfo");
+        return r.identity.matches(info.taskId,StepMembers.getIntField(info,"userId"),StepMembers.getIntField(info,"displayId"),field(info,"token"))
+                && info.topActivity!=null && StepMembers.getBooleanField(info,"isVisible");
     }
     static void roles(Intent i, ResultReceiver reply) throws Exception {
         Object wct = transaction();
@@ -645,7 +744,12 @@ final class NativeWorkspaceGuard {
         int next = i.getIntExtra("task", -1);
         int slot = i.getIntExtra("slot", -1);
         int previous = i.getIntExtra("previous", -2);
+        final long handoffSequence=i.getLongExtra("sequence",-1);
         boolean resuming=i.getBooleanExtra("readmit",false);
+        boolean external=i.getBooleanExtra("externalPromotion",false);
+        // Both participants and the animation backdrop land in ONE surface
+        // transaction. Separate deferred transactions can reveal a blank/oversized frame.
+        final Object landing=flip!=null || external?surfaceTransaction():null;
         final TaskIdentity returnMain;
         synchronized (Wm.lock) {
             if(resuming)rememberMain();
@@ -656,6 +760,8 @@ final class NativeWorkspaceGuard {
             if (!interactive(Wm.context)) throw new IllegalStateException("屏幕已锁定");
             if(flip!=null)flip.checkRoles(i);
             SavedTask old = saved.get(previous), incoming = saved.get(next);
+            if(external && (old==null || !old.dirty || !old.token.equals(i.getParcelableExtra("token")) || !isPromotedTask(old)))
+                throw new IllegalStateException("原厂主任务在交接前已变化");
             if (next >= 0) {
                 if (incoming == null || !incoming.token.equals(i.getParcelableExtra("token"))) throw new IllegalStateException("未记录新副任务");
                 Object task = liveTask(next, incoming.token);
@@ -668,7 +774,8 @@ final class NativeWorkspaceGuard {
                 if(!WorkspaceUsers.allows(Wm.context,principal,incoming.user))throw new IllegalStateException("副任务用户已变化");
             }
             if(old!=null && !WorkspaceUsers.allows(Wm.context,principal,old.user))throw new IllegalStateException("原副任务用户已变化");
-            if (old != null && old.dirty) restore(wct, old,group);
+            traceHandoff("before_roles",handoffSequence,previous,next);
+            if (old != null && old.dirty) restore(wct, old,group,landing);
             if (old != null && !old.dirty) throw new IllegalStateException("原副任务已结束或由系统接管");
             if (incoming != null) {
                 Object parent = i.getParcelableExtra("surface"); validSurface(parent);
@@ -681,7 +788,7 @@ final class NativeWorkspaceGuard {
                 call(wct, "setFocusable", incoming.token, resuming && WorkspaceReadmit.available);
                 call(wct, "setHidden", incoming.token, false);
                 Object surface = call(incoming.task, "getSurfaceControl"); validSurface(surface);
-                Object st = surfaceTransaction();
+                Object st = landing==null?surfaceTransaction():landing;
                 unpublishedSurface = st;
                 // Remove only WM's previous main magnification, including descendant caches, before
                 // assigning the preview matrix. Otherwise a later display replay can erase the fit.
@@ -693,6 +800,14 @@ final class NativeWorkspaceGuard {
                 if(flip!=null)flip.land((android.view.SurfaceControl.Transaction)st,(android.view.SurfaceControl)parent);
                 trackCommit(st,group);
                 call(wct, "setBoundsChangeTransaction", incoming.token, st);
+            }
+            if(incoming==null && flip!=null){
+                Object preview=i.getParcelableExtra("surface");validSurface(preview);
+                flip.land((android.view.SurfaceControl.Transaction)landing,(android.view.SurfaceControl)preview);
+                // Returning from the desktop has no incoming task to carry a bounds tx.
+                // Defer to the promoted task so its native mode and all surfaces land together.
+                trackCommit(landing,group);
+                call(wct,"setBoundsChangeTransaction",old.token,landing);
             }
             if (old != null) call(wct, "reorder", old.token, !i.getBooleanExtra("background", false));
             else if (incoming != null && !resuming) {
@@ -721,20 +836,36 @@ final class NativeWorkspaceGuard {
             SavedTask old = saved.get(previous);
             if (old != null&&old.dirty) verifyRestored(old);
             replay();
+            // A native promotion is already fullscreen: there may be no bounds
+            // change to consume a deferred transaction. Publish its explicit return.
+            if(external){trackCommit(landing,group);call(landing,"apply");call(landing,"close");}
         }
         group.seal();
         Runnable complete=()->{
             if(!active||ending)return;
             SavedTask old=saved.get(previous);if(old!=null)old.dirty=false;
             if(resuming)readmitting.consumed(slot);
-            if(flip!=null){flip.close();flip=null;}
             committedOperations++;
             Bundle b = base(); b.putInt("slot", slot); b.putInt("side", next); b.putInt("previous", previous);b.putBoolean("committed",true);
             respond(reply, 0, b, "任务角色与原生图层提交已确认；副任务="+next);
         };
         awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
-            if(resuming && next>=0 && WorkspaceReadmit.available)WorkspaceReadmit.settle(saved.get(next),expected,returnMain,android.os.SystemClock.uptimeMillis(),complete);
-            else complete.run();
+            CommitBarrier normalized=pendingCommit=new CommitBarrier();
+            synchronized(Wm.lock){
+                NativeFlip landed=flip;flip=null;
+                try{
+                    traceHandoff("before_final_normalization",handoffSequence,previous,next);
+                    replay(normalized,saved.get(previous));
+                    traceHandoff("normalization_submitted",handoffSequence,previous,next);
+                }
+                finally{if(landed!=null)landed.close();}
+            }
+            normalized.seal();
+            awaitCommit(normalized,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
+                synchronized(Wm.lock){traceHandoff("normalization_committed",handoffSequence,previous,next);}
+                if(resuming && next>=0 && WorkspaceReadmit.available)WorkspaceReadmit.settle(saved.get(next),expected,returnMain,android.os.SystemClock.uptimeMillis(),complete);
+                else complete.run();
+            },()->finish("任务坐标归一提交未确认，归还原任务"));
         },()->finish("任务图层提交未确认，归还原任务"));
     }
     static void verifyRestored(SavedTask r) {
@@ -745,16 +876,90 @@ final class NativeWorkspaceGuard {
                 || Boolean.TRUE.equals(call(task, "isAlwaysOnTop")) || Boolean.TRUE.equals(call(task, "isForceTranslucent"))
                 || !Boolean.TRUE.equals(call(task, "isFocusable"))) throw new IllegalStateException("原任务状态恢复未确认: " + r.id);
     }
-    static void replay() {
+    static void stageMagnification(Object transaction)throws Exception{
+        // Keep the first reparent and the native parent's scale in one commit.
+        // Older displays retain their existing no-argument replay path.
+        if(replayPending!=null)replayPending.invoke(Wm.display,transaction);
+    }
+    /** Move the same main/side tasks together; no role exchange or task relaunch. */
+    static void position(Intent request,ResultReceiver reply)throws Exception{
+        final boolean targetLeft=request.getBooleanExtra("leftSide",sideLeft);
+        final IBinder expected=owner;
+        final CommitBarrier group=pendingCommit=new CommitBarrier();
+        synchronized(Wm.lock){
+            if(!interactive(Wm.context) || !java.util.Arrays.equals(slots.snapshot(),request.getIntArrayExtra("slots"))
+                    || request.getBooleanExtra("fromLeft",!sideLeft)!=sideLeft)
+                throw new IllegalStateException("工作区位置或任务已变化");
+            WorkspaceLayout target=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,targetLeft);
+            Wm.moveWorkspace(target);
+            Object tx=call(Wm.display,"getPendingTransaction");
+            trackCommit(tx,group);call(tx,"apply");
+            sideLeft=targetLeft;
+        }
+        group.seal();
+        awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
+            if(!active || ending)return;
+            Bundle result=base();result.putBoolean("left",sideLeft);result.putBoolean("committed",true);
+            respond(reply,0,result,"主工作区已移到"+(sideLeft?"右":"左")+"侧");
+        },()->finish("主工作区位置提交未确认"));
+    }
+    static void replay() {replay(null,null);}
+    static void replay(CommitBarrier group,SavedTask restored) {
         if (Wm.active && field(Wm.display, "mMagnificationSpec") == Wm.ownedSpec) {
             call(Wm.service,"updateFocusedWindowLocked",0,true);
-            call(Wm.display, "reapplyMagnificationSpec");
-            call(call(Wm.display, "getPendingTransaction"), "apply");
+            Object pending=call(Wm.display,"getPendingTransaction");
+            if(restored!=null)resetReturnedTransform(restored,pending);
+            if(replayPending==null)call(Wm.display,"reapplyMagnificationSpec");
+            else try{replayPending.invoke(Wm.display,pending);}
+            catch(ReflectiveOperationException failure){throw new IllegalStateException("原屏缩放同步失败",failure);}
+            if(group!=null)try{trackCommit(pending,group);}
+            catch(Exception failure){throw new IllegalStateException("缩放事务无法确认",failure);}
+            call(pending,"apply");
             call(field(Wm.display, "mInputMonitor"), "updateInputWindowsLw", true);
-        }
+            WorkspaceIme.request();
+        }else if(group!=null)throw new IllegalStateException("原屏缩放所有权已变化");
+    }
+    static void resetReturnedTransform(SavedTask r,Object transaction){
+        Object task=liveTask(r.id,r.token);
+        if(task==null)return;
+        if(task!=r.task || call(task,"getParent")!=r.parent || call(task,"getDisplayContent")!=Wm.display
+                || (Integer)call(task,"getWindowingMode")!=1
+                || (Integer)call(call(task,"getSurfaceControl"),"getLayerId")!=r.layerId)
+            throw new IllegalStateException("归一前主任务身份已变化："+r.id);
+        // The role transaction has now committed. An earlier native replay may
+        // have cleared the cache before that deferred transaction wrote its matrix.
+        // Reset this exact returned surface even when its cache is already null,
+        // then apply the final native hierarchy in the SAME pending transaction.
+        call(task,"clearMagnificationSpec",transaction);
+        Object surface=call(task,"getSurfaceControl");
+        Point at=(Point)field(call(task,"getTaskInfo"),"positionInParent");
+        call(transaction,"setMatrix",surface,1f,0f,0f,1f);
+        call(transaction,"setPosition",surface,(float)at.x,(float)at.y);
+        call(transaction,"setWindowCrop",surface,(Object)null);
+    }
+    static void traceHandoff(String phase,long operation,int previous,int next){
+        try{
+            StringBuilder detail=new StringBuilder("operation=").append(operation).append(";phase=").append(phase)
+                    .append(";evidence=wm_cache_not_presented_frame");
+            for(int id:new int[]{previous,next}){
+                SavedTask r=saved.get(id);if(r==null)continue;
+                detail.append(";task=").append(id).append(";chain=");
+                int depth=0;
+                for(Object node=r.task;node!=null && node!=Wm.display && depth++<12;node=call(node,"getParent")){
+                    Object surface=call(node,"getSurfaceControl"),spec=field(node,"mLastMagnificationSpec");
+                    detail.append(node.getClass().getSimpleName()).append('#').append(surface==null?-1:call(surface,"getLayerId")).append('[');
+                    if(spec==null)detail.append("no_cached_spec");
+                    else detail.append(StepMembers.getFloatField(spec,"scale")).append(',')
+                            .append(StepMembers.getFloatField(spec,"offsetX")).append(',').append(StepMembers.getFloatField(spec,"offsetY"));
+                    detail.append("]/");
+                }
+            }
+            diagnostic("HANDOFF",detail.toString());
+        }catch(Throwable unavailable){diagnostic("HANDOFF","operation="+operation+";phase="+phase+";cache_trace_unavailable="+unavailable.getClass().getSimpleName());}
     }
     static boolean finish(String reason) {
         if (!active || ending) return !active;
+        WorkspaceIme.cancel();
         afterRestore=null;
         synchronized(Wm.lock){rememberMain();exitMain=mainAtExit(reason);}
         if(("工作区暂挂".equals(reason) || "桌面暂挂".equals(reason) || "息屏暂挂".equals(reason) || "配置暂挂".equals(reason)) && flip==null && pendingCommit==null){
@@ -776,6 +981,7 @@ final class NativeWorkspaceGuard {
         WorkspaceZoom.cancel();
         UpperMotion.cancel();
         if(flip!=null)flip.cancelAnimator();
+        WorkspaceGestureGate.publish();
         recoveryReason=reason;recoveryStartedAt=android.os.SystemClock.elapsedRealtime();
         respond(events,98,base(),"开始归还："+reason+"；服务计时="+(recoveryStartedAt-startedAt)+"ms");
         restoreAttempt();

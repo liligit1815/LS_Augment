@@ -49,7 +49,7 @@ def main():
     boundaries = host.BOUNDARIES.replace(" TARGET_MODEL", host.target_model())
     # These production types participate in the true schema. Keep media I/O
     # doubles, but do not shadow their real validation/normalization classes.
-    for name in ("BackGestureIconPolicy", "LauncherOverrides", "StatusBarSheetSpec"):
+    for name in ("BackGestureIconPolicy", "LauncherOptions", "LauncherOverrides", "StatusBarSheetSpec"):
         boundaries = without_class(boundaries, name)
     sources = dict(host.STUBS)
     sources.update({"ls/augment/com/Boundaries.java": boundaries,

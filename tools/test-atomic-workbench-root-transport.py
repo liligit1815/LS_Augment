@@ -80,7 +80,7 @@ STUBS = {
 }''',
     'android/content/ComponentName.java': 'package android.content;public class ComponentName{public static ComponentName unflattenFromString(String v){return v!=null&&v.contains("/")?new ComponentName():null;}}',
     'ls/augment/com/AtomicWorkbenchExtractionGeometryFence.java': 'package ls.augment.com;final class AtomicWorkbenchExtractionGeometryFence{static final int TRANSACTION=0xD04E08;}',
-    'ls/augment/com/AtomicWorkbenchDiagnostics.java': r'''package ls.augment.com;final class AtomicWorkbenchDiagnostics{static int failures,ingress;static boolean throwIngress;static String lastIngress;static void emit(String event,int w,int u,String c,int d,String detail,Throwable t){if(event.equals("ATOMIC_TASK_SHELF_INGRESS")){ingress++;lastIngress=detail;if(throwIngress)throw new RuntimeException("controlled_sink");return;}if(!event.equals("ROOT_OPERATION_FAILED"))throw new AssertionError("unexpected diagnostic");failures++;}}''',
+    'ls/augment/com/AtomicWorkbenchDiagnostics.java': r'''package ls.augment.com;final class AtomicWorkbenchDiagnostics{static String reason(Throwable error){return error==null?"none":error.getClass().getSimpleName();}static int failures,ingress;static boolean throwIngress;static String lastIngress;static void emit(String event,int w,int u,String c,int d,String detail,Throwable t){if(event.equals("ATOMIC_TASK_SHELF_INGRESS")){ingress++;lastIngress=detail;if(throwIngress)throw new RuntimeException("controlled_sink");return;}if(!event.equals("ROOT_OPERATION_FAILED"))throw new AssertionError("unexpected diagnostic");failures++;}}''',
 }
 
 ROOT_HEAD = r'''package ls.augment.com;import android.os.*;import java.util.concurrent.*;
@@ -188,7 +188,10 @@ def sources(root, client, engine, metadata, protocol):
     result['ls/augment/com/AtomicWorkbenchClient.java'] = CLIENT_HEAD + client_methods + '\n}'
     result['ls/augment/com/AtomicWorkbenchEngine.java'] = ENGINE_HEAD + member(engine, 'Bundle taskShelfState()') + member(engine, 'private Bundle taskUnavailable()') + '\n}'
     result['ls/augment/com/AtomicWorkbenchMetadataExecutor.java'] = metadata
-    result['ls/augment/com/AtomicWorkbenchProtocol.java'] = protocol
+    # This Binder projection only calls the transport constants and result writer.
+    constants = protocol[:protocol.index('    // Stable identity pool')]
+    result['ls/augment/com/AtomicWorkbenchProtocol.java'] = constants + member(protocol, 'static boolean sameToken(') + member(protocol, 'static Bundle failure(') + '\n}'
+
     result['ls/augment/com/TestRootTransport.java'] = TEST
     return result
 

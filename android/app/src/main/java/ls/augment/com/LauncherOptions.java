@@ -5,6 +5,7 @@ import java.util.List;
 
 /** Module settings shared by the original and modified REDMAGIC launcher. */
 public final class LauncherOptions {
+    public static final String SEARCH_NO_SCRIM = "ls_augment_rm_launcher_search_no_scrim";
     public static final String CLEANUP_STYLE = "ls_augment_rm_launcher_cleanup_style";
     public static final String CLEANUP_BOMB = "ls_augment_rm_launcher_cleanup_bomb";
     public static final String CLEANUP_ICON = "ls_augment_rm_launcher_cleanup_icon";
@@ -19,6 +20,7 @@ public final class LauncherOptions {
     private LauncherOptions() {}
     public static List<EnhancementOption> options() {
         return Arrays.asList(
+            EnhancementOption.toggle(SEARCH_NO_SCRIM, "launcher", "禁用搜索时遮罩", "打开桌面搜索时显示当前壁纸。"),
             EnhancementOption.toggle(LauncherGridSpec.ENABLED,"launcher","自定义桌面布局","选择桌面页面的行数与列数，支持常用预设和 n×n 方形布局。列数决定每排图标个数，行数决定每页排数；小组件会占用多格，密集布局会缩小图标与文字。若现有小组件或文件夹超出新格数，桌面会保留原布局，请先调整占用后再试。配置自动保存，预览仅为布局示意。默认关闭；开启、关闭或修改后，重启系统桌面生效。"),
             EnhancementOption.integer(LauncherGridSpec.COLUMNS,"launcher","桌面列数","每排可放置的图标格数；与行数独立设置。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_COLUMNS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
             EnhancementOption.integer(LauncherGridSpec.ROWS,"launcher","桌面行数","每页从上到下的图标排数；小组件可能占用多格。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_ROWS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),

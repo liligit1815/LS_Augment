@@ -13,21 +13,27 @@ final class FlipStage implements AutoCloseable {
     SurfaceControl backdrop;
     final SurfaceControl[] hints=new SurfaceControl[2];
 
-    FlipStage(View guard,WorkspaceLayout layout,int selected,int[] tasks,int count,boolean sideLeft,android.graphics.Bitmap wallpaper) throws Exception {
+    FlipStage(View guard,WorkspaceLayout layout,int selected,int[] tasks,int count,boolean sideLeft,android.graphics.Bitmap wallpaper,boolean returning) throws Exception {
         AttachedSurfaceControl root=guard.getRootSurfaceControl();
         int[] at=new int[2]; guard.getLocationOnScreen(at);
         if(root==null || at[0]>0 || at[1]>layout.top || guard.getWidth()+at[0]<layout.width
                 || guard.getHeight()+at[1]<layout.height)throw new IllegalStateException("输入保护未覆盖转场区域");
         SurfaceControl.Builder b=new SurfaceControl.Builder().setName("StepFlipBand").setHidden(true);
-        call(b,"setColorLayer");
+        boolean revealHome=returning || tasks[selected]<0;
+        call(b,revealHome?"setContainerLayer":"setColorLayer");
         band=b.build();
         try(SurfaceControl.Transaction tx=root.buildReparentTransaction(band)) {
             if(tx==null)throw new IllegalStateException("原屏动画父层无法挂载");
+            // Reparented application windows retain native input handles. A
+            // transparent guard above their buffers alone cannot isolate them.
+            // Dropping input on our band is inherited by its children and ends
+            // automatically when the original tasks leave it at landing.
+            WorkspaceSurfaceInput.blockChildren(tx,band);
             tx.setLayer(band,-1).setPosition(band,-at[0],layout.top-at[1])
                     .setCrop(band,new android.graphics.Rect(0,0,layout.width,layout.railHeight));
-            call(tx,"setColor",band,new float[]{.125f,.13f,.15f});
+            if(!revealHome)call(tx,"setColor",band,new float[]{.125f,.13f,.15f});
             for(int i=0;i<lanes.length;i++){
-                if(i>0 && tasks[i-1]<0)continue;
+                if(i==0 && returning || i>0 && tasks[i-1]<0)continue;
                 SurfaceControl.Builder lane=new SurfaceControl.Builder().setName("StepFlipLane"+i).setParent(band);
                 call(lane,"setContainerLayer");
                 lanes[i]=lane.build();
@@ -35,10 +41,16 @@ final class FlipStage implements AutoCloseable {
             }
             tx.apply(); // The band stays hidden until all original layers are attached in one transaction.
         } catch(Exception|Error e){close();throw e;}
-        if(wallpaper!=null && !wallpaper.isRecycled())wallpaperLayer(layout,wallpaper);
+        if(!revealHome && wallpaper!=null && !wallpaper.isRecycled())wallpaperLayer(layout,wallpaper);
+        if(returning){
+            // The task leaves an occupied cell before the host can paint its
+            // final empty state. Keep only that cell's backing under the real task.
+            hints[0]=emptyHints(layout,count,tasks,selected,sideLeft,false,true);
+            return;
+        }
         boolean swaps=tasks[selected]>=0;
         for(int face=0;face<(swaps?2:1);face++){
-            try{hints[face]=emptyHints(layout,count,tasks,selected,face==0?sideLeft:!sideLeft,face==1);}
+            try{hints[face]=emptyHints(layout,count,tasks,selected,face==0?sideLeft:!sideLeft,face==1,false);}
             catch(RuntimeException|LinkageError unsupported){StepRuntime.report(null,0,"空格转场底图不可用："+unsupported,-1);}
         }
     }
@@ -63,12 +75,12 @@ final class FlipStage implements AutoCloseable {
             }
         }catch(RuntimeException|LinkageError unavailable){if(backdrop!=null){backdrop.release();backdrop=null;}}
     }
-    private SurfaceControl emptyHints(WorkspaceLayout l,int count,int[] tasks,int selected,boolean left,boolean destination){
+    private SurfaceControl emptyHints(WorkspaceLayout l,int count,int[] tasks,int selected,boolean left,boolean destination,boolean returning){
         int w=Math.max(1,l.sideWidth/3),h=Math.max(1,l.railHeight/3);
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);canvas.scale(w/(float)l.sideWidth,h/(float)l.railHeight);
         android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        for(int i=0;i<count;i++)if(tasks[i]<0 && !(destination && i==selected)){
+        for(int i=0;i<count;i++)if((tasks[i]<0 || returning && i==selected) && !(destination && i==selected)){
             int y=l.rowTop(i,count),height=l.rowHeight(i,count);
             paint.setColor(0x70abb8c8);canvas.drawRect(0,y,l.sideWidth,y+height,paint);
             float x=l.sideWidth*.5f,mid=y+height*.5f,r=Math.min(height,l.sideWidth)*.12f;

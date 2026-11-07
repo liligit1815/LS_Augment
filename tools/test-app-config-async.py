@@ -231,6 +231,6 @@ with tempfile.TemporaryDirectory(prefix='ls-app-config-async-') as folder:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(code, encoding='utf-8')
         files.append(path)
-    files += [SRC / name for name in ('AppConfig.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java')]
+    files += [SRC / name for name in ('AppConfig.java', 'DuoIslandPolicy.java', 'FrameworkConfigSync.java', 'DurablePreferences.java', 'RuntimeStateStore.java', 'RemoteConfig.java', 'ResetWriteFence.java')]
     subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', folder, *map(str, files)], check=True)
     subprocess.run(['java', '-cp', folder, 'ls.augment.com.TestAppConfigAsync', *sys.argv[1:]], check=True, timeout=10)

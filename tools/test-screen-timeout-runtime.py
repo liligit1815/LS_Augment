@@ -8,7 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "android/app/src/main/java/ls/augment/com/hook/ScreenTimeoutHook.java"
 FILES = {
     "android/content/ContentResolver.java": "package android.content;public class ContentResolver {public long value=60000;public int writes;public boolean failRead;}",
-    "android/content/res/Resources.java": "package android.content.res;public class Resources {public int getIdentifier(String n,String t,String p){return 1;}}",
+    "android/content/res/Resources.java": """package android.content.res;public class Resources {
+        public static boolean missing;
+        public static final CharSequence[] LABELS={"15秒","30秒","1分钟","2分钟","5分钟","10分钟","30分钟","从不"};
+        public static final CharSequence[] VALUES={"15000","30000","60000","120000","300000","600000","1800000","2147483647"};
+        public int getIdentifier(String n,String t,String p){return missing?0:n.endsWith("entries")?2:n.endsWith("values")?3:1;}
+        public CharSequence[] getTextArray(int id){return (id==2?LABELS:VALUES).clone();}
+    }""",
     "android/content/Context.java": """package android.content;public class Context {
         public final ContentResolver resolver=new ContentResolver();
         public ContentResolver getContentResolver(){return resolver;}

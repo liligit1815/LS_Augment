@@ -42,7 +42,7 @@ final class LiveWorkspace {
     java.util.ArrayList<String> pinned;
     long pinRevision;
     WorkspaceQuickBar quickBar;
-    boolean topAvailable,upperEnabled, localLandscape, edgeHandoff, forceResize;
+    boolean topAvailable,homeBackdropAvailable,upperEnabled, pageIndicator=true, localLandscape, edgeHandoff, forceResize;
     int upperId=-1;
     final boolean renewable;
     boolean retainOnExit,homeExit;
@@ -78,6 +78,8 @@ final class LiveWorkspace {
     final Button[] cells = new Button[SideSlots.MAX_COUNT];
     volatile WorkspaceLayout geometry;
     volatile FlipStage flipStage;
+    long slotFrameGeneration;
+    int pendingNativeSlot=-1;
     android.animation.ValueAnimator releaseMotion;
     volatile int dragSlot=-1;
     volatile float dragX;
@@ -99,6 +101,8 @@ final class LiveWorkspace {
     }
     void updateQuickPins(Intent data) {
         if (quickUser == null || !quickUser.equals(data.getParcelableExtra("quickUser", android.os.UserHandle.class))) return;
+        pageIndicator=data.getBooleanExtra("pageIndicator",true);
+        if(quickBar!=null)quickBar.updatePageIndicator();
         long version = data.getLongExtra("quickRevision", -1);
         if (version < pinRevision) return;
         java.util.ArrayList<String> keys = data.getStringArrayListExtra("quickPins");
@@ -286,7 +290,7 @@ final class LiveWorkspace {
             cell.setVisibility(slot < visibleSlots ? View.VISIBLE : View.GONE);
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) cell.getLayoutParams();
             if(slot < visibleSlots) { params.height=geometry.rowHeight(slot,visibleSlots); params.topMargin=slot==0?0:geometry.gap; cell.setLayoutParams(params); }
-            boolean empty = slots.task(slot) < 0;
+            boolean empty = slots.task(slot) < 0 || slot==pendingNativeSlot;
             cell.setText(empty ? "＋" : "");
             cell.setTextSize(34);
             cell.setTextColor(0xffeeeeee);
@@ -355,6 +359,7 @@ final class LiveWorkspace {
                 }
             }));
             rpc("begin", b, result -> { logical = result.getParcelable("logical");ready=true;topAvailable=result.getBoolean("topAvailable");
+                homeBackdropAvailable=result.getBoolean("homeBackdropAvailable");
                 leftSide=result.getBoolean("left",leftSide);
                 geometry=new WorkspaceLayout(logical.width(),logical.height(),Shell.context.getResources().getDisplayMetrics().density,leftSide);
                 WindowManager.LayoutParams bounds=(WindowManager.LayoutParams)panel.getLayoutParams();bounds.x=geometry.sideX;windows.updateViewLayout(panel,bounds);
@@ -368,6 +373,7 @@ final class LiveWorkspace {
                     log("工作区顶区不可用：" + unavailable.getMessage()); close("归还原任务"); return;
                 }
                 zoom(true,()->{
+                    if(renewable)CornerEntry.completedAt=android.os.SystemClock.elapsedRealtime();
                     StepRuntime.report(reportTo,11,"工作区已就绪；任务交接路径=" + ownership.path()
                             +(renewable?"；角部工作区，宿主续期。":"；90秒自动退出。"),-1);
                     if(renewable)main.postDelayed(renew,25000);
@@ -428,10 +434,84 @@ final class LiveWorkspace {
     }
     void reconcile(String detail) {
         if(closed||closing||fence.busy()||checkingState)return;
+        try {
+            int promoted=-1;
+            for(int slot=0;slot<visibleSlots;slot++){
+                Lease lease=leases.get(slots.task(slot));
+                ActivityManager.RunningTaskInfo info=lease==null?null:lease.checkedInfo();
+                if(info!=null && (Integer)call(info,"getWindowingMode")==1 && flag(info,"isVisible")){
+                    if(promoted>=0)throw new IllegalStateException("多个副任务同时改变角色");
+                    promoted=slot;
+                }
+            }
+            if(promoted>=0){pendingNativeSlot=promoted;showSlots();awaitPromotion(promoted);return;}
+        }catch(RuntimeException mismatch){detail+="；"+mismatch.getMessage();}
+        final String reason=detail;
         checkingState=true;
         rpc("state",new Bundle(),state->{
             checkingState=false;
-            if(!closing)close("副任务状态由系统改变，归还工作区："+detail);
+            if(!closing)close("副任务状态由系统改变，归还工作区："+reason);
+        });
+    }
+    void awaitPromotion(int slot){
+        final int id=slots.task(slot);final Lease lease=leases.get(id);
+        if(lease==null)return;
+        checkingState=true;
+        final long began=android.os.SystemClock.uptimeMillis();
+        Shell.executor.execute(new Runnable(){
+            @Override public void run(){
+                try{
+                    if(closing || closed || leases.get(id)!=lease){main.post(()->checkingState=false);return;}
+                    // Shell owns the live leash until its finish transaction lands.
+                    // Reparenting it earlier interrupts the native expand animation.
+                    boolean idle=Boolean.TRUE.equals(call(nativeTransitions,"isIdle"));
+                    if(!idle){
+                        if(android.os.SystemClock.uptimeMillis()-began>=2500){
+                            main.post(()->{checkingState=false;if(!closing)close("原厂应用转场超时，归还工作区");});return;
+                        }
+                        main.postDelayed(()->Shell.executor.execute(this),32);return;
+                    }
+                    main.post(()->{
+                        checkingState=false;
+                        if(closing || closed || fence.busy() || slots.task(slot)!=id || leases.get(id)!=lease)return;
+                        try{
+                            if(!Boolean.TRUE.equals(call(nativeTransitions,"isIdle"))){
+                                checkingState=true;main.postDelayed(()->Shell.executor.execute(this),32);return;
+                            }
+                            ActivityManager.RunningTaskInfo now=lease.checkedInfo();
+                            if(now!=null && (Integer)call(now,"getWindowingMode")==1 && flag(now,"isVisible")){
+                                StepRuntime.diagnostic("PROMOTION","native_transition_settled;task="+id+";waitMs="+(android.os.SystemClock.uptimeMillis()-began));
+                                adoptPromotion(slot);
+                            }else if(now!=null && (Integer)call(now,"getWindowingMode")==6){
+                                // A cancelled native launch kept the original side task.
+                                pendingNativeSlot=-1;showSlots();
+                                Shell.executor.execute(()->{try{render();}catch(Throwable error){main.post(()->reconcile("原厂取消切换后复核："+error));}});
+                            }else reconcile("原厂切换后复核任务角色");
+                        }catch(Throwable changed){close("原厂切换后任务身份变化："+changed);}
+                    });
+                }catch(Throwable error){main.post(()->{checkingState=false;if(!closing)close("原厂切换状态不可核验："+error);});}
+            }
+        });
+    }
+    void adoptPromotion(int slot){
+        final int id=slots.task(slot);final Lease lease=leases.get(id);
+        if(lease==null)throw new IllegalStateException("原副任务监听已变化");
+        StepRuntime.diagnostic("PROMOTION","native_fullscreen_observed;task="+id+";slot="+slot);
+        final long ticket=fence.begin();
+        input.acquire(()->{
+            Bundle b=new Bundle();b.putInt("task",id);b.putInt("slot",slot);b.putParcelable("token",(Parcelable)lease.token);
+            rpc("adoptPromotion",b,result->{
+                if(!fence.current(ticket))return;
+                if(!result.getBoolean("committed") || result.getInt("previous",-1)!=id || result.getInt("slot",-1)!=slot || result.getInt("side",-2)!=-1)
+                    throw new IllegalStateException("原任务回主区尚未确认");
+                Shell.executor.execute(()->{
+                    try{
+                        if(!fence.current(ticket))return;
+                        ownership.releaseIfOwned(id,lease.listener);leases.remove(id);slots.replace(slot,id,-1);
+                        render(()->main.post(()->finishHandoff(ticket,"原厂副任务已回主区："+id)));
+                    }catch(Throwable failure){main.post(()->fail("原任务回主区收尾失败："+failure));}
+                });
+            });
         });
     }
     LiveWorkspace thisWorkspace(){return this;}
@@ -506,7 +586,7 @@ final class LiveWorkspace {
     }
     void preflight() {preflight(false);}
     void preflight(boolean atOuterEdge) {
-        if (!ready || closing || closed || fence.busy() || releaseMotion!=null || dragSlot>=0 && !atOuterEdge)
+        if (!ready || closing || closed || checkingState || fence.busy() || releaseMotion!=null || dragSlot>=0 && !atOuterEdge)
             throw new IllegalStateException("请等待当前操作结束");
         if (!interactive(Shell.context) || !Boolean.TRUE.equals(call(nativeTransitions, "isIdle"))) throw new IllegalStateException("系统正在切换界面，请稍后重试");
         surface();
@@ -551,7 +631,7 @@ final class LiveWorkspace {
             }
             if (previous >= 0 && target != null && (Integer) call(target, "getActivityType") == 2) { returnSide(slot, false); return; }
             if (target == null || (Integer) call(target, "getActivityType") != 1 || (Integer) call(target, "getWindowingMode") != 1
-                    || (!forceResize && !flag(target, "isResizeable")) || target.topActivity == null || PACKAGE.equals(target.topActivity.getPackageName()))
+                    || (!forceResize && !flag(target, "isResizeable")) || target.topActivity == null)
                 throw new IllegalStateException("请先打开一个普通全屏应用");
             final long ticket = fence.begin();
             input.acquire(()->{
@@ -592,7 +672,11 @@ final class LiveWorkspace {
                 });
             });
             });
-        } catch (Throwable refusal) { log("暂未操作: " + refusal.getMessage()); if(resumeId>=0)main.post(this::resumeNext); }
+        } catch (Throwable refusal) {
+            String message="暂未操作: " + refusal.getMessage();
+            if(resumeId<0 && quickBar!=null)quickBar.logUnavailable(message);else log(message);
+            if(resumeId>=0)main.post(this::resumeNext);
+        }
     }
     void submitRoles(Bundle b,long ticket,int slot,int previous,int next){
         rpc("roles",b,result->confirmRoles(result,ticket,slot,previous,next));
@@ -641,11 +725,14 @@ final class LiveWorkspace {
         });
     }
     void startFlip(Bundle roles,long ticket,int slot,int previous,int next) {
-        boolean targetLeft=previous<0?leftSide:!leftSide;
+        if(previous<0 && next>=0 && !homeBackdropAvailable){
+            log("桌面绘制接口不可用，沿用原生任务交接");submitRoles(roles,ticket,slot,previous,next);return;
+        }
+        boolean targetLeft=WorkspaceMotion.targetLeft(leftSide,next,previous);
         WorkspaceLayout target=new WorkspaceLayout(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,targetLeft);
         try{
             if(!panel.isHardwareAccelerated())throw new IllegalStateException("副栏不能确认绘制提交");
-            flipStage=new FlipStage(input.view,geometry,slot,slots.snapshot(),visibleSlots,leftSide,quickBar.wallpaper);
+            flipStage=new FlipStage(input.view,geometry,slot,slots.snapshot(),visibleSlots,leftSide,quickBar.wallpaper,next<0);
         }catch(Exception|LinkageError unavailable){
             log("独立换边图层不可用，沿用原侧交换："+unavailable);submitRoles(roles,ticket,slot,previous,next);return;
         }
@@ -656,7 +743,7 @@ final class LiveWorkspace {
             if(!fence.current(ticket))return;
             if(!result.containsKey("targetLeft") || result.getBoolean("targetLeft")!=targetLeft)
                 throw new IllegalStateException("主副换边方向未提交");
-            if(previous<0){submitRoles(roles,ticket,slot,previous,next);return;}
+            if(targetLeft==leftSide){submitRoles(roles,ticket,slot,previous,next);return;}
             leftSide=targetLeft;geometry=target;
             WindowManager.LayoutParams lp=(WindowManager.LayoutParams)panel.getLayoutParams();
             lp.x=target.sideX;windows.updateViewLayout(panel,lp);
@@ -676,6 +763,52 @@ final class LiveWorkspace {
         panel.invalidate();
     }
     void returnSide(int slot, boolean background) {returnSide(slot,background,false);}
+    void positionMain(boolean right){
+        try{
+            preflight();
+            if(retained!=null || quickBar==null || quickBar.picker!=null || quickBar.tools.clipboard!=null)
+                throw new IllegalStateException("请先关闭当前选择窗口");
+            if(leftSide==right)return;
+            final long ticket=fence.begin();
+            final WorkspaceLayout target=new WorkspaceLayout(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,right);
+            final Bundle request=new Bundle();request.putBoolean("fromLeft",leftSide);request.putBoolean("leftSide",right);
+            request.putIntArray("slots",slots.snapshot());
+            input.acquire(()->{
+                if(!fence.current(ticket))return;
+                WindowManager.LayoutParams lp=(WindowManager.LayoutParams)panel.getLayoutParams();
+                lp.x=target.sideX;windows.updateViewLayout(panel,lp);
+                awaitPositionPanel(target,request,ticket,android.os.SystemClock.uptimeMillis()+800);
+            });
+        }catch(Throwable refusal){
+            if(quickBar!=null)quickBar.logUnavailable("暂未移动："+refusal.getMessage());
+        }
+    }
+    void awaitPositionPanel(WorkspaceLayout target,Bundle request,long ticket,long deadline){
+        if(!fence.current(ticket))return;
+        panel.getViewTreeObserver().registerFrameCommitCallback(()->main.post(()->{
+            if(!fence.current(ticket))return;
+            int[] origin=new int[2];panel.getLocationOnScreen(origin);
+            if(origin[0]!=target.sideX || origin[1]!=target.top){
+                if(android.os.SystemClock.uptimeMillis()<deadline)awaitPositionPanel(target,request,ticket,deadline);
+                else fail("主工作区换边的副栏位置未确认");
+                return;
+            }
+            rpc("position",request,result->{
+                if(!fence.current(ticket))return;
+                if(!result.getBoolean("committed") || result.getBoolean("left")!=request.getBoolean("leftSide")
+                        || !java.util.Arrays.equals(slots.snapshot(),result.getIntArray("slots")))
+                    throw new IllegalStateException("主工作区换边结果未确认");
+                leftSide=result.getBoolean("left");geometry=target;quickBar.arrangeHeader();
+                Shell.executor.execute(()->{
+                    try{render(()->main.post(()->{
+                        if(!fence.current(ticket))return;
+                        input.release(()->{if(fence.complete(ticket))publishViewState();});
+                    }));}catch(Throwable error){main.post(()->fail("换边副任务末帧未确认："+error));}
+                });
+            });
+        }));
+        panel.invalidate();
+    }
     void returnSide(int slot, boolean background,boolean atOuterEdge) {
         final int previous = slots.task(slot);
         if (previous < 0) { log("副格为空"); return; }
@@ -685,7 +818,11 @@ final class LiveWorkspace {
                 if(!fence.current(ticket))return;
                 Bundle b = new Bundle(); b.putInt("task", -1);
                 b.putInt("slot", slot); b.putInt("previous", previous); b.putBoolean("background", background);
-                rpc("roles", b, result -> confirmRoles(result, ticket, slot, previous, -1));
+                if(!background && !atOuterEdge){
+                    b.putParcelable("surface",(Parcelable)surface());b.putInt("width",previewWidth);
+                    b.putInt("height",geometry.rowHeight(slot,visibleSlots));b.putInt("rowTop",geometry.rowTop(slot,visibleSlots));
+                    startFlip(b,ticket,slot,previous,-1);
+                }else submitRoles(b,ticket,slot,previous,-1);
             });
         } catch (Throwable refusal) {
             log("暂未归还: " + refusal.getMessage());
@@ -702,7 +839,9 @@ final class LiveWorkspace {
         Shell.executor.execute(() -> {
             if (!fence.current(ticket)) return;
             try {
-                boolean seen = Boolean.TRUE.equals(call(nativeTransitions,"isIdle"));
+                // The reply already confirms the owned surfaces. Unrelated Shell animations
+                // must not keep the input guard up after these two tasks have landed.
+                boolean seen = true;
                 if (previous >= 0) {
                     Lease old = leases.get(previous); ActivityManager.RunningTaskInfo info = old.checkedInfo();
                     seen &= info == null || (Integer) call(info, "getWindowingMode") == 1;
@@ -713,24 +852,55 @@ final class LiveWorkspace {
                 }
                 if (!seen) {
                     if (attempt >= 20) throw new IllegalStateException("系统任务信息未确认交接");
-                    main.postDelayed(() -> settle(ticket, slot, previous, next, attempt + 1), 100); return;
+                    main.postDelayed(() -> settle(ticket, slot, previous, next, attempt + 1), 32); return;
                 }
                 slots.replace(slot, previous, next);
                 if (previous >= 0) { Lease old = leases.get(previous); ownership.release(previous, old.listener); leases.remove(previous); }
                 render(()->main.post(() -> {
-                    if (!fence.current(ticket)) return;
-                    rpc("replay", new Bundle(), replayed -> {
-                        boolean compact=next<0 && dragSlot==slot;
-                        clearDrag();closeFlipStage();
-                        Runnable done=()->{showSlots();input.release(()->{
-                            if(!fence.complete(ticket))return;
-                            log("交接完成；副格=" + java.util.Arrays.toString(slots.snapshot()) + "；任务、图层与输入末帧已确认");
-                            resumeNext();
-                        });};
-                        if(compact)compactCells(ticket,done);else done.run();
-                    });
+                    finishHandoff(ticket,"副格="+java.util.Arrays.toString(slots.snapshot()));
                 }));
             } catch (Throwable error) { main.post(() -> fail("任务交接确认失败: " + error)); }
+        });
+    }
+    void finishHandoff(long ticket,String detail){
+        if(!fence.current(ticket) || closing || closed)return;
+        // Both manual and native promotion arrive here after the exact listener
+        // was returned and the final slot UI submitted its frame.
+        rpc("replay",new Bundle(),replayed->{
+            if(!fence.current(ticket))return;
+            clearDrag();closeFlipStage();
+            input.release(()->{
+                if(!fence.complete(ticket))return;
+                log("交接完成；"+detail+"；任务、图层事务与副格绘制已提交");
+                resumeNext();
+            });
+        });
+    }
+    void commitSlotFrame(Runnable committed){
+        main.post(()->{
+            if(closing || closed)return;
+            final long generation=++slotFrameGeneration;
+            final boolean[] delivered={false};
+            try{
+                if(!panel.isAttachedToWindow() || !panel.isHardwareAccelerated())
+                    throw new IllegalStateException("副格绘制窗口未就绪");
+                pendingNativeSlot=-1;showSlots();
+                panel.getViewTreeObserver().registerFrameCommitCallback(()->main.post(()->{
+                    if(delivered[0] || generation!=slotFrameGeneration || closing || closed)return;
+                    delivered[0]=true;
+                    int[] at=new int[2];panel.getLocationOnScreen(at);
+                    if(at[0]!=geometry.sideX || at[1]!=geometry.top || panel.getWidth()!=previewWidth){
+                        fail("副格最终绘制位置不一致");return;
+                    }
+                    committed.run();
+                }));
+                panel.invalidate();
+                main.postDelayed(()->{
+                    if(!delivered[0] && generation==slotFrameGeneration && !closing && !closed){
+                        delivered[0]=true;fail("副格最终绘制提交超时");
+                    }
+                },1200);
+            }catch(Throwable error){fail("副格绘制确认失败："+error);}
         });
     }
     Object surface() {
@@ -764,7 +934,7 @@ final class LiveWorkspace {
     void render(Runnable committed) throws Exception {
         if (closing || closed) return;
         if(flipStage!=null && fence.busy() && committed==null)return;
-        if(slots.count()==0){if(committed!=null)committed.run();return;}
+        if(slots.count()==0){if(committed!=null)commitSlotFrame(committed);return;}
         synchronized (organizerLock) {
             Object parent = surface();
 
@@ -788,7 +958,7 @@ final class LiveWorkspace {
                     call(tx, "setPosition", child, fit.x+(dragSlot==slot?dragX:0f), fit.y+y);call(tx, "setWindowCrop", child, logical);
                     call(tx, "setAlpha", child, 1f); call(tx, "show", child);
                 }
-                if(committed!=null)SurfaceCommit.observe(tx,Shell.executor,committed);
+                if(committed!=null)SurfaceCommit.observe(tx,Shell.executor,()->commitSlotFrame(committed));
                 call(tx, "apply");
             } finally { call(tx, "close"); }
         }
@@ -851,7 +1021,11 @@ final class LiveWorkspace {
                 try {
                     synchronized (organizerLock) {
                         if (closing || leases.get(id) != this) return;
-                        if (checkedInfo() != null && ownership.exact(id) == listener) return;
+                        ActivityManager.RunningTaskInfo live=checkedInfo();
+                        if(live!=null && slots.index(id)>=0 && (Integer)call(live,"getWindowingMode")==1 && flag(live,"isVisible")){
+                            main.post(()->reconcile("原厂已将原副任务监听切回主区"));return;
+                        }
+                        if (live != null && ownership.exact(id) == listener) return;
                     }
                     main.post(() -> {
                         if(closing)return;
@@ -884,7 +1058,7 @@ final class LiveWorkspace {
             return surface;
         }
     }
-    void fail(String message) { log(message); close("异常退出并归还原任务"); }
+    void fail(String message) { StepRuntime.diagnostic("WORKSPACE_FAILURE",message);log(message); close("异常退出并归还原任务"); }
     void close(String reason) {
         if (closing || closed) return;
         log(reason);

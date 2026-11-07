@@ -1,8 +1,10 @@
 """Run actual fuse/native/identity Java against blocked private Provider and PM doubles."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import sys
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +94,7 @@ public class TestRapidAsync {
  static Context c=new Context(); static AtomicInteger notifications=new AtomicInteger();
  static void yes(boolean b,String m){if(!b)throw new AssertionError(m);}
  static void until(BooleanSupplier condition,long timeout,String message)throws Exception{long end=System.currentTimeMillis()+timeout;while(!condition.getAsBoolean()){if(System.currentTimeMillis()>end)throw new AssertionError(message);Thread.sleep(10);}}
- static void fast(Runnable r)throws Exception {ExecutorService e=Executors.newSingleThreadExecutor();try{e.submit(r).get(500,TimeUnit.MILLISECONDS);}finally{e.shutdownNow();}}
+ static void fast(Runnable r)throws Exception {ExecutorService e=Executors.newSingleThreadExecutor();try{CountDownLatch started=new CountDownLatch(1);Future<?> call=e.submit(()->{started.countDown();r.run();});yes(started.await(5,TimeUnit.SECONDS),"worker scheduled");try{call.get(500,TimeUnit.MILLISECONDS);}catch(TimeoutException timeout){for(var item:Thread.getAllStackTraces().entrySet())if(item.getKey().getName().contains("pool-"))System.err.println(item.getKey()+" "+java.util.Arrays.toString(item.getValue()));throw timeout;}}finally{e.shutdownNow();}}
  static Object field(Class<?> cls,String name)throws Exception{java.lang.reflect.Field f=cls.getDeclaredField(name);f.setAccessible(true);return f.get(null);}
  static void request(){RapidFireCrashFuse.setListener(c,notifications::incrementAndGet);RapidFireCrashFuse.beforeInstall(c);}
  public static void main(String[] args)throws Exception {
@@ -171,14 +173,15 @@ with tempfile.TemporaryDirectory(prefix='ls-rapid-async-') as folder:
     subprocess.run(['javac','-encoding','UTF-8','-d',folder]+[str(p) for p in work.rglob('*.java')],check=True)
     def run(case):
         subprocess.run(['java','-cp',folder,'ls.augment.com.hook.TestRapidAsync',case],check=True,timeout=70)
-    with ThreadPoolExecutor(max_workers=7) as executor:
+    with ThreadPoolExecutor(max_workers=1 if os.name=="nt" else 7) as executor:
         list(executor.map(run,sys.argv[1:] or ['blocked','marker_failure','provider_denied','invalid_ack','fused','stable','identity']))
 
 system=(JAVA/'ls/augment/com/hook/TgkRapidFireSystemHook.java').read_text(encoding='utf-8')
 assert 'RapidFireCompatibility.currentFingerprint(context)' not in system
 assert 'currentFingerprintAsync(context' in system
 audio=(JAVA/'ls/augment/com/hook/AudioGainHook.java').read_text(encoding='utf-8')
-assert 'handler.post(() -> { try { context.getContentResolver().registerContentObserver' in audio
+# The provider-backed snapshot listener and its callback both run on the audio handler.
+assert re.search(r'handler\.post\(\(\) -> \{\s*(?://[^\n]*\n\s*)*observingConfig = FeatureSettings\.addSnapshotListener\(context, \(\) -> handler\.post\(',audio)
 fuse=(JAVA/'ls/augment/com/hook/RapidFireCrashFuse.java').read_text(encoding='utf-8')
 assert 'Settings.Global.' not in fuse and '"crash_fuse", null, request' in fuse
 assert 'result == null || !result.getBoolean("ok", false)' in fuse

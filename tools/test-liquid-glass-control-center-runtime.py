@@ -170,7 +170,7 @@ check(wide.getPaddingLeft()==9&&wide.getPaddingTop()==10&&wide.getPaddingRight()
 check(layers.findDrawableByLayerId(1)!=nativeTrack&&layers.findDrawableByLayerId(2)==nativeFill,"only slider background layer is wrapped");
 check(nativeFill.getLevel()==5100,"installing material preserves the native clipped fill level");
 check(LayerBackdropSource.created==1,"all controls share one compositor source");
-check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0;outside=0;build=20378;geometry=viewport_v2"),"diagnostic counts visible surfaces separately and identifies the loaded build and geometry revision");
+check(FeatureSettings.diagnostic.equals("active_control_backdrops:ready=4/4;failed=0;outside=0;build=20378;geometry=viewport_v2;first_ready_ms=0"),"diagnostic counts visible surfaces separately and identifies the loaded build, geometry and first-frame readiness");
 LiquidGlassDrawable originalWideGlass=glass(wide),originalCircleGlass=glass(circle.iconFrame),originalPlayerGlass=glass(player),originalSliderGlass=glass(volume);
 ControlCenterAppearanceHook.claim(wide,circle.iconFrame);call(state,"prepare");
 check(wide.getBackground()==wide.colorBackgroundDrawable&&circle.iconFrame.getBackground()==circle.colorBackgroundDrawable,"new tile appearance ownership restores both exact OEM tile backgrounds before it can bind");

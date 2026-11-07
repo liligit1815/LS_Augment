@@ -2,11 +2,13 @@
 import { useEffect, useRef } from 'react';
 import { formatClock } from './current-validation';
 import { drawConnectivity } from './current-connectivity-preview';
+import type { AssetPlan } from './current-status-assets';
 import {
   componentNames,
   placementItems,
   placementKey,
   readPlacement,
+  comparePlacementOrder,
   effectiveZone,
 } from './current-status-placement';
 import {
@@ -20,10 +22,12 @@ export function CurrentStatusPreview({
   values: saved,
   onSelect,
   individual = false,
+  assets,
 }: {
   values: Record<string, string>;
   onSelect?: (id: string) => void;
   individual?: boolean;
+  assets?: AssetPlan;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const hits = useRef<
@@ -32,7 +36,14 @@ export function CurrentStatusPreview({
   useEffect(() => {
     const v = effectiveStatusValues(saved);
     let live = true;
-    void document.fonts.ready.then(() => {
+    void document.fonts.ready.then(async () => {
+      const images = new Map<string, HTMLImageElement>();
+      await Promise.all(Object.values(assets?.bindings || {}).map(binding => new Promise<void>(resolve => {
+        const img = new Image();
+        img.onload = () => { images.set(binding.image, img); resolve(); };
+        img.onerror = () => resolve();
+        img.src = binding.image;
+      })));
       if (!live || !canvas.current) return;
       const c = canvas.current.getContext('2d')!;
       const w = 344,
@@ -73,6 +84,15 @@ export function CurrentStatusPreview({
         custom = on('clock_custom'),
         count = notificationSampleCount(v);
       const format = (s: string) => formatClock(s);
+      const scope = v['prototype:status:surface'] || 'all';
+      const prefix = scope === 'all' ? '' : scope + '|';
+      const assetFont = (id: string) => {
+        const role = ['cpu','gpu','battery_temp','current','power'].includes(id) ? 'metrics' : id;
+        const fonts = assets?.fonts || {};
+        const family = [fonts[prefix + role], fonts[prefix + 'global'], fonts[role], fonts.global].find(f => f && f !== 'inherit');
+        return family && family !== 'native' && !family.startsWith('file:') ? family : undefined;
+      };
+      const assetBinding = (id: string) => assets?.bindings[prefix + id + ':default:whole'] || assets?.bindings[id + ':default:whole'];
       const clock = custom
         ? [
             v['ls_augment_statusbar_clock_pattern'] || '',
@@ -159,7 +179,7 @@ export function CurrentStatusPreview({
               : '●'.repeat(count).trim(),
         battery: '73%',
         cpu: metric('cpu', 37, 'C:', '°'),
-        gpu: metric('gpu', 36, 'G:', '°'),
+        gpu: 'G:—',
         battery_temp: metric('battery_temp', 33.5, 'B:', '°'),
         current: metric('current', 600, 'I:', 'mA'),
         power: metric('power', 2.4, 'P:', 'W'),
@@ -204,7 +224,7 @@ export function CurrentStatusPreview({
           lines: number;
           iconGap: number;
         }[] = [];
-      ids.forEach((id, i) => {
+      ids.forEach((id) => {
         const ordinary = !(id in componentNames) && id !== 'system_icons';
         if (
           on('position_size_only') &&
@@ -227,7 +247,7 @@ export function CurrentStatusPreview({
         )
           return;
         let size = Number(
-          v['status:' + (ordinary ? 'system_icons' : id) + ':size'] ??
+          (ordinary ? v['prototype:icon-size:' + id] || v['status:system_icons:size'] : v['status:' + id + ':size']) ??
             (ordinary ? 13 : 9),
         );
         if (id === 'notifications' && summary && summaryText)
@@ -326,16 +346,16 @@ export function CurrentStatusPreview({
           }[] = [];
         nodes
           .filter((n) => Math.floor(n.zone / 3) === col)
-          .sort((a, b) => a.order - b.order)
+          .sort(comparePlacementOrder)
           .forEach((node) => {
             const span = node.zone % 3 === 2,
               row = node.zone % 3 === 1 ? 1 : 0;
-            const font =
+            const font = assetFont(node.id) || (
               custom && node.id === 'clock'
                 ? (
                     v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
                   ).replace('sans-serif', 'NativeLatin, CurrentDevice')
-                : 'NativeLatin, CurrentDevice';
+                : 'NativeLatin, CurrentDevice');
             c.font = `${node.weight} ${node.size}px ${font}`;
             const lineSpacing =
               node.id === 'clock' && custom ? n('clock_line_spacing_dp') : 0;
@@ -401,18 +421,19 @@ export function CurrentStatusPreview({
           const { node } = item,
             hh = item.height * fit,
             mid = top + usableH / 2,
+            edges = resolveSpacing(v, scope, node.id === 'battery' && on('connectivity_group') ? 'connectivity' : node.id),
             y =
-              item.row < 0
+              (item.row < 0
                 ? mid - hh / 2
                 : item.row === 0
                   ? mid - gap / 2 - hh
-                  : mid + gap / 2;
-          const font =
+                  : mid + gap / 2) + (edges[1] - edges[3]) * item.fit * fit / 2;
+          const font = assetFont(node.id) || (
             custom && node.id === 'clock'
               ? (
                   v['ls_augment_statusbar_clock_font_family'] || 'sans-serif'
                 ).replace('sans-serif', 'NativeLatin, CurrentDevice')
-              : 'NativeLatin, CurrentDevice';
+              : 'NativeLatin, CurrentDevice');
           c.font = `${node.weight} ${node.size * item.fit * fit}px ${font}`;
           c.fillStyle = '#14233a';
           hits.current.push({
@@ -422,6 +443,18 @@ export function CurrentStatusPreview({
             width: Math.max(8, item.width * fit * scale),
             height: Math.max(8, hh * scale),
           });
+          const binding = assetBinding(node.id);
+          const img = binding && images.get(binding.image);
+          if (binding && img) {
+            c.save();
+            c.globalAlpha = binding.opacity / 100;
+            c.translate(origin + item.x * fit + hh / 2 + binding.x, y + hh / 2 + binding.y);
+            c.scale((binding.mirror ? -1 : 1) * binding.scale / 100, binding.scale / 100);
+            if (!binding.originalColor) c.filter = 'grayscale(1)';
+            c.drawImage(img, -hh / 2, -hh / 2, hh, hh);
+            c.restore();
+            return;
+          }
           if (node.id === 'battery' && on('connectivity_group')) {
             drawConnectivity(c, origin + item.x * fit, y, hh, v);
             return;
@@ -460,7 +493,7 @@ export function CurrentStatusPreview({
     return () => {
       live = false;
     };
-  }, [saved, individual]);
+  }, [saved, individual, assets]);
   return (
     <canvas
       ref={canvas}

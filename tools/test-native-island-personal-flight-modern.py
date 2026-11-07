@@ -124,7 +124,7 @@ Context c=new Context();EnvironmentConfig.full=true;CardManager nativeManager=ne
 DefaultCard nativeCard=card("Native","BEFORE_DEPARTURE_3H");nativeCard.info.channel=8;nativeRenderer.render(List.of(nativeCard));night(nativeRenderer.sharedFlight,c);nativeRenderer.checkAndForceRefreshPersistentCards();
 check(nativeRenderer.sharedFlight.nativeButtons==2&&nativeRenderer.sharedFlight.nativeNights==1&&nativeRenderer.periodicCalls==1,"full native renderer buttons theme and periodic calls unchanged");
 EnvironmentConfig.full=false;CardManager manager=new CardManager();StarryIslandCardRender r=start(c,manager);
-for(String key:List.of("native","master","flight"))FeatureSettings.change(key,true);
+for(String key:List.of("duo","master","flight"))FeatureSettings.change(key,true);
 DefaultCard a=card("Airport A","BEFORE_DEPARTURE_3H"),b=card("Airport B","AFTER_BOOKING");
 RemoteViewsUtil.clicks.clear();r.render(List.of(a,b));
 check(r.selected.equals(List.of(a,b))&&r.sharedFlight.nativeButtons==0,"modern flight uses original layouts with scoped SDK buttons");
@@ -189,7 +189,7 @@ import com.zte.briefagent.event.cards.impl.DefaultCard;import com.zte.briefagent
 public class TestUnknownModernFlight {public static void main(String[] args)throws Exception {
 ClassLoader loader=TestUnknownModernFlight.class.getClassLoader();try{new NativeIslandPersonalScene(loader,"flight");throw new AssertionError();}catch(NoSuchFieldException expected){}
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,loader);if(module.errors!=0||AugmentModule.hooks.keySet().stream().anyMatch(m->m.getDeclaringClass().getSimpleName().equals("FlightStarryIslandAdapter")))throw new AssertionError("partial modern hooks");
-Context c=new Context();CardManager manager=new CardManager();new EventProcessor().registerCardRenders(manager,c);Handler.flush();for(String s:List.of("native","master","flight","calendar_meeting"))FeatureSettings.change(s,true);
+Context c=new Context();CardManager manager=new CardManager();new EventProcessor().registerCardRenders(manager,c);Handler.flush();for(String s:List.of("duo","master","flight","calendar_meeting"))FeatureSettings.change(s,true);
 StarryIslandCardRender r=(StarryIslandCardRender)manager.renders.get(0);MeetingCard meeting=new MeetingCard();r.render(List.of(meeting,new DefaultCard()));if(!r.selected.equals(List.of(meeting)))throw new AssertionError("unrelated scene lost");
 System.out.println("Personal modern flight unknown contract: 3 checks");}}
 '''

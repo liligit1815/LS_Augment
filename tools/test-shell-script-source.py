@@ -54,6 +54,12 @@ public final class TestShellScriptSource {
 def syntax_checker():
     if os.name != 'nt':
         return [shutil.which('sh') or '/bin/sh', '-n']
+    # A native POSIX shell can validate the same bytes without starting a WSL distribution.
+    shell = shutil.which('sh')
+    if shell and not os.environ.get('LSA_TEST_WSL_DISTRO'):
+        probe = subprocess.run([shell, '-n'], input=b'if true; then\r\nexit 0\r\nfi\r\n', capture_output=True, timeout=20)
+        if probe.returncode:
+            return [shell, '-n']
     wsl = shutil.which('wsl.exe')
     if not wsl:
         raise RuntimeError('WSL with a POSIX shell is required on Windows for CRLF regression checks')

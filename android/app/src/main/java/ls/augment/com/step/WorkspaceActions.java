@@ -106,6 +106,10 @@ final class WorkspaceActions {
                 result.get(Code.SCAN).add(new Service("支付宝 · 扫一扫",()->afterPromotion(scan.getPackage(),()->
                         owner.ctx.startActivity(scan.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)))));
         }
+        if(NativeTiles.read(owner.userId,"wallet")>0){
+            for(Code kind:new Code[]{Code.PAY,Code.TRANSIT})
+                result.get(kind).add(new Service("系统钱包",()->owner.activateTile("wallet",owner.bar)));
+        }
         ComponentName scanner=systemScanner();
         if(scanner!=null){
             Intent request=new Intent(Intent.ACTION_MAIN).setComponent(scanner).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -208,22 +212,27 @@ final class WorkspaceActions {
         return result;
     }
     void openClips(){
+        if(clipboard!=null){closeClips();return;}
         try{owner.checkAction();}catch(RuntimeException e){owner.note(e);return;}
-        if(!WorkspaceClipboard.readable() || clipboard!=null)return;
+        if(!WorkspaceClipboard.readable())return;
         android.view.Display display=owner.ctx.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
-        Context c=owner.ctx.createDisplayContext(display).createWindowContext(2017,null);
+        Context c=StepMaterial.statusBarPanelContext(owner.ctx,display);
         clipboard=new Dialog(c,StepMaterial.dark(c)?android.R.style.Theme_Material_Dialog_NoActionBar:android.R.style.Theme_Material_Light_Dialog_NoActionBar);
-        LinearLayout card=new LinearLayout(c);card.setOrientation(1);card.setPadding(owner.dp(16),owner.dp(12),owner.dp(16),owner.dp(12));card.setBackground(StepMaterial.glass(c,true,20));
+        clipboard.setCanceledOnTouchOutside(false);
+        LinearLayout card=new LinearLayout(c);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(owner.dp(16),owner.dp(12),owner.dp(16),owner.dp(12));card.setBackground(StepMaterial.glass(c,true,20));
         LinearLayout header=new LinearLayout(c);header.setGravity(Gravity.CENTER_VERTICAL);card.addView(header,-1,owner.dp(48));
         TextView heading=StepMaterial.label(c,"剪贴板历史",18,true);heading.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-1,1));
         header.addView(new StepGlyph(c,"trash","清空历史",()->{WorkspaceClipboard.history.clear();renderRows();}),owner.dp(48),-1);
         header.addView(new StepGlyph(c,"close","关闭剪贴板",this::closeClips),owner.dp(48),-1);
-        ScrollView scroll=new ScrollView(c);rows=new LinearLayout(c);rows.setOrientation(1);scroll.addView(rows);card.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        clipboard.setContentView(card);Window w=clipboard.getWindow();w.setType(2017);
+        ScrollView scroll=new ScrollView(c);rows=new LinearLayout(c);rows.setOrientation(LinearLayout.VERTICAL);scroll.addView(rows);card.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        clipboard.setContentView(card);Window w=clipboard.getWindow();w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
         WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);w.setAttributes(lp);
         w.setBackgroundDrawableResource(android.R.color.transparent);
         w.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        // Keep the toolbar reachable so its clipboard button can also close this panel.
+        w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+        w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         w.setLayout(Math.min(owner.dp(430),owner.host.geometry.width*9/10),Math.min(owner.dp(440),owner.host.geometry.height*2/3));
         clipboard.setOnDismissListener(d->{WorkspaceClipboard.changed=null;clipboard=null;rows=null;});
         WorkspaceClipboard.changed=closing->{if(closing)closeClips();else renderRows();};

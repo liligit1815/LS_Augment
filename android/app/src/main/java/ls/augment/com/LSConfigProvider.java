@@ -207,6 +207,15 @@ public final class LSConfigProvider extends ContentProvider {
                 return PowerModeControl.reboot(arg);
             } finally { Binder.restoreCallingIdentity(identity); }
         }
+        if ("fan_driver_proof".equals(method)) {
+            int uid=Binder.getCallingUid();
+            String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
+            if(arg!=null || extras!=null || uid/100000!=Process.myUid()/100000
+                    || !"cn.nubia.fan".equals(getCallingPackage()) || packages==null
+                    || !java.util.Arrays.asList(packages).contains("cn.nubia.fan"))return result;
+            long identity=Binder.clearCallingIdentity();
+            try{return FanDriverProbe.read();}finally{Binder.restoreCallingIdentity(identity);}
+        }
         if ("fan_tile_read".equals(method) || "fan_tile_select".equals(method)) {
             int caller = Binder.getCallingUid();
             String[] packages = getContext().getPackageManager().getPackagesForUid(caller);
@@ -342,6 +351,7 @@ public final class LSConfigProvider extends ContentProvider {
         if ("snapshot".equals(method)) {
             ConfigSnapshot snapshot = new AppConfig(getContext()).configSnapshot();
             result.putBoolean("ok", true);
+            result.putInt("sourceBuild", BuildConfig.VERSION_CODE);
             result.putInt("schemaVersion", snapshot.schemaVersion);
             result.putLong("revision", snapshot.revision);
             result.putLong("updatedAt", snapshot.updatedAt);

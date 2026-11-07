@@ -6,6 +6,31 @@ JAVA=ROOT/'android/app/src/main/java/ls/augment/com'
 helper=ROOT/'tools/test-privacy-dot-spacing-editor.py';scope={'__file__':str(helper)}
 exec(compile(helper.read_text(encoding='utf-8').split('\nwith tempfile.TemporaryDirectory(',1)[0],str(helper),'exec'),scope)
 files={key:value for key,value in scope['files'].items() if key.startswith('android/') or key.endswith('/UiKit.java') or key.endswith('/BuildConfig.java') or key.endswith('/R.java')}
+def member(source, signature):
+    start=source.index(signature)
+    opening=source.index('{',start)
+    depth=1
+    for end in range(opening+1,len(source)):
+        depth+=(source[end]=='{')-(source[end]=='}')
+        if depth==0:return source[start:end+1]
+    raise AssertionError(signature)
+
+slider=(JAVA/'UiKit.java').read_text(encoding='utf-8')
+slider_type=(JAVA/'ParameterSeekBar.java').read_text(encoding='utf-8')
+delegate=(JAVA/'SliderTouchDelegate.java').read_text(encoding='utf-8')
+assert 'new ParameterSeekBar(activity)' in member(slider,'SeekBar slider()')
+assert 'SliderTouchDelegate.attach(group,this)' in slider_type and 'slider.expandedTouchBounds(owner)' in delegate
+hit=member(slider_type,'Rect expandedTouchBounds(ViewGroup owner)')
+files['ls/augment/com/SliderHitTarget.java'] = """package ls.augment.com;
+final class SliderHitTarget extends android.widget.SeekBar {
+ SliderHitTarget(android.content.Context c){super(c);}
+ static class ViewGroup {} static class Rect {int top=0,bottom=20;int height(){return bottom-top;}}
+ float density; Rect nativeBounds(ViewGroup owner){return new Rect();}
+
+"""+hit.replace("getResources().getDisplayMetrics().density","density")+"""
+ int hitHeight(float scale){density=scale;return expandedTouchBounds(null).height();}}
+"""
+files['ls/augment/com/UiKit.java']=files['ls/augment/com/UiKit.java'].replace('return new SeekBar(context);','return new SliderHitTarget(context);')
 files['ls/augment/com/BuildConfig.java']='package ls.augment.com;public class BuildConfig {public static final int VERSION_CODE=20454;}'
 files['ls/augment/com/ConfigSchema.java']='package ls.augment.com;public class ConfigSchema {public static boolean isRuntimeKey(String key){return !key.startsWith("ui_only");}}'
 files['ls/augment/com/AppConfig.java']='package ls.augment.com;public class AppConfig {public static final String DIAGNOSTICS="diagnostics";public static final java.util.Map<String,String> values=new java.util.HashMap<>();public AppConfig(android.content.Context c){}public java.util.Map<String,String> snapshot(){return new java.util.HashMap<>(values);}}'
@@ -27,7 +52,7 @@ public class TestWifiAssetEditor {
  static void nativeEvidence(Context c,String surface,int cap){c.prefs.map.put(StatusBarWifiSpacingObservation.key(surface,0,"wifi.signal"),new StatusBarWifiSpacingObservation("native",profile(0)).serialize());c.prefs.map.put(StatusBarHeaderSpacingObservation.KEY+surface+"_0",profile(cap).serialize());}
  public static void main(String[] args){Context c=new Context();AppConfig.values.put("grid","A");raw(StatusBarIconSpacingSpec.empty().with("main","battery",new StatusBarIconSpacingSpec.Insets(1,2,3,4)).serialize());
   View missing=page(c,"main");check(writes==0,"opening unknown editor never overwrites a draft");for(SeekBar b:bars(missing))check(!b.enabled,"unknown measured budget has no effective control");check(text(missing,"显示此页面后刷新"),"unknown limit has actionable acquisition condition");
-  evidence(c,"main",150,62);View main=page(c,"main");List<SeekBar> sliders=bars(main);check(sliders.size()==4,"all four actual components edges exposed");check(sliders.get(0).max==17&&sliders.get(1).max==6,"ceil-rounded native pixels bound horizontal and vertical independently");for(SeekBar b:sliders)check(b.minimumHeight>=48,"touch target retains UiKit size");
+  evidence(c,"main",150,62);View main=page(c,"main");List<SeekBar> sliders=bars(main);check(sliders.size()==4,"all four actual components edges exposed");check(sliders.get(0).max==17&&sliders.get(1).max==6,"ceil-rounded native pixels bound horizontal and vertical independently");for(SeekBar b:sliders)check(b instanceof SliderHitTarget&&((SliderHitTarget)b).hitHeight(1)==48&&((SliderHitTarget)b).hitHeight(2)==96,"compact slider preserves 48dp hit region");
   sliders.get(0).drag(8);sliders.get(0).release();check(StatusBarIconSpacingSpec.parse(raw).resolve("main","wifi.signal").start==8,"exact valid eight dp saved");check(sliders.get(2).max==9,"trailing maximum subtracts own leading edge");check(StatusBarIconSpacingSpec.parse(raw).resolve("main","battery").bottom==4,"saving preserves unrelated draft");
   int before=writes;AppConfig.values.put("grid","B");sliders.get(0).drag(9);sliders.get(0).release();check(writes==before&&Toast.latest.contains("未保存"),"other layout change rejects stale capacity at commit");evidence(c,"main",150,62);main=page(c,"main");check(bars(main).get(0).enabled,"fresh same-profile observation recovers controls");
   raw(StatusBarIconSpacingSpec.parse(raw).with("main","wifi.signal",null).serialize());evidence(c,"main",150,62);View all=page(c,"all");for(SeekBar b:bars(all))check(!b.enabled,"all cannot borrow main capacity for unknown lock and shades");

@@ -76,4 +76,14 @@ def extend(stubs):
  this.token=token;pkg=original.pkg;playback=original.playback;metadata=original.metadata;ratingType=original.ratingType;controls=original.controls;}
 ''').replace('public final TransportControls controls=new TransportControls();', 'public TransportControls controls=new TransportControls();').replace('playback=new PlaybackState(state,actions);', 'playback=new PlaybackState(state,actions);instances.put(token,this);')
     stubs["android/media/session/MediaSession.java"] = stubs["android/media/session/MediaSession.java"].replace('public final int uid,id;', 'public static final Object CREATOR=new Object();public final int uid,id;')
+    bundle = stubs["android/os/Bundle.java"]
+    stubs["android/os/Bundle.java"] = bundle.rsplit("}",1)[0]+r"""
+ public void putBundle(String k,Bundle value){values.put(k,value);}
+ public Bundle getBundle(String k){Object v=values.get(k);return v instanceof Bundle?(Bundle)v:null;}
+ public <T> ArrayList<T> getParcelableArrayList(String k){
+    Object value=values.get(k);return value instanceof ArrayList<?>?(ArrayList<T>)value:null;
+ }
+ public Bundle deepCopy(){Bundle copy=new Bundle();for(var e:values.entrySet())copy.values.put(e.getKey(),copyValue(e.getValue()));return copy;}
+ private static Object copyValue(Object v){if(v instanceof Bundle b)return b.deepCopy();if(v instanceof ArrayList<?> list){ArrayList<Object> copy=new ArrayList<>();for(Object item:list)copy.add(copyValue(item));return copy;}return v;}
+}"""
     return stubs

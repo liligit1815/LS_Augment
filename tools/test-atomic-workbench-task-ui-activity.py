@@ -38,6 +38,7 @@ public final class AtomicWorkbenchActivity {
  void syncRoles(){for(int i=0;i<hosted.length;i++)roles.setHostedWindow(i,hosted[i]);if(roles.mainWindowId()!=main&&hosted[main])roles.promote(main);}
  boolean hasWindow(int id){return hosted[id];}void setHostedWindow(int id,boolean yes){hosted[id]=yes;}
  void promote(int id){syncRoles();if(roles.promote(id)){main=roles.mainWindowId();promotions++;}}
+ AtomicWorkbenchPoolTopology topology(){syncRoles();return roles.topology();}
  int mainWindowId(){return main;}int sideWindowId(int i){syncRoles();return roles.sideWindowId(i);}}
  final class Slot {final int id;int displayId,displayWidth=100,displayHeight=200;String displayName="vd",displayUniqueId,windowSession;AtomicWorkbenchTaskUiSnapshot.Window swipeWindow;int swipeEpoch;long swipeSession;final SurfaceView surface=new SurfaceView();Slot(int i){id=i;displayId=i+88;displayUniqueId="unique-"+displayId;windowSession=i==1?TestTaskUi.SESSION:TestTaskUi.TARGET;}
  AtomicWorkbenchSideSwipe.Callback callback(){return CALLBACK;}}
@@ -45,6 +46,7 @@ public final class AtomicWorkbenchActivity {
  boolean canInteract(){return active&&!destroyed&&!closing&&!busy&&!surfaceUnavailable&&!outputsParked&&!outputsSyncing;}
  boolean canPollMedia(){return active&&!destroyed&&!closing;}void cancelGesture(){gestures++;}void invalidateExtractionGeometry(){invalidations++;}
  void showStatus(String s){notice=s;}void renderWorkspace(){renders++;}void schedulePoll(){polls++;}void lifecycleDiagnostic(String a,String b){}
+ void beginNativeShieldLayout(int id){if(id<0||id>=slots.length)throw new AssertionError("shield slot");}
  void applyWindowStatus(int id,Bundle b){applied++;}void selectTaskInWindow(AtomicWorkbenchTaskUiSnapshot.Window w,AtomicWorkbenchTaskOperationRequest.Action a){performTaskAction(w,w.tasks.get(0),a,"");}
  static Bundle failure(String m){Bundle b=new Bundle();b.putBoolean("success",false);b.putString("message",m);return b;}
  void resume(){active=true;outputsSyncing=outputsParked=false;resumeDeferredOperation();}

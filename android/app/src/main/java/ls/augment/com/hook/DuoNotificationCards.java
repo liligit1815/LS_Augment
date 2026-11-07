@@ -159,6 +159,10 @@ final class DuoNotificationCards {
         }
         MagicIslandScenes.exact(type,"setPanelIsland",void.class,base);
         MagicIslandScenes.exact(type,"setSmallIsland",void.class,View.class);
+        MagicIslandScenes.exact(type,"handleIslandClick",boolean.class);
+        MagicIslandScenes.exact(manager.getClass(),"forceNotClick",boolean.class);
+        MagicIslandScenes.exact(manager.getClass(),"onClick",void.class);
+        MagicIslandScenes.exact(manager.getClass(),"onLongClick",void.class);
         MagicIslandScenes.exact(manager.getClass(),"getPermanentIsland",base);
         registry=(Map<String,Object>)MagicIslandScenes.typed(manager.getClass(),"mAppIslandList",Map.class).get(manager);
         Method beat=null;
@@ -242,11 +246,12 @@ final class DuoNotificationCards {
             image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);download.bind(entry,icon,app,action);publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
-    boolean showNotice(StatusBarNotification source,Drawable icon,String app,BiConsumer<StatusBarNotification,PendingIntent> action){
+    boolean showNotice(StatusBarNotification source,Drawable icon,String app,BiConsumer<StatusBarNotification,PendingIntent> action,
+            java.util.function.Consumer<StatusBarNotification> remind){
         if(closed||source==null)return false;
         try{
             create(true);compactText.bind(DuoCompactText.senderOrTitle(source.getNotification(),app),"");image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);
-            download.bindNotice(source,icon,app,action);publish();return true;
+            download.bindNotice(source,icon,app,action,remind);publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
     private void publish()throws Exception{

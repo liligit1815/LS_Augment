@@ -521,7 +521,21 @@ final class LauncherGridHook {
                     readState=decision;readStage="database_selection";
                     event("grid_decision",decision);report(false);return;
                 }
-                saved=LauncherOwnedStateClient.preferences(context,"grid");
+                saved=LauncherOwnedStateClient.readyPreferences(context,"grid");
+                if(saved==null){
+                    // Keep existing placements inside the grid while private state loads on IO.
+                    storageUnavailable=true; profile=idp; decided=true;
+                    database=(String)t.dbFile.get(idp);
+                    Readout existing=Readout.read(context,database); captureReadout(existing);
+                    rows=Math.max(nativeRows,existing.extentRows); cols=Math.max(nativeCols,existing.extentCols);
+                    owns=existing.complete&&(rows!=nativeRows||cols!=nativeCols);
+                    state="waiting_record"; decision="private_state_unavailable"; error="";
+                    event("grid_decision",decision+"|target="+cols+"x"+rows);
+                    if(!subscribed){subscribed=true;FeatureSettings.addSnapshotListener(context,this::settingsChanged);}
+                    if(!privateSubscribed)privateSubscribed=LauncherOwnedStateClient.addReadyListener(context,"grid",
+                            ()->main.post(()->{synchronized(Controller.this){privateReady=true;queuePrivateRecovery();}}));
+                    report(false); return;
+                }
                 before=saved.getAll();
                 // Private-state startup and configuration refresh run independently. Select
                 // one fresh immutable publication after the existing private-state barrier.
@@ -757,7 +771,7 @@ final class LauncherGridHook {
                 else if("saved_disabled".equals(decision)||!owns&&requested!=null&&!requested.enabled
                         &&"native_restore_selected".equals(decision))applicationResult="native_profile";
                 else if("waiting_config".equals(decision)||"pending_restart".equals(state))applicationResult="pending_restart";
-                else if("blocked".equals(state))applicationResult="blocked";
+                else if(storageUnavailable||"blocked".equals(state))applicationResult="blocked";
                 else applicationResult="profile_applied_waiting_bind";
                 event("profile_result","result="+applicationResult+"|target="+cols+"x"+rows+"|actual="+actualCols+"x"+actualRows);
             }catch(Exception failure){applicationResult="profile_check_failed";error="无法核对桌面实际行列";
@@ -836,7 +850,7 @@ final class LauncherGridHook {
                 if(!geometryMatches){applicationResult=workspacePages==0?"workspace_unobserved":"geometry_mismatch";
                     if(workspacePages>0)error="桌面实际行列与目标不一致";}
                 else if("pending_restart".equals(state)||"waiting_config".equals(decision))applicationResult="pending_restart";
-                else if("blocked".equals(state))applicationResult="blocked";
+                else if(storageUnavailable||"blocked".equals(state))applicationResult="blocked";
                 else if(!savedResult)applicationResult="recovery_commit_failed";
                 else if(pending&&!complete){applicationResult="migration_incomplete";error=migrationResult;}
                 else {applicationResult=requested!=null&&requested.enabled?"applied":"native_bound";error="";}

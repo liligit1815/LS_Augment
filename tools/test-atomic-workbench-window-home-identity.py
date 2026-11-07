@@ -71,7 +71,7 @@ SOURCES["com/android/quickstep/TouchInteractionService.java"] = service
 
 fixture_source = BASE["SOURCES"]["ls/augment/com/hook/TestNativeRecents.java"]
 fixture = fixture_source[fixture_source.index(" static class F {"):fixture_source.index(" public static void main")]
-fixture = fixture.replace('check(m.callbacks.size()==19,', 'check(m.callbacks.size()==19||m.callbacks.size()==20,')
+fixture = fixture.replace('check(m.callbacks.size()==21,', 'check(m.callbacks.size()==20||m.callbacks.size()==21,')
 fixture = fixture.replace('new TouchInteractionService()', 'new ServiceChild()')
 SOURCES["ls/augment/com/hook/TestWindowHomeIdentity.java"] = '''package ls.augment.com.hook;
 import android.app.*;import android.content.*;import android.os.*;import com.android.quickstep.*;import java.lang.reflect.*;

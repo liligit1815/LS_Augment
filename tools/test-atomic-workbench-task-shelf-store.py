@@ -359,7 +359,7 @@ def main():
             ('(stat.st_mode&0077)!=0', 'false'),
             ('before.st_dev!=opened.st_dev || before.st_ino!=opened.st_ino', 'false'),
             ('output.flush(); Os.fsync(fd);', 'output.flush();'),
-            ('checkDirectory(); syncDirectory();', 'checkDirectory();'),
+            ('renamed=true;\n            checkDirectory(); syncDirectory();', 'renamed=true;\n            checkDirectory();'),
             ('&& !old.metadata.sameOperation(replacement.metadata)', '&& false'),
         ]
         # The array-size guard also exists in the strict parser/read path; test a dedicated

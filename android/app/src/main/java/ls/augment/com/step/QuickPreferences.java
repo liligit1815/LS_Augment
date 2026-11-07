@@ -28,7 +28,9 @@ final class QuickPreferences {
         return i.putExtra("enabled",ls.augment.com.StepConfig.enabled(c)).putExtra("quickUser", Process.myUserHandle())
                 .putStringArrayListExtra("quickPins", new ArrayList<>(pins(c)))
                 .putExtra("quickRevision", prefs(c).getLong("revision", 0))
-                .putExtra("sideCount",count(c)).putExtra("upperEnabled",upper(c)).putExtra("leftSide", prefs(c).getBoolean("leftSide", false));
+                .putExtra("sideCount",count(c)).putExtra("upperEnabled",upper(c))
+                .putExtra("pageIndicator",ls.augment.com.StepConfig.pageIndicator(c))
+                .putExtra("leftSide", prefs(c).getBoolean("leftSide", false));
     }
     static boolean save(Context c, LinkedHashSet<String> keys, long revision) {
         SharedPreferences p = prefs(c);

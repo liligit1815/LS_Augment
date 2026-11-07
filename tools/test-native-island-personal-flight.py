@@ -53,7 +53,7 @@ public static void main(String[] args)throws Exception {
 AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalFlight.class.getClassLoader());
 check(module.errors==0&&AugmentModule.hooks.size()==21,"five optional scenes share inherited channel hook");
 Context context=new Context();CardManager manager=new CardManager();StarryIslandCardRender r=start(context,manager);
-for(String s:List.of("native","master","calendar_meeting","scenic_guide","nearby_charging","cycling"))FeatureSettings.change(s,true);
+for(String s:List.of("duo","master","calendar_meeting","scenic_guide","nearby_charging","cycling"))FeatureSettings.change(s,true);
 ToolsCapabilityHandler.getInstance().parseToolsCapability("native.return.provider");Handler.flush();
 MeetingCard meeting=new MeetingCard();ElectronicGuideCard guide=new ElectronicGuideCard();ChargingReminderCard charging=new ChargingReminderCard();ReturnBikeCard bike=new ReturnBikeCard();DefaultCard flight=new ChildFlight();
 List<ICard> others=List.of(meeting,guide,charging,bike),all=List.of(meeting,guide,charging,bike,flight);
@@ -116,7 +116,7 @@ public class TestPersonalFlight {
 public static void main(String[] args){AugmentModule module=new AugmentModule();NativeIslandPersonalCards.install(module,TestPersonalFlight.class.getClassLoader());
 if(module.errors!=0||AugmentModule.hooks.size()!=20)throw new AssertionError("unknown phase contract must not install partial flight hooks");
 Context context=new Context();CardManager manager=new CardManager();new EventProcessor().registerCardRenders(manager,context);Handler.flush();
-for(String flag:List.of("native","master","calendar_meeting","flight"))FeatureSettings.change(flag,true);
+for(String flag:List.of("duo","master","calendar_meeting","flight"))FeatureSettings.change(flag,true);
 MeetingCard meeting=new MeetingCard();StarryIslandCardRender r=(StarryIslandCardRender)manager.renders.get(0);r.render(List.of(meeting,new DefaultCard()));if(!r.selected.equals(List.of(meeting)))throw new AssertionError("unknown flight contract must preserve previous calendar path");manager.cleanup();
 EnvironmentConfig.full=true;CardManager nativeManager=new CardManager();new EventProcessor().registerCardRenders(nativeManager,context);Handler.flush();StarryIslandCardRender original=(StarryIslandCardRender)nativeManager.renders.get(0);DefaultCard flight=new DefaultCard();flight.info.channel=8;original.render(List.of(flight));if(!original.selected.equals(List.of(flight)))throw new AssertionError("original full-capability renderer remains native");
 System.out.println("Personal flight unknown contract: 3 checks");}}

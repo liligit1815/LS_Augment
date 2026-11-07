@@ -365,7 +365,13 @@ public final class TestFeatureSettingsAsync {
 
         String expiredKey="ls_augment_atomic_home_readiness_90";failedDiagnosticKey=expiredKey;failedDiagnosticValue=old;diagnosticFailures.set(0);
         FeatureSettings.diagnosticHomeReadiness(context,expiredKey,old);until(()->diagnosticFailures.get()>0);
-        android.os.SystemClock.offset+=300_001L;FeatureSettings.diagnosticHomeReadiness(context,expiredKey,fresh);drainNow();
+        // Queue the clock jump and replacement as one event. A real scheduled drain
+        // between these two steps would instead test a fresh delivery after expiry.
+        writerTask(()->{
+            android.os.SystemClock.offset+=300_001L;
+            FeatureSettings.diagnosticHomeReadiness(context,expiredKey,fresh);
+        });
+        drainNow();
         check(!pending.containsKey(expiredKey)&&!internalMap("DIAGNOSTIC_VALUES").containsKey(expiredKey),"new timestamps prolonged failed HR1 delivery beyond five minutes");
         check(FeatureSettings.diagnosticWriterState().contains("lastDropReason=retry_window_expired"),"HR1 expiry had no truthful loss evidence");
         failedDiagnosticKey=null;FeatureSettings.diagnosticHomeReadiness(context,expiredKey,fresh);until(()->fresh.equals(writes.get(expiredKey)));

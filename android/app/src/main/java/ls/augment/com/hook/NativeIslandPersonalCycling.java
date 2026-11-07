@@ -10,7 +10,7 @@ import java.lang.reflect.Modifier;
 final class NativeIslandPersonalCycling {
     private static final String TOOL = "one_step_return_bike";
     final Method capabilityChanged;
-    private final Method state, tools, toolPackage, toolSdk;
+    private final Method state, tools, handlerFromManager, toolPackage, toolSdk;
 
     NativeIslandPersonalCycling(ClassLoader loader, Class<?> card, Class<?> iCard) throws Exception {
         state = exact(card, "getState", String.class);
@@ -29,7 +29,14 @@ final class NativeIslandPersonalCycling {
         requireStatic(Class.forName("com.zte.briefagent.util.BikeAppLauncher", false, loader),
                 "launchBikeApp", boolean.class, Context.class, String.class);
         Class<?> capability = Class.forName("com.zte.toolsdk.common.ToolsCapabilityHandler", false, loader);
-        tools = requireStatic(capability, "getInstance", capability);
+        Method factory, accessor = null;
+        try { factory = requireStatic(capability, "getInstance", capability); }
+        catch (NoSuchMethodException legacyAbsent) {
+            Class<?> manager = Class.forName("com.zte.toolsdk.consumer.ToolsCapabilityManager", false, loader);
+            factory = requireStatic(manager, "getInstance", manager, Context.class);
+            accessor = ownedHandler(manager, capability);
+        }
+        tools = factory; handlerFromManager = accessor;
         toolPackage = exact(capability, "getToolPackage", String.class, String.class);
         toolSdk = exact(capability, "getToolSdkInfo", Class.forName("com.zte.toolsdk.entity.SdkInfo", false, loader), String.class);
         capabilityChanged = exact(capability, "parseToolsCapability", void.class, String.class);
@@ -37,7 +44,9 @@ final class NativeIslandPersonalCycling {
 
     String unavailable(Context context) {
         try {
-            Object handler = tools.invoke(null);
+            Object handler = handlerFromManager == null ? tools.invoke(null)
+                    : handlerFromManager.invoke(tools.invoke(null, context));
+            if (handler == null) return "return_bike_capability_not_ready";
             String pkg = (String) toolPackage.invoke(handler, TOOL);
             if (pkg == null || pkg.isEmpty() || toolSdk.invoke(handler, TOOL) == null) return "return_bike_tool_not_registered";
             ActivityInfo receiver = context.getPackageManager().getReceiverInfo(new ComponentName(pkg, "com.zte.toolsdk.producer.ToolsReceiver"), 0);
@@ -65,6 +74,18 @@ final class NativeIslandPersonalCycling {
         if (Modifier.isStatic(method.getModifiers()))
             throw new NoSuchMethodException(owner.getName() + "." + name + " instance");
         return method;
+    }
+    private static Method ownedHandler(Class<?> owner,Class<?> result)throws NoSuchMethodException{
+        for(Class<?> type=owner;type!=null;type=type.getSuperclass())try{
+            Method method=type.getDeclaredMethod("getToolsCapabilityHandler");
+            if(method.getReturnType()!=result||Modifier.isStatic(method.getModifiers())||Modifier.isAbstract(method.getModifiers()))
+                throw new NoSuchMethodException("owned capability handler signature");
+            method.setAccessible(true);return method;
+        }catch(NoSuchMethodException missing){
+            // A declared but incompatible override must not fall through to an older base implementation.
+            for(Method candidate:type.getDeclaredMethods())if(candidate.getName().equals("getToolsCapabilityHandler")&&candidate.getParameterCount()==0)throw missing;
+        }
+        throw new NoSuchMethodException(owner.getName()+".getToolsCapabilityHandler");
     }
     private static Method requireStatic(Class<?> owner, String name, Class<?> result, Class<?>... args) throws Exception {
         Method method = NativeIslandPersonalScene.exact(owner, name, result, args);

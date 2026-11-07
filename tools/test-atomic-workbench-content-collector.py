@@ -73,7 +73,7 @@ public class TestAtomicWorkbenchContentCollector {
    Context c=context();c.clipboard.clip=new ClipData("synthetic-history");AtomicWorkbenchContentCollector first=new AtomicWorkbenchContentCollector(c);
    first.setForeground(true);until(()->history(first).size()==1,"capture before restart");first.close();Handler.fire(0);
    c.clipboard.deny=true;AtomicWorkbenchContentCollector restored=new AtomicWorkbenchContentCollector(c);restored.setForeground(true);
-   until(()->history(restored).size()==1&&restored.repository.snapshot(AtomicWorkbenchContentItem.Kind.CLIPBOARD).state==AtomicWorkbenchContentSource.State.PERMISSION_REQUIRED,"restore or denial state missing");
+   try{until(()->history(restored).size()==1&&restored.repository.snapshot(AtomicWorkbenchContentItem.Kind.CLIPBOARD).state==AtomicWorkbenchContentSource.State.PERMISSION_REQUIRED,"restore or denial state missing");}catch(AssertionError failure){throw new AssertionError("restored history="+history(restored).size()+" state="+restored.repository.snapshot(AtomicWorkbenchContentItem.Kind.CLIPBOARD).state+" files="+java.util.Arrays.toString(new java.io.File(c.files,"workbench-content").list()),failure);}
    AtomicWorkbenchContentItem item=history(restored).get(0);
    check(restored.repository.selection(AtomicWorkbenchContentItem.Kind.CLIPBOARD,List.of(item.key)).size()==1,"system clipboard denial locked owned history");
    restored.close();Handler.fire(0);

@@ -49,6 +49,10 @@ stat() {
 }
 flock() {
   [ -z "${LSA_TEST_LOCK_FAIL:-}" ] || return 74
+  if [ -x /usr/bin/flock ]; then
+    /usr/bin/flock "$@"
+    return $?
+  fi
   LSA_TEST_GUARD="$LOCK.host-flock-guard"
   while ! command mkdir "$LSA_TEST_GUARD" 2>/dev/null; do sleep 1; done
   local task_trap

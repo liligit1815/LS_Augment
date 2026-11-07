@@ -9,6 +9,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
 STUBS = {
+    'ls/augment/com/step/StepRuntime.java':'package ls.augment.com.step;public class StepRuntime{public static void install(Object module,ClassLoader loader,boolean server){if(server)throw new AssertionError();}}',
+    'ls/augment/com/LogHistory.java':'package ls.augment.com;final class LogHistory{static final Object LOCK=new Object();static boolean old(android.content.Context context,long wall){return false;}}',
 'android/os/ParcelFileDescriptor.java': '''package android.os;public class ParcelFileDescriptor{}''',
 'android/content/pm/ApplicationInfo.java': '''package android.content.pm;public class ApplicationInfo{}''',
 'android/os/Bundle.java': '''package android.os;import java.util.*;public class Bundle{final Map<String,Object> data=new HashMap<>();public void putString(String k,String v){data.put(k,v);}public String getString(String k){return (String)data.get(k);}public String getString(String k,String d){return (String)data.getOrDefault(k,d);}public void putBoolean(String k,boolean v){data.put(k,v);}public boolean getBoolean(String k,boolean d){return (Boolean)data.getOrDefault(k,d);}}''',
@@ -120,7 +122,7 @@ def systemui_fixture():
                   +('throw new IllegalStateException("systemui stage cause",new java.io.IOException("systemui root cause"));' if name=='PowerMenuModesHook' else 'HookTelemetry.count++;')+'}}' for name in classes)
     return '''package ls.augment.com;import java.util.*;final class SystemUiStageFixture{
 boolean systemUiHooksInstalled;final List<String> events=new ArrayList<>();
-static final String SYSTEMUI_PACKAGE="com.android.systemui";String readyPackageName=SYSTEMUI_PACKAGE;
+static final String SYSTEMUI_PACKAGE="com.android.systemui";String readyPackageName=SYSTEMUI_PACKAGE,processName=SYSTEMUI_PACKAGE;
 void run(){installSystemUiFeatureHooks(getClass().getClassLoader());}
 void prepareFailure(){installPackageStage("oem_extras",()->{throw new IllegalStateException("prepare fixture");});}
 void recordStartup(String s,String d,Throwable e){events.add(s+":"+d);StartupDiagnostics.record(s,d,e);}

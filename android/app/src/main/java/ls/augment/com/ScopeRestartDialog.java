@@ -27,6 +27,7 @@ final class ScopeRestartDialog {
             "隐藏列表（系统设置）",
             "状态栏（SystemUI）",
             "系统桌面（布局、图标与页面）",
+            "桌面搜索",
             "系统核心与连接（重启手机）",
             "应用增强（安装兼容、双开与主题商店）",
             "游戏增强（游戏空间与风扇）",
@@ -36,7 +37,7 @@ final class ScopeRestartDialog {
             "全部作用域（重启手机）"
     };
     private static final String[] IDS = {
-            SETTINGS, SYSTEM_UI, LAUNCHER, DEVICE, APPS, GAMES, FAN, AMAP, THEME, "all"
+            SETTINGS, SYSTEM_UI, LAUNCHER, "search", DEVICE, APPS, GAMES, FAN, AMAP, THEME, "all"
     };
 
     private ScopeRestartDialog() { }

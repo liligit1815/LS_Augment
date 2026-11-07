@@ -84,7 +84,9 @@ public class TestIslandPanel {
  }
  static class OwnedHost {
   static class DownloadContent{int clears;void clear(){clears++;}}
-  View download;DownloadContent downloadContent;
+  static class SupplementalCards{void hide(){}}
+  SupplementalCards notificationCards;
+  View download,notice;DownloadContent downloadContent,noticeContent;
   final Handler MAIN=new Handler();final Runnable publish=()->{};final IslandPanelTransition panelTransition=new IslandPanelTransition();
   final Modern permanent=new Modern();View current=permanent.selected;int closes;boolean callbackComplete;
   void dismiss(){if(current==null||!permanent.mDynamicPanelShowing||!panelTransition.prepareClose(current))return;
@@ -150,6 +152,8 @@ public class TestIslandPanel {
   check(host.closes==1&&host.permanent.removes==1,"existing close reused by hide");
   host=new OwnedHost();host.download=host.current;host.downloadContent=new OwnedHost.DownloadContent();host.hide();
   check(host.downloadContent.clears==1&&host.callbackComplete,"download controls cleared after owned close callback");
+  host=new OwnedHost();host.notice=host.current;host.noticeContent=new OwnedHost.DownloadContent();host.hide();
+  check(host.noticeContent.clears==1&&host.callbackComplete,"retired legacy notice releases snooze and source controls");
 
   Actions actions=new Actions();int[] commands={0};
   for(int i=0;i<3;i++)actions.runAction(()->commands[0]++);

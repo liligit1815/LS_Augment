@@ -334,6 +334,8 @@ public final class AugmentModule extends RootEarlyModule {
         // method lookup.  This is written through the same provider bridge as
         // the normal diagnostics and is harmless when no context is available.
         writePackageReadyWitness(readyPackageName);
+        if ("com.android.ztescreenshot".equals(readyPackageName))
+            installPackageStage("recorder_diagnostics", () -> RecorderDiagnosticsHook.install(this,param.getClassLoader(),false));
 
         installPackageStage("oem_extras", () -> OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("connections", () -> ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName));
@@ -437,8 +439,13 @@ public final class AugmentModule extends RootEarlyModule {
                 AtomicWorkbenchAmapHook.install(this, param.getClassLoader());
             return;
         }
+        if ("com.zte.mifavor.zsearch".equals(readyPackageName)) {
+            SearchWallpaperHook.install(this, param.getClassLoader());
+            return;
+        }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            ls.augment.com.step.WorkspaceGestureGate.installLauncher(this,param.getClassLoader());
             LauncherResetHook.install(this);
             LauncherGridHook.install(this, param.getClassLoader());
             LauncherCustomizationHook.install(this, param.getClassLoader());
@@ -669,6 +676,7 @@ public final class AugmentModule extends RootEarlyModule {
             MultiAppVolumePositionHook.install(this, classLoader);
             SystemRulesHook.install(this, classLoader);
             BatteryRefreshRateHook.install(this, classLoader);
+            RecorderDiagnosticsHook.install(this, classLoader, true);
             CompetitiveKeyHook.install(this, classLoader);
             ls.augment.com.step.StepRuntime.install(this, classLoader, true);
             updateSystemServerLifecycle(source, true, "");

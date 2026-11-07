@@ -23,9 +23,11 @@ def extract(text, marker, body_only=False):
 
 grid = (JAVA / 'StatusBarGridHook.java').read_text(encoding='utf-8')
 native = (JAVA / 'StatusBarNativeIconHook.java').read_text(encoding='utf-8')
+spacing = (JAVA / 'StatusBarIconLayoutHook.java').read_text(encoding='utf-8')
 tint = (JAVA / 'StatusBarTintHook.java').read_text(encoding='utf-8')
 harness = r'''
 import java.util.*;import java.lang.ref.*;import java.lang.reflect.*;
+import ls.augment.com.StatusBarIconOrderPolicy;
 public class TestNativeLifecycle {
  static int checks;
  static void check(boolean ok,String why){checks++;if(!ok)throw new AssertionError(why);}
@@ -34,7 +36,8 @@ public class TestNativeLifecycle {
   boolean isEmpty(){return left>=right||top>=bottom;}float width(){return right-left;}
   public boolean equals(Object other){if(!(other instanceof RectF r))return false;return left==r.left&&top==r.top&&right==r.right&&bottom==r.bottom;}}
  static class Matrix {float sx=1,sy=1,x,y;void mapRect(RectF r){r.left=r.left*sx+x;r.right=r.right*sx+x;r.top=r.top*sy+y;r.bottom=r.bottom*sy+y;}}
- static class View {public boolean mNeedsUnderflow=true,mShouldRestrictIcons=true;float x,y,sx=1,sy=1,alpha=1;ViewGroup parent;Rect ink=new Rect(0,0,20,20);int invalidates;
+ static class View {public boolean mNeedsUnderflow=true,mShouldRestrictIcons=true;float x,y,sx=1,sy=1,alpha=1;ViewGroup parent;Rect ink=new Rect(0,0,20,20);int invalidates,layoutRequests;
+  int getWidth(){return right-left;}int getPaddingLeft(){return 0;}int getPaddingRight(){return 0;}void requestLayout(){layoutRequests++;}
   int left,top,right,bottom,measuredWidth,measuredHeight;
   static class MeasureSpec {static final int EXACTLY=0x40000000;static int makeMeasureSpec(int size,int mode){return size|mode;}}
   int getLeft(){return left;}int getTop(){return top;}int getRight(){return right;}int getBottom(){return bottom;}
@@ -47,13 +50,48 @@ public class TestNativeLifecycle {
   void transformMatrixToGlobal(Matrix m){m.sx=sx;m.sy=sy;m.x=x;m.y=y;}
  }
  static class ViewGroup extends View {List<View> children=new ArrayList<>();void add(View v){children.add(v);v.parent=this;}int getChildCount(){return children.size();}View getChildAt(int i){return children.get(i);}}
- static class State {boolean active=true,layoutDirty;Map<View,Geometry> geometry=new IdentityHashMap<>();}
+ static class StatusIconContainer extends ViewGroup {}
+ static class VendorContainer extends StatusIconContainer {}
+ static class Slot extends View {
+  String name;int width,visibleState;boolean eligible=true;
+  Slot(String name,int width){this.name=name;this.width=width;}
+ }
+ static class EditPolicy {boolean full=true,rows;boolean owns(String component,String field){return rows&&component.equals("system_icons")&&field.equals("rows");}}
+ static class State {boolean active=true,layoutDirty,packingSuspended,positionOnly,twoRows;
+  EditPolicy editPolicy=new EditPolicy();View nativeCapacityContainer,root;Boolean nativeCapacityOwner;
+  static class Block {boolean nativePassRequested;}
+  Block packingCapacityBlock;
+  View findClass(View root,String name){return root instanceof StatusIconContainer?root:null;}
+  boolean ownsSystemIconCapacity(View container){return StatusBarGridHook.ownsSystemIconCapacity(container);}
+  // RESET_CAPACITY
+  // SYNC_CAPACITY
+  boolean positionOnly(){return positionOnly;}boolean two(String id){return twoRows&&id.equals("system_icons");}
+  Map<View,Geometry> geometry=new IdentityHashMap<>();}
  static State state=new State();static State stateFor(View v){return state;}
- static class StatusBarGridHook {static boolean owned=true;static void invalidateLayout(View v){state.layoutDirty=true;}static boolean ownsIconLayout(View v){return owned;}static boolean hasGridTransform(View v){return owned;}}
+ static class StatusBarGridHook {static boolean owned=true;static void invalidateLayout(View v){state.layoutDirty=true;}static boolean ownsIconLayout(View v){return owned;}static boolean hasGridTransform(View v){return owned;}
+  // SYSTEM_CAPACITY
+ }
+ static class StatusBarNativeIconHook {static Class<?> capacityType=StatusIconContainer.class;
+  // SUPPORTS_CAPACITY
+ }
  static class DualSignalTint {static final Set<View> watched=Collections.newSetFromMap(new IdentityHashMap<>());static boolean managed(View v){return watched.contains(v);}}
  static class StatusBarContentBounds {static Rect of(View v){return v.ink;}}
- static class FeatureSettings {static int style=1;static int integer(Object c,Object k,int d,int min,int max){return style;}static void diagnosticError(Object c,String k,String p,Throwable e){}}
- static class ConfigSchema {static String STATUSBAR_BLUETOOTH_STYLE="style";}
+ static class FeatureSettings {static int style=1,limit;static int integer(Object c,Object k,int d,int min,int max){return k.equals(StatusBarIconOrderPolicy.LIMIT)?limit:style;}
+  static boolean enabled(Object c,String key){return !key.equals(ConfigSchema.STATUSBAR_POSITION_SIZE_ONLY);}
+  static Map<String,String> snapshot(Object c){return Collections.emptyMap();}
+  static void diagnostic(Object c,String k,String v){}static void diagnosticError(Object c,String k,String p,Throwable e){}}
+ static class ConfigSchema {static String STATUSBAR_BLUETOOTH_STYLE="style",SYSTEMUI_MASTER="master",STATUSBAR_POSITION_SIZE_ONLY="position";}
+ static class StatusBarSurfaceSpec {static boolean valid(String surface){return surface.equals("main");}}
+ static class StatusBarAssetsHook {static String surfaceFor(View parent){return "main";}}
+ static class StatusBarIconLayoutHook {
+  static Object field(View view,String name){return name.equals("mShouldRestrictIcons")?view.mShouldRestrictIcons:0;}
+  static int number(Object n,int fallback){return (Integer)n;}static int staticNumber(Class<?> type,String name,int fallback){return 3;}
+  static String semanticId(View v){return ((Slot)v).name;}static float extent(View v){return ((Slot)v).width;}
+  static boolean eligible(ViewGroup parent,View v){return ((Slot)v).eligible;}
+  static Object invoke(View v,String name){return name.equals("getSlot")?semanticId(v):((Slot)v).visibleState;}
+  // EXCLUDED
+  // VISIBLE_SLOT
+ }
  // GEOMETRY
  // PREPARE
  interface Proceed {Object run()throws Throwable;}
@@ -91,7 +129,8 @@ public class TestNativeLifecycle {
   try{capacity(new Chain(root,List.of(),()->{throw new IllegalStateException();}),underflow,restrict);}catch(IllegalStateException expected){}
   check(root.mNeedsUnderflow&&root.mShouldRestrictIcons,"overflow flags restored after failure");
   FeatureSettings.style=0;capacity(new Chain(root,List.of(),()->{check(!root.mNeedsUnderflow&&!root.mShouldRestrictIcons,"native Bluetooth uses grid capacity while grid owns placement");return null;}),underflow,restrict);FeatureSettings.style=1;
-  StatusBarGridHook.owned=false;capacity(new Chain(root,List.of(),()->{check(root.mNeedsUnderflow&&root.mShouldRestrictIcons,"native layouts retain overflow");return null;}),underflow,restrict);StatusBarGridHook.owned=true;
+  state.editPolicy.full=false;capacity(new Chain(root,List.of(),()->{check(root.mNeedsUnderflow&&root.mShouldRestrictIcons,"native layouts retain overflow");return null;}),underflow,restrict);
+  partialBluetooth(underflow,restrict);state.editPolicy.full=true;
   apply(new Chain(ns,List.of(icon),()->{check(ns.flag,"OEM applies without competing position animation");icon.alpha=0;return null;}),flag,cancel);
   check(!ns.flag&&ns.cancels==1&&icon.alpha==0,"native hidden state preserved and flag restored");
   try{apply(new Chain(ns,List.of(icon),()->{throw new IllegalStateException();}),flag,cancel);throw new AssertionError();}catch(IllegalStateException expected){}
@@ -129,9 +168,46 @@ public class TestNativeLifecycle {
   dispatcher.fail=true;icon.x++;refresh(root);check(!replaying,"failed native callback releases guard");
   System.out.println("Status bar lifecycle/tint: "+checks+" production-body assertions passed");
  }
+ static void partialBluetooth(Field underflow,Field restrict)throws Throwable {
+  VendorContainer bar=new VendorContainer();bar.right=72;
+  Slot bluetooth=new Slot("bluetooth",24),alarm=new Slot("alarm_clock",16),network=new Slot("network",28);
+  bar.add(bluetooth);bar.add(alarm);bar.add(network);
+  state.root=bar;state.editPolicy.rows=true;state.twoRows=true;
+  check(!state.syncNativeIconCapacity()&&bar.layoutRequests==1,"entering partial rows requests the native allocation pass");
+  check(state.syncNativeIconCapacity()&&bar.layoutRequests==1,"stable capacity does not repeat native layout");
+  check(!StatusBarGridHook.ownsSystemIconCapacity(new VendorContainer()),"only the packed system container owns two-row capacity");
+  for(int width:new int[]{24,36,48,24}){
+   bluetooth.width=width;
+   check(StatusBarIconLayoutHook.excluded(bar,false).isEmpty(),"priority retains Bluetooth even when its new artwork exceeds one row");
+   capacity(new Chain(bar,List.of(),()->{bluetooth.visibleState=bar.mNeedsUnderflow&&width+44>bar.getWidth()?2:0;return null;}),underflow,restrict);
+   check(bluetooth.visibleState==0&&StatusBarIconLayoutHook.eligibleForPlacement(bar,bluetooth),"native, capsule and ring are visible when allocated");
+  }
+  FeatureSettings.limit=1;
+  check(StatusBarIconLayoutHook.excluded(bar,true).equals(List.of("bluetooth"))&&StatusBarIconLayoutHook.excluded(bar,false).equals(List.of("bluetooth")),"explicit priority limit applies during both measure and layout");
+  bluetooth.visibleState=2;
+  check(!StatusBarIconLayoutHook.eligibleForPlacement(bar,bluetooth),"OEM-hidden slot reserves no two-row cell");
+  bluetooth.visibleState=0;bluetooth.eligible=false;
+  check(!StatusBarIconLayoutHook.eligibleForPlacement(bar,bluetooth),"disconnected or blocked slot cannot be promoted");
+  bluetooth.eligible=true;FeatureSettings.limit=0;bluetooth.width=48;
+  state.twoRows=false;
+  check(!state.syncNativeIconCapacity()&&bar.layoutRequests==2,"leaving two rows requests a fresh native overflow calculation");
+  check(!StatusBarGridHook.ownsSystemIconCapacity(bar)&&StatusBarIconLayoutHook.excluded(bar,false).contains("bluetooth"),"single row restores original capacity");
+  state.twoRows=true;state.packingSuspended=true;
+  check(!StatusBarGridHook.ownsSystemIconCapacity(bar),"failed pack yields capacity");
+  state.packingSuspended=false;state.positionOnly=true;
+  check(!StatusBarGridHook.ownsSystemIconCapacity(bar),"position-only mode retains OEM capacity");
+  state.positionOnly=false;state.nativeCapacityContainer=new ViewGroup();
+  check(!StatusBarGridHook.ownsSystemIconCapacity(state.nativeCapacityContainer),"missing OEM contract preserves native capacity");
+ }
 }
 '''
 replacements = {
+    '// SYSTEM_CAPACITY': extract(grid, 'static boolean ownsSystemIconCapacity('),
+    '// RESET_CAPACITY': extract(grid, 'void resetNativeIconCapacity('),
+    '// SYNC_CAPACITY': extract(grid, 'boolean syncNativeIconCapacity('),
+    '// SUPPORTS_CAPACITY': extract(native, 'static boolean supportsCapacity('),
+    '// EXCLUDED': extract(spacing, 'private static List<String> excluded('),
+    '// VISIBLE_SLOT': extract(spacing, 'static boolean eligibleForPlacement('),
     '// GEOMETRY': extract(grid, 'private static final class Geometry'),
     '// PREPARE': extract(grid, 'static void prepareNativeIcons('),
     '/* NATIVE */': extract(native, '"systemui.grid.native_apply."+container', True),
@@ -150,5 +226,6 @@ for key, value in replacements.items():
 with tempfile.TemporaryDirectory(prefix='lsa-icon-lifecycle-') as tmp:
     source = Path(tmp) / 'TestNativeLifecycle.java'
     source.write_text(harness, encoding='utf-8')
-    subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', tmp, str(source)], check=True)
+    policy = JAVA.parent / 'StatusBarIconOrderPolicy.java'
+    subprocess.run(['javac', '-encoding', 'UTF-8', '--release', '17', '-d', tmp, str(source), str(policy)], check=True)
     subprocess.run(['java', '-cp', tmp, 'TestNativeLifecycle'], check=True, timeout=20)

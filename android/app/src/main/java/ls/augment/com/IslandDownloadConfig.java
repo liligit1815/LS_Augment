@@ -13,15 +13,23 @@ public final class IslandDownloadConfig {
     public static final int MAX_CHANNELS=32;
     private IslandDownloadConfig(){}
     public static String channel(int user,String pkg,String id){
-        if(user<0||pkg==null||!pkg.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+")
-                ||id==null||id.isEmpty()||id.length()>256)return "";
+        return channel(user,pkg,id,256);
+    }
+    static boolean validApp(int user,String pkg){
+        return user>=0&&pkg!=null&&pkg.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+");
+    }
+    static String channel(int user,String pkg,String id,int limit){
+        if(!validApp(user,pkg)||id==null||id.isEmpty()||id.length()>limit)return "";
         return user+"|"+pkg+"|"+Base64.getUrlEncoder().withoutPadding().encodeToString(id.getBytes(StandardCharsets.UTF_8));
     }
     public static String[] parts(String key){
+        return parts(key,256);
+    }
+    static String[] parts(String key,int limit){
         try{
             String[] p=key.split("\\|",-1);if(p.length!=3)return null;
             int user=Integer.parseInt(p[0]);String id=new String(Base64.getUrlDecoder().decode(p[2]),StandardCharsets.UTF_8);
-            return channel(user,p[1],id).equals(key)?new String[]{p[0],p[1],id}:null;
+            return channel(user,p[1],id,limit).equals(key)?new String[]{p[0],p[1],id}:null;
         }catch(RuntimeException invalid){return null;}
     }
     public static String normalize(String raw){

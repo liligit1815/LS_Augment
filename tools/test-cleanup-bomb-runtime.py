@@ -224,6 +224,12 @@ files['android/content/ContentResolver.java']='''package android.content;public 
 files['android/content/Context.java']=files['android/content/Context.java'].replace('public String getPackageName()', 'public Context getApplicationContext(){return this;}public ContentResolver getContentResolver(){return new ContentResolver();}public String getPackageName()')
 files['android/os/Looper.java']='package android.os;public class Looper {public static Looper getMainLooper(){return new Looper();}}'
 files['android/os/Handler.java']='''package android.os;public class Handler {public Handler(Looper l){}public static final java.util.concurrent.LinkedBlockingQueue<Runnable> queue=new java.util.concurrent.LinkedBlockingQueue<>();public boolean post(Runnable r){queue.add(r);return true;}public static void await()throws Exception{Runnable r=queue.poll(3,java.util.concurrent.TimeUnit.SECONDS);if(r==null)throw new AssertionError("image completion missing");r.run();}}'''
+files['ls/augment/com/hook/TestCleanupBomb.java']=files['ls/augment/com/hook/TestCleanupBomb.java'].replace(' System.out.println(', '''
+ FeatureSettings.on=true;FeatureSettings.style="2";r=new RecentsView();ValueAnimator priorAnimator=ValueAnimator.last;int priorThumbnails=View.thumbnailReads;
+ click(r,new View());check(r.calls==1&&r.cleanups==1&&r.locked==2&&r.duration==300,"native animation keeps one OEM dismiss, duration and locked tasks");
+ check(ValueAnimator.last==priorAnimator&&r.overlay.items.isEmpty()&&View.thumbnailReads==priorThumbnails,"native choice has no custom animator, overlay or thumbnail capture");
+ FeatureSettings.style="unexpected";r=new RecentsView();click(r,new View());check(r.calls==1&&r.duration==300,"unknown animation falls back to native");
+ System.out.println(''')
 with tempfile.TemporaryDirectory(prefix='lsa-bomb-') as temp:
  sources=[]
  for name,source in files.items():

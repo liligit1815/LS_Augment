@@ -39,7 +39,12 @@ files = {
  static int started,closed;NativeIslandScenes(Object...args){}void start(){started++;}void close(){closed++;}void configurationChanged(){}}''',
     'ls/augment/com/hook/MagicIslandScenes.java': '''package ls.augment.com.hook;class MagicIslandScenes {
  static int started,closed;MagicIslandScenes(Object...args){}void start(){started++;}void close(){closed++;}void refresh(){}}''',
-    'ls/augment/com/hook/FeatureSettings.java':'package ls.augment.com.hook;class FeatureSettings{static void diagnostic(Object c,String k,String v){}}',
+    'ls/augment/com/hook/FeatureSettings.java':'package ls.augment.com.hook;class FeatureSettings{static boolean on=true;static boolean enabled(Object c,String k){return on;}static void diagnostic(Object c,String k,String v){}}',
+    'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo";}',
+    'ls/augment/com/DuoIslandPolicy.java':'package ls.augment.com;public class DuoIslandPolicy{public static String CAPABILITY="host";}',
+    'ls/augment/com/BuildConfig.java':'package ls.augment.com;public class BuildConfig{public static int VERSION_CODE=1;}',
+    'ls/augment/com/hook/NativeIslandSettingsHook.java':'package ls.augment.com.hook;class NativeIslandSettingsHook{static void synchronize(Object c,boolean on){android.provider.Settings.System.function=on?1:0;android.provider.Settings.System.enabled=on?1:0;}}',
+    'ls/augment/com/hook/DuoNotificationCards.java':'package ls.augment.com.hook;class DuoNotificationCards{DuoNotificationCards(Object...args){}void close(){}}',
     'ls/augment/com/MagicIslandPolicy.java':'package ls.augment.com;public class MagicIslandPolicy{public static String CAPABILITY="magic";}',
     'com/zte/base/Feature.java': '''package com.zte.base;public class Feature{public static Feature current;
  public Object mDynamicIslandManager;public boolean mEnabled;public boolean enabled(){return mEnabled;}public static Feature get(String key){return current;}}''',
@@ -47,14 +52,14 @@ files = {
 for name in ('NativeIslandFullscreen', 'NativeIslandWake'):
     files[f'ls/augment/com/hook/{name}.java'] = (SRC / f'{name}.java').read_text(encoding='utf-8')
 harness = '''package ls.augment.com.hook;
-import java.lang.reflect.*;import java.lang.ref.*;import android.view.View;import android.os.Handler;import com.zte.base.Feature;
+import java.lang.reflect.*;import java.lang.ref.*;import android.view.View;import android.os.Handler;import android.content.Context;import com.zte.base.Feature;import ls.augment.com.SystemUiOptions;
 public class TestNativeSelection {
  static int checks;static void check(boolean ok,String why){checks++;if(!ok)throw new AssertionError(why);}
  static final Handler MAIN=new Handler();static boolean baselineKnown,baselineFeature,initializedByDuo;
  static Object nativeFeature,initializedManager;static TestNativeSelection nativeOwner;
  static WeakReference<View> keyguardView=new WeakReference<>(new View());
  final android.content.Context context=new android.content.Context();final ClassLoader loader=getClass().getClassLoader();final View phone=new View();
- NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;boolean nativeRequested,nativeSelected;
+ NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;DuoNotificationCards notificationCards;final Runnable click=()->{};boolean nativeRequested,nativeSelected;
  View waitingNativeRoot;View.OnAttachStateChangeListener nativeAttach;String diagnostic;
  // TIMEOUT
  static class Permanent {
@@ -109,7 +114,7 @@ public class TestNativeSelection {
   p=new Permanent();m=setup(p,true);Feature.current.mEnabled=true;m.mDynamicIslandEnable=true;h=new TestNativeSelection();h.selectNative(true);attach(p);h.selectNative(false);
   check(Feature.current.mEnabled&&m.mDynamicIslandEnable&&p.settings,"preexisting OEM selection not preserved");
   p=new Permanent();m=setup(p,true);android.provider.Settings.System.function=0;h=new TestNativeSelection();h.selectNative(true);attach(p);
-  check(h.nativeSelected&&!m.mDynamicIslandEnable&&!p.mDynamicIslandFuncEnable,"native function setting ignored");h.selectNative(false);
+  check(h.nativeSelected&&m.mDynamicIslandEnable&&p.mDynamicIslandFuncEnable,"unified master did not enable the native backend");h.selectNative(false);
   p=new Permanent();m=setup(p,true);android.provider.Settings.System.function=1;android.provider.Settings.System.enabled=0;h=new TestNativeSelection();h.selectNative(true);attach(p);
   check(h.nativeSelected&&p.settings&&h.magicScenes!=null,"modern selection incorrectly depends on old switch");h.selectNative(false);
   System.out.println("PASS production native selection: "+checks+" assertions; legacy/fullscreen/inherited/missing, both windows, wake, cancel, timeout, repeat and rollback");

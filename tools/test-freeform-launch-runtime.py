@@ -42,7 +42,7 @@ FILES = {
 """,
 "ls/augment/com/hook/FeatureSettings.java": """package ls.augment.com.hook;import ls.augment.com.*;import android.content.Context;
  public class FeatureSettings {public static ConfigSnapshot current=new ConfigSnapshot();public static ConfigSnapshot snapshot(Context c){return current;}
- public static void diagnostic(Context c,String k,String v){}}
+ public static java.util.List<String> events=new java.util.ArrayList<>();public static void diagnostic(Context c,String k,String v){events.add(k+"="+v);}}
 """,
 "ls/augment/com/hook/SystemUiAdapter.java": """package ls.augment.com.hook;import java.lang.reflect.*;import android.content.Context;
  public class SystemUiAdapter {public static Object field(Object o,String name){if(o==null)return null;
@@ -69,6 +69,9 @@ FILES = {
 "com/android/server/wm/ActivityRecord.java": """package com.android.server.wm;import android.content.*;import android.content.pm.*;
  public class ActivityRecord {public ActivityInfo info=new ActivityInfo();public Intent intent=new Intent();
  public ActivityRecord resultTo;public String packageName,launchedFromPackage;public int launchedFromUid=10500;public boolean visible=true,standard=true,undefined=true;
+ public static class Task {public int mTaskId=7,mode=5;public int getWindowingMode(){return mode;}public ActivityRecord getTopNonFinishingActivity(){return null;}public boolean isVisibleRequested(){return true;}}
+ public Task task=new Task();public String shortComponentName="provider/Auth";public boolean finishing;public Object mAtmService=new Object();
+ public Task getTask(){return task;}public int finishIfPossible(String reason,boolean oom){finishing=true;return 2;}
  public ActivityRecord(String pkg){packageName=pkg;info.packageName=pkg;}
  public boolean isVisibleRequested(){return visible;}public boolean isActivityTypeStandard(){return standard&&!undefined;}
  public boolean isActivityTypeStandardOrUndefined(){return standard||undefined;}}
@@ -134,6 +137,16 @@ public class TaskDisplayAreaMifavor {public static void addWRIntentId_WindowRepl
  auth.resultTo=s;t=new ActivityRecord(s.packageName);starter.launch(t,auth,null,null);check(t.intent.flags==0,"result return skipped");
  check(FreeformLaunchPolicy.loginTarget("other.provider","ExampleOAuthActivity"),"other OAuth provider");
  check(!FreeformLaunchPolicy.loginTarget("other.provider","PaymentActivity"),"unrelated screens not login");
+ ActivityRecord traced=target();traced.resultTo=s;AugmentModule module=new AugmentModule();int eventCount=FeatureSettings.events.size();
+ FreeformLoginTrace.launched(module,starter,traced,s.packageName,0);
+ FreeformLoginTrace.returning(module,traced,new ActivityRecord(s.packageName));
+ Object finish=AugmentModule.dispatch("finishIfPossible",traced,new Object[]{"auth_complete",false},a->traced.finishIfPossible((String)a[0],(Boolean)a[1]));
+ check((Integer)finish==2&&traced.finishing&&traced.task.mode==5&&traced.resultTo==s,"trace preserves native finish return, window state and result receiver");
+ String trace=String.join("\\n",FeatureSettings.events.subList(eventCount,FeatureSettings.events.size()));
+ check(trace.contains("launch_return")&&trace.contains("caller_return_requested")&&trace.contains("native_finish_return")&&trace.contains("mode=5"),"scoped launch/return/finish evidence records residual task mode");
+ check(!trace.contains("auth-token"),"trace excludes intent payload");
+ eventCount=FeatureSettings.events.size();ActivityRecord unrelated=target();AugmentModule.dispatch("finishIfPossible",unrelated,new Object[]{"done",false},a->unrelated.finishIfPossible("done",false));
+ check(FeatureSettings.events.size()==eventCount,"unrelated auth activity is not tracked");
  System.out.println("Freeform launch runtime: passed (classification, options, result/task isolation, cleanup)");}}
 """,
 }
@@ -145,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix="ls-freeform-") as tmp:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     src = ROOT / "android/app/src/main/java/ls/augment/com"
-    production = [src / "AppPackageSet.java", src / "FreeformLaunchPolicy.java", src / "hook/FreeformLaunchHook.java"]
+    production = [src / "AppPackageSet.java", src / "FreeformLaunchPolicy.java", src / "hook/FreeformLaunchHook.java", src / "hook/FreeformLoginTrace.java"]
     java_home = os.environ.get("JAVA_HOME")
     javac = str(Path(java_home) / "bin/javac") if java_home else "javac"
     java = str(Path(java_home) / "bin/java") if java_home else "java"

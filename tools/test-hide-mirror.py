@@ -16,7 +16,8 @@ class HideMirrorProbe {
  Target(int userId,long serial,String pkg,boolean bound){super(userId,serial,pkg,bound);} Target(String value){this(HideTargetCodec.parseEntry(value));}
  Target(HideTargetCodec.Entry e){super(e.userId,e.userSerial,e.packageName,e.confirmed);}}
  long actionGeneration;static final String RESET_REQUIRED="reset";
- OperationResult refreshTargets(){return OperationResult.success("loaded");}
+ OperationResult loaded=OperationResult.success("loaded");
+ OperationResult refreshTargets(){return loaded;}
  HideTargetStore targetStore=new HideTargetStore();HideTargetStore.Snapshot targetSnapshot=new HideTargetStore.Snapshot(1,new ArrayList<>());
  String raw=""; HideTargetCodec.Selection selectionStatus(){return HideTargetCodec.parse(raw);}
  final Map<Target,State> states=new LinkedHashMap<>();Set<Target> targets(){return states.keySet();}
@@ -24,8 +25,8 @@ class HideMirrorProbe {
  static final class Summary {final Aggregate aggregate;Summary(Aggregate value){aggregate=value;}}
  Summary summary(Map<Target,State> states){return new Summary(states.containsValue(State.ERROR)?Aggregate.ERROR:states.containsValue(State.MISSING)?Aggregate.MISSING:
  states.containsValue(State.HIDDEN)?Aggregate.ALL_HIDDEN:Aggregate.ALL_VISIBLE);}
- static final class OperationResult {final boolean success;OperationResult(boolean ok){success=ok;}
- static OperationResult success(String message){return new OperationResult(true);}static OperationResult failure(String message){return new OperationResult(false);}}
+ static final class OperationResult {final boolean success;final String message;OperationResult(boolean ok,String message){success=ok;this.message=message;}
+ static OperationResult success(String message){return new OperationResult(true,message);}static OperationResult failure(String message){return new OperationResult(false,message);}}
 ''' + method + r'''}
 class ResetWriteFence {static boolean stale(long g){return false;}}
 class HideTargetStore {
@@ -69,7 +70,13 @@ public class TestHideMirror {
   check(!probe.syncMirrors().success,"invalid selection must fail");
   check(RuntimeStateStore.hidden.isEmpty()&&RuntimeStateStore.aggregate.equals("ERROR"),"invalid selection must clear usable mirror");
   check(!HideMirrorProbe.ACTION_LOCK.isLocked(),"invalid selection unlocks action queue");
-  System.out.println("Actual hide mirror method: 10 bound-subset/error, query/publication lock and reentrancy checks passed");
+  probe.raw="v3:999:10:com.hidden.app";RuntimeStateStore.hidden=probe.raw;
+  probe.loaded=HideMirrorProbe.OperationResult.failure("read failed");
+  int queries=probe.queries;HideMirrorProbe.OperationResult failed=probe.syncMirrors();
+  check(!failed.success&&failed.message.contains("read failed"),"failed refresh must report its cause");
+  check(RuntimeStateStore.hidden.isEmpty()&&RuntimeStateStore.aggregate.equals("ERROR"),"failed refresh must invalidate stale published targets");
+  check(probe.queries==queries&&probe.raw.equals("v3:999:10:com.hidden.app"),"unreadable selection must not query or mutate the source");
+  System.out.println("Actual hide mirror method: bound-subset, refresh errors, query/publication lock and reentrancy checks passed");
  }
  static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
 }

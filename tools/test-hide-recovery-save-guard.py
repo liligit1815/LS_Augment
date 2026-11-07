@@ -56,6 +56,7 @@ package ls.augment.com;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
+import java.nio.charset.StandardCharsets;
 
 class Events {
     static final List<String> trace = new ArrayList<>();
@@ -288,15 +289,28 @@ def main():
     if manager.count(start) != 1 or manager.count(end) != 1:
         raise ValueError("Package validation declaration changed; update extraction explicitly")
     package_pattern = manager[manager.index(start):manager.index(end)]
-    java = (DOUBLES + "\nclass RootShell {\n" + member(shell, "    static final class Result {") + "\n}\n"
-            + MANAGER + package_pattern + "\n    private static final Set<String> PROTECTED;\n"
-            + members + "\n}\n" + TESTS)
+    current_store = "targetStore.compareAndSet(" in manager
+    fixture_manager = MANAGER
+    fixture_tests = TESTS
+    if current_store:
+        members += member(manager, "    OperationResult saveTargets(Set<Target> desired, Map<String, String> settings, long expectedRevision)")
+        members += member(manager, "    OperationResult refreshTargets()")
+        fixture_manager += """
+    final long actionGeneration=1;static final String RESET_REQUIRED="reset";
+    HideTargetStore targetStore=new HideTargetStore(CurrentSaveBoundary::run);
+    HideTargetStore.Snapshot targetSnapshot;String targetProblem="not loaded";
+"""
+        fixture_tests = (ROOT / 'tools/fixtures/HideCurrentSaveGuardCases.java').read_text(encoding='utf-8')
+    java = (DOUBLES + "\nclass RootShell {\n" + member(shell, "    static final class CapturedOutput {") + member(shell, "    static final class Result {") + member(shell, "    static String quote(") + "\n}\n"
+            + fixture_manager + package_pattern + "\n    private static final Set<String> PROTECTED;\n"
+            + members + "\n}\n" + fixture_tests)
     with tempfile.TemporaryDirectory(prefix="ls-hide-recovery-save-guard-") as folder:
         path = Path(folder) / "TestHideRecoverySaveGuard.java"
         path.write_text(java, encoding="utf-8")
         codec = Path(folder) / "HideTargetCodec.java"
         codec.write_text((SOURCE / "HideTargetCodec.java").read_text(encoding="utf-8"), encoding="utf-8")
-        subprocess.run(["javac", "-encoding", "UTF-8", "--release", "17", "-d", folder, str(path), str(codec)],
+        extra_sources = [str(SOURCE / "HideTargetStore.java")] if current_store else []
+        subprocess.run(["javac", "-encoding", "UTF-8", "--release", "17", "-d", folder, str(path), str(codec), *extra_sources],
                        check=True, timeout=60)
         print(f"Manager source under test: {args.manager_source.resolve()}", flush=True)
         result = subprocess.run(["java", "-cp", folder, "ls.augment.com.TestHideRecoverySaveGuard"],

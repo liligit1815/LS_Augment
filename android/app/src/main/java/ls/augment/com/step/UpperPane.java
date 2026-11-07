@@ -19,14 +19,17 @@ final class UpperPane {
     UpperPane(WorkspaceQuickBar owner,int inset){
         this.owner=owner;host=owner.host;
         caption=Math.max(0,inset)+owner.dp(34);
-        face=new LinearLayout(owner.ctx);face.setOrientation(1);face.setPadding(0,Math.max(0,inset),0,0);
+        face=new LinearLayout(owner.ctx);face.setOrientation(LinearLayout.VERTICAL);face.setPadding(0,Math.max(0,inset),0,0);
         LinearLayout row=new LinearLayout(owner.ctx);face.addView(row,-1,owner.dp(34));
         TextView controls=StepMaterial.label(owner.ctx,"‹  控制页",14,true);
         controls.setOnClickListener(v->toggle(false));row.addView(controls,new LinearLayout.LayoutParams(0,-1,1));
+        StepMaterial.feedback(controls);
         promote=StepMaterial.label(owner.ctx,"回到主区",14,true);
         promote.setOnClickListener(v->host.upperAction("release"));row.addView(promote,new LinearLayout.LayoutParams(0,-1,1));
+        StepMaterial.feedback(promote);
         add=StepMaterial.label(owner.ctx,"＋",36,false);add.setContentDescription("收纳当前主应用到顶部");
         add.setOnClickListener(v->host.change(-1));face.addView(add,new LinearLayout.LayoutParams(-1,0,1));
+        StepMaterial.feedback(add);
         face.setVisibility(View.GONE);owner.bar.addView(face,-1,-1);
         roll=new UpperRoll(this);owner.bar.addView(roll,-1,-1);
         monitor=TopGestureMonitor.open(this);

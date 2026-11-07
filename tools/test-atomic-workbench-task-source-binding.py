@@ -45,6 +45,7 @@ def fixture(root,ops,journal):
 final class AtomicWorkbenchPlatform{
  final int windowId;AtomicWorkbenchJournal journal;AtomicWorkbenchJournal.Record record;boolean live=true,retained;int taskCount,syncs;
  AtomicWorkbenchPlatform(int id){windowId=id;}
+ int recoveryWindowId(){return windowId;}AtomicWorkbenchRecoveryScope.ReaderProfile recoveryReaderProfile(){return AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4;}
  void initialize(android.content.Context context)throws Exception{journal=new AtomicWorkbenchJournal(context,10055,0,windowId);journal.acquireLock();record=new AtomicWorkbenchJournal.Record(10055,0,windowId);record.displayId=88+windowId;record.uniqueId="unique"+windowId;record.width=800;record.height=600;record.density=320;journal.save(record);}
  void requireDisplayIdentity(){if(record==null)throw new SecurityException();}
  boolean hasLiveDisplay(){return live&&record!=null;}boolean hasTaskJournalSession(String session){return record!=null&&record.session.equals(session);}

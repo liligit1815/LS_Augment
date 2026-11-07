@@ -116,6 +116,12 @@ def compile_run(work, sources, production=None, runner="ls.augment.com.TestTaskM
     content_map = dict(sources)
     for name in production or PRODUCTION:
         content_map["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
+    for dependency in ("AtomicWorkbenchRecoveryOwners", "AtomicWorkbenchCapacityLayoutPlan", "AtomicWorkbenchPoolTopology", "AtomicWorkbenchRecoveryScope", "AtomicWorkbenchSlotDomain", "ResetWriteFence"):
+        path = "ls/augment/com/" + dependency + ".java"
+        if path not in content_map and any(dependency in body for body in content_map.values()):
+            content_map[path] = (SRC / (dependency + ".java")).read_text(encoding="utf-8")
+    if any("org.json." in body for body in content_map.values()) and not classpath:
+        classpath = str(next((Path.home()/".gradle/caches/modules-2/files-2.1/org.json/json/20240303").glob("*/*.jar")))
     for name, (old, new) in (replacements or {}).items():
         if old not in content_map[name]:
             raise AssertionError("negative control no longer matches production: " + name)
@@ -131,7 +137,7 @@ def compile_run(work, sources, production=None, runner="ls.augment.com.TestTaskM
         command += ["-cp", classpath]
     subprocess.run(command + files, check=True, timeout=90, capture_output=capture)
     cp = str(classes) + (os.pathsep + classpath if classpath else "")
-    return subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", cp, runner, *map(str, arguments)], check=not capture, timeout=90, capture_output=capture)
+    return subprocess.run([JAVA, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", cp, runner, *map(str, arguments)], check=not capture, timeout=300 if os.name=="nt" else 90, capture_output=capture)
 
 
 def main():

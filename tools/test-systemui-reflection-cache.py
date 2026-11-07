@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "android/app/src/main/java/ls/augment/com/hook/SystemUiAdapter.java"
 
 FILES = {
+    "ls/augment/com/hook/LiftArcLog.java": "package ls.augment.com.hook;final class LiftArcLog{static boolean e(String msg,Throwable t){throw new AssertionError(msg,t);}static boolean w(String msg,Throwable t){throw new AssertionError(msg,t);}}",
     "android/content/Context.java": "package android.content; public class Context {}",
     "android/view/View.java": """package android.view;
 public class View { private final android.content.Context context;

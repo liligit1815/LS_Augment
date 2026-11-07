@@ -26,6 +26,7 @@ public Action(String t,PendingIntent p){title=t;actionIntent=p;}public Object[] 
 'android/service/notification/StatusBarNotification.java':'''package android.service.notification;public class StatusBarNotification{
 public String key,pkg="com.example.downloader";public int uid=12345,user;public long time;public android.app.Notification notification=new android.app.Notification();
 public StatusBarNotification(String key,long time,int progress){this.key=key;this.time=time;notification.extras.put("progress",progress);notification.extras.put("max",100);}
+public boolean isClearable(){return (notification.flags&(2|32))==0;}
 public String getKey(){return key;}public String getPackageName(){return pkg;}public int getUserId(){return user;}public int getUid(){return uid;}
 public long getPostTime(){return time;}public android.app.Notification getNotification(){return notification;}}''',
 'android/service/notification/NotificationListenerService.java':'''package android.service.notification;public class NotificationListenerService{

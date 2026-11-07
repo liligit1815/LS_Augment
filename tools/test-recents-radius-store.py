@@ -42,7 +42,7 @@ def block(source, marker):
 route = block((SRC / 'LSConfigProvider.java').read_text(encoding='utf-8'),
               'if ("recents_radius_publish".equals(method))')
 reset_source = (SRC / 'ConfigResetController.java').read_text(encoding='utf-8')
-reset_start = reset_source.index('ModuleResetStorage.clear(app);')
+reset_start = reset_source.index('ModuleResetStorage.clear(app,workbench);')
 reset_cleanup = reset_source[reset_start:reset_source.index('ModuleRuntimeReset.Result notifications', reset_start)]
 options = (SRC / 'RecentsCardRadiusOptions.java').read_text(encoding='utf-8')
 minimum = re.search(r'int MIN = (-?\d+)', options).group(1)
@@ -102,11 +102,11 @@ STUBS = {
         Bundle call(String method,String arg,Bundle extras){Bundle result=new Bundle();''' + route + '''return result;}}
     ''',
     'ls/augment/com/ResetCleanupEntry.java': '''package ls.augment.com;import android.content.Context;
-      final class ResetCleanupEntry {static void clear(Context app){''' + reset_cleanup + '''}}
+      final class ResetCleanupEntry {static void clear(Context app){android.os.Bundle workbench=new android.os.Bundle();''' + reset_cleanup + '''}}
     ''',
     'ls/augment/com/ModuleResetStorage.java': '''package ls.augment.com;import android.content.Context;
       final class ModuleResetStorage {static boolean fail;
-        static void clear(Context app){if(fail)throw new IllegalStateException("storage clear failed");
+        static void clear(Context app,android.os.Bundle workbench){if(fail)throw new IllegalStateException("storage clear failed");
           app.getSharedPreferences(RecentsCardRadiusStore.PREFS,Context.MODE_PRIVATE).edit().clear().commit();}}
     ''',
 }

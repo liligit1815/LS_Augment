@@ -47,6 +47,7 @@ public final class TestExtraDimPrivateClient {
   check(resolver.entered.await(2,TimeUnit.SECONDS),"background worker reaches blocked native query");check(resolver.mainCalls.get()==0,"initial registration and reads stay off callback thread");
   resolver.release.countDown();until(()->peek(0).owned&&peek(0).strength==80,"initial private ownership synchronizes request");until(()->changes.get()==1,"new request posts once to native handler");
   int reads=resolver.privateCalls.get();for(int i=0;i<1000;i++)peek(0);Thread.sleep(80);check(reads==resolver.privateCalls.get(),"steady callback traffic reuses private memory with no polling");
+  resolver.notifyUser(0);until(()->changes.get()==2,"repeating the same owned request resynchronizes the native controller");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"refresh begins before concurrent native change");
   resolver.values(0,true,true,91);resolver.notifyUser(0);resolver.release.countDown();until(()->peek(0).strength==91,"notification arriving during IPC is replayed after the old response");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"old user refresh held in flight");

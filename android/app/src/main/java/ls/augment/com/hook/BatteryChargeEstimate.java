@@ -10,6 +10,7 @@ final class BatteryChargeEstimate {
     private double hundredths = Double.NaN;
     private long anchorAt;
 
+    long capacity() { return full; }
     boolean hasFull() { return full > 0; }
 
     void anchor(int precise, long now) {
@@ -41,9 +42,10 @@ final class BatteryChargeEstimate {
         // does not discard the fraction; only drift outside its neighborhood is corrected.
         hundredths = Math.max(Math.max(0, level * 100 - 50),
                 Math.min(Math.min(10_000, level * 100 + 99), hundredths));
+        // Re-reading the same cached HAL value is not a fresh measurement.
+        if (counter != lastCounter || level != lastLevel) lastSampleAt = now;
         lastLevel = level;
         lastCounter = counter;
-        lastSampleAt = now;
     }
 
     int value() { return lastCounter < 0 ? -1 : (int)Math.round(hundredths); }

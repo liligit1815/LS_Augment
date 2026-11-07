@@ -118,7 +118,7 @@ class ModuleExternalReset {static class Result {final boolean success,reviewRequ
 class LauncherResetController {static class Result {final boolean success,pendingGridRestore,pageHistoryPresent;final String message="launcher result";
  Result(boolean s){success=s;pendingGridRestore=Fixture.grid;pageHistoryPresent=Fixture.page;}}
  static Result prepare(Context c){return new Result(Fixture.phase("launcher"));}}
-class ModuleResetStorage {static void clear(Context c)throws java.io.IOException {Fixture.storageCalls++;Fixture.event("storage");
+class ModuleResetStorage {static void clear(Context c,android.os.Bundle workbench)throws java.io.IOException {Fixture.storageCalls++;Fixture.event("storage");
  if(Fixture.fail.equals("storage"))throw new java.io.IOException("storage failed");}}
 class RecentsCardRadiusStore {static void onStorageReset(Context c){Fixture.event("recents-storage");}}
 class AugmentTileService {} class ExtraDimTileService {}

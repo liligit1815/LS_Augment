@@ -7,6 +7,7 @@ they implement no serial-binding policy. No device, su or provider is accessed.
 This verifies event/persistence decisions, not Android layout or ROM integration.
 """
 from pathlib import Path
+import json
 import argparse
 import importlib.util
 import subprocess
@@ -36,14 +37,18 @@ class Handler {
  boolean runDue(){boolean ran=false;for(var e:new ArrayList<>(tasks.entrySet()))if(e.getValue()<=now){tasks.remove(e.getKey());e.getKey().run();ran=true;}return ran;}
 }
 class View {
- static final int VISIBLE=0,GONE=8;interface Click{void run(View v);}Click click;boolean enabled=true;
+ static final int IMPORTANT_FOR_ACCESSIBILITY_NO=2,VISIBLE=0,GONE=8;
+ View getContext(){return this;}String getString(String format,Object... args){return String.format(format,args);}
+ int getWidth(){return 300;}void setSelected(boolean value){}void setTag(Object tag){}void setMinimumHeight(int height){}void setImportantForAccessibility(int value){}
+ void setContentDescription(String value){description=value;}void setClickable(boolean value){}void setFocusable(boolean value){}
+ boolean isEnabled(){return enabled;}interface Click{void run(View v);}Click click;boolean enabled=true;String description="";
  final List<View> children=new ArrayList<>();
  void setOnClickListener(Click c){click=c;}void performClick(){if(enabled&&click!=null)click.run(this);}
  void setEnabled(boolean v){enabled=v;}void setVisibility(int x){}void setBackground(Object x){}
  void setPadding(int a,int b,int c,int d){}
 }
 class TextView extends View {
- String text="";void setText(String t){text=t;}void setTextSize(int n){}void setTextColor(int c){}
+ String text="";String getText(){return text;}void setMaxLines(int n){}void setSingleLine(boolean value){}void setEllipsize(Object mode){}void setText(String t){text=t;}void setTextSize(int n){}void setTextColor(int c){}
  void setGravity(int n){}void setMinWidth(int n){}
 }
 class Button extends TextView {}
@@ -59,13 +64,17 @@ class Switch extends CheckBox {Switch(){super(null);}}
 class LinearLayout extends View {
  static final int VERTICAL=1;LinearLayout(Object context){}void setOrientation(int n){}void setGravity(int n){}
  void addView(View child,Object... layout){children.add(child);}void removeAllViews(){children.clear();}
- static class LayoutParams {LayoutParams(int a,int b){}LayoutParams(int a,int b,int c){}void setMargins(int a,int b,int c,int d){}}
+ static class LayoutParams {int rightMargin,leftMargin,topMargin;LayoutParams(int a,int b){}LayoutParams(int a,int b,int c){}void setMargins(int a,int b,int c,int d){}}
 }
 class Drawable {}
 class ImageView extends View {ImageView(Object context){}void setImageDrawable(Drawable d){}}
-class Color {static int argb(int a,int b,int c,int d){return 0;}}
+class AtomicWorkbenchConfig {static final String SIDE_COUNT="workbench-side-count";}
+class LiquidGlassLayout extends LinearLayout {void refreshBackdrop(){}LiquidGlassLayout(Object owner,int radius){super(owner);}}
+class ScrollView extends LinearLayout {ScrollView(Object owner){super(owner);}}
+class PopupWindow {final View content;Runnable dismissed;PopupWindow(View view,int w,int h,boolean focus){content=view;}void dismiss(){if(dismissed!=null)dismissed.run();}void setBackgroundDrawable(Object v){}void setOutsideTouchable(boolean b){}void setOnDismissListener(Runnable r){dismissed=r;}void setElevation(int v){}void showAsDropDown(View v,int x,int y){}}
+class Color {static final int TRANSPARENT=0;static int argb(int a,int b,int c,int d){return 0;}}
 class Gravity {static final int CENTER=1,CENTER_VERTICAL=2;}
-class R {static class drawable {static int ic_tile;}}
+class R {static class string {__HIDE_STRINGS__} static class drawable {static int ic_tile;}}
 class PackageManager {
  static class NameNotFoundException extends Exception{}
  Object getApplicationInfo(String p,int f)throws NameNotFoundException{return new Object();}
@@ -78,6 +87,8 @@ class UiKit {
  Object pressable(Object x){return x;}void styleCheckBox(CheckBox b){}
  LinearLayout card(){return new LinearLayout(this);}Button button(String text){Button b=new Button();b.text=text;return b;}
  TextView text(String t,int size,int color,boolean bold){TextView v=new TextView();v.text=t;return v;}
+ Object round(Object... args){return null;}Button tonalButton(String label){return button(label);}String detail="";Runnable confirmation;int dialogs;
+ Object glassDialog(String title,String message,String action,Runnable confirm,String cancel){detail=title+" "+message;confirmation=confirm;dialogs++;return this;}
  void setButtonEnabled(Button b,boolean enabled){b.setEnabled(enabled);}
 }
 class Toast {static final int LENGTH_LONG=1;static Toast makeText(Object c,String t,int l){return new Toast();}void show(){}}
@@ -93,7 +104,7 @@ class UserResolution {
  UserResolution(boolean r,int id,String m){resolved=r;userId=id;message=m;}
  static UserResolution failure(String m){return new UserResolution(false,-1,m);}
 }
-class AppConfig {
+class AppConfig {static final String TILE_ENABLED="tile_enabled";
  static final String HIDE_TARGETS="targets",HIDE_MASTER="master",AUTOMATION_ENABLED="auto",AUTOMATION_SCOPE="scope",TILE_LABEL="label",TILE_DESCRIPTION="description";
  final Map<String,String> values=new LinkedHashMap<>();int saves;boolean fail;
  AppConfig(){values.put(HIDE_TARGETS,"");}String get(String key){return values.getOrDefault(key,"");}
@@ -157,13 +168,26 @@ class HideAppsActivity {
  final Set<RootHideManager.Target> selected=new LinkedHashSet<>(),savedTargets=new LinkedHashSet<>();
  final List<AppItem> loaded=new ArrayList<>();final AppConfig config=new AppConfig();final RootHideManager manager=new RootHideManager(config);
  final TextView summary=new TextView(),userStatus=new TextView();final Button save=new Button();
+ boolean operating,selectionLoading,selectionReady,saveFailed,allSpaces,updatingControls;
+ long selectionRevision=-1;int listFilter=2;Object pendingDraft;Runnable leaveAction;
+ final Button spaceSelector=new Button(),refreshAppsButton=new Button(),sort=new Button();final Switch tileEnabled=new Switch();
+ void restoreDraft(){throw new AssertionError("unexpected draft");}
+ void updateSaveStatus(){}void updateActionButtons(){}void showSaveFailure(Runnable leave){}
+ void styleActionButton(Button b,boolean enabled){if(b!=null)b.setEnabled(enabled);}
+ boolean rootGranted=true,rootReady=true;
+ PopupWindow spacePopup;Object actionDialog;int heightPixels=1900;
+ HideAppsActivity getResources(){return this;}HideAppsActivity getDisplayMetrics(){return this;}
+ void styleSpaceOption(Button b,boolean checked,boolean enabled){b.setEnabled(enabled);}
+ void chooseSpace(){showSpaceChoices();}
+ Set<RootHideManager.Target> confirmed=Collections.emptySet();
+ void runOperation(boolean hide,Set<RootHideManager.Target> saved,Set<RootHideManager.Target> targets){confirmed=new LinkedHashSet<>(targets);}
  final LinearLayout retainedList=new LinearLayout(this),spaceTabs=new LinearLayout(this);
  EditText search=new EditText(),tileLabel=new EditText(),tileDescription=new EditText();
  Switch master=new Switch(),automationEnabled=new Switch(),automationAllUsers=new Switch();
  List<RootHideManager.UserRecord> userRecords=new ArrayList<>();UserResolution currentUser=UserResolution.failure("unknown");
  int activeUserId=-1;long activeUserSerial=-1,appLoadGeneration,editGeneration;String selectionProblem="";
  boolean loading,dirty,saving,finished,destroyed,appListExpanded;Intent launched;
- UiKit.Fold hideFold,automationFold;private final Runnable autoSave=()->{if(dirty)saveSettings();};
+ UiKit.Fold hideFold,automationFold,tileFold;private final Runnable autoSave=()->{if(dirty)saveSettings();};
  boolean isFinishing(){return finished;}boolean isDestroyed(){return destroyed;}void startActivity(Intent i){launched=i;}
  void renderApps(){renderRetainedTargets();}interface Op{RootHideManager.OperationResult run();}void runOperation(Op op){op.run();}
  PackageManager getPackageManager(){return new PackageManager();}Drawable getDrawable(int i){return new Drawable();}
@@ -172,8 +196,7 @@ class HideAppsActivity {
  CheckBox box(int index){return findBox(appRow(loaded.get(index)));}static CheckBox findBox(View v){if(v instanceof CheckBox)return (CheckBox)v;for(View c:v.children){CheckBox b=findBox(c);if(b!=null)return b;}return null;}
  void bindSpace(int id,long serial){activeUserId=id;activeUserSerial=serial;userRecords=Arrays.asList(new RootHideManager.UserRecord(id,serial,"Work"));}
  void editLabel(String label){tileLabel.text=label;markDirty();}
- View recoveryRow(RootHideManager.Target target){return appRow(new AppItem(new RootHideManager.AppRecord(target),null));}
- void review(Intent intent){openRecovery(intent);}
+ View recoveryRow(RootHideManager.Target target){listFilter=0;return appRow(new AppItem(new RootHideManager.AppRecord(target),RootHideManager.State.HIDDEN));}
  void flush(){main.now+=500;for(int n=0;n<30;n++){boolean a=executor.runAll(),b=main.runDue();if(!a&&!b)return;}throw new AssertionError("queue did not settle");}
  void beginLoad(){loadApps(activeUserId);}void beginUsers(){loadUsers();}void refresh(){refreshAppStates();}
  void remove(RootHideManager.Target t){removeRetainedTarget(t);}List<RootHideManager.Target> retained(){return retainedTargets();}
@@ -214,7 +237,7 @@ public final class TestUserUiTransfer {
  static RootHideManager.Target bound(int user,long serial){return new RootHideManager.Target(user,serial,PKG);}
  static String texts(View v){String s=v instanceof TextView?((TextView)v).text:"";for(View c:v.children)s+="\n"+texts(c);return s;}
  static Button action(View v,String label){if(v instanceof Button&&((Button)v).text.equals(label))return (Button)v;for(View child:v.children){Button found=action(child,label);if(found!=null)return found;}return null;}
- static HideAppsActivity ui(String raw){HideAppsActivity a=new HideAppsActivity();a.boot(raw);a.bindSpace(10,42);return a;}
+ static HideAppsActivity ui(String raw){HideAppsActivity a=new HideAppsActivity();a.boot(raw);a.flush();a.bindSpace(10,42);return a;}
  static void noWrites(ConfigTransferActivity a){check(a.config.saves==0&&a.manager.targetWrites==0&&File.directoryWrites==0,"partial import writes");}
  public static void main(String[] args)throws Exception{
   test("legacy and imported pending remain unchanged on initialization",()->{var a=ui("10:"+PKG+";p3:10:41:"+PKG);check(a.selected.size()==2&&a.selected.stream().noneMatch(t->t.isBound()),"legacy rebound");check(!a.dirty&&a.manager.targetWrites==0,"init saved");});
@@ -230,14 +253,14 @@ public final class TestUserUiTransfer {
   test("app load passes displayed serial and excludes returned wrong binding",()->{var a=ui("");a.manager.apps=Arrays.asList(new RootHideManager.AppRecord(bound(10,42)),new RootHideManager.AppRecord(bound(10,99)),new RootHideManager.AppRecord(new RootHideManager.Target(10,PKG)));a.beginLoad();a.flush();check(a.manager.requestSerial==42&&a.loaded.size()==1&&a.loaded.get(0).record.target.userSerial==42,"load changed binding");});
   test("old load callback cannot replace new same-number space",()->{var a=ui("");a.manager.apps=Arrays.asList(new RootHideManager.AppRecord(bound(10,42)));a.beginLoad();a.executor.next();a.bindSpace(10,99);a.manager.apps=Arrays.asList(new RootHideManager.AppRecord(bound(10,99)));a.beginLoad();a.main.runDue();check(a.loaded.isEmpty()&&a.loading,"old callback accepted");a.flush();check(a.loaded.size()==1&&a.loaded.get(0).record.target.userSerial==99,"new callback lost");});
   test("finish drops pending load result",()->{var a=ui("");a.manager.apps=Arrays.asList(new RootHideManager.AppRecord(bound(10,42)));a.beginLoad();a.executor.next();a.finished=true;a.main.runDue();check(a.loaded.isEmpty(),"finished Activity accepted load");});
-  test("unknown serial space is disabled and not selected by current-user ID",()->{var a=ui("");a.manager.users=Arrays.asList(new RootHideManager.UserRecord(10,-1,"Unknown"),new RootHideManager.UserRecord(77,88,"Known"));a.manager.resolved=new UserResolution(true,10,"");a.beginUsers();a.flush();check(a.activeUserId==77&&a.activeUserSerial==88,"unknown serial active");check(!a.spaceTabs.children.get(0).enabled&&a.spaceTabs.children.get(1).enabled,"unknown tab selectable");});
+  test("unknown serial space is disabled and not selected by current-user ID",()->{var a=ui("");a.manager.users=Arrays.asList(new RootHideManager.UserRecord(10,-1,"Unknown"),new RootHideManager.UserRecord(77,88,"Known"));a.manager.resolved=new UserResolution(true,10,"");a.beginUsers();a.flush();check(a.activeUserId==77&&a.activeUserSerial==88,"unknown serial active");a.chooseSpace();check(!action(a.spacePopup.content,"Unknown · 空间 10").enabled&&action(a.spacePopup.content,"Known · 空间 77").enabled,"unknown space selectable");});
   test("state queries omit pending and stale selection",()->{var a=ui("10:"+PKG+";v3:10:41:"+PKG+";v3:10:42:"+PKG);a.refresh();a.flush();check(a.manager.queried.equals(Collections.singleton(bound(10,42))),"query used stale/unbound target");});
   test("target save failure preserves draft and old persistent selection",()->{var a=ui("10:"+PKG);a.manager.failSave=true;a.choose(bound(10,42));a.flush();check(a.dirty&&a.selected.contains(bound(10,42))&&a.config.get(AppConfig.HIDE_TARGETS).equals("10:"+PKG),"failed save lost state");});
-  test("unselected current app retains an exact recovery navigation action",()->{var a=ui("");var target=bound(10,42);var row=a.recoveryRow(target);Button button=action(row,"查找隐藏记录");check(button!=null,"unselected app lost recovery entry");button.performClick();check(a.launched!=null&&target.equals(a.launched.focus),"navigation lost precise target");check(a.manager.targetWrites==0&&a.config.saves==0,"browsing saved or executed a target");});
-  test("pending removal still opens the original exact target rather than all history",()->{var a=ui("v3:10:42:"+PKG);var target=bound(10,42);a.selected.clear();a.dirty=true;Button button=action(a.recoveryRow(target),"查找隐藏记录");check(button!=null,"pending removal lost history action");button.performClick();check(target.equals(a.launched.focus)&&a.launched.configured==null,"pending removal changed navigation scope");check(a.dirty&&a.manager.targetWrites==0,"browsing discarded or saved draft");});
-  test("save failure keeps the draft and does not block browsing existing records",()->{var a=ui("10:"+PKG);a.manager.failSave=true;a.choose(bound(10,42));a.flush();String old=a.config.get(AppConfig.HIDE_TARGETS);int writes=a.manager.targetWrites;check(a.dirty,"failed draft missing");a.review(HideRecoveryActivity.intent(a,bound(10,42)));check(a.launched!=null&&a.launched.focus.equals(bound(10,42)),"failed save blocked recovery navigation");check(a.dirty&&a.manager.targetWrites==writes&&old.equals(a.config.get(AppConfig.HIDE_TARGETS)),"browsing silently retried or discarded failed save");});
-  test("in-flight save is retained while a fixed target opens for review",()->{var a=ui("");a.saving=true;a.dirty=true;a.review(HideRecoveryActivity.intent(a,bound(10,42)));check(a.launched!=null&&a.saving&&a.dirty&&a.manager.targetWrites==0,"review cancelled or waited for configuration write");});
-  test("closed selection page cannot launch another recovery activity",()->{var a=ui("");a.finished=true;a.review(HideRecoveryActivity.intent(a,bound(10,42)));check(a.launched==null,"closed page launched recovery");a.finished=false;a.destroyed=true;a.review(HideRecoveryActivity.intent(a,bound(10,42)));check(a.launched==null,"destroyed page launched recovery");});
+  test("unselected application cannot open a state-changing confirmation",()->{var a=ui("");var target=bound(10,42);Button button=action(a.recoveryRow(target),"显示");check(button!=null&&!button.enabled,"unselected app can change visibility");button.performClick();check(a.ui.dialogs==0&&a.manager.targetWrites==0,"unselected target changed or confirmed");});
+  test("only the exact saved app can be confirmed and pending removal revokes its old button",()->{var target=bound(10,42);var a=ui("v3:10:42:"+PKG);Button button=action(a.recoveryRow(target),"显示");check(button!=null&&button.enabled,"saved row unavailable");button.performClick();check(a.confirmed.isEmpty()&&a.ui.dialogs==1,"changed before explicit confirmation");a.ui.confirmation.run();check(a.confirmed.equals(Set.of(target)),"confirmation crossed targets");a.selected.clear();a.dirty=true;button.performClick();check(a.ui.dialogs==1&&a.dirty&&a.manager.targetWrites==0,"stale row acted during pending removal");});
+  test("failed save preserves draft and prevents applying its target",()->{var a=ui("10:"+PKG);a.manager.failSave=true;a.choose(bound(10,42));a.flush();String old=a.config.get(AppConfig.HIDE_TARGETS);int writes=a.manager.targetWrites;Button button=action(a.recoveryRow(bound(10,42)),"显示");button.performClick();check(a.dirty&&a.ui.dialogs==0&&writes==a.manager.targetWrites&&old.equals(a.config.get(AppConfig.HIDE_TARGETS)),"failed save authorized or changed draft");});
+  test("a late row click during an in-flight save leaves the draft and selection intact",()->{var a=ui("v3:10:42:"+PKG);var target=bound(10,42);Button button=action(a.recoveryRow(target),"显示");a.saving=true;a.dirty=true;button.performClick();check(a.ui.dialogs==0&&a.saving&&a.dirty&&a.manager.targetWrites==0,"late click interfered with save");});
+  test("late row clicks cannot open a confirmation after the page finishes or is destroyed",()->{var a=ui("v3:10:42:"+PKG);Button button=action(a.recoveryRow(bound(10,42)),"显示");check(button.enabled,"expected initially enabled action");a.finished=true;button.performClick();a.finished=false;a.destroyed=true;button.performClick();check(a.ui.dialogs==0&&a.confirmed.isEmpty(),"closed page opened a target confirmation");});
   for(String raw:new String[]{"10:"+PKG,"v3:10:42:"+PKG,"p3:10:42:"+PKG,"v3:0:0:"+PKG+"\nv3:10:42:"+PKG})test("import pending conversion "+raw.replace('\n',';'),()->{var a=new ConfigTransferActivity();a.prepare(raw);noWrites(a);check(a.manager.validations==1,"missing preview validation");check(a.manager.validated.stream().noneMatch(t->t.isBound()),"import auto-bound");check(ConfigSchema.targetNormalizations==0,"target source normalized first");a.confirm();check(a.manager.validations==2&&a.manager.targetWrites==1,"missing confirmation validation/save");var parsed=HideTargetCodec.parse(a.config.get(AppConfig.HIDE_TARGETS));check(parsed.valid&&parsed.entries.stream().noneMatch(t->t.isBound()),"saved import is bound");if(raw.contains(":42:"))check(parsed.entries.stream().anyMatch(t->t.userSerial==42),"source serial discarded");});
   test("same-number existing binding is demoted by import",()->{var a=new ConfigTransferActivity();a.config.values.put(AppConfig.HIDE_TARGETS,"v3:10:42:"+PKG);a.prepare("v3:10:42:"+PKG);a.confirm();check(a.config.get(AppConfig.HIDE_TARGETS).equals("p3:10:42:"+PKG),"equal user/pkg bypassed reauthorization");});
   test("same pending import still preserves target save ordering",()->{var a=new ConfigTransferActivity();a.config.values.put(AppConfig.HIDE_TARGETS,"p3:10:42:"+PKG);a.prepare("p3:10:42:"+PKG);a.confirm();check(a.manager.targetWrites==1,"equal set bypassed archive/save");});
@@ -303,8 +326,8 @@ def main():
     manager = (SRC / "RootHideManager.java").read_text(encoding="utf-8-sig")
     ui_names = ["loadSelection()", "currentBinding(", "retainedTargets()", "renderRetainedTargets()",
                 "removeRetainedTarget(", "selectTarget(", "loadUsers()", "updateUserAvailability(",
-                "renderSpaceTabs()", "selectSpace(", "loadApps(", "stateTargets(", "refreshAppStates()",
-                "appRow(", "localizedState(", "saveSettings()", "markDirty()", "openRecovery("]
+                "renderSpaceSelector()", "spaceLabel()", "inSelectedSpace(", "selectSpace(", "loadApps(", "stateTargets(", "refreshAppStates()",
+                "appRow(", "localizedState(", "showSpaceChoices()", "canOperate(", "confirmTargets(", "saveSettings()", "markDirty()"]
     def find_method(text, name):
         import re
         matches = list(re.finditer(r"^    private (?:static )?[\w<>.,]+ " + re.escape(name), text, re.M))
@@ -333,6 +356,9 @@ public final class TestUserUiTransfer {
     transfer_methods = "\n".join(find_method(transfer, n) for n in ["prepareImport(", "confirmImport(", "importTargets(", "importedSize(", "exportDocument()", "importedNotices(", "importedSettingsConfirmed("])
     transfer_class = IMPORT_PREFIX.rsplit("}", 1)[0] + transfer_methods + "\n}"
     models = "\n".join(member(manager, "    static final class " + name) for name in ["Target", "UserRecord", "UserDirectory"])
+    import xml.etree.ElementTree as ET
+    resource_values = [e for f in (ROOT/'android/app/src/main/res/values').glob('*.xml') for e in ET.parse(f).getroot().findall('string')]
+    strings = ' '.join('static final String '+e.attrib['name']+'='+json.dumps(''.join(e.itertext()),ensure_ascii=False)+';' for e in resource_values if e.attrib.get('name','').startswith('status_hideappsactivity_'))
     manager_class = r'''
 class RootHideManager {
  static final java.util.concurrent.locks.ReentrantLock ACTION_LOCK=new java.util.concurrent.locks.ReentrantLock();
@@ -340,6 +366,10 @@ class RootHideManager {
  static RootHideManager importing;final AppConfig config;int targetWrites,validations,failValidationAt;boolean failSave;
  long requestSerial=-1;List<AppRecord> apps=Collections.emptyList();List<UserRecord> users=Collections.emptyList();
  UserResolution resolved=UserResolution.failure("unknown");Set<Target> lastTargets=Collections.emptySet(),validated=Collections.emptySet(),queried=Collections.emptySet();
+ long revision=1;enum RootState{GRANTED}static class RootStatus{RootState state=RootState.GRANTED;String message="ok";}
+ RootStatus rootStatus(){return new RootStatus();}long targetRevision(){return revision;}
+ HideTargetCodec.Selection selectionStatus(){return HideTargetCodec.parse(config.get(AppConfig.HIDE_TARGETS));}
+ OperationResult saveTargets(Set<Target> targets,Map<String,String> updates,long expected){if(expected!=revision)return OperationResult.failure("stale");var result=saveTargets(targets,updates);if(result.success)revision++;return result;}
  RootHideManager(AppConfig c){config=c;}RootHideManager(ConfigTransferActivity c){config=c.config;}
  OperationResult refreshTargets(){return OperationResult.success("controlled target snapshot already loaded");}
  UserDirectory userDirectory(){return UserDirectory.success(users);}UserResolution currentUser(UserDirectory d){return resolved;}
@@ -353,13 +383,15 @@ class RootHideManager {
  static class OperationResult{final boolean success,runtimeSynced,reviewRequired=false;final String message;OperationResult(boolean s,String m){success=s;runtimeSynced=s;message=m;}static OperationResult success(String m){return new OperationResult(true,m);}static OperationResult failure(String m){return new OperationResult(false,m);}}
 ''' + models + "\n}"
     sources = {
-        "ls/augment/com/TestUserUiTransfer.java": BOUNDARIES + manager_class + ui_class + transfer_class + tests,
+        "ls/augment/com/TestUserUiTransfer.java": BOUNDARIES.replace("__HIDE_STRINGS__",strings) + manager_class + ui_class + transfer_class + tests,
         "ls/augment/com/HideTargetCodec.java": (SRC / "HideTargetCodec.java").read_text(encoding="utf-8-sig"),
         "android/util/AtomicFile.java": "package android.util;public class AtomicFile {public AtomicFile(Object f){}public java.io.FileOutputStream startWrite(){throw new AssertionError(\"media\");}public void finishWrite(java.io.FileOutputStream f){}public void failWrite(java.io.FileOutputStream f){}}",
         "android/graphics/BitmapFactory.java": "package android.graphics;public class BitmapFactory {public static class Options{public boolean inJustDecodeBounds;public int outWidth,outHeight;}public static void decodeByteArray(byte[] b,int x,int y,Options o){}}",
     }
     sources.update(APP_DEPENDENCIES)
     # The historic media File double is renamed to avoid shadowing java.io.File in real Prefs.
+    sources["android/graphics/drawable/ColorDrawable.java"] = "package android.graphics.drawable;public class ColorDrawable{public ColorDrawable(int color){}}"
+    sources["android/text/TextUtils.java"] = "package android.text;public class TextUtils{public enum TruncateAt{MIDDLE}}"
     sources["ls/augment/com/TestUserUiTransfer.java"]=re.sub(r"\bFile\b","FixtureFile",sources["ls/augment/com/TestUserUiTransfer.java"])
     with tempfile.TemporaryDirectory(prefix="lsa-user-ui-transfer-") as directory:
         out = Path(directory)

@@ -46,14 +46,26 @@ public final class TestContentDrag {
    check(f.transfer.consumeDrop(drop,frozen)&&!f.transfer.consumeDrop(drop,frozen),"single consumption broken");f.source.end();f.source.end();
    check(f.panel.dialog.isShowing()&&f.panel.dialog.getWindow().getAttributes().alpha==.8f&&f.transfer.dragEvents.equals(List.of(true,false)),"source/host focus not restored exactly once");f.queueUnchanged();
   }});
-  test("media copies real bytes off UI and issues the cached readable URI without touching pending",()->{try(Fixture f=new Fixture(true)){
-   Thread ui=Thread.currentThread();f.activity.resolver=new ContentResolver(){public InputStream openInputStream(Uri u){check(Thread.currentThread()!=ui,"UI performed source read");return new ByteArrayInputStream(BYTES);}};
-   f.start();f.drainUntil(()->f.source.starts==1);Uri cached=f.source.clip.getItemAt(0).getUri();
-   f.activity.resolver=new ContentResolver(){public InputStream openInputStream(Uri u)throws IOException{throw new IOException("source removed");}};
-   check(Arrays.equals(Files.readAllBytes(AtomicWorkbenchTransferStore.resolve(f.activity,cached).file.toPath()),BYTES),"URI did not expose original copied bytes");
-   check(cached.getAuthority().equals("ls.augment.com.workbench.transfer")&&(f.source.flags&View.DRAG_FLAG_GLOBAL_URI_READ)!=0,"private source URI or missing read grant");
-   var payload=f.transfer.snapshotForDrop(new DragEvent(3,null,f.source.clip.getDescription()));check(payload!=null&&payload.hasFiles&&payload.ready,"file not routed to existing delivery snapshot");
-   f.queueUnchanged();f.source.end();check(f.cacheFiles()==1,"drag-ended revoked bytes before recipient could read");
+  test("a stale media gesture stages off UI but never grants or starts the retired file drag",()->{try(Fixture f=new Fixture(true)){
+   Thread ui=Thread.currentThread();CountDownLatch opened=new CountDownLatch(1);
+   f.activity.resolver=new ContentResolver(){public InputStream openInputStream(Uri u){
+    check(Thread.currentThread()!=ui,"UI performed source read");opened.countDown();return new ByteArrayInputStream(BYTES);}};
+   f.start();check(opened.await(2,TimeUnit.SECONDS),"source not read");f.drainUntil(()->f.panel.sourceDrag==null);
+   f.transfer.ioIdle();check(f.source.starts==0&&f.source.clip==null&&f.cacheFiles()==0,"retired file drag granted data or leaked staged bytes");
+   check(f.transfer.dragEvents.isEmpty()&&f.panel.dialog.getWindow().getAttributes().alpha==.8f,"rejected file gesture changed host visibility or focus");
+   f.queueUnchanged();
+  }});
+  test("private cache still preserves original bytes independently of external drag admission",()->{try(Fixture f=new Fixture(true)){
+   Intent picker=AtomicWorkbenchContentSelection.pickerResult(List.of(f.item));
+   var stored=AtomicWorkbenchTransferStore.importIntent(f.activity,picker,true);
+   try{
+    var batch=AtomicWorkbenchTransferStore.batch(f.activity,stored);check(batch.deliverable()&&batch.files.size()==1,"valid cached copy missing");
+    Uri cached=Uri.parse(batch.files.get(0).uri);
+    f.activity.resolver=new ContentResolver(){public InputStream openInputStream(Uri u)throws IOException{throw new IOException("source removed");}};
+    check(cached.getAuthority().equals("ls.augment.com.workbench.transfer"),"unexpected cache authority");
+    check(Arrays.equals(Files.readAllBytes(AtomicWorkbenchTransferStore.resolve(f.activity,cached).file.toPath()),BYTES),"source bytes not retained");
+    f.queueUnchanged();
+   }finally{AtomicWorkbenchTransferStore.discardUnpublished(f.activity,stored);}
   }});
   test("release while provider is blocked cancels preparation and never starts a late drag",()->{try(Fixture f=new Fixture(true)){
    CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
@@ -73,7 +85,7 @@ public final class TestContentDrag {
    f.activity.resolver=new ContentResolver(){public InputStream openInputStream(Uri u)throws IOException{throw new IOException("denied");}};
    f.start();f.drainUntil(()->!AtomicWorkbenchTransferStage.busy()&&f.panel.sourceDrag==null);check(f.source.starts==0&&f.cacheFiles()==0&&f.panel.dialog.getWindow().getAttributes().alpha==.8f,"denied read veiled source or retained cache");f.queueUnchanged();
   }});
-  test("framework start failure removes unpublished cache and restores source",()->{try(Fixture f=new Fixture(true)){
+  test("framework refusal restores a supported text source",()->{try(Fixture f=new Fixture(false)){
    f.source.success=false;f.start();f.drainUntil(()->f.source.starts==1);f.transfer.ioIdle();check(f.cacheFiles()==0&&f.panel.sourceDrag==null&&f.transfer.dragEvents.equals(List.of(true,false)),"failed start retained cache or host focus");f.queueUnchanged();
   }});
   test("accessibility drag uses the system accessibility flag without inventing a held pointer",()->{try(Fixture f=new Fixture(false)){

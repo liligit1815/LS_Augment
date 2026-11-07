@@ -17,6 +17,7 @@ public final class ScopeRestartPolicy {
             case "amap": return List.of("com.autonavi.minimap");
             case "systemui": return List.of("com.android.systemui");
             case "launcher": return List.of("com.zte.mifavor.launcher");
+            case "search": return List.of("com.zte.mifavor.zsearch");
             case "fan": return List.of("cn.nubia.fan", "com.android.systemui");
             case "theme": return List.of("com.zte.beautify", "com.zte.beautifyadapter");
             case "apps": return List.of(

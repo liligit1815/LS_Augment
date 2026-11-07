@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com'
 editor = (SRC / 'StatusBarEditorController.java').read_text(encoding='utf-8')
 save = editor[editor.index('    private void save()'):editor.index('    private void stopInventoryObservation()')]
+save = save[:save.index('    private String saveFieldTitle(')] + save[save.index('    @Override protected void onSaveInstanceState('):]
 signal_refresh = editor[editor.index('    private void refreshStoredSignalModes()'):editor.index('    private void edit(String key, String label)')]
 assert 'static final ExecutorService worker' in editor
 assert 'worker.shutdown()' not in editor
@@ -36,7 +37,8 @@ public abstract SharedPreferences getSharedPreferences(String name,int mode);}''
 public interface SharedPreferences {Map<String,?> getAll();Editor edit();
 interface Editor {Editor putString(String key,String value);void apply();}}''',
     'ls/augment/com/ConfigSchema.java': '''package ls.augment.com;final class ConfigSchema {
-static final String STATUSBAR_CLOCK_CUSTOM="custom";
+static final String STATUSBAR_CLOCK_CUSTOM="custom", STATUSBAR_CLOCK_PATTERN="clock", STATUSBAR_CLOCK_PATTERN_SECOND="clock_second";
+static java.util.Set<String> booleanKeys(){return java.util.Set.of(SYSTEMUI_MASTER, STATUSBAR_CLOCK_CUSTOM);}
 static final String SYSTEMUI_MASTER="systemui_master";
 static final String STATUSBAR_CONNECTIVITY_GROUP="three_in_one";
 static boolean truthy(String s){return "1".equals(s);}static String normalize(String k,String v){return v;}
@@ -64,10 +66,13 @@ static class Prefs implements SharedPreferences {
 }}''',
     'ls/augment/com/StatusBarSaveHarness.java': '''package ls.augment.com;
 import java.util.*;import android.os.Bundle;
-class SaveBase {protected void onSaveInstanceState(Bundle state){}}
+class SaveBase extends android.content.Context {public android.content.SharedPreferences getSharedPreferences(String k,int m){throw new UnsupportedOperationException();}protected void onSaveInstanceState(Bundle state){}}
 final class StatusBarSaveHarness extends SaveBase {
  static final Worker worker=new Worker();final ConfigEditDraft draft=new ConfigEditDraft();
- final AppConfig config=new AppConfig();boolean dirty,saving,destroyed;int tab;
+ final AppConfig config=new AppConfig();boolean dirty,saving,destroyed,loading;int tab;
+ Map<String,String> rejectedDraft;String saveFeedback="";Toggle masterControl=new Toggle();static class Toggle {void setChecked(boolean value){}}
+ String validInput(String key,String value){return ConfigSchema.normalize(key,value);}
+ String saveFieldTitle(String key){return key;}void refreshRuntimeFeedback(){}
  Map<String,String> rawInputs=new LinkedHashMap<>();Main main=new Main();Runnable autoSave=()->save();
  Map<String,String> previewBackup,lastLayoutBackup;String selectedComponent="clock";
  boolean connectivityExpanded,nativeBatteryExpanded,dualAppearanceExpanded;UiKit.Fold connectivityFold,nativeBatteryFold,dualAppearanceFold;
@@ -105,6 +110,10 @@ final class StatusBarSaveHarness extends SaveBase {
   b.onSaveInstanceState(state);
   TestAuditFixes.check(state.getBundle("draft-edits").data.equals(Map.of("right","30")),"failed edit not retained alone");
   AppConfig.succeed=true;b.save();worker.drain();
+  TestAuditFixes.check("20".equals(AppConfig.disk.get("right")),"failed draft retried automatically without an edit");
+  StatusBarSaveHarness retry=new StatusBarSaveHarness();
+  retry.draft.put("right",(String)state.getBundle("draft-edits").data.get("right"));
+  retry.save();worker.drain();
   TestAuditFixes.check(AppConfig.disk.equals(Map.of("left","10","right","30")),"production retry overwrote other page");
   b.previewBackup=new LinkedHashMap<>();b.draft.put("left","40");b.save();
   TestAuditFixes.check(worker.tasks.isEmpty(),"preset preview was persisted without confirmation");

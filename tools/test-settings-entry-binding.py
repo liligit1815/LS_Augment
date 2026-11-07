@@ -16,14 +16,14 @@ PACKAGE = ROOT / 'android/app/src/main/java/ls/augment/com'
 
 
 def fixture_sources():
+    # Include the real host-context and Reader adapters added after the base declarations.
     declarations = []
     for node in ast.parse(BASE.read_text(encoding='utf-8')).body:
-        declarations.append(node)
-        if isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == 'SOURCES' for target in node.targets):
+        if isinstance(node, ast.With):
             break
+        declarations.append(node)
     else:
-        raise RuntimeError('SOURCES fixture declaration absent')
+        raise RuntimeError('fixture execution boundary absent')
     namespace = {'__file__': str(BASE), '__name__': 'fixture_definitions_only'}
     exec(compile(ast.Module(body=declarations, type_ignores=[]), str(BASE), 'exec'), namespace)
     result = dict(namespace['SOURCES'])

@@ -1,5 +1,6 @@
 """Execute frozen delivery identity and fresh-target admission, with no clipboard/Root/backend."""
 from pathlib import Path
+import os
 import runpy
 import subprocess
 import tempfile
@@ -33,6 +34,8 @@ public final class TestDeliveryTarget {
  test(()->{Set<String> ids=new HashSet<>();for(int i=0;i<100;i++)check(ids.add(target().id),"REQUEST_ID_REUSED");});
  test(()->{var t=target();check(t.currentMatches(window())&&t.currentMatches(full(window()),15999)&&!t.currentMatches(window(),16000),"CURRENT_TARGET_AND_DEADLINE");
   var side=window();side.putBoolean("input_focus_suspended",true);check(t.currentMatches(side),"LEGITIMATE_SIDE_GUARD_MUST_BE_ALLOWED");});
+ test(()->{Bundle status=full(window());status.put("pool_windows",new ArrayList<>(List.of(window())));
+  check(!target().currentMatches(status),"INCOMPLETE_RECOVERY_POOL_MUST_NOT_FALL_BACK_TO_VISIBLE_WINDOW");});
  test(()->{Object[][] changes={{"window_id",1},{"display_id",89},{"task_id",43},{"target_uid",10102},{"user_id",1},{"display_name","other"},
    {"display_unique_id","recycled"},{"package","other.pkg"},{"top_component","other.pkg/.Editor"},{"task_count",0},{"state","launching"},
    {"success",false},{"native_home",true},{"home_only",true},{"recovery_pending",true},{"cleanup_pending",true},{"input_focus_cleanup_pending",true},
@@ -72,14 +75,25 @@ def run(source, expected=None):
     with tempfile.TemporaryDirectory(prefix="duo-delivery-target-") as temporary:
         root=Path(temporary);sources={"android/os/Bundle.java":PASTE["SOURCES"]["android/os/Bundle.java"],
             "ls/augment/com/AtomicWorkbenchDeliveryTarget.java":source,"ls/augment/com/TestDeliveryTarget.java":TEST}
-        for name in ["AtomicWorkbenchPasteRequest.java","AtomicWorkbenchPastePolicy.java"]:
+        # Exercise the live recovery-domain verifier as well as the legacy window-list path.
+        sources["android/content/ComponentName.java"]=SUPPORT["migration_sources"]()["android/content/ComponentName.java"]
+        bundle=sources["android/os/Bundle.java"].rsplit("}",1)[0]
+        sources["android/os/Bundle.java"]=bundle+"""
+          public Bundle deepCopy(){return new Bundle(this);}
+          public <T>void putParcelableArrayList(String key,java.util.ArrayList<T> values){put(key,values);}
+          @SuppressWarnings("unchecked") public <T>java.util.ArrayList<T> getParcelableArrayList(String key){return (java.util.ArrayList<T>)get(key);}
+        }"""
+        for name in ["AtomicWorkbenchPasteRequest.java","AtomicWorkbenchPastePolicy.java","AtomicWorkbenchProtocol.java",
+                     "AtomicWorkbenchSlotDomain.java","AtomicWorkbenchRecoveryScope.java"]:
             sources["ls/augment/com/"+name]=(ROOT/"android/app/src/main/java/ls/augment/com"/name).read_text(encoding="utf-8")
         paths=[]
         for name,text in sources.items():
             file=root/name;file.parent.mkdir(parents=True,exist_ok=True);file.write_text(text,encoding="utf-8");paths.append(str(file))
-        result=subprocess.run([SUPPORT["JAVAC"],"-encoding","UTF-8","-d",str(root),*paths],env=SUPPORT["ENV"],capture_output=True,text=True,errors="replace",timeout=60)
+        json_jar=next((Path.home()/".gradle/caches/modules-2/files-2.1/org.json/json").glob("*/*/*.jar"))
+        classpath=os.pathsep.join([str(root),str(json_jar)])
+        result=subprocess.run([SUPPORT["JAVAC"],"-cp",classpath,"-encoding","UTF-8","-d",str(root),*paths],env=SUPPORT["ENV"],capture_output=True,text=True,errors="replace",timeout=60)
         if result.returncode:raise AssertionError(result.stderr)
-        result=subprocess.run([SUPPORT["JAVA"],"-cp",str(root),"ls.augment.com.TestDeliveryTarget"],env=SUPPORT["ENV"],capture_output=True,text=True,errors="replace",timeout=30)
+        result=subprocess.run([SUPPORT["JAVA"],"-cp",classpath,"ls.augment.com.TestDeliveryTarget"],env=SUPPORT["ENV"],capture_output=True,text=True,errors="replace",timeout=30)
         if expected:
             if result.returncode==0 or expected not in result.stderr:raise AssertionError("Negative control missed: "+expected+"\n"+result.stderr)
             print("PASS rejected target negative: "+expected)

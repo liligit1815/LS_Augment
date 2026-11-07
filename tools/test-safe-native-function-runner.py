@@ -595,13 +595,27 @@ with tempfile.TemporaryDirectory(prefix='duo-case-filter-') as tmp:
         check(len(commands)==previous,'invalid case transport is rejected before shell execution')
     runner=object.__new__(module.Runner);runner.gesture_case='left-custom-right-stock'
     runner.journal=module.Journal(Path(tmp)/'restore.json',{'ls_augment_systemui_master':'1'})
+    runner.folder=Path(tmp)
+    runner.report={}
+    remote='/storage/emulated/0/Android/data/ls.augment.com/files/back-gesture-tests/single'
+    pulls=[]
+    class PixelTransport:
+        def adb(self,*args,**kwargs):
+            pulls.append(args)
+            return b'fixture pixels copied'
+    runner.ar=PixelTransport()
     received=[]
     def filtered_result(operation,label,**kwargs):
         received.append(kwargs)
-        return {'backGestureCustomization':{'caseFilter':['left-custom-right-stock'],'passed':True,'configurationRestored':True}}
+        return {'backGestureCustomization':{'evidence':remote,'caseFilter':['left-custom-right-stock'],'passed':True,'configurationRestored':True}}
     runner.instrument=filtered_result
     check(runner.gesture()['status']=='observed' and received==[{'case_filter':'left-custom-right-stock'}],'runner forwards and verifies the requested single case')
-    runner.instrument=lambda *args,**kwargs:{'backGestureCustomization':{'passed':True,'configurationRestored':True}}
+    check(pulls==[('pull',remote,str(runner.folder/'gesture-pixels'))],'only verified scoped evidence is collected')
+    for invalid in ('/sdcard/Download',remote.rsplit('/',1)[0]+'/..',remote.rsplit('/',1)[0]+'/.'):
+        runner.instrument=lambda *args,**kwargs:{'backGestureCustomization':{'evidence':invalid,'passed':True}}
+        try:runner.gesture();raise AssertionError('unscoped evidence accepted')
+        except RuntimeError:check(len(pulls)==1,'unscoped evidence rejected before pull')
+    runner.instrument=lambda *args,**kwargs:{'backGestureCustomization':{'evidence':remote,'passed':True,'configurationRestored':True}}
     try:runner.gesture();raise AssertionError('unexpected acceptance')
     except AssertionError as error:check('requested single case' in str(error),'older unfiltered native result cannot masquerade as a single-case run')
 

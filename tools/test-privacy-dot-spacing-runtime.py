@@ -119,6 +119,7 @@ public class TestPrivacyDotRuntime{
 
 with tempfile.TemporaryDirectory(prefix='duo-privacy-dot-') as tmp:
     paths=[]
+    files["ls/augment/com/hook/LiftArcLog.java"]="package ls.augment.com.hook;final class LiftArcLog{static boolean e(String msg,Throwable t){throw new AssertionError(msg,t);}static boolean w(String msg,Throwable t){throw new AssertionError(msg,t);}}"
     for name,content in files.items():
         path=Path(tmp)/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8');paths.append(path)
     names=['StatusBarIconSpacingSpec.java','StatusBarSurfaceSpec.java','StatusBarIconCatalog.java','PrivacyDotSpacingPolicy.java','PrivacyDotSpacingObservation.java','hook/SystemUiAdapter.java','hook/SystemUiCompatibility.java','hook/PrivacyDotSpacingHook.java']

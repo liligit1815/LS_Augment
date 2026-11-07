@@ -108,7 +108,7 @@ def branch(signature):
 branches = [branch(signature) for signature in (
     'if ("recovery_refresh".equals(method))', 'if (!allowedCaller())',
     'if ("runtime_snapshot".equals(method))', 'if ("crash_fuse".equals(method))')]
-prefix = prefix[:prefix.index("        if (NativeIslandControl.METHOD")] + "\n".join(body for _, body in sorted(branches))
+prefix = prefix[:prefix.index("        if (getContext() == null) return result;")+len("        if (getContext() == null) return result;")]+"\n" + "\n".join(body for _, body in sorted(branches))
 gate_start = provider.index("    private boolean allowedCaller()")
 gate_end = provider.index("    private Bundle recordRapidRoute", gate_start)
 gate = provider[gate_start:gate_end]

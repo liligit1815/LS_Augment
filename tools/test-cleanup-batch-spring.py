@@ -24,6 +24,7 @@ public class TestCleanupBomb{static int n;static void check(boolean b){n++;if(!b
  RecentsView detached=new RecentsView();click(detached);detached.utils.set.complete();detached.detach();check(detached.utils.set.ends==1&&detached.selected.alpha==1&&detached.overlay.items.isEmpty());
  RecentsDismissUtils.SpringSet unrelated=new RecentsDismissUtils.SpringSet();unrelated.complete();check(unrelated.ends==1);
  FeatureSettings.on=false;RecentsView off=new RecentsView();click(off);off.utils.set.complete();check(off.utils.set.ends==1&&off.selected.alpha==1);
+ FeatureSettings.on=true;FeatureSettings.style="2";ValueAnimator previous=ValueAnimator.last;RecentsView stock=new RecentsView();click(stock);stock.utils.set.complete();check(stock.calls==1&&stock.utils.set.ends==1&&stock.selected.alpha==1&&stock.protectedCard.alpha==1&&stock.overlay.items.isEmpty()&&ValueAnimator.last==previous);
  System.out.println("Batch spring checks="+n);}}
 '''
 bin_dir=Path(os.environ['JAVA_HOME'])/'bin' if os.environ.get('JAVA_HOME') else None

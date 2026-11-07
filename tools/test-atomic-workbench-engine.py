@@ -66,8 +66,15 @@ final class AtomicWorkbenchPlatform {
 ENGINE_TEST = r'''package ls.augment.com;import android.os.*;import android.view.*;import java.util.*;
 public final class TestAtomicWorkbenchEngine {
  static int tests,checks;static void check(boolean value,String why){checks++;if(!value)throw new AssertionError(why);}
+ static class ReadyLowScope implements AtomicWorkbenchEngine.TaskController{
+  public void requireAllocationScope(int target,int source){if(target<0||target>=4||source< -1||source>=4)throw new IllegalArgumentException();}
+  public Bundle change(Bundle b){throw new AssertionError();}public Bundle query(String id){throw new AssertionError();}
+  public Bundle shelf(){throw new AssertionError();}public Bundle cancel(String id){throw new AssertionError();}
+  public Bundle cleanup(){Bundle b=new Bundle();b.putBoolean("success",true);return b;}
+  public void maintain(){}public boolean hasPending(){return false;}public boolean blocksWindow(int slot){return false;}
+ }
  static final class Fixture {final AtomicWorkbenchPlatform[] p=new AtomicWorkbenchPlatform[5];final AtomicWorkbenchEngine engine;
- Fixture(){AtomicWorkbenchPlatform.globalFocus=-1;AtomicWorkbenchPlatform.focusEvents.clear();engine=new AtomicWorkbenchEngine(id->{AtomicWorkbenchPlatform platform=new AtomicWorkbenchPlatform(null,10055,0,null,id);p[id+1]=platform;return platform;});}
+ Fixture(){this(true);} Fixture(boolean confirmed){AtomicWorkbenchPlatform.globalFocus=-1;AtomicWorkbenchPlatform.focusEvents.clear();engine=new AtomicWorkbenchEngine(id->{AtomicWorkbenchPlatform platform=new AtomicWorkbenchPlatform(null,10055,0,null,id);p[id+1]=platform;return platform;});if(confirmed)engine.configureTaskOperations(new ReadyLowScope());}
  AtomicWorkbenchPlatform slot(int id){return p[id+1];}void open(int id){check(engine.openWindow(id,new Surface(),1080,2400,420,"app"+id+"/.Main").getBoolean("success"),"window did not open");}
  void failedHistory(int id,boolean home){AtomicWorkbenchPlatform slot=slot(id);slot.pending=slot.failFull=true;slot.nativeHome=slot.homeOnly=home;slot.state="recovering";}
  Bundle slotState(int id){for(Bundle state:engine.status().<Bundle>getParcelableArrayList("windows"))if(state.getInt("window_id")==id)return state;throw new AssertionError("missing fixed slot");}}
@@ -217,7 +224,7 @@ public final class TestAtomicWorkbenchEngine {
 
 JOURNAL_BOUNDARY = r'''package ls.augment.com;import java.util.*;final class AtomicWorkbenchJournal {
  static final String PACKAGE="ls.augment.com";int durableHidden=-1;boolean failSave;
- AtomicWorkbenchJournal(android.content.Context c,int uid,int user,int id){}void acquireLock(){}boolean isLocked(){return true;}void releaseLock(){}
+ AtomicWorkbenchJournal(android.content.Context c,int uid,int user,int id){}AtomicWorkbenchJournal(android.content.Context c,int uid,int user,int id,AtomicWorkbenchRecoveryScope.ReaderProfile reader){this(c,uid,user,id);}void acquireLock(){}boolean isLocked(){return true;}void releaseLock(){}
  boolean originalStorageMissing(){return false;}boolean exists(){return false;}Record read(){return null;}void clear(){}
  void archiveRecreatedHome(Record record,int replacementTaskId){}
  void save(Record record)throws Exception{if(failSave){failSave=false;throw new java.io.IOException("injected journal fsync failure");}durableHidden=record.hiddenTaskId;android.window.WindowOrganizer.events.add("journal:"+durableHidden);}
@@ -316,6 +323,20 @@ def task_journal_support(text):
     return text
 
 
+ENGINE_PLATFORM_SCOPE = r''' AtomicWorkbenchRecoveryScope.ReaderProfile reader=AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4;
+ Bundle allocateTaskDisplay(android.view.Surface surface,int width,int height,int density,long generation,String allocation,Runnable commit)throws AllocationScopeRefused{
+  try{allocationScopeFence.require(id,-1);}catch(Exception refused){throw new AllocationScopeRefused(refused);}
+  commit.run();return allocateTaskDisplay(surface,width,height,density,generation,allocation);
+ }
+ int recoveryWindowId(){return id;}AtomicWorkbenchRecoveryScope.ReaderProfile recoveryReaderProfile(){return reader;}
+ interface AllocationScopeFence{void require(int target,int source)throws Exception;}AllocationScopeFence allocationScopeFence;
+ void configureAllocationScopeFence(AllocationScopeFence fence){allocationScopeFence=fence;}
+ static class AllocationScopeRefused extends Exception{AllocationScopeRefused(Exception cause){super(cause);}}
+ boolean needsNativeHomeAllocation(){return !live;}boolean needsApplicationAllocation(String component,int task){return !live;}
+'''
+
+BUNDLE_DEEP_COPY = r'''public Bundle deepCopy(){Bundle copy=new Bundle();for(var entry:data.entrySet())copy.data.put(entry.getKey(),copyValue(entry.getValue()));return copy;}private static Object copyValue(Object value){if(value instanceof Bundle)return ((Bundle)value).deepCopy();if(value instanceof java.util.ArrayList<?>){java.util.ArrayList<Object> out=new java.util.ArrayList<>();for(Object v:(java.util.ArrayList<?>)value)out.add(copyValue(v));return out;}return value;}'''
+
 def output_support(sources, production):
     sources, production = dict(sources), list(production)
     # Resolve shared production dependencies, including mutant source copies.
@@ -367,11 +388,52 @@ def output_support(sources, production):
             intent = intent.replace('public static final String ACTION_MAIN=', 'public static final String ACTION_VIEW="android.intent.action.VIEW",CATEGORY_BROWSABLE="android.intent.category.BROWSABLE";public static final String ACTION_MAIN=')
             intent = intent.rsplit('}', 1)[0] + '''public Intent(String action,android.net.Uri uri){this(action);data=uri;}public ClipData getClipData(){return clip;}public android.os.Bundle getExtras(){android.os.Bundle b=new android.os.Bundle();for(var e:extras.entrySet())if(e.getValue() instanceof android.os.Bundle)b.putBundle(e.getKey(),(android.os.Bundle)e.getValue());else if(e.getValue() instanceof String)b.putString(e.getKey(),(String)e.getValue());return b;}}'''
             sources['android/content/Intent.java'] = intent
+    bodies = list(sources.values()) + [(SRC/name).read_text(encoding="utf-8") for name in production]
+    for dep in ("AtomicWorkbenchRecoveryOwners","AtomicWorkbenchCapacityLayoutPlan","AtomicWorkbenchPoolTopology",
+                "AtomicWorkbenchRecoveryScope","AtomicWorkbenchSlotDomain"):
+        name=dep+".java"
+        if name not in production and "ls/augment/com/"+name not in sources and any(dep in b for b in bodies):
+            production.append(name)
+            bodies.append((SRC/name).read_text(encoding="utf-8"))
+    if "AtomicWorkbenchEngine.java" in production:
+        platform_key="ls/augment/com/AtomicWorkbenchPlatform.java"
+        platform=sources.get(platform_key,"")
+        if platform and "configureAllocationScopeFence(" not in platform:
+            sources[platform_key]=platform.rsplit("}",1)[0]+ENGINE_PLATFORM_SCOPE+"}"
+        event=sources.get("android/view/MotionEvent.java","")
+        if event:
+            methods = {"getDownTime(": "public long getDownTime(){return 1;}", "getPointerId(": "public int getPointerId(int i){return i;}",
+                       "getDeviceId(": "public int getDeviceId(){return 1;}", "getPointerCount(": "public int getPointerCount(){return 1;}",
+                       "ACTION_MOVE": "public static final int ACTION_MOVE=2;"}
+            sources["android/view/MotionEvent.java"]=event.rsplit("}",1)[0]+"".join(value for token,value in methods.items() if token not in event)+"}"
+    if "AtomicWorkbenchProtocol.java" in production:
+        key="android/os/Bundle.java"
+        bundle=sources.get(key,"")
+        import re
+        backing=re.search(r'(?:HashMap|Map)<String,\s*Object>\s*(\w+)\s*=',bundle)
+        if backing:
+            field=backing.group(1)
+            adapters=[]
+            if "deepCopy(" not in bundle:adapters.append(BUNDLE_DEEP_COPY.replace("data.",field+"."))
+            if not re.search(r'\bBundle\(\s*Bundle\s+',bundle):
+                if not re.search(r'\bBundle\(\s*\)',bundle):adapters.append("public Bundle(){}")
+                adapters.append("public Bundle(Bundle original){FIELD.putAll(original.FIELD);}")
+            for signature, implementation in (
+                (r'\bget\(String\s+', "public Object get(String key){return FIELD.get(key);}"),
+                (r'(?:>|\s)keySet\(', "public java.util.Set<String> keySet(){return FIELD.keySet();}"),
+                (r'\bputParcelableArrayList\(', "public <T> void putParcelableArrayList(String key,java.util.ArrayList<T> items){FIELD.put(key,items);}"),
+                (r'\bgetParcelableArrayList\(String\s+\w+\s*\)', "public <T> java.util.ArrayList<T> getParcelableArrayList(String key){return (java.util.ArrayList<T>)FIELD.get(key);}")):
+                if not re.search(signature,bundle):adapters.append(implementation)
+            if adapters:
+                sources[key]=bundle.rsplit("}",1)[0]+"".join(adapters).replace("FIELD",field)+"}"
     return sources, production
 
 
 def compile_run(work, sources, production, runner, classpath=None, arguments=()):
     sources, production = output_support(sources, production)
+    if "AtomicWorkbenchRecoveryScope.java" in production:
+        json_jar=next((Path.home()/".gradle/caches/modules-2/files-2.1/org.json/json/20240303").glob("*/*.jar"))
+        classpath=os.pathsep.join(str(item) for item in (json_jar,classpath) if item)
     files = []
     for name, text in sources.items():
         path = work / name

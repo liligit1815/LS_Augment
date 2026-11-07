@@ -89,6 +89,16 @@ public final class ConfigSnapshot {
     public static ConfigSnapshot parse(String serialized) { return parseDetailed(serialized).snapshot; }
 
     public static ParseResult parseDetailed(String serialized) {
+        return parseDetailed(serialized, false);
+    }
+
+    /** A newer provider may add independent settings. Only the screen automation reader
+     * uses this view; storage and all configuration editors keep strict full-schema reads. */
+    public static ParseResult parseForAutomation(String serialized, boolean newerProvider) {
+        return parseDetailed(serialized, newerProvider);
+    }
+
+    private static ParseResult parseDetailed(String serialized, boolean allowAdditionalKeys) {
         try {
             if (serialized == null) return invalid("payload_missing");
             if (serialized.length() > MAX_SERIALIZED_LENGTH) return invalid("payload_too_large");
@@ -145,7 +155,10 @@ public final class ConfigSnapshot {
                     if(number<min||number>max||!String.valueOf(number).equals(value))return invalid("retired_value_invalid;line="+i);
                     continue;
                 }
-                if (!ConfigSchema.isRuntimeKey(key)) return invalid("unknown_key;line="+i);
+                if (!ConfigSchema.isRuntimeKey(key)) {
+                    if (allowAdditionalKeys && key.matches("[a-z][a-z0-9_]{0,159}")) continue;
+                    return invalid("unknown_key;line="+i);
+                }
                 String normalized = ConfigSchema.normalize(key, value);
                 // Older signed snapshots retain their original bytes/checksum. Accept only the
                 // former default label; AppConfig applies the new display name when reading it.

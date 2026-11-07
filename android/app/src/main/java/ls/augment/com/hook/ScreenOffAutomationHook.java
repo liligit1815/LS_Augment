@@ -197,7 +197,8 @@ final class ScreenOffAutomationHook {
             if(!reply.getBoolean("ok",false))return new SnapshotCheck(null,"reply_not_accepted");
             String payload=reply.getString("snapshot");
             String size=";chars="+(payload==null?-1:payload.length());
-            ConfigSnapshot.ParseResult parsed=ConfigSnapshot.parseDetailed(payload);
+            ConfigSnapshot.ParseResult parsed=ConfigSnapshot.parseForAutomation(payload,
+                    reply.getInt("sourceBuild",0)>BuildConfig.VERSION_CODE);
             if(parsed.snapshot==null)return new SnapshotCheck(null,parsed.error+size);
             ConfigSnapshot snapshot=parsed.snapshot;
             for(String field:new String[]{"schemaVersion","revision","updatedAt","scope","checksum"})

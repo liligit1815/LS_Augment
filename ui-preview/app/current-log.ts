@@ -24,6 +24,9 @@ export function buildLog(values: Record<string, string>, now = new Date().toISOS
   for (const [name, d] of Object.entries(definitions)) {
     if (typeof d.default === 'boolean') switches.set(d.key, options.get(d.key)?.title || name);
   }
+  // The native editor exports these two switch defaults as the strings "0"/"1".
+  switches.set(definitions.SHOULDER_DIAGNOSTICS.key, '肩键详细诊断');
+  switches.set(definitions.AI_TRIGGER_DIAGNOSTICS.key, 'AI 触发器详细诊断');
   const enabled = [...switches].filter(([key]) => values[key] === '1' || values[key] === 'true');
   const settings = Object.entries(values).filter(([key]) => !key.startsWith('prototype:') && !key.startsWith('ui:'));
   const lines = [

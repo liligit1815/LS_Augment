@@ -59,6 +59,23 @@ class Fake(m.Collector):
 
 with tempfile.TemporaryDirectory() as td:
     parent=Path(td)
+    target=parent/'replace-check.json'
+    m.atomic(target,{'step':0})
+    replace=Path.replace
+    attempts=[]
+    def locked(temporary,destination):
+        attempts.append(destination)
+        if len(attempts)<3:
+            error=PermissionError('simulated sharing lock')
+            error.winerror=32
+            raise error
+        return replace(temporary,destination)
+    with patch.object(Path,'replace',locked):
+        m.atomic(target,{'step':1})
+    check(len(attempts)==3 and json.loads(target.read_text())=={'step':1},'Transient sharing lock retains atomic journal replacement')
+    with patch.object(Path,'replace',side_effect=PermissionError('permanent denial')):
+        raises(lambda:m.atomic(target,{'step':2}),PermissionError)
+    check(json.loads(target.read_text())=={'step':1},'A denied replacement preserves the last committed journal')
     def folder(name):p=parent/name;p.mkdir();return p
     j=make(folder('journal'))
     loaded=m.Journal(j.path)

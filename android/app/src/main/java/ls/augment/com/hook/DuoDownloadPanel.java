@@ -24,6 +24,7 @@ final class DuoDownloadPanel {
     private final ProgressBar progress;
     private final LinearLayout headingRow,trackRow,buttons;
     private final Button[] actionButtons=new Button[3];
+    private final Button snooze;
     private int foreground=Color.WHITE;
     DuoDownloadPanel(View panel)throws Exception{
         Object list=field(panel,"mViewList");
@@ -36,13 +37,13 @@ final class DuoDownloadPanel {
         icon=new ImageView(context);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         headingRow.addView(icon,new LinearLayout.LayoutParams(dp(28),dp(28)));
         title=text(15);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
         LinearLayout labels=new LinearLayout(context);labels.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);label.setMarginStart(dp(10));
         headingRow.addView(labels,label);labels.addView(title,new LinearLayout.LayoutParams(-1,-2));
         detail=text(12);detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);
         labels.addView(detail,new LinearLayout.LayoutParams(-1,-2));
-        status=text(14);status.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
+        status=text(14);status.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
         LinearLayout.LayoutParams metric=new LinearLayout.LayoutParams(-2,-2);metric.setMarginStart(dp(8));headingRow.addView(status,metric);
         content.addView(headingRow,new LinearLayout.LayoutParams(-1,-2));
         progress=new ProgressBar(context,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);
@@ -71,6 +72,9 @@ final class DuoDownloadPanel {
             button.setMinHeight(dp(48));button.setMinimumHeight(dp(48));button.setMaxLines(2);button.setVisibility(View.GONE);
             buttons.addView(button,new LinearLayout.LayoutParams(-2,-2));actionButtons[i]=button;
         }
+        snooze=new Button(context);snooze.setAllCaps(false);snooze.setTextSize(13);
+        snooze.setText("15 分钟后提醒");snooze.setMinHeight(dp(48));snooze.setMinimumHeight(dp(48));
+        snooze.setVisibility(View.GONE);content.addView(snooze,new LinearLayout.LayoutParams(-1,-2));
         // All contract checks precede mutation; only this newly-created Duo panel is modified.
         host.removeAllViews();host.setPadding(0,0,0,0);host.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));
         host.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
@@ -79,6 +83,7 @@ final class DuoDownloadPanel {
     }
     void bind(IslandDownloadPolicy.Entry<StatusBarNotification> entry,Drawable artwork,String app,
             BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> action){
+        snooze.setVisibility(View.GONE);snooze.setOnClickListener(null);
         trackRow.setVisibility(View.VISIBLE);progress.setVisibility(View.VISIBLE);
         Notification n=entry.source.getNotification();CharSequence heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
         host.setPadding(0,0,0,0);
@@ -95,7 +100,7 @@ final class DuoDownloadPanel {
         bindButtons(available,trackRow,intent->action.accept(entry,intent));
     }
     void bindNotice(StatusBarNotification source,Drawable artwork,String app,
-            BiConsumer<StatusBarNotification,PendingIntent> action){
+            BiConsumer<StatusBarNotification,PendingIntent> action,java.util.function.Consumer<StatusBarNotification> remind){
         Notification n=source.getNotification();CharSequence heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
         title.setText(TextUtils.isEmpty(heading)?app:heading);detail.setText(n.extras.getCharSequence(Notification.EXTRA_TEXT));
         if(TextUtils.isEmpty(detail.getText()))detail.setText(app);
@@ -105,6 +110,9 @@ final class DuoDownloadPanel {
         icon.setOnClickListener(v->{if(n.contentIntent!=null)action.accept(source,n.contentIntent);});
         List<Notification.Action> available=IslandDownloadSource.actions(n);
         bindButtons(available,headingRow,intent->action.accept(source,intent));
+        boolean canSnooze=source.isClearable();
+        snooze.setVisibility(canSnooze?View.VISIBLE:View.GONE);
+        snooze.setOnClickListener(canSnooze?v->remind.accept(source):null);
     }
     private void bindButtons(List<Notification.Action> available,LinearLayout inline,java.util.function.Consumer<PendingIntent> send){
         Button first=actionButtons[0];
@@ -132,6 +140,7 @@ final class DuoDownloadPanel {
         }
     }
     void clear(){
+        snooze.setOnClickListener(null);snooze.setVisibility(View.GONE);
         icon.setImageDrawable(null);icon.setOnClickListener(null);title.setText("");title.setOnClickListener(null);
         detail.setText("");status.setText("");progress.setIndeterminate(false);progress.setProgress(0);
         for(Button button:actionButtons){button.setOnClickListener(null);button.setText("");button.setVisibility(View.GONE);}
@@ -142,6 +151,7 @@ final class DuoDownloadPanel {
         progress.setProgressTintList(ColorStateList.valueOf(accent));progress.setIndeterminateTintList(ColorStateList.valueOf(accent));
         for(Button button:actionButtons){button.setTextColor(color);
             button.setBackgroundTintList(ColorStateList.valueOf((color&0x00ffffff)|0x22000000));}
+        snooze.setTextColor(color);snooze.setBackgroundTintList(ColorStateList.valueOf((color&0x00ffffff)|0x18000000));
     }
     private TextView text(int size){TextView view=new TextView(context);view.setTextSize(size);return view;}
     private int dp(int size){return Math.round(size*context.getResources().getDisplayMetrics().density);}

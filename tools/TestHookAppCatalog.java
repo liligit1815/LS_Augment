@@ -69,6 +69,9 @@ public final class TestHookAppCatalog {
         }
         check(visibleKeys.equals(allKeys), "some existing controls were lost");
         check(coveredPackages.equals(HookTargetRegistry.packages()), "scoped application is absent from inventory");
+        check(HookAppCatalog.affectedPackages(LauncherOptions.SEARCH_NO_SCRIM).equals(List.of("com.zte.mifavor.zsearch"))
+                && "am force-stop com.zte.mifavor.zsearch".equals(ScopeRestartPolicy.command(HookAppCatalog.restartScopeForKey(LauncherOptions.SEARCH_NO_SCRIM))),
+                "search mask settings must target only the factory search application");
         check(HookAppCatalog.find(HookAppCatalog.GALLERY).packages.equals(
                 List.of("cn.nubia.photoeditor", "com.android.gallery3d")),
                 "gallery source dragging and photo editing retain distinct packages");

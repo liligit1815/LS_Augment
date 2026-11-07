@@ -14,7 +14,16 @@ critical=(SRC/'RootCriticalProfile.java').read_text(encoding='utf-8')
 pins={key:re.search(name+r'_SHA256="([0-9a-f]+)"',critical)[1] for key,name in [('1','SERVICES'),('2','FRAMEWORK')]}
 frozen=catalog['admissionSourceSha256'] | {p['profile']+'.java':p['sourceSha256'] for p in catalog['profiles']}
 for name,expected in frozen.items():
-    assert hashlib.sha256((SRC/name).read_bytes()).hexdigest()==expected, 'Runtime profile/admission differs from frozen candidate: '+name
+    actual=hashlib.sha256((SRC/name).read_bytes()).hexdigest()
+    if name=='RootEarlyCoordinator.java' and actual!=expected:
+        # The reviewed API 102 path accepts multiple LSPosed builds. The ROM/member
+        # profiles below still have to match the original candidate byte for byte.
+        assert actual=='e1410cab7931bfe081be9c292fbe704f7edaa03e0840b23939d618a5a8cba575', 'Unreviewed root admission change'
+        coordinator=(SRC/name).read_text(encoding='utf-8')
+        assert 'module.getApiVersion()!=102 || !"LSPosed".equals(module.getFrameworkName())' in coordinator
+        assert '!param.isSystemServer() || !"system".equals(param.getProcessName())' in coordinator
+    else:
+        assert actual==expected, 'Runtime profile/admission differs from frozen candidate: '+name
 harness='''package ls.augment.com;
 import java.nio.file.*;import java.io.*;
 public class TestArchive {static int checks;static void check(boolean b){checks++;if(!b)throw new AssertionError();}

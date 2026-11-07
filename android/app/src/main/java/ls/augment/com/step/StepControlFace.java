@@ -39,9 +39,12 @@ final class StepControlFace extends FrameLayout {
         square = Math.max(1, Math.min(square, (width - 2 * gap - center) / 2));
         int top = (height - square) / 2, half = Math.max(1, (square - gap) / 2);
         place(network, 0, top, square, square);
-        place(volume, width - square, 0, half, height);
-        place(brightness, width - half, 0, half, height);
-        int start = square + gap, centerWidth = Math.max(1, width - 2 * start);
+        int levelHeight=Math.max(1,(height-gap)/2);
+        int levelWidth=Math.max(square,Math.min(width-square-2*gap-center,
+                Math.max(brightness.getMinimumWidth(),volume.getMinimumWidth())));
+        place(brightness, width-levelWidth, 0, levelWidth, levelHeight);
+        place(volume, width-levelWidth, levelHeight+gap, levelWidth, height-levelHeight-gap);
+        int start = square + gap, centerWidth = Math.max(1, width-start-gap-levelWidth);
         place(device, start, top, centerWidth, half);
         for (int i = 0; i < codes.length; i++) {
             int left = start + centerWidth * i / codes.length;

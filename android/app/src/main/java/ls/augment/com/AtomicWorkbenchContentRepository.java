@@ -117,9 +117,14 @@ final class AtomicWorkbenchContentRepository implements AutoCloseable {
                 if (entries.size() > AtomicWorkbenchContentPolicy.CLIPBOARD_LIMIT)
                     entries.subList(AtomicWorkbenchContentPolicy.CLIPBOARD_LIMIT, entries.size()).clear();
                 data.items.put(item.kind, List.copyOf(entries)); bump(item.kind);
-                snapshots.put(item.kind, state(item.kind, entries, clipboardPermission(origin), AtomicWorkbenchContentSource.State.READY, false, false));
             }
+            // A later foreground collector can reopen the store as soon as this item is visible.
             persist();
+            synchronized (lock) {
+                if (closed) return;
+                snapshots.put(item.kind, state(item.kind, data.items.get(item.kind), clipboardPermission(origin),
+                        AtomicWorkbenchContentSource.State.READY, false, false));
+            }
             publish(item.kind);
         });
     }

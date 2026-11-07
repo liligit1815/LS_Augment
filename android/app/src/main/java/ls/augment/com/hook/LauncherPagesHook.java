@@ -364,9 +364,8 @@ final class LauncherPagesHook {
             }
             if (context == null) {
                 context = view.getContext().getApplicationContext();
-                try{prefs = LauncherOwnedStateClient.preferences(context,"pages");}
-                catch(RuntimeException unavailable){failed(unavailable);}
-            } else if (prefs == null) {
+            }
+            if (prefs == null) {
                 prefs = LauncherOwnedStateClient.readyPreferences(context,"pages");
             }
             LauncherResetHook.attach(context);

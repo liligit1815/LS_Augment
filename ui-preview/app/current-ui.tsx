@@ -39,6 +39,8 @@ export type Option = {
   choices: string[];
 };
 export type Model = {
+  numericDialog?: boolean;
+  resetStatusConfiguration?: () => void;
   values: Record<string, string>;
   set: (key: string, value: string) => void;
   go: (route: string) => void;
@@ -321,7 +323,8 @@ export function Range({
   suffix?: string;
 }) {
   const m = useModel();
-  const value = Number(m.values[name] ?? initial);
+  const value = Number(m.values[name] === '' ? initial : m.values[name] ?? initial);
+  if (m.numericDialog) return <CompactRange name={name} title={title} help={help || keyHelp[name] || titleHelp[title]} min={min} max={max} step={step} value={value} suffix={suffix}/>;
   return (
     <div className="c-range" {...identity('config:' + name, title)}>
       <FeatureTitle
@@ -354,6 +357,33 @@ export function Range({
       />
     </div>
   );
+}
+function CompactRange({name,title,help,min,max,step,value,suffix}: {name:string;title:string;help?:string;min:number;max:number;step:number;value:number;suffix:string}) {
+  const m = useModel();
+  const current = useRef({value, active:true, set:m.set});
+  current.current = {value, active:true, set:m.set};
+  useEffect(() => () => {current.current.active = false;}, []);
+  const change = (next:number) => {m.set(name,String(next)); if (name === 'status:clock:size') m.set('ls_augment_statusbar_clock_size_sp','0');};
+  const edit = () => {
+    const snapshot = value;
+    m.dialog(title,<PreciseParameter initial={value} min={min} max={max} step={step} suffix={suffix} cancel={m.close} submit={next => {
+      if (!current.current.active || current.current.value !== snapshot) return '参数已变化，请关闭后重新编辑。';
+      change(next); m.close(); return '';
+    }}/>);
+  };
+  return <div className="c-range" {...identity('config:' + name,title)}>
+    <div className="c-feature-title"><button className="sw-number-value" onClick={edit}>{title}</button><Help title={title} text={help || `范围 ${min}–${max}${suffix}，步长 ${step}。点击名称或当前值可精确输入。`}/></div>
+    <button className="sw-number-value" aria-label={title + '当前值，精确输入'} onClick={edit}>{value}{suffix}</button>
+    <div className="sw-slider-area"><input type="range" aria-label={title} min={min} max={max} step={step} value={value} onChange={e => change(Number(e.target.value))}/></div>
+  </div>;
+}
+function PreciseParameter({initial,min,max,step,suffix,cancel,submit}: {initial:number;min:number;max:number;step:number;suffix:string;cancel:()=>void;submit:(value:number)=>string}) {
+  const [draft,setDraft] = useState(String(initial)), [error,setError] = useState('');
+  return <form onSubmit={e => {e.preventDefault(); const text = draft.trim(), value = Number(text); if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text) || !Number.isFinite(value) || value < min || value > max || Math.abs((value-min)/step - Math.round((value-min)/step)) > 1e-8) {setError(`请输入 ${min}–${max} 范围内、符合步长 ${step} 的数值。`); return;} setError(submit(value));}}>
+    <label>数值{suffix}<input style={{minHeight:48,width:'100%'}} aria-label="精确数值" inputMode="decimal" value={draft} onChange={e => setDraft(e.target.value)}/></label>
+    <p>范围 {min}–{max}{suffix} · 步长 {step}</p>{error && <p role="alert">{error}</p>}
+    <footer><button type="button" onClick={cancel}>取消</button><button type="submit">确定</button></footer>
+  </form>;
 }
 export function Field({
   name,

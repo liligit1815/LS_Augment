@@ -148,10 +148,10 @@ public class TestCascade{
   h.fromParent(new android.view.MotionEvent(0,10,front.state.mYTranslation+5));h.fromParent(new android.view.MotionEvent(3,10,400));check(!parent.disallow&&!h.isScrollingEnabled(),"CANCEL releases dispatch ownership");
   h.mOwnScrollY=h.getScrollRange();alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"lock tail full at end");
   h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.state.clipTopAmount==80,"scrolled lock row is clipped below clock");
-  check(front.effect!=null,"scrolled first row gets header blur even above tail projection line");
+  check(front.effect==null,"scrolled first row is sharp; header blur cannot be attached to a notification");
   h.mOwnScrollY=0;alg.resetViewStates(a,0);check(front.state.clipTopAmount==0,"scroll back restores native clipping");
   // This row returns to the bottom stack after scrolling back; its tail blur remains native to the feature.
-  a.keyguard=false;a.stackY=150;h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.effect!=null,"notification shade header also blurs incoming row");
+  a.keyguard=false;a.stackY=150;h.mOwnScrollY=680;alg.resetViewStates(a,0);check(front.effect==null,"shade first row stays sharp below the clock");
   flag(NotificationAppearanceOptions.STACK_GRADIENT,false);alg.resetViewStates(a,0);check(front.effect==null,"gradient off releases header effect");flag(NotificationAppearanceOptions.STACK_GRADIENT,true);a.keyguard=true;h.mOwnScrollY=0;
   // First (unscaled) rows need their own clip ownership; they never enter the
   // projection/blur map. The real OEM may retain a nonzero native baseline too.
@@ -195,6 +195,47 @@ public class TestWake{
 '''
 })
 
+files['ls/augment/com/hook/TestClockBackdrop.java']='''package ls.augment.com.hook;
+import android.view.*;import android.graphics.*;import android.graphics.drawable.*;import com.zte.controlcenter.widget.CCHeaderView;import java.util.*;
+public class TestClockBackdrop{
+ static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
+ static class HeaderSubclass extends CCHeaderView{}
+ static class Source implements NotificationTopBlur.Source{boolean on=true;Set<View> hidden=new HashSet<>();public boolean active(){return on;}public boolean eligible(View v){return !hidden.contains(v);}public int clip(View v){return v.drawClipTop;}public void clip(View v,int clip){v.drawClipTop=clip;}}
+ public static void main(String[] args){
+  ViewGroup root=new ViewGroup(),stack=new ViewGroup();root.height=1000;stack.height=800;stack.y=20;root.addView(stack);
+  CCHeaderView header=new HeaderSubclass();header.y=40;root.addView(header);header.setPadding(3,5,7,9);Drawable nativeBackground=new ColorDrawable(0);header.setBackground(nativeBackground);header.setPadding(3,5,7,9);
+  View row=new View(),secret=new View();row.x=20;row.y=50;row.ink=5;row.drawClipTop=60;stack.addView(row);secret.y=50;secret.ink=9;stack.addView(secret);
+  Source source=new Source();source.hidden.add(secret);NotificationTopBlur blur=new NotificationTopBlur(stack,source);blur.update(Arrays.asList(row,secret));
+  check(header.getBackground()!=nativeBackground&&header.getPaddingTop()==5&&header.getPaddingBottom()==9,"native padding survives background attachment");
+  Canvas canvas=new Canvas();header.draw(canvas);
+  check(canvas.nodes==1&&canvas.bitmap.p[40][300]==5,"native notification pixels appear behind clock despite original top clipping");
+  check(canvas.bitmap.p[96][300]==0&&canvas.bitmap.p[19][300]==0,"blur output is confined to clock/date vertical region; first visible row is excluded");
+  check(canvas.bitmap.p[30][20]==3&&canvas.bitmap.p[80][20]==4,"clock/date draw above backdrop and remain sharp");
+  check(row.drawClipTop==60&&row.effect==null&&secret.drawCount==0,"list clipping/effect/privacy unchanged");
+  check(header.mClockView.drawCount==1&&header.mDateView.drawCount==1,"clock/date never captured in blurred source");
+  check(blur.evidence().contains("header_pixels=0,20,400,95;drawn_rows=1"),"measured header evidence is independent of stack origin");
+  row.drawClipBottom=60;canvas=new Canvas();header.draw(canvas);check(canvas.bitmap.p[75][300]==0,"native actual-height/bottom clipping survives backdrop replay");row.drawClipBottom=0;
+  header.getViewTreeObserver().dispatch();int invalidates=header.invalidates;header.getViewTreeObserver().dispatch();check(header.invalidates==invalidates,"stationary shade does not schedule a continuous rendering loop");row.y+=3;header.getViewTreeObserver().dispatch();check(header.invalidates>invalidates,"native property animation invalidates backdrop without algorithm reset");row.y-=3;
+  row.y=200;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"no cached notification remains after leaving header");
+  row.y=50;source.hidden.add(row);canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"privacy change rechecked at draw without a new layout");source.hidden.remove(row);
+  header.mClockView.height=70;header.mDateView.y=110;header.mDateView.height=30;row.y=95;
+  canvas=new Canvas();header.draw(canvas);check(canvas.nodes==1&&canvas.bitmap.p[130][300]==5&&canvas.bitmap.p[141][300]==0,"larger clock/date and current row position change the mask in same draw");
+  row.sy=.8f;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"transformed row rejected instead of guessing coordinates");row.sy=1;
+  header.rotation=4;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"rotated header keeps native drawing");header.rotation=0;
+  source.on=false;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"disable is checked before drawing old frame");header.getViewTreeObserver().dispatch();check(header.getBackground()==nativeBackground&&header.getPaddingLeft()==3&&header.getViewTreeObserver().listeners.isEmpty(),"pre-draw disable restores background/padding and removes observer without a layout pass");
+  source.on=true;blur.update(Arrays.asList(row));Drawable replacement=new ColorDrawable(0);header.setBackground(replacement);blur.clear();check(header.getBackground()==replacement,"native replacement is not overwritten by restore");
+  header.panelType=1;blur.update(Arrays.asList(row));check(header.getBackground()==replacement&&blur.evidence().startsWith("missing_notification_clock"),"control center header not mistaken for notification clock");header.panelType=2;
+  header.mDateView=new android.widget.TextView();blur.update(Arrays.asList(row));check(header.getBackground()==replacement&&blur.evidence().startsWith("unavailable_clock_geometry"),"missing clock subtree falls back without a fake region");header.addView(header.mDateView);header.mDateView.y=110;header.mDateView.height=30;
+  blur.update(Arrays.asList(row));row.drawThrows=true;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0&&row.drawClipTop==60,"drawing failure restores native clip and never shows partially recorded pixels");
+  check(FeatureSettings.reports.get("ls_augment_notification_top_blur_runtime").contains("draw_unavailable"),"failed capture has concrete diagnostic");
+  row.drawThrows=false;blur.clear();check(header.getBackground()==replacement,"failed renderer can release owned background");
+  System.out.println("clock backdrop raster/lifecycle checks="+checks);
+ }
+}'''
+
+from notification_header_blur_facade import extend
+extend(files)
+
 for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
     current=dict(files)
     if variant=='modern':
@@ -219,4 +260,5 @@ for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
         paths += [SRC/name for name in ['EnhancementOption.java','NotificationAppearanceOptions.java','NotificationCascadePolicy.java','hook/NotificationCascadeHook.java','hook/NotificationTopBlur.java','hook/NotificationStackGate.java','hook/NativeIslandWake.java']]
         subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',folder,*map(str,paths)],check=True)
         subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestCascade',*(['missing'] if variant in ['missing','missing_clip','wrong_clip_type'] else [])],check=True)
+        if variant in ['legacy','modern']:subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestClockBackdrop'],check=True)
         if variant=='legacy':subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestWake'],check=True)

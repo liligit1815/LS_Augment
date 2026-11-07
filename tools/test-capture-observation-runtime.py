@@ -15,7 +15,7 @@ FILES = {
 'android/content/IntentFilter.java': 'package android.content;public class IntentFilter {public IntentFilter(String s){}}',
 'android/content/BroadcastReceiver.java': 'package android.content;public abstract class BroadcastReceiver {public abstract void onReceive(Context c,Intent i);}',
 'android/content/pm/PackageManager.java': 'package android.content.pm;public class PackageManager {public String[] getPackagesForUid(int uid){return new String[]{"com.android.ztescreenshot"};}}',
-'android/content/Context.java': '''package android.content;public class Context {
+'android/content/Context.java': '''package android.content;public class Context {public Context getApplicationContext(){return this;}
  public static final int RECEIVER_EXPORTED=2;public ls.augment.com.ConfigSnapshot snapshot=new ls.augment.com.ConfigSnapshot(1,1,"0");
  public ContentResolver getContentResolver(){return new ContentResolver();}public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}
  public Intent registerReceiver(BroadcastReceiver r,IntentFilter f,int flags){return null;}}''',

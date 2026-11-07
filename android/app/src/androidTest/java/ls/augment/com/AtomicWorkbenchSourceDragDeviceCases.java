@@ -1,6 +1,5 @@
 package ls.augment.com;
 
-import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.*;
 import android.net.Uri;
@@ -9,74 +8,100 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.json.*;
 
-/** Native Android parcel/payload and one-use handoff tests; not evidence of third-party UI dragging. */
+/** Exercise private text ClipData and the live provider boundary for retired external handoffs. */
 final class AtomicWorkbenchSourceDragDeviceCases {
     private static void require(boolean value, String name) { if (!value) throw new AssertionError(name); }
-    private static void reject(ClipData clip) {
-        try { AtomicWorkbenchSourceDragData.read(clip); throw new AssertionError("accepted_invalid_source"); }
-        catch (IllegalArgumentException expected) { }
+    private static final Uri WORKBENCH = Uri.parse("content://ls.augment.com.workbench");
+    private static void refused(Context context, String method, Bundle request) {
+        Bundle response = context.getContentResolver().call(WORKBENCH, method, null, request);
+        require(response != null && response.size() == 1 && Boolean.FALSE.equals(response.get("accepted")),
+                method + "_must_refuse_without_issuing_a_ticket");
     }
-    static JSONObject run(Instrumentation test, Bundle args) throws Exception {
-        Context context = test.getTargetContext(); JSONArray cases = new JSONArray();
-        ClipData text = ClipData.newPlainText("original", "Duo native drag fixture");
-        require("Duo native drag fixture".contentEquals(AtomicWorkbenchSourceDragData.read(text).input.getCharSequenceExtra(Intent.EXTRA_TEXT)), "text_preserved");
-        cases.put("real_text_preserved");
-        ClipData photo = new ClipData("file drag", new String[]{"image/png"}, new ClipData.Item(Uri.parse("content://fixture/photo")));
-        PersistableBundle hints = new PersistableBundle(); hints.putBoolean("isFromGallery", true); hints.putString("third_app_drag_drop_flag", "true"); hints.putString("untrusted", "discard");
-        photo.getDescription().setExtras(hints);
-        AtomicWorkbenchSourceDragData data = AtomicWorkbenchSourceDragData.read(photo);
-        require(data.uris.size() == 1 && data.decoration.size() == 2 && data.decoration.getBoolean("isFromGallery"), "uri_and_bounded_hints");
-        require(data.clip.getDescription().getExtras().size()==2 && data.clip.getItemAt(0).getIntent()==null
-                && data.clip.getItemAt(0).getHtmlText()==null && data.clip.getItemAt(0).getUri().equals(data.uris.get(0)), "bounded_transport");
-        cases.put("original_content_uri_and_known_hints_only");
-        for (String uri : new String[]{"file:///sdcard/a.png", "https://example.com/a.png", "content://10@fixture/a"}) {
-            reject(new ClipData("invalid", new String[]{"image/png"}, new ClipData.Item(Uri.parse(uri))));
-        }
-        reject(ClipData.newIntent("nested", new Intent(Intent.ACTION_VIEW)));
-        reject(ClipData.newPlainText("oversize", "x".repeat(32769)));
-        reject(ClipData.newPlainText("empty", ""));
-        ClipData duplicate = new ClipData(photo); duplicate.addItem(photo.getItemAt(0)); reject(duplicate);
-        ClipData excessive = ClipData.newPlainText("many", "1"); for (int i=1;i<18;i++) excessive.addItem(new ClipData.Item("1")); reject(excessive);
-        cases.put("reject_path_url_cross_user_nested_empty_duplicate_oversize");
-        Bundle request = new Bundle(); request.putInt("version", 1); request.putInt("display", 1); request.putLong("down", SystemClock.uptimeMillis());
-        require(AtomicWorkbenchSourceDragBridge.call(AtomicWorkbenchSourceDragData.PROBE, null, request).isEmpty(), "same_uid_cannot_impersonate_source");
-        cases.put("same_uid_bridge_denied");
 
-        AtomicInteger completed = new AtomicInteger(); AtomicBoolean callbackStarted = new AtomicBoolean(true), callbackFallback = new AtomicBoolean(true);
-        CountDownLatch completion = new CountDownLatch(1);
+    static JSONObject run(Instrumentation test, Bundle args) throws Exception {
+        Context context = test.getTargetContext();
+        JSONArray cases = new JSONArray();
+        String original = "  Duo native drag fixture\n";
+        // Exercise the real encoder still used by private text drags with Android ClipData and Parcel.
+        var snapshot = AtomicWorkbenchTransfer.class.getDeclaredMethod("textSnapshot", String.class);
+        var encoder = AtomicWorkbenchTransfer.class.getDeclaredMethod("dragClip", AtomicWorkbenchPendingPayload.class, String.class);
+        snapshot.setAccessible(true);
+        encoder.setAccessible(true);
+        AtomicWorkbenchPendingPayload payload = (AtomicWorkbenchPendingPayload) snapshot.invoke(null, original);
+        ClipData text = (ClipData) encoder.invoke(null, payload, "local-gesture");
+        Parcel parcel = Parcel.obtain();
+        try {
+            text.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            ClipData copy = ClipData.CREATOR.createFromParcel(parcel);
+            require(copy.getItemCount() == 1 && original.contentEquals(copy.getItemAt(0).getText())
+                    && copy.getItemAt(0).getIntent() == null && copy.getItemAt(0).getUri() == null,
+                    "preserve_text_only");
+            PersistableBundle extras = copy.getDescription().getExtras();
+            require(extras.size() == 3 && "local-gesture".equals(extras.getString("duo_drag_nonce"))
+                    && payload.id.equals(extras.getString("duo_drag_id"))
+                    && payload.revision == extras.getLong("duo_drag_revision", -1), "private_gesture_identity");
+        } finally { parcel.recycle(); }
+        for (String invalid : new String[]{"", "x".repeat(32769)}) {
+            try { snapshot.invoke(null, invalid); throw new AssertionError("invalid_text_snapshot"); }
+            catch (java.lang.reflect.InvocationTargetException expected) {
+                require(expected.getCause() instanceof java.io.IOException, "reject_invalid_text");
+            }
+        }
+        cases.put("private_text_identity_preserved_empty_and_oversize_rejected");
+
+        // A source cancellation still owns exactly one completion. Keep this check on the
+        // live transfer job without opening, copying or granting any fixture URI.
+        AtomicInteger settled = new AtomicInteger();
+        AtomicWorkbenchTransferStage.Job job = new AtomicWorkbenchTransferStage.Job(context,
+                new Intent(Intent.ACTION_SEND), false, (value, failure) -> {
+                    require(value == null && "fixture canceled".equals(failure), "unexpected_cancel_result");
+                    settled.incrementAndGet();
+                });
+        job.cancel("fixture canceled");
+        job.cancel("second cancel");
+        require(!job.finish(null, "late completion") && settled.get() == 1, "source_must_complete_once");
+        try { job.check(); throw new AssertionError("cancelled_source_reopened"); }
+        catch (java.io.IOException expected) { }
+        cases.put("cancel_completes_once_and_rejects_late_source");
+
+        // Old hooked processes may send v1 IPC until they restart. Even a correctly shaped
+        // offer must be rejected before opening data, invoking a callback or issuing a lease.
+        AtomicInteger completions = new AtomicInteger();
         Binder callback = new Binder() {
-            @Override protected boolean onTransact(int code, Parcel parcel, Parcel reply, int flags) {
-                parcel.enforceInterface(AtomicWorkbenchSourceDragData.CALLBACK); callbackStarted.set(parcel.readBoolean()); callbackFallback.set(parcel.readBoolean()); parcel.enforceNoDataAvail();
-                completed.incrementAndGet(); completion.countDown(); return true;
+            @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
+                completions.incrementAndGet(); return true;
             }
         };
-        AtomicReference<Throwable> failed = new AtomicReference<>();
-        test.runOnMainSync(() -> {
-            try {
-                Activity fixture = new Activity() { @Override public Context getApplicationContext() { return context; } };
-                AtomicBoolean valid = new AtomicBoolean(true), preparing = new AtomicBoolean();
-                AtomicWorkbenchAppSourceDrag.Capture capture = new AtomicWorkbenchAppSourceDrag.Capture(10001, 42, 7, 0, 1, 200, 1, 1, "fixture", null, null);
-                AtomicWorkbenchAppSourceDrag controller = new AtomicWorkbenchAppSourceDrag(fixture, null, new AtomicWorkbenchAppSourceDrag.Host() {
-                    public AtomicWorkbenchAppSourceDrag.Capture capture(int uid,int display,long down) { return valid.get() && uid==10001 && display==42 && down==200 ? capture : null; }
-                    public boolean current(AtomicWorkbenchAppSourceDrag.Capture value) { return value == capture && valid.get(); }
-                    public void preparing(boolean value) { preparing.set(value); }
-                });
-                require(controller.probe(10001,42,200).isEmpty(), "background_probe"); controller.foreground(true);
-                require(controller.probe(10002,42,200).isEmpty() && controller.probe(10001,43,200).isEmpty() && controller.probe(10001,42,201).isEmpty(), "gesture_identity");
-                String ticket = controller.probe(10001,42,200).getString("ticket"); require(ticket != null, "valid_probe");
-                require(!controller.offer(10002,ticket,text,callback) && !controller.offer(10001,"invalid",text,callback), "offer_identity");
-                require(controller.offer(10001,ticket,text,callback) && preparing.get(), "first_offer");
-                require(!controller.offer(10001,ticket,text,callback), "replayed_offer");
-                valid.set(false); controller.cancel(); controller.cancel(); controller.foreground(false);
-                require(!preparing.get(), "cancel_restores_host");
-            } catch(Throwable failure) { failed.set(failure); }
-        });
-        if (failed.get()!=null) throw new AssertionError(failed.get());
-        require(completion.await(5, TimeUnit.SECONDS), "cancel_completion");
-        long deadline=SystemClock.uptimeMillis()+5000; while(AtomicWorkbenchTransferStage.busy()&&SystemClock.uptimeMillis()<deadline) SystemClock.sleep(20);
+        Bundle request = new Bundle();
+        request.putInt("version", 1);
+        request.putLong("down", SystemClock.uptimeMillis());
+        for (int display : new int[]{0, 42}) {
+            request.putInt("display", display);
+            refused(context, "source_drag_probe", request);
+        }
+        request.putString("ticket", "0123456789abcdef0123456789abcdef");
+        request.putBinder("completion", callback);
+        ClipData photo = new ClipData("photo", new String[]{"image/png"}, new ClipData.Item(Uri.parse("content://fixture/photo")));
+        PersistableBundle hints = new PersistableBundle();
+        hints.putBoolean("isFromGallery", true); hints.putString("third_app_drag_drop_flag", "true"); hints.putString("untrusted", "discard");
+        photo.getDescription().setExtras(hints);
+        ClipData duplicate = new ClipData(photo); duplicate.addItem(photo.getItemAt(0));
+        ClipData many = ClipData.newPlainText("many","1");
+        for (int i=1; i<18; i++) many.addItem(new ClipData.Item("1"));
+        java.util.List<ClipData> external = new java.util.ArrayList<>(java.util.List.of(
+                text, photo, duplicate, many, ClipData.newIntent("nested", new Intent(Intent.ACTION_VIEW)),
+                ClipData.newPlainText("oversize","x".repeat(32769)), ClipData.newPlainText("empty","")));
+        for (String uri : new String[]{"file:///sdcard/a.png","https://example.com/a.png","content://10@fixture/a"})
+            external.add(new ClipData("invalid",new String[]{"image/png"},new ClipData.Item(Uri.parse(uri))));
+        for (ClipData clip : external) {
+            request.putParcelable("clip", clip);
+            refused(context, "source_drag_offer", request);
+            refused(context, "source_drag_offer", request);
+        }
         test.waitForIdleSync();
-        require(completed.get()==1 && !callbackStarted.get() && !callbackFallback.get(), "cancel_once_no_late_native_drag");
-        cases.put("gesture_identity_one_use_offer_cancel_once_no_native_fallback");
+        require(completions.get() == 0, "retired_handoff_must_never_schedule_a_callback");
+        cases.put("external_probes_payloads_and_replays_denied_without_callbacks");
         ModuleScopeService.Snapshot scope = ModuleScopeService.read(context);
         long scopeDeadline = SystemClock.uptimeMillis() + 5000;
         while (!scope.connected && SystemClock.uptimeMillis() < scopeDeadline) {
@@ -89,8 +114,8 @@ final class AtomicWorkbenchSourceDragDeviceCases {
         if ("true".equals(args.getString("request_scope"))) {
             if (!scope.connected) throw new AssertionError("scope_service_unavailable");
             CountDownLatch answer = new CountDownLatch(1); AtomicBoolean approved = new AtomicBoolean();
-            java.util.List<String> requested=java.util.List.of("com.android.gallery3d", "com.tencent.mobileqq");
-            require(scope.descriptor != null && scope.descriptor.recommended.containsAll(requested), "only_declared_source_scopes");
+            java.util.List<String> requested=java.util.List.of("com.android.gallery3d");
+            require(scope.descriptor != null && scope.descriptor.recommended.containsAll(requested) && !scope.descriptor.recommended.contains("com.tencent.mobileqq"), "only_declared_source_scopes");
             ModuleScopeService.service().requestScope(requested,new io.github.libxposed.service.XposedService.OnScopeEventListener() {
                 @Override public void onScopeRequestApproved(java.util.List<String> values) {
                     ModuleScopeService.Snapshot after=ModuleScopeService.read(context); approved.set(after.actual.containsAll(requested)); answer.countDown();

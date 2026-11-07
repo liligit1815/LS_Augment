@@ -32,11 +32,16 @@ public final class StepRuntime {
     static final long DURATION = 20000;
     static void report(ResultReceiver sink, int code, String message, int task) {
         android.util.Log.i("RedMagicDuoStep", message);
+        if(code!=10)diagnostic("RUNTIME","code="+code+";task="+task+";message="+message);
 
         if (sink != null) {
             try { Bundle b = new Bundle(); b.putString("message", message); b.putInt("task", task); sink.send(code, b); }
             catch (Throwable ignored) { }
         }
+    }
+    static void diagnostic(String stage,String detail) {
+        ls.augment.com.StartupDiagnostics.record("STEP_"+stage,
+                detail.length()>1000?detail.substring(0,1000):detail,null);
     }
     // Bundles crossing into framework processes must name the platform Parcelable,
     // not the anonymous module subclass whose class loader the recipient does not own.
@@ -63,6 +68,10 @@ public final class StepRuntime {
     static volatile boolean enabled;
     private static volatile boolean installed;
     public static boolean isInstalled() { return installed; }
+    public static void notifyUiPreferences(Context context) {
+        context.sendBroadcast(QuickPreferences.snapshot(context, new Intent(ACTION).setPackage("com.android.systemui")
+                .putExtra("operation", "quickPins")));
+    }
     public static void query(Context context, String target, ResultReceiver callback) {
         context.sendBroadcast(command(target, "query", callback));
     }
@@ -90,6 +99,7 @@ public final class StepRuntime {
         ResultReceiver r=sink(intent);
         if(r!=null){Bundle b=new Bundle();
             if(Wm.registered && ready)b.putBoolean("topAvailable",NativeTopTask.available());
+            if(!Wm.registered)CornerEntry.describe(b);
             b.putString("details",details);b.putInt("version",ls.augment.com.BuildConfig.VERSION_CODE);r.send(ready?1:0,b);}
     }
     static final class Wm {
@@ -120,8 +130,9 @@ public final class StepRuntime {
                             if (call(p.thisObject, "getDisplayContent") != display) return;
                             WindowManager.LayoutParams attrs = (WindowManager.LayoutParams) field(p.thisObject, "mAttrs");
                             Object task = call(p.thisObject, "getTask");
-                            boolean side = task != null && (NativeWorkspaceGuard.ownsTask(task) || StepMembers.getIntField(task, "mTaskId") == sideTask);
-                            if(PhysicalIme.window(p.thisObject,attrs)){p.setResult(false);PhysicalIme.exclusions++;}
+                            boolean side = task != null && (NativeWorkspaceGuard.ownsMagnification(task) || StepMembers.getIntField(task, "mTaskId") == sideTask);
+                            if(PhysicalFingerprint.window(p.thisObject))p.setResult(false);
+                            else if(PhysicalIme.window(p.thisObject,attrs)){p.setResult(false);PhysicalIme.exclusions++;}
                             else if (side || NativeWorkspaceGuard.physicalNativeWindow(task) || TITLE.contentEquals(attrs.getTitle()) || WorkspaceInput.TITLE.contentEquals(attrs.getTitle())
                                     || WorkspaceQuickBar.TITLE.contentEquals(attrs.getTitle()) || QuickPicker.TITLE.contentEquals(attrs.getTitle())
                                     || SlotCountDialog.TITLE.contentEquals(attrs.getTitle()) || WorkspaceActions.TITLE.contentEquals(attrs.getTitle())) p.setResult(false);
@@ -129,7 +140,7 @@ public final class StepRuntime {
                                 Object target=call(display,"getImeInputTarget");
                                 Object w=target==null?null:call(target,"getWindowState"),t=w==null?null:call(w,"getTask");
                                 boolean picker=w!=null && QuickPicker.TITLE.contentEquals(((WindowManager.LayoutParams)field(w,"mAttrs")).getTitle());
-                                p.setResult(!picker && (t==null || !NativeWorkspaceGuard.ownsTask(t) && !NativeWorkspaceGuard.physicalNativeWindow(t) && StepMembers.getIntField(t,"mTaskId")!=sideTask));
+                                p.setResult(!picker && (t==null || !NativeWorkspaceGuard.ownsMagnification(t) && !NativeWorkspaceGuard.physicalNativeWindow(t) && StepMembers.getIntField(t,"mTaskId")!=sideTask));
                             }
                         } catch (Throwable ignored) { }
                     }
@@ -291,8 +302,10 @@ public final class StepRuntime {
         // A signed module setting alone cannot prove that system_server loaded this APK.
         static boolean serverReady;
         static int probeGeneration;
+        static String handshake="not_requested";
         static void onSwitchChanged() {
             serverReady=false;
+            handshake=enabled?"waiting":"disabled";
             int token=++probeGeneration;
             if(enabled) queryServer(token,1000);
         }
@@ -300,8 +313,11 @@ public final class StepRuntime {
             if(token!=probeGeneration || !enabled || serverReady)return;
             ResultReceiver reply=new ResultReceiver(main) {
                 @Override protected void onReceiveResult(int code,Bundle data) {
-                    if(token==probeGeneration && enabled && code==1 && data!=null
-                            && data.getInt("version")==ls.augment.com.BuildConfig.VERSION_CODE)serverReady=true;
+                    if(token!=probeGeneration || !enabled || serverReady)return;
+                    serverReady=code==1 && data!=null && data.getInt("version")==ls.augment.com.BuildConfig.VERSION_CODE;
+                    String state=serverReady?"ready":data!=null&&data.getInt("version")!=ls.augment.com.BuildConfig.VERSION_CODE?"version_mismatch":"server_not_ready";
+                    if(!state.equals(handshake))diagnostic("HANDSHAKE",state);
+                    handshake=state;
                 }
             };
             android.app.BroadcastOptions delivery=android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true);
@@ -310,6 +326,51 @@ public final class StepRuntime {
                         .putExtra("operation","readiness").putExtra("reply",remote(reply)),null,delivery.toBundle());
             } catch(RuntimeException unavailable) { report(null,-1,"系统框架能力查询失败："+unavailable,-1); }
             main.postDelayed(()->queryServer(token,Math.min(retryMs*2,60000)),retryMs);
+        }
+        // The app's two independent queries do not prove that SystemUI can
+        // reach the authenticated task receiver used by the actual gesture.
+        // Probe that exact route, including while enabling from OFF.
+        static void checkEntry(Intent request) {
+            diagnostic("ENTRY_CHECK",CornerEntry.snapshot()+";handshake="+handshake
+                    +";factory="+(factory!=null)+";executor="+(executor!=null)+";transitions="+(transitions!=null));
+            if(factory==null || executor==null || transitions==null || !CornerEntry.supported) {
+                answer(request,false,"系统界面（工作台组件或手势入口未接入）");return;
+            }
+            // Supersede older background replies: this check must describe a
+            // fresh request, and an older negative reply must not undo it.
+            int generation=++probeGeneration;
+            boolean wasEnabled=enabled;
+            boolean[] completed={false};
+            Runnable timeout=()->{
+                if(completed[0])return;
+                completed[0]=true;
+                if(generation==probeGeneration){serverReady=false;handshake="timeout";}
+                diagnostic("ENTRY_CHECK_RESULT","timeout;"+CornerEntry.snapshot());
+                answer(request,false,"系统界面（与系统框架通信超时）");
+                if(generation==probeGeneration && enabled)onSwitchChanged();
+            };
+            main.postDelayed(timeout,2500);
+            ResultReceiver reply=new ResultReceiver(main) {
+                @Override protected void onReceiveResult(int code,Bundle data) {
+                    if(completed[0])return;
+                    completed[0]=true;main.removeCallbacks(timeout);
+                    boolean current=generation==probeGeneration && wasEnabled==enabled;
+                    boolean version=data!=null && data.getInt("version")==ls.augment.com.BuildConfig.VERSION_CODE;
+                    boolean ready=current && code==1 && version;
+                    if(current){serverReady=ready&&enabled;handshake=ready?"ready":"server_not_ready";}
+                    diagnostic("ENTRY_CHECK_RESULT","ready="+ready+";current="+current+";version="+version+";"+CornerEntry.snapshot());
+                    answer(request,ready,"系统界面（"+(!current?"配置已变化，请重试":!version?"系统框架版本未匹配":code!=1?"系统框架尚未就绪":"与系统框架通信正常")+"）");
+                    if(current && !ready && enabled)onSwitchChanged();
+                }
+            };
+            try {
+                android.app.BroadcastOptions delivery=android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true);
+                context.sendBroadcast(new Intent(NativeWorkspaceGuard.ACTION).setPackage("android")
+                        .putExtra("operation",wasEnabled?"readiness":"probe").putExtra("reply",remote(reply)),null,delivery.toBundle());
+            } catch(RuntimeException unavailable) {
+                main.removeCallbacks(timeout);timeout.run();
+                diagnostic("ENTRY_CHECK_ERROR",unavailable.getClass().getSimpleName());
+            }
         }
         static Object factory, transitions;
         static Executor executor;
@@ -321,6 +382,7 @@ public final class StepRuntime {
             try {
                 CornerEntry.install(cl);
                 NativeTiles.install(cl);
+                NativeBrightnessBinding.install(cl);
                 WorkspaceRoutes.installNotification(cl);
                 Class<?> module = Class.forName("com.android.wm.shell.dagger.WMShellBaseModule", false, cl);
                 for (Method m : module.getDeclaredMethods()) {
@@ -350,7 +412,7 @@ public final class StepRuntime {
                     @Override public void onReceive(Context c, Intent i) {
                         ResultReceiver r = sink(i);
                         String op = i.getStringExtra("operation");
-                        if ("query".equals(op)) answer(i,factory!=null && executor!=null && transitions!=null && CornerEntry.supported,"系统界面（"+CornerEntry.capability+"）");
+                        if ("query".equals(op)) checkEntry(i);
                         else if ("stop".equals(op)) LiveWorkspace.stop("手动退出工作区");
                         else if ("quickPins".equals(op) && LiveWorkspace.running()) LiveWorkspace.current.updateQuickPins(i);
                     }

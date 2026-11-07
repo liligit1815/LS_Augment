@@ -35,13 +35,17 @@ console.log('配置往返、无效文件拒绝、星期选择、随机时间与�
 
 const legacy=structuredClone(snapshot);delete legacy.settings['store:count'];delete legacy.settings['clock:rows'];assert.equal(parseSettings(JSON.stringify(legacy),status,settings).settings['store:count'],5);assert.equal(parseSettings(JSON.stringify(legacy),status,settings).settings['clock:rows'],2);
 
-const {diagnosticExample}=await import('../app/diagnostic-example.ts');
+const {load}=await import('./load-current-module.mjs');
+const {buildLog}=load('app/current-log.ts');
+const definitions=load('app/current-editor-data.json').defaults;
 for(const shoulder of [false,true])for(const ai of [false,true]){
- const text=diagnosticExample(shoulder,ai,'2026-09-06T00:00:00Z');
- assert.equal(text.includes('[肩键详细诊断：模拟调用样例]'),shoulder);
- assert.equal(text.includes('[AI 触发器详细诊断：模拟调用样例]'),ai);
- assert(text.includes('actual_capture=NOT_COLLECTED'));
- assert(text.includes('hook_installed=UNKNOWN'));
+ const keys=[definitions.SHOULDER_DIAGNOSTICS.key,definitions.AI_TRIGGER_DIAGNOSTICS.key];
+ const text=buildLog({[keys[0]]:shoulder?'1':'0',[keys[1]]:ai?'1':'0'},'2026-09-06T00:00:00Z');
+ const enabled=text.split('[配置开启的功能 · 不等同于真机生效]')[1].split('[配置快照')[0];
+ assert.equal(enabled.includes(keys[0]+'=1'),shoulder);
+ assert.equal(enabled.includes(keys[1]+'=1'),ai);
+ assert(text.includes('phone_logcat=NOT_COLLECTED'));
+ assert(text.includes('hook_install_and_hits=NOT_COLLECTED'));
 }
 console.log('日志导出随详细诊断开关组合变化，并明确未采集真实手机：通过');
 

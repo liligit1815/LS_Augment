@@ -104,7 +104,7 @@ def source_map():
     before = "ownerUid=uid;userId=user;windowId=id;"
     assert journal.count(before) == 1
     journal=journal.replace(before, before + 'displayName="DuoAtomic-"+uid+"-w"+id+"-12345678-1234-1234-1234-123456789abc";')
-    journal=journal.rsplit('}',1)[0]+'''AtomicWorkbenchJournal(android.content.Context context,int uid,int user,int slot,AtomicWorkbenchRecoveryScope.ReaderProfile reader){this(context,uid,user,slot);if(reader!=AtomicWorkbenchRecoveryScope.ReaderProfile.LOW4)throw new IllegalArgumentException("this test covers LOW4 only");}}'''
+
     sources["ls/augment/com/AtomicWorkbenchJournal.java"] = journal
     sources["ls/augment/com/TestAtomicWorkbenchLaunch.java"] = BASE["TEST"]
     sources["ls/augment/com/TestExactShare.java"] = TEST

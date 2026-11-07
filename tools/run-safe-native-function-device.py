@@ -4,6 +4,7 @@ Default: real side-gesture pixels, native screenshot/recording, owned FLAG_SECUR
 capture. Optional installer confirmation and native recent-memory cases complete
 nine inventory features. Review the selected cases before operating a device.
 """
+from regression_journal_io import replace_flushed_file
 from pathlib import Path
 import argparse
 import base64
@@ -46,7 +47,7 @@ def atomic(path, value):
         output.write(json.dumps(value, ensure_ascii=False, indent=2))
         output.flush()
         os.fsync(output.fileno())
-    temporary.replace(path)
+    replace_flushed_file(temporary,path)
 
 
 def mp4_handlers(raw):
@@ -683,7 +684,8 @@ class Runner:
         case_filter = getattr(self, 'gesture_case', None)
         result = self.instrument('back-gesture-customization', 'gesture', case_filter=case_filter)['backGestureCustomization']
         remote = result.get('evidence', '')
-        if not re.fullmatch(r'/storage/emulated/0/Android/data/ls\.augment\.com/files/back-gesture-tests/[A-Za-z0-9_.-]+', remote):
+        if (not isinstance(remote, str) or remote.rsplit('/', 1)[-1] in ('.', '..')
+                or not re.fullmatch(r'/storage/emulated/0/Android/data/ls\.augment\.com/files/back-gesture-tests/[A-Za-z0-9_.-]+', remote)):
             raise RuntimeError('Unexpected gesture evidence location; no phone files pulled')
         evidence = self.folder / 'gesture-pixels'
         pulled = self.ar.adb('pull', remote, str(evidence), timeout=90).decode('utf-8', 'replace')

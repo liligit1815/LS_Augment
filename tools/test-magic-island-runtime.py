@@ -46,11 +46,11 @@ files={
  public SaveResult save(Map<String,String> m){config.putAll(m);if("1".equals(m.get(ConfigSchema.NATIVE_ISLAND_SELECTED)))config.put(SystemUiOptions.ISLAND,"0");return new SaveResult();}
  public static class SaveResult{public boolean success=true;public String message="";}}''',
 'ls/augment/com/ConfigSchema.java':'package ls.augment.com;public class ConfigSchema{public static String NATIVE_ISLAND_SELECTED="native";}',
-'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo";}',
+'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo",PREFIX="ls_augment_rm_";}',
 'ls/augment/com/NativeIslandSceneOptions.java':'package ls.augment.com;public class NativeIslandSceneOptions{public static String ENABLED="scenes";public static String key(String id){return ENABLED+"_"+id;}}',
 'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;import android.content.*;import java.util.*;public class FeatureSettings{
  public static Map<String,Boolean> flags=new HashMap<>();public static Map<String,String> diagnostics=new HashMap<>();public static List<Runnable> listeners=new ArrayList<>();
- public static boolean enabled(Context c,String k){return flags.getOrDefault(k,false);}public static void diagnostic(Context c,String k,String v){diagnostics.put(k,v);}
+ public static boolean enabled(Context c,String k){return flags.getOrDefault(k,k.equals("ls_augment_rm_island_music")||k.equals("ls_augment_rm_island_charging"));}public static void diagnostic(Context c,String k,String v){diagnostics.put(k,v);}
  public static String diagnosticValue(Context c,String k){return diagnostics.getOrDefault(k,"");}
  public static void addSnapshotListener(Context c,Runnable r){listeners.add(r);}public static void removeSnapshotListener(Runnable r){listeners.remove(r);}
  public static void changed(){for(Runnable r:new ArrayList<>(listeners))r.run();android.os.Handler.drain();}}''',
@@ -99,7 +99,7 @@ public class TestMagicSelection{static void check(boolean b,String s){if(!b)thro
  check(NativeIslandMode.enabled(c,"fullscreen")&&!NativeIslandMode.enabled(c,"ordinary"),"independent state keys conflated");
  Bundle b=new Bundle();b.putBoolean("enabled",true);b.putString("mode","fullscreen");AppConfig.config.put("duo","1");
  check(NativeIslandControl.call(c,null,b,1000,"com.android.systemui",new String[]{"com.android.systemui"}).getBoolean("ok"),"modern selection rejected because old key is off");
- check("1".equals(AppConfig.config.get("native"))&&"0".equals(AppConfig.config.get("duo")),"selection not exclusive");
+ check("1".equals(AppConfig.config.get("duo")),"system selection did not update unified Duo switch");
  check(!NativeIslandControl.call(c,null,b,101000,"com.android.systemui",new String[]{"com.android.systemui"}).getBoolean("ok"),"cross-user caller allowed");
  check(!NativeIslandControl.call(c,null,b,1000,"other",new String[]{"other"}).getBoolean("ok"),"wrong caller allowed");
  c.resolver.settings.put("dynamic_island_function_switch",0);check(!NativeIslandControl.call(c,null,b,1000,"com.android.systemui",new String[]{"com.android.systemui"}).getBoolean("ok"),"stale event allowed");
@@ -118,7 +118,7 @@ public class TestMagicIsland{
  static class Child extends PermanentIslandManager{}static class Bad extends PermanentIslandManager{public String mAppIslandList;}
  public static void main(String[] args)throws Throwable{
  TestMagicSelection.run();Context c=new Context();c.resolver.settings.put("dynamic_island_function_switch",1);
- FeatureSettings.flags.put("native",true);FeatureSettings.flags.put("scenes",true);
+ FeatureSettings.flags.put("duo",true);FeatureSettings.flags.put("scenes",true);
  AugmentModule mod=new AugmentModule();check(MagicIslandScenes.install(mod,TestMagicIsland.class.getClassLoader())==2,"receiver contract missing");
  Child host=new Child();MagicIslandScenes gate=new MagicIslandScenes(c,host);gate.start();
  for(String id:new String[]{"charging_island","media_island","zte.com.cn.alarmclock_timer_countdown","com.zte.cn.zteshare_share_transfer","cn.zte.aigcinput_notebook_ai_text_generation_progress",
@@ -141,8 +141,8 @@ public class TestMagicIsland{
  check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"master OFF did not restore native behavior");
  CardMessage absent=new CardMessage("zte.com.cn.alarmclock_timer_countdown");mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},absent,false);
  check(!host.mAppIslandList.containsKey(absent.id),"master OFF altered native UPDATE semantics");
- FeatureSettings.flags.put("scenes",true);FeatureSettings.flags.put("duo",true);
- check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"inactive owner still filters");FeatureSettings.flags.put("duo",false);
+ FeatureSettings.flags.put("scenes",true);FeatureSettings.flags.put("duo",false);
+ check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"inactive owner still filters");FeatureSettings.flags.put("duo",true);
  gate.close();check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"closed host still filters");
  boolean rejected=false;try{new MagicIslandScenes(c,new Bad());}catch(NoSuchFieldException expected){rejected=true;}check(rejected,"shadowed incompatible field accepted");
  rejected=false;try{new MagicIslandScenes(c,new Object());}catch(NoSuchMethodException expected){rejected=true;}check(rejected,"unknown host accepted");
@@ -231,7 +231,7 @@ public static void run()throws Throwable{
  {"meeting","com.zte.nebulatranslation","transcription"},{"ai","com.zte.nebulatranslation","call"},{"nfc_transfer","com.zte.multscr","com.zte.multscr.share_transfer"},{"ai_memory","com.zte.ai.knowledge","aik_island_main_card"}}){
   String scene=item[0],pkg=item[1],id=item[2];MagicIslandAppCards.verify(loader,scene);
   Context c=new Context();c.packageName=pkg;c.resolver.settings.put("dynamic_island_function_switch",1);ActivityInfo entry=new ActivityInfo();entry.enabled=true;c.pm.pages.put(NativeIslandMode.NEW_PAGE,entry);
-  FeatureSettings.flags.clear();FeatureSettings.flags.put("native",true);FeatureSettings.flags.put("scenes",true);
+  FeatureSettings.flags.clear();FeatureSettings.flags.put("duo",true);FeatureSettings.flags.put("scenes",true);
   AugmentModule m=new AugmentModule();MagicIslandAppCards.install(m,loader,pkg);CardPusher p=new CardPusher(c,"com.android.systemui");
   m.call(p,"connect",new Class[]{});check("ready:42:42".equals(FeatureSettings.diagnostics.get("scenes_"+scene+"_magic_source_capability")),"connected source not ready");
   CardMessage card=new CardMessage(id);Object action=card.action,view=card.view;

@@ -92,7 +92,11 @@ class Switch extends View {
     // CompoundButton performs toggle (and checked-change callback) before click.
     @Override void performClick() { setChecked(!checked); super.performClick(); }
 }
+class R { static class string {static final int status_hideappsactivity_25=25,status_hideappsactivity_26=26,status_hideappsactivity_27=27;} }
+class ResourceContext {String getString(int id,Object value){return String.format(switch(id){
+    case 25 -> "用户空间不可用：%1$s";case 26 -> "无法可靠识别当前用户：%1$s。仍可手动选择已验证空间；已保留自动隐藏范围，“仅当前用户”模式暂停执行。";case 27 -> "当前用户已核验：空间 %1$s";default -> throw new AssertionError(id);},value);}}
 class TextView extends View {
+    ResourceContext getContext(){return new ResourceContext();}
     String text = "";
     void setText(String value) { text = value; }
     void setTextColor(int value) { }
@@ -334,7 +338,7 @@ class RootHideManager {
     int targetReads, classificationReads, stateReads, batchCalls, mutations, mirrorWrites, targetSaves;
     enum RootState { GRANTED, DENIED }
     enum State { VISIBLE, HIDDEN, MISSING, ERROR }
-    enum Aggregate { ALL_VISIBLE, ALL_HIDDEN, MIXED, EMPTY, ERROR }
+    enum Aggregate { ALL_VISIBLE, ALL_HIDDEN, MIXED, EMPTY, MISSING, ERROR }
     static class Summary {final Aggregate aggregate; Summary(Aggregate value){aggregate=value;}}
     Summary summary() {
         if(states.values().stream().anyMatch(s->s==State.ERROR))return new Summary(Aggregate.ERROR);

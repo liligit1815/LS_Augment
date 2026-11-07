@@ -7,6 +7,17 @@ import ls.augment.com.step.WorkspaceCapacity;
 /** Shared by Duo's settings page and the phone-side workspace preferences provider. */
 public final class StepConfig {
     static final String UPPER = "atomic_workbench_upper_enabled";
+    static final String PAGE_INDICATOR = "atomic_workbench_page_indicator";
+
+    public static boolean pageIndicator(Context context) {
+        return new AppConfig(context).getBoolean(PAGE_INDICATOR);
+    }
+    public static boolean savePageIndicator(Context context, boolean enabled) {
+        if (ResetWriteFence.blocked()) return false;
+        boolean saved = new AppConfig(context).save(Map.of(PAGE_INDICATOR, enabled ? "1" : "0")).success;
+        if (saved) ls.augment.com.step.StepRuntime.notifyUiPreferences(context);
+        return saved;
+    }
 
     public static boolean enabled(Context context) {
         return new AppConfig(context).getBoolean(AtomicWorkbenchConfig.ENABLED);

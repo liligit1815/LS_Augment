@@ -38,5 +38,13 @@
     "note": "Original upstream application launcher icon bytes.",
     "bytes": 21560,
     "sha256": "3B949A7A6847ACCEFF819EDC0E34B635FBA858DB9FF1E52E4F41465B0464DFCF"
+  },
+  {
+    "project": "HyperIsland",
+    "file": "hyperisland.svg",
+    "source": "https://github.com/1812z/HyperIsland/blob/a24c9ee6f11594c57ea8e32e1934c931ddad62f4/android/app/src/main/res/drawable/ic_launcher.xml",
+    "note": "Upstream launcher vector paths, colors, viewport and group scaling preserved as SVG.",
+    "bytes": 616,
+    "sha256": "65E229517528FDE3E0B09DB8717C825A26B940431DBC01CB9E542963A3CD0086"
   }
 ]

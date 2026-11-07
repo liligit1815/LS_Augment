@@ -10,6 +10,11 @@ python "$ROOT/tools/test-editor-native-back.py"
 python "$ROOT/tools/test-config-transfer-action-host.py"
 python "$ROOT/tools/test-atomic-workbench-share-return-grants.py"
 python "$ROOT/tools/test-systemui-host-permissions.py"
+python "$ROOT/tools/test-step-output-router.py"
+python "$ROOT/tools/test-step-display-recovery.py"
+python "$ROOT/tools/test-step-entry.py"
+python "$ROOT/tools/test-step-brightness.py"
+python "$ROOT/tools/test-step-native-feedback.py"
 python "$ROOT/tools/test-native-signal-level-runtime.py"
 python "$ROOT/tools/test-boot-crash-evidence.py"
 python "$ROOT/tools/test-boot-evidence-lifecycle.py"
@@ -57,6 +62,14 @@ javac -encoding UTF-8 -source 17 -target 17 -d "$TMP" \
   "$ROOT/android/app/src/main/java/ls/augment/com/hook/SignalStackLayout.java" \
   "$ROOT/tools/TestSignalStackLayout.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/StatusBarLayoutSpec.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/DuoIslandPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/BatteryPercentagePolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/IslandDownloadConfig.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/IslandNoticeRules.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/NativeIslandCardProtocol.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/MagicIslandPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/ScopeRestartPolicy.java" \
+  "$ROOT/android/app/src/main/java/ls/augment/com/AtomicWorkbenchSlotDomain.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/ConfigSchema.java" \
   "$ROOT/android/app/src/main/java/ls/augment/com/FanScreenOffPolicy.java" \
   "$ROOT/tools/TestFanScreenOffPolicy.java" \
@@ -513,6 +526,7 @@ python "$ROOT/tools/test-recents-card-radius-publisher.py"
 python "$ROOT/tools/test-recents-radius-store.py"
 python "$ROOT/tools/test-recents-radius-loading-ui.py"
 python "$ROOT/tools/test-screen-timeout-runtime.py"
+python "$ROOT/tools/test-screen-timeout-picker.py"
 python "$ROOT/tools/test-screenshot-crop-runtime.py"
 python "$ROOT/tools/test-settings-private-storage.py"
 python "$ROOT/tools/test-module-system-settings.py"

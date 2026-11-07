@@ -26,17 +26,14 @@ import {
 } from './current-ui';
 import { NativeFold, NativeSelect } from './current-native-controls';
 import { OptionInput } from './current-feature-input';
-import { CurrentStatusPreview } from './current-status-preview';
 import { NotificationEditor } from './current-notification-editor';
 import inventory from './current-status-inventory.json';
 import icons from './current-status-icons.json';
 import {
-  statusDesignGroups,
   statusOptionRoute,
 } from './current-status-navigation';
 import './current-status-design.css';
 import {
-  IconDirectory,
   IconDetails,
   SpacingEditor,
   IconVisibility,
@@ -54,17 +51,10 @@ import {
 
 import {
   PlacementEditor,
-  PlacementList,
 } from './current-status-placement-editor';
-import { placementRoute } from './current-status-placement';
-import {
-  layoutBackupKey,
-  layoutSnapshot,
-  restoreLayoutChanges,
-  resetEditorChanges,
-  arrangeIndividualChanges,
-} from './current-status-recovery';
 import { ClockFormatHelp } from './current-clock-format-help';
+import { StatusWorkspace, StatusProperties, SystemCatalog, NotificationPosition, IndividualSize } from './current-status-workspace';
+import { CurrentStatusAssets } from './current-status-assets';
 
 const k = (name: string) => 'ls_augment_statusbar_' + name;
 const rm = (name: string) => 'ls_augment_rm_' + name;
@@ -487,28 +477,6 @@ function Summary() {
   );
 }
 
-function Overview() {
-  return (
-    <div className="sd-page sd-overview">
-      {statusDesignGroups.map((group, index) => (
-        <Section title={group.title} key={group.title}>
-          <Card className="d-preference-group" label={group.title}>
-            {index === 0 && (
-              <Toggle
-                name="ls_augment_systemui_master"
-                title="启用状态栏自定义"
-                help="控制状态栏布局与组件配置，关闭保留参数；独立的原生功能遵循各自开关。"
-              />
-            )}
-            {group.entries.map((entry) => (
-              <Entry key={entry.route} {...entry} />
-            ))}
-          </Card>
-        </Section>
-      ))}
-    </div>
-  );
-}
 function ComponentSize({
   id,
   circle = false,
@@ -524,7 +492,7 @@ function ComponentSize({
   return (
     <NativeFold
       title={title}
-      help="调整当前对象的显示大小；整体位置、排列顺序与组件之间的距离在状态栏布局中统一设置。"
+      help="调整当前对象的显示大小；位置、数字显示顺序与组件之间的距离在对应图标详情中设置。"
     >
       <Range
         name={name}
@@ -537,43 +505,6 @@ function ComponentSize({
         恢复{title}
       </Button>
     </NativeFold>
-  );
-}
-function LayoutPositions() {
-  const m = useModel();
-  return (
-    <Section title="图标位置与顺序">
-      <Card>
-        <NativeFold
-          title="通知图标位置与顺序"
-          help="通知作为整体移动和排序，内部应用顺序遵循系统。"
-        >
-          <PlacementEditor id="notifications" />
-        </NativeFold>
-        <NativeFold
-          title="系统图标位置与顺序"
-          help="逐个配置系统图标的位置和顺序；通知作为一个整体，可与系统图标一起排序。"
-        >
-          <PlacementList />
-        </NativeFold>
-        <NativeFold
-          title="整理系统图标位置"
-          help="整理各系统图标与时钟、电池、网速和指标；保留通知位置、各项大小与显隐。可恢复方案前。"
-        >
-          <Button
-            onClick={() => {
-              m.set(layoutBackupKey, layoutSnapshot(m.values));
-              Object.entries(arrangeIndividualChanges(m.values)).forEach(
-                ([key, value]) => m.set(key, value),
-              );
-              m.tell('已整理系统图标，通知位置保留');
-            }}
-          >
-            自动排列系统图标
-          </Button>
-        </NativeFold>
-      </Card>
-    </Section>
   );
 }
 function RowRule({ title }: { title: string }) {
@@ -616,237 +547,11 @@ function Component({ id, children }: { id: string; children?: ReactNode }) {
     </Toggle>
   );
 }
-function Preview() {
-  const m = useModel();
-  return (
-    <div className="sd-preview">
-      <small>布局示例 · 点击对象打开对应设置</small>
-      <CurrentStatusPreview
-        individual
-        values={m.values}
-        onSelect={(id) => m.go(placementRoute(m.values, id))}
-      />
-      {Number(m.values[k('dual_row_gap_dp')] || 0) < 0 && (
-        <p className="c-native-note">
-          已保存负行间距；示例上下行共享横向空间，当前按 0 dp 防止重叠。
-        </p>
-      )}
-      <p className="c-native-note">
-        示例空间不足时会等比例缩小；实际挖孔、字号与可用空间需在手机端核验。
-      </p>
-    </div>
-  );
-}
-const arrangedZones = [0, 0, 6, 8, 1, 1, 1, 7, 7, 7];
-function Arrangement() {
-  const m = useModel(),
-    [draft, setDraft] = useState<Record<string, string> | null>(null),
-    [preset, setPreset] = useState('');
-  const presetChanges = (index: number) => {
-    const changes: Record<string, string> = {
-      ls_augment_systemui_master: '1',
-      [k('position_size_only')]: '0',
-      [rowModeKey]: index === 0 ? '1' : '2',
-      [rm('signal_dual')]: '0',
-      [rm('statusbar_hide')]: '0',
-      [k('native_battery_enabled')]: '0',
-      [k('clock_rows')]: index === 1 ? '2' : '1',
-      [k('clock_custom')]: index ? '1' : '0',
-      [k('clock_pattern')]: 'HH:mm',
-      [k('clock_pattern_second')]: index === 1 ? 'MM/dd E' : '',
-      [k('connectivity_group')]: index ? '1' : '0',
-      [k('connectivity_size_dp')]: '26',
-      [k('notification_hide')]: '0',
-      [k('notification_two_rows')]: '0',
-      [k('system_two_rows')]: '0',
-      [k('network_display')]: '3',
-      [k('dual_row_gap_dp')]: '2',
-    };
-    if (index === 0) {
-      changes[k('bluetooth_style')] = '0';
-      changes[k('vpn_style')] = '0';
-    }
-    [
-      'height_dp',
-      'left_margin_dp',
-      'right_margin_dp',
-      'top_margin_dp',
-      'bottom_margin_dp',
-      'clock_size_sp',
-      'clock_width_dp',
-    ].forEach((name) => (changes[k(name)] = '0'));
-    componentIds.forEach((id, at) => {
-      changes[item(id, 'on')] =
-        at < 4 || index === 2 || (index === 1 && id === 'network') ? '1' : '0';
-      changes[item(id, 'zone')] = String(
-        index === 0
-          ? at < 2
-            ? 2
-            : 8
-          : id === 'clock' && index === 1
-            ? 2
-            : arrangedZones[at],
-      );
-      changes[item(id, 'size')] = String(at < 4 ? 11 : 9);
-      changes[item(id, 'order')] = String(
-        [0, 10, 0, 90, 20, 30, 40, 10, 20, 30][at],
-      );
-    });
-    for (const name of Object.keys(m.values)) {
-      if (name.startsWith('prototype:icon-position:')) changes[name] = '';
-    }
-    return changes;
-  };
-  const apply = () => {
-    m.set(layoutBackupKey, layoutSnapshot(m.values));
-    Object.entries(draft || {}).forEach(([key, value]) => m.set(key, value));
-    setDraft(null);
-    m.tell('已应用到网页原型');
-  };
-  return (
-    <>
-      <Section title="布局方案">
-        <Card>
-          <Preview />
-          <div className="sd-presets">
-            {['原生简洁', '双排信息', '性能监控'].map((title, index) => (
-              <Button
-                key={title}
-                onClick={() => {
-                  setPreset(title);
-                  setDraft(presetChanges(index));
-                }}
-              >
-                {title}
-              </Button>
-            ))}
-          </div>
-          {draft && (
-            <div className="sd-preset-draft">
-              <strong>{preset} · 预览中</strong>
-              <p className="c-native-note">
-                应用将替换组件位置、大小、显示开关、排数和时钟／电池样式；素材、字体文件与逐图标间距保留。
-              </p>
-              <CurrentStatusPreview
-                individual
-                values={{ ...m.values, ...draft }}
-              />
-              <div className="sd-actions">
-                <Button secondary onClick={() => setDraft(null)}>
-                  取消
-                </Button>
-                <Button onClick={apply}>应用此预设</Button>
-              </div>
-            </div>
-          )}
-          <Button
-            secondary
-            onClick={() =>
-              m.dialog(
-                '恢复状态栏空间',
-                <>
-                  <p>
-                    只恢复整栏单双排、四周留白、高度和行间距；各组件位置、大小、显隐、素材和字体保留。
-                  </p>
-                  <footer>
-                    <button onClick={m.close}>取消</button>
-                    <button
-                      onClick={() => {
-                        m.set(rowModeKey, 'system');
-                        [
-                          'height_dp',
-                          'left_margin_dp',
-                          'right_margin_dp',
-                          'top_margin_dp',
-                          'bottom_margin_dp',
-                          'dual_row_gap_dp',
-                        ].forEach((name) => m.set(k(name), '0'));
-                        m.close();
-                      }}
-                    >
-                      恢复
-                    </button>
-                  </footer>
-                </>,
-              )
-            }
-          >
-            恢复状态栏空间
-          </Button>
-          <Toggle
-            name={k('position_size_only')}
-            title="仅调整位置和大小"
-            help="保留原生行数和字体；暂停自定义时钟、双排通知与系统图标、硬件指标及自定义网速，配置保留；双排信号仍独立控制。"
-          />
-        </Card>
-      </Section>
-      <LayoutPositions />
-      <Section title="恢复与撤回">
-        <RecoveryActions />
-      </Section>
-      <Section title="行数与留白">
-        <Card>
-          <fieldset
-            className="sd-fieldset"
-            disabled={m.values[k('position_size_only')] === '1'}
-          >
-            <Choice
-              name={rowModeKey}
-              title="状态栏布局行数"
-              choices={[
-                ['system', '跟随系统'],
-                ['1', '单排'],
-                ['2', '双排'],
-              ]}
-              initial="2"
-            />
-          </fieldset>
-          <p className="c-native-note">
-            整栏行数是原型新增规则。切换只影响当前排版，保留所有对象的双排配置；跟随系统在此示例中按单排显示。
-          </p>
-          <NativeFold title="状态栏高度与四周留白">
-            {[
-              ['height_dp', '状态栏高度（0 原厂，负数减小）', -32, 96],
-              ['left_margin_dp', '左侧留白（dp）', 0, 64],
-              ['right_margin_dp', '右侧留白（dp）', 0, 64],
-              ['top_margin_dp', '顶部留白（dp）', 0, 64],
-              ['bottom_margin_dp', '底部留白（dp）', 0, 64],
-            ].map(([name, title, min, max]) => (
-              <Num
-                key={String(name)}
-                name={k(String(name))}
-                title={String(title)}
-                min={Number(min)}
-                max={Number(max)}
-              />
-            ))}
-          </NativeFold>
-          {m.values[rowModeKey] === '2' &&
-            m.values[k('position_size_only')] !== '1' && (
-              <NativeFold
-                title="两排间距"
-                help="仅在双排布局下生效。负值让两排靠近，正值拉开；切换到单排或跟随系统后保留保存值，切回双排恢复。发生碰撞时示例保留最小安全距离，保存值不变。"
-              >
-                <Num
-                  name={k('dual_row_gap_dp')}
-                  title="两排间距（dp）"
-                  min={-8}
-                  max={64}
-                />
-              </NativeFold>
-            )}
-        </Card>
-      </Section>
-    </>
-  );
-}
-
 function ClockEditor() {
   const m = useModel();
   return (
     <>
       <Card>
-        <Preview />
         <Component id="clock" />
         <RowRule title="时钟行数" />
         <Toggle
@@ -948,7 +653,6 @@ function NetworkEditor() {
   return (
     <>
       <Card>
-        <Preview />
         <RowRule title="网速上下行" />
         <Component id="network">
           <Choice
@@ -996,21 +700,24 @@ function NetworkEditor() {
   );
 }
 function MetricsEditor() {
+  const m = useModel();
+  const focus = m.values['prototype:metric:focus'];
   return (
     <>
       <Card>
-        <Preview />
-        <RowRule title="实时指标" />
+        <p className="c-native-note">硬件指标与其他系统图标共用位置、顺序和间距规则。</p>
         <p className="c-native-note">
           这里使用示例数据；手机数据不可用时显示“—”。当前不提供未经实现的采样间隔配置。
         </p>
-        {componentIds.slice(4, 9).map((id, index) => (
+        {componentIds.slice(4, 9).filter(id => !focus || id === focus).map((id) => (
           <Component id={id} key={id}>
+            {id === 'gpu' && <output className="c-native-note">示例：GPU 温度读数不可用，预览显示“—”；配置保留，恢复读数后继续显示。</output>}
+            <SpacingEditor id={id} />
             <Choice
               name={k(id + '_decimals')}
               title="小数位数"
               choices={['0 位（整数）', '1 位', '2 位', '3 位']}
-              initial={index === 2 || index === 4 ? '1' : '0'}
+              initial={id === 'battery_temp' || id === 'power' ? '1' : '0'}
             />
           </Component>
         ))}
@@ -1082,6 +789,7 @@ function NativeBatteryEditor() {
       </Card>
       <Card>
         <NativeOption option={optionByKey[rm('battery_colors')]} />
+        <Button secondary onClick={() => m.go('status_battery_text')}>电量文字与字体</Button>
       </Card>
     </>
   );
@@ -1114,7 +822,6 @@ function BatteryEditor() {
   return (
     <>
       <Card>
-        <Preview />
         <p className="c-native-note">
           开启后由圆环展示电量，内部三个区域按所选内容接管对应图标。未接管的图标仍可在图标管理中配置；关闭后恢复目录，所有原配置保留。
         </p>
@@ -1358,64 +1065,7 @@ function BatchHiddenIcons() {
     </CurrentContext.Provider>
   );
 }
-function RecoveryActions() {
-  const m = useModel();
-  const confirm = (restore: boolean) =>
-    m.dialog(
-      restore ? '恢复方案前' : '恢复整个状态栏编辑器默认配置',
-      <>
-        <p>
-          {restore
-            ? '恢复最近一次预设、自动整理或整体重置前的编辑器配置，包括此后的手动调整。'
-            : '重置布局、逐图标位置、时钟、指标和原有组件样式。素材、字体、逐图标显隐与边距，以及独立原生功能开关保留。可用“恢复方案前”撤回。'}
-        </p>
-        <footer>
-          <button onClick={m.close}>取消</button>
-          <button
-            onClick={() => {
-              const changes = restore
-                ? restoreLayoutChanges(m.values)
-                : resetEditorChanges(m.values);
-              if (!changes) {
-                m.tell('没有可恢复的方案');
-                m.close();
-                return;
-              }
-              if (!restore) m.set(layoutBackupKey, layoutSnapshot(m.values));
-              m.set('prototype:status:restoring', '1');
-              Object.entries(changes).forEach(([key, value]) =>
-                m.set(key, value),
-              );
-              m.set('prototype:status:restoring', '0');
-              if (restore) m.set(layoutBackupKey, '');
-              m.close();
-              m.tell(restore ? '已恢复方案前配置' : '已恢复编辑器默认配置');
-            }}
-          >
-            确认恢复
-          </button>
-        </footer>
-      </>,
-    );
-  return (
-    <Card>
-      <Button
-        secondary
-        disabled={!restoreLayoutChanges(m.values)}
-        onClick={() => confirm(true)}
-      >
-        恢复方案前
-      </Button>
-      <NativeFold title="恢复默认配置">
-        <Button secondary onClick={() => confirm(false)}>
-          恢复整个状态栏编辑器默认配置
-        </Button>
-      </NativeFold>
-    </Card>
-  );
-}
 function SystemDisplayRules() {
-  const m = useModel();
   return (
     <Card>
       <Toggle
@@ -1440,61 +1090,6 @@ function SystemDisplayRules() {
       </NativeFold>
       <NativeOption option={optionByKey[k('hint_priority')]} />
     </Card>
-  );
-}
-function IconManagement() {
-  const m = useModel();
-  const blocked =
-    layoutIsSingle(m.values) || m.values[k('position_size_only')] === '1';
-  return (
-    <IconDirectory
-      general={
-        <Card>
-          <NativeFold
-            title="系统图标通用配置"
-            help="设置系统图标通用大小、默认单双排与默认间距。单项行位置和独立间距优先；每个图标的位置与顺序在状态栏布局中调整。"
-          >
-            <ComponentSize id="system_icons" />
-            <Toggle
-              name={k('system_two_rows')}
-              title="系统图标分两排"
-              disabled={blocked}
-            />
-            <RowRule title="系统图标分两排" />
-            <SpacingEditor id="system-default" title="系统图标默认间距" />
-            <Button secondary onClick={() => m.go('status_behavior')}>
-              前往显示与交互调整系统显示规则
-            </Button>
-          </NativeFold>
-        </Card>
-      }
-      editors={
-        <Card>
-          <Entry
-            route="status_clock"
-            title="时钟"
-            summary="日期、秒与毫秒、单双排和文字样式"
-          />
-          <Entry
-            route="status_network"
-            title="网速与网络设置"
-            summary="网速、未接管的网络图标及双排信号"
-          />
-          <Entry
-            route="status_metrics"
-            title="硬件数据实时指标"
-            summary="CPU / GPU 温度、电池温度、电流与功率"
-          />
-          {!managedByConnectivity(m.values, 'battery_text') && (
-            <Entry
-              route="status_battery_text"
-              title="电量文字"
-              summary="百分号、按电量着色与字体"
-            />
-          )}
-        </Card>
-      }
-    />
   );
 }
 function NotificationsEditor() {
@@ -1523,15 +1118,20 @@ export function StatusDesignPage({ route }: { route: string }) {
     ),
     ...parent.values,
   };
+  if (values[rowModeKey] === 'system') values[rowModeKey] = '1';
   if (values[k('notification_hide')] === '1')
     values[item('notifications', 'on')] = '0';
   const pending = { ...values };
   const model = {
     ...parent,
+    numericDialog: true,
     values,
     set(key: string, value: string) {
       pending[key] = value;
       parent.set(key, value);
+      if (['prototype:status:surface', 'prototype:asset-surface', 'prototype:notification-spacing-surface'].includes(key)) {
+        ['prototype:status:surface', 'prototype:asset-surface', 'prototype:notification-spacing-surface'].forEach(scope => parent.set(scope, value));
+      }
       if (key === item('notifications', 'on'))
         parent.set(k('notification_hide'), value === '1' ? '0' : '1');
       if (key === k('connectivity_group') && value === '1') {
@@ -1585,28 +1185,29 @@ export function StatusDesignPage({ route }: { route: string }) {
           status_battery_text: '电量文字',
           status_icons: '图标管理',
           status_system_arrangement: '图标管理',
-          status_metrics: '实时指标设置',
+          status_metrics: componentTitles[componentIds.indexOf(values['prototype:metric:focus'])] || '实时指标设置',
           status_notifications: '通知图标设置',
         } as Record<string, string>
       )[route];
   return (
     <CurrentContext.Provider value={model}>
-      {route === 'status_layout' ? (
-        <Overview />
-      ) : route === 'status_arrangement' ? (
-        <div className="sd-page sd-editor">
-          <Arrangement />
-        </div>
+      <StatusWorkspace route={route}>
+      {route === 'status_layout' || route === 'status_arrangement' ? (
+        <StatusProperties behavior={<NativeOptions route="status_behavior" />} />
+      ) : route === 'status_assets' || route.startsWith('asset/') ? (
+        <CurrentStatusAssets key={route} id={route.startsWith('asset/') ? route.slice(6) : undefined}/>
+      ) : route === 'status_icons' || route === 'status_system_arrangement' ? (
+        <SystemCatalog general={<><SystemDisplayRules/><ComponentSize id="system_icons"/><SpacingEditor id="system-default" title="系统图标默认间距"/><Toggle name={k('system_two_rows')} title="系统图标默认分两排" disabled={layoutIsSingle(values)}/><RowRule title="系统图标分两排"/></>} combined={<BatteryEditor/>}/>
       ) : (
         <div className="sd-page sd-editor">
           <Section title={label}>
             {values.ls_augment_systemui_master === '0' && (
               <p className="c-native-note">
-                状态栏自定义已关闭，布局与组件配置保留；独立原生功能遵循各自开关。
+                状态栏自定义已关闭；独立原生功能遵循各自开关。
               </p>
             )}
             {iconId ? (
-              <IconDetails id={iconId} />
+              <><IndividualSize id={iconId}/><IconDetails id={iconId} /></>
             ) : route === 'status_behavior' ? (
               <>
                 <Card>
@@ -1626,15 +1227,13 @@ export function StatusDesignPage({ route }: { route: string }) {
               <NativeBatteryEditor />
             ) : route === 'status_battery_text' ? (
               <BatteryTextEditor />
-            ) : route === 'status_icons' ||
-              route === 'status_system_arrangement' ? (
-              <IconManagement />
             ) : (
-              <NotificationsEditor />
+              <><NotificationPosition/><NotificationsEditor /></>
             )}
           </Section>
         </div>
       )}
+      </StatusWorkspace>
     </CurrentContext.Provider>
   );
 }

@@ -74,13 +74,13 @@ files = {
  check(module.errors==0&&AugmentModule.hooks.size()==4,"all contracts checked before hooks installed");
  CountdownNotificationService s=create();check(!gate()&&s.syncs==0,"default does not enable publisher");
  FeatureSettings.change("countdown",true);FeatureSettings.change("master",true);check(!gate(),"native mode required");
- FeatureSettings.change("native",true);check(gate()&&s.syncs==1,"enable republishes existing real model");
+ FeatureSettings.change("duo",true);check(gate()&&s.syncs==1,"enable republishes existing real model");
  FeatureSettings.change("countdown",true);check(s.syncs==1,"same configuration does not restart publisher");
  int before=s.cancels;AugmentModule.invoke(s,CountdownNotificationService.class,"arriveLiveIsland",new Class<?>[]{Context.class,int.class},s,1);
  check(s.cancels==before+1&&s.arrivals==1,"duplicate run retires previous island task before scheduling");
  FeatureSettings.change("countdown",false);check(!gate()&&LiveIslandManager.status==0&&"0".equals(LiveIslandManager.text),"off withdraws source and count");
  check(s.syncs==1,"off never resumes timer");FeatureSettings.change("countdown",true);check(s.syncs==2,"reenable reconciles current model once");
- FeatureSettings.change("duo",true);check(!gate(),"Duo engine excludes native completion");FeatureSettings.change("duo",false);
+ FeatureSettings.change("duo",false);check(!gate(),"unified master OFF disables supplemental source");FeatureSettings.change("duo",true);
  android.provider.Settings.System.value=0;check(!gate(),"system native switch respected");android.provider.Settings.System.value=1;
  FeatureUtils.full=true;check(!gate(),"full-screen producer retained");FeatureUtils.full=false;
  AugmentModule.invoke(s,CountdownNotificationService.class,"onDestroy",NONE);Handler.flush();

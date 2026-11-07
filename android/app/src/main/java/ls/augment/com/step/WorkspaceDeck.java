@@ -27,7 +27,8 @@ final class WorkspaceDeck extends FrameLayout {
     final TextView topPage;
     final java.util.List<Runnable> tileRefresh=new ArrayList<>();
     boolean closed;
-    final Runnable tick=new Runnable(){public void run(){if(closed)return;for(Runnable update:tileRefresh)update.run();if(page==1)media.tick();postDelayed(this,500);}};
+    int mediaPoll;
+    final Runnable tick=new Runnable(){public void run(){if(closed)return;for(Runnable update:tileRefresh)update.run();if((mediaPoll++&1)==0)refreshMedia();if(page==1)media.tick();postDelayed(this,500);}};
     final MediaSessionManager sessions;
     MediaController controller;
     MediaSession.Token preferred;
@@ -46,7 +47,7 @@ final class WorkspaceDeck extends FrameLayout {
     WorkspaceDeck(WorkspaceQuickBar owner){
         super(owner.ctx);this.owner=owner;ctx=owner.ctx;
         networks=new StepControlFace(ctx);
-        LinearLayout network=new LinearLayout(ctx);network.setOrientation(1);network.setBackground(StepMaterial.glass(ctx,false,17));
+        LinearLayout network=new LinearLayout(ctx);network.setOrientation(LinearLayout.VERTICAL);network.setBackground(StepMaterial.glass(ctx,false,17));
         int pad=owner.dp(4);network.setPadding(pad,pad,pad,pad);
         LinearLayout first=new LinearLayout(ctx),second=new LinearLayout(ctx);
         network.addView(first,new LinearLayout.LayoutParams(-1,0,1));network.addView(second,new LinearLayout.LayoutParams(-1,0,1));
@@ -55,6 +56,7 @@ final class WorkspaceDeck extends FrameLayout {
         TextView model=StepMaterial.label(ctx,Build.MODEL+"  ⋯",12,true);model.setMaxLines(2);
         model.setContentDescription(Build.MODEL+"，工作区布局与更多工具");
         model.setOnClickListener(owner.tools::menu);
+        StepMaterial.feedback(model);
         LevelControl volume=new LevelControl(owner,false),brightness=new LevelControl(owner,true);
         networks.setControls(network,model,volume,brightness);
         tileRefresh.add(volume::refresh);tileRefresh.add(brightness::refresh);
@@ -68,6 +70,7 @@ final class WorkspaceDeck extends FrameLayout {
             button.setMinimumWidth((int)Math.ceil(caption.getPaint().measureText(kind.label))+owner.dp(6));
             caption.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
             button.addView(caption,-1,-2);button.setFocusable(true);
+            StepMaterial.feedback(button);
             networks.addCode(kind,button);codeButtons.put(kind,button);
         }
         bindCodes(Collections.emptyMap());
@@ -77,9 +80,10 @@ final class WorkspaceDeck extends FrameLayout {
         routeCard.setPadding(owner.dp(16),0,owner.dp(16),0);routeCard.setBackground(StepMaterial.glass(ctx,false,16));
         routeApp=routeLabel(12,false);routeTitle=routeLabel(19,true);routeDetail=routeLabel(13,false);routeHint=routeLabel(11,false);
         topPage=StepMaterial.label(ctx,"打开顶部任务窗口",16,true);topPage.setOnClickListener(v->{if(owner.upper!=null)owner.upper.toggle(true);});
+        StepMaterial.feedback(topPage);
         positionPages();
         sessions=ctx.getSystemService(MediaSessionManager.class);
-        preferred=PlayerCard.previousPlayer(owner.userId);
+        preferred=media.nativeCard==null?PlayerCard.previousPlayer(owner.userId):null;
         if(sessions!=null)try{sessions.addOnActiveSessionsChangedListener(listener,null,owner.host.main);observing=true;}
         catch(SecurityException unavailable){owner.host.log("媒体会话不可用："+unavailable);}
         refreshMedia();
@@ -135,6 +139,7 @@ final class WorkspaceDeck extends FrameLayout {
         String key=label.equals("WLAN")?"wifi":label.equals("移动网络")?"mobile":label.equals("蓝牙")?"bt":
                 label.equals("VPN")?"vpn":label.equals("音量")?"volume":"sun";
         FrameLayout tile=new FrameLayout(ctx);
+        StepMaterial.feedback(tile);
         StepGlyph icon=new StepGlyph(ctx,key,"打开"+label+"设置",()->owner.systemAction(i));
         icon.setClickable(false);icon.setFocusable(false);icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         String spec=key.equals("mobile")?"data":key;
@@ -158,7 +163,7 @@ final class WorkspaceDeck extends FrameLayout {
         };
         tile.setOnClickListener(t->{
             int state=NativeTiles.read(owner.userId,spec);
-            if(state<0)owner.systemAction(i);else if(state>0)owner.activateTile(spec,t);
+            if(key.equals("vpn") || state<0)owner.systemAction(i);else if(state>0)owner.activateTile(spec,t);
             tile.postDelayed(refresh,250);
         });
         tile.setOnLongClickListener(t->{owner.systemAction(i);return true;});tileRefresh.add(refresh);
@@ -182,12 +187,15 @@ final class WorkspaceDeck extends FrameLayout {
         if(!observing){media.bind(null);return;}
         try{
             List<MediaController> candidates=sessions.getActiveSessions(null);
-            MediaController next=null;
+            MediaController next=SystemMediaSelection.current(sessions,candidates);
             for(MediaController c:candidates){
                 if(c.getSessionToken().equals(preferred)){next=c;break;}
-                if(next==null || !playing(next) && playing(c))next=c;
             }
             if(next==null || !next.getSessionToken().equals(preferred))preferred=null;
+            if(media.nativeCard!=null && preferred==null){
+                MediaController nativeSelected=media.nativeCard.selected(candidates,next);
+                if(nativeSelected!=null)next=nativeSelected;
+            }
             if(controller!=null && next!=null && next.getSessionToken().equals(controller.getSessionToken())){renderMedia();return;}
             if(controller!=null)controller.unregisterCallback(player);
             controller=next;if(next!=null)next.registerCallback(player,owner.host.main);
@@ -199,6 +207,8 @@ final class WorkspaceDeck extends FrameLayout {
         if(!observing || closed)return;
         try{
             PopupMenu menu=new PopupMenu(ctx,anchor);
+            menu.getMenu().add("跟随系统播放").setCheckable(true).setChecked(preferred==null)
+                    .setOnMenuItemClickListener(i->{preferred=null;refreshMedia();return true;});
             for(MediaController c:sessions.getActiveSessions(null)){
                 String label=c.getPackageName();
                 try{label=ctx.getPackageManager().getApplicationLabel(ctx.getPackageManager().getApplicationInfo(label,0)).toString();}
@@ -225,6 +235,7 @@ final class WorkspaceDeck extends FrameLayout {
             v.setTranslationX(dx*(getWidth()+owner.dp(8)));v.setVisibility(Math.abs(dx)<.9999f?VISIBLE:INVISIBLE);
             v.setImportantForAccessibility(id(v)==page?IMPORTANT_FOR_ACCESSIBILITY_AUTO:IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
+        owner.updatePageIndicator();
     }
     @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);positionPages();}
     void stopPaging(){android.animation.ValueAnimator old=paging;paging=null;if(old!=null)old.cancel();}
@@ -247,17 +258,6 @@ final class WorkspaceDeck extends FrameLayout {
         if(dy>slop && dy>=dx)vertical=true;
         else if(dx>slop && dx>dy*1.25f)dragging=true;
     }
-    @Override protected void dispatchDraw(android.graphics.Canvas canvas){
-        super.dispatchDraw(canvas);
-        if(!musicActive || !navigating || (page!=MUSIC && page!=ROUTE) || getHeight()<owner.dp(76))return;
-        android.graphics.Paint paint=indicator;
-        float x=getWidth()-owner.dp(21),y=getHeight()-owner.dp(5);
-        for(int i=0;i<2;i++){
-            paint.setColor(StepMaterial.ink(ctx));paint.setAlpha((page==MUSIC?0:1)==i?200:68);
-            canvas.drawCircle(x+i*owner.dp(7),y,owner.dp(2),paint);
-        }
-    }
-    final android.graphics.Paint indicator=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
         super.onInitializeAccessibilityNodeInfo(info);info.setScrollable(true);int i=indexOfChild(card(page));
         if(i>0)info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);

@@ -32,6 +32,7 @@ final class NativeTiles {
                 click=tile.getMethod("click",View.class);fromView=null;companion=null;
             }
             if(click.getReturnType()!=void.class)throw new NoSuchMethodException("未知磁贴点击结果");
+            WorkspaceRecorder.install(cl,click.getParameterTypes()[0]);
             installIcons(cl);
             StepHooks.hookAllConstructors(owner,new StepHook.Discovery(){
                 @Override protected void afterHookedMethod(MethodHookParam p){if(!p.hasThrowable())interactor=p.thisObject;}
@@ -70,6 +71,9 @@ final class NativeTiles {
     static void activate(int id,String key,View anchor)throws ReflectiveOperationException{
         Object t=find(id,key);
         if(t==null || state.getInt(getState.invoke(t))<=0)throw new IllegalStateException("磁贴当前不可用");
-        click.invoke(t,fromView==null?anchor:fromView.invoke(companion,anchor));
+        WorkspaceRecorder.mark(t,id,key);
+        Object source=fromView==null?anchor:fromView.invoke(companion,anchor);
+        if("videoscreen".equals(key))WorkspaceRecorderTap.click(t,id,anchor,source);
+        else click.invoke(t,source);
     }
 }

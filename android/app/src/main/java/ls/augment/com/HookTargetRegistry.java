@@ -34,6 +34,7 @@ public final class HookTargetRegistry {
                     "com.android.gallery3d",
                     "cn.nubia.neostore",
                     "com.zte.mifavor.launcher",
+                    "com.zte.mifavor.zsearch",
                     "cn.nubia.gamehelperline",
                     "cn.nubia.gamehelpmodule",
                     "com.zte.game.plugintrigger",

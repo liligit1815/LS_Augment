@@ -17,8 +17,8 @@ public final class TestLauncherGridBackup {
         Path root=Path.of(args.length==0?".":args[0]).toAbsolutePath().normalize();
         String source=Files.readString(root.resolve("android/app/src/main/java/ls/augment/com/ConfigTransferActivity.java"),StandardCharsets.UTF_8);
         String excluded=between(source,"    private static final Set<String> EXCLUDED=",";",false);
-        String export=between(source,"    private JSONObject exportDocument()throws Exception{","        JSONObject notices=",false);
-        String imports=between(source,"    private void prepareImport(JSONObject document)throws Exception{","        // Health bindings",false);
+        String export="JSONObject values="+between(source,"        JSONObject values=", "        JSONObject notices=", false);
+        String imports="JSONObject values="+between(source.substring(source.indexOf("private void prepareImport(")),"        JSONObject values=", "        // Health bindings", false);
         String fixture="package ls.augment.com;\nimport java.util.*;import java.io.*;\npublic final class LauncherGridBackupFixture {\n"
                 +"private static final Set<String> EXCLUDED="+excluded+";\n"
                 +"private final Config config;private LauncherGridBackupFixture(Map<String,String> values){config=new Config(values);}\n"

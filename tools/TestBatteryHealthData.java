@@ -5,7 +5,7 @@ public final class TestBatteryHealthData {
     static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
     static String node(String name,String type,String fields){String root="/sys/class/power_supply/"+name+"|";return root+"type|"+type+"\n"+fields.replace("@",root);}
     static BatteryHealthData.Reading read(String fields){return BatteryHealthData.parse(node("battery","Battery",fields)).get(0);}
-    public static void main(String[] args){
+    public static void main(String[] args) throws java.io.IOException {
         BatteryHealthData.Reading measured=read("@charge_full|6842000\n@charge_full_design|8000000\n@cycle_count|187\n");
         check(Math.abs(measured.percent-85.525)<.0001,"Physical fixture estimates 85.525 percent");
         check(measured.full==6842000&&measured.design==8000000&&measured.cycles==187,"Original units and cycles retained");
@@ -26,10 +26,17 @@ public final class TestBatteryHealthData {
         check(BatteryHealthData.parse(node("usb","USB","@charge_full|7000000\n@charge_full_design|8000000\n")).isEmpty(),"Ignore charger interfaces");
         check(BatteryHealthData.parse("/data/battery|type|Battery\n").isEmpty(),"Reject paths outside the power supply interface");
         check(BatteryHealthData.parse(null).isEmpty()&&BatteryHealthData.parse("x".repeat(32769)).isEmpty(),"Empty and oversized samples stay bounded");
-        String route="group/system_settings/battery_health";
+        String route="group/system_settings/battery";
+        check(ModuleHierarchy.path("group/system_settings/battery_health").equals(ModuleHierarchy.path(route)),"old health link resolves to combined battery page");
         check(ModuleHierarchy.path(route).equals(java.util.List.of("home","target-system_settings",route)),"Health detection stays at the third level");
         check(ModuleHierarchy.sections("system_settings").stream().anyMatch(section->section.route().equals(route)),"System settings exposes its navigation");
-        check(ModuleHierarchy.restartScopes(ModuleHierarchy.group(route)).isEmpty(),"Read-only detection needs no process restart");
+        check(ModuleHierarchy.summary(ModuleHierarchy.group(route)).contains("电池健康度检测"),"combined page exposes read-only battery measurement");
+        var sources=java.nio.file.Path.of(System.getProperty("repo.root","."),"android/app/src/main/java/ls/augment/com");
+        String panel=java.nio.file.Files.readString(sources.resolve("BatteryHealthPanel.java"));
+        String reader=java.nio.file.Files.readString(sources.resolve("BatteryHealthReader.java"));
+        check(panel.contains("detect.setOnClickListener(button->state.detect(worker))")&&panel.contains("next=BatteryHealthReader.read()"),"detect action runs the health reader");
+        check(!panel.contains("restartScope")&&!panel.contains("RootShell.")&&!panel.contains("AppConfig"),"measurement must not dispatch a restart or change settings");
+        check(reader.contains("RootShell.run(COMMAND,null,8,32768)")&&!reader.contains("FileOutputStream")&&!reader.contains("killall")&&!reader.contains("am force-stop"),"health reader keeps its bounded read-only operation");
         System.out.println("Battery health: "+checks+" parsing, unit isolation, fallback and navigation checks passed");
     }
 }

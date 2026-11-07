@@ -16,6 +16,21 @@ public final class TestNativeFeatureGroups {
             Set<String> targetExpected=new HashSet<>(),targetActual=new HashSet<>();
             for(HookAppCatalog.Section s:HookAppCatalog.sections(target.id))for(EnhancementOption o:s.options){targetExpected.add(o.key);expected.add(o.key);}
             for(NativeFeatureGroups.Section section:NativeFeatureGroups.forTarget(target.id))for(NativeFeatureGroups.Feature f:section.features){check(f,seen);targetActual.addAll(f.allKeys());}
+            // Catalog ownership describes the hooked process. The volume editor lives under audio.
+            List<String> volume=List.of("ls_augment_rm_volume_position","ls_augment_rm_volume_same_side");
+            if(target.id.equals(HookAppCatalog.SYSTEM))for(String key:volume){
+                require(targetExpected.remove(key)&&"group/audio/volume_position".equals(ModuleHierarchy.featureRoute(key)),"volume editor ownership: "+key);
+            }
+            if(target.id.equals(HookAppCatalog.SYSTEM_UI))targetExpected.addAll(volume);
+            for(String key:targetExpected){
+                String editor=null;
+                if(key.startsWith("ls_augment_competitive_key_"))editor="competitive_key";
+                if(key.equals("ls_augment_statusbar_icon_positions_v1")||key.equals("ls_augment_statusbar_rows"))editor="status_arrangement";
+                if(editor!=null){
+                    require(editor.equals(ModuleHierarchy.featureRoute(key))&&seen.add(key),"missing or duplicate dedicated editor: "+key);
+                    targetActual.add(key);
+                }
+            }
             Set<String> missing=new HashSet<>(targetExpected);missing.removeAll(targetActual);
             Set<String> extra=new HashSet<>(targetActual);extra.removeAll(targetExpected);
             require(targetExpected.equals(targetActual),"target ownership differs: "+target.id+" missing="+missing+" extra="+extra);
@@ -82,7 +97,10 @@ public final class TestNativeFeatureGroups {
     private static NativeFeatureGroups.Feature find(String key){for(NativeFeatureGroups.Section section:NativeFeatureGroups.SECTIONS)for(NativeFeatureGroups.Feature f:section.features)if(f.allKeys().contains(key))return f;throw new AssertionError("missing feature "+key);}
     private static void check(NativeFeatureGroups.Feature f,Set<String> seen){
         if(f.toggleKey!=null){require(OPTIONS.get(f.toggleKey).kind==EnhancementOption.Kind.BOOLEAN,"parent must be a real boolean");require(seen.add(f.toggleKey),"duplicate switch "+f.toggleKey);}
-        else{independent++;require(f.parameterKeys.length==1,"independent parameters cannot be accidentally grouped");EnhancementOption o=OPTIONS.get(f.parameterKeys[0]);require(o.normalize(f.noOpValue)!=null,"no-op must be a valid native value");require(!ValueOverrideState.active(f.comparison,o.defaultValue,f.noOpValue),"native default must not enable override");}
+        else{independent++;
+            if("systemui:battery_style".equals(f.id))require(Arrays.equals(f.parameterKeys,new String[]{"ls_augment_rm_battery_style","ls_augment_rm_battery_preset"}),"battery style owns only its style and preset");
+            else require(f.parameterKeys.length==1,"independent parameters cannot be accidentally grouped");
+            EnhancementOption o=OPTIONS.get(f.parameterKeys[0]);require(o.normalize(f.noOpValue)!=null,"no-op must be a valid native value");require(!ValueOverrideState.active(f.comparison,o.defaultValue,f.noOpValue),"native default must not enable override");}
         for(String key:f.parameterKeys){
             require(OPTIONS.containsKey(key),"unknown key "+key);
             // The existing side-gesture editor owns its two mirror switches directly.
@@ -90,7 +108,9 @@ public final class TestNativeFeatureGroups {
                     &&(key.equals(BackGestureIconPolicy.key(0,"mirror"))||key.equals(BackGestureIconPolicy.key(1,"mirror")));
             // The lock-swipe editor owns all subordinate switches under one master.
             boolean lockSwipe="liftarc:enabled".equals(f.id)&&key.startsWith("ls_augment_liftarc_");
-            require(gestureMirror||lockSwipe||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
+            boolean island="systemui:island_enabled".equals(f.id)&&List.of("ls_augment_rm_island_downloads","ls_augment_rm_island_first_expand").contains(key);
+            boolean shade="systemui:notification_stack".equals(f.id)&&List.of(NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,NotificationAppearanceOptions.STACK_GRADIENT).contains(key);
+            require(gestureMirror||lockSwipe||island||shade||OPTIONS.get(key).kind!=EnhancementOption.Kind.BOOLEAN,"dependent boolean must be a nested feature: "+key);
             require(seen.add(key),"duplicate parameter "+key);
         }
         for(NativeFeatureGroups.Feature child:f.children)check(child,seen);

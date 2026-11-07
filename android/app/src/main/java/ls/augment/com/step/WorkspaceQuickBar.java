@@ -38,7 +38,8 @@ final class WorkspaceQuickBar {
     WorkspaceActions tools;
     LinearLayout tiles;
     WorkspaceDeck deck;
-    StepGlyph clips, shot, torch, exit, settings, prev, next, recorder;
+    WorkspacePageIndicator pageIndicator;
+    StepGlyph clips, shot, torch, exit, settings, prev, next, recorder, mainLeft, mainRight;
     LinearLayout leading, trailing;
     boolean hasRecorder;
     int button;
@@ -76,7 +77,7 @@ final class WorkspaceQuickBar {
                 android.view.WindowInsets.Type.statusBars()|android.view.WindowInsets.Type.displayCutout()).top;
         int available=host.geometry.top;
         userId=currentUser()?(Integer)call(user,"getIdentifier"):-1;
-        if(available<dp(92))throw new IllegalStateException("顶区不足以显示工具与应用栏");
+        if(available<dp(148))throw new IllegalStateException("顶区不足以显示工具与应用栏");
         host.topAvailable &= inset+dp(34)<available;
         topInset=inset;
         tools=new WorkspaceActions(this);
@@ -85,25 +86,28 @@ final class WorkspaceQuickBar {
         loadWall();
         try{ctx.registerReceiver(wallChanges,new android.content.IntentFilter(Intent.ACTION_WALLPAPER_CHANGED),
                 Context.RECEIVER_NOT_EXPORTED);watchWall=true;}catch(RuntimeException e){host.log("壁纸监听不可用："+e);}
-        band=new LinearLayout(ctx);band.setOrientation(1);
+        band=new LinearLayout(ctx);band.setOrientation(LinearLayout.VERTICAL);
         int edge=dp(8),bottomGap=Math.min(10,dp(4));
         int compactHeight=Math.max(0,available-dp(92));
         band.setPadding(edge,Math.min(dp(14),dp(4)+compactHeight/4),edge,bottomGap);
         bar.addView(band,-1,-1);
-        int line=Math.min(dp(28),dp(19)+compactHeight/5),rail=Math.min(dp(34),dp(23)+compactHeight/5);
+        int line=dp(44),rail=dp(44);
         deck=new WorkspaceDeck(this);band.addView(deck,new LinearLayout.LayoutParams(-1,0,1));
+        pageIndicator=new WorkspacePageIndicator(this);
+        band.addView(pageIndicator,new LinearLayout.LayoutParams(-1,Math.min(edge,Math.max(0,(available-dp(100))/4))));
+        updatePageIndicator();
         LinearLayout header=new LinearLayout(ctx){
             @Override public boolean onInterceptTouchEvent(MotionEvent event){
                 return headerMoving || super.onInterceptTouchEvent(event);
             }
         };header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams headerParams=new LinearLayout.LayoutParams(-1,line);
-        headerParams.topMargin=Math.min(edge,Math.max(0,(available-dp(100))/4));
         headerParams.bottomMargin=dp(1);
         button=Math.max(1,Math.min(dp(36),(screen.width()-2*edge-dp(76))/8));
         leading=new LinearLayout(ctx);trailing=new LinearLayout(ctx);
         header.addView(leading,4*button,-1);
         title=StepMaterial.label(ctx,"红魔 Step",21,true);title.setMaxLines(1);
+        StepMaterial.feedback(title);
         title.setPadding(dp(2),0,dp(2),0);
         title.setAutoSizeTextTypeUniformWithConfiguration(12,21,1,android.util.TypedValue.COMPLEX_UNIT_SP);
         header.addView(title,new LinearLayout.LayoutParams(0,-1,1));header.addView(trailing,4*button,-1);
@@ -115,10 +119,13 @@ final class WorkspaceQuickBar {
         updateCapacity();
         clips=new StepGlyph(ctx,"clipboard","剪贴板历史",tools::openClips);
         shot=new StepGlyph(ctx,"screenshot","截图",tools::capture);
+        shot.setTooltipText("截图");
         clips.setEnabled(WorkspaceClipboard.available());shot.setEnabled(tools.takeShot!=null);
         clips.setAlpha(clips.isEnabled()?1f:.45f);shot.setAlpha(shot.isEnabled()?1f:.45f);
         prev=new StepGlyph(ctx,"prev","上一个快捷应用",()->step(-1));
         next=new StepGlyph(ctx,"next","下一个快捷应用",()->step(1));
+        mainLeft=new StepGlyph(ctx,"mainLeft","主工作区居左",()->host.positionMain(false));
+        mainRight=new StepGlyph(ctx,"mainRight","主工作区居右",()->host.positionMain(true));
         torch=new StepGlyph(ctx,"torch","手电筒",this::toggleTorch);
         recorder=new StepGlyph(ctx,"record","录屏",()->{});
         recorder.setOnClickListener(v->activateTile("videoscreen",v));
@@ -132,7 +139,10 @@ final class WorkspaceQuickBar {
         }});scroll.setClipToOutline(true);
         tiles.setGravity(Gravity.CENTER_VERTICAL);tiles.setPadding(dp(10),0,dp(10),0);
         tiles.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        scroll.addView(tiles);band.addView(scroll,-1,rail);
+        scroll.addView(tiles);
+        LinearLayout appsRow=new LinearLayout(ctx);appsRow.setGravity(Gravity.CENTER_VERTICAL);
+        appsRow.addView(mainLeft,dp(44),-1);appsRow.addView(scroll,new LinearLayout.LayoutParams(0,-1,1));appsRow.addView(mainRight,dp(44),-1);
+        band.addView(appsRow,-1,rail);
         scroll.setOnScrollChangeListener((View v,int x,int y,int oldX,int oldY)->visibleIcons());
         WindowManager.LayoutParams lp=new WindowManager.LayoutParams(screen.width(),available,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED|WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|
@@ -170,6 +180,15 @@ final class WorkspaceQuickBar {
         else {near.addView(shot,button,-1);near.addView(clips,button,-1);near.addView(settings,button,-1);near.addView(exit,button,-1);}
         if(host.leftSide){if(hasRecorder)far.addView(recorder,button,-1);far.addView(torch,button,-1);far.addView(prev,button,-1);far.addView(next,button,-1);}
         else{far.addView(prev,button,-1);far.addView(next,button,-1);far.addView(torch,button,-1);if(hasRecorder)far.addView(recorder,button,-1);}
+        updatePosition();
+    }
+    void updatePosition(){
+        mainLeft.setSelected(!host.leftSide);mainRight.setSelected(host.leftSide);
+        int accent=StepMaterial.dark(ctx)?0xff72bbff:0xff1f74c5;
+        mainLeft.accent=!host.leftSide?accent:0;mainRight.accent=host.leftSide?accent:0;
+        mainLeft.setStateDescription(!host.leftSide?"当前位置":"切换到左侧");
+        mainRight.setStateDescription(host.leftSide?"当前位置":"切换到右侧");
+        mainLeft.invalidate();mainRight.invalidate();
     }
     ImageView wall;
     int wallRevision;
@@ -201,6 +220,9 @@ final class WorkspaceQuickBar {
     }
     void windowsUpdate(WindowManager.LayoutParams lp){host.windows.updateViewLayout(bar,lp);}
     void logUnavailable(String text){host.log(text);Toast.makeText(ctx,text,Toast.LENGTH_SHORT).show();}
+    void updatePageIndicator(){
+        if(pageIndicator!=null){pageIndicator.setVisibility(host.pageIndicator?View.VISIBLE:View.INVISIBLE);pageIndicator.invalidate();}
+    }
     SlotCountDialog counts;
     void configureUpper(){
         boolean enabled=host.upperEnabled && host.topAvailable;
@@ -314,6 +336,7 @@ final class WorkspaceQuickBar {
             int pad=(dp(48)-dp(31))/2;
             tile.setPadding(pad,0,pad,0);tile.setScaleType(ImageView.ScaleType.FIT_CENTER);
             tile.setFocusable(true);tile.setOnClickListener(v->openApp(app));
+            StepMaterial.feedback(tile);
             tile.setOnTouchListener((v,e)->{
                 int a=e.getActionMasked();if(a==MotionEvent.ACTION_DOWN || a==MotionEvent.ACTION_CANCEL || a==MotionEvent.ACTION_UP){
                     if(a==MotionEvent.ACTION_DOWN)cancelRailMotion();
@@ -333,7 +356,7 @@ final class WorkspaceQuickBar {
     TextView action(String label,String description,Runnable action) {
         TextView v=new TextView(ctx); v.setText(label); v.setContentDescription(description);
         v.setGravity(Gravity.CENTER); v.setTextColor(StepMaterial.ink(ctx)); v.setTextSize(15);
-        v.setFocusable(true); v.setOnClickListener(view -> action.run()); return v;
+        v.setFocusable(true); v.setOnClickListener(view -> action.run());StepMaterial.feedback(v);return v;
     }
     void visibleIcons() {
         if (closed || choosing || tiles==null || scroll.getWidth()==0) return;
@@ -483,9 +506,7 @@ final class WorkspaceQuickBar {
         if (host.slots.task(match.slot)!=match.id || task==null || match.token==null
                 || !match.token.equals(field(task,"token")) || LiveWorkspace.number(task,"userId")!=match.user || !WorkspaceUsers.allows(ctx,userId,match.user))
             throw new IllegalStateException("所选副格已变化");
-        ActivityManager.RunningTaskInfo mainTask=host.focused();
-        if (mainTask!=null && belongs(mainTask.baseActivity,PACKAGE)) host.returnSide(match.slot,false);
-        else host.change(match.slot);
+        host.change(match.slot);
     }
     void launch(ComponentName target,UserHandle profile) {
         launcher.startMainActivity(target,profile,null,null);

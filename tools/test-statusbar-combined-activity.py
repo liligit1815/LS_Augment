@@ -95,7 +95,7 @@ members = '\n'.join((method(JAVA / 'hook/StatusBarAssetsHook.java', 'private sta
                      method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static boolean scopedHidden('),
                      method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static int mobileSlot('),
                      method(JAVA / 'hook/StatusBarAssetsHook.java', 'private static boolean activeRole(String id,View owner)'),
-                     method(JAVA / 'StatusBarAssetsActivity.java', 'private void indexInventory(')))
+                     method(JAVA / 'StatusBarAssetsController.java', 'private void indexInventory(')))
 with tempfile.TemporaryDirectory(prefix='statusbar-combined-activity-') as tmp:
     work = Path(tmp)
     source = work / 'TestCombinedActivity.java'
