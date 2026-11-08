@@ -375,6 +375,9 @@ final class NativeIslandCards {
         Card card = cards.remove(id);
         if (card == null) return false;
         if (pending == card) pending = null;
+        IslandPanelGuard.withdrawing(permanent, card.island);
+        // A removal received during native close is completed by that callback.
+        if (IslandPanelGuard.deferRemoval(permanent, card.island)) return true;
         try { remove.invoke(permanent, card.island); }
         catch (Exception failure) { report("card_remove_failed:" + id); }
         return true;
@@ -405,7 +408,7 @@ final class NativeIslandCards {
                 && !Boolean.TRUE.equals(field(permanent, "mOnKeyguard"))
                 && !Boolean.TRUE.equals(field(permanent, "mQsPanelExpanded"))
                 && !Boolean.TRUE.equals(field(permanent, "mControlPanelExpanded"))) {
-            try { show.invoke(permanent); pending = null; }
+            try { openPanel(pending); pending = null; }
             catch (Exception failure) { report("card_open_failed"); }
         }
         owned.entrySet().removeIf(e -> !cards.containsValue(e.getValue()) && e.getValue().island.getParent() == null
@@ -434,8 +437,20 @@ final class NativeIslandCards {
             if (!longPress) card.compactAction.performClick();
             return true;
         }
-        if (!longPress && card.panel != null) show.invoke(permanent); else click.invoke(card.island);
+        if (!longPress && card.panel != null) openPanel(card); else click.invoke(card.island);
         return true;
+    }
+
+    private void openPanel(Card card) throws Exception {
+        if (card == null || card.panel == null || closed || !ready || current() != card) return;
+        for (String state : new String[]{"mAnimProcessing", "mPriorityProcessing", "mDynamicPanelShowing", "mDynamicPanelClosing"})
+            if (Boolean.TRUE.equals(field(permanent, state))) return;
+        java.lang.ref.WeakReference<NativeIslandCards> weak = new java.lang.ref.WeakReference<>(this);
+        if (!IslandPanelGuard.prepare(permanent, card.island, () -> {
+            NativeIslandCards host = weak.get();
+            if (host != null && !host.closed) MAIN.post(host::stateChanged);
+        })) { report("card_panel_capability_missing:animation_callback_bridge"); return; }
+        show.invoke(permanent);
     }
 
     void close() {

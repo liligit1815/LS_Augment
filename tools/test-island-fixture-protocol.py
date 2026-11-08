@@ -13,7 +13,7 @@ public final class FixtureProtocolCases {
  public static void main(String[] args){
   check(IslandFixtureProtocol.identity(RUN),"valid UUID hex");
   for(String bad:new String[]{null,"","a","A".repeat(32),"a".repeat(31),"a".repeat(33),"/".repeat(32)})check(!IslandFixtureProtocol.identity(bad),"bad identity");
-  String[] commands={"play","pause","stop","release","notice-expiry","notice-click","finish","observe"};
+  String[] commands={"play","pause","stop","release","notice-expiry","notice-click","download","download-update","download-remove","finish","observe"};
   for(String c:commands){
    check(admit(RUN,SECRET,4,5,c,1999,false)==1,"actual known command accepted before deadline");
    check(admit(RUN,SECRET,4,5,c,2000,false)==2,"deadline inclusive; no command extends lifetime");

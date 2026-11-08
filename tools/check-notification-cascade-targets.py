@@ -52,8 +52,14 @@ for apk in args.systemui:
     if header_fields.get('panelType')!='I':missing.append('clock_backdrop.panelType:I')
     for name in ['mClockView','mDateView']:
         if not text_view(header_fields.get(name)):missing.append('clock_backdrop.'+name+':TextView_subclass')
+    # Optional refinement: absence keeps the existing hardware clock backdrop.
+    transition_missing=[]
+    for kind,signature in [('methods','dispatchDraw(Landroid/graphics/Canvas;)V'),
+            ('fields','mShouldUseRoundedRectClipping:Z'),('fields','mRoundedRectClippingTop:I'),
+            ('fields','mLaunchingNotification:Z'),('fields','mBlurEffect:Landroid/graphics/RenderEffect;')]:
+        if not found(N,kind,signature):transition_missing.append(signature)
     report={'apk':str(apk),'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'checked':len(checked),'routes':routes,
-            'clockBackdropFields':header_fields,'missing':missing,'passed':not missing}
+            'clockBackdropFields':header_fields,'topTransition':{'available':not transition_missing,'missing':transition_missing},'missing':missing,'passed':not missing}
     reports.append(report);print(json.dumps(report,ensure_ascii=False))
 if args.output:args.output.write_text(json.dumps(reports,ensure_ascii=False,indent=2),encoding='utf-8')
 if any(not r['passed'] for r in reports):raise SystemExit(1)

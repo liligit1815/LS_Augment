@@ -137,19 +137,20 @@ final class NativeIslandHost {
         },null);
         legacyCardHooksInstalled=legacyPanel>0&&legacyVisibility>0&&panelVisibility>0;
         count+=legacyPanel+legacyVisibility+panelVisibility;
+        count+=installPanelStatusBar(module,loader);
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onPermanentIslandPanelCloseAnimationStart",0,(o,a,r)->{
             View closingBar=DuoNotificationCards.closingStatusBar(o);
-            if(closingBar!=null){
+            if(closingBar!=null&&!IslandPanelGuard.restoresStatusBar(o,call(o,"getPermanentIsland"))){
                 NativeIslandHost owner=nativeOwner;
                 if(owner!=null&&owner.phone==closingBar)owner.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
                 invokeStatic(N+"DynamicIslandAnimation","startStatusBarAnimation",new Class<?>[]{View.class,boolean.class},closingBar,true);
             }
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){
                 if(h.glassBackground==null)h.restoreBackgrounds();h.statusBarFadeUntil=android.os.SystemClock.uptimeMillis()+600;
-                if(h.ownsSelected(o)&&NativeIslandPanelCompat.ordinary(o))
+                if(h.ownsSelected(o)&&NativeIslandPanelCompat.ordinary(o)&&!IslandPanelGuard.restoresStatusBar(o,call(o,"getPermanentIsland")))
                     invokeStatic(N+"DynamicIslandAnimation","startStatusBarAnimation",new Class<?>[]{View.class,boolean.class},h.phone,true);
             }return PASS;
-        },null);
+        },(o,a,r)->{IslandPanelGuard.closeStarted(o);return PASS;});
         int closeAdapter=hookNamed(module,loader,"native_island_panel",N+"PermanentIslandManager","onPermanentIslandPanelCloseAnimationEnd",3,(o,a,r)->{
             NativeIslandHost h=active;
             if(a[1] instanceof Boolean&&a[2] instanceof Boolean&&IslandPanelGuard.owns(o,a[0])
@@ -680,7 +681,28 @@ final class NativeIslandHost {
                 &&!Boolean.TRUE.equals(field(permanent,"mPriorityProcessing"));
     }
     boolean expanded(){return notificationCards!=null?notificationCards.expanded():ownsSelected(permanent)&&Boolean.TRUE.equals(field(permanent,"mDynamicPanelShowing"));}
+    private static int installPanelStatusBar(AugmentModule module, ClassLoader loader) {
+        try {
+            Method fade = IslandPanelStatusBar.fade(loader);
+            Class<?> manager = Class.forName(N+"PermanentIslandManager", false, loader);
+            Method start = NativeIslandSceneContract.method(manager, "onPermanentIslandPanelCloseAnimationStart", void.class);
+            // Keep an existing native fade observable even when its caller was compiled before hooking.
+            if (start == null || !module.deoptimize(start)) throw new IllegalStateException("close_start_observation_missing");
+            module.registerFeatureHook(module.prepareFeatureHook(fade, "rm.ui.native_panel.status_bar", false).intercept(chain -> {
+                Object[] args = chain.getArgs().toArray();
+                if (args[0] instanceof View && Boolean.TRUE.equals(args[1])) IslandPanelStatusBar.shown((View) args[0]);
+                return chain.proceed(args);
+            }));
+            IslandPanelStatusBar.observeCalls(start.getDeclaringClass());
+            return 1;
+        } catch (Throwable missing) {
+            module.logFeatureError("NATIVE_PANEL_STATUS_BAR", missing);
+            return 0;
+        }
+    }
+
     boolean ownsStatusBarFade(){
+        if(IslandPanelStatusBar.ownsFade(phone))return true;
         if(notificationCards==null&&!acquired)return false;
         return expanded()||android.os.SystemClock.uptimeMillis()<statusBarFadeUntil;
     }

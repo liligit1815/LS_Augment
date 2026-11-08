@@ -6,6 +6,7 @@ import android.graphics.ColorFilter;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RenderNode;
+import android.graphics.RuntimeShader;
 import android.graphics.Shader;
 import android.graphics.Paint;
 import android.graphics.BlendMode;
@@ -27,6 +28,7 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
     interface Source {
         boolean active();
         boolean eligible(View row) throws ReflectiveOperationException;
+        default float scrollDistance(){return Float.POSITIVE_INFINITY;}
     }
     private final WeakReference<ViewGroup> stack;
     private final Source source;
@@ -48,6 +50,21 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
     private ViewTreeObserver observer;
     private long frameStamp=Long.MIN_VALUE;
     private long lastDrawAt,lastReportAt;
+    private RenderNode nativeStack,transitionBand;
+    private boolean recordingStack,transitionFailed;
+    private int transitionTop,transitionEnd,bandTop,bandHeight;
+    private float effectDensity=-1;
+    private int effectStrength=-1;
+    private String transitionReason="inactive";
+    private boolean clipResolved;
+    private Field nativeRounded,nativeCut,nativeLaunching,nativeBlur;
+    private String clipFailure="",transitionFailure="";
+    // Complementary premultiplied weights are added, not drawn source-over:
+    // otherwise translucent cards darken midway through the blur crossfade.
+    private static final String WEIGHT_SHADER="uniform shader content; uniform float edge; uniform float span; uniform float feather; uniform float blurred; uniform float strength;"
+            +"half4 main(float2 p) { float t=clamp((p.y-edge)/span,0.0,1.0);"
+            +"float soft=strength*(1.0-t*t*(3.0-2.0*t)); float a=mix(1.0,smoothstep(edge,edge+feather,p.y),strength);"
+            +"return content.eval(p)*half(a*mix(1.0-soft,soft,blurred)); }";
 
     NotificationTopBlur(ViewGroup host,Source source){stack=new WeakReference<>(host);this.source=source;}
     void update(List<View> candidates){
@@ -80,6 +97,9 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
         View view=header.get();
         if(view!=null&&installed!=null&&view.getBackground()==installed)background(view,original);
         if(node!=null)node.discardDisplayList();
+        if(nativeStack!=null)nativeStack.discardDisplayList();
+        if(transitionBand!=null)transitionBand.discardDisplayList();
+        transitionReason=transitionFailed?transitionFailure:"inactive";
         rows.clear();installed=null;original=null;header.clear();drawn=0;lastDrawAt=0;reason="inactive";
     }
     @Override public boolean onPreDraw(){
@@ -108,7 +128,113 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
         if(stamp!=frameStamp){frameStamp=stamp;view.invalidate();}
         return true;
     }
-    String evidence(){return reason+";target=clock_region_backdrop;renderer=hardware;radius_dp=10;software_draws=0"+";header_pixels="+region.left+","+region.top+","+region.right+","+region.bottom+";drawn_rows="+drawn+";soft_edge_dp=16;last_draw_at="+lastDrawAt;}
+    String evidence(){return reason+";target=clock_region_backdrop;renderer=hardware;radius_dp=10;software_draws=0"+";header_pixels="+region.left+","+region.top+","+region.right+","+region.bottom+";drawn_rows="+drawn+";soft_edge_dp=16;last_draw_at="+lastDrawAt
+            +";transition="+transitionReason+";transition_pixels="+transitionTop+","+transitionEnd+";transition_dp=48;fade_dp=16;transition_strength="+effectStrength+"/32";}
+
+    /** Capture the OEM dispatchDraw once, with its clips, privacy and child ordering intact. */
+    Canvas beginTransition(Canvas output){
+        ViewGroup host=stack.get();View view=header.get();
+        if(recordingStack||transitionFailed||host==null||view==null||!output.isHardwareAccelerated()
+                ||!source.active()||view.getBackground()!=installed||!geometry(view,host))return null;
+        if(!clipResolved){
+            clipResolved=true;
+            try{
+                nativeRounded=clipField(host,"mShouldUseRoundedRectClipping",boolean.class);
+                nativeCut=clipField(host,"mRoundedRectClippingTop",int.class);
+                nativeLaunching=clipField(host,"mLaunchingNotification",boolean.class);
+                nativeBlur=clipField(host,"mBlurEffect",RenderEffect.class);
+            }catch(ReflectiveOperationException|RuntimeException unavailable){
+                nativeRounded=null;clipFailure="missing_native_clip_contract:"+unavailable.getMessage();
+            }
+        }
+        if(nativeRounded==null){transitionReason=clipFailure;return null;}
+        try{
+            if(!nativeRounded.getBoolean(host)||nativeLaunching.getBoolean(host)||nativeBlur.get(host)!=null){
+                transitionReason="native_clip_or_animation";return null;
+            }
+            transitionTop=nativeCut.getInt(host);
+        }catch(IllegalAccessException unavailable){transitionReason="unreadable_native_clip_contract";return null;}
+        float density=host.getResources().getDisplayMetrics().density;
+        float entering=Math.max(0,Math.min(1,source.scrollDistance()/(32*density)));
+        int strength=Math.round(32*entering*entering*(3-2*entering));
+        // No full-strength mask on the first pixel of a drag from the top.
+        if(strength==0){transitionReason="entering_native";return null;}
+        view.getLocationInWindow(origin);host.getLocationInWindow(point);
+        int clockBottom=origin[1]+region.bottom-point[1];
+        // A different clipping surface (QS/keyguard/launch animation) must not
+        // be mistaken for the measured notification-clock boundary.
+        if(transitionTop<clockBottom-Math.round(32*density)||transitionTop>clockBottom+Math.round(64*density)
+                ||transitionTop<0||transitionTop>=host.getHeight()){
+            transitionReason="clip_outside_clock_boundary";return null;
+        }
+        transitionEnd=Math.min(host.getHeight(),transitionTop+Math.round(48*density));
+        int padding=Math.round(30*density);
+        bandTop=transitionTop-padding;bandHeight=transitionEnd-transitionTop+2*padding;
+        try{
+            if(nativeStack==null)nativeStack=new RenderNode("DuoNativeNotificationStack");
+            if(transitionBand==null)transitionBand=new RenderNode("DuoNotificationTopTransition");
+            if(effectDensity!=density||effectStrength!=strength){
+                RenderEffect sharp=weight(density,padding,false,strength/32f);
+                RenderEffect blurred=RenderEffect.createChainEffect(weight(density,padding,true,strength/32f),
+                        RenderEffect.createBlurEffect(10*density,10*density,Shader.TileMode.CLAMP));
+                transitionBand.setRenderEffect(RenderEffect.createBlendModeEffect(sharp,blurred,BlendMode.PLUS));
+                effectDensity=density;effectStrength=strength;
+            }
+            nativeStack.setPosition(0,0,host.getWidth(),host.getHeight());
+            Canvas recording=nativeStack.beginRecording();recordingStack=true;
+            if(!recording.isHardwareAccelerated())throw new IllegalStateException("hardware_canvas_required");
+            return recording;
+        }catch(RuntimeException|LinkageError error){
+            if(recordingStack){nativeStack.endRecording();recordingStack=false;}
+            failTransition(host,error);return null;
+        }
+    }
+    private static Field clipField(View host,String name,Class<?> type)throws NoSuchFieldException{
+        for(Class<?> c=host.getClass();c!=null;c=c.getSuperclass())try{
+            Field field=c.getDeclaredField(name);
+            if(field.getType()!=type||java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+                throw new NoSuchFieldException(name+":"+type.getSimpleName());
+            field.setAccessible(true);return field;
+        }catch(NoSuchFieldException missing){if(c.getSuperclass()==null)throw missing;}
+        throw new NoSuchFieldException(name+":"+type.getSimpleName());
+    }
+    private static RenderEffect weight(float density,int padding,boolean blurred,float strength){
+        RuntimeShader shader=new RuntimeShader(WEIGHT_SHADER);
+        shader.setFloatUniform("edge",padding);shader.setFloatUniform("span",48*density);
+        shader.setFloatUniform("feather",16*density);shader.setFloatUniform("blurred",blurred?1:0);
+        shader.setFloatUniform("strength",strength);
+        return RenderEffect.createRuntimeShaderEffect(shader,"content");
+    }
+    void endTransition(Canvas output,boolean nativeSucceeded){
+        if(!recordingStack)return;
+        nativeStack.endRecording();recordingStack=false;
+        if(!nativeSucceeded){nativeStack.discardDisplayList();return;}
+        ViewGroup host=stack.get();
+        try{
+            // Only the narrow seam is filtered; the rest of the native display
+            // list is replayed without a full-screen blur allocation.
+            transitionBand.setPosition(0,0,host.getWidth(),bandHeight);
+            Canvas band=transitionBand.beginRecording();
+            try{band.translate(0,-bandTop);band.drawRenderNode(nativeStack);}
+            finally{transitionBand.endRecording();}
+        }catch(RuntimeException|LinkageError error){
+            failTransition(host,error);output.drawRenderNode(nativeStack);return;
+        }
+        int save=output.save();
+        try{output.clipRect(0,0,host.getWidth(),transitionTop);output.drawRenderNode(nativeStack);}
+        finally{output.restoreToCount(save);}
+        save=output.save();
+        try{output.clipRect(0,transitionEnd,host.getWidth(),host.getHeight());output.drawRenderNode(nativeStack);}
+        finally{output.restoreToCount(save);}
+        save=output.save();
+        try{output.clipRect(0,transitionTop,host.getWidth(),transitionEnd);output.translate(0,bandTop);output.drawRenderNode(transitionBand);}
+        finally{output.restoreToCount(save);}
+        transitionReason="drawn_native_clip_preserved";
+    }
+    private void failTransition(ViewGroup host,Throwable error){
+        transitionFailed=true;transitionReason=transitionFailure="unavailable:"+error.getClass().getSimpleName();
+        FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_top_transition_runtime",evidence());
+    }
     @Override public void draw(Canvas canvas){
         View view=header.get();ViewGroup host=stack.get();drawn=0;
         if(failed||view==null||host==null||!canvas.isHardwareAccelerated()||!source.active()

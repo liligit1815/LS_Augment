@@ -25,25 +25,37 @@ final class DuoDownloadPanel {
     private final LinearLayout headingRow,trackRow,buttons;
     private final Button[] actionButtons=new Button[3];
     private final Button snooze;
+    private final TextView nativeTitle,nativeDetail;
+    private final LinearLayout body;
     private int foreground=Color.WHITE;
     DuoDownloadPanel(View panel)throws Exception{
         Object list=field(panel,"mViewList");
         if(!(panel instanceof FrameLayout)||!(list instanceof List))throw new IllegalStateException("download_panel_contract_missing");
         context=panel.getContext();host=(FrameLayout)panel;
+        Object primary=field(panel,"mDisplayText"),secondary=field(panel,"mDisplaySecondText"),art=field(panel,"mDisplayIcon");
+        if(!(primary instanceof TextView)||!(secondary instanceof TextView)||!(art instanceof ImageView))
+            throw new IllegalStateException("download_panel_text_contract_missing");
+        nativeTitle=(TextView)primary;nativeDetail=(TextView)secondary;
         ScrollView scroll=new ScrollView(context);scroll.setFillViewport(true);
         LinearLayout content=new LinearLayout(context);content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16),dp(12),dp(16),dp(8));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        body=content;
+        // AppIslandPanel reapplies its own resource padding when attached/configured.
+        // Keep that single outer inset; duplicating it here clips the progress row.
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
         headingRow=new LinearLayout(context);headingRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
         icon=new ImageView(context);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        headingRow.addView(icon,new LinearLayout.LayoutParams(dp(28),dp(28)));
+        android.view.ViewGroup.LayoutParams nativeIcon=((View)art).getLayoutParams();
+        headingRow.addView(icon,new LinearLayout.LayoutParams(nativeIcon!=null&&nativeIcon.width>0?nativeIcon.width:dp(28),nativeIcon!=null&&nativeIcon.height>0?nativeIcon.height:dp(28)));
         title=text(15);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        copyTextAppearance(nativeTitle,title);
         LinearLayout labels=new LinearLayout(context);labels.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);label.setMarginStart(dp(10));
         headingRow.addView(labels,label);labels.addView(title,new LinearLayout.LayoutParams(-1,-2));
         detail=text(12);detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);
+        copyTextAppearance(nativeDetail,detail);
         labels.addView(detail,new LinearLayout.LayoutParams(-1,-2));
         status=text(14);status.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        copyTextAppearance(nativeTitle,status);
         LinearLayout.LayoutParams metric=new LinearLayout.LayoutParams(-2,-2);metric.setMarginStart(dp(8));headingRow.addView(status,metric);
         content.addView(headingRow,new LinearLayout.LayoutParams(-1,-2));
         progress=new ProgressBar(context,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);
@@ -69,24 +81,26 @@ final class DuoDownloadPanel {
         content.addView(buttons,new LinearLayout.LayoutParams(-1,-2));
         for(int i=0;i<actionButtons.length;i++){
             Button button=new Button(context);button.setAllCaps(false);button.setTextSize(13);
+            copyTextAppearance(nativeDetail,button);
             button.setMinHeight(dp(48));button.setMinimumHeight(dp(48));button.setMaxLines(2);button.setVisibility(View.GONE);
             buttons.addView(button,new LinearLayout.LayoutParams(-2,-2));actionButtons[i]=button;
         }
         snooze=new Button(context);snooze.setAllCaps(false);snooze.setTextSize(13);
+        copyTextAppearance(nativeDetail,snooze);
         snooze.setText("15 分钟后提醒");snooze.setMinHeight(dp(48));snooze.setMinimumHeight(dp(48));
         snooze.setVisibility(View.GONE);content.addView(snooze,new LinearLayout.LayoutParams(-1,-2));
         // All contract checks precede mutation; only this newly-created Duo panel is modified.
-        host.removeAllViews();host.setPadding(0,0,0,0);host.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));
+        host.removeAllViews();host.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));
         host.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         @SuppressWarnings("unchecked") List<View> views=(List<View>)list;views.clear();views.add(scroll);
-        panel.setOnClickListener(null);foreground(Color.WHITE);
+        panel.setOnClickListener(null);nativeAppearance();
     }
     void bind(IslandDownloadPolicy.Entry<StatusBarNotification> entry,Drawable artwork,String app,
             BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> action){
+        nativeAppearance();
         snooze.setVisibility(View.GONE);snooze.setOnClickListener(null);
         trackRow.setVisibility(View.VISIBLE);progress.setVisibility(View.VISIBLE);
         Notification n=entry.source.getNotification();CharSequence heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
-        host.setPadding(0,0,0,0);
         title.setText(TextUtils.isEmpty(heading)?app:heading);
         CharSequence body=n.extras.getCharSequence(Notification.EXTRA_TEXT);
         detail.setText(TextUtils.isEmpty(body)?app:body);detail.setVisibility(View.VISIBLE);
@@ -101,6 +115,7 @@ final class DuoDownloadPanel {
     }
     void bindNotice(StatusBarNotification source,Drawable artwork,String app,
             BiConsumer<StatusBarNotification,PendingIntent> action,java.util.function.Consumer<StatusBarNotification> remind){
+        nativeAppearance();
         Notification n=source.getNotification();CharSequence heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
         title.setText(TextUtils.isEmpty(heading)?app:heading);detail.setText(n.extras.getCharSequence(Notification.EXTRA_TEXT));
         if(TextUtils.isEmpty(detail.getText()))detail.setText(app);
@@ -152,6 +167,33 @@ final class DuoDownloadPanel {
         for(Button button:actionButtons){button.setTextColor(color);
             button.setBackgroundTintList(ColorStateList.valueOf((color&0x00ffffff)|0x22000000));}
         snooze.setTextColor(color);snooze.setBackgroundTintList(ColorStateList.valueOf((color&0x00ffffff)|0x18000000));
+    }
+    private void nativeAppearance(){
+        // initPanelIsland() on some OEM builds still forces the old dark-card text.
+        // Resolve the actual named island resources so light/night glass follows the OEM theme.
+        int primary=nativeColor("dynamic_island_panel_text_color",nativeTitle.getCurrentTextColor());
+        foreground(primary);
+        detail.setTextColor(nativeColor("dynamic_island_text_color",nativeDetail.getCurrentTextColor()));
+        int accent=nativeColor("dynamic_island_media_progress_color",primary);
+        status.setTextColor(accent);progress.setProgressTintList(ColorStateList.valueOf(accent));
+        progress.setIndeterminateTintList(ColorStateList.valueOf(accent));
+        int button=nativeColor("dynamic_island_btn_bg_color",(primary&0x00ffffff)|0x22000000);
+        for(Button action:actionButtons)action.setBackgroundTintList(ColorStateList.valueOf(button));
+        snooze.setBackgroundTintList(ColorStateList.valueOf(button));
+    }
+    int desiredHeight(int width){
+        body.measure(View.MeasureSpec.makeMeasureSpec(Math.max(1,width-host.getPaddingLeft()-host.getPaddingRight()),View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
+        return body.getMeasuredHeight()+host.getPaddingTop()+host.getPaddingBottom();
+    }
+    private int nativeColor(String name,int fallback){
+        int id=context.getResources().getIdentifier(name,"color","com.android.systemui");
+        return id==0?fallback:context.getColor(id);
+    }
+    private static void copyTextAppearance(TextView source,TextView target){
+        target.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,source.getTextSize());
+        target.setTypeface(source.getTypeface());target.setTextColor(source.getTextColors());
+        target.setLetterSpacing(source.getLetterSpacing());target.setIncludeFontPadding(source.getIncludeFontPadding());
     }
     private TextView text(int size){TextView view=new TextView(context);view.setTextSize(size);return view;}
     private int dp(int size){return Math.round(size*context.getResources().getDisplayMetrics().density);}

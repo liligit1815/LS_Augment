@@ -10,6 +10,8 @@ FILES = dict(fixture.FILES)
 FILES['ls/augment/com/hook/FeatureRuntimeLog.java'] = '''package ls.augment.com.hook;
 import java.util.*;class FeatureRuntimeLog {static final List<String> logs=new ArrayList<>();
 static void event(String s,String d){logs.add(s+":"+d);}static String failure(Throwable e){return e.getClass().getName();}}'''
+FILES['com/zte/feature/dynamicisland/DynamicIslandAnimation.java'] = '''package com.zte.feature.dynamicisland;
+public class DynamicIslandAnimation {public static int calls;public static void startStatusBarAnimation(android.view.View v,boolean show){calls++;v.setAlpha(show?.35f:0f);}}'''
 FILES['ls/augment/com/hook/TestIslandPanelGuard.java'] = '''package ls.augment.com.hook;
 import java.lang.reflect.*;import android.view.*;import com.zte.feature.dynamicisland.DynamicPermanentIsland;
 public class TestIslandPanelGuard {
@@ -26,6 +28,7 @@ public class TestIslandPanelGuard {
   public View mDynamicIslandPanelRoot;public boolean mDynamicPanelClosing=true,mDynamicPanelShowing=true;
   public ViewGroup mDynamicPanelContainer=new ViewGroup();public View mDynamicIslandRoot=new View();
   public Object mWindowManager=new Object(),mParams=new Object(),mDisposableIsland;
+  public View mPhoneStatusBarView=new View();
   public DynamicPermanentIsland selected=new DynamicPermanentIsland(),mTempIsland=selected;
   public Animation mDynamicAnimation=new Animation(this);int originals,heights,removes,starts;
   public DynamicPermanentIsland getPermanentIsland(){return selected;}
@@ -40,6 +43,9 @@ public class TestIslandPanelGuard {
   Manager(){mDynamicPanelContainer.addView(selected.panel);}
  }
  public static class Child extends Manager {}
+ public static class OverrideStart extends Manager {
+  @Override public void onPermanentIslandPanelCloseAnimationStart(){mDynamicPanelClosing=true;mPhoneStatusBarView.setAlpha(.35f);}
+ }
  public static class PrivateFactory {private Callback mCallback;PrivateFactory(Callback c){mCallback=c;}}
  public static class FactoryChild extends PrivateFactory {FactoryChild(Callback c){super(c);}}
  public interface WrongCallback {void onPermanentIslandPanelCloseAnimationEnd(Object i,boolean r,boolean d);}
@@ -71,6 +77,23 @@ public class TestIslandPanelGuard {
   m=new Manager();old=m.selected;check(IslandPanelGuard.prepare(m,old,null),"pending callback retained");
   m.selected=null;IslandPanelGuard.withdrawing(m,old);end(m,old);
   check(m.heights==1&&m.removes==1,"withdraw completes after selection cleared");
+  m=new Manager();old=m.selected;View retiredPanel=old.panel;
+  check(IslandPanelGuard.prepare(m,old,null),"prepare before source is disabled");old.panel=null;
+  end(m,old);check(retiredPanel.parent==null&&m.heights==1,"disabled getter still detaches captured panel");
+  m=new Manager();old=m.selected;retiredPanel=old.panel;
+  check(IslandPanelGuard.prepare(m,old,null),"prepare old scene before replacement");
+  IslandPanelGuard.withdrawing(m,old);m.selected=new DynamicPermanentIsland();m.mTempIsland=m.selected;
+  m.mDynamicPanelContainer.addView(m.selected.panel);old.panel=null;end(m,old);
+  check(retiredPanel.parent==null&&m.selected.panel.parent==m.mDynamicPanelContainer,"stale callback detaches only its captured old panel");
+  check(m.removes==1&&m.heights==0&&m.mDynamicPanelShowing&&m.mDynamicPanelClosing&&m.mTempIsland==m.selected,"withdrawal completes without changing new scene state");
+  m=new Manager();int[] first={0},second={0};
+  check(IslandPanelGuard.prepare(m,m.selected,()->first[0]++),"prepare direct route");
+  check(IslandPanelGuard.prepare(m,m.selected,()->second[0]++),"common route preparation is idempotent");
+  end(m,m.selected);check(first[0]==1&&second[0]==0,"nested routes preserve original completion owner");
+  m=new Manager();check(IslandPanelGuard.prepare(m,m.selected,null),"prepare deferred scene removal");
+  check(IslandPanelGuard.deferRemoval(m,m.selected),"selected scene removal reuses native close in progress");
+  check(!IslandPanelGuard.deferRemoval(new Manager(),m.selected),"foreign removal stays native");
+  end(m,m.selected);check(m.removes==1&&!IslandPanelGuard.deferRemoval(m,m.selected),"one deferred removal completes and ended transitions cannot defer");
   m=new Manager();check(IslandPanelGuard.prepare(m,m.selected,null),"prepare dynamic mode check");
   m.mDynamicIslandPanelRoot=new View();end(m,m.selected);
   check(m.originals==1&&m.mDynamicIslandPanelRoot.visibility==View.GONE,"new real fullscreen root uses native callback");
@@ -92,6 +115,49 @@ public class TestIslandPanelGuard {
   check(FeatureRuntimeLog.logs.stream().anyMatch(s->s.contains("native_unowned")),"native ownership branch logged");
   check(FeatureRuntimeLog.logs.stream().anyMatch(s->s.contains("state=unavailable")),"missing capability logged");
   check(FeatureRuntimeLog.logs.stream().anyMatch(s->s.contains("ISLAND_PANEL_NATIVE_ERROR")),"original failure logged");
+  IslandPanelStatusBar.observeCalls(Manager.class);
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);
+  check(IslandPanelGuard.restoresStatusBar(m,m.selected),"captured bar uses the shared restoration path");
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;
+  callback(m).onPermanentIslandPanelCloseAnimationStart();
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1&&m.mPhoneStatusBarView.getAlpha()==.35f,"ordinary close starts OEM fade without forcing final alpha");
+  check(IslandPanelStatusBar.ownsFade(m.mPhoneStatusBarView),"native music fade is not treated as hidden status bar");
+  IslandPanelGuard.closeStarted(m);end(m,m.selected);end(m,m.selected);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1,"bridge, hook and duplicate end cannot restart fade");
+  android.os.SystemClock.now+=700;
+  check(!IslandPanelStatusBar.ownsFade(m.mPhoneStatusBarView),"fade visibility lease expires after close");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;
+  IslandPanelStatusBar.shown(m.mPhoneStatusBarView);
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.startStatusBarAnimation(m.mPhoneStatusBarView,true);
+  callback(m).onPermanentIslandPanelCloseAnimationStart();end(m,m.selected);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1,"existing native fade is observed and never duplicated");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;old=m.selected;m.selected=null;end(m,old);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1,"withdraw after selection cleared restores status bar at completion");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);old=m.selected;
+  m.selected=new DynamicPermanentIsland();m.mTempIsland=m.selected;IslandPanelGuard.prepare(m,m.selected,null);
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;end(m,old);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0&&m.mPhoneStatusBarView.getAlpha()==0f,"old scene completion cannot reveal bar under new panel");
+  end(m,m.selected);check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1,"new scene owns its eventual restoration");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);old=m.selected;
+  m.selected=null;m.mTempIsland=new DynamicPermanentIsland();com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;end(m,old);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0&&m.mPhoneStatusBarView.getAlpha()==0f,"foreign temporary panel is protected even while selection is empty");
+  m=new Manager();m.mPhoneStatusBarView=null;IslandPanelGuard.prepare(m,m.selected,null);
+  check(!IslandPanelGuard.restoresStatusBar(m,m.selected),"missing bar leaves pre-existing host fallback available");
+  end(m,m.selected);check(!m.mDynamicPanelShowing,"missing status bar does not break safe close");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);
+  m.mPhoneStatusBarView=new View();m.mPhoneStatusBarView.setAlpha(0f);com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;end(m,m.selected);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0,"replacement status bar is never touched by stale lease");
+  m=new OverrideStart();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);
+  com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;callback(m).onPermanentIslandPanelCloseAnimationStart();end(m,m.selected);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0,"unobserved subclass override keeps its running native fade");
+  Field observed=IslandPanelStatusBar.class.getDeclaredField("observedCalls");observed.setAccessible(true);observed.setBoolean(null,false);
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(0f);IslandPanelGuard.prepare(m,m.selected,null);com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;
+  callback(m).onPermanentIslandPanelCloseAnimationStart();check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0,"unobserved original start preserved");
+  end(m,m.selected);check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==1,"hidden bar gets OEM fallback at close end");
+  m=new Manager();m.mPhoneStatusBarView.setAlpha(.4f);IslandPanelGuard.prepare(m,m.selected,null);com.zte.feature.dynamicisland.DynamicIslandAnimation.calls=0;end(m,m.selected);
+  check(com.zte.feature.dynamicisland.DynamicIslandAnimation.calls==0,"unobserved in-flight native fade is not restarted");
   System.out.println("PASS IslandPanelGuard: "+checks+" callback/lifecycle/contract checks; no manager Hook, no device commands");
  }
 }'''
@@ -99,6 +165,8 @@ for name in ['IslandPanelGuard', 'NativeIslandPanelCompat']:
     FILES[f'ls/augment/com/hook/{name}.java'] = (ROOT/f'android/app/src/main/java/ls/augment/com/hook/{name}.java').read_text('utf-8')
 java = Path(os.environ.get('JAVA_HOME', 'C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 suffix = '.exe' if os.name == 'nt' else ''
+from island_panel_test_support import add_status_bar_support
+add_status_bar_support(FILES)
 with tempfile.TemporaryDirectory(prefix='duo-panel-guard-') as folder:
     folder = Path(folder); paths=[]
     for name, data in FILES.items():
@@ -111,6 +179,8 @@ with tempfile.TemporaryDirectory(prefix='duo-panel-guard-') as folder:
         ('boolean ending=method.equals(close);','boolean ending=false;','NullPointerException'),
         ('if(record.ended) {','if(false) {','duplicate callback cannot remove twice'),
         ('if (current!=owner) throw','if (false) throw','foreign callback preserved'),
+        ('IslandPanelStatusBar.restore(owner,record.statusBar,false);',';','ordinary close starts OEM fade'),
+        ('&&(temporary==null||temporary==island)','', 'foreign temporary panel is protected'),
     ]:
         assert before in original
         p.write_text(original.replace(before,after,1),'utf-8')

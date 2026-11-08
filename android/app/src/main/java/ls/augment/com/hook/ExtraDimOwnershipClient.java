@@ -23,31 +23,43 @@ final class ExtraDimOwnershipClient {
     private static volatile Binding current;
     static final class State {
         static final State EMPTY = new State(false, false, 50);
-        final boolean owned, active;
+        final boolean owned, active, restoring;
         final int strength;
-        State(boolean owned, boolean active, int strength) { this.owned = owned; this.active = active; this.strength = strength; }
-        boolean same(State other) { return owned == other.owned && active == other.active && strength == other.strength; }
+        State(boolean owned, boolean active, int strength) { this(owned,active,strength,false); }
+        State(boolean owned,boolean active,int strength,boolean restoring){this.owned=owned;this.active=active;this.strength=strength;this.restoring=restoring;}
+        boolean same(State other) { return owned == other.owned && (!owned || active == other.active && strength == other.strength); }
+    }
+    static final class Delivery {
+        final State state;
+        private final Binding binding;
+        private final long generation;
+        Delivery(Binding binding,State state,long generation){this.binding=binding;this.state=state;this.generation=generation;}
+        boolean current(){return ExtraDimOwnershipClient.current==binding && binding.state==state
+                && binding.invalidations.get()==generation && (!(state.owned||state.restoring) || binding.loaded
+                && System.nanoTime()-binding.checkedAt<TimeUnit.SECONDS.toNanos(5));}
+        void complete(){if(state.restoring&&current())binding.wasOwned=false;}
     }
     private static final class Binding {
-        final Context context; final int user; final Handler handler; final java.util.function.Consumer<Boolean> changed;
+        final Context context; final int user; final Handler handler; final java.util.function.Consumer<Delivery> changed;
         final AtomicBoolean queued = new AtomicBoolean();
         final AtomicLong invalidations = new AtomicLong();
         long appliedGeneration;
         volatile State state = State.EMPTY;
         volatile boolean loaded;
+        volatile boolean wasOwned;
         volatile long retryAfter;
         volatile long checkedAt;
         long reconcileAfter;
         ScheduledFuture<?> scheduled;
         long scheduledAt,scheduledId;
         ContentObserver observer; int failures;
-        Binding(Context context, int user, Handler handler, java.util.function.Consumer<Boolean> changed) {
+        Binding(Context context, int user, Handler handler, java.util.function.Consumer<Delivery> changed) {
             this.context = context; this.user = user; this.handler = handler; this.changed = changed;
         }
     }
     private ExtraDimOwnershipClient() { }
 
-    static State peek(Context context, int user, Handler handler, java.util.function.Consumer<Boolean> changed) {
+    static State peek(Context context, int user, Handler handler, java.util.function.Consumer<Delivery> changed) {
         if (user < 0 || handler == null) return State.EMPTY;
         Binding binding = current;
         if (binding == null || binding.user != user || binding.handler != handler) synchronized (ExtraDimOwnershipClient.class) {
@@ -84,6 +96,14 @@ final class ExtraDimOwnershipClient {
             b.invalidations.incrementAndGet();
         }
         FeatureRuntimeLog.event("EXTRA_DIM_RECONCILE","user="+user+";action=reread_native_request");
+        schedule(b,0);
+    }
+
+    /** A native event wins over any provider response already read or queued. */
+    static void nativeChanged(int user,Handler handler){
+        Binding b=current;
+        if(b==null||b.user!=user||b.handler!=handler||b.loaded&&!(b.state.owned||b.wasOwned))return;
+        b.invalidations.incrementAndGet();
         schedule(b,0);
     }
 
@@ -135,7 +155,8 @@ final class ExtraDimOwnershipClient {
     private static String nativeValue(Binding binding, String key) {
         Bundle args = new Bundle(); args.putInt("_user", binding.user);
         Bundle result = binding.context.getContentResolver().call(Uri.parse("content://settings"), "GET_secure", key, args);
-        return result == null ? null : result.getString("value");
+        if(result==null)throw new IllegalStateException("native request unavailable");
+        return result.getString("value");
     }
     private static void refresh(Binding binding) {
         long observedGeneration = binding.invalidations.get();
@@ -147,26 +168,29 @@ final class ExtraDimOwnershipClient {
             if (result == null || !result.getBoolean("ok", false) || result.getInt("user", -1) != binding.user)
                 throw new IllegalStateException("ownership unavailable");
             State next = State.EMPTY;
-            if (result.getBoolean("owned", false)) {
+            boolean owned=result.getBoolean("owned", false),restoring=!owned&&binding.wasOwned;
+            if (owned || restoring) {
                 String active = nativeValue(binding, "reduce_bright_colors_activated");
                 String strength = nativeValue(binding, "reduce_bright_colors_level");
-                if (!("0".equals(active) || "1".equals(active)) || strength == null || !strength.matches("[0-9]{1,3}"))
+                if (!("0".equals(active) || "1".equals(active) || restoring&&active==null)
+                        || !(strength!=null&&strength.matches("[0-9]{1,3}") || restoring&&(strength==null||"-1".equals(strength))))
                     throw new IllegalStateException("invalid native request");
-                int amount = Integer.parseInt(strength);
+                int amount = strength==null?-1:Integer.parseInt(strength);
                 if (amount > 100) throw new IllegalStateException("invalid native strength");
-                next = new State(true, "1".equals(active), amount);
+                next = new State(owned, "1".equals(active), amount,restoring);
             }
             if (observedGeneration != binding.invalidations.get()) return;
             binding.failures = 0; binding.loaded = true; binding.checkedAt=System.nanoTime();
+            if(owned)binding.wasOwned=true;
             String detail="user="+binding.user+";owned="+next.owned+";requested="+next.active+";strength="+next.strength;
             FeatureRuntimeLog.state("EXTRA_DIM_REQUEST",detail,detail+";generation="+observedGeneration);
-            publish(binding, next, next.owned && observedGeneration != binding.appliedGeneration);
+            publish(binding, next, (next.owned||next.restoring) && observedGeneration != binding.appliedGeneration,observedGeneration);
             binding.appliedGeneration = observedGeneration;
         } catch (RuntimeException unavailable) {
             FeatureRuntimeLog.event("EXTRA_DIM_REQUEST_ERROR","user="+binding.user+";exception="+FeatureRuntimeLog.failure(unavailable));
             binding.loaded = false;
             binding.retryAfter = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            publish(binding, State.EMPTY, false);
+            publish(binding, State.EMPTY, false,observedGeneration);
             binding.failures++;retry=true;
         } finally {
             binding.queued.set(false);
@@ -174,11 +198,15 @@ final class ExtraDimOwnershipClient {
             else if (retry) schedule(binding, binding.failures<=3?500L*binding.failures:30_000L);
         }
     }
-    private static void publish(Binding binding, State next, boolean reapply) {
-        if (current != binding || (!reapply && binding.state.same(next))) return;
+    private static void publish(Binding binding, State next, boolean reapply,long generation) {
+        if (current != binding || binding.invalidations.get()!=generation || (!reapply && binding.state.same(next))) return;
         binding.state = next;
+        Delivery delivery=new Delivery(binding,next,generation);
         binding.handler.post(() -> {
-            if (current == binding && binding.state == next) binding.changed.accept(next.owned);
+            if (delivery.current()) binding.changed.accept(delivery);
+            else if(current==binding&&binding.state==next&&binding.invalidations.get()==generation){
+                binding.invalidations.incrementAndGet();schedule(binding,0);
+            }
         });
     }
 }

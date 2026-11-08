@@ -20,7 +20,7 @@ files['android/provider/Settings.java']='package android.provider;public class S
 files.update({
 'android/os/SystemClock.java':'package android.os;public class SystemClock{public static long uptimeMillis(){return System.currentTimeMillis();}}',
 'android/os/Build.java':'package android.os;public class Build{public static class VERSION{public static int SDK_INT=37;}}',
-'android/graphics/RuntimeShader.java':'package android.graphics;public class RuntimeShader{public RuntimeShader(String code){}public void setFloatUniform(String key,float v){}}',
+'android/graphics/RuntimeShader.java':'package android.graphics;public class RuntimeShader{public final java.util.Map<String,Float> values=new java.util.HashMap<>();public RuntimeShader(String code){}public void setFloatUniform(String key,float v){values.put(key,v);}}',
 'android/content/Context.java':'''package android.content;public class Context{
  public android.content.ContentResolver getContentResolver(){return new android.content.ContentResolver();}public final android.content.res.Resources resources=new android.content.res.Resources();public android.content.res.Resources getResources(){return resources;}}
 ''',
@@ -30,7 +30,7 @@ files.update({
 ''',
 'io/github/libxposed/api/XposedInterface.java': 'package io.github.libxposed.api;public interface XposedInterface{interface HookHandle{void unhook();}}',
 'android/graphics/Shader.java':'package android.graphics;public class Shader{public enum TileMode{CLAMP}}',
-'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}public static RenderEffect createRuntimeShaderEffect(RuntimeShader s,String name){return new RenderEffect();}public static RenderEffect createChainEffect(RenderEffect outer,RenderEffect inner){return new RenderEffect();}}',
+'android/graphics/RenderEffect.java':'package android.graphics;public class RenderEffect{public static RenderEffect createBlurEffect(float x,float y,Shader.TileMode m){return new RenderEffect();}public static RenderEffect createRuntimeShaderEffect(RuntimeShader s,String name){return new RenderEffect();}public static RenderEffect createChainEffect(RenderEffect outer,RenderEffect inner){return new RenderEffect();}public static RenderEffect createBlendModeEffect(RenderEffect a,RenderEffect b,BlendMode mode){if(mode!=BlendMode.PLUS)throw new AssertionError("crossfade must add premultiplied weights");return new RenderEffect();}}',
 'android/view/View.java':'''package android.view;public class View{
  public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}private final java.util.List<OnAttachStateChangeListener> listeners=new java.util.ArrayList<>();public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.add(l);}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){listeners.remove(l);}public void detach(){attached=false;for(var l:new java.util.ArrayList<>(listeners))l.onViewDetachedFromWindow(this);}public static final int VISIBLE=0,GONE=8;public ViewGroup parent;public int visibility,width=400,height=100;public boolean attached=true,hardware=true;
  public float sx=1,sy=1,px=200,py=50;public android.graphics.RenderEffect effect;
@@ -205,7 +205,10 @@ import android.view.*;import android.graphics.*;import android.graphics.drawable
 public class TestClockBackdrop{
  static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
  static class HeaderSubclass extends CCHeaderView{}
- static class Source implements NotificationTopBlur.Source{boolean on=true;Set<View> hidden=new HashSet<>();public boolean active(){return on;}public boolean eligible(View v){return !hidden.contains(v);}}
+ static class ClipHost extends ViewGroup{public boolean mShouldUseRoundedRectClipping=true,mLaunchingNotification;public int mRoundedRectClippingTop=125;public android.graphics.RenderEffect mBlurEffect;}
+ static class ClipSubclass extends ClipHost{}
+ static class WrongClipHost extends ViewGroup{public boolean mShouldUseRoundedRectClipping=true,mLaunchingNotification;public float mRoundedRectClippingTop=125;}
+ static class Source implements NotificationTopBlur.Source{boolean on=true;float scroll=1000;Set<View> hidden=new HashSet<>();public boolean active(){return on;}public boolean eligible(View v){return !hidden.contains(v);}public float scrollDistance(){return scroll;}}
  // Model the real OEM's dispatchDraw: software-only failures cancel internally,
  // so an outer try/catch cannot protect the notification.
  static class HardwareRow extends View{int cancellations;public void draw(Canvas c){if(!c.isHardwareAccelerated()){cancellations++;return;}super.draw(c);}}
@@ -232,6 +235,29 @@ public class TestClockBackdrop{
   header.panelType=1;blur.update(Arrays.asList(row));check(blur.evidence().startsWith("missing_notification_clock"),"control-center clock not targeted");header.panelType=2;
   blur.update(Arrays.asList(row));row.drawThrows=true;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0&&row.drawClipTop==0,"failed hardware draw never publishes partial content or changes row clip");check(FeatureSettings.reports.get("ls_augment_notification_top_blur_runtime").contains("draw_unavailable"),"concrete failure diagnostic");row.drawThrows=false;blur.clear();
   check(row.cancellations==0,"no software fallback across lifecycle branches");
+  // The seam receives the original stack draw, not a second row traversal.
+  for(ViewGroup nativeHost:new ViewGroup[]{new ClipHost(),new ClipSubclass(),new ViewGroup(),new WrongClipHost()}){
+   ViewGroup root2=new ViewGroup();root2.height=1000;nativeHost.height=800;nativeHost.y=20;root2.addView(nativeHost);
+   CCHeaderView h2=new HeaderSubclass();h2.y=40;root2.addView(h2);
+   HardwareRow r2=new HardwareRow();r2.y=50;r2.ink=5;nativeHost.addView(r2);
+   Source s2=new Source();NotificationTopBlur b2=new NotificationTopBlur(nativeHost,s2);b2.update(Arrays.asList(r2));
+   Canvas target=new Canvas(),recording=b2.beginTransition(target);
+   if(!(nativeHost instanceof ClipHost)){check(recording==null,"missing or wrong clip field preserves native drawing");b2.clear();continue;}
+   check(recording!=null&&recording.isHardwareAccelerated(),"native clip contract enables hardware capture including subclasses");
+   check(b2.beginTransition(target)==null,"nested native dispatch cannot recursively capture");
+   recording.clipRect(0,125,400,800);recording.fill(0,0,400,800,5);b2.endTransition(target,true);
+   check(target.bitmap.p[124][200]==0&&target.bitmap.p[200][200]==5,"native upper clip and unfiltered body remain intact");
+   check(r2.drawCount==0&&r2.drawClipTop==0&&r2.effect==null,"seam never redraws or mutates individual notification rows");
+   check(b2.evidence().contains("transition=drawn_native_clip_preserved;transition_pixels=125,173"),"measured seam is reported");
+   s2.scroll=1;check(b2.beginTransition(target)==null,"first drag pixel cannot suddenly apply full mask");s2.scroll=16;
+   recording=b2.beginTransition(target);check(recording!=null,"entry progressively activates");b2.endTransition(new Canvas(),true);
+   check(b2.evidence().contains("transition_strength=16/32"),"halfway entry has half strength");s2.scroll=1000;
+   ClipHost verified=(ClipHost)nativeHost;verified.mLaunchingNotification=true;check(b2.beginTransition(target)==null,"launch keeps native rendering");verified.mLaunchingNotification=false;
+   verified.mRoundedRectClippingTop=500;check(b2.beginTransition(target)==null,"unrelated clipping boundary is not feathered");verified.mRoundedRectClippingTop=125;
+   Canvas software=new Canvas(new Bitmap(400,800));check(b2.beginTransition(software)==null,"software canvas has no transition fallback");
+   recording=b2.beginTransition(target);Canvas aborted=new Canvas();b2.endTransition(aborted,false);check(aborted.nodes==0,"failed original draw never publishes partial display list");
+   s2.on=false;check(b2.beginTransition(target)==null,"disabled gradient immediately returns native draw");b2.clear();
+  }
   System.out.println("clock backdrop hardware/no-cancellation/region/privacy/lifecycle checks="+checks);
  }
 }'''
@@ -241,15 +267,38 @@ extend(files)
 
 # GPU mask facade: Android pixel filtering and edge feathering are additionally
 # verified on device; these doubles enforce the isolated-layer contract.
-files['android/graphics/BlendMode.java']='package android.graphics;public enum BlendMode{DST_IN}'
+files['android/graphics/BlendMode.java']='package android.graphics;public enum BlendMode{DST_IN,PLUS}'
 files['android/graphics/LinearGradient.java']='package android.graphics;public class LinearGradient extends Shader{public LinearGradient(float a,float b,float c,float d,int[] colors,float[] stops,TileMode mode){}}'
 files['android/graphics/Paint.java']='package android.graphics;public class Paint{public static final int ANTI_ALIAS_FLAG=1,FILTER_BITMAP_FLAG=2;public Shader shader;public BlendMode blend;public Paint(int flags){}public void setShader(Shader s){shader=s;}public void setBlendMode(BlendMode b){blend=b;}}'
 files['android/graphics/Canvas.java']=files['android/graphics/Canvas.java'].replace(' public int save()', ' public int masks;public int saveLayer(float a,float b,float c,float d,Paint p){return save();}public void drawRect(Rect r,Paint p){if(p.shader==null||p.blend!=BlendMode.DST_IN||saves.isEmpty())throw new AssertionError("unscoped feather mask");masks++;}public int save()')
 files['ls/augment/com/hook/TestClockBackdrop.java']=files['ls/augment/com/hook/TestClockBackdrop.java'].replace('canvas.nodes==1&&canvas.bitmap.p[40][300]==5','canvas.nodes==1&&canvas.masks==2&&canvas.bitmap.p[40][300]==5')
+files['android/graphics/Canvas.java']=files['android/graphics/Canvas.java'].replace('if(node.effect==null)throw new AssertionError("missing Gaussian effect");','')
 
-for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
+files['ls/augment/com/hook/TestTransitionHook.java']='''package ls.augment.com.hook;
+import android.graphics.*;import android.view.*;import com.zte.controlcenter.widget.CCHeaderView;import com.android.systemui.statusbar.notification.stack.*;import com.android.systemui.statusbar.notification.row.*;
+public class TestTransitionHook{
+ static class SubStack extends NotificationStackScrollLayout{}
+ static void check(boolean v,String why){if(!v)throw new AssertionError(why);}
+ public static void main(String[] args){
+  AugmentModule module=new AugmentModule();AugmentModule.active=module;FeatureSettings.values.put(ls.augment.com.SystemUiOptions.NOTIFICATION_STACK,"1");
+  NotificationCascadeHook.install(module,TestTransitionHook.class.getClassLoader());
+  ViewGroup root=new ViewGroup();SubStack host=new SubStack();host.y=20;root.addView(host);
+  CCHeaderView header=new CCHeaderView();header.y=40;root.addView(header);
+  ExpandableNotificationRow row=new ExpandableNotificationRow();row.nativeY=160;row.y=50;host.addView(row);host.mOwnScrollY=40;
+  AmbientState ambient=new AmbientState();StackScrollAlgorithm algorithm=new StackScrollAlgorithm(host);algorithm.resetViewStates(ambient,0);
+  Canvas output=new Canvas();host.dispatchDraw(output);
+  check(host.drawCalls==1&&host.drawHardware,"native dispatch is called once on hardware recording canvas");
+  check(output.nodes==3&&output.bitmap.p[124][200]==0&&output.bitmap.p[200][200]==5,"hook publishes filtered seam and native body with original clip");
+  host.drawFailure=true;try{host.dispatchDraw(new Canvas());throw new AssertionError("original failure swallowed");}catch(RuntimeException expected){}
+  host.drawFailure=false;output=new Canvas();host.dispatchDraw(output);check(output.nodes==3&&host.drawCalls==3,"throw closes recording and next native frame recovers");
+  FeatureSettings.values.put("ls_augment_rm_notification_stack_gradient","0");output=new Canvas();host.dispatchDraw(output);check(output.nodes==0&&output.bitmap.p[200][200]==5,"gradient off immediately uses original canvas");
+  System.out.println("native transition hook: inherited layout, once-only dispatch, clip, failure recovery, disable passed");
+ }
+}'''
+
+for variant in ['legacy','modern','legacy_draw','modern_draw','missing','missing_clip','wrong_clip_type']:
     current=dict(files)
-    if variant=='modern':
+    if variant.startswith('modern'):
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha(float a)','setAlpha(float a,String why)')
         # NX819J's native resetViewState and algorithm.updateClipping leave
         # clipTopAmount untouched. The old double hid ownership leaks by zeroing it.
@@ -257,6 +306,14 @@ for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
         k=BASE+'row/ExpandableNotificationRow.java';current[k]=current[k].replace('isUserLocked','isUserSwipingToExpandRow')
         k=BASE+'stack/NotificationStackScrollLayout.java';current[k]=current[k].replace('public boolean native_onScrollTouch', '''public boolean offerScrollTouchToScroller(android.view.MotionEvent e){return (Boolean)ls.augment.com.hook.AugmentModule.invoke(this,"offerScrollTouchToScroller",new Class<?>[]{android.view.MotionEvent.class},e);}public boolean native_offerScrollTouchToScroller(android.view.MotionEvent e){return isScrollingEnabled();}public boolean native_onScrollTouch''')
         k='ls/augment/com/hook/TestCascade.java';current[k]=current[k].replace('hooks==9','hooks==10').replace('h.onScrollTouch(', 'h.offerScrollTouchToScroller(')
+    if variant.endswith('_draw'):
+        k=BASE+'stack/NotificationStackScrollLayout.java'
+        current[k]=current[k].replace(' public boolean upEnabled;', '''
+ public boolean mShouldUseRoundedRectClipping=true,mLaunchingNotification,drawFailure,drawHardware;public android.graphics.RenderEffect mBlurEffect;public int mRoundedRectClippingTop=125,drawCalls;
+ public void dispatchDraw(android.graphics.Canvas canvas){ls.augment.com.hook.AugmentModule.invoke(this,"dispatchDraw",new Class<?>[]{android.graphics.Canvas.class},canvas);}
+ public void native_dispatchDraw(android.graphics.Canvas canvas){drawCalls++;drawHardware=canvas.isHardwareAccelerated();if(drawFailure)throw new IllegalStateException("native draw failure");canvas.clipRect(0,125,400,800);canvas.fill(0,0,400,800,5);}
+ public boolean upEnabled;''')
+    else:current.pop('ls/augment/com/hook/TestTransitionHook.java')
     if variant=='missing':
         k=BASE+'stack/ExpandableViewState.java';current[k]=current[k].replace('setAlpha','unrelatedAlpha')
     if variant=='missing_clip':
@@ -272,4 +329,5 @@ for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
         subprocess.run([str(JAVA/'javac.exe'),'-encoding','UTF-8','-d',folder,*map(str,paths)],check=True)
         subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestCascade',*(['missing'] if variant in ['missing','missing_clip','wrong_clip_type'] else [])],check=True)
         if variant in ['legacy','modern']:subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestClockBackdrop'],check=True)
+        if variant.endswith('_draw'):subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestTransitionHook'],check=True)
         if variant=='legacy':subprocess.run([str(JAVA/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestWake'],check=True)

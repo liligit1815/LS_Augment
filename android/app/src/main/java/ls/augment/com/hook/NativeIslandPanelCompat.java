@@ -69,19 +69,30 @@ final class NativeIslandPanelCompat {
 
     /** Only called for Duo-owned scene views. False preserves an unknown or complete native implementation. */
     static boolean closeEnd(Object owner,Object island,boolean remove,boolean disposable,Consumer<String> report) {
+        return closeEnd(owner,island,remove,disposable,null,report);
+    }
+
+    static boolean closeEnd(Object owner,Object island,boolean remove,boolean disposable,View preparedPanel,Consumer<String> report) {
         if (!ordinary(owner)) report.accept("panel_close_native:"+nativeReason(owner));
         if (!ordinary(owner)) return false;
         Contract c = CONTRACTS.get(owner.getClass());
         try {
             Object selected = c.selected.invoke(owner);
-            if (selected != null && selected != island) {
+            Object container = c.panelContainer.get(owner);
+            Object panel = preparedPanel;
+            if (panel == null && island != null) panel = call(island,"getPanelIsland");
+            Object temporary = c.temporary.get(owner);
+            if ((selected != null && selected != island) || (temporary != null && temporary != island)) {
+                // Retire only the old view. Its callback cannot change the new panel's flags or size.
+                Object nextPanel = selected == null ? null : call(selected,"getPanelIsland");
+                if (panel != nextPanel && container instanceof ViewGroup && panel instanceof View
+                        && ((View)panel).getParent() == container) ((ViewGroup)container).removeView((View)panel);
+                if (remove && island != null) c.remove.invoke(owner,island);
                 report.accept("panel_close_stale:selection_changed"); return true;
             }
             c.showing.setBoolean(owner,false);
             c.closing.setBoolean(owner,false);
             c.temporary.set(owner,null);
-            Object container = c.panelContainer.get(owner);
-            Object panel = island == null ? null : call(island,"getPanelIsland");
             if (container instanceof ViewGroup && panel instanceof View && ((View)panel).getParent() == container)
                 ((ViewGroup)container).removeView((View)panel);
             if (!(container instanceof ViewGroup)) report.accept("panel_close_degraded:panel_container_missing");

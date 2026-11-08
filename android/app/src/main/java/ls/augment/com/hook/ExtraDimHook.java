@@ -11,6 +11,8 @@ import ls.augment.com.ExtraDimRuntime;
 final class ExtraDimHook {
     private static boolean installed;
     private static final java.util.Set<Class<?>> observedNativeTypes=new java.util.HashSet<>();
+    private static final ThreadLocal<Object> SYNC_SERVICE=new ThreadLocal<>();
+    private static ExtraDimNativeRequest nativeRequest;
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
@@ -39,12 +41,13 @@ final class ExtraDimHook {
             Field controller=service.getDeclaredField("mReduceBrightColorsTintController");
             for(Method method:new Method[]{apply,available,state,strength,expected,level,actual,local,dump,nativeActivation,nativeStrength})method.setAccessible(true);
             user.setAccessible(true);controller.setAccessible(true);nativeHandler.setAccessible(true);
+            nativeRequest=ExtraDimNativeRequest.install(module,loader);
             module.registerFeatureHook(module.prepareFeatureHook(apply,"extra_dim.transform",false).intercept(chain -> {
                 Object target=chain.getArg(0);
                 if(reduction.isInstance(target))try {
                     Object instance=chain.getThisObject();int current=user.getInt(instance);
                     Context ctx=(Context)context.invoke(instance);
-                    ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
+                    ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength,available);
                     if(request.owned && Boolean.TRUE.equals(available.invoke(target,ctx))) {
                         // applyTint can follow a newer native Settings callback while
                         // our asynchronous ownership snapshot still contains the old
@@ -71,7 +74,7 @@ final class ExtraDimHook {
                     boolean on=target!=null && Boolean.TRUE.equals(state.invoke(target));
                     int amount=target==null?50:(Integer)strength.invoke(target);
                     int nativeAmount=amount;
-                    ExtraDimOwnershipClient.State request=request(module,instance,ctx,current,nativeHandler,user,controller,apply,nativeActivation,nativeStrength);
+                    ExtraDimOwnershipClient.State request=request(module,instance,ctx,current,nativeHandler,user,controller,apply,nativeActivation,nativeStrength,available);
                     boolean mapped=!request.owned||nativeAmount==nativeStrength(ctx,request.strength);
                     if(request.owned)amount=request.strength;
                     boolean verified=false,managerPresent=false,matrixMatches=false;
@@ -105,6 +108,9 @@ final class ExtraDimHook {
                     Object instance=chain.getThisObject();
                     Object target;
                     try{target=controller.get(instance);}catch(ReflectiveOperationException|RuntimeException unavailable){return chain.proceed();}
+                    if(SYNC_SERVICE.get()!=instance)try{
+                        ExtraDimOwnershipClient.nativeChanged(user.getInt(instance),(android.os.Handler)nativeHandler.get(instance));
+                    }catch(ReflectiveOperationException|RuntimeException error){module.logFeatureError("EXTRA_DIM_NATIVE_INVALIDATION",error);}
                     String before=describe(target,state,strength);
                     try {
                         Object result=chain.proceed();
@@ -162,15 +168,15 @@ final class ExtraDimHook {
                     try {
                         Object instance=chain.getThisObject();Context ctx=(Context)context.invoke(instance);int current=user.getInt(instance);
                         Object target=controller.get(instance);
-                        ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength);
+                        ExtraDimOwnershipClient.State request = request(module, instance, ctx, current, nativeHandler, user, controller, apply, nativeActivation, nativeStrength,available);
                         if(request.owned && target!=null && Boolean.TRUE.equals(available.invoke(target,ctx)))
-                            syncNative(instance, target, nativeStrength, nativeActivation, apply);
+                            ExtraDimOwnershipClient.reconcile(current,(android.os.Handler)nativeHandler.get(instance));
                     }catch(ReflectiveOperationException | RuntimeException error){module.logFeatureError("EXTRA_DIM_SETUP",error);}
                     return result;
                 }));
             }catch(ReflectiveOperationException absent){module.logFeatureInfo("EXTRA_DIM_SETUP_UNAVAILABLE "+absent.getClass().getSimpleName());}
             installed=true;
-            FeatureRuntimeLog.event("EXTRA_DIM_CAPABILITY","native_callbacks=true;matrix_readback=true;reconciliation=fresh_request");
+            FeatureRuntimeLog.event("EXTRA_DIM_CAPABILITY","native_callbacks=true;matrix_readback=true;scoped_native_read="+(nativeRequest!=null)+";reconciliation=fresh_generation");
         }catch(Throwable error){module.logFeatureError("EXTRA_DIM_INSTALL",error);}
     }
 
@@ -184,27 +190,47 @@ final class ExtraDimHook {
         return ExtraDimRuntime.nativeStrength(requested,resources.getInteger(min),resources.getInteger(max));
     }
     private static ExtraDimOwnershipClient.State request(AugmentModule module, Object instance, Context context, int current,
-            Field nativeHandler, Field user, Field controller, Method apply, Method nativeActivation, Method nativeStrength) throws ReflectiveOperationException {
+            Field nativeHandler, Field user, Field controller, Method apply, Method nativeActivation, Method nativeStrength,Method available) throws ReflectiveOperationException {
         android.os.Handler handler = (android.os.Handler) nativeHandler.get(instance);
-        return ExtraDimOwnershipClient.peek(context, current, handler, owned -> {
+        return ExtraDimOwnershipClient.peek(context, current, handler, delivery -> {
             try {
-                if (user.getInt(instance) != current || nativeHandler.get(instance) != handler) return;
+                if (!delivery.current() || !sameService(instance,current,handler,user,nativeHandler)) return;
                 Object target = controller.get(instance);
                 if (target == null) return;
-                // Both acquisition/refresh and release use the same native path.
-                // These callbacks reread current-user Settings, use ROM calibration
-                // and notify the display power listener before applying the matrix.
-                // The boolean is the native user-initiated flag, NOT the desired state.
-                FeatureRuntimeLog.event("EXTRA_DIM_SYNC_BEGIN","user="+current+";owned="+owned+";"+ExtraDimOwnershipClient.evidence());
-                syncNative(instance, target, nativeStrength, nativeActivation, apply);
-                FeatureRuntimeLog.event("EXTRA_DIM_SYNC_RETURNED","user="+current+";owned="+owned+";business=requires_readback");
+                if(delivery.state.owned && !Boolean.TRUE.equals(available.invoke(target,context)))return;
+                if(delivery.state.owned)nativeStrength(context,delivery.state.strength); // validate ROM calibration before any override
+                FeatureRuntimeLog.event("EXTRA_DIM_SYNC_BEGIN","user="+current+";owned="+delivery.state.owned+";requested="+delivery.state.active+";"+ExtraDimOwnershipClient.evidence());
+                if(!syncNative(instance,target,nativeStrength,nativeActivation,apply,context,current,delivery,
+                        ()->delivery.current()&&sameService(instance,current,handler,user,nativeHandler)))return;
+                delivery.complete();
+                FeatureRuntimeLog.event("EXTRA_DIM_SYNC_RETURNED","user="+current+";owned="+delivery.state.owned+";business=requires_readback");
             } catch (ReflectiveOperationException | RuntimeException error) { module.logFeatureError("EXTRA_DIM_REFRESH", error); }
         });
     }
-    private static void syncNative(Object instance, Object target, Method strength, Method activation, Method apply) throws ReflectiveOperationException {
-        strength.invoke(instance);
-        activation.invoke(instance, false);
-        apply.invoke(instance, target, true);
+    private static boolean sameService(Object instance,int current,android.os.Handler handler,Field user,Field nativeHandler){
+        try{return user.getInt(instance)==current&&nativeHandler.get(instance)==handler;}
+        catch(ReflectiveOperationException|RuntimeException invalid){return false;}
+    }
+    private static boolean syncNative(Object instance,Object target,Method strength,Method activation,Method apply,
+            Context context,int user,ExtraDimOwnershipClient.Delivery delivery,java.util.function.BooleanSupplier current) throws ReflectiveOperationException {
+        Object previous=SYNC_SERVICE.get();SYNC_SERVICE.set(instance);
+        try{
+            // Preserve native calibration, listener notifications, and the meaning
+            // of userInitiated=false. Only these two synchronous reads may use the
+            // fresh provider values; ordinary native callbacks never use our cache.
+            if((delivery.state.owned||delivery.state.restoring) && nativeRequest!=null){
+                nativeRequest.invoke(strength,instance,context.getContentResolver(),user,"reduce_bright_colors_level",delivery.state.strength,current);
+                nativeRequest.invoke(activation,instance,context.getContentResolver(),user,"reduce_bright_colors_activated",delivery.state.active?1:0,current,false);
+            }else{
+                if(!current.getAsBoolean())return false;
+                strength.invoke(instance);
+                if(!current.getAsBoolean())return false;
+                activation.invoke(instance,false);
+            }
+            if(!current.getAsBoolean())return false;
+            apply.invoke(instance,target,true);
+            return true;
+        }finally{if(previous==null)SYNC_SERVICE.remove();else SYNC_SERVICE.set(previous);}
     }
 
     private static String describe(Object target,Method state,Method strength) {

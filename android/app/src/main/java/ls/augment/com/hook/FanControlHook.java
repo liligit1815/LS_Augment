@@ -45,17 +45,11 @@ final class FanControlHook {
         try {
             Class<?> type = Class.forName(CONTROLLER_CLASS, false, loader);
             Class<?> utils = Class.forName(UTILS_CLASS, false, loader);
-            Method writeNode = utils.getDeclaredMethod(
-                    "setNodeValue", String.class, String.class);
-            Method readNode = utils.getDeclaredMethod("readNodeValue", String.class);
-            requireMethod(writeNode,void.class,true);
-            requireMethod(readNode,String.class,true);
-            Method start = type.getDeclaredMethod("start");
-            Method notifyMode = type.getDeclaredMethod("notifyCubeFan");
-            Method setEnable = type.getDeclaredMethod("setFanEnable", boolean.class);
-            requireMethod(start,void.class,false);
-            requireMethod(notifyMode,void.class,false);
-            requireMethod(setEnable,void.class,false);
+            Method writeNode = FanMembers.method(utils,"setNodeValue",void.class,true,String.class,String.class);
+            Method readNode = FanMembers.method(utils,"readNodeValue",String.class,true,String.class);
+            Method start = FanMembers.method(type,"start",void.class,false);
+            Method notifyMode = FanMembers.method(type,"notifyCubeFan",void.class,false);
+            Method setEnable = FanMembers.method(type,"setFanEnable",void.class,false,boolean.class);
             writeNode.setAccessible(true);
             readNode.setAccessible(true);
             FanCompatibilityProfile profile = FanCompatibilityProfile.resolve(
@@ -113,7 +107,7 @@ final class FanControlHook {
             installed++;
 
             if (hasVoidMethod(type, "onShutDown")) {
-                Method shutdown = type.getDeclaredMethod("onShutDown");
+                Method shutdown = FanMembers.method(type,"onShutDown",void.class,false);
                 shutdown.setAccessible(true);
                 module.registerFeatureHook(module.prepareFeatureHook(
                         shutdown, "fan.observe_oem_shutdown", false).intercept(chain -> {
@@ -883,16 +877,9 @@ final class FanControlHook {
 
     private static boolean hasVoidMethod(Class<?> type, String name) {
         try {
-            Method method = FanPowerLease.find(type,name);
-            return method.getReturnType() == void.class
-                    && !java.lang.reflect.Modifier.isStatic(method.getModifiers())
-                    && !java.lang.reflect.Modifier.isAbstract(method.getModifiers());
+            FanMembers.method(type,name,void.class,false);
+            return true;
         } catch (ReflectiveOperationException missing) { return false; }
-    }
-
-    private static void requireMethod(Method method,Class<?> result,boolean isStatic)throws NoSuchMethodException {
-        if(method.getReturnType()!=result||java.lang.reflect.Modifier.isStatic(method.getModifiers())!=isStatic
-                ||java.lang.reflect.Modifier.isAbstract(method.getModifiers()))throw new NoSuchMethodException(method.toString());
     }
 
     private static String safeMessage(Throwable error) {

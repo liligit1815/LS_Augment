@@ -24,13 +24,13 @@ public final class ContentResolver{
  public final java.util.Map<Integer,Boolean> owned=new ConcurrentHashMap<>();public final java.util.Map<String,String> nativeValues=new ConcurrentHashMap<>();
  public final java.util.Map<ContentObserver,java.util.Set<String>> observers=new ConcurrentHashMap<>();
  public final AtomicInteger privateCalls=new AtomicInteger(),nativeCalls=new AtomicInteger(),mainCalls=new AtomicInteger(),registerCalls=new AtomicInteger();
- public volatile boolean fail,failRegistration,wrongUser;public volatile String blockKey;public volatile CountDownLatch entered,release;
+ public volatile boolean fail,nativeFail,failRegistration,wrongUser;public volatile String blockKey;public volatile CountDownLatch entered,release;
  private void background(){if(!Thread.currentThread().getName().equals("LSA-ExtraDimOwnership")){mainCalls.incrementAndGet();throw new IllegalStateException("IPC on callback thread");}}
  public void registerContentObserver(Uri uri,boolean children,ContentObserver observer){background();registerCalls.incrementAndGet();if(failRegistration)throw new IllegalStateException("registration unavailable");observers.computeIfAbsent(observer,k->ConcurrentHashMap.newKeySet()).add(uri.toString());}
  public void unregisterContentObserver(ContentObserver observer){background();observers.remove(observer);}
  public void notifyUser(int user){for(var entry:observers.entrySet())if(entry.getValue().stream().anyMatch(s->s.startsWith("content://"+user+"@")))entry.getKey().onChange(false);}
  public Bundle call(Uri uri,String method,String key,Bundle args){background();Bundle b=new Bundle();if(method.equals("extra_dim_ownership")){privateCalls.incrementAndGet();if(fail)return null;int user=Integer.parseInt(uri.toString().substring("content://".length()).split("@")[0]);b.putBoolean("ok",true);b.putInt("user",wrongUser?user+1:user);b.putBoolean("owned",Boolean.TRUE.equals(owned.get(user)));}
- else if(method.equals("GET_secure")){nativeCalls.incrementAndGet();if(!key.equals("reduce_bright_colors_activated")&&!key.equals("reduce_bright_colors_level"))throw new AssertionError("custom Settings read: "+key);String value=nativeValues.get(args.getInt("_user",-1)+":"+key);if(key.equals(blockKey)){blockKey=null;entered.countDown();try{if(!release.await(3,TimeUnit.SECONDS))throw new AssertionError("barrier timeout");}catch(InterruptedException e){throw new RuntimeException(e);}}b.putString("value",value);}
+ else if(method.equals("GET_secure")){nativeCalls.incrementAndGet();if(nativeFail)return null;if(!key.equals("reduce_bright_colors_activated")&&!key.equals("reduce_bright_colors_level"))throw new AssertionError("custom Settings read: "+key);String value=nativeValues.get(args.getInt("_user",-1)+":"+key);if(key.equals(blockKey)){blockKey=null;entered.countDown();try{if(!release.await(3,TimeUnit.SECONDS))throw new AssertionError("barrier timeout");}catch(InterruptedException e){throw new RuntimeException(e);}}b.putString("value",value);}
  else throw new AssertionError(method);return b;}
  public void values(int user,boolean owner,boolean active,int level){owned.put(user,owner);nativeValues.put(user+":reduce_bright_colors_activated",active?"1":"0");nativeValues.put(user+":reduce_bright_colors_level",String.valueOf(level));}
  public void blockLevel(){entered=new CountDownLatch(1);release=new CountDownLatch(1);blockKey="reduce_bright_colors_level";}
@@ -39,14 +39,17 @@ public final class ContentResolver{
 import android.content.*;import android.os.Handler;import java.util.concurrent.*;import java.util.concurrent.atomic.*;
 public final class TestExtraDimPrivateClient {
  static int checks;static final Context context=new Context();static Handler handler=new Handler();static AtomicInteger changes=new AtomicInteger(),releases=new AtomicInteger();
+ static ExtraDimOwnershipClient.Delivery delivered;
  static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
- static ExtraDimOwnershipClient.State peek(int user){return ExtraDimOwnershipClient.peek(context,user,handler,owned->{changes.incrementAndGet();if(!owned)releases.incrementAndGet();});}
+ static ExtraDimOwnershipClient.State peek(int user){return ExtraDimOwnershipClient.peek(context,user,handler,delivery->{delivered=delivery;changes.incrementAndGet();if(!delivery.state.owned)releases.incrementAndGet();delivery.complete();});}
  static void until(java.util.function.BooleanSupplier predicate,String message)throws Exception{long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(System.nanoTime()<end){handler.pump();if(predicate.getAsBoolean()){checks++;return;}Thread.sleep(5);}throw new AssertionError(message);}
  public static void main(String[] args)throws Exception {
   ContentResolver resolver=context.resolver;resolver.values(0,true,true,80);resolver.blockLevel();
   long start=System.nanoTime();check(!peek(0).owned,"first callback returns an empty memory snapshot");check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)<500,"native callback never waits for provider");
   check(resolver.entered.await(2,TimeUnit.SECONDS),"background worker reaches blocked native query");check(resolver.mainCalls.get()==0,"initial registration and reads stay off callback thread");
+  ExtraDimOwnershipClient.nativeChanged(0,handler);
   resolver.release.countDown();until(()->peek(0).owned&&peek(0).strength==80,"initial private ownership synchronizes request");until(()->changes.get()==1,"new request posts once to native handler");
+  check(resolver.privateCalls.get()>=2,"native event during first ownership read discards and refreshes that response");
   int reads=resolver.privateCalls.get();for(int i=0;i<1000;i++)peek(0);Thread.sleep(80);check(reads==resolver.privateCalls.get(),"steady callback traffic reuses private memory with no polling");
   resolver.notifyUser(0);until(()->changes.get()==2,"repeating the same owned request resynchronizes the native controller");
   int reconcileBefore=changes.get();ExtraDimOwnershipClient.reconcile(0,handler);until(()->changes.get()==reconcileBefore+1,"mismatched controller triggers fresh same-value native request");
@@ -58,6 +61,17 @@ public final class TestExtraDimPrivateClient {
   var checked=binding.getClass().getDeclaredField("checkedAt");checked.setAccessible(true);checked.setLong(binding,0);
   until(()->!peek(0).active&&peek(0).strength==47,"expired snapshot rereads native settings after lost notification");
   check(ExtraDimOwnershipClient.evidence().contains("ownership=ready"),"passive evidence reports fresh request age and user");
+  ExtraDimOwnershipClient.Delivery old=delivered;int nativeChanges=changes.get();
+  ExtraDimOwnershipClient.nativeChanged(0,handler);check(!old.current(),"new native event invalidates an already-delivered generation");
+  until(()->changes.get()==nativeChanges+1,"native event schedules a fresh same-value request");
+  int queuedChanges=changes.get();resolver.values(0,true,false,48);resolver.notifyUser(0);
+  long queuedDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+  while(peek(0).strength!=48&&System.nanoTime()<queuedDeadline)Thread.sleep(5);
+  check(peek(0).strength==48,"provider response queued before native handler runs");
+  resolver.blockLevel();resolver.values(0,true,true,49);ExtraDimOwnershipClient.nativeChanged(0,handler);
+  check(resolver.entered.await(2,TimeUnit.SECONDS),"new native generation is being reread");
+  handler.pump();check(changes.get()==queuedChanges,"queued stale snapshot cannot override newer native callback");
+  resolver.release.countDown();until(()->peek(0).strength==49&&delivered.state.strength==49,"new generation alone is delivered");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"refresh begins before concurrent native change");
   resolver.values(0,true,true,91);resolver.notifyUser(0);resolver.release.countDown();until(()->peek(0).strength==91,"notification arriving during IPC is replayed after the old response");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"old user refresh held in flight");
@@ -70,6 +84,22 @@ public final class TestExtraDimPrivateClient {
   resolver.fail=true;resolver.notifyUser(10);until(()->!peek(10).owned,"fourth outage enters low-frequency retry without stale request");
   resolver.fail=false;resolver.notifyUser(10);until(()->peek(10).owned,"new user event preempts delayed outage retry immediately");
   int beforeRelease=releases.get();resolver.owned.put(10,false);resolver.notifyUser(10);until(()->!peek(10).owned,"reset ownership invalidates cached request");until(()->releases.get()==beforeRelease+1,"ownership release requests one native restoration callback");int natives=resolver.nativeCalls.get();resolver.notifyUser(10);Thread.sleep(80);check(natives==resolver.nativeCalls.get(),"unowned features never read native request values");check(releases.get()==beforeRelease+1,"steady unowned notifications never take over native control");
+  check(delivered.state.restoring&&delivered.state.strength==37,"release carries the restored provider baseline once");
+  resolver.values(10,true,true,55);resolver.notifyUser(10);until(()->peek(10).owned&&delivered.state.owned,"reacquire before absent-baseline restore");
+  resolver.nativeFail=true;resolver.owned.put(10,false);resolver.notifyUser(10);
+  until(()->!peek(10).owned&&!delivered.state.owned,"native provider failure clears owned snapshot");
+  check(!delivered.state.restoring,"null provider response is not treated as a deleted baseline");resolver.nativeFail=false;
+  resolver.owned.put(10,false);resolver.nativeValues.remove("10:reduce_bright_colors_activated");resolver.nativeValues.remove("10:reduce_bright_colors_level");resolver.notifyUser(10);
+  until(()->delivered.state.restoring&&!delivered.state.active&&delivered.state.strength==-1,"removed baseline preserves the native default sentinel");
+  resolver.values(10,true,true,55);resolver.notifyUser(10);until(()->peek(10).owned&&delivered.state.owned,"reacquire before queued restoration race");
+  int restoreChanges=changes.get();resolver.values(10,false,false,30);resolver.notifyUser(10);
+  queuedDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+  while(peek(10).owned&&System.nanoTime()<queuedDeadline)Thread.sleep(5);
+  check(peek(10).restoring,"restoration queued on the native handler");
+  resolver.blockLevel();resolver.values(10,false,false,40);ExtraDimOwnershipClient.nativeChanged(10,handler);
+  check(resolver.entered.await(2,TimeUnit.SECONDS),"new native event invalidates queued restoration too");
+  handler.pump();check(changes.get()==restoreChanges,"superseded restoration cannot overwrite newer native values");resolver.release.countDown();
+  until(()->delivered.state.restoring&&delivered.state.strength==40,"restoration delivers only latest provider baseline");
   Handler previous=handler;handler=new Handler();resolver.values(10,true,false,29);resolver.blockLevel();check(!peek(10).owned,"replacement native handler receives a new binding");check(resolver.entered.await(2,TimeUnit.SECONDS),"replacement provider request executes independently");resolver.release.countDown();until(()->peek(10).owned&&peek(10).strength==29,"replacement service reloads private state");int priorChanges=changes.get();previous.pump();check(priorChanges==changes.get(),"stale native handler callbacks cannot act on replacement service");
   handler=new Handler();int registrations=resolver.registerCalls.get();resolver.failRegistration=true;peek(10);until(()->resolver.registerCalls.get()>registrations,"new binding attempts observer registration");resolver.failRegistration=false;until(()->peek(10).owned,"finite background retry repairs unavailable observer registration");
   check(resolver.mainCalls.get()==0,"all private/native reads and observer operations stay on background worker");

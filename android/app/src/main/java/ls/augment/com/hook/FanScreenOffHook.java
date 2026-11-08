@@ -25,6 +25,7 @@ final class FanScreenOffHook {
     static int install(AugmentModule module,ClassLoader loader,String source) {
         if (!FanScreenOffPolicy.supportedDevice(Build.DEVICE, Build.PRODUCT, Build.MODEL)&&!FanOemContract.screenGate(source)) {
             FeatureSettings.diagnostic(FeatureSettings.from(null),INSTALLED,"");
+            FeatureSettings.diagnostic(FeatureSettings.from(null),ERROR,"capability=oem_screen_predicate_order");
             module.logFeatureInfo("FAN_SCREEN_OFF_UNAVAILABLE capability=oem_screen_predicate_order");return 0;
         }
         try {
@@ -88,9 +89,10 @@ final class FanScreenOffHook {
             // The ROM precompiles these small state methods and may inline both
             // the controller calculation and its screen predicate.
             module.deoptimize(update);
-            for (Method method : type.getDeclaredMethods()) {
-                if (method.getName().startsWith("notify")) module.deoptimize(method);
-            }
+            for (Class<?> owner=type; owner!=null && owner!=Object.class; owner=owner.getSuperclass())
+                for (Method method : owner.getDeclaredMethods())
+                    if (method.getName().startsWith("notify") && !java.lang.reflect.Modifier.isAbstract(method.getModifiers()))
+                        module.deoptimize(method);
             FeatureSettings.diagnostic(FeatureSettings.from(null), INSTALLED,
                     "hooks=2;device=" + Build.DEVICE + ";scope=running_session;fan_enable_writes=0;hardware_identity="+ls.augment.com.FanHardwareIdentity.current());
             FeatureSettings.diagnostic(FeatureSettings.from(null), ERROR, "");
@@ -98,25 +100,18 @@ final class FanScreenOffHook {
         } catch (Throwable error) {
             FeatureSettings.diagnostic(FeatureSettings.from(null),INSTALLED,"");
             FeatureSettings.diagnostic(FeatureSettings.from(null), ERROR,
-                    "install:" + error.getClass().getSimpleName());
+                    "install:" + error.getClass().getSimpleName()+":"+String.valueOf(error.getMessage()).replace('\n',' '));
             module.logFeatureError("FAN_SCREEN_OFF_INSTALL", error);
             return 0;
         }
     }
 
     private static Method method(Class<?> type, String name, Class<?> result) throws Exception {
-        Method method = type.getDeclaredMethod(name);
-        if (method.getReturnType() != result || java.lang.reflect.Modifier.isStatic(method.getModifiers())
-                || java.lang.reflect.Modifier.isAbstract(method.getModifiers())) throw new NoSuchMethodException(name);
-        method.setAccessible(true);
-        return method;
+        return FanMembers.method(type,name,result,false);
     }
 
     private static Field field(Class<?> type, String name, Class<?> valueType) throws Exception {
-        Field field = type.getDeclaredField(name);
-        if (field.getType() != valueType || java.lang.reflect.Modifier.isStatic(field.getModifiers())) throw new NoSuchFieldException(name);
-        field.setAccessible(true);
-        return field;
+        return FanMembers.field(type,name,valueType);
     }
 
     private static final class ScreenQuery {

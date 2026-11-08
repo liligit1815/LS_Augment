@@ -125,7 +125,7 @@ public class InteractionCases {
             if(widthDp==800)check(f.volume.w>=f.volume.minimum,"wide short deck uses available width for enlarged caption");
         }
         for(boolean left:new boolean[]{false,true}){
-            check(WorkspaceMotion.targetLeft(left,1,2)!=left,"occupied exchange changes sides");
+            check(WorkspaceMotion.targetLeft(left,1,2)==left,"occupied exchange preserves side placement");
             check(WorkspaceMotion.targetLeft(left,-1,2)==left,"desktop promotion stays in main region");
             check(WorkspaceMotion.targetLeft(left,1,-1)==left,"empty side collection retains direction");
         }

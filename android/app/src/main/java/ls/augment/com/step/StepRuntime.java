@@ -431,6 +431,8 @@ public final class StepRuntime {
                             return;
                         }
                         WorkspaceClipboard.systemEvent(i.getAction());
+                        if(Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction()) && LiveWorkspace.current!=null
+                                && LiveWorkspace.current.preparingPortrait)return;
                         LiveWorkspace.stop(Intent.ACTION_SCREEN_OFF.equals(i.getAction())?"息屏暂挂":
                                 Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction())?"配置暂挂":"用户变化退出");
 

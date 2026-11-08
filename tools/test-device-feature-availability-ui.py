@@ -110,7 +110,7 @@ int dp(int value){return value;}Object wrap(){return null;}Object margins(int a,
 TextView text(String value,int size,int color,boolean bold){lastText=value;return new TextView();}
 LinearLayout featureRow(String title,String description,Switch control){lastSummary=description;return new LinearLayout(null);}
 void saveState(Bundle state){}void setButtonEnabled(Button button,boolean value){if(button!=null)button.enabled=value;}
-static class Fold {final Switch control;boolean expanded;Fold(Switch control){this.control=control;}void sync(){expanded=control.isChecked();}}
+static class Fold {final Switch control;boolean expanded;Fold(Switch control){this.control=control;}void sync(){sync(true);}void sync(boolean expand){expanded=control.isChecked()&&expand;}}
 }
 """,
     "ls/augment/com/Host.java": """package ls.augment.com;class Host extends android.content.Context {
@@ -128,7 +128,7 @@ EDITOR = r"""package ls.augment.com;
 import android.os.*;import android.widget.*;import java.util.*;
 class FeatureEditorController extends Host {
 static final String MODULE_FAN_CONTROL="fan_control",MODULE_SHOULDER="shoulder",MODULE_AUDIO_GAIN="audio_gain",MODULE_AUTOMATION="automation";
-String section=MODULE_FAN_CONTROL;boolean embedded=true,loading,dirty;long changeGeneration,queuedGeneration=-1;int pendingSaves;
+String section=MODULE_FAN_CONTROL;boolean embedded=true,loading,dirty,fanRefreshingAvailability;long changeGeneration,queuedGeneration=-1;int pendingSaves;
 final AppConfig config;final UiKit ui=new UiKit();final Button save=new Button();final LinearLayout page=new LinearLayout(this);
 final Map<String,Switch> switches=new LinkedHashMap<>();final Map<String,EditText> inputs=new LinkedHashMap<>();
 final Map<String,Slider> sliders=new LinkedHashMap<>();final Map<String,Choice> choices=new LinkedHashMap<>();

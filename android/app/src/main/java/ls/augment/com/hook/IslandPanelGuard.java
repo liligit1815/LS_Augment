@@ -1,5 +1,6 @@
 package ls.augment.com.hook;
 
+import android.view.View;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -17,10 +18,15 @@ final class IslandPanelGuard {
     private static final String CLOSE = "onPermanentIslandPanelCloseAnimationEnd";
     private static final class Ownership {
         final WeakReference<Object> manager;
+        final WeakReference<View> panel;
         final Runnable completed;
+        final IslandPanelStatusBar.Lease statusBar;
         final long id = ++sequence;
         boolean withdrawing, ended;
-        Ownership(Object owner,Runnable done) { manager=new WeakReference<>(owner);completed=done; }
+        Ownership(Object owner,View view,Runnable done) {
+            manager=new WeakReference<>(owner);panel=new WeakReference<>(view);completed=done;
+            statusBar=IslandPanelStatusBar.prepare(owner);
+        }
     }
 
     static boolean prepare(Object owner,Object island,Runnable completed) {
@@ -56,7 +62,14 @@ final class IslandPanelGuard {
                 FeatureRuntimeLog.event("ISLAND_PANEL_CAPABILITY","factory="+factory.getClass().getName()
                         +";callback="+contract.getName()+";route=owned_callback_bridge");
             }
-            OWNERS.put(island,new Ownership(owner,completed));
+            // A scene may disable its getter or release its host before the native animation ends.
+            Object panel=call(island,"getPanelIsland");
+            if (!(panel instanceof View)) throw new IllegalStateException("panel_view_missing");
+            Ownership pending=OWNERS.get(island);
+            if (pending!=null && pending.manager.get()==owner && pending.panel.get()==panel && !pending.ended && !pending.withdrawing) {
+                event("ISLAND_PANEL_OPEN","already_prepared",owner,island);return true;
+            }
+            OWNERS.put(island,new Ownership(owner,(View)panel,completed));
             event("ISLAND_PANEL_OPEN","prepared",owner,island);
             return true;
         } catch (ReflectiveOperationException | RuntimeException unavailable) {
@@ -69,9 +82,36 @@ final class IslandPanelGuard {
     static boolean owns(Object owner,Object island) {
         Ownership record=OWNERS.get(island);return record!=null && record.manager.get()==owner;
     }
+    static boolean pending(Object owner,Object island) {
+        Ownership record=OWNERS.get(island);return record!=null && record.manager.get()==owner && !record.ended;
+    }
+    static boolean restoresStatusBar(Object owner,Object island) {
+        Ownership record=OWNERS.get(island);
+        return record!=null && record.manager.get()==owner && !record.ended && record.statusBar!=null
+                && record.statusBar.bar.get()!=null && record.statusBar.bar.get()==field(owner,"mPhoneStatusBarView");
+    }
+    static void closeStarted(Object owner) {
+        try {
+            Object island=call(owner,"getPermanentIsland");
+            Ownership record=OWNERS.get(island);
+            if(record!=null && record.manager.get()==owner && !record.ended && NativeIslandPanelCompat.ordinary(owner))
+                IslandPanelStatusBar.restore(owner,record.statusBar,false);
+        } catch(ReflectiveOperationException | RuntimeException failure) {
+            FeatureRuntimeLog.event("ISLAND_PANEL_PRESENTATION","close_start_unavailable:"+FeatureRuntimeLog.failure(failure));
+        }
+    }
     static void withdrawing(Object owner,Object island) {
         Ownership record=OWNERS.get(island);
         if(record!=null && record.manager.get()==owner) { record.withdrawing=true;event("ISLAND_PANEL_CLOSE_REQUEST","withdraw",owner,island); }
+    }
+    static boolean deferRemoval(Object owner,Object island) {
+        Ownership record=OWNERS.get(island);
+        if(record==null || record.manager.get()!=owner || record.ended || !NativeIslandPanelCompat.ordinary(owner)
+                || !Boolean.TRUE.equals(field(owner,"mDynamicPanelClosing"))) return false;
+        try { if(call(owner,"getPermanentIsland")!=island) return false; }
+        catch(ReflectiveOperationException failure) { return false; }
+        withdrawing(owner,island);
+        return true;
     }
     static boolean close(Object owner,Object island,boolean remove,boolean disposable,String source) {
         Ownership record=OWNERS.get(island);
@@ -80,9 +120,19 @@ final class IslandPanelGuard {
         }
         if(record.ended) { event("ISLAND_PANEL_BRANCH",source+":duplicate_end",owner,island);return true; }
         event("ISLAND_PANEL_CLOSE_END",source+":enter;remove="+remove+";withdraw="+record.withdrawing+";disposable="+disposable,owner,island);
-        boolean handled=NativeIslandPanelCompat.closeEnd(owner,island,remove||record.withdrawing,disposable,
+        boolean selected=false;
+        try {
+            Object current=call(owner,"getPermanentIsland"), temporary=field(owner,"mTempIsland");
+            selected=(current==null||current==island)&&(temporary==null||temporary==island);
+        } catch(ReflectiveOperationException ignored) { }
+        boolean handled=NativeIslandPanelCompat.closeEnd(owner,island,remove||record.withdrawing,disposable,record.panel.get(),
                 message -> event("ISLAND_PANEL_RESULT",message,owner,island));
-        if(handled)record.ended=true;
+        if(handled){
+            // A stale scene must not reveal the status bar underneath a newly opened panel.
+            if(selected)IslandPanelStatusBar.restore(owner,record.statusBar,true);
+            record.ended=true;
+            if(record.statusBar!=null)record.statusBar.ended=true;
+        }
         event("ISLAND_PANEL_BRANCH",source+(handled?":owned_handled":":native_contract"),owner,island);
         if(handled && record.completed!=null) try { record.completed.run(); }
         catch(RuntimeException failure) { FeatureRuntimeLog.event("ISLAND_PANEL_OBSERVE_ERROR","exception="+FeatureRuntimeLog.failure(failure)); }
@@ -122,7 +172,11 @@ final class IslandPanelGuard {
             if(ending && IslandPanelGuard.close(owner,args[0],(Boolean)args[1],(Boolean)args[2],"animation_callback")) return null;
             if(method.getName().equals("onPermanentIslandPanelCloseAnimationStart"))
                 event("ISLAND_PANEL_CLOSE_START","native_animation",owner,field(owner,"mTempIsland")!=null?field(owner,"mTempIsland"):selected());
-            try { return method.invoke(owner,args); }
+            try {
+                Object result=method.invoke(owner,args);
+                if(method.getName().equals("onPermanentIslandPanelCloseAnimationStart")) closeStarted(owner);
+                return result;
+            }
             catch(InvocationTargetException failure) {
                 FeatureRuntimeLog.event("ISLAND_PANEL_NATIVE_ERROR","method="+method.getName()+";exception="+FeatureRuntimeLog.failure(failure)
                         +";"+snapshot(owner,ending?args[0]:selected()));

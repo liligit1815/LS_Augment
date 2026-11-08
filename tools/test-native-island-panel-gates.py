@@ -39,7 +39,10 @@ public class TestNativeIslandPanelGates {
  final TestContext context=new TestContext();final Set<String> supportedScenes=new HashSet<>(),enhancedScenes=new HashSet<>();
  final Map<Object,View> panels=new IdentityHashMap<>();Object media;NativeIslandMedia mediaBridge;NativeIslandCards cardsBridge;boolean usable=true;static int user;
  static TestNativeIslandPanelGates selected;final View root=new View();final Manager permanent=new Manager();
- final ClassLoader loader=TestNativeIslandPanelGates.class.getClassLoader();int panelWindowBefore=-1,panelWindowApplied=-1;
+ final ClassLoader loader=TestNativeIslandPanelGates.class.getClassLoader();int panelWindowBefore=-1,panelWindowApplied=-1;boolean closed;
+ final IslandWindowMotion panelWindowMotion=new IslandWindowMotion();void reportMotion(String value){}
+ // Geometry/gating fixture only; real ordinary/fullscreen contracts and move policy run in test-native-island-panel-motion.py.
+ static class NativeIslandPanelCompat {static boolean ordinary(Object owner){return true;}}
  static class TestContext extends HashMap<String,Boolean> {final Resources res=new Resources();Resources getResources(){return res;}}
  static class Resources {int id=1118,widthPixels=1216;int getIdentifier(String n,String t,String p){return id;}Resources getDisplayMetrics(){return this;}}
  static class Manager {public Object current;public boolean mDynamicPanelShowing;public WindowManager.LayoutParams mParams=new WindowManager.LayoutParams();public WindowManager mWindowManager=(v,p)->{};public Object getPermanentIsland(){return current;}}
@@ -105,6 +108,7 @@ harness=harness.replace('// METHODS','\n'.join(method(m) for m in (
  'private boolean enhancing(', 'private boolean requested(', 'private boolean hasEnhancements(', 'private View completedPanel(', 'private boolean mediaPanelReady(',
  'static void adjustWindow(', 'private void restorePanelWindow('))).replace('NativeIslandScenes owner', 'TestNativeIslandPanelGates owner')
 files['ls/augment/com/hook/TestNativeIslandPanelGates.java']=harness
+files['ls/augment/com/hook/IslandWindowMotion.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/IslandWindowMotion.java').read_text('utf-8')
 with tempfile.TemporaryDirectory(prefix='duo-island-panel-gates-') as folder:
     paths=[]
     for name,text in files.items():

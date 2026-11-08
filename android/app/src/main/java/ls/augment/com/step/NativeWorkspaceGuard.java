@@ -125,6 +125,10 @@ final class NativeWorkspaceGuard {
                             if(call(p.thisObject,"getDisplayContent")==Wm.display
                                     && (Integer)call(task,"getWindowingMode")==6
                                     &&SideFocus.excludes(active,ending,id,id,record==null?null:record.task,task,record!=null&&record.dirty)){
+                                // Recovery already owns an input fence. Let only that exact
+                                // task receive native window focus long enough to redraw its
+                                // SurfaceView; keep IME selection excluded throughout.
+                                if(method.getName().equals("canReceiveKeys") && WorkspaceReadmit.allowsFocus(record,task))return;
                                 p.setResult(false);sideFocusExclusions++;
                             }
                         }catch(Throwable error){final IBinder expected=owner;Wm.handler.post(()->{if(owner==expected)finish("副任务焦点身份不可核验");});}
@@ -217,6 +221,7 @@ final class NativeWorkspaceGuard {
             registered = true;
             try{WorkspaceGestureGate.installServer();}catch(RuntimeException missing){report(null,0,"工作区手势状态通道不可用："+missing,-1);}
             LocalLandscape.install(loader); PhysicalIme.install(loader); WorkspaceIme.install(loader); PhysicalFingerprint.install(loader); WorkspaceResize.install(loader);WorkspaceResize.installUpperBounds(loader); EdgeHandoff.install(loader);
+            WorkspaceSnapshots.install(loader);
             WorkspaceRoutes.installDesktop(loader);WorkspaceRecents.install(loader);WorkspaceRecents.installShade(loader);
             NativeTransitionPose.install(loader);
         } catch (Throwable error) { report(null, -1, "原任务恢复入口注册失败: " + error, -1); }
@@ -256,6 +261,7 @@ final class NativeWorkspaceGuard {
     static void recoverRemovedSide(IBinder expected, SavedTask side) {
         int slot = slots.index(side.id);
         if (!active || ending || owner != expected || slot < 0) return;
+        if(WorkspaceReadmit.pending==side)return; // Its admission callback owns the single-slot rollback.
         try {
             synchronized (Wm.lock) {
                 if (saved.get(side.id) != side || !side.dirty || liveTask(side.id, side.token) == side.task) return;
@@ -328,6 +334,7 @@ final class NativeWorkspaceGuard {
         Bundle b = new Bundle(); b.putString("session", session);
         b.putBoolean("homeBackdropAvailable",WorkspaceReadmit.available);
         b.putString("state", ending ? "RESTORING" : active ? "ACTIVE" : "RESTORED");
+        b.putString("recoveryReason",recoveryReason);
         b.putLong("elapsed",android.os.SystemClock.elapsedRealtime()-startedAt);
         b.putIntArray("slots", slots.snapshot()); return b;
     }
@@ -358,6 +365,7 @@ final class NativeWorkspaceGuard {
                 b.putString("state","RESTORED");
                 respond(reply, 0, b, "该工作区未持有系统任务"); return;
             }
+            if ("portraitEntry".equals(action)) { LocalLandscape.prepareEntry(intent,reply); return; }
             if ("begin".equals(action)) { begin(intent, reply); return; }
             if (!active || !current) throw new IllegalStateException("旧会话或恢复凭据不匹配");
             if(ending){respond(reply,0,base(),"系统服务正在归还原任务");return;}
@@ -499,7 +507,7 @@ final class NativeWorkspaceGuard {
         WorkspaceZoom.entered=false;principal=WorkspaceUsers.foreground();
         if(principal<0 || i.getIntExtra("user",-1)!=principal)throw new IllegalStateException("当前用户未核实");
         owner = candidate; session = candidateSession; lastSequence = i.getLongExtra("sequence", 0);
-        events = i.getParcelableExtra("events"); saved.clear(); slots.clear();NativeTopTask.reset();
+        events = i.getParcelableExtra("events"); saved.clear(); slots.clear();NativeTopTask.reset();WorkspaceReadmit.pending=null;
         logical = new Rect((Rect) call(Wm.display, "getBounds")); logical.offsetTo(0, 0);
         death = () -> Wm.handler.post(() -> {
             if (owner == candidate && candidateSession.equals(session)) finish("系统界面进程结束，归还原任务");
@@ -513,6 +521,7 @@ final class NativeWorkspaceGuard {
         Wm.start();
         if (!Wm.active) { owner.unlinkToDeath(death, 0); owner = null; throw new IllegalStateException("主屏缩放启动失败"); }
         active = true;pendingCommit=null;recoveryReason=null;recoveredAt=0;
+        LocalLandscape.entryOwner=null;LocalLandscape.entryDeadline=0;
         renewable=i.getBooleanExtra("renewable",false);afterRestore=null;
         startedAt=android.os.SystemClock.elapsedRealtime();
         Wm.handler.removeCallbacks(Wm.TIMEOUT);
@@ -590,6 +599,7 @@ final class NativeWorkspaceGuard {
         if(task==null)return;
         try{
             if(task!=call(Wm.display,"getFocusedRootTask")){
+                WorkspaceSnapshots.recordTask(call(Wm.display,"getFocusedRootTask"),"restore_previous_main");
                 Object wct=transaction();call(wct,"reorder",old.token,true);apply(wct);
             }
             if(task==call(Wm.display,"getFocusedRootTask")){
@@ -634,6 +644,7 @@ final class NativeWorkspaceGuard {
                 throw new IllegalStateException("任务原始图层身份不一致");
             if (saved.size() >= 32 && existing == null) throw new IllegalStateException("本轮任务记录已满，请退出后重试");
             if (existing == null || !existing.dirty) saved.put(id, new SavedTask(task, info));
+            WorkspaceSnapshots.recordTask(task,"admit_side");
             Bundle b = base(); b.putParcelable("info", info); b.putParcelable("logical", logical); b.putInt("layerId", saved.get(id).layerId);
             respond(reply, 0, b, "原任务状态已记录: " + id);
         }
@@ -787,6 +798,7 @@ final class NativeWorkspaceGuard {
                 Object parent = i.getParcelableExtra("surface"); validSurface(parent);
                 PreviewGeometry geometry = new PreviewGeometry(logical.width(), logical.height(), i.getIntExtra("width", 0), i.getIntExtra("height", 0));
                 incoming.dirty = true; // Recovery ownership precedes any task mutation.
+                if(resuming && WorkspaceReadmit.available)WorkspaceReadmit.pending=incoming;
                 call(wct, "setWindowingMode", incoming.token, 6);
                 call(wct, "setBounds", incoming.token, logical);
                 call(wct, "setAlwaysOnTop", incoming.token, true);
@@ -869,7 +881,11 @@ final class NativeWorkspaceGuard {
             normalized.seal();
             awaitCommit(normalized,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
                 synchronized(Wm.lock){traceHandoff("normalization_committed",handoffSequence,previous,next);}
-                if(resuming && next>=0 && WorkspaceReadmit.available)WorkspaceReadmit.settle(saved.get(next),expected,returnMain,android.os.SystemClock.uptimeMillis(),complete);
+                if(resuming && next>=0 && WorkspaceReadmit.available)WorkspaceReadmit.settle(saved.get(next),expected,returnMain,android.os.SystemClock.uptimeMillis(),complete,()->{
+                    Bundle b=base();b.putBoolean("readmitSkipped",true);b.putBoolean("committed",true);
+                    b.putInt("slot",slot);b.putInt("side",-1);b.putInt("previous",previous);b.putInt("skippedTask",next);
+                    respond(reply,0,b,"该原副格未能恢复，已归还并继续其他副格");
+                });
                 else complete.run();
             },()->finish("任务坐标归一提交未确认，归还原任务"));
         },()->finish("任务图层提交未确认，归还原任务"));
@@ -1034,6 +1050,7 @@ final class NativeWorkspaceGuard {
         try {
             Object wct = transaction();
             synchronized (Wm.lock) {
+                WorkspaceFloatingIme.reset();
                 LocalLandscape.clear();EdgeHandoff.pending=false;
                 for (SavedTask record : saved.values()) if (record.dirty) restore(wct, record,group);
                 TaskIdentity target=exitTarget();
@@ -1054,12 +1071,14 @@ final class NativeWorkspaceGuard {
             if(Wm.active)throw new IllegalStateException("主屏缩放尚未恢复");
             // Include the final native display/input transaction, including an empty workspace.
             synchronized(Wm.lock){
+                LocalLandscape.restoreOrientation();
                 Object finalTx=call(Wm.display,"getPendingTransaction");
                 if(flip!=null)flip.restoreParents((android.view.SurfaceControl.Transaction)finalTx);
                 trackCommit(finalTx,group);call(finalTx,"apply");
             }
             group.seal();
             awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->normalizeExit(expected,()->{
+                NativeTransitionPose.retire(expected);
                 active=false;ending=false;completedRecoveries++;recoveredAt=android.os.SystemClock.elapsedRealtime();
                 traceExit(exitedSession,"restoration_committed",targetAtExit);
                 for(long delay:new long[]{250,1500,4000})Wm.handler.postDelayed(()->{

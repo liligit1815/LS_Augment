@@ -14,6 +14,7 @@ final class NativeTransitionPose {
     static final ThreadLocal<Object> preparing=new ThreadLocal<>();
     static final IdentityHashMap<Object,Pose> poses=new IdentityHashMap<>();
     static Method ancestor,wallpaper;
+    static Class<?> taskType;
     static final class Pose {
         final IBinder owner;final Object root,parent;final ArrayList<Object> tasks;
         WorkspaceTransform last;
@@ -33,6 +34,8 @@ final class NativeTransitionPose {
             Class<?> info=Class.forName("android.window.TransitionInfo",false,loader);
             Class<?> tx=Class.forName("android.view.SurfaceControl$Transaction",false,loader);
             Class<?> spec=Class.forName("android.view.MagnificationSpec",false,loader);
+            Class<?> task=Class.forName("com.android.server.wm.Task",false,loader);
+            exact(task,"getRootTask",task,false);exact(task,"getWindowingMode",int.class,false);
             Method ready=exact(transition,"onTransactionReady",void.class,false,int.class,tx);
             Method build=exact(transition,"calculateTransitionInfo",info,true,int.class,int.class,ArrayList.class,tx);
             Method common=exact(transition,"findCommonAncestor",container,true,ArrayList.class,container);
@@ -40,7 +43,7 @@ final class NativeTransitionPose {
             Method finish=TransitionCompletion.resolve(transition,StepMembers.findClassIfExists("com.android.server.wm.ActionChain",loader));
             if(StepMembers.findField(change,"mContainer").getType()!=container)throw new NoSuchFieldException("ChangeInfo.mContainer");
             WorkspaceTransform.requireCache(container,spec);
-            ancestor=common;wallpaper=wall;
+            ancestor=common;wallpaper=wall;taskType=task;
             StepHooks.hookMethod(ready,new StepHook.Discovery(){
                 protected void beforeHookedMethod(MethodHookParam p){p.setObjectExtra("previous",preparing.get());preparing.set(p.thisObject);}
                 protected void afterHookedMethod(MethodHookParam p){Object old=p.getObjectExtra("previous");if(old==null)preparing.remove();else preparing.set(old);}
@@ -81,6 +84,12 @@ final class NativeTransitionPose {
         for(Object change:changes){
             Object task=field(change,"mContainer");
             if(Boolean.TRUE.equals(wallpaper.invoke(null,task)))continue;
+            // ChangeInfo can target an IME/system WindowToken or an ActivityRecord.
+            // Those are not task containers, and cannot share the task-only root pose.
+            if(taskType==null || !taskType.isInstance(task)){
+                diagnostic("TRANSITION_POSE","native_container;type="+(task==null?"null":task.getClass().getName()));
+                return;
+            }
             if(call(task,"getDisplayContent")!=Wm.display || call(task,"getRootTask")!=task
                     || (Integer)call(task,"getWindowingMode")!=1 || !WorkspaceUsers.allows(Wm.context,principal,(Integer)field(task,"mUserId"))
                     || ownsTask(task) || contains(task))throw new IllegalStateException("non-fullscreen or already owned animation target");
@@ -116,6 +125,18 @@ final class NativeTransitionPose {
         synchronized(Wm.lock){
             for(Pose pose:poses.values())if(pose.owner==owner && pose.tasks.contains(task))return true;
             return false;
+        }
+    }
+    static void retire(IBinder expected){
+        synchronized(Wm.lock){
+            java.util.Iterator<Pose> items=poses.values().iterator();
+            while(items.hasNext()){
+                Pose pose=items.next();
+                if(pose.owner!=expected)continue;
+                if(Boolean.TRUE.equals(call(pose.root,"isValid")) && (pose.last==null || !pose.last.identity()))
+                    throw new IllegalStateException("animation pose still owned at exit");
+                items.remove();
+            }
         }
     }
     static boolean owns(Object task){

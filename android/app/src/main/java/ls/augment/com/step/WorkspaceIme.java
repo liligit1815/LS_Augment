@@ -21,6 +21,7 @@ final class WorkspaceIme {
     static String lastEvidence="";
 
     static void install(ClassLoader cl){
+        WorkspaceFloatingIme.install(cl);
         try{
             controller=field(Wm.display,"mInsetsStateController");
             sourceProvider=OwnershipBridge.method(controller.getClass(),"getImeSourceProvider");
@@ -73,8 +74,9 @@ final class WorkspaceIme {
         Object win=input==null?null:call(input,"getWindowState");
         Object task=win==null?null:call(win,"getTask");
         boolean shown=Boolean.TRUE.equals(visible.invoke(item));
+        boolean floating=WorkspaceFloatingIme.update(shown,keyboard,win);
         String evidence="session="+session+";shown="+shown+";ime="+keyboard.toShortString();
-        if(shown && task!=null && task==call(Wm.display,"getFocusedRootTask")
+        if(shown && !floating && task!=null && task==call(Wm.display,"getFocusedRootTask")
                 && !ownsTask(task) && !physicalNativeWindow(task) && (Integer)call(task,"getWindowingMode")==1){
             Rect bounds=(Rect)windowFrame.invoke(win);
             WindowManager.LayoutParams attrs=(WindowManager.LayoutParams)field(win,"mAttrs");

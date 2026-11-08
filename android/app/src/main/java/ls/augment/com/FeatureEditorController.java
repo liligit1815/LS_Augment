@@ -95,6 +95,12 @@ final class FeatureEditorController extends NativeEditorController {
     private ImageButton rapidExpand;
     private boolean rapidFeatureUnlocked;
     private TextView fanMeasurementSummary;
+    private TextView fanUnavailable;
+    private Button fanMeasure;
+    private boolean fanLevelsAvailable;
+    private boolean fanScreenAvailable;
+    private boolean fanRefreshingAvailability;
+    private final Map<String,Boolean> fanSuspendedSwitches=new HashMap<>();
     private AlertDialog fanDialog;
     private long fanRequestAt;
     private String fanRequestToken = "";
@@ -1030,36 +1036,60 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void buildFanControl() {
-        LinearLayout fan=featureCard(AppConfig.FAN_FIXED_ENABLED,"固定风扇转速",!fanVerifiedLevels()
-                ? "此机型的定速档位仍待验证，暂不支持固定转速。"
-                : FeatureHelp.fanFixedSpeed());
+        LinearLayout fan=featureCard(AppConfig.FAN_FIXED_ENABLED,"固定风扇转速",FeatureHelp.fanFixedSpeed());
         LinearLayout speed=settingsBody(fan,AppConfig.FAN_FIXED_ENABLED,0);
         addChoice(speed,ConfigSchema.FAN_FIXED_LEVEL,"固定档位",new String[][] {
                 {"1","一档"},{"2","二档"},
                 {"3","三档"},{"4","四档"},{"5","五档"}});
         boolean verifiedLevels=fanVerifiedLevels();
         fan.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
-        addSwitch(fan,AppConfig.FAN_TILE_ENHANCEMENT_ENABLED,"散热风扇磁贴增强",verifiedLevels
-                ? FeatureHelp.fanTileEnhancement()
-                : "此机型的固定档位尚未验证，暂不支持磁贴固定转速增强。原厂风扇磁贴仍可正常使用。",false);
+        addSwitch(fan,AppConfig.FAN_TILE_ENHANCEMENT_ENABLED,"散热风扇磁贴增强",FeatureHelp.fanTileEnhancement(),false);
         fan.addView(ui.divider(),new LinearLayout.LayoutParams(-1,ui.dp(1)));
         boolean screenOffSupported=FanFeatureAvailability.screen(this);
-        addSwitch(fan,AppConfig.FAN_SCREEN_OFF_ENABLED,"息屏风扇不停止运转",screenOffSupported
-                ? "让已开启的风扇在息屏后继续按原厂模式运转。手动关闭、通话及系统保护仍有效；关闭本功能恢复原厂息屏策略。首次安装或更新后需重启风扇作用域。"
-                : "此机型的原厂息屏策略尚未验证，暂不支持息屏保持。",false);
+        addSwitch(fan,AppConfig.FAN_SCREEN_OFF_ENABLED,"息屏风扇不停止运转",
+                "让已开启的风扇在息屏后继续按原厂模式运转。手动关闭、通话及系统保护仍有效；关闭本功能恢复原厂息屏策略。首次安装或更新后需重启风扇作用域。",false);
         switches.get(AppConfig.FAN_SCREEN_OFF_ENABLED).setEnabled(screenOffSupported);
-        LinearLayout measurement=detailCard("本机转速测量",!fanVerifiedLevels()
-                ? "此机型暂不执行逐档测量，避免使用其他型号的驱动档位。"
-                : FeatureHelp.fanMeasurement());
+        LinearLayout measurement=detailCard("本机转速测量",FeatureHelp.fanMeasurement());
         fanMeasurementSummary=ui.text("尚未测量",12,ui.muted,false);measurement.addView(fanMeasurementSummary);
-        Button measure=ui.tonalButton("检测本机风扇转速");measure.setOnClickListener(v->showFanMeasurement());measurement.addView(measure,ui.margins(0,10,0,0));
+        Button measure=ui.tonalButton("检测本机风扇转速");fanMeasure=measure;measure.setOnClickListener(v->showFanMeasurement());measurement.addView(measure,ui.margins(0,10,0,0));
         page.addView(measurement,ui.margins(0,0,0,12));refreshFanMeasurement();
         switches.get(AppConfig.FAN_TILE_ENHANCEMENT_ENABLED).setEnabled(verifiedLevels);
         switches.get(AppConfig.FAN_FIXED_ENABLED).setEnabled(verifiedLevels);
         measure.setEnabled(verifiedLevels);
-        if(!verifiedLevels){
-            TextView unavailable=ui.text(FanFeatureAvailability.reason(this,AppConfig.FAN_FIXED_ENABLED)+"\n"+FanFeatureAvailability.reason(this,AppConfig.FAN_SCREEN_OFF_ENABLED),12,ui.muted,false);
-            unavailable.setTag("device-feature-unavailable:fan");fan.addView(unavailable,ui.margins(0,4,0,8));
+        fanLevelsAvailable=verifiedLevels;fanScreenAvailable=screenOffSupported;
+        fanUnavailable=ui.text("",12,ui.muted,false);
+        fanUnavailable.setTag("device-feature-unavailable:fan");fan.addView(fanUnavailable,ui.margins(0,4,0,8));
+        refreshFanAvailability();
+    }
+    private void refreshFanAvailability() {
+        if(fanMeasure==null)return;
+        boolean levels=fanVerifiedLevels(),screen=FanFeatureAvailability.screen(this);
+        if(levels!=fanLevelsAvailable||screen!=fanScreenAvailable) {
+            boolean before=loading;loading=true;fanRefreshingAvailability=true;
+            try {
+                // Capability arrival is not a user edit. Restore saved switches without
+                // changing another in-progress setting or opening any collapsed group.
+                for(String key:new String[]{AppConfig.FAN_FIXED_ENABLED,AppConfig.FAN_TILE_ENHANCEMENT_ENABLED,AppConfig.FAN_SCREEN_OFF_ENABLED}) {
+                    boolean available=AppConfig.FAN_SCREEN_OFF_ENABLED.equals(key)?screen:levels;
+                    boolean wasAvailable=AppConfig.FAN_SCREEN_OFF_ENABLED.equals(key)?fanScreenAvailable:fanLevelsAvailable;
+                    Switch control=switches.get(key);
+                    if(available!=wasAvailable&&control!=null) {
+                        if(!available)fanSuspendedSwitches.put(key,control.isChecked());
+                        Boolean draft=available?fanSuspendedSwitches.remove(key):null;
+                        control.setChecked(available&&(draft!=null?draft:config.getBoolean(key)));
+                        control.setEnabled(available);
+                    }
+                }
+                fanMeasure.setEnabled(levels);
+                for(UiKit.Fold fold:folds)fold.sync(false);
+            } finally { loading=before;fanRefreshingAvailability=false; }
+            fanLevelsAvailable=levels;fanScreenAvailable=screen;
+        }
+        if(fanUnavailable!=null) {
+            String reason=FanFeatureAvailability.reason(this,AppConfig.FAN_FIXED_ENABLED);
+            String screenReason=FanFeatureAvailability.reason(this,AppConfig.FAN_SCREEN_OFF_ENABLED);
+            fanUnavailable.setText(reason+(reason.isEmpty()||screenReason.isEmpty()?"":"\n")+screenReason);
+            fanUnavailable.setVisibility(levels&&screen?View.GONE:View.VISIBLE);
         }
     }
     private boolean fanVerifiedLevels() {
@@ -1142,7 +1172,7 @@ final class FeatureEditorController extends NativeEditorController {
         FanCalibrationData data = FanCalibrationData.parse(encoded);
         boolean current = fanVerifiedLevels() && data != null && data.currentFor(FanHardwareIdentity.current());
         StringBuilder text = new StringBuilder(!fanVerifiedLevels()
-                ? "此机型的定速档位和转速反馈仍待实机验证。\n"
+                ? "等待风扇作用域识别本机驱动与转速接口。\n"
                 : "已验证驱动最高档：5（同时调用原厂最高性能模式）\n");
         if (data == null) text.append("本机实测：尚未测量");
         else {
@@ -1898,6 +1928,7 @@ final class FeatureEditorController extends NativeEditorController {
                         + statusLine("最近调整", diagnostic("ls_augment_combo_speed_last_hit"))
                         + statusLine("最近错误", diagnostic("ls_augment_combo_speed_last_error"));
             } else if (MODULE_FAN_CONTROL.equals(section)) {
+                refreshFanAvailability();
                 refreshFanMeasurement();
                 prefix = statusLine("风扇 Hook", diagnostic("ls_augment_fan_control_installed"))
                         + statusLine("当前控制", diagnostic("ls_augment_fan_control_active"))
@@ -2029,7 +2060,7 @@ final class FeatureEditorController extends NativeEditorController {
     }
 
     private void markDirty() {
-        for (UiKit.Fold fold : folds) fold.sync();
+        for (UiKit.Fold fold : folds) fold.sync(!fanRefreshingAvailability);
         if (loading) return;
         dirty = true;
         changeGeneration++;

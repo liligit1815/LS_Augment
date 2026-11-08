@@ -242,7 +242,7 @@ constants = sorted(set(re.findall(r"ConfigSchema\.([A-Z][A-Z0-9_]+)", hook + FIL
 schema_constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)";', schema))
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{schema_constants[name]}";' for name in constants) + "}"
-for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanDriverContract.java", "hook/FanPowerLease.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java", "hook/FanRpmStartup.java"]:
+for name in ["FanCalibrationData.java", "FanCalibrationOutcome.java", "hook/FanControlHook.java", "hook/FanControlPolicy.java", "hook/FanCompatibilityProfile.java", "hook/FanDriverContract.java", "hook/FanPowerLease.java", "hook/FanMembers.java", "hook/FanLevelCommand.java", "hook/FanNativeSettle.java", "hook/FanRpmStartup.java"]:
     FILES["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
 

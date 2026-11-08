@@ -15,7 +15,7 @@ public int getIdentifier(String n,String t,String p){if(n.equals(missing))return
 public int getDimensionPixelSize(int id){return names.getOrDefault(id,"").equals("dynamic_island_window_width")?340:200;}
 public android.content.res.Configuration getConfiguration(){return new android.content.res.Configuration();}
 public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}'''
-files['android/view/View.java']=files['android/view/View.java'].replace('public int visibility,','public float alpha;public int visibility,').replace('public Context getContext()', '''public boolean isShown(){return parent!=null;}public void setAlpha(float a){alpha=a;}
+files['android/view/View.java']=files['android/view/View.java'].replace('public int getMeasuredHeight(){return 60;}','').replace('public int visibility,','public float alpha;public int visibility,').replace('public Context getContext()', '''public boolean isShown(){return parent!=null;}public void setAlpha(float a){alpha=a;}
 public int measured=300;public int getMeasuredHeight(){return measured;}
 public Context getContext()''')
 files['android/view/View.java']=files['android/view/View.java'].replace('int UNSPECIFIED=0;', 'int UNSPECIFIED=0,EXACTLY=1;public static int makeMeasureSpec(int s,int m){return s;}')
@@ -29,8 +29,8 @@ files['ls/augment/com/hook/FeatureSettings.java']=files['ls/augment/com/hook/Fea
 files['ls/augment/com/hook/AugmentModule.java']='package ls.augment.com.hook;class AugmentModule{}'
 files['ls/augment/com/hook/SystemUiAdapter.java']='''package ls.augment.com.hook;import java.lang.reflect.*;class SystemUiAdapter{
 static final Object PASS=new Object();interface Hook{Object apply(Object o,Object[] a,Object r)throws Exception;}
-static Hook close,tap,hold;static int hookNamed(Object m,ClassLoader l,String f,String c,String n,int k,Hook a,Hook b){
-if(n.equals("onPermanentIslandPanelCloseAnimationEnd"))close=a;if(n.equals("onClick"))tap=a;if(n.equals("onLongClick"))hold=a;return 1;}
+static Hook close,tap,hold,show;static int hookNamed(Object m,ClassLoader l,String f,String c,String n,int k,Hook a,Hook b){
+if(n.equals("onPermanentIslandPanelCloseAnimationEnd"))close=a;if(n.equals("onClick"))tap=a;if(n.equals("onLongClick"))hold=a;if(n.equals("showPermanentPanelIsland"))show=a;return 1;}
 static Object field(Object o,String n){if(o==null)return null;for(Class<?> t=o.getClass();t!=null;t=t.getSuperclass())try{Field f=t.getDeclaredField(n);f.setAccessible(true);return f.get(o);}catch(Exception e){}return null;}
 static boolean set(Object o,String n,Object v){for(Class<?> t=o.getClass();t!=null;t=t.getSuperclass())try{Field f=t.getDeclaredField(n);f.setAccessible(true);f.set(o,v);return true;}catch(Exception e){}return false;}
 static Object call(Object o,String n,Object...a)throws ReflectiveOperationException{for(Class<?> t=o.getClass();t!=null;t=t.getSuperclass())for(Method m:t.getDeclaredMethods())if(m.getName().equals(n)&&m.getParameterCount()==a.length){m.setAccessible(true);return m.invoke(o,a);}throw new NoSuchMethodException(n);}}
@@ -94,6 +94,23 @@ check(SystemUiAdapter.close.apply(ordinary,new Object[]{new DynamicPermanentIsla
 check(SystemUiAdapter.close.apply(ordinary,ending,null)==null,"retired owned view reached null-root callback");
 check(!ordinary.mDynamicPanelShowing&&!ordinary.mDynamicPanelClosing&&ordinary.current==null&&ordinary.removes==1,"ordinary close did not finish withdrawal");
 for(Runnable pending:new ArrayList<>(Handler.tasks))pending.run();
+for(boolean download:new boolean[]{false,true}){
+ OrdinaryManager m=new OrdinaryManager();DuoNotificationCards h=new DuoNotificationCards(ordinaryContext,TestUnifiedCards.class.getClassLoader(),m,false,()->{},bar);
+ if(download){IslandDownloadPolicy<StatusBarNotification> p=new IslandDownloadPolicy<>();StatusBarNotification n=new StatusBarNotification("task",1,2);
+  p.update("task","channel",1,2,true,false,12,100,n);check(h.showDownload(p.get("task"),null,"App",(e,i)->{}),"download scene prepared");}
+ else check(h.show("Title","Body","Label",null),"notice scene prepared");
+ DynamicPermanentIsland scene=m.current;
+ check(SystemUiAdapter.hold.apply(m,new Object[0],null)==SystemUiAdapter.PASS,"ordinary long press remains original");
+ m.onLongClick();check(m.nativeLongs==1&&IslandPanelGuard.owns(m,scene),"long press prepares bridge without replacing native animation entry");
+ m.finish();check(!m.mDynamicPanelShowing&&m.mDynamicPanelContainer.getChildCount()==0,"long press closes without manager hook");
+ check(SystemUiAdapter.show.apply(m,new Object[0],null)==SystemUiAdapter.PASS,"ordinary show retains original call");
+ m.showPermanentPanelIsland();check(SystemUiAdapter.close.apply(m,new Object[]{scene,false,false},null)==null,"manager close route shares captured ownership");
+ check(!IslandPanelGuard.pending(m,scene),"manager close route finishes the same transition");
+ m.finish();check(m.opens==2&&m.windowUpdates==2,"common show safely closes second expansion without duplicate completion");
+ h.expand();check(m.opens==3,"direct expansion preserved");m.mDynamicPanelClosing=true;h.close();
+ m.finish();check(m.removes==1&&m.current==null,"withdrawal ends through captured callback after release");
+ for(Runnable pending:new ArrayList<>(Handler.tasks))pending.run();
+}
 for(boolean full:new boolean[]{false,true}){
 Context c=new Context();Manager m=new ChildManager();Object foreign=new Object();m.mAppIslandList.put("foreign",foreign);
 int[] opened={0};DuoNotificationCards host=new DuoNotificationCards(c,TestUnifiedCards.class.getClassLoader(),m,full,()->opened[0]++,null);
@@ -110,7 +127,7 @@ check(opened[0]==1&&(full?tap==SystemUiAdapter.PASS&&hold==null:tap==null&&hold=
 m.blocked=true;(full?SystemUiAdapter.hold:SystemUiAdapter.tap).apply(m,new Object[0],null);
 check(opened[0]==1,"OEM forceNotClick gate bypassed");m.blocked=false;
 if(!full){m.mDynamicPanelShowing=true;host.showDownload(p.get("task"),null,"App",(e,i)->{});
-check(m.windowUpdates==1&&m.mDynamicIslandContainer.getLayoutParams().height==300,"expanded ordinary panel height not synchronized");m.mDynamicPanelShowing=false;}
+check(m.windowUpdates==1&&m.mDynamicIslandContainer.getLayoutParams().height==316,"expanded ordinary panel height includes native outer padding");m.mDynamicPanelShowing=false;}
 check(Handler.tasks.size()<=1,"multiple heartbeat loops");
 host.hide();check(m.current==null&&m.removes==1,"remove failed");check(Handler.tasks.isEmpty(),"removed activity kept heartbeat");
 check(m.mAppIslandList.size()==1&&m.mAppIslandList.get("foreign")==foreign,"remove touched native source");
@@ -151,14 +168,24 @@ public DynamicPermanentIsland getPermanentIsland(){return current;}public void u
 '''+('public void handleIslandHeartBeat(String id){beats++;}public void markIslandOnTime(String id){}public void reportIslandStatus(DynamicPermanentIsland i,int s){}public void setIslandShowing(String id,boolean b){}' if shape=='new' else '')+'}\nclass ChildManager extends Manager{}'
     variant['ls/augment/com/hook/OrdinaryManager.java']='''package ls.augment.com.hook;
 import android.view.*;import android.widget.*;import com.zte.feature.dynamicisland.DynamicPermanentIsland;
-public class OrdinaryManager extends Manager{
+interface OrdinaryCallback{void onPermanentIslandPanelCloseAnimationEnd(DynamicPermanentIsland i,boolean r,boolean d);}
+public class OrdinaryManager extends Manager implements OrdinaryCallback{
 public View mDynamicIslandPanelRoot,mDynamicIslandRoot=mDynamicIslandContainer;
 public boolean mDynamicPanelClosing;public DynamicPermanentIsland mTempIsland;
 public ViewGroup mDynamicPanelContainer=new FrameLayout(new android.content.Context());
 public Object mWindowManager=new Object(),mParams=new Object();
+public int opens,nativeLongs;public Animation mDynamicAnimation=new Animation(this);
+public static class Factory{public OrdinaryCallback mCallback;Factory(OrdinaryCallback c){mCallback=c;}}
+public static class Animation{public Factory mPermanentAnimation;Animation(OrdinaryCallback c){mPermanentAnimation=new Factory(c);}}
+public void showPermanentPanelIsland()throws ReflectiveOperationException{if(mDynamicPanelShowing)return;opens++;mDynamicPanelShowing=true;
+ mDynamicPanelContainer.addView((View)SystemUiAdapter.call(current,"getPanelIsland"),null);}
+@Override public void onLongClick(){nativeLongs++;try{showPermanentPanelIsland();}catch(Exception e){throw new RuntimeException(e);}}
+public void finish(){mDynamicAnimation.mPermanentAnimation.mCallback.onPermanentIslandPanelCloseAnimationEnd(current,false,false);}
 public void removePermanentIslandInner(DynamicPermanentIsland i){removePermanentIsland(i);}
 public void onPermanentIslandPanelCloseAnimationEnd(DynamicPermanentIsland i,boolean r,boolean d){throw new AssertionError("null fullscreen root");}
 }'''
+    from island_panel_test_support import add_status_bar_support
+    add_status_bar_support(variant)
     with tempfile.TemporaryDirectory(prefix='duo-unified-cards-') as tmp:
         folder=Path(tmp)
         for name,text in variant.items():

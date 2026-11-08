@@ -7,6 +7,7 @@ final class ExtraDimControl {
     static final String ACTIVE = "reduce_bright_colors_activated";
     static final String LEVEL = "reduce_bright_colors_level";
     private static volatile boolean active, ready, verified;
+    private static volatile boolean requestedActive, requestKnown;
     private static volatile int strength=50;
     private static int stateUser=-1;
     private static volatile String message="正在读取极暗执行状态";
@@ -22,52 +23,63 @@ final class ExtraDimControl {
         }
         android.os.Bundle result=new android.os.Bundle();result.putBoolean("ok",ok);
         result.putBoolean("active",active);result.putInt("strength",strength);
+        result.putBoolean("selected",selected(context));result.putBoolean("verified",verified);
+        result.putBoolean("requested",requestedActive);result.putBoolean("requestKnown",requestKnown);
         result.putBoolean("ready",ready);result.putString("message",message);return result;
     }
     static boolean active(Context context) { return active; }
+    /** A saved ON request remains cancellable without claiming that it took effect. */
+    static boolean selected(Context context) { return active || requestKnown && requestedActive; }
+    static synchronized boolean toggle(Context context){
+        boolean readable=read(context),on=selected(context);
+        return (readable||on)&&set(context,!on,strength);
+    }
     static boolean ready() { return ready; }
     static boolean verified() { return verified; }
     static String message() { return message; }
     static int strength(Context context) { return strength; }
     static synchronized boolean read(Context context) {
         int user=android.os.Process.myUid()/100000;
-        if(stateUser!=user){active=false;strength=50;ready=false;verified=false;stateUser=user;}
+        if(stateUser!=user){active=false;requestedActive=false;requestKnown=false;strength=50;ready=false;verified=false;stateUser=user;}
         RootShell.Result r=RootShell.run("dumpsys color_display",null,4,32768);
         if(!r.isSuccess()){ready=false;verified=false;message="无法读取系统显示服务，请检查 Root 授权";return false;}
         ExtraDimRuntime.Snapshot actual=ExtraDimRuntime.parse(r.output);
         if(actual==null) {
-            readRequested(user);
+            active=false;readRequested(user,true);
             ready=false;verified=false;message="无法核验此 ROM 的极暗执行状态，请确认系统作用域并重启；仍无反馈时，此 ROM 暂不支持";return false;
         }
-        if(actual.user!=user){active=false;strength=50;ready=false;verified=false;message="极暗仅支持当前前台用户，不能从工作资料控制其他用户的屏幕";return false;}
+        if(actual.user!=user){active=false;requestKnown=false;requestedActive=false;strength=50;ready=false;verified=false;message="极暗仅支持当前前台用户，不能从工作资料控制其他用户的屏幕";return false;}
         active=actual.active;strength=actual.strength;
         ready=actual.available;
-        verified=ready&&actual.transform;
-        if(!ready)readRequested(user);
-        message=!ready?"此系统未提供可用的极暗色彩变换":actual.transform?"":"系统极暗色彩变换尚未完成";
+        readRequested(user,!ready);
+        verified=ready&&actual.transform&&(!requestKnown||requestedActive==active);
+        message=!ready?"此系统未提供可用的极暗色彩变换":requestKnown&&requestedActive!=active
+                ?requestedActive?"开启请求已保存，系统仍未开启极暗；点击磁贴可撤销":"关闭请求已保存，系统仍未关闭极暗"
+                :actual.transform?"":"系统极暗色彩变换尚未完成";
         return ready;
     }
-    private static void readRequested(int user) {
-        // Only expose a saved request for turning it OFF when execution cannot
-        // be inspected. This never establishes capability or application success.
+    private static void readRequested(int user,boolean adoptStrength) {
+        // A saved request only supplies a cancellation target, never execution
+        // proof. Retain a known same-user request if this read temporarily fails.
         RootShell.Result request=RootShell.run("settings --user "+user+" get secure "+ACTIVE
                 +"; settings --user "+user+" get secure "+LEVEL,null,4,512);
         if(!request.isSuccess())return;
         String[] values=request.output.trim().split("\\s+");
         if(values.length!=2||!values[0].matches("0|1|null")||!values[1].matches("[0-9]{1,3}|null"))return;
         int amount=values[1].equals("null")?50:Integer.parseInt(values[1]);
-        if(amount<=100){active=values[0].equals("1");strength=amount;}
+        if(amount<=100){requestedActive=values[0].equals("1");requestKnown=true;if(adoptStrength)strength=amount;}
     }
     static synchronized boolean set(Context context, boolean active, int strength) {
         if (strength < 0 || strength > 100) return false;
         int user=android.os.Process.myUid()/100000;
         StartupDiagnostics.record("EXTRA_DIM_SELECT","user="+user+";requested="+active+";strength="+strength,null);
-        if(stateUser!=user){ExtraDimControl.active=false;ExtraDimControl.strength=50;ready=false;verified=false;stateUser=user;}
+        if(stateUser!=user){ExtraDimControl.active=false;requestedActive=false;requestKnown=false;ExtraDimControl.strength=50;ready=false;verified=false;stateUser=user;}
         // Enabling requires a real native pipeline. Disabling always remains
         // possible, including after a firmware change removed that pipeline.
         if(active && !read(context)){selectionResult(user,false,"read_unavailable");return false;}
         ModuleSystemSettings.WriteResult result = ModuleSystemSettings.setExtraDim(context, active, strength);
         if(!result.success){message=result.message;selectionResult(user,false,"settings_write_failed");return false;}
+        requestedActive=active;requestKnown=true;
         // Native transitions take 2.6s (3s under CTS). Share one deadline across
         // polling and bounded dumps, without multiplying 4s process timeouts.
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(4);
@@ -75,10 +87,10 @@ final class ExtraDimControl {
             RootShell.Result r=RootShell.run("dumpsys color_display",null,1,32768);
             ExtraDimRuntime.Snapshot actual=r.isSuccess()?ExtraDimRuntime.parse(r.output):null;
             if(actual!=null && actual.user==user) {
-                ExtraDimControl.active=actual.active;ExtraDimControl.strength=actual.strength;ready=actual.available;verified=ready&&actual.transform;
+                ExtraDimControl.active=actual.active;ExtraDimControl.strength=actual.strength;ready=actual.available;verified=actual.matches(user,active,strength);
                 if(actual.matches(user,active,strength)){message="";selectionResult(user,true,"verified");return true;}
             }else if(actual!=null) {
-                ExtraDimControl.active=false;ExtraDimControl.strength=50;ready=false;verified=false;
+                ExtraDimControl.active=false;requestedActive=false;requestKnown=false;ExtraDimControl.strength=50;ready=false;verified=false;
                 message="当前前台用户已变化，未使用其他用户的极暗执行状态";selectionResult(user,false,"foreground_user_changed");return false;
             }
             long remaining=deadline-System.nanoTime();
@@ -86,13 +98,14 @@ final class ExtraDimControl {
             try {Thread.sleep(Math.min(350,Math.max(1,java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining))));}
             catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}
         }
-        message=active?"系统未完成极暗色彩变换，设置已保存但未确认生效":"关闭请求已保存，尚未确认系统移除极暗色彩变换";
+        message=active&&!ExtraDimControl.active?"开启请求已保存，系统仍未开启极暗；点击磁贴可撤销"
+                :active?"系统未完成极暗色彩变换，设置已保存但未确认生效":"关闭请求已保存，尚未确认系统移除极暗色彩变换";
         verified=false;
         selectionResult(user,false,"readback_deadline");
         return false;
     }
     private static void selectionResult(int user,boolean success,String reason){
         StartupDiagnostics.record("EXTRA_DIM_SELECT_RESULT","user="+user+";success="+success+";reason="+reason
-                +";active="+active+";strength="+strength+";ready="+ready+";verified="+verified,null);
+                +";active="+active+";requested="+requestedActive+";requestKnown="+requestKnown+";strength="+strength+";ready="+ready+";verified="+verified,null);
     }
 }

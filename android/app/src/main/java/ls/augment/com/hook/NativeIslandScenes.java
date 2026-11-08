@@ -63,6 +63,8 @@ final class NativeIslandScenes {
     private NativeIslandMedia mediaBridge;
     private NativeIslandCards cardsBridge;
     private int panelWindowBefore = -1, panelWindowApplied = -1;
+    private final IslandWindowMotion panelWindowMotion = new IslandWindowMotion();
+    private String lastMotion = "";
     private Method visibleState;
     private volatile boolean closed;
     private boolean suppressing, receiving;
@@ -98,6 +100,11 @@ final class NativeIslandScenes {
     };
 
     static int install(AugmentModule module, ClassLoader loader) {
+        int count = installPanelClicks(module, loader);
+        return count + installScenes(module, loader);
+    }
+
+    private static int installPanelClicks(AugmentModule module, ClassLoader loader) {
         int count = 0;
         try {
             Class<?> type = Class.forName(OEM + "PermanentIslandManager", false, loader);
@@ -105,6 +112,22 @@ final class NativeIslandScenes {
             Method throttle = NativeIslandSceneContract.method(type, "forceNotClick", boolean.class);
             Method show = NativeIslandSceneContract.method(type, "showPermanentPanelIsland", void.class);
             if (click != null && throttle != null && show != null) {
+                // Native long press and other OEM entry points share this expansion method.
+                module.registerFeatureHook(module.prepareFeatureHook(show, "rm.ui.native_scene.prepare_panel", false).intercept(chain -> {
+                    NativeIslandScenes owner = selected;
+                    if (owner != null && !owner.preparePanelExpansion(chain.getThisObject())) return null;
+                    return chain.proceed(chain.getArgs().toArray());
+                }));
+                count++;
+                Method hold = NativeIslandSceneContract.method(type, "onLongClick", void.class);
+                if (hold != null) {
+                    module.registerFeatureHook(module.prepareFeatureHook(hold, "rm.ui.native_scene.prepare_long_click", false).intercept(chain -> {
+                        NativeIslandScenes owner = selected;
+                        if (owner != null && !owner.preparePanelExpansion(chain.getThisObject())) return null;
+                        return chain.proceed(chain.getArgs().toArray());
+                    }));
+                    count++;
+                }
                 module.registerFeatureHook(module.prepareFeatureHook(click, "rm.ui.native_scene.click_panel", false).intercept(chain -> {
                     NativeIslandScenes owner = selected;
                     if (owner != null && chain.getThisObject() == owner.permanent && owner.usable()) {
@@ -114,15 +137,52 @@ final class NativeIslandScenes {
                                 && !Boolean.TRUE.equals(field(owner.permanent, "mOnKeyguard"))
                                 && state instanceof Integer && owner.visibleState != null
                                 && Boolean.TRUE.equals(owner.visibleState.invoke(null, state))) {
-                            if (!Boolean.TRUE.equals(throttle.invoke(owner.permanent))) show.invoke(owner.permanent);
-                            return null;
+                            if (Boolean.TRUE.equals(throttle.invoke(owner.permanent))) return null;
+                            // Protect the direct route too: an OEM compiled call may bypass the show hook.
+                            if (owner.preparePanelExpansion(owner.permanent)) {
+                                show.invoke(owner.permanent);
+                                return null;
+                            }
                         }
+                        // Some stock scenes (for example flashlight) open in their own click handler.
+                        if (owner.completedPanel(island) == null) owner.preparePanelExpansion(owner.permanent);
                     }
                     return chain.proceed(chain.getArgs().toArray());
                 }));
                 count++;
             }
         } catch (Throwable missing) { module.logFeatureError("NATIVE_SCENE_CLICK_PANEL", missing); }
+        return count;
+    }
+
+    private boolean preparePanelExpansion(Object object) throws ReflectiveOperationException {
+        if (object != permanent || !usable()) return true;
+        Object island = call(permanent, "getPermanentIsland");
+        if (island == null) return true;
+        boolean supplemented = completedPanel(island) != null;
+        if (!supplemented) {
+            // Known stock scenes can also open through native long press in the ordinary host.
+            // Keep unknown scenes and complete native/fullscreen implementations untouched.
+            if (NativeIslandSceneOptions.id(island.getClass()) == null || !NativeIslandPanelCompat.ordinary(permanent)) return true;
+            if (!(call(island, "getPanelIsland") instanceof View)) return true;
+        }
+        // The native show method does nothing in these states. Do not replace a pending close owner.
+        for (String state : new String[]{"mAnimProcessing", "mPriorityProcessing", "mDynamicPanelShowing", "mDynamicPanelClosing"})
+            if (Boolean.TRUE.equals(field(permanent, state))) return true;
+        java.lang.ref.WeakReference<NativeIslandScenes> weak = new java.lang.ref.WeakReference<>(this);
+        boolean ready = IslandPanelGuard.prepare(permanent, island, () -> {
+            NativeIslandScenes owner = weak.get();
+            if (owner != null) owner.scheduleChanged();
+        });
+        if (!ready) report("panel_capability_missing:animation_callback_bridge");
+        return ready || !supplemented;
+    }
+
+    private static int installScenes(AugmentModule module, ClassLoader loader) {
+        int count = 0;
+        count += hookNamed(module, loader, "native_island_panel", OEM + "PermanentIslandManager",
+                "removePermanentIsland", 1, (object, arguments, result) ->
+                        IslandPanelGuard.deferRemoval(object, arguments[0]) ? null : PASS, null);
         for (String name : new String[]{"FlashlightIsland", "RecorderIsland", "CountDownIsland", "MediaIsland"}) {
             try {
                 Class<?> type = Class.forName(OEM + "islands." + name, false, loader);
@@ -183,11 +243,7 @@ final class NativeIslandScenes {
                     // This ordinary layout has no full-screen sticky/background views.
                     // Keep its own ordinary close animation and sleep visibility path.
                     set(object, "mInteractive", false);
-                    if (Boolean.TRUE.equals(field(object, "mDynamicPanelShowing"))) {
-                        Object island = call(object, "getPermanentIsland");
-                        if (island != null) call(field(object, "mDynamicAnimation"),
-                                "startPermanentPanelCloseAnimation", island, false, false);
-                    }
+                    owner.closeOrdinaryPanel();
                     call(object, "updateRooterVisibility"); owner.scheduleChanged(); return null;
                 }, null);
         for (String method : new String[]{"onListenerConnected", "onNotificationPosted", "onNotificationRemoved"}) {
@@ -442,7 +498,12 @@ final class NativeIslandScenes {
     /** Ordinary windows can still have capsule-era widths while their panel resources are newer. */
     static void adjustWindow(View view, WindowManager.LayoutParams params) {
         NativeIslandScenes owner = selected;
-        if (owner == null || view != owner.root) return;
+        if (owner == null || owner.closed || view != owner.root) return;
+        // Center-gravity resize changes the surface's left edge. The OEM island already morphs
+        // its own views; do not let WMS replay the old edge as a second sideways animation.
+        // This covers native and supplemental scenes in the same verified ordinary window.
+        if (NativeIslandPanelCompat.ordinary(owner.permanent))
+            owner.panelWindowMotion.suppress(params, owner::reportMotion);
         try {
             Object scene = call(owner.permanent, "getPermanentIsland");
             if (Boolean.TRUE.equals(field(owner.permanent, "mDynamicPanelShowing")) && owner.completedPanel(scene) != null) {
@@ -479,6 +540,13 @@ final class NativeIslandScenes {
             panelWindowBefore = panelWindowApplied = -1;
             try { ((WindowManager) window).updateViewLayout(root, params); }
             catch (RuntimeException error) { report("panel_window_restore_failed:" + reason(error)); }
+        }
+    }
+
+    private void reportMotion(String value) {
+        if (!value.equals(lastMotion)) {
+            lastMotion = value;
+            FeatureRuntimeLog.event("ISLAND_PANEL_PRESENTATION", value + ";window=ordinary");
         }
     }
 
@@ -898,11 +966,17 @@ final class NativeIslandScenes {
     }
 
     private void closeOrdinaryPanel() {
-        if (!Boolean.TRUE.equals(field(permanent, "mDynamicPanelShowing"))) return;
+        if (!Boolean.TRUE.equals(field(permanent, "mDynamicPanelShowing"))
+                || Boolean.TRUE.equals(field(permanent, "mDynamicPanelClosing"))) return;
         try {
             Object island = call(permanent, "getPermanentIsland");
-            if (island != null) call(field(permanent, "mDynamicAnimation"),
+            if (island != null && (IslandPanelGuard.owns(permanent,island) || completedPanel(island) != null)) {
+                if (!IslandPanelGuard.pending(permanent,island) && !IslandPanelGuard.prepare(permanent,island,null)) {
+                    report("ordinary_panel_close_unavailable:animation_callback_bridge"); return;
+                }
+                call(field(permanent, "mDynamicAnimation"),
                     "startPermanentPanelCloseAnimation", island, false, false);
+            }
         } catch (Exception error) { report("ordinary_panel_close_failed:" + reason(error)); }
     }
 
@@ -938,8 +1012,10 @@ final class NativeIslandScenes {
 
     void close() {
         if (closed) return;
+        closeOrdinaryPanel();
         closed = true;
         restorePanelWindow();
+        panelWindowMotion.restoreAll(this::reportMotion);
         root.removeOnAttachStateChangeListener(rootLifecycle);
         if (receiving) try { context.unregisterReceiver(environment); } catch (RuntimeException ignored) { }
         receiving = false;

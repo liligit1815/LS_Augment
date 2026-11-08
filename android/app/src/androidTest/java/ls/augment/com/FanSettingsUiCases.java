@@ -59,7 +59,7 @@ final class FanSettingsUiCases {
         AppConfig config = new AppConfig(context);
         Map<String, String> before = new LinkedHashMap<>(config.snapshot());
         Map<String, String> oemBefore = readOemState(context);
-        int[] hardwareBefore = !layoutOnly && isModel("NX809J") ? readHardware() : null;
+        int[] hardwareBefore = !layoutOnly && FanFeatureAvailability.levels(context) ? readHardware() : null;
         boolean supported = false;
         int toggleCases = 0;
         Throwable failure = null;
@@ -103,9 +103,8 @@ final class FanSettingsUiCases {
                 View screenOff = root.findViewWithTag("config:" + AppConfig.FAN_SCREEN_OFF_ENABLED);
                 require(screenOff instanceof CompoundButton && screenOff != fixed && screenOff != tile,
                         "Screen-off preservation exposes its own real switch");
-                require(screenOff.isEnabled() == FanScreenOffPolicy.supportedDevice(
-                                android.os.Build.DEVICE, android.os.Build.PRODUCT, android.os.Build.MODEL),
-                        "Screen-off control is available only on the audited device");
+                require(screenOff.isEnabled() == FanFeatureAvailability.screen(context),
+                        "Screen-off control follows this firmware's audited capability");
                 require(fixed instanceof CompoundButton && tile instanceof CompoundButton && fixed != tile,
                         "Tile enhancement and fixed speed expose separate switches");
                 View fixedCard = (View) fixed.getParent().getParent();
@@ -166,19 +165,13 @@ final class FanSettingsUiCases {
                     return null;
                 });
             }
-            checkHelp("固定风扇转速", !supported
-                    ? "此机型的定速档位仍待验证，暂不支持固定转速。"
-                    : FeatureHelp.fanFixedSpeed(), "04-fixed-speed-help.png", config);
-            checkHelp("本机转速测量", !supported
-                    ? "此机型暂不执行逐档测量，避免使用其他型号的驱动档位。"
-                    : FeatureHelp.fanMeasurement(), "05-measurement-help.png", config);
-            checkHelp("散热风扇磁贴增强", supported
-                    ? FeatureHelp.fanTileEnhancement()
-                    : "此机型的固定档位尚未验证，暂不支持磁贴固定转速增强。原厂风扇磁贴仍可正常使用。",
+            checkHelp("固定风扇转速", FeatureHelp.fanFixedSpeed(), "04-fixed-speed-help.png", config);
+            checkHelp("本机转速测量", FeatureHelp.fanMeasurement(), "05-measurement-help.png", config);
+            checkHelp("散热风扇磁贴增强", FeatureHelp.fanTileEnhancement(),
                     "06-tile-enhancement-help.png", config);
             if (supported) setTile(false, config);
             assertIndependent(config, before, oemBefore);
-            if (supported && !layoutOnly) checkFixedLevels(config, before, oemBefore, hardwareBefore[0] == 1);
+            if (supported && !layoutOnly && hardwareBefore!=null) checkFixedLevels(config, before, oemBefore, hardwareBefore[0] == 1);
         } catch (Throwable problem) {
             failure = problem;
             try { if (activity != null && directory != null) capture("failure.png"); }
@@ -230,7 +223,7 @@ final class FanSettingsUiCases {
                 .put("parameterGapDp", parameterGapDp).put("parameterToTileGapDp", parameterToTileGapDp)
                 .put("measurementCardGapDp", measurementCardGapDp).put("layoutOnly", layoutOnly)
                 .put("fixedLevelCases", levelCases).put("measurementUsedForFixedControl", false)
-                .put("hardwareChecked", supported && !layoutOnly && hardwareBefore[0] == 1)
+                .put("hardwareChecked", supported && !layoutOnly && hardwareBefore!=null && hardwareBefore[0] == 1)
                 .put("oemFanStateRestored", true).put("screenshots", screenshots);
     }
 
@@ -285,12 +278,16 @@ final class FanSettingsUiCases {
                 View card = (View) fixedRow.getParent();
                 View measurement = directChildContaining((ViewGroup) card.getParent(), findText(root, "本机转速测量"));
                 parameterGapDp = gapDp(fixedRow, heading);
-                parameterToTileGapDp = gapDp(choices, tileRow);
+                // The public expanded surface owns its 8dp inner padding and
+                // choice-row margin. Measure the next row from that surface edge.
+                parameterToTileGapDp = gapDp(fold.content, tileRow);
                 measurementCardGapDp = gapDp(card, measurement);
                 require(parameterGapDp >= 7.5f && parameterGapDp <= 12.5f,
                         "Fixed-header-to-parameter gap is within 8–12dp without stacked margins: " + parameterGapDp);
                 require(parameterToTileGapDp >= -.5f && parameterToTileGapDp <= 12.5f,
-                        "Parameter-to-tile gap uses the public compact rhythm: " + parameterToTileGapDp);
+                        "Expanded-surface-to-tile gap uses the public compact rhythm: " + parameterToTileGapDp);
+                require(fold.content.getPaddingBottom()/activity.getResources().getDisplayMetrics().density>=7.5f,
+                        "Public expanded surface retains its inner bottom padding");
                 require(measurementCardGapDp >= 7.5f && measurementCardGapDp <= 12.5f,
                         "Merged card-to-measurement gap is within 8–12dp: " + measurementCardGapDp);
                 require(heading.getHeight() / activity.getResources().getDisplayMetrics().density >= 43.5f,

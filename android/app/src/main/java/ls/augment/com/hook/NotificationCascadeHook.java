@@ -159,10 +159,22 @@ final class NotificationCascadeHook {
             restoreTopClip(row,result,false);
             return result;
         }));
+        if(access.drawStack!=null)activeHooks.add(module.prepareFeatureHook(access.drawStack,"notification.cascade.top_transition",false).intercept(chain->{
+            Surface surface=surfaces.get(chain.getThisObject());
+            if(surface==null||!live(surface.frame))return chain.proceed();
+            android.graphics.Canvas output=(android.graphics.Canvas)chain.getArg(0);
+            android.graphics.Canvas recording=surface.headerBlur.beginTransition(output);
+            if(recording==null)return chain.proceed();
+            boolean succeeded=false;
+            try{Object result=chain.proceed(new Object[]{recording});succeeded=true;return result;}
+            finally{surface.headerBlur.endTransition(output,succeeded);}
+        }));
+        else module.logFeatureInfo("NOTIFICATION_TOP_TRANSITION_UNAVAILABLE missing_native_dispatchDraw");
         if(!deoptimized){
         for(Method method:new Method[]{access.reset,access.resetRow,access.shelfClamp,access.updateChild,access.positions,access.resetChildren,
                 access.scrollRange,access.scrollingEnabled,access.scrollTouch,access.interceptScroll,access.scrollability,access.clampScroll})module.deoptimize(method);
         for(Method touch:access.touches)module.deoptimize(touch);
+        if(access.drawStack!=null)module.deoptimize(access.drawStack);
         deoptimized=true;
         }
         active=true;return true;
@@ -192,6 +204,7 @@ final class NotificationCascadeHook {
         Surface present=surfaces.get(host);if(present!=null)return present;
         Surface created=new Surface();surfaces.put(host,created);
         created.headerBlur=new NotificationTopBlur(host,new NotificationTopBlur.Source(){
+            public float scrollDistance(){return accessScroll(host);}
             public boolean active(){Frame frame=created.frame;return live(frame)&&!frame.keyguard
                     &&FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true)
                     &&accessScroll(host)>0;}
@@ -391,10 +404,16 @@ final class NotificationCascadeHook {
         final Class<?> row;final Method reset,shelfClamp,resetRow,state,alpha,alphaGet,keyguard,dozing,hideAmount,expansion,updateChild,positions,resetChildren;
         final Method scrollRange,scrollability,clampScroll,scrollingEnabled,scrollTouch,interceptScroll,childAt,stackY,stackHeight,refresh,getClipTop,setClipTop;
         final Method[] changing;final Field host,maxHeight,y,z,scaleX,scaleY,height,gone,hidden,clipTop,clipBottom,scroll,lockSpace,children;
+        final Method drawStack;
         final ArrayList<Method> touches=new ArrayList<>();
         Access(ClassLoader loader)throws ReflectiveOperationException{
             Class<?> algorithm=Class.forName(BASE+"stack.StackScrollAlgorithm",false,loader);
             Class<?> layout=Class.forName(BASE+"stack.NotificationStackScrollLayout",false,loader);
+            Method drawing=null;
+            try{drawing=method(layout,"dispatchDraw",android.graphics.Canvas.class);result(drawing,void.class);
+                if(drawing.getDeclaringClass()==ViewGroup.class||drawing.getDeclaringClass()==View.class)drawing=null;
+            }catch(NoSuchMethodException unavailable){drawing=null;/* Retain the previous clock backdrop on unsupported ROMs. */}
+            drawStack=drawing;
             Class<?> ambient=Class.forName(BASE+"stack.AmbientState",false,loader);
             Class<?> algorithmState=Class.forName(BASE+"stack.StackScrollAlgorithm$StackScrollAlgorithmState",false,loader);
             Class<?> expandable=Class.forName(BASE+"row.ExpandableView",false,loader);row=Class.forName(BASE+"row.ExpandableNotificationRow",false,loader);

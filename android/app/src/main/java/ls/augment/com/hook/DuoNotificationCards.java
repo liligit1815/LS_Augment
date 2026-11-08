@@ -84,6 +84,8 @@ final class DuoNotificationCards {
             OrdinaryClose state = ordinaryCards.get(args[0]);
             if (state == null || state.manager.get() != owner
                     || !(args[1] instanceof Boolean) || !(args[2] instanceof Boolean)) return PASS;
+            if (IslandPanelGuard.owns(owner,args[0]) && IslandPanelGuard.close(owner,args[0],
+                    (Boolean)args[1],(Boolean)args[2],"notification_manager_hook")) return null;
             state.closing = false;
             View card = (View)args[0];
             boolean removed = state.withdrawing || (Boolean)args[1];
@@ -93,6 +95,11 @@ final class DuoNotificationCards {
         },null);
         closeHook = completion > 0;
         count += completion;
+        count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","showPermanentPanelIsland",0,(o,a,r)->{
+            DuoNotificationCards h=active;
+            if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()&&!h.prepareExpansion())return null;
+            return PASS;
+        },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"DynamicPermanentIsland","updateViewVisibility",2,(o,a,r)->{
             DuoNotificationCards h=active;
             if(h!=null&&!h.fullscreen&&h.panelFor(o)!=null){((View)o).setAlpha((Boolean)a[0]?1f:0f);return null;}
@@ -125,6 +132,8 @@ final class DuoNotificationCards {
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","onLongClick",0,(o,a,r)->{
             DuoNotificationCards h=active;
+            // Ordinary long press keeps its OEM scale/open interaction; only prepare its callback.
+            if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()&&!h.prepareExpansion())return null;
             if(h!=null&&h.fullscreen&&o==h.manager&&h.selected()){
                 if(!Boolean.TRUE.equals(call(o,"forceNotClick")))h.open.run();return null;
             }return PASS;
@@ -230,9 +239,9 @@ final class DuoNotificationCards {
         label.setSingleLine(true);
         label.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        label.setTextSize(14);
-        label.setTextColor(android.graphics.Color.WHITE);
-        label.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        // Keep the current OEM text appearance (including light glass and its font).
+        int color=context.getResources().getIdentifier("dynamic_island_text_color","color","com.android.systemui");
+        if(color!=0)label.setTextColor(context.getColor(color));
         compactText=new DuoCompactText(label);
     }
     boolean show(String title,String subtitle,String label,Drawable icon){
@@ -265,7 +274,7 @@ final class DuoNotificationCards {
         content.measure(View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int minimum=download!=null?Math.round(56*context.getResources().getDisplayMetrics().density)
                 :context.getResources().getDimensionPixelSize(panelHeightId);
-        height=Math.max(minimum,content.getMeasuredHeight());
+        height=Math.max(minimum,download!=null?download.desiredHeight(available):content.getMeasuredHeight());
         height=Math.min(height,context.getResources().getDisplayMetrics().heightPixels/2);
         content.setLayoutParams(new FrameLayout.LayoutParams(-1,height));
         panel.setLayoutParams(new FrameLayout.LayoutParams(-1,height));
@@ -306,10 +315,16 @@ final class DuoNotificationCards {
     boolean expanded(){return island!=null&&Boolean.TRUE.equals(field(manager,"mDynamicPanelShowing"))
             &&(fullscreen?field(manager,"mTempIsland")==island:selected());}
     void expand(){try{if(selected()&&!Boolean.TRUE.equals(call(manager,"forceNotClick"))){
-        OrdinaryClose state=ordinaryCards.get(island);
-        if(!fullscreen&&!IslandPanelGuard.prepare(manager,island,()->{if(state!=null)state.closing=false;}))return;
+        if(!prepareExpansion())return;
         call(manager,fullscreen?"onClick":"showPermanentPanelIsland");
     }}catch(Exception failure){failed(failure);}}
+    private boolean prepareExpansion(){
+        if(fullscreen)return true;
+        for(String name:new String[]{"mAnimProcessing","mPriorityProcessing","mDynamicPanelShowing","mDynamicPanelClosing"})
+            if(Boolean.TRUE.equals(field(manager,name)))return true;
+        OrdinaryClose state=ordinaryCards.get(island);
+        return IslandPanelGuard.prepare(manager,island,()->{if(state!=null)state.closing=false;});
+    }
     void dismiss(){
         if(!expanded())return;
         OrdinaryClose state = ordinaryCards.get(island);

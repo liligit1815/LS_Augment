@@ -111,7 +111,7 @@ constants = dict(re.findall(r'public static final String (\w+) = "([^"]+)";', sc
 FILES["ls/augment/com/ConfigSchema.java"] = "package ls.augment.com;public class ConfigSchema {" + "".join(
     f'public static final String {name}="{constants[name]}";' for name in ["GAME_MASTER", "FAN_SCREEN_OFF_ENABLED"]) + "}"
 FILES["ls/augment/com/FanHardwareIdentity.java"]='package ls.augment.com;public class FanHardwareIdentity {public static String current(){return "firmware-test";}}'
-for name in ["FanScreenOffPolicy.java", "hook/FanScreenOffHook.java", "hook/FanOemContract.java"]:
+for name in ["FanScreenOffPolicy.java", "hook/FanScreenOffHook.java", "hook/FanOemContract.java", "hook/FanMembers.java"]:
     FILES["ls/augment/com/" + name] = (SRC / name).read_text(encoding="utf-8")
 
 
@@ -125,12 +125,22 @@ def java_tool(name):
     raise SystemExit("Set JAVA_HOME or add a JDK to PATH")
 
 
-with tempfile.TemporaryDirectory(prefix="lsa-fan-screen-off-") as directory:
-    sources = []
-    for name, content in FILES.items():
-        path = Path(directory) / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        sources.append(str(path))
-    subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "--release", "17", "-d", directory, *sources], check=True)
-    subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanScreenOffRuntime", *sys.argv[1:]], check=True, timeout=15)
+for inherited in (False, True):
+    fixture = dict(FILES)
+    if inherited:
+        for package, name in (("policy", "FanControllerImpl"), ("bean", "FanState")):
+            key = f"cn/nubia/fan/{package}/{name}.java"
+            fixture[f"cn/nubia/fan/{package}/{name}Base.java"] = fixture[key].replace(
+                f"public class {name} {{", f"public class {name}Base {{").replace(
+                f"invoke({name}.class", f"invoke({name}Base.class")
+            fixture[key] = f"package cn.nubia.fan.{package};public class {name} extends {name}Base {{}}"
+    with tempfile.TemporaryDirectory(prefix="lsa-fan-screen-off-") as directory:
+        sources = []
+        for name, content in fixture.items():
+            path = Path(directory) / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            sources.append(str(path))
+        subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "--release", "17", "-d", directory, *sources], check=True)
+        subprocess.run([java_tool("java"), "-cp", directory, "ls.augment.com.hook.TestFanScreenOffRuntime", *sys.argv[1:]], check=True, timeout=15)
+        print("PASS inherited OEM members" if inherited else "PASS declared OEM members")

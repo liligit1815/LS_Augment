@@ -115,9 +115,12 @@ public final class IslandFixtureRunner extends Instrumentation {
             case "play":requireSession();playback(PlaybackState.STATE_PLAYING);phase="playing";break;
             case "pause":requireSession();playback(PlaybackState.STATE_PAUSED);phase="paused";break;
             case "stop":requireSession();playback(PlaybackState.STATE_STOPPED);phase="stopped";break;
-            case "release":if(session!=null){session.setActive(false);session.release();session=null;}released=true;phase="released";break;
+            case "release":if(session!=null){session.setActive(false);session.release();session=null;}notifications.cancel(tag,3);released=true;phase="released";break;
             case "notice-expiry":requireReleased();post(1,"EXPIRY");phase="notice-expiry";break;
             case "notice-click":requireReleased();post(2,"CLICK");phase="notice-click";break;
+            case "download":requireReleased();postDownload(35);phase="download";break;
+            case "download-update":requireReleased();postDownload(78);phase="download-update";break;
+            case "download-remove":notifications.cancel(tag,4);phase="download-removed";break;
             case "finish":cleanup("command_finish");return;
             case "observe":break;
             default:throw new IllegalArgumentException("Unknown command");
@@ -128,7 +131,15 @@ public final class IslandFixtureRunner extends Instrumentation {
     private void requireReleased(){if(!released)throw new IllegalStateException("Notification proof requires released fixture media");}
     private void playback(int state){playback=state;session.setPlaybackState(new PlaybackState.Builder().setActions(
             PlaybackState.ACTION_PLAY|PlaybackState.ACTION_PAUSE|PlaybackState.ACTION_PLAY_PAUSE|PlaybackState.ACTION_SKIP_TO_NEXT|PlaybackState.ACTION_SKIP_TO_PREVIOUS)
-            .setState(state,0,state==PlaybackState.STATE_PLAYING?1:0,SystemClock.elapsedRealtime()).build());}
+            .setState(state,0,state==PlaybackState.STATE_PLAYING?1:0,SystemClock.elapsedRealtime()).build());
+        // Opt-in real MediaStyle payload: SystemUI requires a notification matching the token
+        // before the OEM media card can consume a third-party session. Still produces no audio.
+        if(Boolean.parseBoolean(arguments.getString("mediaNotification","false")))notifications.notify(tag,3,new Notification.Builder(context,channel)
+                .setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("DuoIsland "+runId)
+                .setContentText("自有无声测试事件").setLargeIcon(cover).setContentIntent(sourceIntent("media"))
+                .setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()))
+                .setOngoing(state==PlaybackState.STATE_PLAYING).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());}
     private PendingIntent sourceIntent(String kind){
         Intent i=new Intent(context,ContentActivity.class).setData(Uri.parse("duo-island://"+runId+"/"+kind))
                 .putExtra("runId",runId).putExtra("secret",secret).putExtra("kind",kind).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -139,6 +150,11 @@ public final class IslandFixtureRunner extends Instrumentation {
             .setContentText("自有普通通知：到期只收起灵动岛，不撤回此通知。")
             .setContentIntent(sourceIntent(kind)).setVisibility(Notification.VISIBILITY_PUBLIC)
             .setAutoCancel(false).setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());}
+    private void postDownload(int percent){notifications.notify(tag,4,new Notification.Builder(context,channel)
+            .setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("Duo 验证文件.zip")
+            .setContentText("临时下载进度验证 · 不下载实际文件").setProgress(100,percent,false)
+            .setContentIntent(sourceIntent("download")).setOngoing(true).setOnlyAlertOnce(true)
+            .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());}
     private boolean valid(Intent i){return runId!=null&&runId.equals(i.getStringExtra("runId"))&&secret.equals(i.getStringExtra("secret"))&&!closed;}
     private void sourceOpened(ContentActivity activity){
         if(!valid(activity.getIntent())){activity.finish();return;}
@@ -167,7 +183,7 @@ public final class IslandFixtureRunner extends Instrumentation {
     private void cleanup(String reason){
         if(closed)return;closed=true;phase="closed";
         try{if(session!=null){session.setActive(false);session.release();session=null;}released=true;}catch(Throwable t){error+=";release:"+t;}
-        try{if(notifications!=null&&tag!=null){notifications.cancel(tag,1);notifications.cancel(tag,2);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
+        try{if(notifications!=null&&tag!=null){notifications.cancel(tag,1);notifications.cancel(tag,2);notifications.cancel(tag,3);notifications.cancel(tag,4);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
         try{if(receiverRegistered){context.unregisterReceiver(commands);receiverRegistered=false;}}catch(Throwable t){error+=";receiver:"+t;}
         if(background!=null)background.finish();if(content!=null)content.finish();if(cover!=null){cover.recycle();cover=null;}
         event(reason);finished=true;

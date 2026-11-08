@@ -6,7 +6,8 @@ final class IslandFixtureProtocol {
     private IslandFixtureProtocol(){}
     static boolean identity(String value){return value!=null&&value.matches("[a-f0-9]{32}");}
     static boolean known(String c){return "play".equals(c)||"pause".equals(c)||"stop".equals(c)||"release".equals(c)
-            ||"notice-expiry".equals(c)||"notice-click".equals(c)||"finish".equals(c)||"observe".equals(c);}
+            ||"notice-expiry".equals(c)||"notice-click".equals(c)||"download".equals(c)||"download-update".equals(c)
+            ||"download-remove".equals(c)||"finish".equals(c)||"observe".equals(c);}
     static int admit(String run,String secret,int sequence,long deadline,boolean closed,
             String receivedRun,String receivedSecret,int next,String command,long now){
         if(closed||!identity(run)||!identity(secret)||!run.equals(receivedRun)||!secret.equals(receivedSecret)

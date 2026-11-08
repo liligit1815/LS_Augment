@@ -71,6 +71,7 @@ final class LiveWorkspace {
     volatile boolean ready, closing, closed;
     android.animation.ValueAnimator chromeMotion;
     boolean cleaning, checkingState;
+    boolean preparingPortrait;
     Object controller, organizer, organizerLock, nativeTransitions;
     OwnershipBridge ownership;
     Rect logical;
@@ -117,10 +118,25 @@ final class LiveWorkspace {
     static boolean running() { return current != null && !current.closed; }
     static void open(ResultReceiver report, Intent options) {
         if (!StepRuntime.enabled || running() || Wm.active) { StepRuntime.report(report, 13, "工作台已关闭或正在运行", -1); return; }
-        LiveWorkspace workspace = new LiveWorkspace(report, options); current = workspace; workspace.create();
+        LiveWorkspace workspace = new LiveWorkspace(report, options); current = workspace; workspace.prepare();
     }
     static void stop(String reason) { if (running()) current.close(reason); }
     void log(String message) { StepRuntime.report(reportTo, 10, message, -1); }
+    void prepare(){
+        Rect bounds=Shell.context.getSystemService(WindowManager.class).getCurrentWindowMetrics().getBounds();
+        if(bounds.width()<=bounds.height()){create();return;}
+        preparingPortrait=true;
+        Bundle request=new Bundle();request.putInt("user",(Integer)call(quickUser,"getIdentifier"));
+        rpc("portraitEntry",request,ignored->awaitPortrait(SystemClock.uptimeMillis()+3500,0));
+    }
+    void awaitPortrait(long deadline,int stable){
+        if(closed || closing || current!=this)return;
+        Rect bounds=Shell.context.getSystemService(WindowManager.class).getCurrentWindowMetrics().getBounds();
+        int count=bounds.width()<bounds.height()?stable+1:0;
+        if(count>=3){preparingPortrait=false;create();return;}
+        if(SystemClock.uptimeMillis()>=deadline){preparingPortrait=false;fail("原屏未完成工作区方向准备");return;}
+        main.postDelayed(()->awaitPortrait(deadline,count),100);
+    }
     void create() {
         if (Shell.factory == null || Shell.executor == null || Shell.transitions == null) { fail("TaskView运行时能力未就绪"); return; }
         try {
@@ -834,6 +850,19 @@ final class LiveWorkspace {
         }
     }
     void confirmRoles(Bundle result, long ticket, int slot, int previous, int next) {
+        if(result.getBoolean("readmitSkipped") && retained!=null && previous==-1 && next>=0
+                && result.getBoolean("committed") && result.getInt("slot",-1)==slot
+                && result.getInt("side",-2)==-1 && result.getInt("skippedTask",-1)==next){
+            Shell.executor.execute(()->{
+                if(!fence.current(ticket))return;
+                try{
+                    Lease lease=leases.get(next);
+                    if(lease!=null){ownership.releaseIfOwned(next,lease.listener);leases.remove(next);}
+                    main.post(()->{if(fence.current(ticket))input.release(()->{if(fence.complete(ticket))resumeNext();});});
+                }catch(Throwable error){main.post(()->fail("跳过副格后监听归还失败："+error));}
+            });
+            return;
+        }
         if (!result.getBoolean("committed") || result.getInt("slot", -1) != slot
                 || result.getInt("side", -2) != next || result.getInt("previous", -2) != previous)
             throw new IllegalStateException("副格图层或身份尚未确认");

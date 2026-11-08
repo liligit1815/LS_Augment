@@ -1,6 +1,7 @@
 """Execute production render/dispatch/lifecycle methods with deterministic OEM view contracts."""
 from pathlib import Path
 import ast
+import importlib.util
 import os
 import subprocess
 import tempfile
@@ -35,6 +36,7 @@ files.update({
  public ViewGroup.LayoutParams getLayoutParams(){return params;}public void setLayoutParams(ViewGroup.LayoutParams p){params=p;}
  public static class MeasureSpec {public static final int EXACTLY=1,UNSPECIFIED=0;public static int makeMeasureSpec(int a,int b){return a;}}}''',
  'android/view/ViewGroup.java': '''package android.view;import java.util.*;public class ViewGroup extends View {public java.util.List<View> children=new ArrayList<>();
+ public void removeView(View v){children.remove(v);v.parent=null;}
  public static class LayoutParams {public int height;}public void removeAllViews(){for(View v:children)v.parent=null;children.clear();}
  public int getChildCount(){return children.size();}public View getChildAt(int i){return children.get(i);}
  public void addView(View v){if(v.parent!=null)throw new IllegalStateException("parent");children.add(v);v.parent=this;}}''',
@@ -44,12 +46,19 @@ files.update({
  'android/widget/TextView.java': 'package android.widget;public class TextView extends android.view.View {public int getCurrentTextColor(){return -1;}}',
  'ls/augment/com/hook/NativeIslandCardContrast.java': 'package ls.augment.com.hook;class NativeIslandCardContrast {static void apply(android.view.View v,int c){}}',
 })
+spec=importlib.util.spec_from_file_location('panel_fixture',ROOT/'tools/test-island-panel-runtime.py')
+panel_fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(panel_fixture)
+files['ls/augment/com/hook/SystemUiAdapter.java']=panel_fixture.FILES['ls/augment/com/hook/SystemUiAdapter.java']
+files['ls/augment/com/hook/FeatureRuntimeLog.java']='package ls.augment.com.hook;class FeatureRuntimeLog{static void event(String s,String d){}static String failure(Throwable e){return e.toString();}}'
+files['com/zte/feature/dynamicisland/DynamicPermanentIsland.java']='package com.zte.feature.dynamicisland;public class DynamicPermanentIsland extends android.view.ViewGroup {}'
+for name in ['IslandPanelGuard','NativeIslandPanelCompat']:
+    files[f'ls/augment/com/hook/{name}.java']=(ROOT/f'android/app/src/main/java/ls/augment/com/hook/{name}.java').read_text('utf-8')
 harness = '''package ls.augment.com.hook;import android.content.*;import android.view.*;import android.appwidget.AppWidgetHostView;import android.os.Handler;
-import android.os.Looper;import android.os.Process;import android.provider.Settings;import java.lang.reflect.*;import java.util.*;import ls.augment.com.*;
+import android.os.Looper;import android.os.Process;import android.provider.Settings;import java.lang.reflect.*;import java.util.*;import ls.augment.com.*;import com.zte.feature.dynamicisland.DynamicPermanentIsland;
 public class TestCardHost {
  static int checks;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
  static TestCardHost selected;static final Handler MAIN=new Handler(Looper.getMainLooper());
- final Context context=new Context();final Manager permanent=new Manager();final View root=new View();final User userIsland=new User();
+ final Context context=new Context();final Manager permanent;final View root=new View();final User userIsland=new User();
  final android.widget.TextView foregroundReference=new android.widget.TextView();
  final Map<String,Card> cards=new LinkedHashMap<>();final Map<Object,Card> owned=new IdentityHashMap<>();
  boolean closed,failed,ready,registered=true;int requests,enabledScenes;Card pending;String diagnostic;
@@ -59,7 +68,7 @@ public class TestCardHost {
  Listener previousListener=new Listener();
  public static class FeatureSettings {static final Map<String,Boolean> flags=new HashMap<>();static boolean enabled(Context c,String k){return flags.getOrDefault(k,false);}static void diagnostic(Context c,String k,String v){}}
  public static class User {public int mCurrentUser;}
- public static class Island extends ViewGroup {public String action;public ViewGroup panel;public int clicks;
+ public static class Island extends DynamicPermanentIsland {public String action;public ViewGroup panel;public int clicks;public ViewGroup getPanelIsland(){return panel;}
  public void initIsland(String p,String id,String a,int type){action=a;}public void setPanelIsland(ViewGroup p){panel=p;}public boolean handleIslandClick(){clicks++;return true;}}
  public static class Remote {View content=new View();boolean fail;public View apply(Context c,ViewGroup parent){if(fail)throw new IllegalStateException("inflate failed");return content;}}
  public static class Message {String id="zte.com.cn.alarmclock_timer_countdown",pkg="zte.com.cn.alarmclock",action="open";Remote compact=new Remote(),expanded=new Remote();int p=2;
@@ -67,15 +76,29 @@ public class TestCardHost {
  public Remote getRemoteViews(){return expanded;}public String getLaunchAction(){return action;}public int getDisplayPriority(){return p;}}
  public static class Listener {int calls;public void onCardCreated(Object message){calls++;}public void onCardRemoved(String id){calls++;}}
  public static class Manager {public boolean mIsDynamicIslandEnable=true,mDynamicPanelShowing,mAnimProcessing,mPriorityProcessing,mOnKeyguard,mQsPanelExpanded,mControlPanelExpanded;
- public View mDynamicIslandContainer=new View();public Object current;public int adds,removes,opens,resizes;public boolean limited;
- public Object getPermanentIsland(){return current;}public void addPermanentIslandInner(ViewGroup v){if(mOnKeyguard)return;adds++;current=v;v.parent=this;}
+ public View mDynamicIslandContainer=new View();public DynamicPermanentIsland current;public int adds,removes,opens,resizes;public boolean limited;
+ public DynamicPermanentIsland getPermanentIsland(){return current;}public void addPermanentIslandInner(ViewGroup v){if(mOnKeyguard)return;adds++;current=(DynamicPermanentIsland)v;v.parent=this;}
  public void removePermanentIsland(ViewGroup v){removes++;v.parent=null;if(current==v)current=null;}
  public void showPermanentPanelIsland(){opens++;mDynamicPanelShowing=true;}public boolean forceNotClick(){return limited;}
  public void updateDynamicWindowHeightParams(boolean b){resizes++;}}
+ public interface Callback {void onPermanentIslandPanelCloseAnimationEnd(DynamicPermanentIsland i,boolean r,boolean d);}
+ public static class Factory {public Callback mCallback;Factory(Callback c){mCallback=c;}}
+ public static class Animation {public Factory mPermanentAnimation;Animation(Callback c){mPermanentAnimation=new Factory(c);}}
+ public static class ModernManager extends Manager implements Callback {
+  public View mDynamicIslandRoot=new View(),mDynamicIslandPanelRoot;public ViewGroup mDynamicPanelContainer=new ViewGroup();
+  public boolean mDynamicPanelClosing;public DynamicPermanentIsland mTempIsland;public Object mWindowManager=new Object(),mParams=new Object();
+  public Animation mDynamicAnimation=new Animation(this);
+  public void removePermanentIslandInner(DynamicPermanentIsland i){super.removePermanentIsland(i);}
+  public void showPermanentPanelIsland(){super.showPermanentPanelIsland();mDynamicPanelContainer.addView(((Island)current).panel);}
+  public void removePermanentIsland(ViewGroup i){if(mDynamicPanelShowing&&i==current){mDynamicPanelClosing=true;return;}super.removePermanentIsland(i);}
+  public void onPermanentIslandPanelCloseAnimationEnd(DynamicPermanentIsland i,boolean r,boolean d){throw new AssertionError("unsafe null-root callback");}
+  void end(DynamicPermanentIsland i){mDynamicAnimation.mPermanentAnimation.mCallback.onPermanentIslandPanelCloseAnimationEnd(i,false,false);}
+ }
  static Object field(Object o,String n){try{return o.getClass().getField(n).get(o);}catch(Exception e){return null;}}
  static Object call(Object o,String n)throws Exception{return o.getClass().getMethod(n).invoke(o);}
  void report(String value){diagnostic=value;}void requestSource(){requests++;}
- TestCardHost()throws Exception {currentUser=User.class.getField("mCurrentUser");cardId=Message.class.getMethod("getCardId");sender=Message.class.getMethod("getSenderPackage");
+ TestCardHost()throws Exception {this(false);}
+ TestCardHost(boolean modern)throws Exception {permanent=modern?new ModernManager():new Manager();currentUser=User.class.getField("mCurrentUser");cardId=Message.class.getMethod("getCardId");sender=Message.class.getMethod("getSenderPackage");
  small=Message.class.getMethod("getSmallRemoteViews");large=Message.class.getMethod("getRemoteViews");launch=Message.class.getMethod("getLaunchAction");priority=Message.class.getMethod("getDisplayPriority");
  apply=Remote.class.getMethod("apply",Context.class,ViewGroup.class);initialize=Island.class.getMethod("initIsland",String.class,String.class,String.class,int.class);
  setPanel=Island.class.getMethod("setPanelIsland",ViewGroup.class);click=Island.class.getMethod("handleIslandClick");
@@ -184,13 +207,27 @@ public class TestCardHost {
  check(sized.panelHeight==150,"wrap-content older cards still use actual content height");
  Message noParams=new Message();noParams.expanded.content.params=null;geometry.receive(noParams);
  check(sized.panelHeight==100,"missing root parameters retain intrinsic measurement");
+ for(String scene:new String[]{"countdown","record","meeting","ai","transfer","nfc_transfer","calendar_meeting","scenic_guide","nearby_charging","cycling","flight","preflight_battery","weather_travel"}){
+  TestCardHost life=new TestCardHost(true);ModernManager m=(ModernManager)life.permanent;
+  Card card=new Card("fixture_"+scene,scene,new Island());card.panel=new Island();((Island)card.island).panel=card.panel;
+  life.cards.put(card.id,card);life.owned.put(card.island,card);m.addPermanentIslandInner(card.island);
+  life.handleClick(false);check(m.opens==1&&IslandPanelGuard.owns(m,card.island),"direct card tap prepares close: "+scene);
+  life.handleClick(true);check(((Island)card.island).clicks==1,"original long-press source action retained: "+scene);
+  m.end((DynamicPermanentIsland)card.island);check(card.panel.getParent()==null&&!m.mDynamicPanelShowing,"direct card close completes: "+scene);
+  life.pending=card;life.stateChanged();check(m.opens==2&&life.pending==null,"automatic card expansion prepares close: "+scene);
+  m.mDynamicPanelClosing=true;life.removeCard(card.id);check(m.removes==0,"withdraw during close does not restart removal: "+scene);
+  life.closed=true;m.end((DynamicPermanentIsland)card.island);
+  check(m.removes==1&&card.panel.getParent()==null,"withdraw callback safe after host release: "+scene);
+ }
  System.out.println("PASS native card host: "+checks+" checks");}}
 '''
 harness = harness.replace('// PRODUCTION', '\n'.join(extract(m) for m in [
     'private void dispatch(', 'void configurationChanged(', 'private boolean supportsScene(', 'private boolean sameUser(', 'private boolean receive(',
     'private boolean removeCard(', 'void stateChanged(', 'View panel(', 'private Card current(',
-    'private boolean handleClick(', 'private static void clearCompactClicks(', 'private static final class Card ']))
+    'private boolean handleClick(', 'private void openPanel(', 'private static void clearCompactClicks(', 'private static final class Card ']).replace('NativeIslandCards','TestCardHost'))
 files['ls/augment/com/hook/TestCardHost.java'] = harness
+from island_panel_test_support import add_status_bar_support
+add_status_bar_support(files)
 with tempfile.TemporaryDirectory(prefix='duo-card-host-') as folder:
     sources = []
     for name, value in files.items():

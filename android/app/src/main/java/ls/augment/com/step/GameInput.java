@@ -48,6 +48,8 @@ final class GameInput {
     static void refresh(){
         if(!installed)return;
         int uid=-1;
+        float inputScale=scale,inputX=x,inputY=y;
+        int width=logical==null?0:logical.width(),height=logical==null?0:logical.height();
         try{
             if(active && !ending && scale>0 && scale<1 && logical!=null){
                 Object win=field(Wm.display,"mCurrentFocus");
@@ -61,11 +63,15 @@ final class GameInput {
                         if(app.uid==(Integer)field(win,"mOwnerUid") && (app.category==ApplicationInfo.CATEGORY_GAME ||
                                 (app.flags&ApplicationInfo.FLAG_IS_GAME)!=0 || (attrs.flags&WindowManager.LayoutParams.FLAG_FULLSCREEN)!=0))
                             uid=app.uid;
+                        // Main landscape now quarter-turns inside the original
+                        // portrait footprint. The calibrated native mapper reads
+                        // that rotation from the window matrix; keep the outer
+                        // scale, origin and pre-rotation dimensions unchanged.
                     }
                 }
             }
         }catch(RuntimeException|LinkageError missing){uid=-1;}
-        target=uid;configure(uid,scale,x,y,logical==null?0:logical.width(),logical==null?0:logical.height());
+        target=uid;configure(uid,inputScale,inputX,inputY,width,height);
     }
     static String details(){
         return status+(installed?"/uid="+target+"/eligible="+counter(0)+"/corrected="+counter(1)+"/multi="+counter(2)+"/peak="+counter(3):"");

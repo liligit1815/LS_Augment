@@ -252,7 +252,7 @@ final class ExtraDimTileHook {
         void accept(Bundle result){
             detail.ready=result!=null&&result.getBoolean("ready",result.getBoolean("ok"));
             detail.message=result==null?"无法读取极暗执行反馈":result.getString("message","");
-            if(result!=null){detail.active=result.getBoolean("active");detail.strength=result.getInt("strength",50);}
+            if(result!=null){detail.active=result.getBoolean("selected",result.getBoolean("active"));detail.strength=result.getInt("strength",50);}
             render();
         }
         void schedule(){MAIN.removeCallbacks(poll);if(attached)MAIN.postDelayed(poll,1200);}

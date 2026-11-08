@@ -36,8 +36,7 @@ public final class ExtraDimTileService extends TileService {
         if (busy) return;
         busy = true;
         new Thread(() -> {
-            boolean readable=ExtraDimControl.read(this),on=ExtraDimControl.active(this);
-            boolean ok=(readable||on)&&ExtraDimControl.set(this,!on,ExtraDimControl.strength(this));
+            boolean ok=ExtraDimControl.toggle(this);
             main.post(() -> {
                 busy = false; refresh();
                 if (!ok) Toast.makeText(this, ExtraDimControl.message(), Toast.LENGTH_LONG).show();
@@ -52,9 +51,11 @@ public final class ExtraDimTileService extends TileService {
     private void refresh() {
         Tile tile = getQsTile(); if (tile == null) return;
         boolean enabled = ExtraDimControl.active(this);
+        boolean selected = ExtraDimControl.selected(this);
         tile.setLabel("极暗"); tile.setSubtitle(!ExtraDimControl.ready()?"暂不可用":ExtraDimControl.verified()?"强度 " + ExtraDimControl.strength(this) + "%":"未确认生效");
-        tile.setState(enabled&&ExtraDimControl.verified() ? Tile.STATE_ACTIVE : ExtraDimControl.ready()||enabled ? Tile.STATE_INACTIVE : Tile.STATE_UNAVAILABLE);
-        tile.setContentDescription(!ExtraDimControl.ready()?ExtraDimControl.message()+(enabled?"，点击关闭已保存的开启请求":"")
+        tile.setState(enabled&&ExtraDimControl.verified() ? Tile.STATE_ACTIVE : ExtraDimControl.ready()||selected ? Tile.STATE_INACTIVE : Tile.STATE_UNAVAILABLE);
+        tile.setContentDescription(selected&&!enabled?"极暗未确认生效，点击撤销开启请求"
+                :!ExtraDimControl.ready()?ExtraDimControl.message()+(selected?"，点击关闭已保存的开启请求":"")
                 :"极暗，" + (enabled ? "已开启" : "已关闭") + "，长按调节强度");
         tile.updateTile();
     }

@@ -79,7 +79,7 @@ public class MotionCases {
         saved.clear();parents.clear();slots.clear();Choreographer.clock=new Choreographer();ending=false;sideLeft=left;replies=0;
         SavedTask out=new SavedTask(1,1),in=new SavedTask(2,6),peer=new SavedTask(3,6);
         saved.put(1,out);saved.put(2,in);saved.put(3,peer);slots.replace(0,-1,2);slots.replace(1,-1,3);
-        WorkspaceLayout from=new WorkspaceLayout(1080,2400,2.5f,left),to=new WorkspaceLayout(1080,2400,2.5f,returning?left:!left);
+        WorkspaceLayout from=new WorkspaceLayout(1080,2400,2.5f,left),to=new WorkspaceLayout(1080,2400,2.5f,left);
         SurfaceControl[] lanes=new SurfaceControl[SideSlots.MAX_COUNT+1];lanes[0]=returning?null:new SurfaceControl();lanes[1]=new SurfaceControl();lanes[2]=new SurfaceControl();
         Intent request=new Intent().put("slot",0).put("task",returning?-1:1).put("previous",2).put("visible",3).put("leftSide",left)
             .put("fromX",from.mainX).put("toX",to.mainX).put("top",from.top).put("width",from.sideWidth).put("height",from.rowHeight(0,3)).put("rowTop",0)
@@ -88,23 +88,50 @@ public class MotionCases {
     }
     static void timeline(boolean returning,boolean left)throws Exception {
         Intent request=reset(returning,left);flip=new NativeFlip(request);NativeFlip f=flip;f.start(new ResultReceiver());
+        check(f.targetLeft==left && f.from.mainX==f.to.mainX && f.from.sideX==f.to.sideX,"role exchange keeps physical regions fixed");
         SurfaceControl actor=f.surfaces[1],lane=(SurfaceControl)f.lanes[1];
         check(actor.parent==lane && actor.sx==1,"original task attached once at unit transform");
         check(Math.abs(lane.x-f.starts[1].x)<.001,"first frame preserves source location");
         Choreographer.clock.frame(1);Choreographer.clock.frame(160_000_001);
+        SurfaceControl peer=(SurfaceControl)f.lanes[2];
+        check(peer.x==f.starts[2].x && peer.y==f.starts[2].y-f.from.top && peer.sx==f.starts[2].scale,"other side task stays at its original physical pose mid-animation");
         check(lane.sx>f.starts[1].scale && lane.sx<f.ends[1].scale,"intermediate expansion is visible");
         check(!f.committed && replies==0,"no success before final frame commit");
         Choreographer.clock.frame(320_000_001);
         check(f.committed && replies==1 && Choreographer.clock.pending.isEmpty(),"one completion after final transaction");
         check(Math.abs(lane.sx-f.to.mainScale)<.001 && Math.abs(lane.x-f.to.mainX)<.001,"lands at main region on correct side");
+        check(peer.x==f.starts[2].x && peer.y==f.starts[2].y-f.from.top && peer.sx==f.starts[2].scale,"other side task stays at its original physical pose on completion");
         f.checkRoles(request);SurfaceControl preview=new SurfaceControl();SurfaceControl.Transaction tx=new SurfaceControl.Transaction();f.land(tx,preview);tx.apply();
         check(f.band.visible==returning && f.surfaces[2].parent==preview,"peer previews land; returning empty backing survives until host frame");
         tx=new SurfaceControl.Transaction();f.restoreParents(tx);tx.apply();
         check(actor.parent==parents.get(f.actors[1].parent) && actor.sx==1,"interruption restores native parent and scale");
         f.close();check(f.animationTx==null && f.callback==null,"frame driver and transaction released");
     }
+    static void everySlot(boolean left,int count,int selected)throws Exception {
+        Intent request=reset(false,left);slots.clear();
+        SurfaceControl[] lanes=(SurfaceControl[])request.data.get("lanes");
+        for(int s=0;s<count;s++){
+            int id=s==selected?2:10+s;saved.put(id,new SavedTask(id,6));slots.replace(s,-1,id);lanes[s+1]=new SurfaceControl();
+        }
+        WorkspaceLayout layout=new WorkspaceLayout(1080,2400,2.5f,left);
+        request.put("slot",selected).put("visible",count).put("height",layout.rowHeight(selected,count)).put("rowTop",layout.rowTop(selected,count));
+        flip=new NativeFlip(request);NativeFlip f=flip;f.start(new ResultReceiver());
+        for(long nanos:new long[]{1,80_000_001,160_000_001,240_000_001,320_000_001}){
+            Choreographer.clock.frame(nanos);
+            check(f.targetLeft==left && f.to.sideX==layout.sideX,"left/right preference survives every exchange frame");
+            for(int s=0;s<count;s++)if(s!=selected){
+                SurfaceControl lane=lanes[s+1];WorkspaceMotion original=f.starts[s+1];
+                check(lane.x==original.x && lane.y==original.y-layout.top && lane.sx==original.scale,"unselected side rows never drift");
+            }
+        }
+        WorkspaceMotion cell=WorkspaceMotion.place(layout,selected,count);
+        check(Math.abs(lanes[0].x-cell.x)<.001 && Math.abs(lanes[0].y-(cell.y-layout.top))<.001 && Math.abs(lanes[0].sx-cell.scale)<.00001,"main task lands in the selected original cell");
+        check(Math.abs(lanes[selected+1].x-layout.mainX)<.001 && Math.abs(lanes[selected+1].sx-layout.mainScale)<.00001,"selected side task lands in the original main region");
+        check(f.committed && replies==1,"single commit for every selected row");f.close();
+    }
     public static void main(String[] args)throws Exception {
         for(boolean returning:new boolean[]{false,true})for(boolean left:new boolean[]{false,true})timeline(returning,left);
+        for(boolean left:new boolean[]{false,true})for(int count:new int[]{3,4,5})for(int s=0;s<count;s++)everySlot(left,count,s);
         Intent empty=reset(false,false);slots.replace(0,2,-1);
         WorkspaceLayout same=new WorkspaceLayout(1080,2400,2.5f,false);
         empty.put("previous",-1).put("toX",same.mainX);
@@ -118,7 +145,7 @@ public class MotionCases {
         Choreographer.clock.frame(320_000_001);check(ending && replies==0,"changed native parent fails final identity check");
         request=reset(true,false).put("background",true);try{new NativeFlip(request);throw new AssertionError("background return");}catch(IllegalStateException expected){checks++;}
         request=reset(true,false).put("previous",99);try{new NativeFlip(request);throw new AssertionError("stale slot");}catch(IllegalStateException expected){checks++;}
-        System.out.println("PASS "+checks+" production Step animation checks: desktop promotion, exchange, continuous poses, cancellation, stale identity and landing");
+        System.out.println("PASS "+checks+" production Step animation checks: fixed left/right regions, every row in 3/4/5 slots, stationary peers, desktop promotion, cancellation, stale identity and landing");
     }
 }
 '''.replace('NATIVE',source)

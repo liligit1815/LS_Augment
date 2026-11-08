@@ -48,11 +48,9 @@ final class FlipStage implements AutoCloseable {
             hints[0]=emptyHints(layout,count,tasks,selected,sideLeft,false,true);
             return;
         }
-        boolean swaps=tasks[selected]>=0;
-        for(int face=0;face<(swaps?2:1);face++){
-            try{hints[face]=emptyHints(layout,count,tasks,selected,face==0?sideLeft:!sideLeft,face==1,false);}
-            catch(RuntimeException|LinkageError unsupported){StepRuntime.report(null,0,"空格转场底图不可用："+unsupported,-1);}
-        }
+        // Empty cells stay beside the main region throughout a role exchange.
+        try{hints[0]=emptyHints(layout,count,tasks,selected,sideLeft,false,false);}
+        catch(RuntimeException|LinkageError unsupported){StepRuntime.report(null,0,"空格转场底图不可用："+unsupported,-1);}
     }
     void wallpaperLayer(WorkspaceLayout layout,android.graphics.Bitmap source){
         int w=Math.max(1,layout.width/24),h=Math.max(1,layout.railHeight/24);

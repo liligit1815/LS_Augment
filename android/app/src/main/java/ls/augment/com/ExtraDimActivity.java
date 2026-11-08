@@ -33,7 +33,7 @@ public final class ExtraDimActivity extends Activity {
         surface.setOrientation(LinearLayout.VERTICAL);surface.setPadding(ui.dp(22),ui.dp(20),ui.dp(22),ui.dp(20));
         LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL);
         surface.addView(panel,ui.wrap());
-        enabled = new Switch(this); enabled.setChecked(ExtraDimControl.active(this));
+        enabled = new Switch(this); enabled.setChecked(ExtraDimControl.selected(this));
         panel.addView(ui.featureRow("极暗",null,enabled),ui.wrap());
         LinearLayout strengthControls=new LinearLayout(this);strengthControls.setOrientation(LinearLayout.VERTICAL);
         strengthControls.setTag("extra-dim-strength-controls");panel.addView(strengthControls,ui.wrap());
@@ -75,7 +75,7 @@ public final class ExtraDimActivity extends Activity {
             boolean ok=ExtraDimControl.read(this);
             main.post(() -> {
                 if(isDestroyed())return;
-                rendering=true;enabled.setChecked(ExtraDimControl.active(this));slider.setProgress(ExtraDimControl.strength(this));rendering=false;
+                rendering=true;enabled.setChecked(ExtraDimControl.selected(this));slider.setProgress(ExtraDimControl.strength(this));rendering=false;
                 enabled.setEnabled(ok||enabled.isChecked());slider.setEnabled(ok);
                 intensityFold.sync();
                 status.setText(ok&&ExtraDimControl.message().isEmpty()?"强度越高，画面越暗":ExtraDimControl.message());
@@ -94,7 +94,7 @@ public final class ExtraDimActivity extends Activity {
                 if (isDestroyed() || expected != revision) return;
                 if(!ok){
                     rendering=true;
-                    if(readBack){enabled.setChecked(ExtraDimControl.active(this));slider.setProgress(ExtraDimControl.strength(this));}
+                    if(readBack){enabled.setChecked(ExtraDimControl.selected(this));slider.setProgress(ExtraDimControl.strength(this));}
                     enabled.setEnabled(readBack||enabled.isChecked());slider.setEnabled(readBack);rendering=false;intensityFold.sync();
                 }
                 status.setText(ok ? "系统色彩变换已应用 · 强度越高，画面越暗" : feedback);

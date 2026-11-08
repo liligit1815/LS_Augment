@@ -19,7 +19,8 @@ public final class WorkspaceMotion {
         return source==selected?-1:source;
     }
     public static boolean targetLeft(boolean left,int outgoing,int promoted){
-        return outgoing>=0 && promoted>=0?!left:left;
+        // Task roles never own placement; only the explicit position action changes sides.
+        return left;
     }
     public static boolean acceptsRelease(float outward,float vertical,int width,int minimum,int slop){
         return outward>=Math.max(width*.28f,Math.max(minimum,3f*slop))

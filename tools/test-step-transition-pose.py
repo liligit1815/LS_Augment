@@ -10,7 +10,7 @@ def method(signature):
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[start:end]
 methods='\n'.join(method(sig) for sig in ['static final class Pose','static Method exact(', 'static void capture(',
-    'static boolean contains(', 'static boolean owns(', 'static WorkspaceTransform spec(',
+    'static boolean contains(', 'static void retire(', 'static boolean owns(', 'static WorkspaceTransform spec(',
     'static WorkspaceTransform inherited(', 'static void stage(', 'static void applyPose(', 'static void refresh(']).replace('android.graphics.Point','Point')
 harness=r'''
 package ls.augment.com.step;
@@ -27,7 +27,9 @@ public class TransitionPoseCases {
     static class Info {Object token=new Object();}
     static class Task extends Parent {int user,mode=1,type=1;Object display;Surface surface=new Surface();Info info=new Info();boolean owned,wall;
         Task(int type){this.type=type;display=Wm.display;parent=common;}}
-    static class Change {Task task;Change(Task t){task=t;}}
+    static class Change {Object task;Change(Object t){task=t;}}
+    static class SubTask extends Task {SubTask(){super(1);}}
+    static class WindowToken {}
     static class Target {Info info;Surface leash;Target(Task t){info=t.info;leash=t.surface;}}
     static class Root {int display;Point offset=new Point();Surface leash=new Surface();}
     static class TransitionInfo {int roots=1;Root root=new Root();List<Target> targets=new ArrayList<>();}
@@ -45,13 +47,13 @@ public class TransitionPoseCases {
     static class OwnershipBridge {static Method method(Class<?> type,String n,Class<?>...args)throws NoSuchMethodException{
         for(Class<?> c=type;c!=null;c=c.getSuperclass())try{Method m=c.getDeclaredMethod(n,args);m.setAccessible(true);return m;}catch(NoSuchMethodException ignored){}throw new NoSuchMethodException(n);}}
     static final IdentityHashMap<Object,Pose> poses=new IdentityHashMap<>();
-    static Method ancestor,wallpaper;static IBinder owner=new IBinder();static boolean active=true,ending;static Object flip;
+    static Method ancestor,wallpaper;static Class<?> taskType=Task.class;static IBinder owner=new IBinder();static boolean active=true,ending;static Object flip;
     static int principal;static Rect logical=new Rect();static String session="session";static Parent common;
     static boolean ownsTask(Object task){return ((Task)task).owned;}
     static void validSurface(Object surface){if(!(surface instanceof Surface s) || !s.valid)throw new IllegalStateException("invalid surface");}
     static void diagnostic(String stage,String text){}
     public static Object common(ArrayList<?> changes,Object first){return common;}
-    public static boolean wall(Object task){return ((Task)task).wall;}
+    public static boolean wall(Object task){return task instanceof Task t && t.wall;}
     static Object field(Object o,String n){
         if(o==Wm.display)return current;if(o instanceof Change c)return c.task;
         if(o instanceof Task t && n.equals("mUserId"))return t.user;
@@ -89,6 +91,16 @@ public class TransitionPoseCases {
         for(Class<?> type:new Class<?>[]{Object.class,Wrong.class,BadReturn.class})try{exact(type,"calculateTransitionInfo",Object.class,true,int.class,int.class,ArrayList.class,Tx.class);throw new AssertionError("unknown contract");}catch(NoSuchMethodException expected){checks++;}
     }
     static void calibrated()throws Exception{
+        for(Object unknown:new Object[]{new WindowToken(),new Parent(),null}){
+            Fixture f=new Fixture();f.changes.add(new Change(unknown));f.capture();
+            check(f.tx.values.isEmpty() && poses.isEmpty() && f.home.cache!=null,"non-task target preserves native transaction and cache");
+        }
+        Fixture sub=new Fixture();Task child=new SubTask();sub.changes.add(new Change(child));sub.info.targets.add(new Target(child));sub.capture();
+        check(owns(child),"verified Task subclass accepted");
+        Fixture retirement=new Fixture();retirement.capture();
+        try{retire(owner);throw new AssertionError("unrestored root retired");}catch(IllegalStateException expected){checks++;}
+        ending=true;Wm.active=false;current=null;refresh(retirement.tx);retire(owner);
+        check(poses.isEmpty(),"restored late transition releases lease tracking");
         for(int activity:new int[]{2,3})for(boolean inherited:new boolean[]{false,true}){
             Fixture f=new Fixture();f.home.type=activity;if(inherited)common.cache=Wm.ownedSpec;f.capture();
             check(!f.tx.values.containsKey(f.info.root.leash),"Shell deferred start transaction never carries workspace root matrix");
