@@ -417,6 +417,14 @@ final class FeatureSettings {
         return !ConfigSchema.truthy(cachedSnapshot.get(key));
     }
 
+    /** Passive evidence only: never refresh settings from a diagnostic call. */
+    static String runtimeEvidence() {
+        ConfigSnapshot value = cachedVerifiedSnapshot;
+        return "configVerified=" + (value != null) + ";configRevision=" + (value == null ? -1 : value.revision)
+                + ";configProvider=" + providerReadState + ";configMirror=" + remoteReadState
+                + ";configRuntime=" + runtimeReadState;
+    }
+
     static void rememberDiagnosticProcess(String name) {
         diagnosticProcessName = "system".equals(name) ? "system_server" : name == null ? "" : name;
     }

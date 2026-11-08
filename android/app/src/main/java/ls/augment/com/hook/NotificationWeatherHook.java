@@ -96,9 +96,10 @@ final class NotificationWeatherHook {
             if (!view.isAttachedToWindow()) return;
             boolean active = FeatureSettings.enabled(view.getContext(), KEY)
                     && Integer.valueOf(2).equals(field(view, "panelType"));
+            if (!active) { removeLabel(); return; }
             View date = child(view, "date_view");
             View nativeDate = child(view, "date");
-            if (!active || !(date instanceof RelativeLayout) || !(nativeDate instanceof TextView)
+            if (!(date instanceof RelativeLayout) || !(nativeDate instanceof TextView)
                     || nativeDate.getParent() != date || date.getVisibility() != View.VISIBLE) {
                 removeLabel(); return;
             }

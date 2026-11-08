@@ -152,10 +152,14 @@ final class NativeIslandHost {
         },null);
         int closeAdapter=hookNamed(module,loader,"native_island_panel",N+"PermanentIslandManager","onPermanentIslandPanelCloseAnimationEnd",3,(o,a,r)->{
             NativeIslandHost h=active;
+            if(a[1] instanceof Boolean&&a[2] instanceof Boolean&&IslandPanelGuard.owns(o,a[0])
+                    &&IslandPanelGuard.close(o,a[0],(Boolean)a[1],(Boolean)a[2],"manager_hook"))return null;
             if(h!=null&&o==h.permanent&&h.ownsView(a[0])&&a[1] instanceof Boolean&&a[2] instanceof Boolean
                     &&NativeIslandPanelCompat.closeEnd(o,a[0],(Boolean)a[1],(Boolean)a[2],h::reportPanel)){
                 MAIN.post(h::applyAppearance);MAIN.post(h.observe);return null;
             }
+            IslandPanelGuard.event("ISLAND_PANEL_BRANCH","manager_hook:native_fallback;active="+(h!=null)
+                    +";managerMatch="+(h!=null&&o==h.permanent)+";viewMatch="+(h!=null&&h.ownsView(a[0])),o,a[0]);
             return PASS;
         },null);
         panelCloseAdapterInstalled=closeAdapter>0;count+=closeAdapter;
@@ -166,12 +170,16 @@ final class NativeIslandHost {
             return PASS;
         },null);
         count+=closeGuard;panelTransitionsInstalled=closeGuard>0;
+        // OEM listeners may have compiled calls to the old manager method. The callback
+        // bridge installed before expansion also protects that path without replacing animations.
         for(String method:new String[]{"createPermanentPanelOpenAnimation","createPermanentPanelCloseAnimation"}){
             boolean closing=method.equals("createPermanentPanelCloseAnimation");
             int tracked=hookNamed(module,loader,"native_island_panel",N+"PermanentIslandAnimation",method,-1,null,(o,a,r)->{
                 NativeIslandHost h=active;
-                if(h!=null&&a.length>0&&h.ownsView(a[0])&&r instanceof android.animation.Animator)
+                if(h!=null&&a.length>0&&h.ownsView(a[0])&&r instanceof android.animation.Animator){
+                    IslandPanelGuard.event("ISLAND_PANEL_ANIMATION",closing?"close_created":"open_created",h.permanent,a[0]);
                     h.panelTransition.track(a[0],(android.animation.Animator)r,closing);
+                }
                 return PASS;
             });
             count+=tracked;panelTransitionsInstalled&=tracked>0;
@@ -691,6 +699,10 @@ final class NativeIslandHost {
         }
         try{if(glassBackground==null)restoreBackgrounds();
         panelTransition.finish();
+        java.lang.ref.WeakReference<NativeIslandHost> owner=new java.lang.ref.WeakReference<>(this);
+        if(!IslandPanelGuard.prepare(permanent,current,()->{
+            NativeIslandHost h=owner.get();if(h!=null){MAIN.post(h::applyAppearance);MAIN.post(h.observe);}
+        })){reportPanel("panel_capability_missing:animation_callback_bridge");return;}
         Object panel=call(current,"getPanelIsland");
         FeatureSettings.diagnostic(context,"ls_augment_native_island_panel","request;panel="+(panel==null?"null":panel.getClass().getSimpleName())+";anim="+field(permanent,"mAnimProcessing")+";priority="+field(permanent,"mPriorityProcessing"));
         call(permanent,"showPermanentPanelIsland");MAIN.postDelayed(observe,500);
@@ -698,6 +710,7 @@ final class NativeIslandHost {
     void dismiss(){
         if(notificationCards!=null){notificationCards.dismiss();return;}
         if(!acquired||current==null||!expanded())return;
+        IslandPanelGuard.event("ISLAND_PANEL_CLOSE_REQUEST","module_dismiss",permanent,current);
         try{call(field(permanent,"mDynamicAnimation"),"startPermanentPanelCloseAnimation",current,false,false);}catch(Exception e){report("collapse_failed:"+cause(e));}
     }
     void hide(){

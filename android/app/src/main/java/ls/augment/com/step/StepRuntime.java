@@ -110,6 +110,7 @@ public final class StepRuntime {
         static volatile boolean active;
         static int sideTask = -1;
         static Object ownedSpec;
+        static Object applyingSpec;
         static ResultReceiver reply;
         static final Runnable TIMEOUT = () -> stop(NativeWorkspaceGuard.active ? "90秒到时恢复" : "20秒到时恢复");
         static ClassLoader loader;
@@ -130,7 +131,7 @@ public final class StepRuntime {
                             if (call(p.thisObject, "getDisplayContent") != display) return;
                             WindowManager.LayoutParams attrs = (WindowManager.LayoutParams) field(p.thisObject, "mAttrs");
                             Object task = call(p.thisObject, "getTask");
-                            boolean side = task != null && (NativeWorkspaceGuard.ownsMagnification(task) || StepMembers.getIntField(task, "mTaskId") == sideTask);
+                            boolean side = task != null && (NativeTransitionPose.owns(task) || NativeWorkspaceGuard.ownsMagnification(task) || StepMembers.getIntField(task, "mTaskId") == sideTask);
                             if(PhysicalFingerprint.window(p.thisObject))p.setResult(false);
                             else if(PhysicalIme.window(p.thisObject,attrs)){p.setResult(false);PhysicalIme.exclusions++;}
                             else if (side || NativeWorkspaceGuard.physicalNativeWindow(task) || TITLE.contentEquals(attrs.getTitle()) || WorkspaceInput.TITLE.contentEquals(attrs.getTitle())
@@ -262,10 +263,12 @@ public final class StepRuntime {
                 throw new IllegalStateException("原屏缩放所有权已改变");
             Object next=newSpec(scale,x,y);
             boolean identity=scale==1f && x==0 && y==0;
+            applyingSpec=next;
             try {call(display,"applyMagnificationSpec",next);}
             finally {
                 Object current=field(display,"mMagnificationSpec");
                 if(current==next || identity && current==null)ownedSpec=current;
+                applyingSpec=null;
             }
             if(!identity && ownedSpec!=next || identity && ownedSpec!=null)throw new IllegalStateException("目标主区缩放未接管");
             call(field(display,"mInputMonitor"),"updateInputWindowsLw",true);
@@ -281,6 +284,7 @@ public final class StepRuntime {
                     active = false;
                     if (current == ownedSpec) {
                         call(display, "applyMagnificationSpec", newSpec(1f, 0f, 0f));
+                        NativeTransitionPose.refresh(call(display,"getPendingTransaction"));
                         call(field(display, "mInputMonitor"), "updateInputWindowsLw", true);
                         if (field(display, "mMagnificationSpec") != null) throw new IllegalStateException("缩放未归零");
                     } else if (current != null) {

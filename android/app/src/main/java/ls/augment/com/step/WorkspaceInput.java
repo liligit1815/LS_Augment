@@ -43,11 +43,12 @@ final class WorkspaceInput {
                 p.gravity=Gravity.TOP|Gravity.LEFT; p.setFitInsetsTypes(0); p.setTitle(TITLE);
                 p.layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
                 windows.addView(view,p);
+                trace("acquired");
             }
             afterFrame(expected,ready);
             main.postAtTime(()->{
                 if (!lease.current(expected)) return;
-                forceRemove(); failure.accept("输入保护等待超时，已解除触摸拦截并请求归还");
+                trace("timeout");forceRemove(); failure.accept("输入保护等待超时，已解除触摸拦截并请求归还");
             }, began + 4000);
         } catch(Throwable error) { forceRemove(); failure.accept("输入保护不可用: "+error); }
     }
@@ -65,6 +66,7 @@ final class WorkspaceInput {
         if(view==null){done.run();return;}
         final long expected=ticket;
         released=done;
+        trace("release_requested");
         try { afterFrame(expected,()->{lease.frame(expected);maybeRelease(expected);}); }
         catch(Throwable error){forceRemove();failure.accept("输入保护末帧未确认: "+error);}
     }
@@ -76,6 +78,10 @@ final class WorkspaceInput {
     }
     void forceRemove() {
         lease.close();released=null;
-        if(view!=null){try{windows.removeViewImmediate(view);}catch(IllegalArgumentException detached){}finally{view=null;}}
+        if(view!=null){try{windows.removeViewImmediate(view);}catch(IllegalArgumentException detached){}finally{view=null;trace("removed");}}
+    }
+    void trace(String phase){
+        StepRuntime.diagnostic("INPUT_GUARD","phase="+phase+";ticket="+ticket+";attached="+(view!=null && view.isAttachedToWindow())
+                +";touches="+touches+";heldMs="+(SystemClock.uptimeMillis()-began));
     }
 }

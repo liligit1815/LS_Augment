@@ -39,8 +39,23 @@ public class TestScreenTimeoutPicker {
  static int checks;static void yes(boolean v,String s){checks++;if(!v)throw new AssertionError(s);}
  static class Child extends ScreenTimeoutSettings {}
  static class MissingModule extends AugmentModule {int errors;public void logFeatureError(String s,Throwable e){errors++;}}
+ static class FieldBase {public final boolean enabled;FieldBase(boolean b){enabled=b;}}
+ static class FieldChild extends FieldBase {FieldChild(boolean b){super(b);}}
+ static class MethodBase {public boolean isEnabled(){return false;}}
+ static class MethodChild extends MethodBase {}
+ static class BadType {public String enabled="true";}
+ static class StaticField {public static boolean enabled=true;}
+ static class StaticMethod {public static boolean isEnabled(){return true;}}
+ static class NoCapability {}
  public static void main(String[] args)throws Exception {
   AugmentModule module=new AugmentModule();ClassLoader loader=TestScreenTimeoutPicker.class.getClassLoader();
+  yes(ScreenTimeoutHook.CandidateEnabled.resolve(FieldChild.class).read(new FieldChild(true)),"inherited boolean field accepted");
+  yes(!ScreenTimeoutHook.CandidateEnabled.resolve(FieldChild.class).read(new FieldChild(false)),"disabled inherited field preserved");
+  yes(!ScreenTimeoutHook.CandidateEnabled.resolve(MethodChild.class).read(new MethodChild()),"inherited method retains disabled result");
+  for(Class<?> bad:new Class<?>[]{BadType.class,StaticField.class,StaticMethod.class,NoCapability.class}){
+   boolean rejected=false;try{ScreenTimeoutHook.CandidateEnabled.resolve(bad);}catch(ReflectiveOperationException expected){rejected=true;}
+   yes(rejected,"unknown or static enabled contract rejected");
+  }
   yes(ScreenTimeoutHook.install(module,loader)==2,"missing adaptor installs guard and native picker");
   ScreenTimeoutSettings picker=new ScreenTimeoutSettings();FeatureSettings.enabled=false;
   yes(picker.rows().size()==6,"disabled retains native six choices");FeatureSettings.enabled=true;
@@ -77,9 +92,10 @@ public class TestScreenTimeoutPicker {
 }''',
 })
 
-with tempfile.TemporaryDirectory(prefix='lsa-timeout-picker-') as folder:
+def run(files):
+ with tempfile.TemporaryDirectory(prefix='lsa-timeout-picker-') as folder:
     root = Path(folder)
-    for name, source in FILES.items():
+    for name, source in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source, encoding='utf-8')
@@ -88,3 +104,10 @@ with tempfile.TemporaryDirectory(prefix='lsa-timeout-picker-') as folder:
     subprocess.run([shutil.which('javac'), '-encoding', 'UTF-8', '-d', folder,
                     *map(str, root.rglob('*.java'))], check=True)
     subprocess.run([shutil.which('java'), '-cp', folder, 'ls.augment.com.hook.TestScreenTimeoutPicker'], check=True)
+
+run(FILES)
+field_only=dict(FILES)
+field_only['com/android/settingslib/widget/CandidateInfo.java']=FILES['com/android/settingslib/widget/CandidateInfo.java'].replace(
+    'public boolean isEnabled(){return enabled;}','').replace('final boolean enabled','public final boolean enabled')
+run(field_only)
+print('PASS both method and field-only OEM candidate contracts')

@@ -13,6 +13,7 @@ def method(marker):
     return source[start:end]
 
 files={
+ 'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions {public static final String ISLAND="duo",PREFIX="ls_augment_rm_";}',
  'android/view/View.java':'package android.view;public class View {public boolean listener=true;public boolean hasOnClickListeners(){return listener;}}',
  'android/widget/ImageView.java':'package android.widget;public class ImageView extends android.view.View {}',
  'ls/augment/com/hook/NativeIslandMedia.java':'package ls.augment.com.hook;class NativeIslandMedia {boolean live=true;boolean ready(){return live;}}',
@@ -64,6 +65,7 @@ public class TestNativeIslandPanelGates {
  g.usable=false;check(g.completedPanel(scene)==null,"detached/closed host cannot lend panel");g.usable=true;
  }
  com.zte.feature.dynamicisland.islands.MediaIsland music=new com.zte.feature.dynamicisland.islands.MediaIsland();g.media=music;Panel p=new Panel();g.panels.put(music,p);
+ g.context.put(ls.augment.com.SystemUiOptions.ISLAND,true);g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",true);
  g.context.put(NativeIslandSceneOptions.key("media"),true);g.enhancedScenes.add("media");g.supportedScenes.add("media");
  check(g.completedPanel(music)==null,"media without data has no synthetic controls");music.mMediaData=new Object();
  check(g.completedPanel(music)==null,"media without controller stays native");p.mMediaController=new android.media.session.MediaController();
@@ -74,7 +76,12 @@ public class TestNativeIslandPanelGates {
  check(g.completedPanel(music)==null,"destroyed playback session rejected");p.mMediaController.state=new Object();user=10;
  check(g.completedPanel(music)==null,"previous user media rejected");user=0;p.mPanelNext.listener=false;
  check(g.completedPanel(music)==null,"unbound native actions are not exposed");p.mPanelNext.listener=true;
- g.context.put(NativeIslandSceneOptions.ENABLED,false);check(g.completedPanel(music)==null&&!g.hasEnhancements(),"master OFF disables every completion gate");
+ g.context.put(NativeIslandSceneOptions.ENABLED,false);check(g.completedPanel(music)==p&&g.hasEnhancements(),"music ON works with scene completion OFF, matching reported configuration");
+ g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",false);check(g.completedPanel(music)==null&&!g.hasEnhancements(),"music OFF releases native panel");
+ g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",true);g.context.put(NativeIslandSceneOptions.ENABLED,true);
+ g.context.put(NativeIslandSceneOptions.key("media"),false);check(g.completedPanel(music)==null,"explicit scene exclusion remains effective");
+ g.context.put(NativeIslandSceneOptions.ENABLED,false);g.supportedScenes.remove("media");check(g.completedPanel(music)==null,"music option cannot bypass missing contract");g.supportedScenes.add("media");
+ g.context.put(ls.augment.com.SystemUiOptions.ISLAND,false);check(g.completedPanel(music)==null,"Duo OFF releases music enhancement");
  check(g.completedPanel(new View())==null,"unknown scene keeps original getter result");
  selected=g;g.context.put(NativeIslandSceneOptions.ENABLED,true);g.permanent.current=scenes[2];g.permanent.mDynamicPanelShowing=true;
  WindowManager.LayoutParams wp=g.permanent.mParams;wp.width=884;
@@ -95,7 +102,7 @@ public class TestNativeIslandPanelGates {
  System.out.println("PASS native island panel gates: "+checks+" checks");}
 }'''
 harness=harness.replace('// METHODS','\n'.join(method(m) for m in (
- 'private boolean enhancing(', 'private boolean hasEnhancements(', 'private View completedPanel(', 'private boolean mediaPanelReady(',
+ 'private boolean enhancing(', 'private boolean requested(', 'private boolean hasEnhancements(', 'private View completedPanel(', 'private boolean mediaPanelReady(',
  'static void adjustWindow(', 'private void restorePanelWindow('))).replace('NativeIslandScenes owner', 'TestNativeIslandPanelGates owner')
 files['ls/augment/com/hook/TestNativeIslandPanelGates.java']=harness
 with tempfile.TemporaryDirectory(prefix='duo-island-panel-gates-') as folder:

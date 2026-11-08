@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
 import android.os.ResultReceiver;
+import android.os.SystemClock;
 import android.util.SparseArray;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -88,6 +89,9 @@ final class LiveWorkspace {
     boolean dragFrame;
     WindowManager windows;
     WorkspaceInput input;
+    final PreviewFrames previewFrames=new PreviewFrames();
+    long previewDrainStarted;
+    boolean previewDrainReported;
 
     LiveWorkspace(ResultReceiver target, Intent options) {
         reportTo = target;
@@ -936,6 +940,8 @@ final class LiveWorkspace {
         if(flipStage!=null && fence.busy() && committed==null)return;
         if(slots.count()==0){if(committed!=null)commitSlotFrame(committed);return;}
         synchronized (organizerLock) {
+            // A renderer may have passed the outer check before exit took this lock.
+            if(closing || closed)return;
             Object parent = surface();
 
             Object tx = NativeWorkspaceGuard.surfaceTransaction();
@@ -958,7 +964,11 @@ final class LiveWorkspace {
                     call(tx, "setPosition", child, fit.x+(dragSlot==slot?dragX:0f), fit.y+y);call(tx, "setWindowCrop", child, logical);
                     call(tx, "setAlpha", child, 1f); call(tx, "show", child);
                 }
-                if(committed!=null)SurfaceCommit.observe(tx,Shell.executor,()->commitSlotFrame(committed));
+                final long frame=previewFrames.add();
+                SurfaceCommit.observe(tx,Shell.executor,()->{
+                    previewFrames.commit(frame);
+                    if(committed!=null && !closing && !closed)commitSlotFrame(committed);
+                });
                 call(tx, "apply");
             } finally { call(tx, "close"); }
         }
@@ -1084,6 +1094,19 @@ final class LiveWorkspace {
     void requestEnd() {
         if (closed) return;
         if (organizer == null) { cleanup(); return; }
+        // Serialize against an in-flight render, then refuse every queued/late write.
+        synchronized(organizerLock){previewFrames.seal();}
+        if(previewDrainStarted==0)previewDrainStarted=SystemClock.uptimeMillis();
+        long waited=SystemClock.uptimeMillis()-previewDrainStarted;
+        if(!previewFrames.ready() && waited<1800){main.postDelayed(this::requestEnd,32);return;}
+        if(!previewDrainReported){
+            previewDrainReported=true;
+            StepRuntime.diagnostic("EXIT_DRAIN","session="+session+";pending="+previewFrames.pending()
+                    +";waitMs="+waited+";committed="+previewFrames.ready()
+                    +";action="+(previewFrames.ready()?"restore":"recover_unconfirmed_preview"));
+        }
+        // A lost preview callback must not strand the workspace. All writers are
+        // stopped; the server still verifies and commits its own recovery transaction.
         Bundle end=new Bundle();end.putBoolean("retain",retainOnExit);end.putInt("page",exitPage);end.putBoolean("topFace",exitTopFace);
         end.putBoolean("homeExit",homeExit);
         rpc("end", end, reply -> {
@@ -1109,7 +1132,9 @@ final class LiveWorkspace {
                         }
                         if (panel != null) windows.removeViewImmediate(panel);
                         panel = null; taskView = null;
-                        Runnable done=()->{closed=true;ready=false;StepRuntime.report(reportTo,3,"工作区已退出，原任务未删除",-1);};
+                        Runnable done=()->{closed=true;ready=false;
+                            StepRuntime.diagnostic("EXIT_UI","session="+session+";listenersReleased=true;containerRemoved=true;inputRemoved=true");
+                            StepRuntime.report(reportTo,3,"工作区已退出，原任务未删除",-1);};
                         if(input!=null)input.release(done);else done.run();
                     } catch (Throwable error) { cleaning = false; log("容器清理尚未完成: " + error);main.postDelayed(this::cleanup,1000); }
                 });

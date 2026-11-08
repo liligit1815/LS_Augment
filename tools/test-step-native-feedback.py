@@ -15,7 +15,7 @@ methods='\n'.join(method('NativeWorkspaceGuard.java',sig) for sig in [
     'static boolean ownsTask(', 'static boolean ownsMagnification(', 'static boolean canAdoptPromotion(', 'static boolean isPromotedTask(',
     'static void restore(Object wct, SavedTask r, CommitBarrier group,Object sharedSurface)', 'static void stageMainTransform('])
 methods=methods.replace('ActivityManager.RunningTaskInfo','Info')
-gate='\n'.join(method('WorkspaceGestureGate.java',sig) for sig in ['static boolean accepts(', 'static boolean deferFor(']).replace('ls.augment.com.BuildConfig.VERSION_CODE','123')
+gate='\n'.join(method('WorkspaceGestureGate.java',sig) for sig in ['static boolean accepts(', 'static boolean deferFor(', 'static void beginGesture(']).replace('ls.augment.com.BuildConfig.VERSION_CODE','123')
 recorder=method('WorkspaceRecorder.java','static void finish(Object tile,Request request)')
 harness=r'''
 package ls.augment.com.step;
@@ -187,6 +187,8 @@ public class TestNativeFeedback {
         // OEM MOVE starts tracking when needDeferDown is true and its original
         // pilfer/slop threshold is crossed. The choice stays fixed for this consumer.
         check(Gate.deferFor(consumer,false,0,true,600),"same gesture retains native deferred branch after start/expiry");
+        Gate.beginGesture(consumer);
+        check(!Gate.deferFor(consumer,false,0,false,600),"reused OEM consumer starts a new native gesture after exit");
         check(!Gate.deferFor(new Object(),false,0,false,600),"new gesture after exit uses native path");
         check(!Gate.deferFor(new Object(),false,1,false,100),"other display unchanged");
         check(!Gate.deferFor(new Object(),false,0,true,100),"already running recents unchanged");

@@ -37,9 +37,9 @@ public String getString(String key){return (String)get(key);}public boolean getB
     "android/os/PowerManager.java": 'package android.os;public class PowerManager {public static final int THERMAL_STATUS_SEVERE=3;public static int thermal;public int getCurrentThermalStatus(){return thermal;}}',
     "android/os/Looper.java": 'package android.os;public class Looper {public static final Looper WORKER=new Looper();public static Looper myLooper(){return WORKER;}}',
     "android/os/HandlerThread.java": 'package android.os;public class HandlerThread {public HandlerThread(String name){}public void start(){}public Looper getLooper(){return Looper.WORKER;}public void quitSafely(){}}',
-    "android/os/Handler.java": 'package android.os;public class Handler {private final Looper looper;public Handler(Looper l){looper=l;}public Looper getLooper(){return looper;}public void post(Runnable r){}public void postDelayed(Runnable r,long delay){}public void removeCallbacks(Runnable r){}}',
+    "android/os/Handler.java": 'package android.os;public class Handler {public static long delay;private final Looper looper;public Handler(Looper l){looper=l;}public Looper getLooper(){return looper;}public void post(Runnable r){}public void postDelayed(Runnable r,long value){delay=value;}public void removeCallbacks(Runnable r){}}',
     "android/provider/Settings.java": '''package android.provider;public class Settings {public static class System {
-public static int mode=1,manual=2;public static String failKey="";public static int getInt(android.content.ContentResolver resolver,String key){if(key.equals(failKey))throw new IllegalStateException("private exception text");return key.equals("fan_state_of_mode")?mode:manual;}}}
+public static int mode=1,manual=2;public static String failKey="",absentKey="",malformedKey="";public static String getString(android.content.ContentResolver resolver,String key){if(key.equals(failKey))throw new IllegalStateException("private exception text");if(key.equals(absentKey))return null;if(key.equals(malformedKey))return "broken";return String.valueOf(key.equals("fan_state_of_mode")?mode:manual);}}}
 ''',
     "io/github/libxposed/api/XposedInterface.java": 'package io.github.libxposed.api;public class XposedInterface {public interface HookHandle {}}',
     "ls/augment/com/FanHardwareIdentity.java": 'package ls.augment.com;public class FanHardwareIdentity {public static String current(){return "a".repeat(64);}}',
@@ -62,14 +62,20 @@ static void diagnostic(android.content.Context context,String key,String value){
 static String diagnosticValue(android.content.Context context,String key){return diagnostics.getOrDefault(key,"");}
 static void addSnapshotListener(android.content.Context context,Runnable listener){}}
 ''',
+    "ls/augment/com/hook/FeatureRuntimeLog.java": '''package ls.augment.com.hook;public class FeatureRuntimeLog {
+static final java.util.List<String> events=new java.util.ArrayList<>();
+static void event(String stage,String detail){events.add(stage+":"+detail);}static void state(String stage,String state,String detail){event(stage,detail);}
+static String failure(Throwable error){return error.getClass().getName();}}
+''',
     "ls/augment/com/hook/TestFanFixedRuntime.java": r'''package ls.augment.com.hook;
 import java.lang.reflect.*;import java.util.*;import android.provider.Settings;import ls.augment.com.ConfigSchema;
 public class TestFanFixedRuntime {
 static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
 public static class Nodes {
- static int enabled=1,level=2,writes,pendingLevel=-1;static long delayMs,applyAt;static boolean dropWrites,rpmOverride;static String rpm;
+ static int enabled=1,level=2,writes,pendingLevel=-1;static long delayMs,applyAt;static boolean dropWrites,rpmOverride,nodesUnavailable;static String rpm;
  static final int[] RPM={0,4200,8360,13300,16400,19600};
  public static String read(String path){
+  if(nodesUnavailable)return null;
   if(pendingLevel>=0&&android.os.SystemClock.now>=applyAt){level=pendingLevel;pendingLevel=-1;}
   if(path.endsWith("fan_speed_count")&&rpmOverride)return rpm;
   return String.valueOf(path.endsWith("fan_enable")?enabled:path.endsWith("fan_speed_level")?level:enabled==1?RPM[level]:0);}
@@ -89,8 +95,8 @@ static void tick(){android.os.SystemClock.now+=900;
  catch(ReflectiveOperationException error){throw new AssertionError(error);}
  ((Runnable)controller).run();}
 static void create(boolean verified)throws Exception {
- FeatureSettings.diagnostics.clear();Settings.System.mode=1;Settings.System.manual=2;Nodes.enabled=1;Nodes.level=2;Nodes.writes=0;
- Nodes.pendingLevel=-1;Nodes.delayMs=0;Nodes.dropWrites=false;Nodes.rpmOverride=false;Nodes.rpm=null;android.os.PowerManager.thermal=0;
+ FeatureSettings.diagnostics.clear();Settings.System.mode=1;Settings.System.manual=2;Settings.System.absentKey="";Settings.System.malformedKey="";Nodes.enabled=1;Nodes.level=2;Nodes.writes=0;
+ Nodes.pendingLevel=-1;Nodes.delayMs=0;Nodes.dropWrites=false;Nodes.rpmOverride=false;Nodes.nodesUnavailable=false;Nodes.rpm=null;android.os.PowerManager.thermal=0;
  owner=probeDriver?new ChildOwner():new Owner();
  FanCompatibilityProfile profile=probeDriver?FanCompatibilityProfile.resolve("NX819J","","",true,true,true,true,p->true,false):FanCompatibilityProfile.resolve(verified?(loadedDriver?"NX799J":"NX809J"):"NX769J","","",true,true,true,true,p->true,verified&&loadedDriver);
  Class<?> type=Class.forName("ls.augment.com.hook.FanControlHook$Controller");Constructor<?> ctor=type.getDeclaredConstructors()[0];ctor.setAccessible(true);
@@ -109,8 +115,16 @@ public static void main(String[] args)throws Exception {
  probeDriver=true;android.os.Build.DEVICE=android.os.Build.MODEL=android.os.Build.PRODUCT="NX819J";
  FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"3");create(true);tick();
  check(Nodes.writes==0&&FeatureSettings.diagnostics.get("active").contains("driver_proof=loaded_note_unavailable"),"unreadable loaded driver leaves the OEM in control and records the missing capability");
- android.content.ContentResolver.driverProof=true;android.os.SystemClock.now+=31_000;awaitLevel(3);
+ for(int i=0;i<2;i++){android.os.SystemClock.now+=31_000;tick();}
+ check(field("handler")!=null&&android.os.Handler.delay>=299_000,"third failed proof keeps low-frequency recovery alive");
+ check(Nodes.writes==0,"all failed attempts preserve native hardware state");
+ check(FeatureSettings.diagnostics.get("installed").contains("driver_proof=loaded_note_unavailable"),"latest installed evidence includes failed probe reason");
+ android.content.ContentResolver.driverProof=true;android.os.SystemClock.now+=301_000;awaitLevel(3);
+ check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("FAN_DRIVER_PROOF:")&&s.contains("capability=verified_levels_1_5")),"late proof recovery is journaled");
  select(5);select(1);check(owner.maximum==1&&owner.cancel==1&&owner.notify==1,"worker revalidates inherited OEM power and restoration after driver proof recovers");
+ FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"3");create(true);Nodes.nodesUnavailable=true;tick();
+ check(Nodes.writes==0&&FeatureSettings.diagnostics.get("active").contains("verified_level_nodes_missing")&&field("handler")!=null,"proved file cannot authorize missing live OEM nodes; recovery remains scheduled");
+ Nodes.nodesUnavailable=false;android.os.SystemClock.now+=31_000;awaitLevel(3);
  probeDriver=false;android.os.Build.DEVICE=android.os.Build.MODEL=android.os.Build.PRODUCT="NX809J";
  FeatureSettings.values.put(ConfigSchema.FAN_FIXED_LEVEL,"0");create(true);awaitLevel(1);
  check(Nodes.level==1,"legacy RPM selection zero becomes level one and ignores requested RPM");
@@ -120,6 +134,7 @@ public static void main(String[] args)throws Exception {
  select(1);check(owner.cancel==1&&owner.notify==1,"leaving level five releases power before lower speed");
  check(FeatureSettings.diagnostics.get("active").contains(";restore_level=2;"),"switches preserve original restore level");
  Settings.System.mode=0;Nodes.level=4;tick();check(FeatureSettings.diagnostics.get("active").startsWith("locked;"),"OEM mode change suspends old control");
+ check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("FAN_CONTROL_STATE:locked;")),"normal-to-locked transition retained in journal");
  select(3);check(FeatureSettings.diagnostics.get("active").contains(";restore_level=4;"),"new explicit level unlocks old OEM session and captures current restore level");
  Nodes.level=4;tick();check(FeatureSettings.diagnostics.get("active").startsWith("locked;"),"external driver change suspends old request");
  select(2);check(Nodes.level==2,"new level recovers from failed session without tile token");
@@ -191,6 +206,18 @@ public static void main(String[] args)throws Exception {
   check(!evidence.contains("private exception text"),"vendor evidence excludes arbitrary exception text");
   Settings.System.failKey="";tick();
   check(field("sessionLocked").equals(true)&&Nodes.writes==0,"successful reread cannot steal OEM ownership after session lock");
+ }
+ // A never-saved native setting is an ownership token, not a guessed mode.
+ for(String key:new String[]{"fan_state_of_mode","fan_state_of_manual"}){
+  create(true);Settings.System.absentKey=key;select(3);
+  check(Nodes.level==3&&FeatureSettings.diagnostics.get("ls_augment_fan_vendor_state").contains("unset"),"unset setting uses observed OEM level and records absence");
+  FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"0");tick();
+  check(Nodes.level==2,"unset setting preserves owned restore level");
+  FeatureSettings.values.put(FeatureSettings.FAN_FIXED_ENABLED,"1");create(true);Settings.System.absentKey=key;select(3);
+  int before=Nodes.writes;Settings.System.absentKey="";Nodes.level=4;tick();
+  check(Nodes.level==4&&Nodes.writes==before&&field("sessionLocked").equals(true),"first explicit OEM setting takes ownership without stale restoration");
+  create(true);Settings.System.malformedKey=key;tick();
+  check(Nodes.writes==0&&field("sessionLocked").equals(true),"malformed setting is not treated as absence");
  }
  // The admitted driver also reaches real calibration logic: sample every level,
  // persist driver feedback and restore the original OEM level before success.

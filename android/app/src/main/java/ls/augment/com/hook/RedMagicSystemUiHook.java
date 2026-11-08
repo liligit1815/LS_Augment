@@ -31,6 +31,8 @@ final class RedMagicSystemUiHook {
     private static AugmentModule module;
     private static boolean observing;
     private static boolean installed;
+    private static Method badgeInvalidation;
+    private static io.github.libxposed.api.XposedInterface.HookHandle badgeHook;
     private RedMagicSystemUiHook() { }
 
     static synchronized int install(AugmentModule owner, ClassLoader loader) {
@@ -92,8 +94,9 @@ final class RedMagicSystemUiHook {
                 (target,args,result)->{if(target instanceof ViewGroup)watch((ViewGroup)target);});
         count += RedMagicLegacyUiHook.install(owner, loader);
         count += DualSignalTint.install(owner, loader);
-        count += hook(loader,"android.widget.ImageView",new String[]{"invalidateDrawable"},
-                (target,args,result)->{if(target instanceof ImageView)SignalTypeBadge.invalidated((ImageView)target);});
+        try{badgeInvalidation=ImageView.class.getDeclaredMethod("invalidateDrawable",Drawable.class);
+            if(badgeInvalidation.getReturnType()!=void.class)throw new NoSuchMethodException("invalidateDrawable result");
+        }catch(ReflectiveOperationException error){badgeInvalidation=null;owner.logFeatureError("SIGNAL_BADGE_INVALIDATION",error);}
         count += ControlCenterGridHook.install(owner, loader);
         count += VolumePositionHook.install(owner, loader);
         count += RedMagicAdvancedUiHook.install(owner, loader);
@@ -155,10 +158,22 @@ final class RedMagicSystemUiHook {
 
     private static void ensureObserver(Context context) {
         if (context == null || observing) return;
+        syncBadgeHook(context);
         observing = FeatureSettings.addSnapshotListener(context, () -> MAIN.post(() -> {
+            syncBadgeHook(context);
             hidePrivacyViews();
             for (RootState state : new ArrayList<>(ROOTS.values())) state.refresh(true);
         }));
+    }
+    private static void syncBadgeHook(Context context){
+        boolean wanted=FeatureSettings.enabled(context,SystemUiOptions.SIGNAL_DUAL);
+        if(wanted&&badgeHook==null&&badgeInvalidation!=null)try{
+            badgeHook=module.prepareFeatureHook(badgeInvalidation,"rm.systemui.android.widget.ImageView.invalidateDrawable.1",false)
+                    .intercept(chain->{Object result=chain.proceed();Object view=chain.getThisObject();
+                        if(view instanceof ImageView)SignalTypeBadge.invalidated((ImageView)view);return result;});
+        }catch(Throwable error){module.logFeatureError("SIGNAL_BADGE_INVALIDATION",error);}
+        if(!wanted&&badgeHook!=null)try{badgeHook.unhook();badgeHook=null;}
+        catch(Throwable error){module.logFeatureError("SIGNAL_BADGE_RELEASE",error);}
     }
 
     private static void rememberPrivacy(View view) {
@@ -218,11 +233,17 @@ final class RedMagicSystemUiHook {
         SignalPair pair;
         CapacityBlock capacityBlock;
         ConnectivityIconSource signalSource;
+        ls.augment.com.ConfigSnapshot scanSnapshot;
+        boolean scanNeeded;
         RootState(ViewGroup view) { root = new WeakReference<>(view); }
         @Override public boolean onPreDraw() { refresh(false); return true; }
         void refresh(boolean forced) {
             ViewGroup view = root.get();
             if (view == null) return;
+            ls.augment.com.ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());
+            if(snapshot!=scanSnapshot){scanSnapshot=snapshot;scanNeeded=RedMagicLegacyUiHook.needsViewScan(snapshot);forced=true;}
+            // A configuration transition still gets one complete restore pass.
+            if(!forced&&(!scanNeeded||!view.isShown()||view.getWindowVisibility()!=View.VISIBLE))return;
             if (!forced && SystemClock.uptimeMillis() - checked < 200 && (pair==null||!pair.needsRefresh())) return;
             checked = SystemClock.uptimeMillis();
             try {

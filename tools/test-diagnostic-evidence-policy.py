@@ -288,7 +288,9 @@ def feature_harness():
         "private static void startupWriteFailure", "private static String diagnosticReason", "private static String safeDiagnosticKey"))
     signature = ("static int methods(AugmentModule module, ClassLoader loader, String className, String name,\n"
                  "            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes)")
-    oem_members = member(oem, signature) + "\n" + member(oem, "static Context context(Object owner,List<Object> args)")
+    core = ("private static int methods(AugmentModule module, ClassLoader loader, String className, String name,\n"
+            "            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes, boolean gate)")
+    oem_members = member(oem, signature) + "\n" + member(oem, core) + "\n" + member(oem, "static Context context(Object owner,List<Object> args)")
     module = (JAVA / "hook/AugmentModule.java").read_text(encoding="utf-8")
     assert "FeatureSettings.rememberDiagnosticProcess(processName);" in member(module, "protected void onModuleLoadedAfterEarly"), "module load must publish real process"
     cache_ms = re.search(r"private static final long CACHE_MS\s*=\s*([^;]+);", settings).group(1)

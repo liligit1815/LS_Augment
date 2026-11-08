@@ -78,8 +78,9 @@ final class ScreenTimeoutHook {
             Method maximum=memberMethod(picker,"getMaxScreenTimeout",Context.class);
             if(maximum.getReturnType()!=Long.class&&maximum.getReturnType()!=long.class)
                 throw new NoSuchMethodException("timeout maximum must be long");
-            Method key=memberMethod(candidate,"getKey"),enabled=memberMethod(candidate,"isEnabled");
-            if(key.getReturnType()!=String.class||enabled.getReturnType()!=boolean.class)
+            Method key=memberMethod(candidate,"getKey");
+            CandidateEnabled enabled=CandidateEnabled.resolve(candidate);
+            if(key.getReturnType()!=String.class||java.lang.reflect.Modifier.isStatic(key.getModifiers()))
                 throw new NoSuchMethodException("timeout candidate identity");
             return OemHooks.methods(module,loader,PICKER,"getCandidates",List.class,0,KEY,chain->{
                 Object original=chain.proceed(),owner=chain.getThisObject();
@@ -99,7 +100,7 @@ final class ScreenTimeoutHook {
                         if(!candidate.isInstance(row)) {
                             record(context,"picker_unavailable;reason=candidate_type");return original;
                         }
-                        if(!Boolean.TRUE.equals(enabled.invoke(row)))return original;
+                        if(!enabled.read(row))return original;
                         if(rowType==null)rowType=row.getClass();
                         if(rowType!=row.getClass()) {
                             record(context,"picker_unavailable;reason=mixed_candidate_types");return original;
@@ -123,7 +124,7 @@ final class ScreenTimeoutHook {
                         if(millis>600_000L&&millis<=limit&&!present.contains(value))
                             result.add(constructor.newInstance(labels[i],value,true));
                     }
-                    record(context,"picker_native;choices="+result.size()+";added="+(result.size()-rows.size())+";maximum_ms="+limit);
+                    record(context,"picker_native;enabled_access="+enabled.path()+";choices="+result.size()+";added="+(result.size()-rows.size())+";maximum_ms="+limit);
                     return result.size()==rows.size()?original:result;
                 } catch(ReflectiveOperationException|RuntimeException|LinkageError error) {
                     record(context,"picker_unavailable;exception="+error.getClass().getSimpleName());
@@ -133,6 +134,28 @@ final class ScreenTimeoutHook {
         } catch(ReflectiveOperationException|RuntimeException|LinkageError error) {
             module.logFeatureError("SCREEN_TIMEOUT picker_capability",error);return 0;
         }
+    }
+
+    /** Read-only runtime capability. A field fallback never turns a disabled native row on. */
+    static final class CandidateEnabled {
+        final Method method;
+        final Field field;
+        CandidateEnabled(Method method,Field field){this.method=method;this.field=field;}
+        static CandidateEnabled resolve(Class<?> type)throws ReflectiveOperationException {
+            try {
+                Method method=memberMethod(type,"isEnabled");
+                if(method.getReturnType()==boolean.class&&!java.lang.reflect.Modifier.isStatic(method.getModifiers()))
+                    return new CandidateEnabled(method,null);
+            }catch(NoSuchMethodException absent){ }
+            Field field=memberField(type,"enabled");
+            if(field.getType()!=boolean.class||java.lang.reflect.Modifier.isStatic(field.getModifiers()))
+                throw new NoSuchFieldException("candidate enabled must be an instance boolean");
+            return new CandidateEnabled(null,field);
+        }
+        boolean read(Object row)throws ReflectiveOperationException {
+            return method!=null?Boolean.TRUE.equals(method.invoke(row)):field.getBoolean(row);
+        }
+        String path(){return method!=null?"method":"field";}
     }
 
     private static Field memberField(Class<?> type,String name)throws NoSuchFieldException {

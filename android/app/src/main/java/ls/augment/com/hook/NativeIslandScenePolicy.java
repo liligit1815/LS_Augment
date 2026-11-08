@@ -15,6 +15,11 @@ final class NativeIslandScenePolicy {
         return master && scene && ready;
     }
 
+    /** Music is a primary Duo activity. Scene completion may narrow it only when enabled. */
+    static boolean music(boolean duo, boolean music, boolean scenes, boolean media, boolean ready) {
+        return duo && music && ready && (!scenes || media);
+    }
+
     static int countdownState(String value) {
         if ("0".equals(value)) return 0;
         if ("1".equals(value)) return 1;

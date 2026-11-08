@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {
+'io/github/libxposed/api/XposedInterface.java': 'package io.github.libxposed.api;public interface XposedInterface {interface HookHandle {void unhook();}}',
 'android/content/Context.java': '''package android.content;public class Context {
  public static final android.content.res.Resources R=new android.content.res.Resources();
  public android.content.res.Resources getResources(){return R;}
@@ -71,8 +72,8 @@ FILES = {
 'ls/augment/com/hook/AugmentModule.java': '''package ls.augment.com.hook;import java.util.*;import java.lang.reflect.*;public class AugmentModule {
  public interface Invoke {Object call(Chain c)throws Throwable;}public interface Original {Object run()throws Throwable;}
  public static class Chain {Object owner;List<Object> args;Original original;public Chain(Object owner,List<Object> args,Original original){this.owner=owner;this.args=args;this.original=original;}public Object getThisObject(){return owner;}public List<Object> getArgs(){return args;}public Object proceed()throws Throwable{return original.run();}}
- public static class Hook {public Method method;public Invoke invoke;Hook(Method m){method=m;}public Hook intercept(Invoke callback){invoke=callback;return this;}}
- public final List<Hook> hooks=new ArrayList<>();public final List<String> errors=new ArrayList<>();public Hook prepareFeatureHook(Method m,String id,boolean b){return new Hook(m);}public void registerFeatureHook(Hook h){hooks.add(h);}public void deoptimize(Method m){}public void logFeatureError(String message,Throwable error){errors.add(message+":"+error);}
+ public class Hook implements io.github.libxposed.api.XposedInterface.HookHandle {public void unhook(){hooks.remove(this);}public Method method;public Invoke invoke;Hook(Method m){method=m;}public Hook intercept(Invoke callback){invoke=callback;hooks.add(this);return this;}}
+ public final List<Hook> hooks=new ArrayList<>();public final List<String> errors=new ArrayList<>();public Hook prepareFeatureHook(Method m,String id,boolean b){return new Hook(m);}public void registerFeatureHook(Hook h){}public void deoptimize(Method m){}public void logFeatureError(String message,Throwable error){errors.add(message+":"+error);}
 }''',
 'ls/augment/com/hook/SystemUiAdapter.java': '''package ls.augment.com.hook;import java.lang.reflect.*;public class SystemUiAdapter {
  public static final Object PASS=new Object();public interface Patch {Object apply(Object o,Object[] args,Object result)throws Throwable;}
@@ -93,11 +94,16 @@ public class TestNotificationSummaryRuntime {
  public static class NativeState {public boolean hidden;}
  public static void main(String[] args)throws Throwable {
   AugmentModule module=new AugmentModule();StatusBarNotificationSummaryHook.install(module,TestNotificationSummaryRuntime.class.getClassLoader());
-  check(module.errors.isEmpty(),"all required hooks install against facade inherited dispatch");AugmentModule.Hook dispatch=hook(module,"dispatchDraw");check(dispatch.method.getDeclaringClass()==ViewGroup.class,"inherited drawing declaration must be found");
-  Canvas unrelatedCanvas=new Canvas();draw(dispatch,new ViewGroup(),unrelatedCanvas);check(unrelatedCanvas.nativeDraws==1,"base hook cannot intercept unrelated containers");
+  if(args.length>0&&args[0].equals("missing")){
+   PhoneStatusBarView nativePhone=new PhoneStatusBarView();NotificationIconContainer nativeOwner=new NotificationIconContainer();nativePhone.add(nativeOwner);nativeOwner.add(new StatusBarIconView());FeatureSettings.publish(config());
+   check(StatusBarNotificationSummaryHook.measure(nativeOwner)==null,"missing drawing contract preserves native measurement");check(module.hooks.stream().noneMatch(h->h.method.getName().equals("dispatchDraw")),"missing contract installs no global draw hook");System.out.println("missing drawing contract preserves native");return;
+  }
+  check(module.errors.isEmpty(),"all required hooks install against facade inherited dispatch");
+  check(module.hooks.stream().noneMatch(h->h.method.getName().equals("dispatchDraw")),"disabled summary leaves framework drawing unhooked");
   NotificationIconContainer outside=new NotificationIconContainer();outside.add(new StatusBarIconView());check(StatusBarNotificationSummaryHook.measure(outside)==null,"shelf/AOD/no phone root must remain native");
   PhoneStatusBarView phone=new PhoneStatusBarView();NotificationIconContainer owner=new NotificationIconContainer();phone.add(owner);com.android.systemui.statusbar.policy.Clock clock=new com.android.systemui.statusbar.policy.Clock();phone.add(clock);StatusBarIconView icon=new StatusBarIconView();owner.add(icon);NativeState nativeState=new NativeState();owner.mIconStates.put(icon,nativeState);
-  FeatureSettings.publish(config());int[] size=StatusBarNotificationSummaryHook.measure(owner);check(size!=null&&size[0]>0&&size[1]==18,"active notification has real content geometry");
+  FeatureSettings.publish(config());int[] size=StatusBarNotificationSummaryHook.measure(owner);AugmentModule.Hook dispatch=hook(module,"dispatchDraw");check(dispatch.method.getDeclaringClass()==(args.length>0&&args[0].equals("override")?NotificationIconContainer.class:ViewGroup.class),"inherited drawing declaration resolved on demand");
+  Canvas unrelatedCanvas=new Canvas();draw(dispatch,new ViewGroup(),unrelatedCanvas);check(unrelatedCanvas.nativeDraws==1,"shared method must preserve unrelated receivers");check(size!=null&&size[0]>0&&size[1]==18,"active notification has real content geometry");
   owner.id=2;check(StatusBarNotificationSummaryHook.measure(owner)==null,"centered icon container cannot inherit notification-area summary");owner.id=1;
   icon.blocked=true;check(StatusBarNotificationSummaryHook.measure(owner)==null,"blocked notification not promoted");icon.blocked=false;icon.visible=false;check(StatusBarNotificationSummaryHook.measure(owner)==null,"inactive icon not promoted");icon.visible=true;
   nativeState.hidden=true;check(StatusBarNotificationSummaryHook.measure(owner)==null,"pending native hidden state wins");nativeState.hidden=false;icon.state=2;check(StatusBarNotificationSummaryHook.measure(owner)==null,"native hidden visibleState wins");icon.state=0;
@@ -133,22 +139,38 @@ public class TestNotificationSummaryRuntime {
   owner.remove(icon);for(ViewTreeObserver.OnPreDrawListener l:new ArrayList<>(owner.observer.listeners))l.onPreDraw();check(!art.running&&StatusBarNotificationSummaryHook.measure(owner)==null,"removing final notification stops animated summary");owner.add(icon);draw(dispatch,owner,new Canvas());
   int listeners=FeatureSettings.listeners.size();owner.detach();check(state(owner)==null&&FeatureSettings.listeners.size()==listeners-1&&owner.observer.listeners.isEmpty()&&owner.attach.isEmpty()&&!art.running&&art.callback==null,"detach releases state, callbacks, animation and snapshot listener");
   owner.attached=true;check(StatusBarNotificationSummaryHook.measure(owner)!=null||state(owner)!=null,"reattach creates fresh state safely");
+  FeatureSettings.publish(config(ConfigSchema.SYSTEMUI_MASTER,"0"));
+  check(module.hooks.stream().noneMatch(h->h.method.getName().equals("dispatchDraw")),"master off removes global drawing hook");
+  for(int cycle=0;cycle<4;cycle++){
+   FeatureSettings.publish(config());StatusBarNotificationSummaryHook.measure(owner);
+   check(module.hooks.stream().filter(h->h.method.getName().equals("dispatchDraw")).count()==1,"re-enable owns exactly one drawing hook");
+   FeatureSettings.publish(config(NotificationSummaryOptions.ENABLED,"0"));
+   check(module.hooks.stream().noneMatch(h->h.method.getName().equals("dispatchDraw")),"repeated disable releases hook");
+  }
   System.out.println("Notification summary production hook facade: "+checks+" assertions passed (not on-device rendering evidence)");
  }
 }''',
 }
 
-with tempfile.TemporaryDirectory(prefix='duo-notification-summary-') as tmp:
-    folder = Path(tmp)
-    for name, content in FILES.items():
-        path = folder / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding='utf-8')
-    jdk = Path(os.environ['JAVA_HOME']) / 'bin' if os.environ.get('JAVA_HOME') else Path('')
-    production = ROOT / 'android/app/src/main/java/ls/augment/com'
-    sources = ['hook/StatusBarNotificationSummaryHook.java', 'NotificationSummaryOptions.java',
-               'StatusBarIconSpacingSpec.java', 'StatusBarIconCatalog.java', 'StatusBarSurfaceSpec.java',
-               'EnhancementOption.java']
-    subprocess.run([str(jdk / 'javac'), '-encoding', 'UTF-8', '-d', tmp,
-                    *map(str, folder.rglob('*.java')), *(str(production / s) for s in sources)], check=True)
-    subprocess.run([str(jdk / 'java'), '-cp', tmp, 'ls.augment.com.hook.TestNotificationSummaryRuntime'], check=True, timeout=15)
+for variant in ['inherited','override','missing']:
+    current=dict(FILES)
+    if variant=='override':
+        key='com/android/systemui/statusbar/phone/NotificationIconContainer.java'
+        current[key]=current[key].replace('public class NotificationIconContainer extends android.view.ViewGroup {','public class NotificationIconContainer extends android.view.ViewGroup { protected void dispatchDraw(android.graphics.Canvas c){}')
+        assert 'protected void dispatchDraw' in current[key]
+    if variant=='missing':
+        key='android/view/ViewGroup.java';current[key]=current[key].replace('dispatchDraw','missingDispatchDraw')
+    with tempfile.TemporaryDirectory(prefix='duo-notification-summary-') as tmp:
+        folder = Path(tmp)
+        for name, content in current.items():
+            path = folder / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding='utf-8')
+        jdk = Path(os.environ['JAVA_HOME']) / 'bin' if os.environ.get('JAVA_HOME') else Path('')
+        production = ROOT / 'android/app/src/main/java/ls/augment/com'
+        sources = ['hook/StatusBarNotificationSummaryHook.java', 'NotificationSummaryOptions.java',
+                   'StatusBarIconSpacingSpec.java', 'StatusBarIconCatalog.java', 'StatusBarSurfaceSpec.java',
+                   'EnhancementOption.java']
+        subprocess.run([str(jdk / 'javac'), '-encoding', 'UTF-8', '-d', tmp,
+                        *map(str, folder.rglob('*.java')), *(str(production / s) for s in sources)], check=True)
+        subprocess.run([str(jdk / 'java'), '-cp', tmp, 'ls.augment.com.hook.TestNotificationSummaryRuntime',variant], check=True, timeout=15)

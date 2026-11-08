@@ -17,7 +17,8 @@ final class WorkspaceIme {
     static Object controller;
     static boolean available,queued,reportedFailure;
     static ValueAnimator motion;
-    static float requested=Float.NaN;
+    static WorkspaceImeGeometry.Pose requested;
+    static String lastEvidence="";
 
     static void install(ClassLoader cl){
         try{
@@ -65,43 +66,57 @@ final class WorkspaceIme {
     }
     static void update(IBinder expected)throws Exception{
         WorkspaceLayout layout=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft);
-        float target=layout.top;
+        WorkspaceImeGeometry.Pose target=WorkspaceImeGeometry.pose(layout,false,0,0,0);
         Object item=source.invoke(sourceProvider.invoke(controller));
         Rect keyboard=new Rect((Rect)frame.invoke(item));
         Object input=call(Wm.display,"getImeInputTarget");
         Object win=input==null?null:call(input,"getWindowState");
         Object task=win==null?null:call(win,"getTask");
-        if(Boolean.TRUE.equals(visible.invoke(item)) && task!=null && task==call(Wm.display,"getFocusedRootTask")
+        boolean shown=Boolean.TRUE.equals(visible.invoke(item));
+        String evidence="session="+session+";shown="+shown+";ime="+keyboard.toShortString();
+        if(shown && task!=null && task==call(Wm.display,"getFocusedRootTask")
                 && !ownsTask(task) && !physicalNativeWindow(task) && (Integer)call(task,"getWindowingMode")==1){
             Rect bounds=(Rect)windowFrame.invoke(win);
             WindowManager.LayoutParams attrs=(WindowManager.LayoutParams)field(win,"mAttrs");
             boolean docked=keyboard.left<=0 && keyboard.right>=logical.width() && keyboard.bottom>=logical.height()-Math.round(96*Wm.context.getResources().getDisplayMetrics().density);
-            int bottom=(attrs.softInputMode&WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)==WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-                    ?bounds.bottom:Math.min(bounds.bottom,keyboard.top);
-            target=WorkspaceImeGeometry.top(layout,docked,keyboard.top,bottom,layout.gap*2);
+            int bottom=WorkspaceImeGeometry.visibleBottom(bounds.bottom,keyboard.top);
+            target=WorkspaceImeGeometry.pose(layout,docked,keyboard.top,bottom,layout.gap*2);
+            evidence+=";task="+field(task,"mTaskId")+";window="+bounds.toShortString()
+                    +";adjust="+(attrs.softInputMode&WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+                    +";docked="+docked+";visibleBottom="+bottom;
         }
+        evidence+=";targetY="+target.y+";targetX="+target.x+";scale="+target.scale+";toolbarBottom="+layout.top;
+        if(!evidence.equals(lastEvidence)){lastEvidence=evidence;diagnostic("IME_GEOMETRY",evidence);}
         if(!Wm.active || field(Wm.display,"mMagnificationSpec")!=Wm.ownedSpec || Wm.ownedSpec==null)return;
-        float current=StepMembers.getFloatField(Wm.ownedSpec,"offsetY");
-        if(motion!=null && Math.abs(target-requested)<.5f || motion==null && Math.abs(target-current)<.5f)return;
+        WorkspaceImeGeometry.Pose current=new WorkspaceImeGeometry.Pose(StepMembers.getFloatField(Wm.ownedSpec,"scale"),
+                StepMembers.getFloatField(Wm.ownedSpec,"offsetX"),StepMembers.getFloatField(Wm.ownedSpec,"offsetY"));
+        if(close(target,motion!=null?requested:current))return;
         cancel();requested=target;
-        final float destination=target;
-        ValueAnimator run=ValueAnimator.ofFloat(current,destination);motion=run;
+        final WorkspaceImeGeometry.Pose destination=target;
+        ValueAnimator run=ValueAnimator.ofFloat(0,1);motion=run;
         run.setDuration(180);run.setInterpolator(new PathInterpolator(.2f,0,0,1));
         run.addUpdateListener(a->{
             synchronized(Wm.lock){
                 if(motion!=run || owner!=expected || !active || ending || flip!=null || WorkspaceZoom.motion!=null){if(motion==run)cancel();return;}
-                try{Wm.moveSpec(layout.mainScale,layout.mainX,(Float)a.getAnimatedValue());}
+                try{
+                    float t=(Float)a.getAnimatedValue();
+                    Wm.moveSpec(current.scale+(destination.scale-current.scale)*t,
+                            current.x+(destination.x-current.x)*t,current.y+(destination.y-current.y)*t);
+                }
                 catch(Exception|LinkageError error){cancel();report(null,0,"键盘避让停止："+error,-1);}
             }
         });
         run.addListener(new AnimatorListenerAdapter(){@Override public void onAnimationEnd(Animator a){
             if(motion!=run)return;motion=null;
-            report(null,0,"键盘避让位置与输入已同步；y="+destination+"；键盘顶边="+keyboard.top,-1);
+            report(null,0,"键盘避让位置与输入已同步；y="+destination.y+"；scale="+destination.scale+"；键盘顶边="+keyboard.top,-1);
         }});
         run.start();
     }
+    static boolean close(WorkspaceImeGeometry.Pose a,WorkspaceImeGeometry.Pose b){
+        return b!=null && Math.abs(a.scale-b.scale)<.0001f && Math.abs(a.x-b.x)<.5f && Math.abs(a.y-b.y)<.5f;
+    }
     static void cancel(){
-        ValueAnimator old=motion;motion=null;requested=Float.NaN;
+        ValueAnimator old=motion;motion=null;requested=null;
         if(old!=null){old.removeAllUpdateListeners();old.removeAllListeners();old.cancel();}
     }
 }

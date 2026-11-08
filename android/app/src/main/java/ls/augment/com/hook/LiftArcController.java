@@ -296,6 +296,9 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
         if (c == null) {
             return;
         }
+        // Attach and configuration listeners own initialization and re-enabling.
+        // An inactive effect has no geometry to resync on every native MOVE.
+        if(c.overlay!=null&&config.isReady()&&!config.requested&&!config.enabled)return;
         config.bind(c.window.getContext());
         LiftArcRuntime.bind(config,c.window.getContext());
         c.ensureInstalled();
@@ -627,7 +630,9 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
 
     /** {@code KeyguardStateControllerImpl#notifyKeyguardState} 回调。 */
     static void onKeyguardState(boolean showing, boolean occluded) {
-        sKeyguardState = (showing && !occluded) ? 1 : 0;
+        int next=(showing && !occluded) ? 1 : 0;
+        if(sKeyguardState==next)return;
+        sKeyguardState = next;
         final LiftArcController c = sInstance;
         if (c == null) {
             return;
@@ -772,8 +777,8 @@ final class LiftArcController implements LiftArcHandleView.Callback, LiftArcConf
         if(c.overlay!=null)c.window.removeView(c.overlay);
         c.config.unbind();c.config.setListener(null);sInstance=null;LiftArcRuntime.views(false);
     }
-    static void onDozing(boolean value) { sDozing=value;if(sInstance!=null)sInstance.sync(); }
-    static void onBouncer(boolean value) { sBouncerShowing=value;if(sInstance!=null)sInstance.sync(); }
+    static void onDozing(boolean value) { if(sDozing==value)return;sDozing=value;if(sInstance!=null)sInstance.sync(); }
+    static void onBouncer(boolean value) { if(sBouncerShowing==value)return;sBouncerShowing=value;if(sInstance!=null)sInstance.sync(); }
     static void onWallpaperReady() {
         LiftArcController c=sInstance;if(c==null)return;
         c.restoreBlurAll();c.lastApplied=Float.NaN;

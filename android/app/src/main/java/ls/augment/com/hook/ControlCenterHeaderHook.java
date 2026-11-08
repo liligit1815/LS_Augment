@@ -74,6 +74,8 @@ final class ControlCenterHeaderHook {
         final WeakReference<ViewGroup> reference;
         final Runnable listener=this::refresh;
         boolean attached,refreshing,showCarrier,customClock,carrierManaged,logoManaged,clockGeometryDirty=true;
+        long clockLayoutGeneration,drawDeferrals,nativeLayoutPasses,lastDrawReport;
+        boolean deferredLayout;
         WeakReference<View> wiredSearch=new WeakReference<>(null);
         boolean searchClickable;
         Boolean nativeSeconds;
@@ -195,7 +197,7 @@ final class ControlCenterHeaderHook {
             // vertical adapter's line breaks after a rotation or mode change.
             if(clock.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE
                     &&!NotificationAppearanceHook.ownsClock(clock))current=clock.getText().toString();
-            if(!text.toString().equals(current)){clock.setText(text);clockGeometryDirty=true;}
+            if(!text.toString().equals(current)){clock.setText(text);clockGeometryDirty=true;clockLayoutGeneration++;}
             if(!android.text.TextUtils.equals(clock.getContentDescription(),text))clock.setContentDescription(text.toString());
             clockDebug="rendered;text="+text+";time="+now;
             if(clock.isShown()&&now-lastClockDiagnostic>=10_000L){
@@ -239,10 +241,19 @@ final class ControlCenterHeaderHook {
             // A hidden QS header still shares the shade's ViewTreeObserver. Its
             // skipped layout must never cancel the visible lockscreen's draw.
             if(!attached||view==null||!view.isShown()||view.getWindowVisibility()!=View.VISIBLE)return true;
+            boolean nativePending=view.isLayoutRequested();long generation=clockLayoutGeneration;
             refresh();renderClock();carrierVisibility();fitClock();
-            // A new time string may need another real layout traversal. Do not
-            // expose one frame of the old, narrower text or icon rectangle.
-            return !view.isLayoutRequested();
+            // Only our new clock text can defer one draw. Native panel motion
+            // and another listener's layout request must keep their own frame.
+            boolean defer=!nativePending&&generation!=clockLayoutGeneration
+                    &&view.isLayoutRequested()&&!deferredLayout;
+            deferredLayout=defer;
+            if(defer)drawDeferrals++;else if(nativePending)nativeLayoutPasses++;
+            if(defer||nativePending){long now=android.os.SystemClock.uptimeMillis();
+                if(now-lastDrawReport>=5000){lastDrawReport=now;
+                    FeatureSettings.diagnostic(view.getContext(),"ls_augment_rm_qs_header_draw",
+                            "clock_deferred="+drawDeferrals+";native_layout_passed="+nativeLayoutPasses+";bounded_wait=true");}}
+            return !defer;
         }
         void detach(){
             attached=false;FeatureSettings.removeSnapshotListener(listener);

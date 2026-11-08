@@ -141,8 +141,11 @@ final class DuoNotificationCards {
         Class<?> panelType=Class.forName(OEM+"RemoteViewPanelIsland",false,loader);
         if(!FrameLayout.class.isAssignableFrom(type)||!FrameLayout.class.isAssignableFrom(panelType))throw new IllegalStateException("notification_card_view_type");
         Method init;
-        try{init=MagicIslandScenes.exact(type,"initIsland",void.class,String.class,String.class,Intent.class,String.class,int.class);}
-        catch(NoSuchMethodException old){init=MagicIslandScenes.exact(type,"initIsland",void.class,String.class,String.class,String.class,int.class);}
+        try{init=MagicIslandScenes.exact(type,"initIsland",void.class,String.class,String.class,String.class,Intent.class,String.class,int.class,boolean.class,boolean.class);}
+        catch(NoSuchMethodException modern){
+            try{init=MagicIslandScenes.exact(type,"initIsland",void.class,String.class,String.class,Intent.class,String.class,int.class);}
+            catch(NoSuchMethodException old){init=MagicIslandScenes.exact(type,"initIsland",void.class,String.class,String.class,String.class,int.class);}
+        }
         initialize=init;
         add=fullscreen?MagicIslandScenes.exact(manager.getClass(),"addPermanentIslandFullScreen",void.class,base,boolean.class)
                 :MagicIslandScenes.exact(manager.getClass(),"addPermanentIslandInner",void.class,base);
@@ -190,7 +193,10 @@ final class DuoNotificationCards {
         call(small,"initAppIsland","ls.augment.com","","",null,null,"",null,"");
         if (progress) prepareCompactLabel(small);
         call(large,"initPanelIsland","ls.augment.com","");
-        if(initialize.getParameterCount()==5)initialize.invoke(next,"ls.augment.com",ID,null,null,1);
+        // New flags grant visibility over fullscreen apps/on keyguard, not the host layout.
+        // Supplemental notifications retain the previous native restrictions.
+        if(initialize.getParameterCount()==8)initialize.invoke(next,"ls.augment.com",ID,"duo_notification",null,null,1,false,false);
+        else if(initialize.getParameterCount()==5)initialize.invoke(next,"ls.augment.com",ID,null,null,1);
         else initialize.invoke(next,"ls.augment.com",ID,null,1);
         call(next,"setPanelIsland",expanded);set(next,"mKeyguardIsland",false);
         ViewGroup smallHost=(ViewGroup)inflate("remote_view_small_island_layout");
@@ -299,7 +305,11 @@ final class DuoNotificationCards {
     }
     boolean expanded(){return island!=null&&Boolean.TRUE.equals(field(manager,"mDynamicPanelShowing"))
             &&(fullscreen?field(manager,"mTempIsland")==island:selected());}
-    void expand(){try{if(selected()&&!Boolean.TRUE.equals(call(manager,"forceNotClick")))call(manager,fullscreen?"onClick":"showPermanentPanelIsland");}catch(Exception failure){failed(failure);}}
+    void expand(){try{if(selected()&&!Boolean.TRUE.equals(call(manager,"forceNotClick"))){
+        OrdinaryClose state=ordinaryCards.get(island);
+        if(!fullscreen&&!IslandPanelGuard.prepare(manager,island,()->{if(state!=null)state.closing=false;}))return;
+        call(manager,fullscreen?"onClick":"showPermanentPanelIsland");
+    }}catch(Exception failure){failed(failure);}}
     void dismiss(){
         if(!expanded())return;
         OrdinaryClose state = ordinaryCards.get(island);
@@ -316,6 +326,7 @@ final class DuoNotificationCards {
     void hide(){
         MAIN.removeCallbacks(pulse);
         View old=island;
+        IslandPanelGuard.withdrawing(manager,old);
         OrdinaryClose state = ordinaryCards.get(old);
         if (state != null) state.withdrawing = true;
         if(old!=null)try{if(fullscreen){if(registry.get(ID)==old)remove.invoke(manager,ID);}

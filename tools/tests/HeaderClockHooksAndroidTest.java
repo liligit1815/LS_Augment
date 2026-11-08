@@ -24,6 +24,24 @@ import static org.junit.Assert.*;
 @Config(manifest=Config.NONE,sdk=36)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class HeaderClockHooksAndroidTest {
+    @Test public void nativePendingLayoutNeverCancelsShadeDraw()throws Exception{
+        init();HeaderClockAndroidTest.Model m=new HeaderClockAndroidTest.Model(988,2688,false,1);
+        try(var activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup()){
+            activity.get().setContentView(m.root);activity.visible();
+            Object[] state=attach(m);frame(m,state);
+            assertTrue("exercise visible header, not hidden fast path",m.header.isShown());
+            for(String seconds:new String[]{"0","1","0"}){
+                FeatureSettings.put("ls_augment_rm_qs_clock_seconds",seconds);frame(m,state);
+                for(int i=0;i<8;i++){
+                    m.header.requestLayout();assertTrue(m.header.isLayoutRequested());
+                    assertEquals("native animation owns its pending layout",true,call(state[1],"onPreDraw"));m.layout();
+                }
+            }
+            Field passed=state[1].getClass().getDeclaredField("nativeLayoutPasses");passed.setAccessible(true);
+            assertTrue("native ownership branch was actually exercised",passed.getLong(state[1])>=24);
+            call(state[0],"close");call(state[1],"detach");
+        }
+    }
     static Class<?> appearance,format;static Object owner;
     static Object call(Object object,String name,Class<?>[] types,Object...args)throws Exception{
         Class<?> type=object instanceof Class?(Class<?>)object:object.getClass();Method method=type.getDeclaredMethod(name,types);method.setAccessible(true);

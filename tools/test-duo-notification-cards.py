@@ -68,8 +68,9 @@ files['android/os/Parcelable.java']='package android.os;public interface Parcela
 files['android/os/Bundle.java']=files['android/os/Bundle.java'].replace('public CharSequence','public android.os.Parcelable[] getParcelableArray(String k){return (android.os.Parcelable[])get(k);}public CharSequence')
 files['android/app/Person.java']='package android.app;public class Person{public CharSequence getName(){return "Sender";}}'
 files['android/app/Notification.java']=files['android/app/Notification.java'].replace('EXTRA_TITLE="title"','EXTRA_MESSAGES="messages",EXTRA_TITLE="title"').replace('public static class Action','public static class MessagingStyle{public static class Message{public Person getSenderPerson(){return new Person();}public static java.util.List<Message> getMessagesFromBundleArray(android.os.Parcelable[] p){return java.util.List.of(new Message());}}}public static class Action')
-for name in ['DuoCompactText','DuoNotificationCards','DuoDownloadPanel','IslandDownloadSource','NativeIslandPanelCompat']:
+for name in ['DuoCompactText','DuoNotificationCards','DuoDownloadPanel','IslandDownloadSource','NativeIslandPanelCompat','IslandPanelGuard']:
     files['ls/augment/com/hook/'+name+'.java']=(SRC/'hook'/(name+'.java')).read_text(encoding='utf-8')
+files['ls/augment/com/hook/FeatureRuntimeLog.java']='package ls.augment.com.hook;class FeatureRuntimeLog{static void event(String s,String d){}static String failure(Throwable e){return e.getClass().getName();}}'
 files['ls/augment/com/hook/TestUnifiedCards.java']='''package ls.augment.com.hook;import java.util.*;import android.content.*;import android.os.*;import android.service.notification.*;import ls.augment.com.*;import com.zte.feature.dynamicisland.*;
 public class TestUnifiedCards{static int checks;static void check(boolean b,String s){checks++;if(!b)throw new AssertionError(s);}
 public static void main(String[] args)throws Exception{
@@ -126,9 +127,11 @@ check("0".equals(next.get("duo")),"legacy alias overrode explicit unified OFF");
 System.out.println("PASS production unified cards and migration: "+checks+" assertions; "+args[0]);}}
 '''
 java=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
-for shape in ['old','new']:
+for shape in ['old','new','identity_flags']:
     variant=dict(files)
     init='public void initIsland(String a,String b,'+('Intent i,' if shape=='new' else '')+'String c,int d){}'
+    if shape=='identity_flags':
+        init='public void initIsland(String sender,String id,String original,Intent intent,String action,int style,boolean fullscreen,boolean keyguard){if(!"ls.augment.com".equals(sender)||!"ls.augment.com_duo_notification".equals(id)||!"duo_notification".equals(original)||intent!=null||action!=null||style!=1||fullscreen||keyguard)throw new AssertionError("identity/visibility flags changed");}'
     variant['com/zte/feature/dynamicisland/RemoteViewIsland.java']='''package com.zte.feature.dynamicisland;import android.content.*;import android.view.*;
 class IslandParent extends DynamicPermanentIsland{public IslandParent(Context c){super(c);}'''+init+'''
 DynamicPermanentIsland panel;public void setPanelIsland(DynamicPermanentIsland p){panel=p;}public DynamicPermanentIsland getPanelIsland(){return panel;}public void setSmallIsland(View v){}public boolean handleIslandClick(){return false;}}

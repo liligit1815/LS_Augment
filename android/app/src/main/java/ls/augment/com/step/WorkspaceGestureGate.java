@@ -15,6 +15,7 @@ public final class WorkspaceGestureGate {
     private static final Handler main=new Handler(Looper.getMainLooper());
     private static final java.util.Map<Object,Boolean> consumers=java.util.Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile long validUntil;
+    private static volatile long traceUntil;
     private static boolean bound;
     private WorkspaceGestureGate(){}
     static boolean accepts(int sender,int version,long deadline,long now){
@@ -29,6 +30,11 @@ public final class WorkspaceGestureGate {
         }
         return nativeValue || delayed;
     }
+    static void beginGesture(Object owner){consumers.remove(owner);}
+    static String gestureField(Object owner,String name){
+        try{return String.valueOf(StepMembers.findField(owner.getClass(),name).get(owner));}
+        catch(ReflectiveOperationException|RuntimeException|LinkageError missing){return "unavailable:"+missing.getClass().getSimpleName();}
+    }
     public static void installLauncher(AugmentModule module,ClassLoader loader){
         try{
             Class<?> consumer=Class.forName("com.android.quickstep.inputconsumers.OtherActivityInputConsumer",false,loader);
@@ -42,6 +48,28 @@ public final class WorkspaceGestureGate {
                 throw new NoSuchMethodException("native deferred gesture signature");
             module.deoptimize(defer);
             module.deoptimize(events); // The tiny private predicate can be inlined into the native motion loop.
+            module.hook(events).intercept(chain->{
+                Object owner=chain.getThisObject();
+                android.view.MotionEvent event=(android.view.MotionEvent)chain.getArgs().get(0);
+                int action=event.getActionMasked();
+                // Some launchers reuse the consumer. Freeze the choice for this
+                // gesture, not for the entire lifetime of that native object.
+                if(action==android.view.MotionEvent.ACTION_DOWN)beginGesture(owner);
+                boolean trace=validUntil>SystemClock.uptimeMillis() || traceUntil>SystemClock.uptimeMillis() || Boolean.TRUE.equals(consumers.get(owner));
+                try{return chain.proceed();}
+                finally{
+                    if(trace && (action==android.view.MotionEvent.ACTION_DOWN || action==android.view.MotionEvent.ACTION_UP
+                            || action==android.view.MotionEvent.ACTION_CANCEL))try{
+                        StepRuntime.diagnostic("GESTURE_EVENT","consumer="+System.identityHashCode(owner)+";action="+action
+                                +";deferred="+consumers.get(owner)+";display="+display.invoke(gesture.get(owner))
+                                +";recentsRunning="+running.invoke(animation.get(owner))
+                                +";endTarget="+gestureField(gesture.get(owner),"mEndTarget")
+                                +";leaseRemainingMs="+Math.max(0,validUntil-SystemClock.uptimeMillis())
+                                +";windowSlop="+gestureField(owner,"mPassedWindowMoveSlop")
+                                +";pilferSlop="+gestureField(owner,"mPassedPilferInputSlop"));
+                    }catch(ReflectiveOperationException|RuntimeException missing){StepRuntime.diagnostic("GESTURE_TRACE_UNAVAILABLE",missing.toString());}
+                }
+            });
             module.hook(defer).intercept(chain->{
                 boolean nativeValue=(Boolean)chain.proceed();
                 Object owner=chain.getThisObject();
@@ -56,7 +84,8 @@ public final class WorkspaceGestureGate {
             Method application=Class.forName("android.app.ActivityThread").getMethod("currentApplication");
             main.post(()->{try{Object context=application.invoke(null);if(context instanceof Context)bind((Context)context);}
                 catch(ReflectiveOperationException ignored){/* Application.attach remains the normal binding path. */}});
-        }catch(ReflectiveOperationException|RuntimeException|LinkageError missing){StepRuntime.diagnostic("GESTURE_UNAVAILABLE",missing.getClass().getSimpleName());}
+            StepRuntime.diagnostic("GESTURE_CAPABILITY","defer="+defer.toGenericString()+";events="+events.toGenericString());
+        }catch(ReflectiveOperationException|RuntimeException|LinkageError missing){StepRuntime.diagnostic("GESTURE_UNAVAILABLE",missing.toString());}
     }
     private static void bind(Context context){
         if(bound)return;
@@ -64,7 +93,13 @@ public final class WorkspaceGestureGate {
             context.registerReceiver(new BroadcastReceiver(){public void onReceive(Context c,Intent i){
                 long deadline=i.getLongExtra("until",0);
                 if(getSentFromUid()!=1000)return;
+                if(i.getIntExtra("version",0)!=ls.augment.com.BuildConfig.VERSION_CODE)return;
+                boolean wasActive=validUntil>SystemClock.uptimeMillis();
+                // Trace the first gestures after release too. This does not extend
+                // deferred-down ownership and never logs coordinates or input text.
+                if(validUntil>0 && deadline==0)traceUntil=SystemClock.uptimeMillis()+15000;
                 validUntil=accepts(getSentFromUid(),i.getIntExtra("version",0),deadline,SystemClock.uptimeMillis())?deadline:0;
+                if(wasActive!=(validUntil>0))StepRuntime.diagnostic("GESTURE_LEASE","active="+(validUntil>0)+";traceAfterExit="+(traceUntil>SystemClock.uptimeMillis()));
             }},new IntentFilter(STATE),NativeWorkspaceGuard.SYSTEM_CONTROL,main,Context.RECEIVER_EXPORTED);
             bound=true;
             context.sendBroadcast(new Intent(QUERY).setPackage("android"),null,

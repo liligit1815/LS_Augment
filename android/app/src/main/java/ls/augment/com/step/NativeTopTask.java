@@ -100,7 +100,19 @@ final class NativeTopTask {
         }
         group.seal();
         awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
-            if(release){record.dirty=false;reset();}else hidden=park;
+            if(release){
+                // The mode/bounds transaction can write a late surface matrix.
+                // Normalize AFTER its commit, as the main/side handoff does.
+                normalizeReturn(record,expected,()->{
+                    record.dirty=false;reset();
+                    UpperMotion.play(record,true,true,()->{
+                        Bundle b=base();b.putInt("upper",-1);b.putBoolean("hidden",false);
+                        respond(reply,0,b,"顶部任务状态已提交："+action+" task="+id);
+                    });
+                });
+                return;
+            }
+            hidden=park;
             if(resume)readmitting.consumed(ParkedWorkspace.UPPER);
             Runnable complete=()->{
                 Bundle b=base();b.putInt("upper",upper==null?-1:id);b.putBoolean("hidden",hidden);
@@ -113,7 +125,17 @@ final class NativeTopTask {
                 }));
                 events.send(95,ask);
                 awaitCommit(waiting,expected,android.os.SystemClock.uptimeMillis()+1000,()->UpperMotion.play(record,true,complete),()->finish("顶窗物理输入区域未确认"));
-            }else if(release)UpperMotion.play(record,true,true,complete);else complete.run();
+            }else complete.run();
         },()->finish("顶窗图层提交未确认"));
+    }
+    static void normalizeReturn(SavedTask record,IBinder expected,Runnable done){
+        CommitBarrier normalized=pendingCommit=new CommitBarrier();
+        synchronized(Wm.lock){
+            if(owner!=expected || !active || ending)throw new IllegalStateException("顶窗归还会话已变化");
+            verifyRestored(record);replay(normalized,record);
+            traceHandoff("upper_return_normalized",0,record.id,record.id);
+        }
+        normalized.seal();
+        awaitCommit(normalized,expected,android.os.SystemClock.uptimeMillis()+1800,done,()->finish("顶窗归还归一事务未确认"));
     }
 }

@@ -28,6 +28,9 @@ public final class RecorderCrashEvidence {
             for(String tag:new String[]{"system_app_crash","data_app_crash","system_app_native_crash","data_app_native_crash","system_app_anr"}){
                 long since=Math.max(cutoff,System.currentTimeMillis()-48L*60*60*1000);int examined=0,matched=0,rejected=0;
                 for(;examined<64&&budget>2048;examined++){
+                    // This entry point runs only as UID 0 and checks READ_DROPBOX_DATA above.
+                    // The ordinary app manifest does not grant this privileged reader permission.
+                    //noinspection MissingPermission
                     DropBoxManager.Entry entry=manager.getNextEntry(tag,since);if(entry==null)break;
                     try{
                         long stamp=entry.getTimeMillis();if(stamp<=since)break;since=stamp;

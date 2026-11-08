@@ -61,12 +61,13 @@ final class ExtraDimControl {
     static synchronized boolean set(Context context, boolean active, int strength) {
         if (strength < 0 || strength > 100) return false;
         int user=android.os.Process.myUid()/100000;
+        StartupDiagnostics.record("EXTRA_DIM_SELECT","user="+user+";requested="+active+";strength="+strength,null);
         if(stateUser!=user){ExtraDimControl.active=false;ExtraDimControl.strength=50;ready=false;verified=false;stateUser=user;}
         // Enabling requires a real native pipeline. Disabling always remains
         // possible, including after a firmware change removed that pipeline.
-        if(active && !read(context))return false;
+        if(active && !read(context)){selectionResult(user,false,"read_unavailable");return false;}
         ModuleSystemSettings.WriteResult result = ModuleSystemSettings.setExtraDim(context, active, strength);
-        if(!result.success){message=result.message;return false;}
+        if(!result.success){message=result.message;selectionResult(user,false,"settings_write_failed");return false;}
         // Native transitions take 2.6s (3s under CTS). Share one deadline across
         // polling and bounded dumps, without multiplying 4s process timeouts.
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(4);
@@ -75,10 +76,10 @@ final class ExtraDimControl {
             ExtraDimRuntime.Snapshot actual=r.isSuccess()?ExtraDimRuntime.parse(r.output):null;
             if(actual!=null && actual.user==user) {
                 ExtraDimControl.active=actual.active;ExtraDimControl.strength=actual.strength;ready=actual.available;verified=ready&&actual.transform;
-                if(actual.matches(user,active,strength)){message="";return true;}
+                if(actual.matches(user,active,strength)){message="";selectionResult(user,true,"verified");return true;}
             }else if(actual!=null) {
                 ExtraDimControl.active=false;ExtraDimControl.strength=50;ready=false;verified=false;
-                message="当前前台用户已变化，未使用其他用户的极暗执行状态";return false;
+                message="当前前台用户已变化，未使用其他用户的极暗执行状态";selectionResult(user,false,"foreground_user_changed");return false;
             }
             long remaining=deadline-System.nanoTime();
             if(remaining<=0)break;
@@ -87,6 +88,11 @@ final class ExtraDimControl {
         }
         message=active?"系统未完成极暗色彩变换，设置已保存但未确认生效":"关闭请求已保存，尚未确认系统移除极暗色彩变换";
         verified=false;
+        selectionResult(user,false,"readback_deadline");
         return false;
+    }
+    private static void selectionResult(int user,boolean success,String reason){
+        StartupDiagnostics.record("EXTRA_DIM_SELECT_RESULT","user="+user+";success="+success+";reason="+reason
+                +";active="+active+";strength="+strength+";ready="+ready+";verified="+verified,null);
     }
 }

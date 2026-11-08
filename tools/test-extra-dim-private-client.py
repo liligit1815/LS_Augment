@@ -12,6 +12,7 @@ JAVAC = str(Path(java_home) / 'bin/javac') if java_home else shutil.which('javac
 JAVA = str(Path(java_home) / 'bin/java') if java_home else shutil.which('java')
 assert JAVAC and JAVA, 'Set JAVA_HOME or put the Java development kit on PATH'
 files = {
+    'ls/augment/com/hook/FeatureRuntimeLog.java': '''package ls.augment.com.hook;final class FeatureRuntimeLog {static void event(String s,String d){}static void state(String s,String k,String d){}static String failure(Throwable t){return t.getClass().getName();}}''',
     'android/net/Uri.java': '''package android.net;public final class Uri{public final String value;private Uri(String v){value=v;}public static Uri parse(String s){return new Uri(s);}public String toString(){return value;}}''',
     'android/os/Bundle.java': '''package android.os;public final class Bundle{private final java.util.Map<String,Object> data=new java.util.HashMap<>();public void putInt(String k,int v){data.put(k,v);}public int getInt(String k,int d){Object v=data.get(k);return v instanceof Integer?(Integer)v:d;}public void putBoolean(String k,boolean v){data.put(k,v);}public boolean getBoolean(String k,boolean d){Object v=data.get(k);return v instanceof Boolean?(Boolean)v:d;}public void putString(String k,String v){data.put(k,v);}public String getString(String k){return (String)data.get(k);}}''',
     'android/os/Handler.java': '''package android.os;public final class Handler{private final java.util.Queue<Runnable> tasks=new java.util.concurrent.ConcurrentLinkedQueue<>();public boolean post(Runnable r){tasks.add(r);return true;}public void pump(){Runnable r;while((r=tasks.poll())!=null)r.run();}}''',
@@ -48,6 +49,15 @@ public final class TestExtraDimPrivateClient {
   resolver.release.countDown();until(()->peek(0).owned&&peek(0).strength==80,"initial private ownership synchronizes request");until(()->changes.get()==1,"new request posts once to native handler");
   int reads=resolver.privateCalls.get();for(int i=0;i<1000;i++)peek(0);Thread.sleep(80);check(reads==resolver.privateCalls.get(),"steady callback traffic reuses private memory with no polling");
   resolver.notifyUser(0);until(()->changes.get()==2,"repeating the same owned request resynchronizes the native controller");
+  int reconcileBefore=changes.get();ExtraDimOwnershipClient.reconcile(0,handler);until(()->changes.get()==reconcileBefore+1,"mismatched controller triggers fresh same-value native request");
+  int reconcileReads=resolver.privateCalls.get();for(int i=0;i<100;i++)ExtraDimOwnershipClient.reconcile(0,handler);Thread.sleep(50);check(resolver.privateCalls.get()==reconcileReads,"reconciliation does not loop on repeated dumps");
+  ExtraDimOwnershipClient.reconcile(9,handler);ExtraDimOwnershipClient.reconcile(0,new Handler());Thread.sleep(50);check(resolver.privateCalls.get()==reconcileReads,"wrong user or retired handler cannot reconcile");
+  // Simulate age without waiting five seconds: a dropped observer notification must recover.
+  resolver.values(0,true,false,47);
+  var current=ExtraDimOwnershipClient.class.getDeclaredField("current");current.setAccessible(true);Object binding=current.get(null);
+  var checked=binding.getClass().getDeclaredField("checkedAt");checked.setAccessible(true);checked.setLong(binding,0);
+  until(()->!peek(0).active&&peek(0).strength==47,"expired snapshot rereads native settings after lost notification");
+  check(ExtraDimOwnershipClient.evidence().contains("ownership=ready"),"passive evidence reports fresh request age and user");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"refresh begins before concurrent native change");
   resolver.values(0,true,true,91);resolver.notifyUser(0);resolver.release.countDown();until(()->peek(0).strength==91,"notification arriving during IPC is replayed after the old response");
   resolver.blockLevel();resolver.notifyUser(0);check(resolver.entered.await(2,TimeUnit.SECONDS),"old user refresh held in flight");
@@ -56,6 +66,9 @@ public final class TestExtraDimPrivateClient {
   resolver.wrongUser=true;resolver.notifyUser(10);until(()->!peek(10).owned,"wrong-user provider payload fails closed");resolver.wrongUser=false;resolver.notifyUser(10);until(()->peek(10).owned,"valid notification recovers failed read");
   resolver.values(10,true,true,101);resolver.notifyUser(10);until(()->!peek(10).owned,"invalid native strength never enters pipeline");resolver.values(10,true,true,37);resolver.notifyUser(10);until(()->peek(10).owned&&peek(10).strength==37,"valid native state recovers");
   resolver.fail=true;resolver.notifyUser(10);until(()->!peek(10).owned,"provider failure clears stale ownership");resolver.fail=false;resolver.notifyUser(10);until(()->peek(10).owned,"provider recovery re-applies live request");
+  binding=current.get(null);var failures=binding.getClass().getDeclaredField("failures");failures.setAccessible(true);failures.setInt(binding,3);
+  resolver.fail=true;resolver.notifyUser(10);until(()->!peek(10).owned,"fourth outage enters low-frequency retry without stale request");
+  resolver.fail=false;resolver.notifyUser(10);until(()->peek(10).owned,"new user event preempts delayed outage retry immediately");
   int beforeRelease=releases.get();resolver.owned.put(10,false);resolver.notifyUser(10);until(()->!peek(10).owned,"reset ownership invalidates cached request");until(()->releases.get()==beforeRelease+1,"ownership release requests one native restoration callback");int natives=resolver.nativeCalls.get();resolver.notifyUser(10);Thread.sleep(80);check(natives==resolver.nativeCalls.get(),"unowned features never read native request values");check(releases.get()==beforeRelease+1,"steady unowned notifications never take over native control");
   Handler previous=handler;handler=new Handler();resolver.values(10,true,false,29);resolver.blockLevel();check(!peek(10).owned,"replacement native handler receives a new binding");check(resolver.entered.await(2,TimeUnit.SECONDS),"replacement provider request executes independently");resolver.release.countDown();until(()->peek(10).owned&&peek(10).strength==29,"replacement service reloads private state");int priorChanges=changes.get();previous.pump();check(priorChanges==changes.get(),"stale native handler callbacks cannot act on replacement service");
   handler=new Handler();int registrations=resolver.registerCalls.get();resolver.failRegistration=true;peek(10);until(()->resolver.registerCalls.get()>registrations,"new binding attempts observer registration");resolver.failRegistration=false;until(()->peek(10).owned,"finite background retry repairs unavailable observer registration");

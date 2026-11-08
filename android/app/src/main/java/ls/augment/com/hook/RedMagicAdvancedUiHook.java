@@ -68,9 +68,11 @@ final class RedMagicAdvancedUiHook {
         count+=hook(module,loader,"com.android.systemui.clipboardoverlay.ClipboardListener","forceSuppressOverlay",0,
                 (o,a,r)->on(o,"clipboard_overlay")?false:PASS,null);
         count+=hook(module,loader,"com.zte.adapt.mifavor.navbar.AssistManagerAdapt","getAssistInfoForUser",1,
-                (o,a,r)->on(o,"assist_gesture")?a[0]:PASS,null);
+                (o,a,r)->{if(!on(o,"assist_gesture"))return PASS;
+                    FeatureRuntimeLog.state("ASSIST_GESTURE_COMPONENT","preserve_default","action=preserve_default_component");return a[0];},null);
         count+=hook(module,loader,"com.zte.adapt.mifavor.navbar.AssistManagerAdapt","handleStartAssist",2,
-                (o,a,r)->on(o,"assist_gesture")?false:PASS,null);
+                (o,a,r)->{if(!on(o,"assist_gesture"))return PASS;
+                    FeatureRuntimeLog.event("ASSIST_GESTURE_ADAPTER","action=preserve_default_dispatch;business=unconfirmed");return false;},null);
         count+=hook(module,loader,"com.android.wm.shell.onehanded.OneHandedDisplayAreaOrganizer","scheduleOffset",2,
                 (o,a,r)->{if(on(o,"onehand_adjust")&&a[1] instanceof Integer){int original=(Integer)a[1],value=offset(o,original);if(original!=0)a[1]=value;}return PASS;},null);
         count+=hook(module,loader,"com.android.wm.shell.onehanded.OneHandedTutorialHandler","getTutorialTargetLayoutParams",-1,

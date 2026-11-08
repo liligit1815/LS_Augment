@@ -93,13 +93,20 @@ final class SystemRulesHook {
         });
         for(String type:new String[]{"com.android.server.redmagic.trackclient.ZteTrackManager","com.android.server.datacollection.ZteTrackManager"})
             count+=OemHooks.result(module,loader,type,"init",void.class,1,k("telemetry_disable"),null);
-        count+=OemHooks.methods(module,loader,"com.android.server.policy.PhoneWindowManager","powerLongPress",void.class,1,k("power_default_assistant"),chain->{
+        int assistantHooks=OemHooks.observedMethods(module,loader,"com.android.server.policy.PhoneWindowManager","powerLongPress",void.class,1,k("power_default_assistant"),chain->{
             Object owner=chain.getThisObject();AssistantState state=assistantState;
+            if(!FeatureSettings.enabled(FeatureSettings.from(owner),k("power_default_assistant"))){
+                FeatureRuntimeLog.state("ASSIST_POWER", "disabled", "reason=feature_disabled;action=native");
+                return chain.proceed();
+            }
             Object user=OemHooks.field(owner,"mCurrentUserId"),behavior=OemHooks.field(owner,"mLongPressOnPowerBehavior");
-            assistantTrace("power behavior="+behavior+" cached="+(state!=null)+" allowed="+(state!=null&&state.allowed),null);
-            if(state==null||state.owner!=owner||state.generation!=assistantGeneration.get()
-                    ||SystemClock.elapsedRealtime()-state.checkedAt>=ASSISTANT_TTL_MS
-                    ||!Objects.equals(user,state.user)||!Objects.equals(behavior,state.nativeBehavior)){
+            long age=state==null?-1:SystemClock.elapsedRealtime()-state.checkedAt;
+            String stale=state==null?"cache_missing":state.owner!=owner?"owner_changed":
+                    state.generation!=assistantGeneration.get()?"generation_changed":age>=ASSISTANT_TTL_MS?"cache_expired":
+                    !Objects.equals(user,state.user)?"user_changed":!Objects.equals(behavior,state.nativeBehavior)?"behavior_changed":"";
+            FeatureRuntimeLog.event("ASSIST_POWER", "user="+user+";behavior="+behavior+";cacheAgeMs="+age
+                    +";reason="+(!stale.isEmpty()?stale:state.reason)+";allowed="+(state!=null&&state.allowed));
+            if(!stale.isEmpty()){
                 bindAssistant(owner,loader);return chain.proceed();
             }
             if(!state.allowed)return chain.proceed();
@@ -109,9 +116,15 @@ final class SystemRulesHook {
                 OemHooks.set(owner,true,"mPowerKeyHandled");
                 try{OemHooks.invoke(owner,"performHapticFeedback",10002,"Power - Long Press - Go To Assistant");}
                 catch(ReflectiveOperationException|RuntimeException ignored){ }
+                FeatureRuntimeLog.event("ASSIST_DISPATCH", "path=power;invocation=6;result=native_dispatch_returned;business=unconfirmed");
                 return null;
-            }catch(ReflectiveOperationException|RuntimeException failure){assistantTrace("dispatch failed",failure);return chain.proceed();}
-        });
+            }catch(ReflectiveOperationException|RuntimeException failure){
+                FeatureRuntimeLog.event("ASSIST_DISPATCH", "path=power;result=failed;action=native_fallback;error="+FeatureRuntimeLog.failure(failure));
+                return chain.proceed();
+            }
+        },new Class<?>[]{long.class});
+        count+=assistantHooks;
+        FeatureRuntimeLog.event("ASSIST_POWER_CAPABILITY", "powerLongPress="+assistantHooks+";missingInterfaceAction=native");
         count+=installNotifications(module,loader);
         count+=OemHooks.result(module,loader,"android.util.apk.ApkSignatureVerifier","getMinimumSignatureSchemeVersionForTargetSdk",int.class,1,k("signature_min_v1"),1);
         count+=installWireless(module,loader);
@@ -326,23 +339,32 @@ final class SystemRulesHook {
     }
     private static void invalidateAssistant(){assistantState=null;assistantGeneration.incrementAndGet();requestAssistantRefresh();}
     private static void requestAssistantRefresh(){
-        Context context=assistantContext;if(context==null||!FeatureSettings.enabled(context,k("power_default_assistant")))return;
+        Context context=assistantContext;if(context==null)return;
+        if(!FeatureSettings.enabled(context,k("power_default_assistant"))){
+            FeatureRuntimeLog.state("ASSIST_REFRESH", "disabled", "reason=feature_disabled");return;
+        }
         if(!assistantPending.compareAndSet(false,true))return;
         ASSISTANT_WORKER.execute(()->{
             long generation=assistantGeneration.get(),checkedAt=SystemClock.elapsedRealtime();Object owner=assistantOwner;ClassLoader loader=assistantLoader;
             try{
                 Object user=OemHooks.field(owner,"mCurrentUserId"),rawBehavior=OemHooks.field(owner,"mLongPressOnPowerBehavior");
-                if(!(user instanceof Integer)||!(rawBehavior instanceof Integer)||loader==null)return;
+                if(!(user instanceof Integer)||!(rawBehavior instanceof Integer)||loader==null){
+                    FeatureRuntimeLog.state("ASSIST_REFRESH", "capability_missing", "reason=policy_fields_or_loader_missing");return;
+                }
                 Object handle=OemHooks.invoke(Class.forName("android.os.UserHandle",false,loader),"of",user);
                 Context userContext=(Context)OemHooks.invoke(context,"createContextAsUser",handle,0);
                 observeAssistantOnWorker(userContext,(Integer)user);
-                boolean allowed=assistantAllowedOnWorker(owner,userContext,loader,(Integer)rawBehavior);
-                assistantTrace("refresh user="+user+" behavior="+rawBehavior+" allowed="+allowed,null);
+                AssistantEligibility check=assistantAllowedOnWorker(owner,userContext,loader,(Integer)rawBehavior);
                 if(assistantGeneration.get()==generation&&assistantOwner==owner&&Objects.equals(user,OemHooks.field(owner,"mCurrentUserId"))
-                        &&Objects.equals(rawBehavior,OemHooks.field(owner,"mLongPressOnPowerBehavior")))
-                    assistantState=new AssistantState(owner,(Integer)user,(Integer)rawBehavior,allowed,generation,checkedAt);
+                        &&Objects.equals(rawBehavior,OemHooks.field(owner,"mLongPressOnPowerBehavior"))){
+                    assistantState=new AssistantState(owner,(Integer)user,(Integer)rawBehavior,check.allowed,generation,checkedAt,check.reason);
+                    String evidence="user="+user+";behavior="+rawBehavior+";allowed="+check.allowed
+                            +";reason="+check.reason+";assistant="+check.assistant+";voiceService="+check.voice;
+                    FeatureRuntimeLog.state("ASSIST_REFRESH", evidence, evidence+";readMs="+(SystemClock.elapsedRealtime()-checkedAt));
+                }else FeatureRuntimeLog.event("ASSIST_REFRESH_DISCARDED", "reason=identity_or_generation_changed");
             }catch(ReflectiveOperationException|RuntimeException unavailable){
-                assistantTrace("refresh failed",unavailable);
+                String failure=FeatureRuntimeLog.failure(unavailable);
+                FeatureRuntimeLog.state("ASSIST_REFRESH", failure, "reason=refresh_failed;error="+failure+";action=native_fallback");
                 AssistantState current=assistantState;
                 if(current!=null&&current.generation==generation)assistantState=null;
             }
@@ -361,36 +383,56 @@ final class SystemRulesHook {
             context.getContentResolver().registerContentObserver(Settings.System.getUriFor("clockwork_long_press_to_assistant_enabled"),false,observer);
             context.getContentResolver().registerContentObserver(Settings.Global.getUriFor("device_provisioned"),false,observer);
             assistantObserver=observer;observedAssistantContext=context;observedAssistantUser=user;
-        }catch(RuntimeException unavailable){try{context.getContentResolver().unregisterContentObserver(observer);}catch(RuntimeException ignored){ }}
+        }catch(RuntimeException unavailable){
+            FeatureRuntimeLog.state("ASSIST_OBSERVER", "failed", "reason=observer_failed;polling=true;error="+FeatureRuntimeLog.failure(unavailable));
+            try{context.getContentResolver().unregisterContentObserver(observer);}catch(RuntimeException ignored){ }
+        }
     }
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
-    private static boolean assistantAllowedOnWorker(Object owner,Context userContext,ClassLoader loader,int behavior)throws ReflectiveOperationException{
-        if(!SystemRulesPolicy.assistantPowerBehavior(behavior))return false;
+    private static AssistantEligibility assistantAllowedOnWorker(Object owner,Context userContext,ClassLoader loader,int behavior)throws ReflectiveOperationException{
+        if(!SystemRulesPolicy.assistantPowerBehavior(behavior))return AssistantEligibility.denied("native_power_action");
         // Mirror the inspected phone's native eligibility gates using one explicit user.
         // Native helpers use USER_CURRENT and could mix users during a concurrent switch.
         if(!Boolean.FALSE.equals(OemHooks.field(owner,"mHasFeatureLeanback"))
-                ||!Boolean.FALSE.equals(OemHooks.field(owner,"mHasFeatureAuto")))return false;
-        if(!Boolean.FALSE.equals(OemHooks.invoke(Class.forName("android.os.FactoryTest",false,loader),"isLongPressOnPowerOffEnabled")))return false;
-        if(behavior==5&&Settings.Global.getInt(userContext.getContentResolver(),"device_provisioned",0)==0)return false;
-        if(behavior==4&&Settings.System.getInt(userContext.getContentResolver(),"clockwork_long_press_to_assistant_enabled",1)!=1)return false;
-        return Settings.Secure.getInt(userContext.getContentResolver(),"user_setup_complete",0)!=0&&hasDefaultAssistant(userContext);
+                ||!Boolean.FALSE.equals(OemHooks.field(owner,"mHasFeatureAuto")))return AssistantEligibility.denied("device_policy_or_field_missing");
+        if(!Boolean.FALSE.equals(OemHooks.invoke(Class.forName("android.os.FactoryTest",false,loader),"isLongPressOnPowerOffEnabled")))return AssistantEligibility.denied("factory_power_off");
+        if(behavior==5&&Settings.Global.getInt(userContext.getContentResolver(),"device_provisioned",0)==0)return AssistantEligibility.denied("device_not_provisioned");
+        if(behavior==4&&Settings.System.getInt(userContext.getContentResolver(),"clockwork_long_press_to_assistant_enabled",1)!=1)return AssistantEligibility.denied("native_assistant_disabled");
+        if(Settings.Secure.getInt(userContext.getContentResolver(),"user_setup_complete",0)==0)return AssistantEligibility.denied("user_setup_incomplete");
+        return hasDefaultAssistant(userContext);
     }
-    private static void assistantTrace(String message,Throwable error){
-        if(ls.augment.com.BuildConfig.DEBUG&&android.util.Log.isLoggable("LSA.Assist",android.util.Log.DEBUG))
-            android.util.Log.d("LSA.Assist",message,error);
-    }
-    private static boolean hasDefaultAssistant(Context context){
-        if(context==null)return false;
+    private static AssistantEligibility hasDefaultAssistant(Context context){
+        if(context==null)return AssistantEligibility.denied("context_missing");
+        String assistant="unknown",voice="unknown";
         try{
             String value=Settings.Secure.getString(context.getContentResolver(),"assistant");
             ComponentName component=value==null?null:ComponentName.unflattenFromString(value);
-            if(component==null)return false;
+            assistant=assistantComponent(component);
+            // Extra diagnostic Settings/Binder reads must not delay this eligibility worker.
+            // The export's independent read-only snapshot supplies voice service state.
+            voice="see_export_snapshot";
+            if(component==null)return new AssistantEligibility(false,"default_assistant_missing",assistant,voice);
             PackageManager pm=context.getPackageManager();ComponentInfo info;
             try{info=pm.getServiceInfo(component,0);}catch(PackageManager.NameNotFoundException noService){info=pm.getActivityInfo(component,0);}
-            return info.enabled&&info.applicationInfo.enabled;
-        }catch(RuntimeException|PackageManager.NameNotFoundException unavailable){return false;}
+            boolean allowed=info.enabled&&info.applicationInfo.enabled;
+            return new AssistantEligibility(allowed,allowed?"eligible":"assistant_component_disabled",assistant,voice);
+        }catch(RuntimeException|PackageManager.NameNotFoundException unavailable){
+            return new AssistantEligibility(false,"assistant_lookup_failed:"+FeatureRuntimeLog.failure(unavailable),assistant,voice);
+        }
     }
-    private static final class AssistantState{final Object owner;final int user,nativeBehavior;final boolean allowed;final long generation,checkedAt;AssistantState(Object owner,int user,int behavior,boolean allowed,long generation,long checkedAt){this.owner=owner;this.user=user;this.nativeBehavior=behavior;this.allowed=allowed;this.generation=generation;this.checkedAt=checkedAt;}}
+    private static String assistantComponent(ComponentName component){
+        return component==null?"none":component.flattenToShortString().replaceAll("[^A-Za-z0-9_.$/]","_");
+    }
+    private static final class AssistantEligibility{
+        final boolean allowed;final String reason,assistant,voice;
+        AssistantEligibility(boolean allowed,String reason,String assistant,String voice){this.allowed=allowed;this.reason=reason;this.assistant=assistant;this.voice=voice;}
+        static AssistantEligibility denied(String reason){return new AssistantEligibility(false,reason,"not_queried","not_queried");}
+    }
+    private static final class AssistantState{
+        final Object owner;final int user,nativeBehavior;final boolean allowed;final long generation,checkedAt;final String reason;
+        AssistantState(Object owner,int user,int behavior,boolean allowed,long generation,long checkedAt){this(owner,user,behavior,allowed,generation,checkedAt,allowed?"eligible":"not_eligible");}
+        AssistantState(Object owner,int user,int behavior,boolean allowed,long generation,long checkedAt,String reason){this.owner=owner;this.user=user;this.nativeBehavior=behavior;this.allowed=allowed;this.generation=generation;this.checkedAt=checkedAt;this.reason=reason;}
+    }
 }

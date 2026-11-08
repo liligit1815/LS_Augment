@@ -29,6 +29,8 @@ final class FanControlHook {
     private static final String FAN_RPM = "sys/kernel/fan/fan_speed_count";
     private static final String OEM_MANUAL = "fan_state_of_manual";
     private static final String OEM_MODE = "fan_state_of_mode";
+    // Absence is an ownership token, never an assumed OEM mode or a hardware level.
+    private static final int OEM_UNSET = Integer.MIN_VALUE + 1;
     private static final long POLL_MS = 900L;
     private static final int MAX_BATTERY_TENTHS_C = 500;
 
@@ -298,11 +300,13 @@ final class FanControlHook {
                     keepRunning = false;
                     return;
                 }
-                if (current!=null && "loaded_driver_contract_unverified".equals(profile.reason)) {
+                if (current!=null && proofPending()) {
                     long now=android.os.SystemClock.elapsedRealtime();
                     if(now>=nextProof){
-                        nextProof=now+30_000L;
                         proofAttempts++;
+                        // A late Provider/Root grant must recover even after the initial boot window.
+                        // Continue at low frequency instead of permanently retiring after three failures.
+                        nextProof=now+(proofAttempts<3?30_000L:300_000L);
                         boolean localNodes = new File("/"+FAN_LEVEL).exists() && new File("/"+FAN_RPM).exists()
                                 && new File("/"+FanCompatibilityProfile.KERNEL+"fan_enable").exists();
                         boolean verified=localNodes && FanDriverContract.verified();
@@ -310,24 +314,29 @@ final class FanControlHook {
                         if(!verified)try{
                             android.os.Bundle answer=current.getContentResolver().call(
                                     android.net.Uri.parse("content://ls.augment.com.config"),"fan_driver_proof",null,null);
-                            verified=answer!=null && answer.getBoolean("verified");
+                            verified=answer!=null && answer.getBoolean("verified")
+                                    && "verified".equals(answer.getString("state"));
                             if(answer!=null && answer.getString("state")!=null)proofState=answer.getString("state");
-                        }catch(RuntimeException unavailable){ /* Provider may still be starting. */ }
+                        }catch(RuntimeException unavailable){
+                            proofState="provider_unavailable:"+FeatureRuntimeLog.failure(unavailable);
+                        }
                         if(verified){
                             Class<?> type=owner.getClass();
                             profile=FanCompatibilityProfile.resolve(Build.DEVICE,Build.PRODUCT,Build.MODEL,
                                     hasVoidMethod(type,"fanMaxSpeed"),hasVoidMethod(type,"fanFullSpeed"),
                                     hasVoidMethod(type,"cancelFanFullSpeed"),hasVoidMethod(type,"notifyCubeFan"),
                                     path->new File("/"+path).exists() || readInt(path).valid,true);
-                            FeatureSettings.diagnostic(current,FeatureSettings.FAN_CONTROL_INSTALLED,
-                                    "hooks="+hookCount+";device="+Build.DEVICE+capabilityDiagnostic());
                         }
+                        FeatureSettings.diagnostic(current,FeatureSettings.FAN_CONTROL_INSTALLED,
+                                "hooks="+hookCount+";device="+Build.DEVICE+capabilityDiagnostic());
+                        FeatureRuntimeLog.event("FAN_DRIVER_PROOF", "attempt="+proofAttempts
+                                +";nextRetryMs="+(nextProof-now)+capabilityDiagnostic());
                     }
                 }
                 if (current == null || !profile.supported()) {
                     safeRelease("unsupported_device", false);
                     status("idle;reason=" + profile.reason + ";device=" + Build.DEVICE + ";driver_proof=" + proofState, 10_000L);
-                    keepRunning=current!=null && proofAttempts<3 && "loaded_driver_contract_unverified".equals(profile.reason);
+                    keepRunning=current!=null && proofPending();
                     nextPoll=Math.max(POLL_MS,nextProof-android.os.SystemClock.elapsedRealtime());
                     return;
                 }
@@ -438,15 +447,21 @@ final class FanControlHook {
                 int manual;
                 String vendorKey = OEM_MODE;
                 try {
-                    mode = Settings.System.getInt(current.getContentResolver(), OEM_MODE);
+                    mode = readVendorState(current, OEM_MODE);
                     vendorKey = OEM_MANUAL;
-                    manual = Settings.System.getInt(current.getContentResolver(), OEM_MANUAL);
+                    manual = readVendorState(current, OEM_MANUAL);
                 } catch (Throwable error) {
                     FeatureSettings.diagnostic(current, "ls_augment_fan_last_vendor_read_error",
                             "key=" + vendorKey + ";error=" + error.getClass().getSimpleName()
                                     + ";ts=" + System.currentTimeMillis());
                     failSession("vendor_state_read", false);
                     return;
+                }
+                if (controlKind == ControlKind.NONE && (mode == OEM_UNSET || manual == OEM_UNSET)) {
+                    FeatureSettings.diagnostic(current, "ls_augment_fan_vendor_state",
+                            "mode=" + (mode == OEM_UNSET ? "unset" : mode)
+                                    + ";manual=" + (manual == OEM_UNSET ? "unset" : manual)
+                                    + ";restore_source=observed_driver_level");
                 }
                 if (controlKind != ControlKind.NONE
                         && (mode != capturedMode || manual != capturedManual)) {
@@ -750,9 +765,9 @@ final class FanControlHook {
             if (current == null || capturedMode == Integer.MIN_VALUE
                     || capturedManual == Integer.MIN_VALUE) return false;
             try {
-                return Settings.System.getInt(current.getContentResolver(), OEM_MODE)
+                return readVendorState(current, OEM_MODE)
                         == capturedMode
-                        && Settings.System.getInt(current.getContentResolver(), OEM_MANUAL)
+                        && readVendorState(current, OEM_MANUAL)
                         == capturedManual;
             } catch (Throwable ignored) {
                 return false;
@@ -768,8 +783,7 @@ final class FanControlHook {
             try {
                 // Turning the OEM master switch off legitimately changes the
                 // manual-state setting. Mode is the ownership guard here.
-                return Settings.System.getInt(
-                        context.getContentResolver(), OEM_MODE) == capturedMode;
+                return readVendorState(context, OEM_MODE) == capturedMode;
             } catch (Throwable ignored) {
                 return false;
             }
@@ -779,6 +793,15 @@ final class FanControlHook {
             capturedLevel = -1;
             capturedMode = Integer.MIN_VALUE;
             capturedManual = Integer.MIN_VALUE;
+        }
+
+        private static int readVendorState(Context current, String key) {
+            String raw = Settings.System.getString(current.getContentResolver(), key);
+            if (raw == null) return OEM_UNSET;
+            int value = Integer.parseInt(raw);
+            if (value == OEM_UNSET || value == Integer.MIN_VALUE)
+                throw new IllegalArgumentException("reserved_vendor_state");
+            return value;
         }
 
 
@@ -821,6 +844,11 @@ final class FanControlHook {
         }
 
         private void status(String value, long throttleMs) {
+            // Keep transitions before latest-value throttling; a brief stop must not be overwritten
+            // by the next successful RPM update. Ignore fluctuating RPM when comparing states.
+            String state=value.replaceAll(";(actual|median|sample|rpm_check)=[^;]*", "");
+            FeatureRuntimeLog.state("FAN_CONTROL_STATE", state, value+";capability="+profile.capability()
+                    +";driverProof="+proofState+";sessionLocked="+sessionLocked);
             long now = System.currentTimeMillis();
             if (throttleMs > 0L && now - lastDiagnosticAt < throttleMs) return;
             lastDiagnosticAt = now;
@@ -831,7 +859,13 @@ final class FanControlHook {
                             ? ";request=" + activeCalibrationRequest : "") + ";ts=" + now);
         }
 
+        private boolean proofPending() {
+            return "loaded_driver_contract_unverified".equals(profile.reason)
+                    || "verified_level_nodes_missing".equals(profile.reason);
+        }
+
         private void report(String stage, Throwable error) {
+            FeatureRuntimeLog.event("FAN_CONTROL_ERROR", "stage="+stage+";error="+FeatureRuntimeLog.failure(error));
             Context current = context != null ? context : FeatureSettings.from(null);
             FeatureSettings.diagnostic(current, FeatureSettings.FAN_CONTROL_LAST_ERROR,
                     stage + ':' + safeMessage(error));

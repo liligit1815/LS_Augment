@@ -47,7 +47,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
     private static final String[] ICON_SHA256={"0139470A9E2ECEAD8ACA277E06D41901F0E5B1F79E01088A05C39CFFB613FCC8","6DA5AF68C4A9106BF8F72D6AEB37404BED71CDE026BB7FFDD2598E216DC72157","DCD0008307597440F78DD6CD0AD815B23F267134DAC9441FD451CABB9F89E457","7A11B11E3943175B8DA10C16625B4288D2F0E413F31F138BC3BBD586E5B9A9A6","3B949A7A6847ACCEFF819EDC0E34B635FBA858DB9FF1E52E4F41465B0464DFCF","65E229517528FDE3E0B09DB8717C825A26B940431DBC01CB9E542963A3CD0086"};
     private static final String THANKS_DESCRIPTION="红魔Duo使用了以下开源项目的部分或全部内容，感谢这些项目的开发者提供的大力支持（排名顺序不分先后）。";
     private static final String[] REMOVED={"卒迹","绀漓丨Sevtinge","红魔助手开发团队","HyperCeiler开发团队"};
-    private static final String[] DONORS={"kj2548","福福","隐隐约约月","夕梦月初","ninemans","停！别浪费时间聊天","萌爱oo","ღ᭄爱莉瑟琳ঞৣ"};
+    private static final String[] DONORS={"kj2548","福福","隐隐约约月","夕梦月初","ninemans","停！别浪费时间聊天","萌爱oo","ღ᭄爱莉瑟琳ঞৣ","三千烦恼风"};
     private static final String DOM="(()=>{const m=document.querySelector('main'),t=document.querySelector('.section-heading'),f=document.querySelector('footer'),last=document.querySelector('.donors li:last-child'),note=document.querySelector('.thanks-description'),list=document.querySelector('.projects');if(!m||!t||!f||!last||!note||!list)return null;"
             +"const s=getComputedStyle(m),r=m.getBoundingClientRect(),a=t.getBoundingClientRect(),b=f.getBoundingClientRect(),d=last.getBoundingClientRect(),h=document.querySelector('main>header'),ns=getComputedStyle(note),nr=note.getBoundingClientRect();"
             +"return {ready:document.readyState,title:document.title,marker:!!document.querySelector('meta[name=\"redmagic-duo-contributors\"][content=\"1\"]'),embedded:!!document.querySelector('#duo-native-embedded'),heading:document.querySelector('#projects-title')?.textContent.trim()||'',headings:Array.from(document.querySelectorAll('h2')).map(e=>e.textContent.trim()),"
@@ -151,7 +151,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
                 boolean needed=bottom.getDouble("scrollHeight")>bottom.getDouble("height")+1;
                 if(needed){require(view.getScrollY()>0&&bottom.getDouble("scrollY")>0,"Overflow is scrolled by the WebView itself");webScrollObserved=true;}
                 require(bottom.getDouble("footerTop")>=-1&&bottom.getDouble("footerBottom")<=bottom.getDouble("height")+2,"Document footer is fully reachable");
-                require(bottom.getDouble("lastDonorTop")>=-1&&bottom.getDouble("lastDonorBottom")<=bottom.getDouble("height")+2,"The eighth donor is fully reachable");
+                require(bottom.getDouble("lastDonorTop")>=-1&&bottom.getDouble("lastDonorBottom")<=bottom.getDouble("height")+2,"The last donor is fully reachable");
                 require(!view.getSettings().getJavaScriptEnabled(),"DOM inspection restored production JavaScript-off state");return null;
             });
             layouts.getJSONObject(layouts.length()-1).put("bottom",new JSONObject().put("scrollYCss",bottom.getDouble("scrollY"))
@@ -226,7 +226,7 @@ final class ContributorsReferencesUiCases implements Application.ActivityLifecyc
         }
         require(!dom.getString("text").contains("1.0.22")&&!dom.getString("text").contains("GPL-3.0"),"Version and license small text was removed from the webpage");
         require(exact(dom.getJSONArray("projects"),PROJECTS),"Only HyperCeiler, LiftArc, 红魔助手, Van Step, MiStep and HyperIsland appear in the project list");
-        require(exact(dom.getJSONArray("donors"),DONORS),"All eight original donors remain in order");
+        require(exact(dom.getJSONArray("donors"),DONORS),"All nine donors appear in order");
         require(dom.getInt("oldPeople")==0&&!arrayContains(dom.getJSONArray("headings"),"贡献者"),"Old contributors heading and people-list structure are absent");
         for(String removed:REMOVED)require(!dom.getString("text").contains(removed),"Removed contributor is absent: "+removed);
         require(!view.getSettings().getJavaScriptEnabled()&&view.getSettings().getBlockNetworkLoads()

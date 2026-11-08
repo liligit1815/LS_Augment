@@ -8,6 +8,7 @@ import android.os.Handler;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -35,6 +36,10 @@ final class ExtraDimOwnershipClient {
         volatile State state = State.EMPTY;
         volatile boolean loaded;
         volatile long retryAfter;
+        volatile long checkedAt;
+        long reconcileAfter;
+        ScheduledFuture<?> scheduled;
+        long scheduledAt,scheduledId;
         ContentObserver observer; int failures;
         Binding(Context context, int user, Handler handler, java.util.function.Consumer<Boolean> changed) {
             this.context = context; this.user = user; this.handler = handler; this.changed = changed;
@@ -54,13 +59,50 @@ final class ExtraDimOwnershipClient {
                 if (previous != null) WORKER.execute(() -> unregister(previous));
             }
         }
-        if (!binding.loaded && System.nanoTime() >= binding.retryAfter) schedule(binding, 0);
+        long now=System.nanoTime();
+        // A missed provider/Settings notification must not leave a successful
+        // snapshot frozen forever. Reads remain off the native callback thread.
+        if ((!binding.loaded && now >= binding.retryAfter)
+                || binding.loaded && now-binding.checkedAt>=TimeUnit.SECONDS.toNanos(5)) schedule(binding, 0);
         return binding.state;
     }
 
+    static String evidence() {
+        Binding b=current;
+        return b==null?"ownership=unbound":"ownership="+(b.loaded?"ready":"unavailable")+";requestUser="+b.user
+                +";requestAgeMs="+(b.checkedAt==0?-1:TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-b.checkedAt))
+                +";generation="+b.invalidations.get();
+    }
+
+    static void reconcile(int user,Handler handler) {
+        Binding b=current;
+        if(b==null||b.user!=user||b.handler!=handler||!b.loaded||!b.state.owned)return;
+        synchronized(b){
+            long now=System.nanoTime();
+            if(now<b.reconcileAfter)return;
+            b.reconcileAfter=now+TimeUnit.SECONDS.toNanos(5);
+            b.invalidations.incrementAndGet();
+        }
+        FeatureRuntimeLog.event("EXTRA_DIM_RECONCILE","user="+user+";action=reread_native_request");
+        schedule(b,0);
+    }
+
     private static void schedule(Binding binding, long delay) {
-        if (current == binding && binding.queued.compareAndSet(false, true))
-            WORKER.schedule(() -> refresh(binding), delay, TimeUnit.MILLISECONDS);
+        synchronized(binding){
+            if(current!=binding)return;
+            long at=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(delay);
+            if(binding.queued.get()){
+                // A real user notification preempts low-frequency outage retry.
+                // An executing read is replayed by its invalidation generation.
+                if(binding.scheduled==null||at>=binding.scheduledAt)return;
+                binding.scheduled.cancel(false);
+            }
+            binding.queued.set(true);binding.scheduledAt=at;long id=++binding.scheduledId;
+            binding.scheduled=WORKER.schedule(()->{
+                synchronized(binding){if(id!=binding.scheduledId)return;binding.scheduled=null;}
+                refresh(binding);
+            },delay,TimeUnit.MILLISECONDS);
+        }
     }
     private static void unregister(Binding binding) {
         if (binding.observer != null) try { binding.context.getContentResolver().unregisterContentObserver(binding.observer); }
@@ -73,7 +115,11 @@ final class ExtraDimOwnershipClient {
     private static void observe(Binding binding) {
         if (binding.observer != null) return;
         ContentObserver observer = new ContentObserver(binding.handler) {
-            @Override public void onChange(boolean selfChange) { binding.invalidations.incrementAndGet(); schedule(binding, 0); }
+            @Override public void onChange(boolean selfChange) {
+                binding.invalidations.incrementAndGet();
+                FeatureRuntimeLog.event("EXTRA_DIM_NOTIFY","user="+binding.user+";generation="+binding.invalidations.get());
+                schedule(binding, 0);
+            }
         };
         try {
             binding.context.getContentResolver().registerContentObserver(privateUri(binding, "/extra-dim-ownership"), false, observer);
@@ -111,18 +157,21 @@ final class ExtraDimOwnershipClient {
                 next = new State(true, "1".equals(active), amount);
             }
             if (observedGeneration != binding.invalidations.get()) return;
-            binding.failures = 0; binding.loaded = true;
+            binding.failures = 0; binding.loaded = true; binding.checkedAt=System.nanoTime();
+            String detail="user="+binding.user+";owned="+next.owned+";requested="+next.active+";strength="+next.strength;
+            FeatureRuntimeLog.state("EXTRA_DIM_REQUEST",detail,detail+";generation="+observedGeneration);
             publish(binding, next, next.owned && observedGeneration != binding.appliedGeneration);
             binding.appliedGeneration = observedGeneration;
         } catch (RuntimeException unavailable) {
+            FeatureRuntimeLog.event("EXTRA_DIM_REQUEST_ERROR","user="+binding.user+";exception="+FeatureRuntimeLog.failure(unavailable));
             binding.loaded = false;
             binding.retryAfter = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             publish(binding, State.EMPTY, false);
-            retry = ++binding.failures <= 3;
+            binding.failures++;retry=true;
         } finally {
             binding.queued.set(false);
             if (binding.invalidations.get() != observedGeneration) schedule(binding, 0);
-            else if (retry) schedule(binding, 500L * binding.failures);
+            else if (retry) schedule(binding, binding.failures<=3?500L*binding.failures:30_000L);
         }
     }
     private static void publish(Binding binding, State next, boolean reapply) {

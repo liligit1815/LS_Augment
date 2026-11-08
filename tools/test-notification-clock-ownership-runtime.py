@@ -13,6 +13,7 @@ helper = ROOT / "tools/test-notification-appearance-runtime.py"
 scope = {"__file__": str(helper)}
 exec(compile(helper.read_text(encoding="utf-8").split("java=Path(", 1)[0], str(helper), "exec"), scope)
 files = scope["files"]
+files["android/os/SystemClock.java"] = "package android.os;public class SystemClock{public static long uptimeMillis(){return 10000L;}}"
 
 # A method can have several independent interceptors in production. A map of
 # method -> one callback hides the very collision covered by this regression.

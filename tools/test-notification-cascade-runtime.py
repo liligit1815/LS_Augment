@@ -18,6 +18,7 @@ files['ls/augment/com/hook/AugmentModule.java']=files['ls/augment/com/hook/Augme
 files['android/content/ContentResolver.java']='package android.content;public class ContentResolver{}'
 files['android/provider/Settings.java']='package android.provider;public class Settings{public static class Secure{public static int getInt(android.content.ContentResolver r,String k,int d){return d;}}public static class Global extends Secure{}}'
 files.update({
+'android/os/SystemClock.java':'package android.os;public class SystemClock{public static long uptimeMillis(){return System.currentTimeMillis();}}',
 'android/os/Build.java':'package android.os;public class Build{public static class VERSION{public static int SDK_INT=37;}}',
 'android/graphics/RuntimeShader.java':'package android.graphics;public class RuntimeShader{public RuntimeShader(String code){}public void setFloatUniform(String key,float v){}}',
 'android/content/Context.java':'''package android.content;public class Context{
@@ -52,7 +53,7 @@ files.update({
  public static boolean enabled(android.content.Context c,String k,boolean d){return values.containsKey(k)?"1".equals(values.get(k)):d;}
  public static int integer(android.content.Context c,String k,int d,int a,int b){return values.containsKey(k)?Integer.parseInt(values.get(k)):d;}
  public static final java.util.Map<String,String> reports=new java.util.HashMap<>();
- public static boolean addSnapshotListener(android.content.Context c,Runnable r){return true;}public static void diagnostic(android.content.Context c,String k,String v){reports.put(k,v);}}
+ public static final java.util.List<Runnable> listeners=new java.util.ArrayList<>();public static boolean addSnapshotListener(android.content.Context c,Runnable r){listeners.add(r);return true;}public static void diagnostic(android.content.Context c,String k,String v){reports.put(k,v);}}
 ''',
 BASE+'stack/ExpandableViewState.java':'''package com.android.systemui.statusbar.notification.stack;public class ExpandableViewState{
  public float mYTranslation,mZTranslation,mScaleX=1,mScaleY=1,alpha=1;public int height=100,clipTopAmount,clipBottomAmount;public boolean gone,hidden;
@@ -108,15 +109,15 @@ import ls.augment.com.*;import com.android.systemui.statusbar.notification.row.*
 public class TestCascade{
  static int n;static void check(boolean b,String m){n++;if(!b)throw new AssertionError(m);}static void near(float a,float b,String m){check(Math.abs(a-b)<.001,m+" "+a+" != "+b);}
  static class SubRow extends ExpandableNotificationRow{}public static class SubAlgorithm extends StackScrollAlgorithm{public SubAlgorithm(NotificationStackScrollLayout h){super(h);}}
- static void flag(String k,boolean v){FeatureSettings.values.put(k,v?"1":"0");}
+ static void flag(String k,boolean v){FeatureSettings.values.put(k,v?"1":"0");for(Runnable r:new java.util.ArrayList<>(FeatureSettings.listeners))r.run();android.os.Handler.drain();}
  public static void main(String[] args){AugmentModule m=new AugmentModule();AugmentModule.active=m;
   int hooks=NotificationCascadeHook.install(m,TestCascade.class.getClassLoader());
   if(args.length>0){check(hooks==0&&m.hooks.isEmpty(),"missing contract cannot partially hook");System.out.println("cascade missing contract rejected");return;}
-  check(hooks==9,"installed");NotificationStackScrollLayout h=new NotificationStackScrollLayout();AmbientState a=new AmbientState();StackScrollAlgorithm alg=new SubAlgorithm(h);
+  check(hooks==1&&m.hooks.size()==1&&m.deoptimized==0,"cold disabled path only owns bootstrap without deoptimization");NotificationStackScrollLayout h=new NotificationStackScrollLayout();AmbientState a=new AmbientState();StackScrollAlgorithm alg=new SubAlgorithm(h);
   SubRow front=new SubRow(),tail=new SubRow(),secret=new SubRow();front.nativeY=600;tail.nativeY=800;secret.nativeY=850;secret.privateHidden=true;h.addView(front);h.addView(tail);h.addView(secret);
-  alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"disabled native shelf");
+  alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"disabled native shelf");check(m.hooks.isEmpty()&&m.deoptimized==0,"disabled pass removes bootstrap after listener takes ownership");
   flag(SystemUiOptions.NOTIFICATION_STACK,true);alg.clamps=0;alg.resetViewStates(a,0);check(alg.clamps==0&&tail.state.mYTranslation>600&&tail.state.mYTranslation<800,"tail preserves natural position before projecting");
-  check(tail.state.mScaleX<1&&tail.state.alpha<1&&tail.effect!=null,"shrink/fade/blur");check(front.state.mZTranslation>tail.state.mZTranslation,"front occludes tail");check(secret.state.hidden&&secret.effect==null,"privacy preserved");check(h.scrollRange==2000,"native scroll range untouched");
+  int activeHookCount=m.hooks.size();check(activeHookCount>=9,"enabled path installs native contract hooks");check(tail.state.mScaleX<1&&tail.state.alpha<1&&tail.effect!=null,"shrink/fade/blur");check(front.state.mZTranslation>tail.state.mZTranslation,"front occludes tail");check(secret.state.hidden&&secret.effect==null,"privacy preserved");check(h.scrollRange==2000,"native scroll range untouched");
   float scale=tail.state.mScaleX;tail.sx=scale;tail.sy=scale;alg.resetViewStates(a,0);near(tail.state.mScaleX,scale,"no cumulative scale");
   flag(NotificationAppearanceOptions.STACK_GRADIENT,false);alg.resetViewStates(a,0);check(tail.effect==null&&tail.state.alpha==1,"gradient disabled");
   tail.busy=true;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"swiping uses native");near(tail.py,50,"pivot restored");tail.busy=false;tail.sx=tail.sy=1;
@@ -128,7 +129,7 @@ public class TestCascade{
   a.expansion=.5f;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"partial expansion native");
   check(lastLayout.equals(FeatureSettings.reports.get("ls_augment_notification_cascade_last_layout_shade")),"collapsed shade erased last expanded geometry");a.expansion=1;
   h.resources.configuration.orientation=2;alg.resetViewStates(a,0);near(tail.state.mYTranslation,700,"landscape default native");flag(NotificationAppearanceOptions.STACK_LANDSCAPE,true);alg.resetViewStates(a,0);check(tail.state.mScaleX<1,"landscape opt in");
-  flag(SystemUiOptions.NOTIFICATION_STACK,false);tail.sx=tail.sy=.8f;alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"disable restores native scale");check(tail.effect==null&&tail.py==50,"disable releases effects");near(tail.sx,1,"recycled view scale restored");near(tail.sy,1,"recycled view height scale restored");
+  tail.sx=tail.sy=.8f;flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);near(tail.state.mScaleX,1,"disable restores native scale");check(tail.effect==null&&tail.py==50,"disable releases effects");near(tail.sx,1,"recycled view scale restored");near(tail.sy,1,"recycled view height scale restored");
   float lastScale=1,lastAlpha=1;for(int i=0;i<1000;i++){float y=600+i;NotificationCascadePolicy.Card c=NotificationCascadePolicy.project(y,100,700,600,1000,2,true);check(Float.isFinite(c.y)&&c.scale>0&&c.alpha>=0&&c.alpha<=1,"finite geometry");check(c.scale<=lastScale&&c.alpha<=lastAlpha,"monotonic depth");lastScale=c.scale;lastAlpha=c.alpha;}
   flag(SystemUiOptions.NOTIFICATION_STACK,true);flag(NotificationAppearanceOptions.STACK_GRADIENT,true);h.resources.configuration.orientation=1;alg.vendor=true;
   h.scrollRange=0;
@@ -167,6 +168,10 @@ public class TestCascade{
   check(FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_shade")&&FeatureSettings.reports.containsKey("ls_augment_notification_cascade_runtime_lock"),"independent evidence");
   alg.failChild=true;try{alg.resetViewStates(a,0);throw new AssertionError("native failure propagated");}catch(RuntimeException expected){}near(alg.mKeyguardNotificationSpace,600,"capacity restored on throw");alg.failChild=false;
   flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);check(h.getScrollRange()==0&&h.mOwnScrollY==0,"disable restores native range and position");alg.resetViewStates(a,0);check(tail.state.hidden,"native lock capacity restored");
+  check(m.hooks.isEmpty(),"disable releases every hot row hook and bootstrap");
+  int deopt=m.deoptimized;
+  for(int cycle=0;cycle<4;cycle++){flag(SystemUiOptions.NOTIFICATION_STACK,true);alg.resetViewStates(a,0);check(m.hooks.size()==activeHookCount,"re-enable owns one set of active hooks");flag(SystemUiOptions.NOTIFICATION_STACK,false);alg.resetViewStates(a,0);check(m.hooks.isEmpty(),"repeated disable leaves no layout hooks");}
+  check(m.deoptimized==deopt,"deoptimization does not repeat per toggle");
   check(m.errors==0,"no runtime errors");System.out.println("cascade checks="+n);}}
 ''',
 'ls/augment/com/hook/TestWake.java':'''package ls.augment.com.hook;
@@ -200,41 +205,47 @@ import android.view.*;import android.graphics.*;import android.graphics.drawable
 public class TestClockBackdrop{
  static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
  static class HeaderSubclass extends CCHeaderView{}
- static class Source implements NotificationTopBlur.Source{boolean on=true;Set<View> hidden=new HashSet<>();public boolean active(){return on;}public boolean eligible(View v){return !hidden.contains(v);}public int clip(View v){return v.drawClipTop;}public void clip(View v,int clip){v.drawClipTop=clip;}}
+ static class Source implements NotificationTopBlur.Source{boolean on=true;Set<View> hidden=new HashSet<>();public boolean active(){return on;}public boolean eligible(View v){return !hidden.contains(v);}}
+ // Model the real OEM's dispatchDraw: software-only failures cancel internally,
+ // so an outer try/catch cannot protect the notification.
+ static class HardwareRow extends View{int cancellations;public void draw(Canvas c){if(!c.isHardwareAccelerated()){cancellations++;return;}super.draw(c);}}
  public static void main(String[] args){
   ViewGroup root=new ViewGroup(),stack=new ViewGroup();root.height=1000;stack.height=800;stack.y=20;root.addView(stack);
-  CCHeaderView header=new HeaderSubclass();header.y=40;root.addView(header);header.setPadding(3,5,7,9);Drawable nativeBackground=new ColorDrawable(0);header.setBackground(nativeBackground);header.setPadding(3,5,7,9);
-  View row=new View(),secret=new View();row.x=20;row.y=50;row.ink=5;row.drawClipTop=60;stack.addView(row);secret.y=50;secret.ink=9;stack.addView(secret);
+  CCHeaderView header=new HeaderSubclass();header.y=40;root.addView(header);Drawable nativeBackground=new ColorDrawable(0);header.setBackground(nativeBackground);header.setPadding(3,5,7,9);
+  HardwareRow row=new HardwareRow(),secret=new HardwareRow();row.x=20;row.y=50;row.ink=5;stack.addView(row);secret.y=50;secret.ink=9;stack.addView(secret);
   Source source=new Source();source.hidden.add(secret);NotificationTopBlur blur=new NotificationTopBlur(stack,source);blur.update(Arrays.asList(row,secret));
-  check(header.getBackground()!=nativeBackground&&header.getPaddingTop()==5&&header.getPaddingBottom()==9,"native padding survives background attachment");
+  check(header.getBackground()!=nativeBackground&&header.getPaddingTop()==5,"native layout preserved");
   Canvas canvas=new Canvas();header.draw(canvas);
-  check(canvas.nodes==1&&canvas.bitmap.p[40][300]==5,"native notification pixels appear behind clock despite original top clipping");
-  check(canvas.bitmap.p[96][300]==0&&canvas.bitmap.p[19][300]==0,"blur output is confined to clock/date vertical region; first visible row is excluded");
-  check(canvas.bitmap.p[30][20]==3&&canvas.bitmap.p[80][20]==4,"clock/date draw above backdrop and remain sharp");
-  check(row.drawClipTop==60&&row.effect==null&&secret.drawCount==0,"list clipping/effect/privacy unchanged");
-  check(header.mClockView.drawCount==1&&header.mDateView.drawCount==1,"clock/date never captured in blurred source");
-  check(blur.evidence().contains("header_pixels=0,20,400,95;drawn_rows=1"),"measured header evidence is independent of stack origin");
-  row.drawClipBottom=60;canvas=new Canvas();header.draw(canvas);check(canvas.bitmap.p[75][300]==0,"native actual-height/bottom clipping survives backdrop replay");row.drawClipBottom=0;
-  header.getViewTreeObserver().dispatch();int invalidates=header.invalidates;header.getViewTreeObserver().dispatch();check(header.invalidates==invalidates,"stationary shade does not schedule a continuous rendering loop");row.y+=3;header.getViewTreeObserver().dispatch();check(header.invalidates>invalidates,"native property animation invalidates backdrop without algorithm reset");row.y-=3;
-  row.y=200;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"no cached notification remains after leaving header");
-  row.y=50;source.hidden.add(row);canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"privacy change rechecked at draw without a new layout");source.hidden.remove(row);
-  header.mClockView.height=70;header.mDateView.y=110;header.mDateView.height=30;row.y=95;
-  canvas=new Canvas();header.draw(canvas);check(canvas.nodes==1&&canvas.bitmap.p[130][300]==5&&canvas.bitmap.p[141][300]==0,"larger clock/date and current row position change the mask in same draw");
-  row.sy=.8f;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"transformed row rejected instead of guessing coordinates");row.sy=1;
-  header.rotation=4;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"rotated header keeps native drawing");header.rotation=0;
-  source.on=false;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"disable is checked before drawing old frame");header.getViewTreeObserver().dispatch();check(header.getBackground()==nativeBackground&&header.getPaddingLeft()==3&&header.getViewTreeObserver().listeners.isEmpty(),"pre-draw disable restores background/padding and removes observer without a layout pass");
-  source.on=true;blur.update(Arrays.asList(row));Drawable replacement=new ColorDrawable(0);header.setBackground(replacement);blur.clear();check(header.getBackground()==replacement,"native replacement is not overwritten by restore");
-  header.panelType=1;blur.update(Arrays.asList(row));check(header.getBackground()==replacement&&blur.evidence().startsWith("missing_notification_clock"),"control center header not mistaken for notification clock");header.panelType=2;
-  header.mDateView=new android.widget.TextView();blur.update(Arrays.asList(row));check(header.getBackground()==replacement&&blur.evidence().startsWith("unavailable_clock_geometry"),"missing clock subtree falls back without a fake region");header.addView(header.mDateView);header.mDateView.y=110;header.mDateView.height=30;
-  blur.update(Arrays.asList(row));row.drawThrows=true;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0&&row.drawClipTop==60,"drawing failure restores native clip and never shows partially recorded pixels");
-  check(FeatureSettings.reports.get("ls_augment_notification_top_blur_runtime").contains("draw_unavailable"),"failed capture has concrete diagnostic");
-  row.drawThrows=false;blur.clear();check(header.getBackground()==replacement,"failed renderer can release owned background");
-  System.out.println("clock backdrop raster/lifecycle checks="+checks);
+  check(canvas.nodes==1&&canvas.bitmap.p[40][300]==5,"hardware notification contents fill clock region behind text");
+  check(canvas.bitmap.p[106][300]==0&&canvas.bitmap.p[13][300]==0,"effect stays within measured padded clock region");
+  check(canvas.bitmap.p[30][20]==3&&canvas.bitmap.p[80][20]==4&&header.mClockView.effect==null&&header.mDateView.effect==null,"clock/date remain sharp above backdrop");
+  check(row.cancellations==0&&secret.drawCount==0&&row.effect==null,"hardware-only drawing avoids OEM software error cancellation; privacy preserved");
+  check(blur.evidence().contains("renderer=hardware;radius_dp=10;software_draws=0;header_pixels=0,14,400,105;drawn_rows=1"),"region and rendering path diagnosed");
+  row.drawClipTop=60;row.drawClipBottom=10;canvas=new Canvas();header.draw(canvas);check(canvas.bitmap.p[40][300]==0&&row.drawClipTop==60&&row.drawClipBottom==10,"native clip is never lifted or mutated");row.drawClipTop=row.drawClipBottom=0;
+  header.getViewTreeObserver().dispatch();int invalidates=header.invalidates;header.getViewTreeObserver().dispatch();check(header.invalidates==invalidates,"no stationary invalidate loop");row.y+=3;header.getViewTreeObserver().dispatch();check(header.invalidates>invalidates,"native movement updates sampling");row.y-=3;
+  row.y=200;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"leaving header shows no stale notification");row.y=50;
+  source.hidden.add(row);canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"privacy rechecked at draw");source.hidden.remove(row);
+  row.sy=.8f;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"unknown row transform remains native");row.sy=1;
+  header.rotation=4;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0,"unknown header transform remains native");header.rotation=0;
+  source.on=false;header.getViewTreeObserver().dispatch();check(header.getBackground()==nativeBackground&&header.getViewTreeObserver().listeners.isEmpty(),"disable removes observer and restores background");source.on=true;
+  blur.update(Arrays.asList(row));Drawable replacement=new ColorDrawable(0);header.setBackground(replacement);blur.clear();check(header.getBackground()==replacement,"external background replacement is preserved");
+  header.panelType=1;blur.update(Arrays.asList(row));check(blur.evidence().startsWith("missing_notification_clock"),"control-center clock not targeted");header.panelType=2;
+  blur.update(Arrays.asList(row));row.drawThrows=true;canvas=new Canvas();header.draw(canvas);check(canvas.nodes==0&&row.drawClipTop==0,"failed hardware draw never publishes partial content or changes row clip");check(FeatureSettings.reports.get("ls_augment_notification_top_blur_runtime").contains("draw_unavailable"),"concrete failure diagnostic");row.drawThrows=false;blur.clear();
+  check(row.cancellations==0,"no software fallback across lifecycle branches");
+  System.out.println("clock backdrop hardware/no-cancellation/region/privacy/lifecycle checks="+checks);
  }
 }'''
 
 from notification_header_blur_facade import extend
 extend(files)
+
+# GPU mask facade: Android pixel filtering and edge feathering are additionally
+# verified on device; these doubles enforce the isolated-layer contract.
+files['android/graphics/BlendMode.java']='package android.graphics;public enum BlendMode{DST_IN}'
+files['android/graphics/LinearGradient.java']='package android.graphics;public class LinearGradient extends Shader{public LinearGradient(float a,float b,float c,float d,int[] colors,float[] stops,TileMode mode){}}'
+files['android/graphics/Paint.java']='package android.graphics;public class Paint{public static final int ANTI_ALIAS_FLAG=1,FILTER_BITMAP_FLAG=2;public Shader shader;public BlendMode blend;public Paint(int flags){}public void setShader(Shader s){shader=s;}public void setBlendMode(BlendMode b){blend=b;}}'
+files['android/graphics/Canvas.java']=files['android/graphics/Canvas.java'].replace(' public int save()', ' public int masks;public int saveLayer(float a,float b,float c,float d,Paint p){return save();}public void drawRect(Rect r,Paint p){if(p.shader==null||p.blend!=BlendMode.DST_IN||saves.isEmpty())throw new AssertionError("unscoped feather mask");masks++;}public int save()')
+files['ls/augment/com/hook/TestClockBackdrop.java']=files['ls/augment/com/hook/TestClockBackdrop.java'].replace('canvas.nodes==1&&canvas.bitmap.p[40][300]==5','canvas.nodes==1&&canvas.masks==2&&canvas.bitmap.p[40][300]==5')
 
 for variant in ['legacy','modern','missing','missing_clip','wrong_clip_type']:
     current=dict(files)

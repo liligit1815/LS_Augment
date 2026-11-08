@@ -6,7 +6,7 @@
 
 ## 预览与维护
 
-直接用浏览器打开 [public/index.html](public/index.html)。首个分组为“感谢”，下面完整保留说明：“红魔Duo使用了以下开源项目的部分或全部内容，感谢这些项目的开发者提供的大力支持（排名顺序不分先后）。”`ul.projects` 只显示 **HyperCeiler、LiftArc、红魔助手、Van Step、MiStep、HyperIsland** 六个项目名称，不显示项目介绍、版本或许可小字；原“贡献者”栏目及个人／团队名单已删除。捐赠列表仍在 `ul.donors` 中，现有8位名单保持原样。
+直接用浏览器打开 [public/index.html](public/index.html)。首个分组为“感谢”，下面完整保留说明：“红魔Duo使用了以下开源项目的部分或全部内容，感谢这些项目的开发者提供的大力支持（排名顺序不分先后）。”`ul.projects` 只显示 **HyperCeiler、LiftArc、红魔助手、Van Step、MiStep、HyperIsland** 六个项目名称，不显示项目介绍、版本或许可小字；原“贡献者”栏目及个人／团队名单已删除。捐赠列表仍在 `ul.donors` 中，现有9位捐赠者，新增名单追加在末尾。
 
 项目使用 `.projects`、`.project`、`.project-link`、`.project-static` 类，沿用原页面的蓝色、卡片、字级和双列／手机单列布局；`.thanks-description` 为分组说明。App内“感谢”“捐赠列表”采用公共compactTextSize(16)、700字重及正文色，说明使用compactTextSize(12)及次要文字色，保留自然字体缩放。导航到首标题总间距8dp，左右16dp，标题到首内容16dp；链接整项至少48dp，名称用公共强调色和下划线提示可点击，按压和键盘焦点沿用公共颜色。项目正文只维护在网页中，不增加原生引用卡、弹窗或复制按钮。保留文档头部 `redmagic-duo-contributors` 标记，App 用它识别有效页面，避免把错误页当作名单。
 

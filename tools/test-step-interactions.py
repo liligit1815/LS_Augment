@@ -68,10 +68,13 @@ public class InteractionCases {
             WorkspaceLayout l=new WorkspaceLayout(size[0],size[1],2.5f,left);
             for(float ratio:new float[]{.45f,.6f,.75f}){
                 int edge=(int)(size[1]*ratio);int gap=12;
-                float top=WorkspaceImeGeometry.top(l,true,edge,edge,gap);
-                check(top<=l.top,"keyboard only raises main");check(top+l.mainScale*edge<=edge-gap+.01f,"native resized editor above physical keyboard");
-                top=WorkspaceImeGeometry.top(l,true,edge,size[1],gap);
-                check(top+l.mainScale*size[1]<=edge-gap+.01f,"adjustNothing full page bottom above keyboard");
+                WorkspaceImeGeometry.Pose p=WorkspaceImeGeometry.pose(l,true,edge,edge,gap);
+                check(p.y==l.top,"keyboard never covers top editor with toolbar");
+                if(edge>l.top+gap){
+                    check(p.y+p.scale*edge<=edge-gap+.01f,"native resized editor above physical keyboard");
+                    p=WorkspaceImeGeometry.pose(l,true,edge,size[1],gap);
+                    check(p.y+p.scale*size[1]<=edge-gap+.01f,"unresized page bottom above keyboard");
+                }else check(p.scale==l.mainScale,"insufficient space preserves native layout");
             }
             check(WorkspaceImeGeometry.top(l,false,600,600,12)==l.top,"floating or hidden keyboard preserves layout");
             check(WorkspaceImeGeometry.top(l,true,-1,600,12)==l.top,"unknown source preserves layout");

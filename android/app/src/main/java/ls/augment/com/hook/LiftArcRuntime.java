@@ -28,6 +28,7 @@ final class LiftArcRuntime {
     };
     private static String reason="等待系统界面建立锁屏适配";
     static void bind(LiftArcConfig value,Context ctx) {
+        if(config==value&&context==ctx)return;
         config=value; context=ctx;
         if(!heartbeatStarted) {
             heartbeatStarted=true;
@@ -43,8 +44,8 @@ final class LiftArcRuntime {
     static void installed(boolean value) { installed=value; publish(); }
     static boolean paused() { return paused; }
     static boolean conflicted() { return conflict; }
-    static void unlockReady(boolean value) { unlock=value; publish(); }
-    static void views(boolean value) { views=value; publish(); }
+    static void unlockReady(boolean value) { if(unlock==value)return;unlock=value; publish(); }
+    static void views(boolean value) { if(views==value)return;views=value; publish(); }
     static void wallpaperPending() { wallpaper=false;attemptedWallpaper=false;publish(); }
     static void wallpaper(boolean value,boolean shaderReady) {
         attemptedWallpaper=true; wallpaper=value; shader=shaderReady; publish();

@@ -23,11 +23,18 @@ final class NotificationCascadeHook {
     private final Map<View,Owned> owned=new WeakHashMap<>();
     private final Map<View,TopClip> topClips=new WeakHashMap<>();
     private final Map<ViewGroup,Surface> surfaces=new WeakHashMap<>();
+    private final Map<ViewGroup,Boolean> knownHosts=new WeakHashMap<>();
+    private static final Map<Integer,RenderEffect> blurEffects=new java.util.LinkedHashMap<Integer,RenderEffect>(96,.75f,true){
+        @Override protected boolean removeEldestEntry(Map.Entry<Integer,RenderEffect> entry){return size()>96;}
+    };
+    private io.github.libxposed.api.XposedInterface.HookHandle resetHook;
     private final ThreadLocal<Boolean> nativeRange=ThreadLocal.withInitial(()->false);
     private final ThreadLocal<ViewGroup> scrolling=new ThreadLocal<>();
     private Frame current;
     private final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
-    private boolean listening;
+    private boolean listening,activeInstallFailed,deoptimized,active;
+    private final ArrayList<io.github.libxposed.api.XposedInterface.HookHandle> activeHooks=new ArrayList<>();
+    private Boolean featureEnabled;
     private NotificationCascadeHook(ClassLoader loader)throws ReflectiveOperationException{access=new Access(loader);}
 
     static int install(AugmentModule module,ClassLoader loader){
@@ -35,12 +42,29 @@ final class NotificationCascadeHook {
         catch(ReflectiveOperationException|LinkageError failure){module.logFeatureError("NOTIFICATION_CASCADE_UNAVAILABLE",failure);return 0;}
     }
     private int install(AugmentModule module){
-        module.registerFeatureHook(module.prepareFeatureHook(access.reset,"notification.cascade.reset",false).intercept(chain->{
+        installReset(module);
+        module.logFeatureInfo("NOTIFICATION_CASCADE_READY lazy=true;alpha="+(access.alpha.getParameterCount()==1?"legacy":"reason")+";subclasses=true");
+        return 1;
+    }
+    private void installReset(AugmentModule module){
+        if(resetHook!=null)return;
+        resetHook=module.prepareFeatureHook(access.reset,"notification.cascade.reset",false).intercept(chain->{
             ViewGroup host=(ViewGroup)access.host.get(chain.getThisObject());
+            knownHosts.put(host,Boolean.TRUE);
+            android.content.Context context=host.getContext();
             if(!listening)listening=FeatureSettings.addSnapshotListener(host.getContext(),()->main.post(()->{
-                for(ViewGroup view:new ArrayList<>(surfaces.keySet()))if(view!=null&&view.isAttachedToWindow())
+                if(FeatureSettings.enabled(context,SystemUiOptions.NOTIFICATION_STACK)){
+                    try{installReset(module);}catch(Throwable error){module.logFeatureError("NOTIFICATION_CASCADE_RESUME",error);}
+                }else suspend(module,context);
+                for(ViewGroup view:new ArrayList<>(knownHosts.keySet()))if(view!=null&&view.isAttachedToWindow())
                     try{access.refresh.invoke(view);}catch(ReflectiveOperationException error){module.logFeatureError("NOTIFICATION_CASCADE_REFRESH",error);}
             }));
+            boolean enabled=FeatureSettings.enabled(host.getContext(),SystemUiOptions.NOTIFICATION_STACK);
+            if(!enabled){
+                suspend(module,context);return chain.proceed();
+            }
+            featureEnabled=true;
+            if(!activate(module)){clear(host);return chain.proceed();}
             Frame previous=current,frame;
             try{frame=new Frame(host,chain.getThisObject(),chain.getArg(0));}
             catch(ReflectiveOperationException|RuntimeException unavailable){clear(host);return chain.proceed();}
@@ -51,8 +75,26 @@ final class NotificationCascadeHook {
             catch(ReflectiveOperationException|RuntimeException error){clear(host);report(frame,"unavailable;reason="+error.getClass().getSimpleName(),0,0,0);}
             finally{current=previous;}
             return result;
-        }));
-        module.registerFeatureHook(module.prepareFeatureHook(access.updateChild,"notification.cascade.lock_space",false).intercept(chain->{
+        });
+    }
+    private void suspend(AugmentModule module,android.content.Context context){
+        if(!Boolean.FALSE.equals(featureEnabled)){
+            for(ViewGroup old:new ArrayList<>(knownHosts.keySet()))if(old!=null)clear(old);
+            releaseHooks(module);activeInstallFailed=!activeHooks.isEmpty();
+            featureEnabled=false;
+        }
+        // Once the snapshot listener owns reactivation, no per-frame bootstrap is needed.
+        if(listening&&resetHook!=null)try{resetHook.unhook();resetHook=null;}
+        catch(Throwable error){module.logFeatureError("NOTIFICATION_CASCADE_SUSPEND",error);}
+        FeatureSettings.diagnostic(context,"ls_augment_notification_cascade_runtime_shade",
+                "native;reason=master_off;active_hooks="+(activeHooks.size()+(resetHook==null?0:1)));
+    }
+    private boolean activate(AugmentModule module){
+        if(activeInstallFailed)return false;
+        if(active)return true;
+        if(!activeHooks.isEmpty())return false;
+        try{
+        activeHooks.add(module.prepareFeatureHook(access.updateChild,"notification.cascade.lock_space",false).intercept(chain->{
             Frame frame=current;
             if(frame==null||!frame.enabled||!frame.keyguard||chain.getThisObject()!=frame.algorithm)return chain.proceed();
             Object raw=access.children.get(chain.getArg(1));int index=((Number)chain.getArg(0)).intValue();
@@ -67,18 +109,18 @@ final class NotificationCascadeHook {
             try{access.lockSpace.setFloat(frame.algorithm,Float.MAX_VALUE);frame.spacePasses++;return chain.proceed();}
             finally{access.lockSpace.setFloat(frame.algorithm,original);}
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(access.scrollRange,"notification.cascade.scroll_range",false).intercept(chain->{
+        activeHooks.add(module.prepareFeatureHook(access.scrollRange,"notification.cascade.scroll_range",false).intercept(chain->{
             int original=((Number)chain.proceed()).intValue();
             if(nativeRange.get())return original;
             Surface surface=surfaces.get(chain.getThisObject());
             return surface!=null&&live(surface.frame)?Math.max(original,surface.required):original;
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(access.scrollingEnabled,"notification.cascade.lock_scroll",false).intercept(chain->{
+        activeHooks.add(module.prepareFeatureHook(access.scrollingEnabled,"notification.cascade.lock_scroll",false).intercept(chain->{
             Object original=chain.proceed();Surface surface=surfaces.get(chain.getThisObject());
             return Boolean.TRUE.equals(original)||surface!=null&&surface.gesture&&scrolling.get()==chain.getThisObject()
                     &&live(surface.frame)&&surface.frame.keyguard&&surface.required>0?Boolean.TRUE:original;
         }));
-        for(Method touch:access.touches)module.registerFeatureHook(
+        for(Method touch:access.touches)activeHooks.add(
                 module.prepareFeatureHook(touch,"notification.cascade.touch."+touch.getName(),false).intercept(chain->{
             ViewGroup host=(ViewGroup)chain.getThisObject();Surface surface=surfaces.get(host);
             MotionEvent event=(MotionEvent)chain.getArg(0);int action=event.getActionMasked();
@@ -100,13 +142,13 @@ final class NotificationCascadeHook {
                 if(outer&&(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL))endGesture(host,surface);
             }
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(access.shelfClamp,"notification.cascade.shelf",false).intercept(chain->{
+        activeHooks.add(module.prepareFeatureHook(access.shelfClamp,"notification.cascade.shelf",false).intercept(chain->{
             // Shelf clamping destroys the natural Y of every off-screen row.
             // Skip it only inside a verified active layout pass for ordinary rows.
             if(current!=null&&current.enabled&&eligible((View)chain.getArg(0)))return null;
             return chain.proceed();
         }));
-        module.registerFeatureHook(module.prepareFeatureHook(access.resetRow,"notification.cascade.native_scale",false).intercept(chain->{
+        activeHooks.add(module.prepareFeatureHook(access.resetRow,"notification.cascade.native_scale",false).intercept(chain->{
             Object result=chain.proceed();View row=(View)chain.getThisObject();Owned old=owned.get(row);
             // resetViewState copies the animated View scale; never feed our last
             // projection back into the next native layout generation.
@@ -117,11 +159,19 @@ final class NotificationCascadeHook {
             restoreTopClip(row,result,false);
             return result;
         }));
+        if(!deoptimized){
         for(Method method:new Method[]{access.reset,access.resetRow,access.shelfClamp,access.updateChild,access.positions,access.resetChildren,
                 access.scrollRange,access.scrollingEnabled,access.scrollTouch,access.interceptScroll,access.scrollability,access.clampScroll})module.deoptimize(method);
-        module.logFeatureInfo("NOTIFICATION_CASCADE_READY alpha="+(access.alpha.getParameterCount()==1?"legacy":"reason")+";subclasses=true");
         for(Method touch:access.touches)module.deoptimize(touch);
-        return 6+access.touches.size();
+        deoptimized=true;
+        }
+        active=true;return true;
+        }catch(Throwable error){activeInstallFailed=true;releaseHooks(module);module.logFeatureError("NOTIFICATION_CASCADE_ACTIVATE",error);return false;}
+    }
+    private void releaseHooks(AugmentModule module){
+        active=false;
+        for(int i=activeHooks.size()-1;i>=0;i--)try{activeHooks.get(i).unhook();activeHooks.remove(i);}
+        catch(Throwable error){module.logFeatureError("NOTIFICATION_CASCADE_RELEASE",error);}
     }
     private boolean live(Frame frame){
         if(frame==null||!frame.enabled||!frame.host.isAttachedToWindow())return false;
@@ -149,8 +199,6 @@ final class NotificationCascadeHook {
                 Object state=access.state.invoke(row);
                 return NotificationCascadeHook.this.eligible(row)&&!access.hidden.getBoolean(state)&&!access.gone.getBoolean(state);
             }
-            public int clip(View row)throws ReflectiveOperationException{return ((Number)access.getClipTop.invoke(row)).intValue();}
-            public void clip(View row,int value)throws ReflectiveOperationException{access.setClipTop.invoke(row,value);}
         });
         host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
             public void onViewAttachedToWindow(View v){}
@@ -169,10 +217,13 @@ final class NotificationCascadeHook {
         final ViewGroup host;final boolean enabled,keyguard;final float top,start,end,density,space,header;
         final Object algorithm,ambient;final String reason;int spacePasses;
         final StringBuilder rowGeometry=new StringBuilder();
+        final boolean geometrySample;
         final boolean gradient;
         Frame(ViewGroup host,Object algorithm,Object ambient)throws ReflectiveOperationException{
             this.host=host;this.algorithm=algorithm;this.ambient=ambient;density=host.getResources().getDisplayMetrics().density;
             keyguard=(Boolean)access.keyguard.invoke(ambient);
+            Surface prior=surfaces.get(host);
+            geometrySample=prior==null||System.currentTimeMillis()-prior.evidence[keyguard?1:0].lastReportAt>=1000;
             gradient=FeatureSettings.enabled(host.getContext(),NotificationAppearanceOptions.STACK_GRADIENT,true);
             int measured=access.maxHeight.getInt(host);if(measured<=0)measured=host.getHeight();
             top=keyguard?((Number)access.stackY.invoke(ambient)).floatValue():0;
@@ -244,7 +295,7 @@ final class NotificationCascadeHook {
             if(card.alpha==0)access.hidden.setBoolean(state,true);
             access.clipBottom.setInt(state,0);
             row.setPivotX(row.getWidth()/2f);row.setPivotY(0);
-            baseline.blur(row,card.blur);
+            baseline.blur(row,card.alpha>0?card.blur:0);
             recordGeometry(frame,row,state,i,nativeY);
         }
         for(View row:new ArrayList<>(owned.keySet()))if(row.getParent()==frame.host&&!retained.contains(row))release(row);
@@ -256,7 +307,7 @@ final class NotificationCascadeHook {
     private void recordGeometry(Frame frame,View row,Object state,int index,float nativeY)throws ReflectiveOperationException{
         // Bounded numeric state only: no package, notification key, title or body.
         // This is layout evidence, not proof of the final rendered pixels.
-        if(index>=3)return;
+        if(index>=3||!frame.geometrySample)return;
         frame.rowGeometry.append(";row").append(index).append("={native_y=").append(nativeY)
                 .append(",y=").append(access.y.getFloat(state)).append(",height=").append(access.height.getInt(state))
                 .append(",view_height=").append(row.getHeight()).append(",clip_top=").append(access.clipTop.getInt(state))
@@ -315,7 +366,7 @@ final class NotificationCascadeHook {
                 stage+";surface="+(frame.keyguard?"lock":"shade")+";rows="+rows+";visible_projected="+applied+";passes="+evidence.passes
                 +";applied_passes="+evidence.appliedPasses+";last_applied_at="+evidence.lastAppliedAt+";scroll="+scroll
                 +";native_range="+original+";effective_range="+Math.max(original,surface.required)+";start="+frame.start+";end="+frame.end
-                +";lock_space="+frame.space+";stack_header="+frame.header+";clock_backdrop="+surface.headerBlur.evidence()+";privacy=native;observed_at="+now);
+                +";lock_space="+frame.space+";stack_header="+frame.header+";clock_region_blur="+surface.headerBlur.evidence()+";privacy=native;observed_at="+now);
         // Closing the shade must not erase the last usable expanded layout.
         // The timestamp/surface keep this explicitly historical after dismissal.
         if(frame.enabled&&rows>0&&frame.rowGeometry.length()>0&&!stage.startsWith("unavailable"))
@@ -330,7 +381,9 @@ final class NotificationCascadeHook {
             float next=row.isHardwareAccelerated()?Math.round(requested*2)/2f:0;
             if(radius==next)return;
             radius=next;
-            RenderEffect effect=next>0?RenderEffect.createBlurEffect(next,next,Shader.TileMode.CLAMP):null;
+            RenderEffect effect=null;
+            if(next>0){int key=Math.round(next*2);effect=blurEffects.get(key);
+                if(effect==null){effect=RenderEffect.createBlurEffect(next,next,Shader.TileMode.CLAMP);blurEffects.put(key,effect);}}
             row.setRenderEffect(effect);
         }
     }

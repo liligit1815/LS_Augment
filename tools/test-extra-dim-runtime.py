@@ -10,6 +10,9 @@ ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'android/app/src/main/java/ls/augment/com'
 JDK=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 files={
+'android/database/ContentObserver.java':'package android.database;public class ContentObserver{public void onChange(boolean b){}}',
+'ls/augment/com/hook/FeatureRuntimeLog.java':'''package ls.augment.com.hook;final class FeatureRuntimeLog{static final java.util.List<String> events=new java.util.ArrayList<>();static void event(String s,String d){events.add(s+":"+d);}static void state(String s,String k,String d){event(s,d);}static String failure(Throwable t){return t.getClass().getName();}}''',
+'ls/augment/com/StartupDiagnostics.java':'''package ls.augment.com;final class StartupDiagnostics{static final java.util.List<String> events=new java.util.ArrayList<>();static void record(String s,String d,Throwable t){events.add(s+":"+d);}}''',
 'android/content/Context.java':'package android.content;public class Context{public final ContentResolver resolver=new ContentResolver();public ContentResolver getContentResolver(){return resolver;}}',
 'android/content/ContentResolver.java':'''package android.content;public class ContentResolver{public final java.util.Map<String,String> settings=new java.util.HashMap<>();public int lastUser;public android.os.Bundle call(android.net.Uri uri,String method,String key,android.os.Bundle args){lastUser=args.getInt("_user",-1);android.os.Bundle b=new android.os.Bundle();b.putString("value",settings.get(lastUser+":"+key));return b;}}''',
 'android/net/Uri.java':'package android.net;public class Uri{public static Uri parse(String text){return new Uri();}}',
@@ -93,12 +96,14 @@ files['android/content/Context.java']=files['android/content/Context.java'].repl
     'public android.content.res.Resources getResources(){return new android.content.res.Resources();}public final ContentResolver')
 files['com/android/server/display/color/ColorDisplayService.java']='''package com.android.server.display.color;
 public class ColorDisplayService extends com.android.server.SystemService{
+ public android.database.ContentObserver mContentObserver=new android.database.ContentObserver(){public void onChange(boolean b){}};
  public int mCurrentUser;public final android.os.Handler mHandler=new android.os.Handler();
  public final ReduceBrightColorsTintController mReduceBrightColorsTintController=new ReduceBrightColorsTintController();
- public int applications,activationNotifications,strengthNotifications,powerStrength;public boolean powerActive;
+ public int applications,activationNotifications,strengthNotifications,powerStrength;public boolean powerActive;public RuntimeException callbackFailure;
  public void applyTint(TintController target,boolean immediate){applications++;manager.setColorMatrix(target.getLevel(),target.getMatrix());}
  private void dumpInternal(java.io.PrintWriter w){w.println("Native color service");}
  public void onReduceBrightColorsActivationChanged(boolean userInitiated){
+  if(callbackFailure!=null)throw callbackFailure;
   mReduceBrightColorsTintController.active="1".equals(context.resolver.settings.get(mCurrentUser+":reduce_bright_colors_activated"));
   powerActive=mReduceBrightColorsTintController.active;activationNotifications++;
  }
@@ -113,24 +118,41 @@ public class ColorDisplayService extends com.android.server.SystemService{
  public static class TintHandler{public void handleMessage(android.os.Message m){}}
 }'''
 files['ls/augment/com/hook/ExtraDimOwnershipClient.java']=files['ls/augment/com/hook/ExtraDimOwnershipClient.java'].replace(
- 'static State peek(', 'static State stale;static State peek(').replace('callback=r;c.resolver', 'callback=r;if(stale!=null)return stale;c.resolver')
+ 'static State peek(', 'static int reconciles;static String evidence(){return "ownership=ready";}static void reconcile(int u,android.os.Handler h){reconciles++;}static State stale;static State peek(').replace('callback=r;c.resolver', 'callback=r;if(stale!=null)return stale;c.resolver')
+files['com/android/server/display/color/ReduceBrightColorsTintController.java']=files['com/android/server/display/color/ReduceBrightColorsTintController.java'].replace(
+ 'public int strength;', 'public void setActivated(Boolean b){super.setActivated(b);}public int strength;')
 files['ls/augment/com/hook/TestExtraDimHook.java']=r'''package ls.augment.com.hook;
 import com.android.server.display.color.*;import ls.augment.com.ExtraDimRuntime;import java.io.*;
 public class TestExtraDimHook{
  static int checks;static void check(boolean yes,String label){checks++;if(!yes)throw new AssertionError(label);}
+ static class MissingModule extends AugmentModule{void logFeatureError(String k,Throwable e){errors++;}}
  static String dump(AugmentModule m,ColorDisplayService s)throws Throwable{StringWriter text=new StringWriter();m.invoke(s,"dumpInternal",new PrintWriter(text));return text.toString();}
  static void settings(ColorDisplayService s,boolean active,int amount){s.context.resolver.settings.put(s.mCurrentUser+":reduce_bright_colors_activated",active?"1":"0");s.context.resolver.settings.put(s.mCurrentUser+":reduce_bright_colors_level",String.valueOf(amount));}
  static void nativeUpdate(AugmentModule m,ColorDisplayService s)throws Throwable{s.onReduceBrightColorsStrengthLevelChanged();s.onReduceBrightColorsActivationChanged(false);m.invoke(s,"applyTint",s.mReduceBrightColorsTintController,true);}
  public static void main(String[] args)throws Throwable{
+  MissingModule missing=new MissingModule();ClassLoader incomplete=new ClassLoader(TestExtraDimHook.class.getClassLoader()){
+   protected Class<?> loadClass(String n,boolean resolve)throws ClassNotFoundException{if(n.endsWith("DisplayTransformManager"))throw new ClassNotFoundException(n);return super.loadClass(n,resolve);}};
+  ExtraDimHook.install(missing,incomplete);check(missing.errors==1&&missing.hooks.isEmpty(),"missing required native matrix interface preserves original pipeline");
   AugmentModule m=new AugmentModule();ExtraDimHook.install(m,TestExtraDimHook.class.getClassLoader());
-  check(m.hooks.size()==3,"NX789J installs by native capabilities instead of the NX809J whitelist");
+  check(m.hooks.size()==6,"NX789J installs by native capabilities instead of the NX809J whitelist");
   ColorDisplayService s=new ColorDisplayService();ReduceBrightColorsTintController c=s.mReduceBrightColorsTintController;
   ExtraDimOwnershipClient.owned.add(0);settings(s,true,80);nativeUpdate(m,s);
   check(c.active&&c.strength==57&&s.powerActive&&s.powerStrength==57,"native calibration updates controller and brightness listener together");
   check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"mapped request requires live transform readback");
   s.manager.setColorMatrix(250,TintController.identity());check(!ExtraDimRuntime.parse(dump(m,s)).transform,"controller alone does not establish output");
+  check(dump(m,s).contains("reason=matrix_mismatch"),"matrix failure has its own reason");
+  int repairs=ExtraDimOwnershipClient.reconciles;
   c.active=false;check(!ExtraDimRuntime.parse(dump(m,s)).transform,"inactive identity matrix cannot acknowledge an owned enable request");
+  check(dump(m,s).contains("reason=activation_mismatch")&&ExtraDimOwnershipClient.reconciles>repairs,"activation failure schedules fresh reconciliation without inventing proof");
+  m.invoke(s,"onReduceBrightColorsActivationChanged",false);
+  check(c.active&&FeatureRuntimeLog.events.stream().anyMatch(v->v.startsWith("EXTRA_DIM_NATIVE_CALLBACK:")),"native activation callback observed without changing boolean semantics");
+  m.invoke(c,"setActivated",false);
+  check(!c.active&&FeatureRuntimeLog.events.stream().anyMatch(v->v.startsWith("EXTRA_DIM_ACTIVATION_WRITE:")),"native activation writer captured and original result retained");
+  s.callbackFailure=new IllegalStateException("native failure");Throwable propagated=null;
+  try{m.invoke(s,"onReduceBrightColorsActivationChanged",false);}catch(java.lang.reflect.InvocationTargetException failure){propagated=failure.getCause();}
+  check(propagated==s.callbackFailure,"diagnostics preserve original native callback exception identity");s.callbackFailure=null;
   s.resetDuringSetup=true;m.invoke(s,"setUp");check(ExtraDimRuntime.parse(dump(m,s)).matches(0,true,80),"setup repairs a reset controller through native callbacks");s.resetDuringSetup=false;
+  check(FeatureRuntimeLog.events.stream().anyMatch(v->v.startsWith("EXTRA_DIM_NATIVE_OBSERVER:")&&v.contains("callers=1")),"actual anonymous OEM observer resolved without a numbered class assumption");
   // Native Settings callbacks can overtake the private provider refresh.
   ExtraDimOwnershipClient.stale=new ExtraDimOwnershipClient.State(true,true,80);settings(s,false,100);nativeUpdate(m,s);
   check(!c.active&&!s.powerActive&&c.strength==65&&s.powerStrength==65,"stale ON cache cannot re-enable a native OFF or alter its brightness curve");
@@ -174,5 +196,6 @@ with tempfile.TemporaryDirectory(prefix='duo-extra-dim-') as folder:
     mutant.write_text(original.replace('if (installed) return;','if (installed || !"NX809J".equals(Build.MODEL)) return;'),encoding='utf-8')
     subprocess.run([str(JDK/'javac.exe'),'-encoding','UTF-8','--release','17','-cp',folder,'-d',folder,str(mutant)],check=True)
     rejected=subprocess.run([str(JDK/'java.exe'),'-cp',folder,'ls.augment.com.hook.TestExtraDimHook'],capture_output=True,text=True,timeout=20)
-    assert rejected.returncode!=0 and 'NX789J installs by native capabilities' in rejected.stderr,rejected.stdout+rejected.stderr
+    assert rejected.returncode!=0 and any(label in rejected.stderr for label in ('NX789J installs by native capabilities',
+            'missing required native matrix interface preserves original pipeline')),rejected.stdout+rejected.stderr
     print('PASS NX809J-only regression mutant rejected on NX789J fixture')

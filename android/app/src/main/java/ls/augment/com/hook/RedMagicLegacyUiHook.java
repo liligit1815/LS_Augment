@@ -127,6 +127,8 @@ final class RedMagicLegacyUiHook {
     }
 
     private static boolean shouldHideStatusIcon(View view) {
+        refreshHiding(FeatureSettings.snapshot(view.getContext()));
+        if(!legacyHidingActive)return false;
         if (preserveNativeAppearance(view)) return false;
         String slot = SystemUiHook.slotOf(view);
         String type = view.getClass().getSimpleName();
@@ -164,19 +166,8 @@ final class RedMagicLegacyUiHook {
     /** Share existing global switches with synthetic rows and the three-in-one renderer. */
     static boolean hiddenFor(View view,String semanticId){
         if(view==null||semanticId==null)return false;
-        ls.augment.com.ConfigSnapshot snapshot=FeatureSettings.snapshot(view.getContext());
-        if(snapshot!=hidingSnapshot){
-            hidingSnapshot=snapshot;LEGACY_HIDING.clear();LEGACY_SLOTS.clear();HIDE_CONTEXTS.clear();
-            if(snapshot!=null){
-                for(String name:new String[]{"hide_sim1","hide_sim2","hide_hd_small","hide_hd_large","hide_mobile_type","hide_mobile_activity","hide_wifi_standard","hide_wifi_activity"})
-                    if("1".equals(snapshot.get(P+name)))LEGACY_HIDING.add(name);
-                for(String slot:snapshot.values().getOrDefault(P+"hidden_icon_slots","").split(","))if(!slot.trim().isEmpty())LEGACY_SLOTS.add(slot.trim().toLowerCase(java.util.Locale.ROOT));
-            }
-            legacyWifiScope=legacyScope(snapshot,"wifi");legacyMobileScope=legacyScope(snapshot,"mobile");legacyHotspotScope=legacyScope(snapshot,"hotspot");
-            legacyHidingActive=!LEGACY_HIDING.isEmpty()||!LEGACY_SLOTS.isEmpty()||legacyWifiScope!=0||legacyMobileScope!=0||legacyHotspotScope!=0;
-        }
-        // Most frames have no legacy visibility overrides. No ancestry scan,
-        // reflection, string splitting, or config-provider read is needed then.
+        refreshHiding(FeatureSettings.snapshot(view.getContext()));
+        // Most frames have no legacy visibility overrides.
         if(!legacyHidingActive)return false;
         LegacyHideContext context=HIDE_CONTEXTS.get(view);long now=SystemClock.uptimeMillis();
         if(context==null){context=new LegacyHideContext();HIDE_CONTEXTS.put(view,context);context.checked=-1000;}
@@ -197,6 +188,29 @@ final class RedMagicLegacyUiHook {
         if(selected==6||selected>0&&selected==context.scope)return true;
         String slot=mobile?"mobile":family;
         return LEGACY_SLOTS.contains(slot.toLowerCase(java.util.Locale.ROOT));
+    }
+    private static void refreshHiding(ls.augment.com.ConfigSnapshot snapshot){
+        if(snapshot!=hidingSnapshot){
+            hidingSnapshot=snapshot;LEGACY_HIDING.clear();LEGACY_SLOTS.clear();HIDE_CONTEXTS.clear();
+            if(snapshot!=null){
+                for(String name:new String[]{"hide_sim1","hide_sim2","hide_hd_small","hide_hd_large","hide_mobile_type","hide_mobile_activity","hide_wifi_standard","hide_wifi_activity"})
+                    if("1".equals(snapshot.get(P+name)))LEGACY_HIDING.add(name);
+                for(String slot:snapshot.values().getOrDefault(P+"hidden_icon_slots","").split(","))if(!slot.trim().isEmpty())LEGACY_SLOTS.add(slot.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+            legacyWifiScope=legacyScope(snapshot,"wifi");legacyMobileScope=legacyScope(snapshot,"mobile");legacyHotspotScope=legacyScope(snapshot,"hotspot");
+            legacyHidingActive=!LEGACY_HIDING.isEmpty()||!LEGACY_SLOTS.isEmpty()||legacyWifiScope!=0||legacyMobileScope!=0||legacyHotspotScope!=0;
+        }
+    }
+
+    static boolean needsViewScan(ls.augment.com.ConfigSnapshot snapshot){
+        refreshHiding(snapshot);
+        if(legacyHidingActive||ls.augment.com.ConfigSchema.truthy(snapshot.get(ls.augment.com.ConfigSchema.SYSTEMUI_MASTER)))return true;
+        for(String key:new String[]{"signal_dual","statusbar_hide","keyguard_statusbar_hide","statusbar_restore_font","notification_native","battery_hide_percent","battery_colors"})
+            if(ls.augment.com.ConfigSchema.truthy(snapshot.get(P+key)))return true;
+        for(String key:new String[]{"battery_style","battery_width_dp","battery_preset"}){
+            String value=snapshot.get(P+key);if(!value.isEmpty()&&!value.equals("0"))return true;
+        }
+        String alpha=snapshot.get(P+"battery_alpha_percent");return !alpha.isEmpty()&&!alpha.equals("100");
     }
     private static int legacyScope(ls.augment.com.ConfigSnapshot snapshot,String family){
         try{return snapshot==null?0:Integer.parseInt(snapshot.get(P+"hide_"+family+"_scope"));}catch(RuntimeException ignored){return 0;}

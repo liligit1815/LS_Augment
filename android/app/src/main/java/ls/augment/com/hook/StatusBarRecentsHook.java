@@ -45,10 +45,10 @@ final class StatusBarRecentsHook {
                     .intercept(chain->{
                         // Only the launcher's INVISIBLE request is suppressed. Heads-up,
                         // keyguard and real fan/liquid-cooling state updates remain native.
-                        if(Integer.valueOf(View.INVISIBLE).equals(chain.getArg(0))
-                                &&fromLauncher(Thread.currentThread().getStackTrace())){
+                        if(Integer.valueOf(View.INVISIBLE).equals(chain.getArg(0))){
                             View view=(View)container.get(chain.getThisObject());
-                            if(StatusBarGridHook.ownsRecentsContent(view,false)){
+                            if(StatusBarGridHook.ownsRecentsContent(view,false)
+                                    &&fromLauncher(Thread.currentThread().getStackTrace())){
                                 record(view,false);
                                 return null;
                             }

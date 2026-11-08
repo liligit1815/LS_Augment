@@ -172,7 +172,7 @@ final class NativeWorkspaceGuard {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     if (!active) return;
                     try {
-                        if(PhysicalIme.ownsContainer(p.thisObject) || PhysicalFingerprint.window(p.thisObject) || physicalNativeWindow(p.thisObject)){
+                        if(NativeTransitionPose.owns(p.thisObject) || PhysicalIme.ownsContainer(p.thisObject) || PhysicalFingerprint.window(p.thisObject) || physicalNativeWindow(p.thisObject)){
                             if(field(p.thisObject,"mLastMagnificationSpec")!=null)call(p.thisObject,"clearMagnificationSpec",p.args[0]);
                             p.setResult(null);
                         }else if (ownsMagnification(p.thisObject)) p.setResult(null);
@@ -181,6 +181,11 @@ final class NativeWorkspaceGuard {
                         final IBinder expected = owner;
                         Wm.handler.post(() -> { if (owner == expected) finish("侧窗缩放能力失效"); });
                     }
+                }
+                @Override protected void afterHookedMethod(MethodHookParam p){
+                    if(p.hasThrowable() || NativeTransitionPose.poses.isEmpty())return;
+                    try{NativeTransitionPose.refresh(p.args[0]);}
+                    catch(RuntimeException|LinkageError error){diagnostic("TRANSITION_POSE","refresh_unavailable;reason="+error);}
                 }
             });
         } catch (Throwable error) { report(null, -1, "原任务缩放隔离不可用: " + error, -1); return; }
@@ -213,6 +218,7 @@ final class NativeWorkspaceGuard {
             try{WorkspaceGestureGate.installServer();}catch(RuntimeException missing){report(null,0,"工作区手势状态通道不可用："+missing,-1);}
             LocalLandscape.install(loader); PhysicalIme.install(loader); WorkspaceIme.install(loader); PhysicalFingerprint.install(loader); WorkspaceResize.install(loader);WorkspaceResize.installUpperBounds(loader); EdgeHandoff.install(loader);
             WorkspaceRoutes.installDesktop(loader);WorkspaceRecents.install(loader);WorkspaceRecents.installShade(loader);
+            NativeTransitionPose.install(loader);
         } catch (Throwable error) { report(null, -1, "原任务恢复入口注册失败: " + error, -1); }
     }
     static void observeTaskRemoval(Class<?> taskType) throws Exception {
@@ -957,6 +963,30 @@ final class NativeWorkspaceGuard {
             diagnostic("HANDOFF",detail.toString());
         }catch(Throwable unavailable){diagnostic("HANDOFF","operation="+operation+";phase="+phase+";cache_trace_unavailable="+unavailable.getClass().getSimpleName());}
     }
+    static void traceExit(String exitedSession,String phase,TaskIdentity target){
+        synchronized(Wm.lock){
+            if(!java.util.Objects.equals(exitedSession,session))return;
+            try{
+                Object focus=call(Wm.display,"getFocusedRootTask");
+                Object spec=field(Wm.display,"mMagnificationSpec");
+                StringBuilder detail=new StringBuilder("session=").append(exitedSession).append(";phase=").append(phase)
+                        .append(";evidence=wm_state_not_presented_frame;active=").append(active).append(";ending=").append(ending)
+                        .append(";focus=").append(focus==null?-1:field(focus,"mTaskId"))
+                        .append(";ownedSpec=").append(spec!=null && spec==Wm.ownedSpec);
+                if(spec!=null)detail.append(";displaySpec=").append(StepMembers.getFloatField(spec,"scale")).append(',')
+                        .append(StepMembers.getFloatField(spec,"offsetX")).append(',').append(StepMembers.getFloatField(spec,"offsetY"));
+                Object task=target==null?null:eligibleMain(target);
+                detail.append(";exitTarget=").append(target==null?-1:target.id).append(";targetValid=").append(task!=null);
+                if(task!=null){
+                    ActivityManager.RunningTaskInfo info=(ActivityManager.RunningTaskInfo)call(task,"getTaskInfo");
+                    detail.append(";visible=").append(StepMembers.getBooleanField(info,"isVisible"))
+                            .append(";mode=").append(call(task,"getWindowingMode"))
+                            .append(";bounds=").append(call(task,"getBounds"));
+                }
+                diagnostic("EXIT_STATE",detail.toString());
+            }catch(Throwable missing){diagnostic("EXIT_STATE","session="+exitedSession+";phase="+phase+";unavailable="+missing);}
+        }
+    }
     static boolean finish(String reason) {
         if (!active || ending) return !active;
         WorkspaceIme.cancel();
@@ -997,6 +1027,10 @@ final class NativeWorkspaceGuard {
         final CommitBarrier group=pendingCommit=new CommitBarrier();
         final IBinder expected=owner;
         final String reason = recoveryReason;
+        final String exitedSession=session;
+        final TaskIdentity targetAtExit;
+        synchronized(Wm.lock){targetAtExit=exitTarget();}
+        traceExit(exitedSession,"before_restore",targetAtExit);
         try {
             Object wct = transaction();
             synchronized (Wm.lock) {
@@ -1025,8 +1059,12 @@ final class NativeWorkspaceGuard {
                 trackCommit(finalTx,group);call(finalTx,"apply");
             }
             group.seal();
-            awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
+            awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->normalizeExit(expected,()->{
                 active=false;ending=false;completedRecoveries++;recoveredAt=android.os.SystemClock.elapsedRealtime();
+                traceExit(exitedSession,"restoration_committed",targetAtExit);
+                for(long delay:new long[]{250,1500,4000})Wm.handler.postDelayed(()->{
+                    if(!active && !ending)traceExit(exitedSession,"after_"+delay+"ms",targetAtExit);
+                },delay);
                 if(flip!=null){flip.close();flip=null;}
                 completedOwner=owner;completedSession=session;
                 if(owner!=null&&death!=null)try{owner.unlinkToDeath(death,0);}catch(Throwable ignored){}
@@ -1034,10 +1072,29 @@ final class NativeWorkspaceGuard {
                 if(afterRestore!=null)parked=afterRestore;else if("手动退出".equals(reason))parked=new ParkedWorkspace();
                 lastMainTask=null;sessionHome=null;exitMain=null;afterRestore=null;readmitting=new ParkedWorkspace();
                 retire(session);saved.clear();NativeTopTask.reset();owner=null;
-            },()->retryRecovery("恢复图层提交超时"));
+            }),()->retryRecovery("恢复图层提交超时"));
         } catch (Throwable error) {
             retryRecovery("恢复尚未完成: "+error);
         }
+    }
+    static void normalizeExit(IBinder expected,Runnable complete){
+        // Late bounds-change transactions have all committed. Only now remove
+        // their local transforms; never touch surfaces acquired by another owner.
+        final CommitBarrier normalized=pendingCommit=new CommitBarrier();
+        synchronized(Wm.lock){
+            if(owner!=expected || !ending || Wm.active || field(Wm.display,"mMagnificationSpec")!=null)
+                throw new IllegalStateException("归还归一前原屏所有权已变化");
+            Object tx=call(Wm.display,"getPendingTransaction");
+            for(SavedTask record:saved.values())if(record.dirty){
+                verifyRestored(record);resetReturnedTransform(record,tx);
+                traceHandoff("exit_return_normalized",0,record.id,record.id);
+            }
+            try{trackCommit(tx,normalized);}catch(Exception error){throw new IllegalStateException("归还归一事务不可用",error);}
+            call(tx,"apply");
+            call(field(Wm.display,"mInputMonitor"),"updateInputWindowsLw",true);
+        }
+        normalized.seal();
+        awaitCommit(normalized,expected,android.os.SystemClock.uptimeMillis()+1800,complete,()->retryRecovery("归还归一提交超时"));
     }
     static void retryRecovery(String why) {
         if(pendingCommit!=null)pendingCommit.cancel();pendingCommit=null;

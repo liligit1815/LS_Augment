@@ -24,6 +24,11 @@ final class StatusBarNotificationSummaryHook {
     private static Method measured;
     private static Method nativeTint;
     private static boolean drawReady;
+    private static AugmentModule drawModule;
+    private static Class<?> notificationType;
+    private static Method drawMethod;
+    private static io.github.libxposed.api.XposedInterface.HookHandle drawHandle;
+    private static boolean drawDeoptimized;
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
@@ -52,19 +57,30 @@ final class StatusBarNotificationSummaryHook {
             Class<?> notification=Class.forName(TYPE,false,loader),declaration=notification;Method draw=null;
             while(declaration!=null&&draw==null){try{draw=declaration.getDeclaredMethod("dispatchDraw",Canvas.class);}catch(NoSuchMethodException inherited){declaration=declaration.getSuperclass();}}
             if(draw==null)throw new NoSuchMethodException(TYPE+".dispatchDraw");
-            draw.setAccessible(true);module.deoptimize(draw);
-            module.registerFeatureHook(module.prepareFeatureHook(draw,"systemui.notification_summary.dispatch",false).intercept(chain->{
-                Object owner=chain.getThisObject();
-                // RedMagic inherits dispatchDraw from ViewGroup. Filter the shared
-                // declaration before touching unrelated containers, shelf or AOD.
-                if(!notification.isInstance(owner))return chain.proceed();
-                ViewGroup view=(ViewGroup)owner;int[] size=measure(view);if(size==null)return chain.proceed();
-                try{state(view).draw((Canvas)chain.getArgs().get(0),size);return null;}
-                catch(Throwable error){module.logFeatureError("SUMMARY_RENDER",error);return chain.proceed();}
-            }));drawReady=true;count++;
+            if(draw.getReturnType()!=void.class)throw new NoSuchMethodException("dispatchDraw result");
+            draw.setAccessible(true);drawMethod=draw;notificationType=notification;drawModule=module;
+            // The declaration can be ViewGroup itself. Resolve its contract now,
+            // but leave every unrelated container unhooked while summary is off.
+            drawReady=true;count++;
         }catch(Throwable error){module.logFeatureError("SUMMARY_DRAW",error);}
         for(String method:new String[]{"onLayout","calculateIconXTranslations","applyIconStates"})count+=hookNamed(module,loader,"notification_summary",TYPE,method,-1,null,(o,a,r)->{if(o instanceof ViewGroup&&phone((ViewGroup)o))state((ViewGroup)o).update(false);return PASS;});
         return count;
+    }
+    private static void syncDrawing(){
+        boolean wanted=false;
+        for(State state:STATES.values())if(!state.closed&&state.enabled){wanted=true;break;}
+        if(wanted&&drawHandle==null&&drawReady)try{
+            if(!drawDeoptimized){drawModule.deoptimize(drawMethod);drawDeoptimized=true;}
+            drawHandle=drawModule.prepareFeatureHook(drawMethod,"systemui.notification_summary.dispatch",false).intercept(chain->{
+                Object owner=chain.getThisObject();
+                if(!notificationType.isInstance(owner))return chain.proceed();
+                ViewGroup view=(ViewGroup)owner;int[] size=measure(view);if(size==null)return chain.proceed();
+                try{state(view).draw((Canvas)chain.getArgs().get(0),size);return null;}
+                catch(Throwable error){drawModule.logFeatureError("SUMMARY_RENDER",error);return chain.proceed();}
+            });
+        }catch(Throwable error){drawReady=false;drawModule.logFeatureError("SUMMARY_DRAW",error);}
+        if(!wanted&&drawHandle!=null)try{drawHandle.unhook();drawHandle=null;}
+        catch(Throwable error){drawModule.logFeatureError("SUMMARY_DRAW_RELEASE",error);}
     }
     private static boolean phone(ViewGroup owner){
         if(owner.getId()==View.NO_ID||owner.getId()==0)return false;
@@ -129,6 +145,7 @@ final class StatusBarNotificationSummaryHook {
         void update(boolean layout){
             if(closed)return;ConfigSnapshot next=FeatureSettings.snapshot(view.getContext());
             if(next!=snapshot){snapshot=next;enabled="1".equals(next.get(ConfigSchema.SYSTEMUI_MASTER))&&"1".equals(next.get(NotificationSummaryOptions.ENABLED));
+                syncDrawing();
                 mode=FeatureSettings.integer(view.getContext(),NotificationSummaryOptions.MODE,0,0,2);
                 text=next.get(mode==0?NotificationSummaryOptions.SYMBOL:NotificationSummaryOptions.TEXT);
                 sizeDp=FeatureSettings.integer(view.getContext(),NotificationSummaryOptions.SIZE,18,8,40);
@@ -143,7 +160,7 @@ final class StatusBarNotificationSummaryHook {
             if(layout){view.requestLayout();view.invalidate();}
         }
         int[] size(){
-            if(!enabled||first==null||mode==2&&art==null||mode!=2&&text.isEmpty())return null;
+            if(!drawReady||drawHandle==null||!enabled||first==null||mode==2&&art==null||mode!=2&&text.isEmpty())return null;
             if(mode!=2&&foreground()==null)return null;
             int height=Math.min(px,Math.max(1,view.getHeight()>0?view.getHeight():px));
             int width;
@@ -182,7 +199,7 @@ final class StatusBarNotificationSummaryHook {
             return null;
         }
         void stop(){if(art instanceof AnimatedImageDrawable)((AnimatedImageDrawable)art).stop();}
-        void close(){closed=true;++generation;stop();if(art!=null)art.setCallback(null);FeatureSettings.removeSnapshotListener(changed);view.removeOnAttachStateChangeListener(this);if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);}
+        void close(){closed=true;++generation;stop();if(art!=null)art.setCallback(null);FeatureSettings.removeSnapshotListener(changed);view.removeOnAttachStateChangeListener(this);if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);syncDrawing();}
         @Override public boolean onPreDraw(){update(false);return true;}
         @Override public void onViewAttachedToWindow(View view){}
         @Override public void onViewDetachedFromWindow(View detached){if(STATES.get(view)==this)STATES.remove(view);close();}

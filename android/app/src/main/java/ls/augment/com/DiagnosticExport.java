@@ -24,10 +24,19 @@ final class DiagnosticExport {
             .append("AI/肩键详细记录仅包含开启后的有界窗口；肩键快捷切换必要状态/错误、锁屏上滑及工作台 HOME/Quickstep/壁纸状态日志始终纳入采集。工作台 Hook 日志通过手机端异步队列保存，seq/session 属于各发出进程，模块版本/PID/启动时间用于区分历史记录；进程退出可能丢失尚未送达的队列，文件保留不代表画面首帧或业务成功。队列丢弃、重复事件抑制、文件轮转、旧版本与停止的进程都会明确标出；不采集账号凭据、原始肩键数据、自定义锁屏提示文字全文或壁纸内容。\n");
         RootShell.Result root=RootShell.run("id",null,5,4096);
         source(out,"ROOT",root,4096);
+        out.append("\n===== FAN_DRIVER_RUNTIME read-only; attestation is not RPM or device acceptance =====\n");
+        try { out.append(FanDriverProbe.describe()).append('\n'); }
+        catch(RuntimeException unavailable) { out.append("probe_unavailable=").append(unavailable.getClass().getName()).append('\n'); }
+        source(out,"ASSISTANT_RUNTIME read-only at export; configured component is not successful invocation",
+                RootShell.run(AssistantDiagnosticSnapshot.SCRIPT,null,8,16384),16384);
         source(out,"BACKLIGHT_INTERFACES read-only; capability evidence, not calibration",
                 RootShell.run("for n in /sys/class/backlight/*; do [ -d \"$n\" ] || continue; echo node=$n; "
                     +"for f in max_brightness brightness actual_brightness bl_power; do if [ -r \"$n/$f\" ]; then echo field=$f; cat \"$n/$f\"; fi; done; done",null,5,16384),16384);
         source(out,"COLOR_DISPLAY live controller and matrix readback",RootShell.run("dumpsys color_display",null,5,49152),49152);
+        source(out,"EXTRA_DIM_SETTINGS current foreground user; export-time snapshot, not failure-time evidence",
+                RootShell.run("u=$(am get-current-user); case \"$u\" in ''|*[!0-9]*) echo current_user_unavailable; exit 0;; esac; "
+                        +"echo user=$u; for k in reduce_bright_colors_activated reduce_bright_colors_level reduce_bright_colors_persist_across_reboots; "
+                        +"do echo key=$k; settings --user \"$u\" get secure \"$k\"; done",null,5,2048),2048);
         source(out,"DISPLAY_BRIGHTNESS native state at export; each line capped at 1024 characters; long curve vectors omitted",
                 RootShell.run("dumpsys display | grep -E 'BrightnessInfo|mScreenBrightness|mBrightness|mDisplayState|mReduceBright' | cut -c 1-1024",null,5,32768),32768);
         RootShell.Result processes=RootShell.run("ps -A -o PID,NAME",null,6,256*1024);
@@ -89,7 +98,7 @@ final class DiagnosticExport {
             out.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
         out.append("frameworkConfiguration=").append(FrameworkConfigSync.isPublished(config.configSnapshot())?"SYNCED":"PENDING").append('\n');
         file(out,context,"BASIC","ls_augment.log",192*1024,"basic");
-        file(out,context,"STARTUP_RUNTIME; session/sequence identify retries; retained history is not current execution proof",
+        file(out,context,"STARTUP_RUNTIME; includes FAN_*, ASSIST_*, EXTRA_DIM_* and ISLAND_MUSIC_* release runtime transitions; session/sequence identify retries; retained history is not current execution proof",
                 StartupDiagnostics.FILE,2*1024*1024,"startup");
         appendLiftArcLog(out,context);
         appendShoulderSwitchLog(out,context);

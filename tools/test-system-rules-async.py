@@ -24,7 +24,7 @@ SOURCES = {
     'android/database/ContentObserver.java': 'package android.database;import android.os.Handler;public class ContentObserver {public ContentObserver(Handler h){} public void onChange(boolean self){}}',
     'android/content/ContentResolver.java': 'package android.content;import android.net.Uri;import android.database.ContentObserver;import ls.augment.com.hook.TestSystemRulesAsync;public final class ContentResolver {public final int user;public ContentResolver(int user){this.user=user;}public void registerContentObserver(Uri u,boolean d,ContentObserver o){TestSystemRulesAsync.io();}public void unregisterContentObserver(ContentObserver o){TestSystemRulesAsync.io();}}',
     'android/content/Context.java': 'package android.content;import android.os.UserHandle;import android.content.pm.PackageManager;import ls.augment.com.hook.TestSystemRulesAsync;public class Context {public final int user;public Context(){this(0);}public Context(int u){user=u;}public Context createContextAsUser(UserHandle u,int flags){TestSystemRulesAsync.io();return new Context(u.id);}public ContentResolver getContentResolver(){return new ContentResolver(user);}public PackageManager getPackageManager(){return new PackageManager();}}',
-    'android/content/ComponentName.java': 'package android.content;public final class ComponentName {public static ComponentName unflattenFromString(String s){return s==null||s.isEmpty()?null:new ComponentName();}}',
+    'android/content/ComponentName.java': 'package android.content;public final class ComponentName {public static ComponentName unflattenFromString(String s){return s==null||s.isEmpty()?null:new ComponentName();}public String flattenToShortString(){return "test/Assistant";}}',
     'android/content/pm/ComponentInfo.java': 'package android.content.pm;public class ComponentInfo {public boolean enabled=true;public ApplicationInfo applicationInfo=new ApplicationInfo();public static class ApplicationInfo {public boolean enabled=true;}}',
     'android/content/pm/ResolveInfo.java': 'package android.content.pm;public class ResolveInfo {}',
     'android/content/pm/PackageManager.java': 'package android.content.pm;import android.content.ComponentName;import ls.augment.com.hook.TestSystemRulesAsync;public final class PackageManager {public static class NameNotFoundException extends Exception {}public ComponentInfo getServiceInfo(ComponentName c,int flags)throws NameNotFoundException{TestSystemRulesAsync.io();return new ComponentInfo();}public ComponentInfo getActivityInfo(ComponentName c,int flags)throws NameNotFoundException{TestSystemRulesAsync.io();return new ComponentInfo();}}',
@@ -41,6 +41,11 @@ SOURCES = {
         void registerFeatureHook(HookHandle h){}void logFeatureInfo(String s){}void logFeatureError(String s,Throwable t){throw new AssertionError(s,t);}
     }''',
     'ls/augment/com/hook/HookTelemetry.java': 'package ls.augment.com.hook;import java.lang.reflect.Executable;import io.github.libxposed.api.XposedInterface.HookBuilder;final class HookTelemetry {static HookBuilder observe(HookBuilder h,Executable e){return h;}}',
+    'ls/augment/com/hook/FeatureRuntimeLog.java': '''package ls.augment.com.hook;public class FeatureRuntimeLog {
+        static final java.util.List<String> events=new java.util.concurrent.CopyOnWriteArrayList<>();
+        static void event(String stage,String detail){events.add(stage+":"+detail);}static void state(String stage,String state,String detail){event(stage,detail);}
+        static String failure(Throwable error){return error.getClass().getName();}}
+    ''',
     'ls/augment/com/hook/FeatureSettings.java': '''package ls.augment.com.hook;import android.content.Context;import java.util.concurrent.CopyOnWriteArrayList;final class FeatureSettings {
         static final java.util.Map<String,String> diagnostics=new java.util.HashMap<>();static void diagnostic(Context c,String k,String v){diagnostics.put(k,v);}static boolean hasVerifiedSnapshot(Context c){return true;}
         static volatile boolean on=true,thermalOn=true;static final CopyOnWriteArrayList<Runnable> listeners=new CopyOnWriteArrayList<>();static boolean enabled(Context c,String k){return "thermal_notifications".equals(k)?thermalOn:on;}
@@ -51,6 +56,7 @@ SOURCES = {
     'ls/augment/com/hook/OemHooks.java': r'''package ls.augment.com.hook;
         import java.lang.reflect.*;import java.util.*;import io.github.libxposed.api.XposedInterface.*;
         final class OemHooks {
+            static int observedMethods(AugmentModule m,ClassLoader l,String c,String n,Class<?> rt,int argc,String key,Hooker h,Class<?>[] types){hooks.put(c+"#"+n,h);return 1;}
             static final Map<String,Hooker> hooks=new HashMap<>();static int methods(AugmentModule m,ClassLoader l,String c,String n,Class<?> rt,int argc,String key,Hooker h){hooks.put(c+"#"+n,chain->key.isEmpty()||FeatureSettings.enabled(FeatureSettings.from(chain.getThisObject()),key)?h.intercept(chain):chain.proceed());return 1;}
             static int result(AugmentModule m,ClassLoader l,String c,String n,Class<?> rt,int argc,String key,Object value){return methods(m,l,c,n,rt,argc,key,chain->value);}
             static Object field(Object o,String... names){if(o==null)return null;for(String n:names)for(Class<?> c=o instanceof Class?(Class<?>)o:o.getClass();c!=null;c=c.getSuperclass())try{Field f=c.getDeclaredField(n);f.setAccessible(true);return f.get(o instanceof Class?null:o);}catch(ReflectiveOperationException ignored){}return null;}
@@ -237,13 +243,19 @@ SOURCES = {
                 hooked(PWM,"setCurrentUserLw",switched);await(entered);power=call(owner,"powerLongPress",new Class<?>[]{long.class},101L);hooked(PWM,"powerLongPress",power);check(power.proceeded==1&&owner.launches==1,"old user's assistant used while new user unresolved");
                 gate.countDown();until(()->state()!=null);check(users.contains(10)&&setupUsers.contains(10),"assistant/setup were not queried as current user");power=call(owner,"powerLongPress",new Class<?>[]{long.class},102L);hooked(PWM,"powerLongPress",power);check(power.proceeded==1,"no default assistant did not fall back");
                 Object rejected=state();Field stateField=SystemRulesHook.class.getDeclaredField("assistantState");stateField.setAccessible(true);Field generationField=SystemRulesHook.class.getDeclaredField("assistantGeneration");generationField.setAccessible(true);
-                Constructor<?> stateConstructor=rejected.getClass().getDeclaredConstructors()[0];stateConstructor.setAccessible(true);long oldGeneration=((AtomicLong)generationField.get(null)).get()-1;
+                Constructor<?> stateConstructor=rejected.getClass().getDeclaredConstructor(Object.class,int.class,int.class,boolean.class,long.class,long.class);stateConstructor.setAccessible(true);long oldGeneration=((AtomicLong)generationField.get(null)).get()-1;
                 stateField.set(null,stateConstructor.newInstance(owner,10,5,true,oldGeneration,android.os.SystemClock.elapsedRealtime()));
                 power=call(owner,"powerLongPress",new Class<?>[]{long.class},103L);hooked(PWM,"powerLongPress",power);check(power.proceeded==1&&owner.launches==1,"late old-generation result was used");until(()->state()!=null);
                 long generation=((AtomicLong)generationField.get(null)).get();stateField.set(null,stateConstructor.newInstance(owner,10,5,true,generation,android.os.SystemClock.elapsedRealtime()-10001));
                 power=call(owner,"powerLongPress",new Class<?>[]{long.class},104L);hooked(PWM,"powerLongPress",power);check(power.proceeded==1&&owner.launches==1,"expired state was used");until(()->state()!=null);
                 owner.mLongPressOnPowerBehavior=4;assistantExists=true;hooked(PWM,"init",call(owner,"init",new Class<?>[]{}));until(()->state()!=null);check(behaviorUsers.contains(10),"behavior gate did not use explicit current user");
                 power=call(owner,"powerLongPress",new Class<?>[]{long.class},105L);hooked(PWM,"powerLongPress",power);check(power.proceeded==0&&owner.launches==2,"behavior 4 assistant not dispatched");
+                check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("reason=cache_expired")),"expired eligibility must be diagnosable in release journal");
+                check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("reason=default_assistant_missing")),"missing default assistant reason missing");
+                check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("result=native_dispatch_returned;business=unconfirmed")),"native return must not claim assistant visible");
+                FeatureSettings.on=false;power=call(owner,"powerLongPress",new Class<?>[]{long.class},106L);hooked(PWM,"powerLongPress",power);
+                check(power.proceeded==1&&owner.launches==2,"disabled assistant changed native power action");
+                check(FeatureRuntimeLog.events.stream().anyMatch(s->s.contains("reason=feature_disabled;action=native")),"disabled invocation has explicit diagnostic");FeatureSettings.on=true;
                 Method timeout=Owner.class.getDeclaredMethod("getScreenOffTimeoutLocked",long.class,long.class);
                 check(hooked(POWER,"getScreenOffTimeoutLocked",new Call(owner,timeout,new Object[]{1L,2L},()->8000L)).equals(8000L),"unknown keyguard changed timeout");
                 Executable constructor=module.constructors.keySet().iterator().next();KeyguardStateMonitor old=new KeyguardStateMonitor(new Context(),null,null);

@@ -26,26 +26,36 @@ public final class FanDriverContract {
         "6.6.30-android15-8-maybe-dirty-4k"
     };
     public static String proofStatus(String output) {
+        if (output == null || output.length() > 8192 || output.trim().isEmpty()) return "proof_missing_or_invalid";
         String[] lines=output.trim().split("\\r?\\n");
         for (int i=0;i<RELEASES.length;i++) {
             if (!RELEASES[i].equals(lines[0])) continue;
             if (lines.length<2 || lines[1].isEmpty()) return "loaded_note_unavailable";
             if (!("040000001400000003000000474e5500"+NOTES[i]).equals(lines[1])) return "loaded_build_id_mismatch";
             if (lines.length<3) return "driver_file_unavailable";
-            for (int n=2;n<lines.length;n++) if (HASHES[i].equals(lines[n])) return "verified";
-            return "driver_digest_mismatch";
+            boolean digest=false;
+            for (int n=2;n<lines.length;n++) {
+                if (HASHES[i].equals(lines[n])) return "verified";
+                if (lines[n].matches("[a-f0-9]{64}")) digest=true;
+            }
+            return digest?"driver_digest_mismatch":"driver_file_unavailable";
         }
         return "running_kernel_unverified";
     }
     static boolean verified() {
         try {
+            String release=System.getProperty("os.version","");
+            if(!Arrays.asList(RELEASES).contains(release))return false;
             byte[] loaded=Files.readAllBytes(Path.of("/sys/module/soc_fan/notes/.note.gnu.build-id"));
-            for(String base:new String[]{"/vendor/lib/modules/","/vendor_dlkm/lib/modules/"})
-                for(String suffix:new String[]{"soc_fan.ko","16k-mode/soc_fan.ko"}) {
-                    Path path=Path.of(base+suffix);
+            for(String candidate:new String[]{"/vendor/lib/modules/soc_fan.ko","/vendor/lib/modules/16k-mode/soc_fan.ko",
+                    "/vendor_dlkm/lib/modules/soc_fan.ko","/vendor_dlkm/lib/modules/16k-mode/soc_fan.ko",
+                    "/lib/modules/soc_fan.ko","/lib/modules/"+release+"_16k/soc_fan.ko"}) {
+                try {
+                    Path path=Path.of(candidate);
                     if(!Files.isRegularFile(path)||Files.size(path)>4*1024*1024)continue;
-                    if(matches(Files.readAllBytes(path),loaded,System.getProperty("os.version","")))return true;
-                }
+                    if(matches(Files.readAllBytes(path),loaded,release))return true;
+                }catch(Exception inaccessibleCandidate){ /* Try remaining audited locations. */ }
+            }
         }catch(Exception unavailable){/* No loaded-driver evidence, no new level-write permission. */}
         return false;
     }

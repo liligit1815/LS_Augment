@@ -19,8 +19,8 @@ def check(apk,mode='both'):
         return False
     def require(owner,kind,signature):
         if not has(owner,kind,signature):missing.append(owner+' '+signature)
-    init=['initIsland(Ljava/lang/String;Ljava/lang/String;Landroid/content/Intent;Ljava/lang/String;I)V','initIsland(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V']
-    if not any(has(island,'methods',s) for s in init):missing.append('initIsland: neither supported signature')
+    init=['initIsland(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Landroid/content/Intent;Ljava/lang/String;IZZ)V','initIsland(Ljava/lang/String;Ljava/lang/String;Landroid/content/Intent;Ljava/lang/String;I)V','initIsland(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V']
+    if not any(has(island,'methods',s) for s in init):missing.append('initIsland: no supported signature')
     for signature in ['setPanelIsland('+base+')V','setSmallIsland(Landroid/view/View;)V','handleIslandClick()Z']:
         require(island,'methods',signature)
     methods=['getPermanentIsland()'+base,'updatePanelHeight(Landroid/view/View;)V','forceNotClick()Z','onClick()V','onLongClick()V']

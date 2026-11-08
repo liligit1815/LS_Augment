@@ -43,10 +43,10 @@ final class NativeIslandPanelCompat {
     static boolean canExpand(Object owner, Consumer<String> report) {
         if (owner == null) return false;
         Contract c = CONTRACTS.get(owner.getClass());
-        if (!c.candidate) return true;
+        if (!c.candidate) { report.accept("panel_expand_native:legacy_contract"); return true; }
         try {
             // A real fullscreen root continues through the OEM implementation.
-            if (c.panelRoot != null && c.panelRoot.get(owner) instanceof View) return true;
+            if (c.panelRoot != null && c.panelRoot.get(owner) instanceof View) { report.accept("panel_expand_native:fullscreen_root"); return true; }
             if (c.missing != null) { report.accept("panel_capability_missing:"+c.missing); return false; }
             if (!(c.panelContainer.get(owner) instanceof ViewGroup)
                     || !(field(owner,"mDynamicIslandRoot") instanceof View)
@@ -69,6 +69,7 @@ final class NativeIslandPanelCompat {
 
     /** Only called for Duo-owned scene views. False preserves an unknown or complete native implementation. */
     static boolean closeEnd(Object owner,Object island,boolean remove,boolean disposable,Consumer<String> report) {
+        if (!ordinary(owner)) report.accept("panel_close_native:"+nativeReason(owner));
         if (!ordinary(owner)) return false;
         Contract c = CONTRACTS.get(owner.getClass());
         try {
@@ -99,6 +100,15 @@ final class NativeIslandPanelCompat {
             report.accept("panel_close_failed:"+error.getClass().getSimpleName());
         }
         return true;
+    }
+
+    private static String nativeReason(Object owner) {
+        if(owner==null)return "owner_missing";
+        Contract c=CONTRACTS.get(owner.getClass());
+        if(!c.candidate)return "legacy_contract";
+        if(c.missing!=null)return "capability_missing:"+c.missing;
+        try{return c.panelRoot.get(owner)!=null?"fullscreen_root":"unreadable_state";}
+        catch(ReflectiveOperationException error){return "field_read_failed:"+error.getClass().getSimpleName();}
     }
 
     private static Field findField(Class<?> type,String name) {

@@ -22,12 +22,23 @@ final class OemHooks {
     }
     static int methods(AugmentModule module, ClassLoader loader, String className, String name,
             Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes) {
+        return methods(module,loader,className,name,returnType,argc,key,hooker,parameterTypes,true);
+    }
+    /** Retains feature registration evidence while the adapter also observes disabled/native calls.
+     * The adapter must explicitly gate every behavior change. */
+    static int observedMethods(AugmentModule module, ClassLoader loader, String className, String name,
+            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes) {
+        return methods(module,loader,className,name,returnType,argc,key,hooker,parameterTypes,false);
+    }
+    private static int methods(AugmentModule module, ClassLoader loader, String className, String name,
+            Class<?> returnType, int argc, String key, Hooker hooker, Class<?>[] parameterTypes, boolean gate) {
         int count=0;
         try {
             Class<?> type=Class.forName(className,false,loader);
             for(Method m:type.getDeclaredMethods()) {
                 if(!m.getName().equals(name)||(returnType!=null&&m.getReturnType()!=returnType)
                         ||(argc>=0&&m.getParameterCount()!=argc)||Modifier.isAbstract(m.getModifiers())
+                        ||(!gate&&Modifier.isStatic(m.getModifiers()))
                         ||(parameterTypes!=null&&!Arrays.equals(parameterTypes,m.getParameterTypes()))) continue;
                 synchronized(INSTALLED) {
                     Set<String> keys=INSTALLED.computeIfAbsent(m,ignored->new HashSet<>());
@@ -38,12 +49,12 @@ final class OemHooks {
                         // arguments before doing any context lookup during system bootstrap.
                         Context context=null;
                         if(!key.isEmpty()) {
-                            if(FeatureSettings.verifiedDisabled(key))return chain.proceed();
+                            if(gate&&FeatureSettings.verifiedDisabled(key))return chain.proceed();
                             context=context(chain.getThisObject(),chain.getArgs());
-                            if(!FeatureSettings.enabled(context,key)) return chain.proceed();
+                            if(gate&&!FeatureSettings.enabled(context,key)) return chain.proceed();
                         }
                         Object result=hooker.intercept(chain);
-                        if(!key.isEmpty()&&EXECUTED.add(key)) {STATUS.put(key,"executed");publish(context);}
+                        if(!key.isEmpty()&&(gate||FeatureSettings.enabled(context,key))&&EXECUTED.add(key)) {STATUS.put(key,"executed");publish(context);}
                         return result;
                     }));
                     keys.add(key);count++;

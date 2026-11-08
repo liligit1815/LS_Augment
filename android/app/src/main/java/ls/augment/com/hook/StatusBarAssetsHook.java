@@ -116,8 +116,17 @@ final class StatusBarAssetsHook {
         for(View v:new ArrayList<>(ENTRIES.keySet()))if(v instanceof ConnectivityIconView)((ConnectivityIconView)v).artworkChanged();
     };
     private static final Runnable POLL = new Runnable() {
+        private long deferredAt;
         @Override public void run() {
             polling = false;
+            long now=SystemClock.uptimeMillis();
+            // Only the periodic inventory sweep waits. Attach/config/icon callbacks remain immediate.
+            // Bound the wait so a long gesture cannot starve the live icon catalogue.
+            if(interactive&&ShadeAnimationTraceHook.motionRecent(now)&&(deferredAt==0||now-deferredAt<1000)){
+                if(deferredAt==0)deferredAt=now;
+                polling=true;MAIN.postDelayed(this,250);return;
+            }
+            deferredAt=0;
             updatePower(); discover(); requestSurface();
             if (interactive && (!ROOTS.isEmpty() || !ENTRIES.isEmpty())) schedulePoll();
         }
@@ -167,8 +176,11 @@ final class StatusBarAssetsHook {
         if (!ROOTS.containsKey(root)) {
             Root state = new Root(root); ROOTS.put(root, state);
             root.addOnAttachStateChangeListener(state);
+            state.scan();
         }
-        ROOTS.get(root).scan(); schedulePoll(); scheduleArtworkTick();
+        // watch also runs from the native notification-header onMeasure. A
+        // registered root must not rediscover its entire tree every layout pass.
+        schedulePoll(); scheduleArtworkTick();
     }
 
     /** Privacy dots live in their own status-event windows, not in the main status-bar subtree. */
@@ -355,7 +367,9 @@ final class StatusBarAssetsHook {
     private static void discover(){
         if(application==null)return;
         readConfig();
-        for(Root root:new ArrayList<>(ROOTS.values()))root.scan();
+        for(Root root:new ArrayList<>(ROOTS.values())){
+            ViewGroup view=root.view.get();if(view!=null&&displayed(view))root.scan();
+        }
         syncConnectivity();playback();publish();scheduleArtworkTick();
     }
 

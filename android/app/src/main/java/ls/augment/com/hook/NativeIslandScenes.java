@@ -369,10 +369,9 @@ final class NativeIslandScenes {
             if("ready".equals(capability))supportedScenes.add(NativeIslandSceneOptions.IDS[i]);
             FeatureSettings.diagnostic(context,NativeIslandSceneOptions.key(NativeIslandSceneOptions.IDS[i])+"_capability",capability);
         }
-        boolean master = FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED);
         java.util.Set<String> next = new java.util.HashSet<>();
         for (String id : supportedScenes) {
-            if (NativeIslandScenePolicy.enhance(master, FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), true)) next.add(id);
+            if (requested(id)) next.add(id);
         }
         boolean restoringNative = !enhancedScenes.isEmpty() && next.isEmpty();
         if (!next.containsAll(enhancedScenes)) closeOrdinaryPanel();
@@ -381,6 +380,13 @@ final class NativeIslandScenes {
         if (enhancing("record")) observeRecorder(); else suspendRecorder();
         if (countdownBridge != null) { if (enhancing("countdown")) countdownBridge.request(); else countdownBridge.suspend(); }
         if (mediaBridge != null) { if (enhancing("media")) mediaBridge.request(); else mediaBridge.suspend(); }
+        String musicGate = "duo=" + FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND)
+                + ";music=" + FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.PREFIX + "island_music")
+                + ";scenes=" + FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
+                + ";mediaOption=" + FeatureSettings.enabled(context, NativeIslandSceneOptions.key("media"))
+                + ";capability=" + mediaCapability + ";bridge=" + enhancing("media");
+        FeatureRuntimeLog.state("ISLAND_MUSIC_GATE", musicGate, musicGate);
+        if (!enhancing("media")) FeatureSettings.diagnostic(context, "ls_augment_native_island_media", "inactive;" + musicGate);
         if (restoringNative) try {
             call(permanent, "updateRooterVisibility"); call(permanent, "updateIslandContainerVisibility");
         } catch (Exception missing) { report("scene_native_restore_failed:" + reason(missing)); }
@@ -402,8 +408,16 @@ final class NativeIslandScenes {
     }
 
     private boolean enhancing(String id) {
-        return usable() && enhancedScenes.contains(id)
-                && NativeIslandScenePolicy.enhance(FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
+        return usable() && enhancedScenes.contains(id) && requested(id);
+    }
+
+    private boolean requested(String id) {
+        if ("media".equals(id)) return NativeIslandScenePolicy.music(
+                FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND),
+                FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.PREFIX + "island_music"),
+                FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
+                FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), supportedScenes.contains(id));
+        return NativeIslandScenePolicy.enhance(FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
                 FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), supportedScenes.contains(id));
     }
 
@@ -508,7 +522,7 @@ final class NativeIslandScenes {
             View panel = existingPanel(media, "mMediaPanelIsland");
             for (String button : new String[]{"mPanelPrev", "mPanelPlayPause", "mPanelNext"})
                 if (!(field(panel, button) instanceof ImageView)) throw new IllegalStateException("media_button_missing:" + button);
-            Class<?> data = Class.forName("com.android.systemui.media.controls.shared.model.MediaData", false, loader);
+            Class<?> data = NativeIslandMedia.dataType(media.getClass());
             if (NativeIslandSceneContract.field(media.getClass(), "mMediaData", data) == null
                     || NativeIslandSceneContract.field(media.getClass(), "mCurrentUser", int.class) == null
                     || NativeIslandSceneContract.field(media.getClass(), "mMediaPkg", String.class) == null

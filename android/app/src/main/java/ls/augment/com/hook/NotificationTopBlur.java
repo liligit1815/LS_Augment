@@ -2,13 +2,14 @@ package ls.augment.com.hook;
 
 import android.graphics.RenderEffect;
 import android.graphics.Canvas;
-import android.graphics.Bitmap;
-import android.graphics.Paint;
 import android.graphics.ColorFilter;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RenderNode;
 import android.graphics.Shader;
+import android.graphics.Paint;
+import android.graphics.BlendMode;
+import android.graphics.LinearGradient;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
@@ -21,13 +22,11 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Live notification pixels below the native clock children, never an effect on the first row. */
+/** GPU-only notification backdrop inside the clock/date region; foreground text stays native. */
 final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnPreDrawListener {
     interface Source {
         boolean active();
         boolean eligible(View row) throws ReflectiveOperationException;
-        int clip(View row) throws ReflectiveOperationException;
-        void clip(View row,int value) throws ReflectiveOperationException;
     }
     private final WeakReference<ViewGroup> stack;
     private final Source source;
@@ -36,9 +35,12 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
     private Drawable original;
     private LayerDrawable installed;
     private RenderNode node;
-    private Bitmap pixels;
-    private final Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final int[] origin=new int[2],point=new int[2];
+    private View clock,date;
     private final Rect region=new Rect();
+    private final Paint mask=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private Shader verticalMask,horizontalMask;
+    private final Rect maskRegion=new Rect();
     private String reason="inactive";
     private String failure="",geometryFailure="";
     private int drawn;
@@ -63,7 +65,9 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
             background(target,installed);
             observer=target.getViewTreeObserver();observer.addOnPreDrawListener(this);
         }
-        rows.clear();for(View row:candidates)rows.add(new WeakReference<>(row));
+        boolean same=rows.size()==candidates.size();
+        if(same)for(int i=0;i<rows.size();i++)if(rows.get(i).get()!=candidates.get(i)){same=false;break;}
+        if(!same){rows.clear();for(View row:candidates)rows.add(new WeakReference<>(row));}
         reason="ready";target.invalidate();
     }
     private static void background(View view,Drawable value){
@@ -76,7 +80,6 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
         View view=header.get();
         if(view!=null&&installed!=null&&view.getBackground()==installed)background(view,original);
         if(node!=null)node.discardDisplayList();
-        pixels=null;
         rows.clear();installed=null;original=null;header.clear();drawn=0;lastDrawAt=0;reason="inactive";
     }
     @Override public boolean onPreDraw(){
@@ -84,11 +87,15 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
         if(view==null||host==null||!source.active()||view.getBackground()!=installed||!geometry(view,host)){clear();return true;}
         // Follow native property animations too; do not continuously schedule new
         // frames while a scrolled shade is stationary.
-        int[] location=new int[2];view.getLocationInWindow(location);
+        int[] location=point;view.getLocationInWindow(location);
         long stamp=31L*(31L*location[0]+location[1])+region.top;
         stamp=31*stamp+region.bottom;stamp=31*stamp+region.right;
+        int headerX=location[0],headerY=location[1];
         for(WeakReference<View> reference:rows){View row=reference.get();if(row==null)continue;
-            row.getLocationInWindow(location);stamp=31*stamp+location[0];stamp=31*stamp+location[1];
+            row.getLocationInWindow(location);
+            int left=location[0]-headerX,top=location[1]-headerY;
+            if(top>=region.bottom||top+row.getHeight()<=region.top||left>=region.right||left+row.getWidth()<=region.left)continue;
+            stamp=31*stamp+location[0];stamp=31*stamp+location[1];
             stamp=31*stamp+row.getWidth();stamp=31*stamp+row.getHeight();stamp=31*stamp+row.getVisibility();
             stamp=31*stamp+Float.floatToIntBits(row.getAlpha());stamp=31*stamp+Float.floatToIntBits(row.getScaleY());
             stamp=31*stamp+Float.floatToIntBits(row.getScaleX());stamp=31*stamp+Float.floatToIntBits(row.getRotation());
@@ -101,54 +108,53 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
         if(stamp!=frameStamp){frameStamp=stamp;view.invalidate();}
         return true;
     }
-    String evidence(){return reason+";header_pixels="+region.left+","+region.top+","+region.right+","+region.bottom+";drawn_rows="+drawn+";last_draw_at="+lastDrawAt;}
+    String evidence(){return reason+";target=clock_region_backdrop;renderer=hardware;radius_dp=10;software_draws=0"+";header_pixels="+region.left+","+region.top+","+region.right+","+region.bottom+";drawn_rows="+drawn+";soft_edge_dp=16;last_draw_at="+lastDrawAt;}
     @Override public void draw(Canvas canvas){
         View view=header.get();ViewGroup host=stack.get();drawn=0;
         if(failed||view==null||host==null||!canvas.isHardwareAccelerated()||!source.active()
                 ||view.getBackground()!=installed||!geometry(view,host))return;
         try{
             if(node==null){node=new RenderNode("DuoNotificationClockBackdrop");
-                float radius=12*view.getResources().getDisplayMetrics().density;
+                float radius=10*view.getResources().getDisplayMetrics().density;
                 node.setRenderEffect(RenderEffect.createBlurEffect(radius,radius,Shader.TileMode.CLAMP));}
-            // A small reusable pixel buffer avoids retaining the OEM children's
-            // mutable RenderNodes after their geometric clip has been restored.
-            // It is redrawn from native views, never read from a screen capture.
-            float sampling=Math.min(1,540f/region.width());
-            int width=Math.max(1,Math.round(region.width()*sampling)),height=Math.max(1,Math.round(region.height()*sampling));
-            if((long)width*height>1_048_576){reason="header_too_large";return;}
-            if(pixels==null||pixels.getWidth()!=width||pixels.getHeight()!=height)
-                pixels=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
-            pixels.eraseColor(0);
-            Canvas recording=new Canvas(pixels);recording.scale(sampling,sampling);
+            // RecordingCanvas accepts native hardware bitmaps/RenderNodes. A
+            // software Bitmap Canvas makes OEM RemoteViews cancel notifications
+            // internally on drawing errors; never use that path as a fallback.
+            node.setPosition(0,0,region.width(),region.height());
+            Canvas recording=node.beginRecording();
             try{
-                int[] origin=new int[2];view.getLocationInWindow(origin);
+                if(!recording.isHardwareAccelerated())throw new IllegalStateException("hardware_canvas_required");
+                view.getLocationInWindow(origin);
                 for(int i=rows.size()-1;i>=0;i--){View row=rows.get(i).get();
-                    if(row==null||row.getParent()!=host||!shown(row)||!untransformed(row)||!source.eligible(row))continue;
-                    int[] point=new int[2];row.getLocationInWindow(point);
+                    if(row==null||row.getParent()!=host)continue;
+                    row.getLocationInWindow(point);
                     int x=point[0]-origin[0]-region.left,y=point[1]-origin[1]-region.top;
                     if(y>=region.height()||y+row.getHeight()<=0||x>=region.width()||x+row.getWidth()<=0)continue;
-                    int save=recording.save();int clip=source.clip(row);
+                    if(!shown(row)||!untransformed(row)||!source.eligible(row))continue;
+                    int save=recording.save();
                     try{
-                        recording.translate(x,y);
-                        recording.clipRect(0,0,row.getWidth(),row.getHeight());
+                        recording.translate(x,y);recording.clipRect(0,0,row.getWidth(),row.getHeight());
+                        // Keep the native top/bottom/privacy clips. No setter is
+                        // called on the original row or any child RenderNode.
+                        Rect clip=row.getClipBounds();if(clip!=null)recording.clipRect(clip);
                         if(row.getAlpha()<1)recording.saveLayerAlpha(0,0,row.getWidth(),row.getHeight(),Math.round(255*row.getAlpha()));
-                        // Lift only the geometric top clip for this synchronous
-                        // offscreen draw. OEM public/private content and bottom
-                        // clipping remain intact; the actual list stays clipped.
-                        if(clip>0)source.clip(row,0);
-                        Rect nativeClip=row.getClipBounds();if(nativeClip!=null)recording.clipRect(nativeClip);
                         row.draw(recording);drawn++;
-                    }finally{if(clip>0)source.clip(row,clip);recording.restoreToCount(save);}
+                    }finally{recording.restoreToCount(save);}
                 }
-            }finally{recording.setBitmap(null);}
-            node.setPosition(0,0,region.width(),region.height());
-            Canvas display=node.beginRecording();
-            try{display.drawBitmap(pixels,null,new Rect(0,0,region.width(),region.height()),paint);}
-            finally{node.endRecording();}
-            if(drawn>0){int save=canvas.save();try{
-                // Clip AFTER the blur so its kernel cannot spill onto the first row.
-                canvas.clipRect(region);canvas.translate(region.left,region.top);canvas.drawRenderNode(node);
-            }finally{canvas.restoreToCount(save);}}
+            }finally{node.endRecording();}
+            if(drawn>0){
+                prepareMask(view.getResources().getDisplayMetrics().density);
+                int save=canvas.saveLayer(region.left,region.top,region.right,region.bottom,null);
+                try{
+                    // Blur and feather only this layer, before the sharp clock/date
+                    // children draw. The first visible notification is never masked.
+                    canvas.clipRect(region);int translated=canvas.save();
+                    try{canvas.translate(region.left,region.top);canvas.drawRenderNode(node);}
+                    finally{canvas.restoreToCount(translated);}
+                    mask.setShader(verticalMask);canvas.drawRect(region,mask);
+                    mask.setShader(horizontalMask);canvas.drawRect(region,mask);
+                }finally{canvas.restoreToCount(save);}
+            }
             reason="drawn";lastDrawAt=System.currentTimeMillis();
             if(lastDrawAt-lastReportAt>=1000){lastReportAt=lastDrawAt;
                 FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_top_blur_runtime",evidence());}
@@ -158,20 +164,32 @@ final class NotificationTopBlur extends Drawable implements ViewTreeObserver.OnP
             FeatureSettings.diagnostic(host.getContext(),"ls_augment_notification_top_blur_runtime",evidence());
         }
     }
+    private void prepareMask(float density){
+        if(verticalMask!=null&&maskRegion.left==region.left&&maskRegion.top==region.top
+                &&maskRegion.right==region.right&&maskRegion.bottom==region.bottom)return;
+        float y=Math.min(.45f,16*density/region.height()),x=Math.min(.45f,16*density/region.width());
+        int[] colors={0,0xffffffff,0xffffffff,0};
+        verticalMask=new LinearGradient(0,region.top,0,region.bottom,colors,new float[]{0,y,1-y,1},Shader.TileMode.CLAMP);
+        horizontalMask=new LinearGradient(region.left,0,region.right,0,colors,new float[]{0,x,1-x,1},Shader.TileMode.CLAMP);
+        mask.setBlendMode(BlendMode.DST_IN);
+        maskRegion.set(region.left,region.top,region.right,region.bottom);
+    }
     private boolean geometry(View view,ViewGroup host){
         geometryFailure="visibility_transform_or_root";
         if(!notificationHeader(view)||!shown(view)||!shown(host)||!untransformed(view)||!untransformed(host)
                 ||view.getRootView()!=host.getRootView()||view.getWidth()<=0||view.getHeight()<=0)return false;
-        Object rawClock=field(view,"mClockView"),rawDate=field(view,"mDateView");
+        Object rawClock=clock!=null&&inside(clock,view)?clock:field(view,"mClockView");
+        Object rawDate=date!=null&&inside(date,view)?date:field(view,"mDateView");
         geometryFailure="mClockView_or_mDateView_not_TextView";
         if(!(rawClock instanceof TextView)||!(rawDate instanceof TextView))return false;
-        View clock=(View)rawClock,date=(View)rawDate;
+        clock=(View)rawClock;date=(View)rawDate;
         geometryFailure="clock_date_subtree_or_layout";
         if(!inside(clock,view)||!inside(date,view)||!shown(clock)||!untransformed(clock)||!untransformed(date)||clock.getHeight()<=0)return false;
-        int[] h=new int[2],c=new int[2],d=new int[2];view.getLocationInWindow(h);clock.getLocationInWindow(c);date.getLocationInWindow(d);
-        int top=c[1]-h[1],bottom=top+clock.getHeight();
-        if(shown(date)&&date.getHeight()>0){top=Math.min(top,d[1]-h[1]);bottom=Math.max(bottom,d[1]-h[1]+date.getHeight());}
-        region.set(0,Math.max(0,top),view.getWidth(),Math.min(view.getHeight(),bottom));
+        view.getLocationInWindow(origin);clock.getLocationInWindow(point);
+        int top=point[1]-origin[1],bottom=top+clock.getHeight();
+        if(shown(date)&&date.getHeight()>0){date.getLocationInWindow(point);top=Math.min(top,point[1]-origin[1]);bottom=Math.max(bottom,point[1]-origin[1]+date.getHeight());}
+        float density=view.getResources().getDisplayMetrics().density;
+        region.set(0,Math.max(0,top-Math.round(6*density)),view.getWidth(),Math.min(view.getHeight(),bottom+Math.round(10*density)));
         geometryFailure="empty_clock_region";
         return !region.isEmpty();
     }

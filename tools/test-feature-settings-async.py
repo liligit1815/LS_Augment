@@ -307,6 +307,9 @@ public final class TestFeatureSettingsAsync {
         check(diagnosticCalls.get(rejectedDiagnosticKey).get()==calls,"permanent rejection retried for five minutes");
         rejectedDiagnosticKey="ls_augment_capacity_witness";rejectionReason="full";rejectionRetryable=true;
         FeatureSettings.diagnostic(context,rejectedDiagnosticKey,"recoverable");until(()->diagnosticCalls.containsKey(rejectedDiagnosticKey));
+        // Call entry precedes rejection handling. Finish that writer turn before
+        // advancing the synthetic clock, so its retry deadline cannot race ahead.
+        writerTask(()->{});
         check(pending.containsKey(rejectedDiagnosticKey)&&!writes.containsKey(rejectedDiagnosticKey),"storage capacity failure was silently accepted or discarded");
         String fullKey=rejectedDiagnosticKey;rejectedDiagnosticKey=null;android.os.SystemClock.offset+=31_000L;drainNow();
         check("recoverable".equals(writes.get(fullKey)),"capacity failure did not recover with original value");
@@ -384,6 +387,8 @@ public final class TestFeatureSettingsAsync {
         GuardOwner(Context held){this.held=held;}
         public Context getContext(){ownerReads.incrementAndGet();return held;}
         public Object entry(){throw new AssertionError("fixture original should be delegated through Chain");}
+        public Object observedEntry(){throw new AssertionError("fixture original should be delegated through Chain");}
+        public static Object staticObserved(){return null;}
     }
     static final Object ORIGINAL=new Object(),CHANGED=new Object();
     static final class GuardChain implements io.github.libxposed.api.XposedInterface.Chain {
@@ -442,7 +447,26 @@ public final class TestFeatureSettingsAsync {
         providerValue="5:0";refresh();GuardOwner.ownerReads.set(0);GuardChain.receiverReads.set(0);guardedReads(hook,owner);
         check(GuardOwner.ownerReads.get()==0&&GuardChain.receiverReads.get()==0&&businessCalls.get()==1,"off-after-enable did not restore early return");
         check(wrongThread.get()==0,"guard moved IPC onto a callback reader thread");
+        // An always-observed entry retains named registration and does not mark a disabled
+        // observation as execution. Ordinary methods() above must retain their fast guard.
+        Field statuses=OemHooks.class.getDeclaredField("STATUS");statuses.setAccessible(true);
+        Field executed=OemHooks.class.getDeclaredField("EXECUTED");executed.setAccessible(true);
+        ((Set<?>)executed.get(null)).remove("flag");((Map<?,?>)statuses.get(null)).remove("flag");
+        AtomicInteger observations=new AtomicInteger();
+        check(OemHooks.observedMethods(module,TestFeatureSettingsAsync.class.getClassLoader(),GuardOwner.class.getName(),
+                "staticObserved",Object.class,0,"flag",c->CHANGED,new Class<?>[]{})==0,"unexpected static owner must retain native behavior");
+        check(OemHooks.observedMethods(module,TestFeatureSettingsAsync.class.getClassLoader(),GuardOwner.class.getName(),
+                "observedEntry",Object.class,0,"flag",c->{observations.incrementAndGet();return FeatureSettings.enabled(context,"flag")?CHANGED:c.proceed();},new Class<?>[]{})==1,"observed adapter not registered");
+        io.github.libxposed.api.XposedInterface.Hooker observedHook=module.hooks.get(GuardOwner.class.getDeclaredMethod("observedEntry"));
+        GuardChain offObservation=new GuardChain(owner);
+        check(observedHook.intercept(offObservation)==ORIGINAL&&offObservation.proceeded==1&&observations.get()==1,"off observation changed original or was skipped");
+        check("registered".equals(((Map<?,?>)statuses.get(null)).get("flag")),"disabled observation incorrectly claimed enabled execution");
+        providerValue="6:1";refresh();
+        check(observedHook.intercept(new GuardChain(owner))==CHANGED,"enabled observed adapter did not execute");
+        check("executed".equals(((Map<?,?>)statuses.get(null)).get("flag")),"enabled observation lost named feature evidence");
+        check(FeatureSettings.runtimeEvidence().contains("configRevision=6"),"passive runtime evidence does not match verified publication");
         System.out.println("FeatureSettings/OemHooks actual guard: unverified refresh, 4000 fresh off callbacks without IPC/owner lookup, 4000 expired off callbacks with blocked worker refresh, enable/disable changes passed");
+        System.out.println("PASS observed OEM entry: disabled native return, enabled behavior, registration/execution distinction and configuration witness");
     }
     public static void main(String[] args)throws Throwable {
         if(args.length>0&&args[0].equals("host_context")){

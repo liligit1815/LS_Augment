@@ -27,6 +27,8 @@ final class SystemUiHook {
         installed += StatusBarAssetsHook.install(module, loader);
         installed += StatusBarRecentsHook.install(module, loader);
         BatteryPercentageHook.install(module, loader);
+        installed += NotificationTraceBudgetHook.install(module, loader);
+        installed += ShadeAnimationTraceHook.install(module, loader);
         int cascade = NotificationCascadeHook.install(module, loader);
         installed += cascade;
         if (cascade > 0) installed += NotificationIndependentHook.install(module, loader);

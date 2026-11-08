@@ -2,7 +2,7 @@
 
 红魔Duo 是面向红魔手机的 Android 增强模块。通过独立应用配置功能，由 Root、Modern LSPosed 和原厂组件共同执行，涵盖状态栏、通知与控制中心、游戏与肩键、风扇、桌面、应用管理和小米运动健康。
 
-**当前源码版本：`2.0.0-alpha1-test20738`，内部版本号 `20738`。** 以 [android/version.properties](android/version.properties) 为准。当前功能见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
+**当前源码版本：`2.0.0-alpha1-test20749`，内部版本号 `20749`。** 以 [android/version.properties](android/version.properties) 为准。当前功能见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
 
 当前在线版本为 test20738：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20738/redmagic-duo-20738.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20738)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
