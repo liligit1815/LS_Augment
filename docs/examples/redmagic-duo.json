@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20738,
-    "versionName": "2.0.0-alpha1-test20738",
+    "versionCode": 20749,
+    "versionName": "2.0.0-alpha1-test20749",
     "minSdk": 35,
-    "publishedAt": "2026-11-07T02:24:18Z",
-    "notes": "- 优化红魔Step主副工作区切换，修复黑屏、缩放跳变、触摸穿透及键盘残留问题。\n- 新增首次手势引导，支持重新练习；红魔Duo可收纳到副工作区并参与交换与恢复。\n- 接入原生音乐卡片与音频输出控制，完善歌词、播放进度、录屏和页面指示器。\n- 修复亮度滑条越界，优化横屏大字号布局，调整截图图标。\n- 完善灵动岛通知活动，支持按应用与通知渠道配置展示规则。\n- 新增桌面搜索遮罩开关，完善亮度、自动息屏、风扇与应用隐藏功能。\n- 更新后请重启手机。",
+    "publishedAt": "2026-11-08T01:16:33Z",
+    "notes": "- 修复通知堆叠上滑后通知消失、无法拉回的问题。\n- 调整时间区域的高斯模糊位置与过渡，保持时间和日期文字清晰。\n- 优化通知中心与控制中心下拉、双向横滑及通知滚动的流畅度。\n- 修复红魔Step退出后的手势、最近任务和桌面缩放异常，改善微信及顶部输入框的键盘避让。\n- 完善灵动岛后台音乐识别，修复展开后点击外部意外锁屏的问题。\n- 修复部分系统的自动息屏选项扩展与极暗状态同步问题。\n- 完善风扇驱动核验和第三方语音助手兼容，补充间歇失效及动画恢复诊断。\n- 更新后请重启手机。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20738/redmagic-duo-20738.apk",
-      "size": 16286255,
-      "sha256": "44c9040638bcf20f1ea0d54e3a056a44a0604a5d3c89e6f927f1cc50a61a00fb",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20749/redmagic-duo-20749.apk",
+      "size": 16351511,
+      "sha256": "702a3ad67bfb047c6e3bd3aeb2dcd2a0597ace3250f11ac4ecaec886b7c52da0",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }

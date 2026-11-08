@@ -4,7 +4,7 @@
 
 **当前源码版本：`2.0.0-alpha1-test20749`，内部版本号 `20749`。** 以 [android/version.properties](android/version.properties) 为准。当前功能见[最新版功能说明](docs/最新版功能说明.md)，数据归属与迁移规则见[模块私有存储](docs/模块私有存储.md)。
 
-当前在线版本为 test20738：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20738/redmagic-duo-20738.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20738)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
+当前在线版本为 test20749：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20749/redmagic-duo-20749.apk)，[版本页面](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20749)。源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
