@@ -26,19 +26,18 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Map;
-import java.util.WeakHashMap;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
-/** Opt-in completion of existing OEM scenes while the ordinary native host owns them. */
+/** Existing OEM scenes follow the ordinary island owner; missing card routes remain opt-in. */
 final class NativeIslandScenes {
     private static final String OEM = "com.zte.feature.dynamicisland.";
-    private static final String CAPSULE = "com.zte.feature.callnotify.CallLayout";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final Map<Object, Boolean> CAPSULES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final NativeIslandCapsules CAPSULES = new NativeIslandCapsules(NativeIslandScenes::capsuleOwned);
+    private static volatile java.util.Set<String> fullscreenCapsules=java.util.Collections.emptySet();
 
     // Process-owned hook/controller or explicitly retired session; retain its existing owner lifecycle (see stage3 lint ledger).
     //noinspection StaticFieldLeak
@@ -52,6 +51,9 @@ final class NativeIslandScenes {
     private final Runnable capsuleRefresh = this::refreshCapsules;
     private final Runnable torchRefresh = this::syncTorch;
     private final Runnable changed = this::stateChanged;
+    private final android.view.ViewTreeObserver.OnGlobalLayoutListener layoutChanged = () -> {
+        if (!capsuleOwnershipKey().equals(this.suppressing)) scheduleChanged();
+    };
     private final Runnable recordRefresh = this::syncRecorder;
     private final Map<Object, View> panels = new java.util.IdentityHashMap<>();
     private final java.util.Set<String> enhancedScenes = new java.util.HashSet<>();
@@ -67,13 +69,23 @@ final class NativeIslandScenes {
     private String lastMotion = "";
     private Method visibleState;
     private volatile boolean closed;
-    private boolean suppressing, receiving;
+    private boolean receiving;
+    private String suppressing = "";
+    private volatile java.util.Set<String> automaticCapsules=java.util.Collections.emptySet();
+    private volatile String visibleCapsule="";
+    private final boolean nativeBaseline;
     private int torchAddRequests;
     private Context recordContext;
     private Uri recordUri;
     private Uri recordCountUri;
     private boolean observingRecord;
     private int recordSource = -1;
+    private static boolean recorderEndpointReady;
+    private final NativeIslandRecorderState recorderModel=new NativeIslandRecorderState();
+    private volatile boolean recorderEligible;
+    private boolean recorderRenderFailed;
+    private String recorderTopPackage;
+    private final Runnable recorderExpiry=()->{ syncRecorder(); stateChanged(); refreshCapsules(); };
     private String lastPausedCache = "";
     private String recoveryState = "none";
     private String torchCapability = "unavailable", recordCapability = "unavailable", countdownCapability = "unavailable",
@@ -100,6 +112,9 @@ final class NativeIslandScenes {
     };
 
     static int install(AugmentModule module, ClassLoader loader) {
+        recorderEndpointReady=NativeIslandRecorderBridge.install(module,loader);
+        recorderEndpointReady=NativeIslandRecorderRendering.install(module,loader) && recorderEndpointReady;
+        installRecorderText(module,loader);
         int count = installPanelClicks(module, loader);
         return count + installScenes(module, loader);
     }
@@ -169,6 +184,7 @@ final class NativeIslandScenes {
         // The native show method does nothing in these states. Do not replace a pending close owner.
         for (String state : new String[]{"mAnimProcessing", "mPriorityProcessing", "mDynamicPanelShowing", "mDynamicPanelClosing"})
             if (Boolean.TRUE.equals(field(permanent, state))) return true;
+        IslandPanelInteraction.bind(this,permanent,island,call(island,"getPanelIsland"),false,null);
         java.lang.ref.WeakReference<NativeIslandScenes> weak = new java.lang.ref.WeakReference<>(this);
         boolean ready = IslandPanelGuard.prepare(permanent, island, () -> {
             NativeIslandScenes owner = weak.get();
@@ -202,6 +218,7 @@ final class NativeIslandScenes {
         }
         for (String name : new String[]{"addPermanentIslandInner", "removePermanentIslandInner",
                 "handleDynamicIslandChanged", "onDynamicIslandSettingsChanged",
+                "updateRooterVisibility", "onStartedWakingUp",
                 "onPermanentIslandAnimationEnd",
                 "onPermanentIslandPanelOpenAnimationStart", "onPermanentIslandPanelOpenAnimationEnd", "onPermanentIslandPanelCloseAnimationEnd",
                 "onKeyguardStateChanged", "onRotationStateChangedInner",
@@ -222,7 +239,7 @@ final class NativeIslandScenes {
         count += hookNamed(module, loader, "native_scene", OEM + "DynamicIslandManager",
                 "handleRemoveIsland", 1, null, (object, arguments, result) -> {
                     NativeIslandScenes owner = selected;
-                    if (owner != null && object == owner.manager) owner.foregroundChanged();
+                    if (owner != null && object == owner.manager) owner.foregroundChanged((String)arguments[0]);
                     return PASS;
                 });
         count += hookNamed(module, loader, "native_scene", OEM + "DynamicIslandManager",
@@ -265,87 +282,135 @@ final class NativeIslandScenes {
     }
 
     private static int installCapsules(AugmentModule module, ClassLoader loader) {
-        try {
-            Class<?> type = Class.forName(CAPSULE, false, loader);
-            Field recording = NativeIslandSceneContract.field(type, "mRecordingVisible", int.class);
-            Field paused = NativeIslandSceneContract.field(type, "mRecordPausedVisible", int.class);
-            if (recording == null || paused == null
-                    || NativeIslandSceneContract.field(type, "mCallingVisible", int.class) == null) {
-                module.logFeatureInfo("NATIVE_SCENE_MISSING capsule_record_fields"); return 0;
-            }
-            int count = 0;
-            ArrayList<Field> otherVisibility = new ArrayList<>();
-            for (Class<?> current = type; current != null && current != View.class; current = current.getSuperclass()) {
-                for (Field candidate : current.getDeclaredFields()) {
-                    if (!candidate.getName().endsWith("Visible")
-                            || candidate.getName().equals("mRecordingVisible")
-                            || candidate.getName().equals("mRecordPausedVisible")) continue;
-                    if (candidate.getType() == int.class || candidate.getType() == boolean.class) {
-                        candidate.setAccessible(true); otherVisibility.add(candidate);
-                    }
-                }
-            }
-            Method setVisibility = NativeIslandSceneContract.method(type, "setVisibility", void.class, int.class);
-            if (setVisibility != null && setVisibility.getDeclaringClass() == type && !otherVisibility.isEmpty()) {
-                module.registerFeatureHook(module.prepareFeatureHook(setVisibility,
-                        "rm.ui.native_scene.capsule.setVisibility", false).intercept(chain -> {
-                    Object object = chain.getThisObject(); CAPSULES.put(object, Boolean.TRUE);
-                    Object[] arguments = chain.getArgs().toArray();
-                    NativeIslandScenes owner = selected;
-                    if ((Integer) arguments[0] == View.VISIBLE && owner != null && owner.shouldSuppressRecorder()) {
-                        boolean anotherScene = false;
-                        for (Field candidate : otherVisibility) {
-                            Object value = candidate.get(object);
-                            if (Boolean.TRUE.equals(value) || (value instanceof Integer && (Integer) value == View.VISIBLE)) {
-                                anotherScene = true; break;
-                            }
-                        }
-                        if (!anotherScene) arguments[0] = View.GONE;
-                    }
-                    return chain.proceed(arguments);
-                }));
-                count++; capsuleReady = true;
-            }
-            // Mask only the recorder while the OEM evaluates rendering. Keep producer
-            // values/observers intact and restore even if the original method throws.
-            for (String name : new String[]{"getCurrentVisibility", "getViewStatus", "isViewVisible",
-                    "isAnyViewShouldVisible", "hasHigherPriorityViewVisible", "isAnyTypeVisibilityChanged",
-                    "isVisibilityChanged", "handleVisibilityChanged", "handleFinalVisibility",
-                    "updateVisibility", "skipUpdateText", "updateRecorderTimeCount"}) {
-                for (Method method : type.getDeclaredMethods()) {
-                    if (!method.getName().equals(name) || method.isSynthetic()) continue;
-                    method.setAccessible(true);
-                    module.registerFeatureHook(module.prepareFeatureHook(method,
-                            "rm.ui.native_scene.capsule." + name, false).intercept(chain -> {
-                        Object object = chain.getThisObject(); CAPSULES.put(object, Boolean.TRUE);
-                        NativeIslandScenes owner = selected;
-                        if (owner == null || !owner.shouldSuppressRecorder()) return chain.proceed(chain.getArgs().toArray());
-                        int before = recording.getInt(object), beforePaused = paused.getInt(object);
-                        try { recording.setInt(object, View.GONE); paused.setInt(object, View.GONE); }
-                        catch (ReflectiveOperationException unsupported) {
-                            recording.setInt(object, before); paused.setInt(object, beforePaused);
-                            return chain.proceed(chain.getArgs().toArray());
-                        }
-                        try { return chain.proceed(chain.getArgs().toArray()); }
-                        finally { recording.setInt(object, before); paused.setInt(object, beforePaused); }
-                    }));
-                    count++;
-                }
-            }
-            count += hookNamed(module, loader, "native_scene", CAPSULE, "onAttachedToWindow", 0,
-                    null, (object, arguments, result) -> {
-                        CAPSULES.put(object, Boolean.TRUE);
-                        NativeIslandScenes owner = selected;
-                        if (owner != null) owner.scheduleChanged();
-                        return PASS;
-                    });
-            return count;
-        } catch (Throwable absent) { module.logFeatureError("NATIVE_SCENE_CAPSULE", absent); return 0; }
+        int count = CAPSULES.install(module, loader);
+        capsuleReady = CAPSULES.ready();
+        return count;
     }
 
-    NativeIslandScenes(Context context, ClassLoader loader, Object manager, Object permanent, View root) {
+    static boolean capsuleSupported(String scene) { return CAPSULES.supportsScene(scene); }
+
+    static boolean capsuleOwned(String scene) {
+        if (fullscreenCapsules.contains(scene)) return true;
+        NativeIslandScenes owner=selected;
+        // Launcher queries arrive on Binder threads; read only published state here, never Views.
+        return owner!=null && !owner.closed && FeatureSettings.enabled(owner.context,ls.augment.com.SystemUiOptions.ISLAND)
+                && (owner.automaticCapsules.contains(scene) || ("record".equals(scene) && recorderTakeover())
+                    || scene.equals(owner.visibleCapsule));
+    }
+
+    static void fullscreenCapsules(java.util.Set<String> scenes) {
+        java.util.Set<String> next=java.util.Collections.unmodifiableSet(new java.util.HashSet<>(scenes));
+        if (next.equals(fullscreenCapsules)) return;
+        fullscreenCapsules=next;
+        MAIN.post(()->CAPSULES.refresh(value->FeatureRuntimeLog.event("ISLAND_CAPSULE_RESTORE",value)));
+    }
+
+    static boolean recorderTakeover() {
+        NativeIslandScenes owner=selected;
+        if (owner==null || owner.closed || !owner.recorderEligible) return false;
+        NativeIslandRecorderState.Snapshot snapshot=owner.recorderModel.current(SystemClock.elapsedRealtime());
+        return snapshot!=null && snapshot.complete();
+    }
+
+    static boolean recorderSnapshot(NativeIslandRecorderState.Snapshot snapshot) {
+        NativeIslandScenes owner=selected;
+        if (owner==null || owner.closed || !owner.recorderEligible
+                || !owner.recorderModel.accept(snapshot,SystemClock.elapsedRealtime())) return false;
+        MAIN.post(()->{
+            if (owner.closed || selected!=owner) return;
+            MAIN.removeCallbacks(owner.recorderExpiry);
+            MAIN.postDelayed(owner.recorderExpiry,NativeIslandRecorderState.LEASE_MS);
+            owner.syncRecorder(); owner.stateChanged();
+        });
+        return true;
+    }
+
+    static boolean recorderReconcile(Object permanent,Object island) {
+        NativeIslandScenes owner=selected;
+        if (owner==null || permanent!=owner.permanent || island!=owner.record || !recorderTakeover()) return false;
+        // A delayed native visible=0 must not close a current background recording.
+        owner.syncRecorder();
+        return recorderTakeover();
+    }
+
+    static boolean recorderAdditionBlocked(Object permanent,Object island) {
+        NativeIslandScenes owner=selected;
+        if (owner==null || permanent!=owner.permanent || island!=owner.record || !recorderTakeover()) return false;
+        NativeIslandRecorderState.Snapshot snapshot=owner.recorderModel.current(SystemClock.elapsedRealtime());
+        if (snapshot==null) return false;
+        if (!snapshot.visible(owner.recorderForeground())) return true;
+        try { owner.prepareRecorderText(); }
+        catch (Exception failure) { owner.retireRecorderRendering(reason(failure)); }
+        return false;
+    }
+
+    private static void installRecorderText(AugmentModule module,ClassLoader loader) {
+        try {
+            Class<?> type=Class.forName(OEM+"islands.RecorderIsland",false,loader);
+            Method count=NativeIslandSceneContract.method(type,"getTimeCount",String.class);
+            Field panel=NativeIslandSceneContract.field(type,"mRecorderPanel",View.class);
+            if (count==null || Modifier.isStatic(count.getModifiers())
+                    || NativeIslandSceneContract.method(type,"getContentText",String.class,String.class)==null
+                    || NativeIslandSceneContract.field(type,"mDisplayText",android.widget.TextView.class)==null
+                    || panel==null || NativeIslandSceneContract.method(panel.getType(),"setDisplayText",void.class,String.class)==null)
+                throw new NoSuchMethodException("recorder_time_render_contract");
+            module.registerFeatureHook(module.prepareFeatureHook(count,"rm.ui.native_scene.recorder_time",false).intercept(chain->{
+                NativeIslandScenes owner=selected;
+                if (owner!=null && chain.getThisObject()==owner.record && recorderTakeover()) {
+                    String text=owner.recorderText();
+                    if (!owner.recorderRenderFailed) return text;
+                }
+                return chain.proceed();
+            }));
+            // OEM callbacks may already be queued when a newer model arrives.
+            for (Class<?> current=type;current!=null && current!=View.class;current=current.getSuperclass())
+            for (Method method:current.getDeclaredMethods()) if (method.getName().startsWith("lambda$updateRecorderTimeCount$")
+                    && method.getReturnType()==void.class && !Modifier.isStatic(method.getModifiers())
+                    && java.util.Arrays.equals(method.getParameterTypes(),new Class<?>[]{String.class})) {
+                method.setAccessible(true);
+                module.registerFeatureHook(module.prepareFeatureHook(method,"rm.ui.native_scene.recorder_render",false).intercept(chain->{
+                    NativeIslandScenes owner=selected;
+                    if (owner!=null && chain.getThisObject()==owner.record && recorderTakeover()) {
+                        String text=owner.recorderText();
+                        if (text==null) return null;
+                        return chain.proceed(new Object[]{text});
+                    }
+                    return chain.proceed();
+                }));
+            }
+        } catch (Throwable missing) { recorderEndpointReady=false; module.logFeatureError("NATIVE_RECORDER_TEXT",missing); }
+    }
+
+    private String recorderText() {
+        NativeIslandRecorderState.Snapshot snapshot=recorderModel.current(SystemClock.elapsedRealtime());
+        if (snapshot==null || !snapshot.active()) return null;
+        try {
+            String text=(String)call(record,"getContentText",snapshot.count);
+            if (text==null || text.isEmpty()) retireRecorderRendering("empty_formatted_time");
+            return text;
+        } catch (Exception missing) { retireRecorderRendering(reason(missing)); return null; }
+    }
+
+    private boolean prepareRecorderText() throws Exception {
+        String text=recorderText();
+        Object label=field(record,"mDisplayText");
+        if (text==null || !(label instanceof android.widget.TextView)) {
+            retireRecorderRendering("record_time_view_unavailable"); return false;
+        }
+        ((android.widget.TextView)label).setText(text);
+        call(field(record,"mRecorderPanel"),"setDisplayText",text);
+        return true;
+    }
+
+    private void retireRecorderRendering(String reason) {
+        if (!recorderRenderFailed) report("record_atomic_render_unavailable:"+reason+";native_provider_fallback");
+        recorderRenderFailed=true; recorderEligible=false;
+    }
+
+    NativeIslandScenes(Context context, ClassLoader loader, Object manager, Object permanent, View root, boolean nativeBaseline) {
         this.context = context; this.loader = loader; this.manager = manager;
         this.permanent = permanent; this.root = root;
+        this.nativeBaseline = nativeBaseline;
         record = field(permanent, "mRecordIsland"); torch = field(permanent, "mFlashlightIsland");
         countdown = field(permanent, "mCountDownIsland"); media = field(permanent, "mMediaIsland");
     }
@@ -354,6 +419,11 @@ final class NativeIslandScenes {
         if (selected != null && selected != this) selected.close();
         selected = this;
         root.addOnAttachStateChangeListener(rootLifecycle);
+        root.getViewTreeObserver().addOnGlobalLayoutListener(layoutChanged);
+        try {
+            visibleState = NativeIslandSceneContract.method(Class.forName(OEM + "DynamicIslandUtils", false, loader),
+                    "isVisibleState", boolean.class, int.class);
+        } catch (ClassNotFoundException missing) { report("scene_visible_state_contract_missing"); }
         IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF); filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_USER_UNLOCKED);
@@ -369,6 +439,8 @@ final class NativeIslandScenes {
             FeatureSettings.diagnostic(context, "ls_augment_native_island_cards", "unavailable:" + reason(missing));
         }
         configurationChanged();
+        // Wake posts a root visibility change; retire an empty input surface before it can appear.
+        syncOrdinaryVisibility();
     }
 
     private void observeRecorder() {
@@ -394,11 +466,36 @@ final class NativeIslandScenes {
     static boolean blocked(Object island) {
         NativeIslandScenes owner=selected;
         if(owner==null||!owner.usable()||island==null)return false;
-        String id=NativeIslandSceneOptions.id(island.getClass());
-        if(("media".equals(id)||"charging".equals(id))&&!FeatureSettings.enabled(owner.context,
-                ls.augment.com.SystemUiOptions.PREFIX+"island_"+("media".equals(id)?"music":"charging")))return true;
-        return id!=null&&owner.supportedScenes.contains(id)&&FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.ENABLED)
-                &&!FeatureSettings.enabled(owner.context,NativeIslandSceneOptions.key(id));
+        String id=owner.sceneId(island);
+        // Only restrict the engine Duo enabled on a capsule-only system. An OEM-enabled
+        // engine retains its own scenes when completion is off, as do unknown scene types.
+        if (island==owner.record && owner.enhancing("record")) {
+            if (owner.recorderForeground()) return true;
+            NativeIslandRecorderState.Snapshot snapshot=owner.recorderRenderFailed?null:owner.recorderModel.current(SystemClock.elapsedRealtime());
+            if (snapshot!=null && !snapshot.visible(false)) return true;
+        }
+        return !owner.nativeBaseline && id != null && !owner.requested(id);
+    }
+
+    private String sceneId(Object island) {
+        if (island == null) return null;
+        String id = NativeIslandSceneOptions.id(island.getClass());
+        if (id != null) return id;
+        // Older resources use one DynamicDisposableIsland class for all four scenes.
+        // Validate the runtime base and typed owner field instead of relying on a model name.
+        boolean disposableType = false;
+        for (Class<?> c = island.getClass(); c != null; c = c.getSuperclass())
+            if ((OEM + "DynamicDisposableIsland").equals(c.getName())) { disposableType = true; break; }
+        Object owner = field(manager, "mDisposableIslandManager");
+        if (!disposableType || owner == null) return null;
+        String[] names = {"mChargingIsland", "mLowPowerIsland", "mBluetoothIsland", "mHeadsetIsland"};
+        String[] ids = {"charging", "low_power", "bluetooth", "headset"};
+        for (int i = 0; i < names.length; i++) {
+            Field member = NativeIslandSceneContract.field(owner.getClass(), names[i], View.class);
+            try { if (member != null && member.get(owner) == island) return ids[i]; }
+            catch (IllegalAccessException missing) { return null; }
+        }
+        return null;
     }
 
     void configurationChanged() {
@@ -416,12 +513,13 @@ final class NativeIslandScenes {
         Object disposable=field(manager,"mDisposableIslandManager");
         for(int i=0;i<members.length;i++){
             Object island=field(i<9?permanent:disposable,members[i]);
-            String capability=island instanceof View&&NativeIslandSceneOptions.IDS[i].equals(NativeIslandSceneOptions.id(island.getClass()))
+            String capability=island instanceof View&&NativeIslandSceneOptions.IDS[i].equals(sceneId(island))
                     ?"ready":"unavailable:"+members[i];
             if(i==0&&!panels.containsKey(record))capability="unavailable:"+recordCapability;
             if(i==1&&!panels.containsKey(torch))capability="unavailable:"+torchCapability;
             if(i==3&&!panels.containsKey(media))capability="unavailable:"+mediaCapability;
             if(i==4&&!panels.containsKey(countdown))capability="unavailable:"+countdownCapability;
+            if(!capsuleSupported(NativeIslandSceneOptions.IDS[i]))capability="unavailable:capsule_render_contract";
             if("ready".equals(capability))supportedScenes.add(NativeIslandSceneOptions.IDS[i]);
             FeatureSettings.diagnostic(context,NativeIslandSceneOptions.key(NativeIslandSceneOptions.IDS[i])+"_capability",capability);
         }
@@ -432,6 +530,7 @@ final class NativeIslandScenes {
         boolean restoringNative = !enhancedScenes.isEmpty() && next.isEmpty();
         if (!next.containsAll(enhancedScenes)) closeOrdinaryPanel();
         enhancedScenes.clear(); enhancedScenes.addAll(next);
+        updateRecorderEligibility();
         syncTorchListener(enhancing("torch"));
         if (enhancing("record")) observeRecorder(); else suspendRecorder();
         if (countdownBridge != null) { if (enhancing("countdown")) countdownBridge.request(); else countdownBridge.suspend(); }
@@ -453,9 +552,29 @@ final class NativeIslandScenes {
             if(island!=null&&blocked(island))try{call(permanent,"removePermanentIsland",island);}
             catch(Exception unavailable){report("scene_remove_unavailable:"+name+":"+reason(unavailable));}
         }
+        withdrawDisposable();
         MAIN.removeCallbacks(recordRefresh);MAIN.post(recordRefresh);
         MAIN.removeCallbacks(torchRefresh);MAIN.post(torchRefresh);
         scheduleChanged();
+    }
+
+    private void withdrawDisposable() {
+        if (nativeBaseline) return;
+        Object owner = field(manager, "mDisposableIslandManager");
+        Object value = field(owner, "mDynamicDisposableContainer");
+        if (!(value instanceof ViewGroup)) return;
+        ViewGroup container = (ViewGroup) value;
+        if (container.getChildCount() == 0) return;
+        // The verified native withdrawal clears the container. Never apply it if an
+        // unknown or still-selected scene shares that container.
+        for (int i = 0; i < container.getChildCount(); i++) if (!blocked(container.getChildAt(i))) return;
+        try {
+            Class<?> permanentType = Class.forName(OEM + "DynamicPermanentIsland", false, loader);
+            Method withdraw = NativeIslandSceneContract.method(owner.getClass(), "onPermanentIslandShowing", void.class,
+                    boolean.class, permanentType);
+            if (withdraw == null) throw new NoSuchMethodException("disposable_withdraw");
+            withdraw.invoke(owner, false, null);
+        } catch (Exception missing) { report("scene_disposable_restore_unavailable:" + reason(missing)); }
     }
 
     private boolean usable() {
@@ -471,10 +590,10 @@ final class NativeIslandScenes {
         if ("media".equals(id)) return NativeIslandScenePolicy.music(
                 FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND),
                 FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.PREFIX + "island_music"),
-                FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
-                FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), supportedScenes.contains(id));
-        return NativeIslandScenePolicy.enhance(FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED),
-                FeatureSettings.enabled(context, NativeIslandSceneOptions.key(id)), supportedScenes.contains(id));
+                supportedScenes.contains(id));
+        if ("charging".equals(id) && !FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.PREFIX + "island_charging")) return false;
+        return NativeIslandScenePolicy.nativeScene(FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND),
+                supportedScenes.contains(id));
     }
 
     private boolean hasEnhancements() {
@@ -550,9 +669,32 @@ final class NativeIslandScenes {
         }
     }
 
+    void foregroundChanged(String pkg) {
+        recorderTopPackage=pkg;
+        foregroundChanged();
+    }
+
     void foregroundChanged() {
+        if (enhancing("record")) { MAIN.removeCallbacks(recordRefresh); MAIN.post(recordRefresh); }
         if (countdownBridge != null && enhancing("countdown")) countdownBridge.request();
         if (mediaBridge != null && enhancing("media")) mediaBridge.request();
+    }
+
+    private boolean recorderForeground() {
+        Object pkg=recorderTopPackage!=null?recorderTopPackage:field(manager,"mPkgName");
+        return "cn.zte.recorder".equals(pkg);
+    }
+
+    private void updateRecorderEligibility() {
+        recorderEligible=recorderEndpointReady && !recorderRenderFailed && enhancing("record")
+                && Integer.valueOf(currentUser()).equals(field(record,"mCurrentUser"))
+                && Boolean.TRUE.equals(field(permanent,"mInteractive"))
+                && !Boolean.TRUE.equals(field(permanent,"mAODVisibility"))
+                && !Boolean.TRUE.equals(field(permanent,"mSuperPowerSave"));
+        try {
+            if (Boolean.TRUE.equals(call(permanent,"isOrientationLandscape"))
+                    || Boolean.TRUE.equals(field(permanent,"mOnKeyguard"))) recorderEligible=false;
+        } catch (Exception unknown) { recorderEligible=false; }
     }
 
     private static int currentUser() {
@@ -650,8 +792,6 @@ final class NativeIslandScenes {
     private void prepareRecorder() {
         try {
             View panel = scenePanel(record, "mRecorderPanel", "mPanelTag", "mPanelPlay", "mPanelStop", "mPanelClose");
-            visibleState = NativeIslandSceneContract.method(Class.forName(OEM + "DynamicIslandUtils", false, loader),
-                    "isVisibleState", boolean.class, int.class);
             if (visibleState == null) throw new IllegalStateException("record_visible_state_contract_missing");
             Object user = field(record, "mCurrentUserContext");
             Context currentUser = user instanceof Context ? (Context) user : context;
@@ -737,19 +877,27 @@ final class NativeIslandScenes {
         } catch (Exception error) { report("flashlight_sync_failed:" + reason(error)); }
     }
 
-    private boolean shouldSuppressRecorder() {
-        if (!enhancing("record") || !panels.containsKey(record) || !capsuleReady) return false;
-        if (!Boolean.TRUE.equals(field(permanent, "mInteractive"))
+    private String capsuleScene() {
+        if (!usable() || !capsuleReady || !FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND)
+                || !root.isShown() || !Boolean.TRUE.equals(field(permanent, "mInteractive"))
                 || Boolean.TRUE.equals(field(permanent, "mAODVisibility"))
-                || Boolean.TRUE.equals(field(permanent, "mSuperPowerSave"))) return false;
-        if (Boolean.TRUE.equals(field(permanent, "mOnKeyguard")) && !Boolean.TRUE.equals(field(record, "mKeyguardIsland"))) return false;
-        Object state = field(record, "mCurState");
+                || Boolean.TRUE.equals(field(permanent, "mSuperPowerSave"))) return "";
         try {
+            // A queued/hidden lower-priority island is not a replacement for its capsule.
+            Object island = call(permanent, "getPermanentIsland");
+            if (!(island instanceof View) || !((View) island).isShown()) return "";
+            if (Boolean.TRUE.equals(field(permanent, "mOnKeyguard"))
+                    && !Boolean.TRUE.equals(field(island, "mKeyguardIsland"))) return "";
+            String cardScene = cardsBridge == null ? null : cardsBridge.scene(island);
+            if (cardScene != null && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
+                    && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(cardScene))) return cardScene;
+            String id = NativeIslandSceneOptions.id(island.getClass());
+            if (id == null || !enhancing(id)) return "";
+            Object state = field(island, "mCurState");
             if (!(state instanceof Integer) || visibleState == null
-                    || !Boolean.TRUE.equals(visibleState.invoke(null, state))) return false;
-            return Boolean.TRUE.equals(call(permanent, "isIslandExist", record))
-                    || field(permanent, "mTempIsland") == record;
-        } catch (Exception unavailable) { return false; }
+                    || !Boolean.TRUE.equals(visibleState.invoke(null, state))) return "";
+            return id;
+        } catch (Exception unavailable) { return ""; }
     }
 
     private void syncRecorder() {
@@ -772,6 +920,25 @@ final class NativeIslandScenes {
         }
         if(!panels.containsKey(record)||recordUri==null)return;
         observeRecorder();
+        NativeIslandRecorderState.Snapshot snapshot=recorderRenderFailed?null:recorderModel.current(SystemClock.elapsedRealtime());
+        if (snapshot!=null) {
+            try {
+                recordSource=snapshot.visible(recorderForeground())?snapshot.state:0;
+                call(record,"updatePanelStatus",snapshot.state);
+                boolean present=Boolean.TRUE.equals(call(permanent,"isIslandExist",record));
+                if (recordSource!=0) {
+                    // The first visible frame must already contain the current session's time.
+                    if (!prepareRecorderText()) return;
+                    if (!present) call(permanent,"addPermanentIslandInner",record);
+                } else if (present || field(permanent,"mTempIsland")==record) call(permanent,"removePermanentIsland",record);
+                scheduleChanged();
+            } catch (Exception error) { report("record_model_sync_failed:"+reason(error)); }
+            return;
+        }
+        if (recorderForeground()) {
+            try { call(permanent,"removePermanentIsland",record); } catch (Exception error) { report("record_foreground_remove_failed:"+reason(error)); }
+            scheduleChanged(); return;
+        }
         if(blocked(record))return;
         loadRecovery();
         try {
@@ -934,10 +1101,13 @@ final class NativeIslandScenes {
 
     private void stateChanged() {
         if (closed) return;
+        updateRecorderEligibility();
+        updateAutomaticCapsules();
         if (cardsBridge != null) cardsBridge.stateChanged();
         syncOrdinaryVisibility();
-        boolean next = shouldSuppressRecorder();
-        if (next != suppressing) {
+        visibleCapsule=capsuleScene();
+        String next = capsuleOwnershipKey();
+        if (!next.equals(suppressing)) {
             suppressing = next;
             MAIN.removeCallbacks(capsuleRefresh); MAIN.post(capsuleRefresh);
         }
@@ -947,6 +1117,7 @@ final class NativeIslandScenes {
                 + ";torchOn=" + field(permanent, "mFlashlightOn")
                 + ";recordState=" + field(record, "mCurState")
                 + ";recordSource=" + recordSource
+                + ";recordTransport=" + (recorderTakeover()?"atomic_model":"native_provider")
                 + ";recovery=" + recoveryState
                 + ";paused=" + field(field(record, "mRecorderPanel"), "mIsPause")
                 + ";capsuleSuppressed=" + next
@@ -955,6 +1126,7 @@ final class NativeIslandScenes {
                 + ";keyguard=" + field(permanent, "mOnKeyguard")
                 + ";aod=" + field(permanent, "mAODVisibility")
                 + ";root=" + root.getVisibility()
+                + ";windowFlags=" + windowFlags()
                 + ";container=" + visibility(field(permanent, "mDynamicIslandContainer"))
                 + ";children=" + children(field(permanent, "mDynamicPermanentContainer"))
                 + ";torchState=" + field(torch, "mCurState")
@@ -981,10 +1153,14 @@ final class NativeIslandScenes {
     }
 
     private void syncOrdinaryVisibility() {
+        try { NativeIslandInput.releaseEmpty(permanent); }
+        catch (Exception error) { report("empty_window_input_failed:"+reason(error)); }
         if (!hasEnhancements() || children(field(permanent, "mDynamicPermanentContainer")) <= 0) return;
         try {
             Object island = call(permanent, "getPermanentIsland");
             if (island == null) return;
+            String id = NativeIslandSceneOptions.id(island.getClass());
+            if ((id == null || !enhancing(id)) && (cardsBridge == null || cardsBridge.scene(island) == null)) return;
             boolean hidden = Boolean.TRUE.equals(call(permanent, "disableDynamicIsland"))
                     || Boolean.FALSE.equals(field(permanent, "mStatusBarVisible"))
                     || Boolean.TRUE.equals(call(permanent, "isOrientationLandscape"))
@@ -1002,21 +1178,45 @@ final class NativeIslandScenes {
     }
 
     private void refreshCapsules() {
-        ArrayList<Object> layouts;
-        synchronized (CAPSULES) { layouts = new ArrayList<>(CAPSULES.keySet()); }
-        for (Object layout : layouts) if (layout instanceof View && ((View) layout).isAttachedToWindow()) {
-            try { call(layout, "handleVisibilityChanged"); call(layout, "updateVisibility"); }
-            catch (Exception error) { report("capsule_refresh_failed:" + reason(error)); }
-        }
+        CAPSULES.refresh(this::report);
+    }
+
+    private void updateAutomaticCapsules() {
+        java.util.Set<String> next=new java.util.HashSet<>();
+        try {
+            if (usable() && capsuleReady && Boolean.TRUE.equals(field(permanent,"mInteractive"))
+                    && !Boolean.TRUE.equals(field(permanent,"mAODVisibility"))
+                    && !Boolean.TRUE.equals(field(permanent,"mSuperPowerSave"))
+                    && !Boolean.TRUE.equals(field(permanent,"mOnKeyguard"))
+                    && !Boolean.TRUE.equals(call(permanent,"isOrientationLandscape"))) {
+                // The native provider already drives these views. Keep one renderer through
+                // foreground transitions and animations, even before its first visible frame.
+                for (String scene:new String[]{"call","meeting","ai"}) if (enhancing(scene)) next.add(scene);
+            }
+        } catch (Exception unknown) { report("capsule_owner_unavailable:"+reason(unknown)); }
+        automaticCapsules=java.util.Collections.unmodifiableSet(next);
+    }
+
+    private String capsuleOwnershipKey() {
+        java.util.Set<String> scenes=new java.util.TreeSet<>(automaticCapsules);
+        if (recorderTakeover()) scenes.add("record");
+        String shown=capsuleScene(); if (!shown.isEmpty()) scenes.add(shown);
+        return scenes.toString();
     }
 
     void close() {
+        IslandPanelInteraction.release(this);
         if (closed) return;
         closeOrdinaryPanel();
         closed = true;
+        recorderEligible=false;
+        automaticCapsules=java.util.Collections.emptySet();
+        visibleCapsule="";
+        MAIN.removeCallbacks(recorderExpiry);
         restorePanelWindow();
         panelWindowMotion.restoreAll(this::reportMotion);
         root.removeOnAttachStateChangeListener(rootLifecycle);
+        if (root.getViewTreeObserver().isAlive()) root.getViewTreeObserver().removeOnGlobalLayoutListener(layoutChanged);
         if (receiving) try { context.unregisterReceiver(environment); } catch (RuntimeException ignored) { }
         receiving = false;
         MAIN.removeCallbacks(changed); MAIN.removeCallbacks(torchRefresh); MAIN.removeCallbacks(capsuleRefresh);
@@ -1046,6 +1246,10 @@ final class NativeIslandScenes {
     }
     private static String visibility(Object value) {
         return value instanceof View ? String.valueOf(((View) value).getVisibility()) : "missing";
+    }
+    private String windowFlags() {
+        Object params=field(permanent,"mParams");
+        return params instanceof WindowManager.LayoutParams?Integer.toHexString(((WindowManager.LayoutParams)params).flags):"missing";
     }
     private static int children(Object value) {
         return value instanceof ViewGroup ? ((ViewGroup) value).getChildCount() : -1;

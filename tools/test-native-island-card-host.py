@@ -23,6 +23,7 @@ base = ast.literal_eval(next(n.value for n in tree.body if isinstance(n, ast.Ass
 files = {k: base[k] for k in ['android/os/Handler.java', 'android/os/Looper.java', 'ls/augment/com/ConfigSchema.java',
                             'ls/augment/com/NativeIslandSceneOptions.java', 'ls/augment/com/SystemUiOptions.java']}
 files.update({
+ 'ls/augment/com/hook/NativeIslandScenes.java': 'package ls.augment.com.hook;class NativeIslandScenes {static String missing;static boolean capsuleSupported(String scene){return !scene.equals(missing);}}',
  'android/os/Process.java': 'package android.os;public class Process {public static int myUid(){return 1000;}}',
  'android/content/Context.java': '''package android.content;public class Context {public Resources getResources(){return new Resources();}public Object getContentResolver(){return this;}
  public static class Resources {public Metrics getDisplayMetrics(){return new Metrics();}}public static class Metrics {public int heightPixels=2000;}}''',
@@ -123,6 +124,8 @@ public class TestCardHost {
  h.permanent.mOnKeyguard=true;h.receive(new Message());Handler.flush();check(!h.handleClick(false)&&h.permanent.current==null,"locked card remains pending and cannot launch/open");h.permanent.mOnKeyguard=false;
  h.stateChanged();check(h.permanent.current!=null&&h.cards.size()==1,"unlock attaches previously received real paused card without requiring another source event");
  FeatureSettings.flags.put("record",true);h.configurationChanged();Message recording=new Message();recording.pkg="cn.zte.recorder";recording.id="cn.zte.recorder_recorder_background";h.receive(recording);Handler.flush();
+ NativeIslandScenes.missing="record";h.configurationChanged();check(!h.supportsScene("record")&&h.supportsScene("countdown")&&!h.cards.containsKey(recording.id),"missing capsule rendering contract declines and withdraws affected source cards");
+ NativeIslandScenes.missing=null;h.configurationChanged();recording=new Message();recording.pkg="cn.zte.recorder";recording.id="cn.zte.recorder_recorder_background";h.receive(recording);Handler.flush();
  FeatureSettings.flags.put("countdown",false);h.configurationChanged();check(h.ready&&!h.supportsScene("countdown")&&h.supportsScene("record")&&h.cards.size()==1&&h.cards.containsKey(recording.id),"clock off removes only clock cards, transcription remains enabled");
  FeatureSettings.flags.put("record",false);h.configurationChanged();check(h.cards.isEmpty()&&!h.supportsScene("record")&&!h.supportsScene("unknown"),"record scene off independently withdraws recorder cards");
  FeatureSettings.flags.put("countdown",true);h.configurationChanged();h.userIsland.mCurrentUser=10;h.configurationChanged();check(!h.ready,"different current user cannot obtain host capability");

@@ -228,7 +228,8 @@ final class NativeIslandCards {
                 && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED);
         int mask = 0;
         for (String scene : new String[]{"countdown", "record", "meeting", "ai", "transfer", "nfc_transfer", "call", "calendar_meeting", "scenic_guide", "nearby_charging", "cycling", "flight", "preflight_battery", "weather_travel"})
-            if (!failedScenes.contains(scene) && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(scene)))
+            if (!failedScenes.contains(scene) && NativeIslandScenes.capsuleSupported(scene)
+                    && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(scene)))
                 mask |= NativeIslandCardProtocol.sceneBit(scene);
         enabledScenes = mask;
         FeatureSettings.diagnostic(context, NativeIslandSceneOptions.key("transfer") + "_capability",
@@ -421,6 +422,10 @@ final class NativeIslandCards {
     }
 
     View panel(Object island) { Card card = owned.get(island); return card == null ? null : card.panel; }
+    String scene(Object island) {
+        Card card = owned.get(island);
+        return card != null && cards.get(card.id) == card && supportsScene(card.scene) ? card.scene : null;
+    }
     private static void clearCompactClicks(View view) {
         view.setOnClickListener(null); view.setClickable(false); view.setLongClickable(false);
         if (view instanceof ViewGroup) {

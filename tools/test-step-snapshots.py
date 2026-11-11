@@ -17,7 +17,8 @@ public class SnapshotCases {
     static class Builder {Point size;int orientation,rotation,mode=6;}
     static class Surface {boolean valid=true;}
     static class App {Object state=new Object();Surface surface=new Surface();Task task;boolean side,retained=true,fills=true;Rect bounds=new Rect(0,0,2688,1216);}
-    static class Task {App app=new App();Object display=Wm.display;int user,mode=1,type=1;Object root=this;Task(){app.task=this;}}
+    static class Task {App app=new App();Object display=Wm.display;int user,mode=1,type=1,height=2688;Object root=this;Task(){app.task=this;}}
+    static class WorkspaceMainBounds {static int height(Object task){return ((Task)task).height;}}
     static class ChildTask extends Task {}
     static class Wm {static Object lock=new Object(),display=new Object(),context=new Object();}
     static Object focused;static boolean active=true,ending;static Method record;static Object controller;static ThreadLocal<Object> recording=new ThreadLocal<>();
@@ -91,6 +92,9 @@ public class SnapshotCases {
                 LocalLandscape.changing=true;check(!f.current()&&frame(t)==null,"unfinished transform retains native skip");LocalLandscape.changing=false;
                 LocalLandscape.scene=false;check(!f.current()&&frame(t)==null,"exit cannot keep a capture exception");LocalLandscape.scene=true;
             }
+            Task reflowed=owned(false,1);reflowed.height=1785;Frame small=frame(reflowed);
+            check(small!=null && small.width==1785 && small.height==1216,"reflowed landscape snapshot matches real native content");
+            reflowed.height=2688;check(!small.current(),"main-to-side native resize invalidates old snapshot dimensions");
             Task t=owned(false,1);t.user=10;check(frame(t)==null,"other user excluded");t.user=0;
             t.display=new Object();check(frame(t)==null,"other display excluded");t.display=Wm.display;
             t.app.fills=false;check(frame(t)==null,"translucent stack remains native");t.app.fills=true;

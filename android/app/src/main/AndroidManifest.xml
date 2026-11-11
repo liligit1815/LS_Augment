@@ -59,6 +59,8 @@
         <activity android:name=".CompetitiveKeySettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".AtomicWorkbenchSettingsActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
         <activity android:name=".StepGestureGuideActivity" android:theme="@style/Theme.LSAugment.Settings" android:exported="false" />
+        <activity android:name=".StepWallpaperActivity" android:theme="@style/Theme.LSAugment.Settings"
+            android:exported="true" android:permission="android.permission.STATUS_BAR_SERVICE" />
         <activity android:name=".step.QuickPinsActivity" android:exported="false"
             android:excludeFromRecents="true" android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />

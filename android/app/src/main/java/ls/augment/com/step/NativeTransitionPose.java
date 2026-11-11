@@ -64,7 +64,7 @@ final class NativeTransitionPose {
             StepHooks.hookMethod(finish,new StepHook.Discovery(){protected void beforeHookedMethod(MethodHookParam p){
                 synchronized(Wm.lock){
                     Pose old=poses.remove(p.thisObject);
-                    if(old!=null)diagnostic("TRANSITION_POSE","native_finish;root="+call(old.root,"getLayerId")+";tasks="+old.tasks.size());
+                    if(old!=null){diagnostic("TRANSITION_POSE","native_finish;root="+call(old.root,"getLayerId")+";tasks="+old.tasks.size());call(old.root,"release");}
                 }
             }});
             diagnostic("TRANSITION_POSE_CAPABILITY","build="+build.toGenericString()+";finish="+finish.toGenericString());
@@ -90,6 +90,8 @@ final class NativeTransitionPose {
                 diagnostic("TRANSITION_POSE","native_container;type="+(task==null?"null":task.getClass().getName()));
                 return;
             }
+            if(transitionStart && ownsTask(task) && call(task,"getDisplayContent")==Wm.display
+                    && (Integer)call(task,"getWindowingMode")==6)continue;
             if(call(task,"getDisplayContent")!=Wm.display || call(task,"getRootTask")!=task
                     || (Integer)call(task,"getWindowingMode")!=1 || !WorkspaceUsers.allows(Wm.context,principal,(Integer)field(task,"mUserId"))
                     || ownsTask(task) || contains(task))throw new IllegalStateException("non-fullscreen or already owned animation target");
@@ -97,7 +99,7 @@ final class NativeTransitionPose {
             if(type!=1 && type!=2 && type!=3)throw new IllegalStateException("unknown task activity type="+type);
             home|=type==2 || type==3;tasks.add(task);if(first==null)first=task;
         }
-        if(!home || first==null)return; // Other app transitions retain their existing native path.
+        if(first==null || !home && !transitionStart)return;
         Object parent=ancestor.invoke(null,changes,first);
         Rect bounds=(Rect)call(parent,"getBounds");
         if(bounds.left!=0 || bounds.top!=0 || bounds.width()!=logical.width() || bounds.height()!=logical.height())
@@ -115,16 +117,45 @@ final class NativeTransitionPose {
             }
             if(!matched)throw new IllegalStateException("animation leash differs from verified native task surface");
         }
-        Pose pose=new Pose(owner,leash,parent,tasks);poses.put(transition,pose);
+        // TransitionInfo releases its Java wrapper when delivered to Shell.
+        // Keep an independent native reference for the actual start and exit.
+        Pose pose=new Pose(owner,retainSurface(leash),parent,tasks);poses.put(transition,pose);
         for(Object task:tasks)call(task,"clearMagnificationSpec",tx);
         applyPose(pose,local);
         diagnostic("TRANSITION_POSE","captured;session="+session+";root="+call(leash,"getLayerId")
                 +";tasks="+tasks.size()+";scale="+local.scale+";x="+local.x+";y="+local.y+";evidence=calibrated_wm_tree");
     }
+    static Object retainSurface(Object surface){
+        android.os.Parcel parcel=android.os.Parcel.obtain();
+        try{
+            ((android.view.SurfaceControl)surface).writeToParcel(parcel,0);parcel.setDataPosition(0);
+            return android.view.SurfaceControl.CREATOR.createFromParcel(parcel);
+        }finally{parcel.recycle();}
+    }
     static boolean contains(Object task){
         synchronized(Wm.lock){
             for(Pose pose:poses.values())if(pose.owner==owner && pose.tasks.contains(task))return true;
             return false;
+        }
+    }
+    static void finishIn(Object tx,java.util.List<IBinder> tokens){
+        java.util.Iterator<java.util.Map.Entry<Object,Pose>> items=poses.entrySet().iterator();
+        while(items.hasNext()){
+            java.util.Map.Entry<Object,Pose> entry=items.next();
+            if(entry.getValue().owner==owner && tokens.contains(call(entry.getKey(),"getToken"))){
+                int count=entry.getValue().tasks.size();
+                call(entry.getValue().root,"release");
+                items.remove();
+                diagnostic("TRANSITION_POSE","atomic_finish;tasks="+count);
+            }
+        }
+    }
+    static void startIn(Object tx,java.util.List<IBinder> tokens){
+        for(java.util.Map.Entry<Object,Pose> entry:poses.entrySet()){
+            Pose pose=entry.getValue();
+            if(pose.owner!=owner || !tokens.contains(call(entry.getKey(),"getToken")))continue;
+            WorkspaceTransform local=spec(Wm.ownedSpec).inside(inherited(pose.parent));
+            stage(tx,pose.root,local);pose.last=local;
         }
     }
     static void retire(IBinder expected){
@@ -135,6 +166,7 @@ final class NativeTransitionPose {
                 if(pose.owner!=expected)continue;
                 if(Boolean.TRUE.equals(call(pose.root,"isValid")) && (pose.last==null || !pose.last.identity()))
                     throw new IllegalStateException("animation pose still owned at exit");
+                call(pose.root,"release");
                 items.remove();
             }
         }

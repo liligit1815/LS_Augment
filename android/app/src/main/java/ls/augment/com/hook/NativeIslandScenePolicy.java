@@ -15,9 +15,17 @@ final class NativeIslandScenePolicy {
         return master && scene && ready;
     }
 
-    /** Music is a primary Duo activity. Scene completion may narrow it only when enabled. */
-    static boolean music(boolean duo, boolean music, boolean scenes, boolean media, boolean ready) {
-        return duo && music && ready && (!scenes || media);
+    static boolean takeover(boolean duo, boolean master, boolean scene, boolean ready) {
+        return duo && enhance(master, scene, ready);
+    }
+
+    /** Existing OEM scenes follow the island owner, independently of missing-scene completion. */
+    static boolean nativeScene(boolean duo, boolean ready) {
+        return duo && ready;
+    }
+
+    static boolean music(boolean duo, boolean music, boolean ready) {
+        return music && nativeScene(duo, ready);
     }
 
     static int countdownState(String value) {

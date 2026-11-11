@@ -150,7 +150,7 @@ final class DynamicIslandHook {
         final IslandDownloadSource downloads;
         IslandDownloadPolicy.Entry<StatusBarNotification> download;
         final MediaSessionManager sessions;final KeyguardManager keyguard;final PowerManager power;
-        final Runnable config=this::configure,tick=this::refresh,collapse=this::dismiss;
+        final Runnable config=this::configure,tick=this::refresh;
         final Runnable firstExpansion=this::expandFirst;
         String firstKey;
         int firstKind,entryWaits;
@@ -206,6 +206,7 @@ final class DynamicIslandHook {
         State(FrameLayout host){this.host=host;context=host.getContext();
             downloads=new IslandDownloadSource(context);
             nativeHost=new NativeIslandHost(host,this::openActivity,this::expand,this::runAction);
+            nativeHost.onPanelChanged(this::requestRefresh);
             sessions=context.getSystemService(MediaSessionManager.class);keyguard=context.getSystemService(KeyguardManager.class);
             power=context.getSystemService(PowerManager.class);
             host.addOnLayoutChangeListener(hostLayout);
@@ -233,7 +234,11 @@ final class DynamicIslandHook {
             return true;
         }
         void start(){NativeIslandSettingsHook.attach(context);FeatureSettings.addSnapshotListener(context,config);configure();}
-        boolean option(String suffix){return FeatureSettings.integer(context,P+suffix,1,0,1)!=0;}
+        boolean option(String suffix){
+            if (("music".equals(suffix)||"charging".equals(suffix))
+                    && !FeatureSettings.enabled(context,ls.augment.com.SystemUiOptions.ISLAND)) return false;
+            return FeatureSettings.integer(context,P+suffix,1,0,1)!=0;
+        }
         boolean locked(){return keyguard!=null&&keyguard.isKeyguardLocked();}
         void configure(){
             if(closed)return;cancelFirst();boolean next=FeatureSettings.enabled(context,SystemUiOptions.ISLAND);
@@ -294,7 +299,6 @@ final class DynamicIslandHook {
                 return;
             }
             cancelFirst();nativeHost.expand();firstDiagnostic("requested:"+firstKind);
-            MAIN.removeCallbacks(collapse);MAIN.postDelayed(collapse,8000);
         }
         void cancelFirst(){MAIN.removeCallbacks(firstExpansion);firstKey=null;}
         void firstDiagnostic(String value){FeatureSettings.diagnostic(context,"ls_augment_island_first_expansion",value);}
@@ -447,7 +451,9 @@ final class DynamicIslandHook {
                 downloads.clear();download=null;
                 clearNotice();chargeActivity.clear();mediaActivities.clear();activity=IslandActivityPolicy.NONE;hide();return;
             }
-            long now=SystemClock.elapsedRealtime();if(now>=noticeUntil)clearNotice();
+            long now=SystemClock.elapsedRealtime();
+            boolean noticePanel=activity==IslandActivityPolicy.NOTICE&&nativeHost.holdsActivity();
+            if(now>=noticeUntil&&!noticePanel)clearNotice();
             MediaController selected=option("music")&&!nativeHost.managesNativeScenes()?selectMedia():null;
             if(media!=null&&!sameSession(media,selected))dismiss();
             media=selected;
@@ -455,7 +461,7 @@ final class DynamicIslandHook {
             IslandDownloadPolicy.Entry<StatusBarNotification> selectedDownload=downloads.activities.choose(download==null?null:download.key);
             boolean downloadChanged=download!=null&&(selectedDownload==null||!download.key.equals(selectedDownload.key));
             download=selectedDownload;
-            int next=IslandActivityPolicy.chooseWithDownload(enabled,visible,locked(),now,media!=null,notice!=null,noticeUntil,
+            int next=IslandActivityPolicy.chooseWithDownload(enabled,visible,locked(),now,media!=null,notice!=null,noticePanel?Long.MAX_VALUE:noticeUntil,
                     option("charging")&&charging&&!nativeHost.managesNativeScenes(),chargeActivity.expiresAt(),download!=null);
             // Withdrawal owns the close animation. Do not also request a separate collapse.
             if(next!=IslandActivityPolicy.NONE&&(activity!=next||downloadChanged))dismiss();
@@ -540,13 +546,13 @@ final class DynamicIslandHook {
             if(closed||!enabled||screenOff||activity==0||locked()||power==null||!power.isInteractive()||!nativeHost.visible()
                     ||ownerUser<0||currentUser()!=ownerUser)return;
             if(nativeHost.expanded()){dismiss();return;}
-            nativeHost.expand();MAIN.removeCallbacks(collapse);MAIN.postDelayed(collapse,8000);
+            nativeHost.expand();
         }
         void runAction(Runnable command){
             if(closed||!enabled||screenOff||locked()||power==null||!power.isInteractive()||ownerUser<0||currentUser()!=ownerUser)return;
             try{command.run();}catch(RuntimeException ignored){}
             // Playback callbacks update the existing panel. A media control is not a request to close it.
-            MAIN.removeCallbacks(collapse);if(nativeHost.expanded())MAIN.postDelayed(collapse,8000);
+            nativeHost.panelActivity();
             MAIN.removeCallbacks(tick);MAIN.postDelayed(tick,150);
         }
         void downloadAction(IslandDownloadPolicy.Entry<StatusBarNotification> entry,PendingIntent intent){
@@ -560,14 +566,14 @@ final class DynamicIslandHook {
                 if(active!=null)for(StatusBarNotification current:active)if(downloads.allowsAction(current,ranking,entry,intent)){found=true;break;}
                 if(!found){downloadSnapshot();requestRefresh();return;}
                 openNotice(intent);
-                MAIN.removeCallbacks(collapse);if(nativeHost.expanded())MAIN.postDelayed(collapse,8000);
+                nativeHost.panelActivity();
             }catch(RuntimeException unavailable){openDiagnostic("download_action_unavailable:"+unavailable.getClass().getSimpleName());}
         }
         StatusBarNotification activeNotice(StatusBarNotification source,NotificationListenerService listener){
             if(source==null||source!=notice||listener==null||closed||!enabled||!option("notifications")||screenOff||locked()
                     ||power==null||!power.isInteractive()||ownerUser<0||ownerUser!=currentUser()
                     ||activity!=IslandActivityPolicy.NOTICE||!nativeHost.visible()||!hostVisible()
-                    ||android.os.SystemClock.elapsedRealtime()>=noticeUntil)return null;
+                    ||android.os.SystemClock.elapsedRealtime()>=noticeUntil&&!nativeHost.holdsActivity())return null;
             StatusBarNotification[] active=listener.getActiveNotifications(new String[]{source.getKey()});
             if(active==null)return null;
             for(StatusBarNotification current:active){
@@ -591,7 +597,9 @@ final class DynamicIslandHook {
                 Notification n=current.getNotification();
                 boolean allowed=intent.equals(n.contentIntent);
                 for(Notification.Action button:IslandDownloadSource.actions(n))allowed|=intent.equals(button.actionIntent);
-                return allowed&&openNotice(intent);
+                boolean sent=allowed&&openNotice(intent);
+                if(sent)nativeHost.panelActivity();
+                return sent;
             }catch(RuntimeException failure){openDiagnostic("notice_action_unavailable:"+failure.getClass().getSimpleName());}
             return false;
         }
@@ -628,8 +636,8 @@ final class DynamicIslandHook {
         void openDiagnostic(String state){FeatureSettings.diagnostic(context,"ls_augment_island_open",state+";at="+SystemClock.elapsedRealtime());}
         int dp(int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
         void diagnostic(String value){if(!lastState.equals(value)){lastState=value;FeatureSettings.diagnostic(context,"ls_augment_island_state",value);}}
-        void dismiss(){MAIN.removeCallbacks(collapse);nativeHost.dismiss();}
-        void hide(){MAIN.removeCallbacks(collapse);nativeHost.hide();title="";subtitle="";icon=null;popupContent="";diagnostic(enabled?"idle":"disabled");}
+        void dismiss(){nativeHost.dismiss();}
+        void hide(){nativeHost.hide();title="";subtitle="";icon=null;popupContent="";diagnostic(enabled?"idle":"disabled");}
         void stopMediaListening(){
             if(listening&&sessions!=null)try{sessions.removeOnActiveSessionsChangedListener(sessionListener);}catch(RuntimeException ignored){}
             listening=false;
@@ -645,7 +653,7 @@ final class DynamicIslandHook {
             chargeActivity.reset();
             if(receiving)try{context.unregisterReceiver(receiver);}catch(RuntimeException ignored){}receiving=false;
         }
-        void close(){closed=true;MAIN.removeCallbacks(tick);MAIN.removeCallbacks(collapse);FeatureSettings.removeSnapshotListener(config);stopListening();nativeHost.close();
+        void close(){closed=true;MAIN.removeCallbacks(tick);FeatureSettings.removeSnapshotListener(config);stopListening();nativeHost.close();
             host.removeOnLayoutChangeListener(hostLayout);
             if(host.getViewTreeObserver().isAlive())host.getViewTreeObserver().removeOnPreDrawListener(hostVisibility);}
     }

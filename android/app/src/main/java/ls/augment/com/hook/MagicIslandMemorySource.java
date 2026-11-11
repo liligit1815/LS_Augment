@@ -72,9 +72,9 @@ final class MagicIslandMemorySource {
             if(!(result instanceof List)||((List<?>)result).isEmpty())return;
             Object producer=field.get(owner);if(producer==null)return;
             Context c=(Context)context.get(producer);if(c==null||!selected.test(c))return;
-            // Connect only when the real collection pipeline runs; do not manufacture a collection.
-            Object host=instance.invoke(null,c);if(!Boolean.TRUE.equals(init.invoke(host)))return;
             if(!FeatureSettings.enabled(c,NativeIslandSceneOptions.ENABLED)||!FeatureSettings.enabled(c,NativeIslandSceneOptions.key("ai_memory")))return;
+            // Connect only for a selected scene and a real collection pipeline event.
+            Object host=instance.invoke(null,c);if(!Boolean.TRUE.equals(init.invoke(host)))return;
             for(Object row:(List<?>)result){
                 if(!raw.isInstance(row))continue;
                 String key=(String)metadata.invoke(row,"l1_memory_id");

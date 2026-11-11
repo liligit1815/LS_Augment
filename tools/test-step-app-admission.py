@@ -24,6 +24,7 @@ public class AdmissionCases {
  static Object call(Object o,String name){Task t=(Task)o;switch(name){case "getActivityType":return t.type;case "getWindowingMode":return t.mode;case "isAlwaysOnTop":return t.always;case "isForceTranslucent":return t.translucent;case "isFocusable":return t.focusable;default:throw new AssertionError(name);}}
  static boolean flag(Object o,String name){return (Boolean)field(o,name);}
  static class StepMembers {static boolean getBooleanField(Object o,String n){return flag(o,n);}static int getIntField(Object o,String n){return (Integer)field(o,n);}}
+ static class WorkspaceMainFocus {static boolean current=true;static boolean matches(Object t){return current;}}
  static class WorkspaceResize {static boolean available;}
  static boolean shellAccept(ActivityManager.RunningTaskInfo target,boolean forceResize){if(SHELL_GATE)return false;return true;}
  static boolean serverAccept(ActivityManager.RunningTaskInfo info,Task task,int from){if(SERVER_GATE)return false;return true;}
@@ -37,7 +38,8 @@ public class AdmissionCases {
  static class WorkspaceUsers {static int id(UserHandle u){return u.id;}static boolean allows(Context c,int principal,int user){return principal==user || user==999;}}
  static class StepRuntime {static final String PACKAGE=AdmissionCases.PACKAGE;}
  static class QuickCatalog {APP_CLASS LOAD}
- static class LiveWorkspace {ActivityManager.RunningTaskInfo task=new ActivityManager.RunningTaskInfo(),main=new ActivityManager.RunningTaskInfo();Slots slots=new Slots();int changed,returned;ActivityManager.RunningTaskInfo info(int id){return id==task.taskId?task:null;}ActivityManager.RunningTaskInfo focused(){return main;}void change(int slot){changed++;}void returnSide(int slot,boolean remove){returned++;}static int number(Object o,String n){return (Integer)field(o,n);}}
+ static class LiveWorkspace {ActivityManager.RunningTaskInfo task=new ActivityManager.RunningTaskInfo(),main=new ActivityManager.RunningTaskInfo();Slots slots=new Slots();int changed,returned,upperId=-1,upperReleased;ActivityManager.RunningTaskInfo info(int id){return id==task.taskId?task:null;}ActivityManager.RunningTaskInfo focused(){return main;}void change(int slot){changed++;}void upperActionFor(int id,String action,Runnable done){check(action.equals("release"),"top launch uses existing restoration");upperReleased++;}void returnSide(int slot,boolean remove){returned++;}static int number(Object o,String n){return (Integer)field(o,n);}}
+ static class WorkspaceRoutes {static final int UPPER=5;static int taskAt(LiveWorkspace host,int slot){return slot==UPPER?host.upperId:host.slots.task(slot);}}
  static class Slots {int value=7;int task(int slot){return value;}}
  static class Bar {LiveWorkspace host=new LiveWorkspace();Context ctx=new Context();int userId;static boolean belongs(ComponentName c,String p){return c!=null && c.pkg.equals(p);}MATCH_CLASS PROMOTE}
  static void rejected(ActivityManager.RunningTaskInfo t,boolean capability,String why){WorkspaceResize.available=capability;check(!shellAccept(t,capability),why+" shell");check(!serverAccept(t,t,-1),why+" server");}
@@ -48,7 +50,7 @@ public class AdmissionCases {
    t.type=2;rejected(t,capable,"HOME not collected");t.type=1;t.mode=5;rejected(t,capable,"floating task not collected");t.mode=1;t.topActivity=null;rejected(t,capable,"missing activity rejected");
   }
   ActivityManager.RunningTaskInfo t=new ActivityManager.RunningTaskInfo();t.isResizeable=false;rejected(t,false,"missing resize capability");WorkspaceResize.available=true;check(shellAccept(t,true)&&serverAccept(t,t,-1),"verified force-resize preserved");
-  t.isFocused=false;check(!serverAccept(t,t,-1),"unfocused task rejected");check(serverAccept(t,t,0),"verified retained route remains possible");t.isFocused=true;t.always=true;check(!serverAccept(t,t,-1),"always-on-top rejected");t.always=false;t.translucent=true;check(!serverAccept(t,t,-1),"translucent rejected");t.translucent=false;t.focusable=false;check(!serverAccept(t,t,-1),"nonfocusable rejected");t.focusable=true;t.mForceHiddenFlags=1;check(!serverAccept(t,t,-1),"force-hidden rejected");
+  t.isFocused=false;check(serverAccept(t,t,-1),"stale focused bit does not override live main");WorkspaceMainFocus.current=false;check(!serverAccept(t,t,-1),"non-main task rejected");check(serverAccept(t,t,0),"verified retained route remains possible");WorkspaceMainFocus.current=true;t.isFocused=true;t.always=true;check(!serverAccept(t,t,-1),"always-on-top rejected");t.always=false;t.translucent=true;check(!serverAccept(t,t,-1),"translucent rejected");t.translucent=false;t.focusable=false;check(!serverAccept(t,t,-1),"nonfocusable rejected");t.focusable=true;t.mForceHiddenFlags=1;check(!serverAccept(t,t,-1),"force-hidden rejected");
   Context c=new Context();UserHandle owner=new UserHandle(0),clone=new UserHandle(999),locked=new UserHandle(10);c.users.profiles=Arrays.asList(owner,clone,locked);
   c.launcher.entries.put(0,Arrays.asList(new LauncherActivityInfo(PACKAGE,owner),new LauncherActivityInfo("ordinary.app",owner),new LauncherActivityInfo(PACKAGE,owner),new LauncherActivityInfo("wrong.user",locked)));
   c.launcher.entries.put(999,Arrays.asList(new LauncherActivityInfo("clone.app",clone)));c.launcher.entries.put(10,Arrays.asList(new LauncherActivityInfo("locked.app",locked)));
@@ -57,6 +59,9 @@ public class AdmissionCases {
   bar.host.task.token=new Object();try{bar.promote(match);throw new AssertionError("stale token");}catch(IllegalStateException expected){checks++;}
   bar.host.task.token=match.token;bar.host.task.userId=10;try{bar.promote(match);throw new AssertionError("changed user");}catch(IllegalStateException expected){checks++;}
   bar.host.task.userId=0;bar.host.slots.value=9;try{bar.promote(match);throw new AssertionError("changed slot");}catch(IllegalStateException expected){checks++;}
+  bar.host.upperId=7;match=new Bar.Match(WorkspaceRoutes.UPPER,bar.host.task);bar.promote(match);check(bar.host.upperReleased==1 && bar.host.changed==1,"top app returns to main through native top restoration");
+  bar.host.upperId=8;try{bar.promote(match);throw new AssertionError("replaced top role");}catch(IllegalStateException expected){checks++;}
+  bar.host.upperId=7;bar.host.task.token=new Object();try{bar.promote(match);throw new AssertionError("replaced top token");}catch(IllegalStateException expected){checks++;}
   System.out.println("PASS "+checks+" production Step app admission checks: Duo, catalog, clone, native guards, promotion and stale identities");
  }
 }

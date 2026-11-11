@@ -12,6 +12,8 @@ def method(signature):
 harness=r'''
 package ls.augment.com.step;
 public class FloatingImeCases {
+    static int layoutCount=3,layoutInset;
+    static boolean mainReflow;
     static int checks,writes,commits;static void check(boolean value,String why){checks++;if(!value)throw new AssertionError(why);}
     static void near(float actual,float expected,String why){check(Math.abs(actual-expected)<.02f,why+": "+actual+" / "+expected);}
     static class Rect {int left,top,right,bottom;Rect(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}int width(){return right-left;}int height(){return bottom-top;}boolean isEmpty(){return width()<=0 || height()<=0;}}

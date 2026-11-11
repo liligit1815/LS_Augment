@@ -12,8 +12,10 @@ final class FlipStage implements AutoCloseable {
     final SurfaceControl[] lanes=new SurfaceControl[SideSlots.MAX_COUNT+1];
     SurfaceControl backdrop;
     final SurfaceControl[] hints=new SurfaceControl[2];
+    final android.content.Context context;
 
     FlipStage(View guard,WorkspaceLayout layout,int selected,int[] tasks,int count,boolean sideLeft,android.graphics.Bitmap wallpaper,boolean returning) throws Exception {
+        context=guard.getContext();
         AttachedSurfaceControl root=guard.getRootSurfaceControl();
         int[] at=new int[2]; guard.getLocationOnScreen(at);
         if(root==null || at[0]>0 || at[1]>layout.top || guard.getWidth()+at[0]<layout.width
@@ -74,16 +76,15 @@ final class FlipStage implements AutoCloseable {
         }catch(RuntimeException|LinkageError unavailable){if(backdrop!=null){backdrop.release();backdrop=null;}}
     }
     private SurfaceControl emptyHints(WorkspaceLayout l,int count,int[] tasks,int selected,boolean left,boolean destination,boolean returning){
-        int w=Math.max(1,l.sideWidth/3),h=Math.max(1,l.railHeight/3);
+        int w=l.sideWidth,h=l.railHeight;
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);canvas.scale(w/(float)l.sideWidth,h/(float)l.railHeight);
-        android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        android.widget.Button cell=new android.widget.Button(context);StepMaterial.slot(cell,true);
         for(int i=0;i<count;i++)if((tasks[i]<0 || returning && i==selected) && !(destination && i==selected)){
             int y=l.rowTop(i,count),height=l.rowHeight(i,count);
-            paint.setColor(0x70abb8c8);canvas.drawRect(0,y,l.sideWidth,y+height,paint);
-            float x=l.sideWidth*.5f,mid=y+height*.5f,r=Math.min(height,l.sideWidth)*.12f;
-            paint.setColor(0xb51d2937);paint.setStrokeWidth(Math.max(3,r*.12f));
-            canvas.drawLine(x-r,mid,x+r,mid,paint);canvas.drawLine(x,mid-r,x,mid+r,paint);
+            cell.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
+            cell.layout(0,0,w,height);
+            canvas.save();canvas.translate(0,y);cell.draw(canvas);canvas.restore();
         }
         android.graphics.Bitmap gpu=bitmap.copy(android.graphics.Bitmap.Config.HARDWARE,false);if(gpu==null)return null;
         SurfaceControl sc=null;

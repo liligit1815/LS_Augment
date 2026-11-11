@@ -24,10 +24,11 @@ public class ReadmitCases {
     public static class Activity {State state=State.RESUMED;public State getState(){return state;}}
     static Method activityState;
     static class Task {boolean attached=true,frame=true;Activity activity=new Activity();Object window=new Object();}
-    static class SavedTask {int id=42;Object token=new Object();Task task=new Task();boolean dirty=true;}
+    static class SavedTask {int id=42;Object token=new Object();Task task=new Task();boolean dirty=true,readmitFocus=true;}
     static class TaskIdentity {int id=7,user;Object token=new Object();}
     static class CommitBarrier {void seal(){}}
     static class WorkspaceUsers {static boolean allows(Object c,int p,int u){return u==0;}}
+    static class SideLifecycle {static boolean enabled;static boolean keepResumed(){return enabled;}}
     static class Bookmarks {int consumed;void consumed(int slot){consumed++;}}
     static IBinder owner;static boolean active=true,ending;static int principal;
     static SavedTask pending,record;static Object live;static Task main;
@@ -38,12 +39,12 @@ public class ReadmitCases {
     static boolean ownsTask(Object task){return task==record.task;}
     static void report(Object sink,int code,String msg,int task){}
     static void diagnostic(String stage,String detail){}
-    static boolean focused=true;
+    static boolean focused=true,taskFocusable,focusLeaseAtApply;
     static Object field(Object target,String name){return focused?record.task.window:null;}
     static void finish(String reason){failures++;}
     static void replay(){replays++;}
     static Object transaction(){return new Object();}
-    static void apply(Object tx){}
+    static void apply(Object tx){focusLeaseAtApply=allowsFocus(record,record.task);}
     static void trackCommit(Object tx,CommitBarrier group){}
     static void awaitCommit(CommitBarrier group,IBinder expected,long deadline,Runnable done,Runnable fail){
         commit=()->{if(owner==expected && active && !ending && pendingCommit==group){pendingCommit=null;done.run();}};
@@ -51,6 +52,7 @@ public class ReadmitCases {
     static void restore(Object tx,SavedTask r,CommitBarrier group){if(live!=r.task){r.dirty=false;return;}restores++;}
     static void verifyRestored(SavedTask r){check(live==r.task,"no verification against replacement task");}
     static Object call(Object o,String name,Object... args){
+        if(name.equals("setFocusable"))taskFocusable=(Boolean)args[1];
         if(o instanceof Task t){if(name.equals("topRunningActivity"))return t.activity;if(name.equals("getWindowingMode"))return 1;}
         if(o==record.task.activity){if(name.equals("findMainWindow"))return record.task.window;if(name.equals("isReportedDrawn"))return record.task.frame;}
         if(o==record.task.window && name.equals("isDrawn"))return record.task.frame;
@@ -60,7 +62,7 @@ public class ReadmitCases {
     static void fresh(){
         try{activityState=Activity.class.getMethod("getState");}catch(Exception error){throw new AssertionError(error);}
         owner=new IBinder();active=true;ending=false;SystemClock.now=0;Wm.handler=new Handler();
-        focused=true;
+        focused=true;SideLifecycle.enabled=false;taskFocusable=true;focusLeaseAtApply=false;
         completed=skipped=failures=restores=replays=drawn=0;commit=null;pendingCommit=null;
         record=new SavedTask();pending=record;live=record.task;main=new Task();slots=new SideSlots();slots.replace(0,-1,42);
         saved=new HashMap<>();saved.put(42,record);readmitting=new Bookmarks();
@@ -84,11 +86,20 @@ public class ReadmitCases {
         check(commit==null && completed==0,"old decor frame cannot complete a paused game's recovery");
         record.task.activity.state=State.RESUMED;SystemClock.now=700;Wm.handler.one();commit.run();
         check(completed==1 && failures==0,"native resume precedes releasing focus lease");
+        check(!taskFocusable && !focusLeaseAtApply,"legacy path releases the game focus before native transaction");
+        fresh();SideLifecycle.enabled=true;begin();SystemClock.now=550;Wm.handler.one();commit.run();
+        check(completed==1 && taskFocusable && !focusLeaseAtApply,"multi-resume preserves lifecycle eligibility while ending input focus lease");
         fresh();focused=false;begin();SystemClock.now=600;Wm.handler.one();check(commit==null,"resumed decor without window focus is not a game frame");
         focused=true;SystemClock.now=700;Wm.handler.one();commit.run();check(completed==1,"native window focus delivered before settling");
         fresh();check(allowsFocus(record,record.task),"exact pending task gets temporary focus");
         check(!allowsFocus(new SavedTask(),record.task) && !allowsFocus(record,new Task()),"other or replaced task cannot steal focus");
         pending=null;check(!allowsFocus(record,record.task),"settled side is excluded from focus again");
+        fresh();record.readmitFocus=false;focused=false;record.task.activity.state=State.PAUSED;begin();
+        check(commit==null && !allowsFocus(record,record.task),"passive restore never borrows window focus");
+        SystemClock.now=33;Wm.handler.one();check(commit!=null,"drawn passive task has no unconditional half-second wait");
+        commit.run();check(completed==1 && skipped==0,"paused ordinary app readmits without a resume or focus requirement");
+        fresh();record.readmitFocus=false;record.task.frame=false;begin();SystemClock.now=1501;Wm.handler.one();commit.run();
+        check(skipped==1 && completed==0,"passive restore still requires a real drawn window");
         System.out.println("PASS "+checks+" production readmission lifecycle checks");
     }
 }

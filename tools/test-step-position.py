@@ -13,6 +13,8 @@ harness = r'''
 package ls.augment.com.step;
 import java.util.*;
 public class PositionCases {
+    static int layoutCount=3,layoutInset;
+    static boolean mainReflow;
     static class IBinder {}
     static class ResultReceiver {Bundle result;}
     static class Bundle extends HashMap<String,Object> {

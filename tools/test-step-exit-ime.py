@@ -33,7 +33,7 @@ public class ExitImeCases {
     static class Bundle {
         Map<String,Object> values=new HashMap<>();
         void putBoolean(String k,boolean v){values.put(k,v);}void putInt(String k,int v){values.put(k,v);}
-        String getString(String k){return "RESTORED";}
+        String getString(String k){return "RESTORED";}void putString(String k,String v){values.put(k,v);}
     }
     static class Main {List<Runnable> queue=new ArrayList<>();void postDelayed(Runnable r,long delay){queue.add(r);}
         void tick(){List<Runnable> copy=new ArrayList<>(queue);queue.clear();copy.forEach(Runnable::run);}}
@@ -58,7 +58,7 @@ public class ExitImeCases {
         final PreviewFrames previewFrames=new PreviewFrames();long previewDrainStarted;boolean previewDrainReported;
         Rect logical=new Rect();WorkspaceLayout geometry=new WorkspaceLayout(1216,2688,3.25f,false);
         int visibleSlots=2,previewWidth=geometry.sideWidth,dragSlot=-1,exitPage;float shiftProgress,dragX;int[] shiftFrom;
-        boolean retainOnExit,exitTopFace,homeExit;String session="test";Main main=new Main();int ends,cleaned,slotCallbacks;
+        boolean retainOnExit,exitTopFace,homeExit;String session="test",exitReason="test recovery";Main main=new Main();int ends,cleaned,slotCallbacks;
         Host(){slots.replace(0,-1,42);leases.put(42,new Lease());}
         Object surface(){return this;}void commitSlotFrame(Runnable done){slotCallbacks++;done.run();}
         void cleanup(){cleaned++;}void rpc(String verb,Bundle args,Consumer<Bundle> done){check(verb.equals("end"),"only recovery request");ends++;done.accept(args);}
@@ -126,7 +126,8 @@ public class ExitImeCases {
     }
     public static void main(String[] args)throws Exception{geometry();commits();race();System.out.println("PASS "+checks+" Step exit/IME checks: production render, reordered/missing commits, writer races, native viewport");}
 }
-'''.replace('RENDER', method('LiveWorkspace.java', 'void render(Runnable committed)')) \
+'''.replace('RENDER', method('LiveWorkspace.java', 'void render(Runnable committed)')
+                     + '\n' + method('LiveWorkspace.java', 'void stagePreviews(Object tx,boolean requireAll)')) \
    .replace('END', method('LiveWorkspace.java', 'void requestEnd()'))
 
 java = Path(os.environ.get('JAVA_HOME', 'C:/Program Files/Android/openjdk/jdk-21.0.8')) / 'bin'

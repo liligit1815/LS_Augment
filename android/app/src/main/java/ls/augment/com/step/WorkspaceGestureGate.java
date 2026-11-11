@@ -18,6 +18,7 @@ public final class WorkspaceGestureGate {
     private static volatile long traceUntil;
     private static boolean bound;
     private WorkspaceGestureGate(){}
+    static boolean leased(long now){return validUntil>now;}
     static boolean accepts(int sender,int version,long deadline,long now){
         return sender==1000 && version==ls.augment.com.BuildConfig.VERSION_CODE && deadline>now && deadline-now<=5000;
     }
@@ -46,6 +47,7 @@ public final class WorkspaceGestureGate {
             Method running=OwnershipBridge.method(animation.getType(),"isRecentsAnimationRunning");
             if(defer.getReturnType()!=boolean.class || events.getReturnType()!=void.class || display.getReturnType()!=int.class || running.getReturnType()!=boolean.class)
                 throw new NoSuchMethodException("native deferred gesture signature");
+            WorkspaceGestureRecovery.install(module,consumer,animation.getType(),gesture.getType(),loader);
             module.deoptimize(defer);
             module.deoptimize(events); // The tiny private predicate can be inlined into the native motion loop.
             module.hook(events).intercept(chain->{
@@ -63,6 +65,7 @@ public final class WorkspaceGestureGate {
                         StepRuntime.diagnostic("GESTURE_EVENT","consumer="+System.identityHashCode(owner)+";action="+action
                                 +";deferred="+consumers.get(owner)+";display="+display.invoke(gesture.get(owner))
                                 +";recentsRunning="+running.invoke(animation.get(owner))
+                                +";controller="+gestureField(animation.get(owner),"mController")
                                 +";endTarget="+gestureField(gesture.get(owner),"mEndTarget")
                                 +";leaseRemainingMs="+Math.max(0,validUntil-SystemClock.uptimeMillis())
                                 +";windowSlop="+gestureField(owner,"mPassedWindowMoveSlop")

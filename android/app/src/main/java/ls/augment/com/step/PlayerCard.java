@@ -36,7 +36,7 @@ final class PlayerCard extends LinearLayout {
     static MediaSession.Token previousPlayer(int user){return bookmark!=null && bookmark.user==user && bookmark.manualPlayer?bookmark.player:null;}
     final WorkspaceQuickBar owner;
     final ImageView cover;
-    final TextView title,line,output;
+    final TextView title,line,output,times;
     final LinearLayout actions;
     final SeekBar seek;
     final LinearLayout legacy,center;
@@ -49,7 +49,8 @@ final class PlayerCard extends LinearLayout {
     String titleText="",artist="",identity="",rawLyrics="",liveLine="",dragKey;
     long duration;
     long position;
-    int generation;
+    int generation,autoAttempts;
+    long nextAutoLookup;
     boolean closed,failed,fetching,manualLyrics;
     LyricLookup.Status lyricStatus=LyricLookup.Status.NO_MATCH;
     int lyricSource=-1;
@@ -57,18 +58,25 @@ final class PlayerCard extends LinearLayout {
 
     PlayerCard(WorkspaceQuickBar host){
         super(host.ctx);owner=host;Context c=host.ctx;
-        setBackground(StepMaterial.glass(c,false,16));setGravity(Gravity.CENTER_VERTICAL);
-        cover=new ImageView(c);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);addView(cover,host.dp(46),host.dp(46));
+        setBackground(StepMaterial.glass(c,false,0));setGravity(Gravity.CENTER_VERTICAL);setOrientation(HORIZONTAL);
+        setPadding(host.dp(10),host.dp(8),host.dp(10),host.dp(8));
+        legacy=new LinearLayout(c);legacy.setOrientation(VERTICAL);legacy.setGravity(Gravity.CENTER_VERTICAL);
+        addView(legacy,new LayoutParams(0,-1,1.05f));
+        LinearLayout metadata=new LinearLayout(c);metadata.setGravity(Gravity.CENTER_VERTICAL);
+        cover=new ImageView(c);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);metadata.addView(cover,host.dp(42),host.dp(42));
+        title=StepMaterial.label(c,"暂无播放",13,true);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setPadding(host.dp(8),0,0,0);title.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        metadata.addView(title,new LayoutParams(0,host.dp(48),1));legacy.addView(metadata,-1,host.dp(52));
+        title.setClickable(false);
+        actions=new LinearLayout(c);actions.setGravity(Gravity.CENTER);legacy.addView(actions,-1,host.dp(44));
+        seek=new SeekBar(c);seek.setMax(1000);seek.setContentDescription("播放进度");legacy.addView(seek,-1,host.dp(32));
+        times=StepMaterial.label(c,"0:00 / 0:00",10,false);legacy.addView(times,-1,host.dp(20));
         center=new LinearLayout(c);center.setOrientation(VERTICAL);center.setGravity(Gravity.CENTER);
+        center.setPadding(host.dp(12),0,0,0);
+        line=StepMaterial.label(c,"暂无歌词",14,false);line.setMaxLines(5);line.setEllipsize(TextUtils.TruncateAt.END);
+        line.setGravity(Gravity.CENTER);line.setLineSpacing(host.dp(5),1f);
+        center.addView(line,-1,-1);
         addView(center,new LayoutParams(0,-1,1));
-        title=StepMaterial.label(c,"暂无播放",14,true);title.setSingleLine(true);center.addView(title,-1,-2);
-        title.setOnClickListener(v->host.deck.players(title));
-        StepMaterial.feedback(title);
-        line=StepMaterial.label(c,"",11,false);line.setMaxLines(2);line.setEllipsize(TextUtils.TruncateAt.END);
-        line.setOnClickListener(v->lyricsMenu());center.addView(line,-1,-2);
-        StepMaterial.feedback(line);
-        actions=new LinearLayout(c);actions.setGravity(Gravity.CENTER);center.addView(actions,-1,host.dp(26));
-        seek=new SeekBar(c);seek.setMax(1000);seek.setContentDescription("播放进度");center.addView(seek,-1,host.dp(20));
         seek.setOnTouchListener((v,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)v.getParent().requestDisallowInterceptTouchEvent(true);return false;});
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar s,int value,boolean user){}
@@ -79,17 +87,13 @@ final class PlayerCard extends LinearLayout {
                 dragOwner=null;
             }
         });
-        output=StepMaterial.label(c,"输出",12,true);output.setContentDescription("选择当前播放器的输出设备");
+        output=StepMaterial.label(c,"设备",12,true);output.setContentDescription("选择当前播放器的播放设备");
         StepMaterial.feedback(output);
         output.setOnClickListener(v->{try{if(router!=null && !router.showSystemOutputSwitcher())host.logUnavailable("系统未打开输出设备选择器");}
-            catch(RuntimeException e){host.note(e);}});addView(output,host.dp(40),-1);
-        legacy=new LinearLayout(c);legacy.setGravity(Gravity.CENTER_VERTICAL);
-        removeView(cover);removeView(center);removeView(output);
-        legacy.addView(cover,host.dp(46),host.dp(46));
-        legacy.addView(center,new LayoutParams(0,-1,1));legacy.addView(output,host.dp(40),-1);
-        addView(legacy,-1,-1);
+            catch(RuntimeException e){host.note(e);}});metadata.addView(output,host.dp(44),host.dp(44));
         nativeCard=NativeMusicCard.create(this);
-        if(nativeCard!=null){nativeCard.setVisibility(GONE);addView(nativeCard,new LayoutParams(0,-1,1.65f));}
+        if(nativeCard!=null){nativeCard.setVisibility(GONE);addView(nativeCard,0,new LayoutParams(0,-1,1.05f));}
+
     }
     // This view runs inside SystemUI. Its UID may hold either permission independently of Duo.
     @androidx.annotation.RequiresPermission(anyOf={android.Manifest.permission.MEDIA_CONTENT_CONTROL,
@@ -133,8 +137,8 @@ final class PlayerCard extends LinearLayout {
         String key=current==null?"":value(m,MediaMetadata.METADATA_KEY_MEDIA_ID)+"\n"+titleText+"\n"+artist+"\n"+duration;
         String local=lyric(m);
         boolean changedTrack=!identity.equals(key)||boundPlayerChanged;
-        if(changedTrack || !rawLyrics.equals(local) && !manualLyrics){
-            identity=key;rawLyrics=local;cancelLookup();lines=new SongLines(local);failed=false;manualLyrics=false;
+        if(changedTrack){
+            identity=key;rawLyrics=local;autoAttempts=0;nextAutoLookup=0;cancelLookup();lines=new SongLines(local);failed=false;manualLyrics=false;
             Bookmark previous=bookmark;bookmark=null;
             if(previous!=null && current!=null && previous.user==owner.userId && previous.player.equals(current.getSessionToken())
                     && key.equals(previous.track) && (previous.manualLyrics || local.equals(previous.sessionLyrics))){
@@ -142,17 +146,24 @@ final class PlayerCard extends LinearLayout {
             }
             lyricStatus=LyricLookup.Status.NO_MATCH;lyricSource=-1;
             // Prefer the session; otherwise try its provider, then the remaining verified sources.
-            if(lines.empty() && liveLine.isEmpty() && !manualLyrics)
-                findLyrics(-1,false);
 
+
+        }else if(!rawLyrics.equals(local) && !manualLyrics){
+            SongLines session=new SongLines(local);
+            // Some players expose only one frozen/current lyric in metadata.
+            // It must not replace the complete synchronized lookup on each poll.
+            if(session.timeline()){
+                cancelLookup();lines=session;failed=false;lyricStatus=LyricLookup.Status.FOUND;
+            }else if(!lines.timeline() && lyricStatus!=LyricLookup.Status.FOUND)lines=session;
         }
         rawLyrics=local;
+        ensureLyrics();
         Bitmap art=null;if(m!=null){art=m.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);if(art==null)art=m.getBitmap(MediaMetadata.METADATA_KEY_ART);if(art==null)art=m.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);}
         cover.setImageBitmap(art);cover.setVisibility(art==null?GONE:VISIBLE);
         String label=current==null?"暂无播放":current.getPackageName();
         if(current!=null)try{label=owner.ctx.getPackageManager().getApplicationLabel(owner.ctx.getPackageManager().getApplicationInfo(label,0)).toString();}catch(Exception ignored){}
         title.setText(current==null?"暂无播放":(titleText.isEmpty()?label:titleText)+(artist.isEmpty()?"":" · "+artist));
-        title.setContentDescription(current==null?"暂无播放":title.getText()+"，选择播放器");
+        title.setContentDescription(title.getText());
         actions.removeAllViews();PlaybackState s=current==null?null:current.getPlaybackState();
         boolean playing=s!=null && s.getState()==PlaybackState.STATE_PLAYING;
         button("上一曲",PlaybackState.ACTION_SKIP_TO_PREVIOUS,()->current.getTransportControls().skipToPrevious());
@@ -165,17 +176,13 @@ final class PlayerCard extends LinearLayout {
     void showNative(boolean visible){
         if(nativeCard==null || visible==nativeVisible)return;
         nativeVisible=visible;
-        if(visible){
-            legacy.removeView(center);legacy.setVisibility(GONE);nativeCard.setVisibility(VISIBLE);
-            addView(center,new LayoutParams(0,-1,1));
-            title.setVisibility(GONE);actions.setVisibility(GONE);
-            line.setMaxLines(3);
-        }else{
-            removeView(center);nativeCard.setVisibility(GONE);legacy.setVisibility(VISIBLE);
-            legacy.addView(center,1,new LayoutParams(0,-1,1));
-            title.setVisibility(VISIBLE);actions.setVisibility(VISIBLE);line.setMaxLines(2);
-        }
+        NativeMusicCard.detach(seek);NativeMusicCard.detach(times);
+        LinearLayout destination=visible?nativeCard.card:legacy;
+        destination.addView(seek,2,new LayoutParams(-1,owner.dp(32)));
+        destination.addView(times,3,new LayoutParams(-1,owner.dp(20)));
+        legacy.setVisibility(visible?GONE:VISIBLE);nativeCard.setVisibility(visible?VISIBLE:GONE);
     }
+
     static String value(MediaMetadata m,String k){String v=m==null?null:m.getString(k);return v==null?"":v.trim();}
     static String lyric(MediaMetadata m){
         if(m!=null)for(String k:m.keySet()){
@@ -191,7 +198,7 @@ final class PlayerCard extends LinearLayout {
         MediaController bound=controller;TextView b=StepMaterial.label(owner.ctx,label,12,false);
         StepMaterial.feedback(b);
         b.setOnClickListener(v->{if(controller==bound && permitted(flag))try{click.run();}catch(RuntimeException e){owner.note(e);}});
-        actions.addView(b,owner.dp(50),-1);
+        actions.addView(b,new LayoutParams(0,-1,1));
     }
     void tick(){
         if(closed)return;
@@ -204,10 +211,11 @@ final class PlayerCard extends LinearLayout {
         if(dragOwner==null && duration>0)seek.setProgress((int)Math.round(1000d*pos/duration));
         boolean searchable=controller!=null && !titleText.isEmpty() && !artist.isEmpty();
         boolean identifiable=!titleText.isEmpty() || !value(controller==null?null:controller.getMetadata(),MediaMetadata.METADATA_KEY_MEDIA_ID).isEmpty();
-        position=pos;line.setClickable(!lines.empty() || identifiable);
+        times.setText(android.text.format.DateUtils.formatElapsedTime(pos/1000)+" / "+android.text.format.DateUtils.formatElapsedTime(duration/1000));
+        position=pos;line.setClickable(false);
         if(!manualLyrics && rawLyrics.isEmpty() && !liveLine.isEmpty())line.setText(liveLine);
         else if(!lines.empty()){
-            SongLines.Display context=lines.display(pos,nativeVisible);
+            SongLines.Display context=lines.display(pos,true);
             String value=context.text;
             android.text.SpannableString display=new android.text.SpannableString(value);
             if(context.currentStart>0)display.setSpan(new android.text.style.RelativeSizeSpan(.84f),0,context.currentStart,0);
@@ -217,58 +225,19 @@ final class PlayerCard extends LinearLayout {
             line.setText(display);
         }else line.setText(controller==null?"":fetching?"正在查询歌词…":
                 lyricStatus==LyricLookup.Status.INSTRUMENTAL?"纯音乐 · 无歌词":
-                lyricStatus==LyricLookup.Status.UNAVAILABLE?"歌词服务暂不可用 · 点按重试":
-                lyricStatus==LyricLookup.Status.INSUFFICIENT?(identifiable?"歌曲信息不完整 · 可导入歌词":"播放器未提供歌曲信息"):
-                !identifiable?"播放器未提供歌词":failed?"未匹配歌词 · 点按重试":searchable?"选择歌词来源":"选择本地歌词");
+                lyricStatus==LyricLookup.Status.UNAVAILABLE?"歌词服务暂不可用":
+                lyricStatus==LyricLookup.Status.INSUFFICIENT?(identifiable?"播放器未提供完整歌曲信息":"播放器未提供歌曲信息"):
+                !identifiable?"播放器未提供歌词":failed?"暂未匹配到歌词":searchable?"暂无歌词":"播放器未提供歌词");
     }
     void cancelLookup(){generation++;fetching=false;if(request!=null)request.cancel(true);request=null;}
-    void lyricsMenu(){
-        if(controller==null || closed)return;
-        String key=identity;MediaController bound=controller;
-        android.widget.PopupMenu menu=new android.widget.PopupMenu(owner.ctx,line);
-        menu.getMenu().add("选择播放器").setOnMenuItemClickListener(item->{owner.deck.players(line);return true;});
-        menu.getMenu().add("自动匹配 / 重试").setOnMenuItemClickListener(item->{
-            if(controller==bound && key.equals(identity)){
-                manualLyrics=false;
-                SongLines session=new SongLines(rawLyrics);
-                if(!session.empty() || !liveLine.isEmpty()){cancelLookup();lines=session;failed=false;lyricSource=-1;tick();}
-                else findLyrics(-1,true);
-            }return true;});
-        if(lyricSource>=0)menu.getMenu().add("歌词来源："+LyricSources.names[lyricSource]).setEnabled(false);
-        for(java.util.Map.Entry<Long,String> row:lines.nearby(position)){
-            long at=row.getKey();String words=row.getValue().replace('\n',' ');
-            boolean current=row.equals(lines.current(position));
-            menu.getMenu().add((current?"● ":"")+String.format(java.util.Locale.ROOT,"%d:%02d  ",at/60000,(at/1000)%60)+words)
-                .setEnabled(permitted(PlaybackState.ACTION_SEEK_TO)).setOnMenuItemClickListener(item->{
-                    if(controller==bound && key.equals(identity) && permitted(PlaybackState.ACTION_SEEK_TO))
-                        try{bound.getTransportControls().seekTo(at);}catch(RuntimeException e){owner.note(e);}
-                    return true;
-                });
-        }
-        if(!rawLyrics.isEmpty())menu.getMenu().add("播放器歌词").setOnMenuItemClickListener(item->{
-            if(controller==bound && key.equals(identity)){cancelLookup();manualLyrics=false;lines=new SongLines(rawLyrics);failed=false;tick();}return true;});
-        if(!titleText.isEmpty() || !value(bound.getMetadata(),MediaMetadata.METADATA_KEY_MEDIA_ID).isEmpty())
-            menu.getMenu().add("打开本地歌词文件").setOnMenuItemClickListener(item->{pickLocal(bound,key);return true;});
-        if(!titleText.isEmpty() && !artist.isEmpty())for(int i=0;i<LyricSources.names.length;i++){
-            final int source=i;
-            menu.getMenu().add(LyricSources.names[i]).setOnMenuItemClickListener(item->{if(controller==bound && key.equals(identity))findLyrics(source,true);return true;});
-        }
-        if(menu.getMenu().size()>0)menu.show();
-    }
-    void pickLocal(MediaController bound,String key){
-        if(closed || bound!=controller || !identity.equals(key) || !owner.currentUser())return;
-        cancelLookup();int stamp=generation;
-        android.os.ResultReceiver reply=new android.os.ResultReceiver(owner.host.main){
-            @Override protected void onReceiveResult(int code,android.os.Bundle data){
-                if(closed || stamp!=generation || controller!=bound || !identity.equals(key) || !owner.currentUser())return;
-                if(code!=1){owner.logUnavailable(data.getString("error","歌词未导入"));return;}
-                SongLines imported=new SongLines(data.getString("lyrics"));
-                if(!imported.empty()){lines=imported;manualLyrics=true;}tick();
-            }
-        };
-        try{owner.ctx.startActivity(new android.content.Intent().setClassName(StepRuntime.PACKAGE,LocalLyricsActivity.class.getName())
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("reply",StepRuntime.remote(reply)));}
-        catch(RuntimeException e){owner.note(e);}
+    void ensureLyrics(){
+        if(closed || fetching || controller==null || lines.timeline() || !liveLine.isEmpty() || manualLyrics
+                || lyricStatus==LyricLookup.Status.FOUND && !lines.empty()
+                || lyricStatus==LyricLookup.Status.INSTRUMENTAL || autoAttempts>=3
+                || SystemClock.elapsedRealtime()<nextAutoLookup || !StepRuntime.interactive(owner.ctx))return;
+        if(titleText.isEmpty() || artist.isEmpty() || duration<=0){lyricStatus=LyricLookup.Status.INSUFFICIENT;return;}
+        autoAttempts++;nextAutoLookup=SystemClock.elapsedRealtime()+35000;
+        findLyrics(-1,false);
     }
     void findLyrics(int source,boolean manual){
         if(closed || controller==null || !owner.currentUser() || !StepRuntime.interactive(owner.ctx))return;
@@ -289,6 +258,8 @@ final class PlayerCard extends LinearLayout {
             owner.host.main.post(()->{
                 if(closed || stamp!=generation || controller!=bound || !key.equals(identity) || !owner.currentUser())return;
                 fetching=false;lyricStatus=result.status;lyricSource=result.source;
+                nextAutoLookup=SystemClock.elapsedRealtime()+35000;
+                StepRuntime.diagnostic("LYRICS","package="+pkg+";status="+result.status+";source="+result.source+";attempt="+autoAttempts+";sessionTimeline="+new SongLines(rawLyrics).timeline()+";lookupTimeline="+new SongLines(result.text).timeline());
                 failed=result.status!=LyricLookup.Status.FOUND;
                 if(!failed){lines=new SongLines(result.text);manualLyrics=manual && source>=0;}
                 tick();

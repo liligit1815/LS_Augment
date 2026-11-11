@@ -22,6 +22,8 @@ package ls.augment.com.step;
 import java.util.*;
 import java.lang.reflect.*;
 public class TestNativeFeedback {
+    static int layoutCount=3,layoutInset;
+    static boolean mainReflow;
     static int checks,tracked,created;
     static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
     static class Rect {int w=1080,h=2400;Rect(){}Rect(Rect r){w=r.w;h=r.h;}int width(){return w;}int height(){return h;}}
@@ -55,7 +57,7 @@ public class TestNativeFeedback {
     }
     static class Tx {List<String> names=new ArrayList<>();Map<String,Object[]> calls=new HashMap<>();}
     static class CommitBarrier {}
-    static class NativeTopTask {static SavedTask upper;}
+    static class NativeTopTask {static SavedTask upper;static SavedTask held(Object task){return upper!=null && upper.task==task?upper:null;}}
     static class NativeFlip {boolean ownsTransforms;SavedTask[] actors=new SavedTask[6];WorkspaceLayout to=new WorkspaceLayout(1080,2400,1,true);boolean moves(SavedTask r){return Arrays.asList(actors).contains(r);}}
     static Map<Integer,SavedTask> saved=new HashMap<>();static SideSlots slots=new SideSlots();
     static boolean active=true,ending,sideLeft;static NativeFlip flip;static Object pendingCommit;static int principal;

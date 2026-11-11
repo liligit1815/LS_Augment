@@ -35,6 +35,7 @@ public final class SongLines {
         if(lines.isEmpty() && !text.trim().startsWith("[") && !text.trim().startsWith("{"))plain=text.trim();
     }
     public boolean empty(){return lines.isEmpty() && plain.isEmpty();}
+    public boolean timeline(){return lines.size()>1;}
     public static final class Display {
         public final String text;
         public final int currentStart,currentEnd;

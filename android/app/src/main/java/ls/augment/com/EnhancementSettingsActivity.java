@@ -369,9 +369,17 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         toggle.setChecked(active&&available);toggle.setEnabled(available);
         String featureTitle=NativeIslandSceneOptions.ENABLED.equals(key)?"场景补全":f.title;
         String featureHelp=available||key.startsWith(NativeIslandSceneOptions.ENABLED)?FeatureHelp.forOption(option):unavailable;
+        if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_")&&NativeIslandMode.LEGACY.equals(NativeIslandMode.detect(this))){
+            String scene=key.substring((NativeIslandSceneOptions.ENABLED+"_").length());
+            if(NativeIslandSceneOptions.ordinaryCardSupplement(scene)){
+                featureTitle=f.title+"卡片补全";
+                featureHelp=("record".equals(scene)?"补充旧系统缺少的录音转写卡片；普通录音岛已随总开关启用。":"补充旧系统缺少的来源卡片；已有原厂场景随总开关启用。")
+                        +"关闭本项仅撤下补充卡片，不关闭原厂岛。";
+            }
+        }
         if(key.startsWith(NativeIslandSceneOptions.ENABLED)&&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))
             featureHelp=(key.equals(NativeIslandSceneOptions.ENABLED)?"":MagicIslandPolicy.detail(key.substring((NativeIslandSceneOptions.ENABLED+"_").length())))
-                    +"由红魔Duo灵动岛统一管理，沿用系统卡片、操作和业务条件。关闭单项撤下该场景；重新开启随新的业务状态更新生效。关闭场景补全恢复系统场景选择，不回放过期卡片。";
+                    +"原厂已有场景随灵动岛总开关显示。这里只补充缺失的来源或更新环节，关闭后保留原厂卡片，不回放过期内容。";
         card.addView(ui.featureRow(featureTitle,featureHelp,toggle),ui.wrap());
         if(!available||SystemUiOptions.ISLAND.equals(key)||key.startsWith(NativeIslandSceneOptions.ENABLED)){
             TextView state=ui.text(unavailable,12,ui.muted,false);state.setTag("device-feature-unavailable:"+key);
@@ -1091,6 +1099,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             if(nativeScenesFold!=null){nativeScenesFold.sync();nativeScenesFold.show(expanded);}
             for(String id:NativeIslandSceneOptions.IDS){
                 String key=NativeIslandSceneOptions.key(id),reason=nativeSceneUnavailable(key);
+                View row=body.findViewWithTag("native-feature:"+key);
+                if(row!=null)row.setVisibility(automaticNativeScene(id)?View.GONE:View.VISIBLE);
                 View child=body.findViewWithTag("config:"+key);
                 if(child instanceof Switch){child.setEnabled(reason.isEmpty());((Switch)child).setChecked(reason.isEmpty()&&ConfigSchema.truthy(value(key)));}
                 View status=body.findViewWithTag("device-feature-unavailable:"+key);
@@ -1154,6 +1164,16 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if("ready".equals(capability))return "";
         if(capability.contains("recorder_waiting_user_unlock"))return "解锁手机后会自动检测录音支持";
         return capability.startsWith("unavailable:")?"此场景暂不可用，具体原因已记录到日志":"等待灵动岛报告场景能力";
+    }
+    private boolean automaticNativeScene(String id){
+        String mode=NativeIslandMode.detect(this);
+        // Fullscreen producers already send these cards without a completion switch.
+        // AI memory retains its optional missing-pipeline completion.
+        if(NativeIslandMode.MODERN.equals(mode))return MagicIslandPolicy.managed(id)&&!"ai_memory".equals(id);
+        if(!NativeIslandMode.LEGACY.equals(mode)||NativeIslandSceneOptions.ordinaryCardSupplement(id))return false;
+        for(int i=0;i<NativeIslandSceneOptions.TYPES.length;i++)if(NativeIslandSceneOptions.IDS[i].equals(id))
+            return "ready".equals(getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(NativeIslandSceneOptions.key(id)+"_capability",""));
+        return false;
     }
     private void considerQuery(View view,String title,String summary){if(queryAnchor==null&&!query.isEmpty()&&(title+summary).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))queryAnchor=view;}
     private boolean isApplicationDirectory(){return targetId!=null&&ModuleHierarchy.group(ModuleNavigation.route(this))==null;}

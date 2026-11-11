@@ -19,8 +19,11 @@ final class WorkspaceInput {
     final InputLease lease = new InputLease();
     View view;
     long ticket, began;
+    long groupDeadline;
     int touches;
     Runnable released;
+    void holdEntry(long deadline){groupDeadline=deadline;}
+    void endEntryHold(){groupDeadline=0;began=SystemClock.uptimeMillis();}
     WorkspaceInput(Context context, Handler main, Consumer<String> log, Consumer<String> failure) {
         this.context=context; this.main=main; this.log=log; this.failure=failure;
         windows=context.getSystemService(WindowManager.class);
@@ -49,7 +52,7 @@ final class WorkspaceInput {
             main.postAtTime(()->{
                 if (!lease.current(expected)) return;
                 trace("timeout");forceRemove(); failure.accept("输入保护等待超时，已解除触摸拦截并请求归还");
-            }, began + 4000);
+            }, groupDeadline>0?groupDeadline:began+4000);
         } catch(Throwable error) { forceRemove(); failure.accept("输入保护不可用: "+error); }
     }
     long expectedTicket(){return ticket;}
@@ -77,7 +80,7 @@ final class WorkspaceInput {
         forceRemove();if(done!=null)done.run();
     }
     void forceRemove() {
-        lease.close();released=null;
+        lease.close();released=null;groupDeadline=0;
         if(view!=null){try{windows.removeViewImmediate(view);}catch(IllegalArgumentException detached){}finally{view=null;trace("removed");}}
     }
     void trace(String phase){

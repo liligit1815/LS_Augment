@@ -16,9 +16,14 @@ final class UpperMotion {
         ValueAnimator run=current;current=null;
         if(run!=null){run.removeAllUpdateListeners();run.removeAllListeners();run.cancel();}
     }
-    static void position(SurfaceControl.Transaction tx,SurfaceControl sc,Rect bounds,float x,float y,float scale){
+    static void position(SurfaceControl.Transaction tx,SurfaceControl sc,Rect bounds,Rect viewport,float x,float y,float progress){
+        float scale=UpperAppLayout.scale(bounds,viewport)*progress;
         call(tx,"setMatrix",sc,scale,0f,0f,scale);
-        tx.setPosition(sc,x+bounds.width()*(1-scale)/2f,y+bounds.height()*(1-scale)/2f);
+        tx.setPosition(sc,x+(viewport.width()-bounds.width()*scale)/2f,y+(viewport.height()-bounds.height()*scale)/2f);
+        // Organized modal windows and activity input sinks derive their touch
+        // region from this crop. A fitted matrix alone leaves them full-display.
+        // Keep crop and transform in the same transaction, including native replay.
+        call(tx,"setWindowCrop",sc,new Rect(0,0,bounds.width(),bounds.height()));
     }
     static void play(SavedTask record,boolean entering,Runnable done){play(record,entering,false,done);}
     static void play(SavedTask record,boolean entering,boolean mainPane,Runnable done){
@@ -42,7 +47,7 @@ final class UpperMotion {
         run.start();
     }
     static void mainScale(float progress)throws Exception{
-        WorkspaceLayout layout=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft);
+        WorkspaceLayout layout=WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft,layoutCount,layoutInset,mainReflow);
         float scale=layout.mainScale*progress,margin=layout.mainScale-scale;
         Wm.moveSpec(scale,layout.mainX+layout.width*margin/2,layout.top+layout.height*margin/2);
     }
@@ -62,8 +67,9 @@ final class UpperMotion {
                 SurfaceControl sc=(SurfaceControl)call(record.task,"getSurfaceControl");
                 if((Integer)call(sc,"getLayerId")!=record.layerId)throw new IllegalStateException("顶窗图层已变化");
                 Point pos=(Point)call(record.task,"getRelativePosition");
+                NativeTopTask.progress=scale;
                 try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
-                    position(tx,sc,NativeTopTask.bounds,pos.x,pos.y,scale);
+                    position(tx,sc,NativeTopTask.bounds,NativeTopTask.viewport,pos.x,pos.y,scale);
                     if(last!=null)trackCommit(tx,last);
                     tx.apply();
                 }

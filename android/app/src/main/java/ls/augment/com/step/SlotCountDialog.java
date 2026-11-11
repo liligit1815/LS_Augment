@@ -27,7 +27,7 @@ final class SlotCountDialog {
         CheckBox top=new CheckBox(c);top.setText("启用顶部副区");top.setChecked(upper);top.setTextColor(StepMaterial.ink(c));
         top.setEnabled(upper || topSupported && WorkspaceCapacity.fitsLayout(current,true));top.setAlpha(top.isEnabled()?1f:.45f);
         top.setOnClickListener(v->{dialog.dismiss();select.layout(current,top.isChecked());});card.addView(top,-1,StepMaterial.dp(c,48));
-        TextView hint=StepMaterial.label(c,"主区固定为 1 个。启用顶部时，侧边最多 4 个。",13,false);card.addView(hint,-1,-2);
+        TextView hint=StepMaterial.label(c,"主区固定为 1 个，侧边最多 5 个，顶部独立 1 个。",13,false);card.addView(hint,-1,-2);
         dialog.setContentView(card);dialog.setCanceledOnTouchOutside(true);
         Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
         w.setBackgroundDrawableResource(android.R.color.transparent);

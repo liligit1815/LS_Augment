@@ -31,13 +31,15 @@ final class WorkspaceQuickBar {
     final ExecutorService worker = Executors.newSingleThreadExecutor();
     final LinkedHashSet<String> iconRequests = new LinkedHashSet<>();
     FrameLayout bar;
-    LinearLayout band;
+    LinearLayout band,controls;
+    WorkspaceRecentSheet recent;
     UpperPane upper;
     TextView title;
     int topInset;
     WorkspaceActions tools;
     LinearLayout tiles;
     WorkspaceDeck deck;
+    WorkspaceSideToolbar sideToolbar;
     WorkspacePageIndicator pageIndicator;
     StepGlyph clips, shot, torch, exit, settings, prev, next, recorder, mainLeft, mainRight;
     LinearLayout leading, trailing;
@@ -77,9 +79,9 @@ final class WorkspaceQuickBar {
                 android.view.WindowInsets.Type.statusBars()|android.view.WindowInsets.Type.displayCutout()).top;
         int available=host.geometry.top;
         userId=currentUser()?(Integer)call(user,"getIdentifier"):-1;
-        if(available<dp(148))throw new IllegalStateException("顶区不足以显示工具与应用栏");
+        validateLayout(host.visibleSlots);
         host.topAvailable &= inset+dp(34)<available;
-        topInset=inset;
+        topInset=0;
         tools=new WorkspaceActions(this);
         bar=new FrameLayout(ctx);bar.setBackground(StepMaterial.glass(ctx,true,0));
         wall=StepMaterial.wallView(ctx);bar.addView(wall,-1,-1);
@@ -87,63 +89,45 @@ final class WorkspaceQuickBar {
         try{ctx.registerReceiver(wallChanges,new android.content.IntentFilter(Intent.ACTION_WALLPAPER_CHANGED),
                 Context.RECEIVER_NOT_EXPORTED);watchWall=true;}catch(RuntimeException e){host.log("壁纸监听不可用："+e);}
         band=new LinearLayout(ctx);band.setOrientation(LinearLayout.VERTICAL);
-        int edge=dp(8),bottomGap=Math.min(10,dp(4));
-        int compactHeight=Math.max(0,available-dp(92));
-        band.setPadding(edge,Math.min(dp(14),dp(4)+compactHeight/4),edge,bottomGap);
         bar.addView(band,-1,-1);
-        int line=dp(44),rail=dp(44);
-        deck=new WorkspaceDeck(this);band.addView(deck,new LinearLayout.LayoutParams(-1,0,1));
-        pageIndicator=new WorkspacePageIndicator(this);
-        band.addView(pageIndicator,new LinearLayout.LayoutParams(-1,Math.min(edge,Math.max(0,(available-dp(100))/4))));
-        updatePageIndicator();
-        LinearLayout header=new LinearLayout(ctx){
-            @Override public boolean onInterceptTouchEvent(MotionEvent event){
-                return headerMoving || super.onInterceptTouchEvent(event);
-            }
-        };header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams headerParams=new LinearLayout.LayoutParams(-1,line);
-        headerParams.bottomMargin=dp(1);
-        button=Math.max(1,Math.min(dp(36),(screen.width()-2*edge-dp(76))/8));
+        controls=new LinearLayout(ctx);controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        LinearLayout recentRow=new LinearLayout(ctx);recentRow.setGravity(Gravity.CENTER_VERTICAL);
+        String[] labels={"最近媒体","最近文件","最近剪切"};
+        for(int n=0;n<labels.length;n++){
+            final int kind=n;TextView entry=action(labels[n],labels[n],()->openRecent(kind));entry.setTextSize(13);
+            entry.setBackground(StepMaterial.glass(ctx,false,12));
+            LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-1,1);cell.setMargins(dp(4),dp(4),dp(4),dp(4));
+            recentRow.addView(entry,cell);
+        }
+        controls.addView(recentRow,new LinearLayout.LayoutParams(-1,0,1));
         leading=new LinearLayout(ctx);trailing=new LinearLayout(ctx);
-        header.addView(leading,4*button,-1);
-        title=StepMaterial.label(ctx,"红魔 Step",21,true);title.setMaxLines(1);
-        StepMaterial.feedback(title);
-        title.setPadding(dp(2),0,dp(2),0);
-        title.setAutoSizeTextTypeUniformWithConfiguration(12,21,1,android.util.TypedValue.COMPLEX_UNIT_SP);
-        header.addView(title,new LinearLayout.LayoutParams(0,-1,1));header.addView(trailing,4*button,-1);
-        trailing.setGravity(Gravity.RIGHT);leading.setGravity(Gravity.LEFT);header.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        band.addView(header,headerParams);
-        exit=new StepGlyph(ctx,host.leftSide?"exitLeft":"exitRight","退出工作区",()->host.close("手动退出工作区"));
-        settings=new StepGlyph(ctx,"settings","打开系统设置",()->systemAction(new Intent(android.provider.Settings.ACTION_SETTINGS)));
-        settings.setOnLongClickListener(v->{chooseCount();return true;});
-        updateCapacity();
-        clips=new StepGlyph(ctx,"clipboard","剪贴板历史",tools::openClips);
+        leading.setGravity(Gravity.CENTER_VERTICAL);controls.addView(leading,new LinearLayout.LayoutParams(-1,0,1));
+        title=StepMaterial.label(ctx,"",14,true);
+        exit=new StepGlyph(ctx,"exitRight","退出工作区",()->host.close("手动退出工作区"));
+        settings=new StepGlyph(ctx,"redmagic","工作台设置",this::settingsMenu);
         shot=new StepGlyph(ctx,"screenshot","截图",tools::capture);
-        shot.setTooltipText("截图");
-        clips.setEnabled(WorkspaceClipboard.available());shot.setEnabled(tools.takeShot!=null);
-        clips.setAlpha(clips.isEnabled()?1f:.45f);shot.setAlpha(shot.isEnabled()?1f:.45f);
-        prev=new StepGlyph(ctx,"prev","上一个快捷应用",()->step(-1));
-        next=new StepGlyph(ctx,"next","下一个快捷应用",()->step(1));
-        mainLeft=new StepGlyph(ctx,"mainLeft","主工作区居左",()->host.positionMain(false));
-        mainRight=new StepGlyph(ctx,"mainRight","主工作区居右",()->host.positionMain(true));
-        torch=new StepGlyph(ctx,"torch","手电筒",this::toggleTorch);
+        shot.setEnabled(tools.takeShot!=null);shot.setAlpha(shot.isEnabled()?1f:.45f);
+        mainLeft=new StepGlyph(ctx,"prev","主工作区左移",()->host.positionMain(false));
+        mainRight=new StepGlyph(ctx,"next","主工作区右移",()->host.positionMain(true));
         recorder=new StepGlyph(ctx,"record","录屏",()->{});
         recorder.setOnClickListener(v->activateTile("videoscreen",v));
         hasRecorder=NativeTiles.read(userId,"videoscreen")>=0;
-        arrangeHeader();
-        startTorch();
-        scroll=new HorizontalScrollView(ctx);scroll.setHorizontalScrollBarEnabled(false);tiles=new LinearLayout(ctx);
-        scroll.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        scroll.setOutlineProvider(new android.view.ViewOutlineProvider(){@Override public void getOutline(View v,android.graphics.Outline o){
-            o.setRoundRect(0,0,v.getWidth(),v.getHeight(),v.getHeight()/2f);
-        }});scroll.setClipToOutline(true);
-        tiles.setGravity(Gravity.CENTER_VERTICAL);tiles.setPadding(dp(10),0,dp(10),0);
-        tiles.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        scroll.addView(tiles);
-        LinearLayout appsRow=new LinearLayout(ctx);appsRow.setGravity(Gravity.CENTER_VERTICAL);
-        appsRow.addView(mainLeft,dp(44),-1);appsRow.addView(scroll,new LinearLayout.LayoutParams(0,-1,1));appsRow.addView(mainRight,dp(44),-1);
-        band.addView(appsRow,-1,rail);
+        recorder.setEnabled(hasRecorder);recorder.setAlpha(hasRecorder?1f:.45f);
+        layoutHeader();
+        scroll=new HorizontalScrollView(ctx);scroll.setHorizontalScrollBarEnabled(false);
+        tiles=new LinearLayout(ctx);tiles.setGravity(Gravity.CENTER_VERTICAL);tiles.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        scroll.addView(tiles);scroll.setOnLongClickListener(v->{edit();return true;});
+        controls.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         scroll.setOnScrollChangeListener((View v,int x,int y,int oldX,int oldY)->visibleIcons());
+        sideToolbar=WorkspaceSideToolbar.create(this);
+        deck=new WorkspaceDeck(this);
+        loadTopWall();
+        FrameLayout pages=new FrameLayout(ctx);pages.addView(deck,-1,-1);
+        pageIndicator=new WorkspacePageIndicator(this);
+        FrameLayout.LayoutParams dots=new FrameLayout.LayoutParams(-1,dp(4),Gravity.BOTTOM);pages.addView(pageIndicator,dots);
+        band.addView(pages,new LinearLayout.LayoutParams(-1,host.geometry.contentHeight));
+        updatePageIndicator();
         WindowManager.LayoutParams lp=new WindowManager.LayoutParams(screen.width(),available,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED|WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
@@ -157,30 +141,19 @@ final class WorkspaceQuickBar {
             launcher.registerCallback(packages,host.main);watching=true;refresh();
         }catch(RuntimeException | LinkageError unavailable){host.log("快捷应用目录不可用："+unavailable.getMessage());refreshCodes();}
     }
-    void arrangeHeader(){
-        final int ticket=++headerGeneration;
-        if(attached){
-            headerMoving=true;
-            leading.animate().cancel();trailing.animate().cancel();
-            leading.animate().alpha(0).setDuration(90).start();
-            trailing.animate().alpha(0).setDuration(90).withEndAction(()->{
-                if(closed || headerGeneration!=ticket)return;
-                layoutHeader();leading.animate().alpha(1).setDuration(150).start();
-                trailing.animate().alpha(1).setDuration(150).withEndAction(()->{if(ticket==headerGeneration)headerMoving=false;}).start();
-            }).start();return;
-        }
-        layoutHeader();
-    }
+    void arrangeHeader(){layoutHeader();}
     void layoutHeader(){
-        leading.removeAllViews();trailing.removeAllViews();
-        LinearLayout near=host.leftSide?leading:trailing,far=host.leftSide?trailing:leading;
-        exit.glyph=host.leftSide?"exitLeft":"exitRight";
-        exit.invalidate();
-        if(host.leftSide){near.addView(exit,button,-1);near.addView(settings,button,-1);near.addView(clips,button,-1);near.addView(shot,button,-1);}
-        else {near.addView(shot,button,-1);near.addView(clips,button,-1);near.addView(settings,button,-1);near.addView(exit,button,-1);}
-        if(host.leftSide){if(hasRecorder)far.addView(recorder,button,-1);far.addView(torch,button,-1);far.addView(prev,button,-1);far.addView(next,button,-1);}
-        else{far.addView(prev,button,-1);far.addView(next,button,-1);far.addView(torch,button,-1);if(hasRecorder)far.addView(recorder,button,-1);}
+        leading.removeAllViews();
+        for(View button:new View[]{mainLeft,mainRight,settings,shot,recorder,exit})
+            leading.addView(button,new LinearLayout.LayoutParams(0,-1,1));
         updatePosition();
+    }
+    void openRecent(int kind){
+        try{checkAction();if(recent!=null)recent.close();recent=new WorkspaceRecentSheet(this,kind);recent.show();}
+        catch(RuntimeException error){note(error);}
+    }
+    void settingsMenu(){
+        try{tools.menu(settings);}catch(RuntimeException error){tools.closeMenu();note(error);}
     }
     void updatePosition(){
         mainLeft.setSelected(!host.leftSide);mainRight.setSelected(host.leftSide);
@@ -194,8 +167,17 @@ final class WorkspaceQuickBar {
     int wallRevision;
     boolean watchWall;
     final android.content.BroadcastReceiver wallChanges=new android.content.BroadcastReceiver(){
-        public void onReceive(Context c,Intent event){if(!closed)loadWall();}
+        public void onReceive(Context c,Intent event){if(!closed){loadWall();loadTopWall();}}
     };
+    int topWallRevision;
+    void loadTopWall(){
+        if(closed || deck==null || !(deck.networks instanceof ImageView))return;
+        int request=++topWallRevision;
+        worker.execute(()->{
+            android.graphics.Bitmap image=TopWallpaper.load(ctx);
+            host.main.post(()->{if(!closed && request==topWallRevision)((ImageView)deck.networks).setImageBitmap(image);});
+        });
+    }
     void loadWall(){
         int revision=++wallRevision;
         worker.execute(()->{
@@ -224,25 +206,33 @@ final class WorkspaceQuickBar {
         if(pageIndicator!=null){pageIndicator.setVisibility(host.pageIndicator?View.VISIBLE:View.INVISIBLE);pageIndicator.invalidate();}
     }
     SlotCountDialog counts;
+    void validateLayout(int count){
+        WorkspaceLayout next=WorkspaceLayout.create(host.geometry.width,host.geometry.height,
+                ctx.getResources().getDisplayMetrics().density,host.leftSide,count,host.layoutInset,host.nativeReflow);
+        if(next.contentHeight<dp(132))
+            throw new IllegalStateException("当前屏幕安全空间不足以显示三行工具和 "+count+" 格布局");
+    }
     void configureUpper(){
         boolean enabled=host.upperEnabled && host.topAvailable;
         if(enabled && upper==null)upper=new UpperPane(this,topInset);
         if(!enabled && upper!=null){
             upper.render(false);upper.close();bar.removeView(upper.face);bar.removeView(upper.roll);upper=null;
         }
-        title.setOnClickListener(enabled?v->upper.toggle(true):null);title.setClickable(enabled);
+        title.setClickable(false);
         title.setContentDescription(enabled?"打开顶部任务窗口":null);
-        if(enabled && deck.topPage.getParent()==null)deck.addView(deck.topPage,-1,-1);
-        if(!enabled && deck.topPage.getParent()!=null){deck.leaveUpperPage();deck.removeView(deck.topPage);}
+        boolean app=enabled && host.upperAppId>=0;
+        if(app && deck.topPage.getParent()==null)deck.addView(deck.topPage,-1,-1);
+        if(!app && deck.topPage.getParent()!=null){if(deck.page==WorkspaceDeck.UPPER)deck.jump(WorkspaceDeck.CONTROLS);deck.removeView(deck.topPage);}
+        if(host.upperNavigationId>=0)deck.navigationChanged(true);
         deck.positionPages();
     }
     void chooseCount(){
-        try{checkAction();if(counts!=null)counts.dismiss();
+        try{checkAction();tools.closeMenu();if(counts!=null)counts.dismiss();
             counts=new SlotCountDialog(ctx,true,host.visibleSlots,host.upperEnabled,host.topAvailable,host::resizeSlots);counts.show();
         }catch(RuntimeException error){note(error);}
     }
     void updateCapacity(){
-        if(settings!=null)settings.setTooltipText("打开系统设置；长按调整工作区布局（"+host.visibleSlots+" 个侧格）");
+        if(settings!=null)settings.setTooltipText("工作台设置（"+host.visibleSlots+" 个侧格）");
     }
     void refreshCodes(){
         if(closed)return;
@@ -283,8 +273,9 @@ final class WorkspaceQuickBar {
             android.content.pm.ActivityInfo info=ctx.getPackageManager().resolveActivity(request,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY).activityInfo;
             ComponentName target=new ComponentName(info.packageName,info.name);
             List<Match> matches=new ArrayList<>();
-            for(int slot=0;slot<host.visibleSlots;slot++){
-                int id=host.slots.task(slot);if(id<0)continue;
+            for(int slot=0;slot<=WorkspaceRoutes.NAVIGATION;slot++){
+                if(slot>=host.visibleSlots && slot<WorkspaceRoutes.UPPER)continue;
+                int id=WorkspaceRoutes.taskAt(host,slot);if(id<0)continue;
                 ActivityManager.RunningTaskInfo task=host.info(id);
                 if(task==null)throw new IllegalStateException("副格身份正在变化");
                 if(LiveWorkspace.number(task,"userId")!=userId)continue;
@@ -301,14 +292,13 @@ final class WorkspaceQuickBar {
     void dispatchAfterPromotion(Intent start,ComponentName target,int id,int attempt){
         if(closed||host.closing)return;
         ActivityManager.RunningTaskInfo focused=host.focused();
-        if(!host.fence.busy() && focused!=null && focused.taskId==id && host.slots.index(id)<0){
+        if(!host.fence.busy() && focused!=null && focused.taskId==id && host.slots.index(id)<0 && !host.holdsUpper(id)){
             try{checkAction();ctx.startActivity(start);launching=true;confirmLaunch(target,0);}catch(RuntimeException error){note(error);}
         }else if(attempt<30)host.main.postDelayed(()->dispatchAfterPromotion(start,target,id,attempt+1),70);
         else host.log("未确认系统任务已回到主区");
     }
     void refresh() {
         if (closed) return;
-        refreshCodes();
         int request = ++epoch;
         worker.execute(() -> {
             try {
@@ -331,6 +321,7 @@ final class WorkspaceQuickBar {
         cancelRailMotion();
         order = QuickCatalog.arranged(catalog,host.pinned==null ? new LinkedHashSet<>() : new LinkedHashSet<>(host.pinned));
         choosing=false; tiles.removeAllViews(); iconRequests.clear();
+        if(sideToolbar!=null){sideToolbar.refreshApps();return;}
         for (QuickCatalog.App app : order) {
             ImageView tile = new ImageView(ctx);tile.setTag(app);tile.setContentDescription("打开 "+app.label);
             int pad=(dp(48)-dp(31))/2;
@@ -466,8 +457,9 @@ final class WorkspaceQuickBar {
                 mainTask=host.focused();
                 if (mainTask==null || !WorkspaceUsers.allows(ctx,userId,LiveWorkspace.number(mainTask,"userId")))
                     throw new IllegalStateException("无法核对主任务用户");
-                for (int slot=0;slot<host.visibleSlots;slot++) {
-                    int id=host.slots.task(slot);
+                for (int slot=0;slot<=WorkspaceRoutes.NAVIGATION;slot++) {
+                    if(slot>=host.visibleSlots && slot<WorkspaceRoutes.UPPER)continue;
+                    int id=WorkspaceRoutes.taskAt(host,slot);
                     if (id<0) continue;
                     ActivityManager.RunningTaskInfo task=host.info(id);
                     if (task==null || task.taskId!=id || !LiveWorkspace.root(task)
@@ -490,10 +482,11 @@ final class WorkspaceQuickBar {
         } catch (RuntimeException | LinkageError error) { note(error); }
     }
     void choose(String label,List<Match> matches) {
+        if(sideToolbar!=null){sideToolbar.choose(label,matches);return;}
         choosing=true; tiles.removeAllViews();
         tiles.addView(action("返回","返回常用应用",this::updateOrder),new LinearLayout.LayoutParams(dp(52),-1));
         for (Match match:matches) {
-            String name="副格 "+(match.slot+1);
+            String name=match.slot>=WorkspaceRoutes.UPPER?"顶部工作区":"副格 "+(match.slot+1);
             tiles.addView(action(name,label+" · "+name,() -> {
                 updateOrder();
                 try { checkAction(); promote(match); } catch (RuntimeException error) { note(error); }
@@ -503,10 +496,10 @@ final class WorkspaceQuickBar {
     }
     void promote(Match match) {
         ActivityManager.RunningTaskInfo task=host.info(match.id);
-        if (host.slots.task(match.slot)!=match.id || task==null || match.token==null
+        if (WorkspaceRoutes.taskAt(host,match.slot)!=match.id || task==null || match.token==null
                 || !match.token.equals(field(task,"token")) || LiveWorkspace.number(task,"userId")!=match.user || !WorkspaceUsers.allows(ctx,userId,match.user))
             throw new IllegalStateException("所选副格已变化");
-        host.change(match.slot);
+        if(match.slot>=WorkspaceRoutes.UPPER)host.upperActionFor(match.id,"release",null);else host.change(match.slot);
     }
     void launch(ComponentName target,UserHandle profile) {
         launcher.startMainActivity(target,profile,null,null);
@@ -540,9 +533,9 @@ final class WorkspaceQuickBar {
     };
     void close() {
         if (closed) return;
-        closed=true;if(counts!=null)counts.dismiss(); worker.shutdownNow();
+        closed=true;if(sideToolbar!=null)sideToolbar.close();if(recent!=null)recent.close();if(counts!=null)counts.dismiss(); worker.shutdownNow();
         cancelRailMotion();headerGeneration++;if(watchWall){ctx.unregisterReceiver(wallChanges);watchWall=false;}
-        if(tools!=null)tools.closeClips();
+        if(tools!=null){tools.closeMenu();tools.closeProviders();tools.closeClips();}
         if(upper!=null)upper.close();
         if(picker!=null)try{picker.close();}catch(RuntimeException error){host.log("选择弹层清理状态："+error);}
         try { if(deck!=null)deck.close(); } finally {

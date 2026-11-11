@@ -48,6 +48,8 @@ files={
 'ls/augment/com/ConfigSchema.java':'package ls.augment.com;public class ConfigSchema{public static String NATIVE_ISLAND_SELECTED="native";}',
 'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo",PREFIX="ls_augment_rm_";}',
 'ls/augment/com/NativeIslandSceneOptions.java':'package ls.augment.com;public class NativeIslandSceneOptions{public static String ENABLED="scenes";public static String key(String id){return ENABLED+"_"+id;}}',
+'ls/augment/com/hook/NativeIslandScenes.java':'''package ls.augment.com.hook;import java.util.*;class NativeIslandScenes {
+ static Set<String> owned=new HashSet<>();static void fullscreenCapsules(Set<String> next){owned=new HashSet<>(next);}}''',
 'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;import android.content.*;import java.util.*;public class FeatureSettings{
  public static Map<String,Boolean> flags=new HashMap<>();public static Map<String,String> diagnostics=new HashMap<>();public static List<Runnable> listeners=new ArrayList<>();
  public static boolean enabled(Context c,String k){return flags.getOrDefault(k,k.equals("ls_augment_rm_island_music")||k.equals("ls_augment_rm_island_charging"));}public static void diagnostic(Context c,String k,String v){diagnostics.put(k,v);}
@@ -119,17 +121,17 @@ public class TestMagicIsland{
  public static void main(String[] args)throws Throwable{
  TestMagicSelection.run();Context c=new Context();c.resolver.settings.put("dynamic_island_function_switch",1);
  FeatureSettings.flags.put("duo",true);FeatureSettings.flags.put("scenes",true);
- AugmentModule mod=new AugmentModule();check(MagicIslandScenes.install(mod,TestMagicIsland.class.getClassLoader())==2,"receiver contract missing");
+ AugmentModule mod=new AugmentModule();check(MagicIslandScenes.install(mod,TestMagicIsland.class.getClassLoader())==3,"receiver contract missing");
  Child host=new Child();MagicIslandScenes gate=new MagicIslandScenes(c,host);gate.start();
  for(String id:new String[]{"charging_island","media_island","zte.com.cn.alarmclock_timer_countdown","com.zte.cn.zteshare_share_transfer","cn.zte.aigcinput_notebook_ai_text_generation_progress",
  "cn.zte.recorder_recorder_background","com.android.dialer_call_background","com.zte.nebulatranslation_transcription","com.zte.nebulatranslation_call","com.zte.multscr_com.zte.multscr.share_transfer","com.zte.ai.knowledge_aik_island_main_card"}){
   String scene=MagicIslandPolicy.scene(id);check(scene!=null,"missing core scene");
-  check(Boolean.TRUE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},id)),"OFF not enforced");
+  check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},id)),"scene OFF must preserve OEM eligibility");
   FeatureSettings.flags.put("scenes_"+scene,true);CardMessage message=new CardMessage(id);
   mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},message,false);
   check(host.mAppIslandList.get(id)==message,"live UPDATE not restored or native payload changed");host.panel=id;
-  FeatureSettings.flags.put("scenes_"+scene,false);FeatureSettings.changed();check(!host.mAppIslandList.containsKey(id)&&host.panel==null,"active card/panel not removed");
-  FeatureSettings.flags.put("scenes_"+scene,true);FeatureSettings.changed();check(!host.mAppIslandList.containsKey(id),"stale card replayed");
+  FeatureSettings.flags.put("scenes_"+scene,false);FeatureSettings.changed();check(host.mAppIslandList.get(id)==message&&id.equals(host.panel),"scene OFF must retain OEM card and panel");
+  FeatureSettings.flags.put("scenes_"+scene,true);FeatureSettings.changed();check(host.mAppIslandList.get(id)==message,"selection change must not recreate or replace a native card");
   host.nativeDisabled.add(id);check(Boolean.TRUE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},id)),"OEM gate overridden");host.nativeDisabled.clear();
  }
  CardMessage unknown=new CardMessage("unknown_scene");mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},unknown,true);
@@ -139,9 +141,13 @@ public class TestMagicIsland{
  host.nativeDisabled.clear();
  FeatureSettings.flags.put("scenes",false);FeatureSettings.flags.put("scenes_media",false);
  check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"master OFF did not restore native behavior");
- CardMessage absent=new CardMessage("zte.com.cn.alarmclock_timer_countdown");mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},absent,false);
- check(!host.mAppIslandList.containsKey(absent.id),"master OFF altered native UPDATE semantics");
+ host.mAppIslandList.remove("zte.com.cn.alarmclock_timer_countdown");CardMessage absent=new CardMessage("zte.com.cn.alarmclock_timer_countdown");mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},absent,false);
+ check(host.mAppIslandList.get(absent.id)==absent,"existing native countdown still accepts fresh update with completion OFF");
+ android.os.Handler.drain();check(NativeIslandScenes.owned.containsAll(Set.of("record","call","meeting","ai")),"native card ownership suppresses capsules independently of completion");
+ mod.call(host,"handleRemoveIsland",new Class[]{String.class},"cn.zte.recorder_recorder_background");android.os.Handler.drain();
+ check(!NativeIslandScenes.owned.contains("record"),"native card removal releases its capsule ownership");
  FeatureSettings.flags.put("scenes",true);FeatureSettings.flags.put("duo",false);
+ FeatureSettings.changed();check(NativeIslandScenes.owned.isEmpty(),"master OFF restores every native capsule renderer");
  check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"inactive owner still filters");FeatureSettings.flags.put("duo",true);
  gate.close();check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"closed host still filters");
  boolean rejected=false;try{new MagicIslandScenes(c,new Bad());}catch(NoSuchFieldException expected){rejected=true;}check(rejected,"shadowed incompatible field accepted");
@@ -150,12 +156,12 @@ public class TestMagicIsland{
  StarryIslandCardRender renderer=new StarryIslandCardRender(c);source.call(renderer,"initCardPusher",new Class[]{});android.os.Handler.drain();
  String[][] specs=// ADAPTERS
  for(String[] spec:specs){Object a=Class.forName("com.zte.briefagent.event.scene."+spec[1]+"StarryIslandAdapter").getConstructor().newInstance();CardContext cc=new CardContext(c);
-  check(source.call(a,"createCardMessage",new Class[]{CardContext.class},cc)==null,"disabled producer returned a card");
+  check(source.call(a,"createCardMessage",new Class[]{CardContext.class},cc)==a.getClass().getField("result").get(a),"scene OFF must retain original producer");
   FeatureSettings.flags.put("scenes_"+spec[0],true);Object result=source.call(a,"createCardMessage",new Class[]{CardContext.class},cc);
   check(result==a.getClass().getField("result").get(a),"source views/actions changed");
   String key="arbitrary-not-inferred-"+spec[0];renderer.cardIdToAdapterMap.put(key,a);
-  FeatureSettings.flags.put("scenes_"+spec[0],false);FeatureSettings.changed();check(renderer.removals.contains(key),"existing producer card not removed via OEM");
-  FeatureSettings.flags.put("scenes_"+spec[0],true);FeatureSettings.changed();check(!renderer.cardIdToAdapterMap.containsKey(key),"expired business data replayed");
+  FeatureSettings.flags.put("scenes_"+spec[0],false);FeatureSettings.changed();check(!renderer.removals.contains(key)&&renderer.cardIdToAdapterMap.get(key)==a,"scene OFF must not withdraw native producer card");
+  FeatureSettings.flags.put("scenes_"+spec[0],true);FeatureSettings.changed();check(renderer.cardIdToAdapterMap.get(key)==a,"toggle must preserve native producer instance");
  }
  Object other=new Object();renderer.cardIdToAdapterMap.put("unregistered",other);FeatureSettings.changed();check(renderer.cardIdToAdapterMap.containsKey("unregistered"),"unknown adapter withdrawn");
  Object taxi=Class.forName("com.zte.briefagent.event.scene.taxi.starryisland.TaxiStarryIslandAdapter").getConstructor().newInstance();
@@ -235,20 +241,20 @@ public static void run()throws Throwable{
   AugmentModule m=new AugmentModule();MagicIslandAppCards.install(m,loader,pkg);CardPusher p=new CardPusher(c,"com.android.systemui");
   m.call(p,"connect",new Class[]{});check("ready:42:42".equals(FeatureSettings.diagnostics.get("scenes_"+scene+"_magic_source_capability")),"connected source not ready");
   CardMessage card=new CardMessage(id);Object action=card.action,view=card.view;
-  check(Boolean.FALSE.equals(m.call(p,"pushCard",new Class[]{CardMessage.class},card))&&p.pushes==0,"disabled PUSH reached SDK");
-  check(Boolean.FALSE.equals(m.call(p,"updateCard",new Class[]{CardMessage.class},card))&&p.updates==0,"disabled UPDATE reached SDK");
+  check(Boolean.TRUE.equals(m.call(p,"pushCard",new Class[]{CardMessage.class},card))&&p.pushes==1,"scene OFF must pass native PUSH");
+  check(Boolean.TRUE.equals(m.call(p,"updateCard",new Class[]{CardMessage.class},card))&&p.updates==1,"scene OFF must pass native UPDATE");
   FeatureSettings.flags.put("scenes_"+scene,true);m.call(p,"pushCard",new Class[]{CardMessage.class},card);m.call(p,"updateCard",new Class[]{CardMessage.class},card);
-  check(p.last==card&&p.last.action==action&&p.last.view==view&&p.pushes==1&&p.updates==1,"native content/action/lifecycle replaced");
+  check(p.last==card&&p.last.action==action&&p.last.view==view&&p.pushes==2&&p.updates==2,"native content/action/lifecycle replaced");
   m.call(p,"removeCard",new Class[]{String.class},id);check(p.removes==1,"native remove blocked");
   check(scene.equals(MagicIslandAppCards.scene(pkg,pkg+"_"+id)),"full SDK ID mapping failed");
   FeatureSettings.flags.put("scenes_"+scene,false);CardMessage other=new CardMessage("unregistered");m.call(p,"pushCard",new Class[]{CardMessage.class},other);check(p.last==other,"unknown scene blocked");
   CardPusher launcher=new CardPusher(c,"com.zte.mifavor.launcher");m.call(launcher,"pushCard",new Class[]{CardMessage.class},card);check(launcher.last==card,"unrelated target altered");
   FeatureSettings.flags.put("scenes",false);m.call(p,"pushCard",new Class[]{CardMessage.class},card);check(p.last==card,"master OFF did not restore native");
-  FeatureSettings.flags.put("scenes",true);entry.enabled=false;m.call(p,"updateCard",new Class[]{CardMessage.class},card);check(p.updates==2,"old/unknown mode intercepted");entry.enabled=true;
+  FeatureSettings.flags.put("scenes",true);entry.enabled=false;m.call(p,"updateCard",new Class[]{CardMessage.class},card);check(p.updates==3,"old/unknown mode intercepted");entry.enabled=true;
   entry.enabled=false;FeatureSettings.diagnostics.put(NativeIslandMode.DIAGNOSTIC,NativeIslandMode.stamp(c,NativeIslandMode.MODERN));
-  m.call(p,"pushCard",new Class[]{CardMessage.class},card);check(p.pushes==3,"foreign source ignored live SystemUI mode publication");
+  m.call(p,"pushCard",new Class[]{CardMessage.class},card);check(p.pushes==5,"foreign source native PUSH must survive scene OFF");
   FeatureSettings.diagnostics.put(NativeIslandMode.DIAGNOSTIC,"fullscreen:41:42");entry.enabled=true;
-  m.call(p,"updateCard",new Class[]{CardMessage.class},card);check(p.updates==3,"stale mode publication accepted");FeatureSettings.diagnostics.remove(NativeIslandMode.DIAGNOSTIC);
+  m.call(p,"updateCard",new Class[]{CardMessage.class},card);check(p.updates==4,"stale mode publication accepted");FeatureSettings.diagnostics.remove(NativeIslandMode.DIAGNOSTIC);
   m.call(p,"disconnect",new Class[]{});check(FeatureSettings.diagnostics.get("scenes_"+scene+"_magic_source_capability").equals("unavailable:disconnected"),"disconnect left ready");
   p.connects=false;m.call(p,"connect",new Class[]{});check(!FeatureSettings.diagnostics.get("scenes_"+scene+"_magic_source_capability").startsWith("ready:"),"failed connection accepted");
  }
@@ -272,7 +278,7 @@ public class TestMagicMemory{static int n;static boolean selected=true;static vo
   ClickFavoriteIslandNotifyOperator op=new ClickFavoriteIslandNotifyOperator(p);RawData raw=row("real-guid-1",null);List<?> rows=Arrays.asList(raw);
   source.rows=rows;FeatureSettings.flags.put("scenes",true);FeatureSettings.flags.put("scenes_ai_memory",false);
   Object result=m.call(source,"getPending",new Class[]{int.class},10);check(result==rows&&source.calls==1,"native collection/identity changed");
-  check(ClickFavoriteCardPusher.events.isEmpty()&&CardIslandPusher.INSTANCE.inits==1,"disabled source fabricated a card or cannot discover transport");
+  check(ClickFavoriteCardPusher.events.isEmpty()&&CardIslandPusher.INSTANCE.inits==0,"disabled completion must not initialize native transport");
   FeatureSettings.flags.put("scenes_ai_memory",true);m.call(source,"getPending",new Class[]{int.class},10);
   check(ClickFavoriteCardPusher.events.equals(Arrays.asList("real-guid-1:1")),"real pending collection not sent to native factory");
   m.call(source,"getPending",new Class[]{int.class},10);check(ClickFavoriteCardPusher.events.size()==1,"duplicate pending reset native timeout");

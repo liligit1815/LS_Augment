@@ -12,6 +12,13 @@ files = ast.literal_eval(next(n.value for n in tree.body if isinstance(n, ast.As
                               and any(isinstance(t, ast.Name) and t.id == 'files' for t in n.targets)))
 files = {k: v for k, v in files.items() if not k.startswith('zte/') and not k.endswith('TestClockSource.java')}
 files.update({
+ 'android/os/SystemClock.java':'package android.os;public class SystemClock {public static long elapsedRealtimeNanos(){return 1000000;}public static long elapsedRealtime(){return 1;}}',
+ 'ls/augment/com/hook/NativeIslandRecorderBridge.java':'''package ls.augment.com.hook;public class NativeIslandRecorderBridge {
+ static boolean publish(android.content.Context c,long g,long q,int s,boolean f,String t){return false;}}''',
+ 'android/os/Handler.java':'''package android.os;import java.util.*;public class Handler {
+ static final List<Runnable> jobs=new ArrayList<>();public Handler(Looper l){}public void post(Runnable r){jobs.add(r);}
+ public void postDelayed(Runnable r,long ms){}public void removeCallbacks(Runnable r){jobs.removeIf(x->x==r);}
+ public static void flush(){int n=0;while(!jobs.isEmpty()){if(++n>100)throw new AssertionError("loop");jobs.remove(0).run();}}}''',
  'android/net/Uri.java': 'package android.net;public class Uri {public static Uri parse(String s){return new Uri();}}',
  'android/database/Cursor.java': '''package android.database;public class Cursor implements AutoCloseable {
  public final String value;public Cursor(String s){value=s;}public boolean moveToFirst(){return true;}
@@ -45,7 +52,7 @@ files.update({
  check(module.errors==0&&AugmentModule.hooks.size()==3,"all source signatures checked before installation");
  RecorderService s=new RecorderService();AugmentModule.invoke(s,RecorderService.class,"onCreate",NONE);Handler.flush();
  check(SystemUiResolver.publishes==0,"default config does not publish");
- FeatureSettings.change("record",true);FeatureSettings.change("master",true);tick(s);check(SystemUiResolver.publishes==0,"source requires native selection");
+ FeatureSettings.change("record",false);FeatureSettings.change("master",false);tick(s);check(SystemUiResolver.publishes==0,"source requires island master");
  FeatureSettings.change("duo",true);check("0".equals(ContentResolver.value),"idle source cannot fabricate recording");
  RecorderState.state=1;RecorderService.foreground=false;tick(s);
  check("1".equals(ContentResolver.value)&&RecorderState.state==1,"first real tick repairs early-background state gap without changing recording");
@@ -57,7 +64,7 @@ files.update({
  RecorderService.foreground=false;RecorderState.state=0;recover(s);check("0".equals(ContentResolver.value),"completed recording cannot be revived");
  RecorderState.state=1;writes=SystemUiResolver.publishes;Config.nubia=true;recover(s);check(SystemUiResolver.publishes==writes,"Nubia broadcast protocol left native");Config.nubia=false;
  CommonConfig.full=true;recover(s);check(SystemUiResolver.publishes==writes,"full-screen source not overwritten");CommonConfig.full=false;
- FeatureSettings.change("record",false);recover(s);check(SystemUiResolver.publishes==writes,"disabled scene cannot be resurrected by recovery");
+ FeatureSettings.change("record",false);recover(s);check("1".equals(ContentResolver.value),"native recording stays active with completion and child OFF");
  FeatureSettings.change("record",true);writes=SystemUiResolver.publishes;FeatureSettings.change("duo",false);recover(s);check(SystemUiResolver.publishes==writes,"unified master OFF disables supplemental source");
  BroadcastReceiver receiver=s.receiver;AugmentModule.invoke(s,RecorderService.class,"onDestroy",NONE);receiver.onReceive(s,new Intent(NativeIslandScenePolicy.RECORDER_SYNC_ACTION));Handler.flush();
  check(s.receiver==null&&s.resolver.observers==0&&FeatureSettings.listeners.isEmpty()&&SystemUiResolver.publishes==writes,"destroy releases all listeners and ignores queued recovery");

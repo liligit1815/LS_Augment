@@ -55,6 +55,7 @@ final class DuoNotificationCards {
     private final Object manager;
     private final boolean fullscreen;
     private final Runnable open;
+    Runnable panelChanged;
     private final Method initialize,add,remove,panelHeight,heartbeat;
     private final Map<String,Object> registry;
     private final int panelWidth,panelHeightId;
@@ -120,6 +121,7 @@ final class DuoNotificationCards {
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","onClick",0,(o,a,r)->{
             DuoNotificationCards h=active;
+            if(h!=null&&h.fullscreen&&o==h.manager&&h.selected())h.prepareExpansion();
             if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()){
                 if(!Boolean.TRUE.equals(call(o,"forceNotClick")))h.open.run();return null;
             }return PASS;
@@ -314,11 +316,15 @@ final class DuoNotificationCards {
     }
     boolean expanded(){return island!=null&&Boolean.TRUE.equals(field(manager,"mDynamicPanelShowing"))
             &&(fullscreen?field(manager,"mTempIsland")==island:selected());}
-    void expand(){try{if(selected()&&!Boolean.TRUE.equals(call(manager,"forceNotClick"))){
+    void expand(){try{if(selected()){
+        // Fullscreen onClick owns the mutating native click throttle. Calling it here
+        // first consumes the timestamp and makes the real onClick reject our request.
+        if(!fullscreen&&Boolean.TRUE.equals(call(manager,"forceNotClick")))return;
         if(!prepareExpansion())return;
         call(manager,fullscreen?"onClick":"showPermanentPanelIsland");
     }}catch(Exception failure){failed(failure);}}
     private boolean prepareExpansion(){
+        IslandPanelInteraction.bind(this,manager,island,panel,true,()->{if(panelChanged!=null)panelChanged.run();});
         if(fullscreen)return true;
         for(String name:new String[]{"mAnimProcessing","mPriorityProcessing","mDynamicPanelShowing","mDynamicPanelClosing"})
             if(Boolean.TRUE.equals(field(manager,name)))return true;
@@ -339,6 +345,7 @@ final class DuoNotificationCards {
             FeatureSettings.diagnostic(context,"ls_augment_duo_notification_cards","collapse_failed:"+failure.getClass().getSimpleName());}
     }
     void hide(){
+        IslandPanelInteraction.release(this);
         MAIN.removeCallbacks(pulse);
         View old=island;
         IslandPanelGuard.withdrawing(manager,old);

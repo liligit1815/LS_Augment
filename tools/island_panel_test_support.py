@@ -2,6 +2,12 @@
 from pathlib import Path
 
 def add_status_bar_support(files):
+    # These suites isolate animation/status-bar contracts. Touch dispatch has its own runtime suite.
+    files.setdefault('ls/augment/com/hook/IslandPanelInteraction.java', '''package ls.augment.com.hook;
+    final class IslandPanelInteraction {
+        static void bind(Object o,Object m,Object i,Object p,boolean t,Runnable c){}
+        static void release(Object o){}
+    }''')
     source = Path(__file__).resolve().parents[1] / 'android/app/src/main/java/ls/augment/com/hook'
     files['ls/augment/com/hook/IslandPanelStatusBar.java'] = (source / 'IslandPanelStatusBar.java').read_text('utf-8')
     files.setdefault('android/os/SystemClock.java', 'package android.os; public class SystemClock {public static long now=1000;public static long uptimeMillis(){return now;}}')

@@ -49,17 +49,8 @@ final class MagicIslandAppCards {
         }));
         for(Method publish:new Method[]{push,update})
             module.registerFeatureHook(module.prepareFeatureHook(publish,"native_island.magic_app_"+publish.getName(),false).intercept(chain->{
-                boolean denied=false;
-                try{
-                    Context context=context(chain.getThisObject());Object card=chain.getArg(0);
-                    String scene=card==null?null:scene(source,(String)cardId.invoke(card));
-                    report(chain.getThisObject(),Boolean.TRUE.equals(connected.invoke(chain.getThisObject()))?"ready":"disconnected",module);
-                    // Unknown sources/versions/receivers keep their original behavior.
-                    denied=context!=null&&"".equals(contracts.get(scene))&&selected(context)
-                            &&FeatureSettings.enabled(context,NativeIslandSceneOptions.ENABLED)
-                            &&!FeatureSettings.enabled(context,NativeIslandSceneOptions.key(scene));
-                }catch(Exception failure){module.logFeatureInfo("MAGIC_APP_PUBLISH_UNAVAILABLE "+failure.getClass().getSimpleName());}
-                if(denied)return false;
+                // Scene OFF relinquishes Duo ownership; it must not disable an existing OEM producer.
+                report(chain.getThisObject(),Boolean.TRUE.equals(connected.invoke(chain.getThisObject()))?"ready":"disconnected",module);
                 // Keep the exact message, source actions, expiry, heartbeat and native eligibility checks.
                 return chain.proceed();
             }));

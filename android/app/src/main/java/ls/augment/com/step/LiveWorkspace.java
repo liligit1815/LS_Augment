@@ -44,7 +44,8 @@ final class LiveWorkspace {
     long pinRevision;
     WorkspaceQuickBar quickBar;
     boolean topAvailable,homeBackdropAvailable,upperEnabled, pageIndicator=true, localLandscape, edgeHandoff, forceResize;
-    int upperId=-1;
+    int upperId=-1,upperAppId=-1,upperNavigationId=-1;
+    boolean holdsUpper(int id){return id>=0 && (upperAppId==id || upperNavigationId==id);}
     final boolean renewable;
     boolean retainOnExit,homeExit;
     int[] retained;
@@ -61,13 +62,19 @@ final class LiveWorkspace {
     int resumeWait;
     final Runnable renew=new Runnable(){public void run(){
         if(!ready || closing || closed)return;
-        if(!fence.busy() && interactive(Shell.context))rpc("renew",new Bundle(),r->{});
+        if(!fence.busy() && interactive(Shell.context))rpc("renew",new Bundle(),r->{
+            if(r.getBoolean("sleeping"))WorkspaceWake.renewalSuspended(LiveWorkspace.this);
+        });
         main.postDelayed(this,25000);
     }};
     long rpcSequence;
+    android.os.IBinder channel;
+    String exitReason="工作区归还";
     final SideSlots slots = new SideSlots();
     volatile int visibleSlots = SideSlots.DEFAULT_COUNT;
-    int previewWidth, previewHeight;
+    int previewWidth, previewHeight, layoutInset;
+    boolean nativeReflow=true;
+    Intent layoutRestart;
     volatile boolean ready, closing, closed;
     android.animation.ValueAnimator chromeMotion;
     boolean cleaning, checkingState;
@@ -80,6 +87,7 @@ final class LiveWorkspace {
     final Button[] cells = new Button[SideSlots.MAX_COUNT];
     volatile WorkspaceLayout geometry;
     volatile FlipStage flipStage;
+    WorkspaceEntry entry;
     long slotFrameGeneration;
     int pendingNativeSlot=-1;
     android.animation.ValueAnimator releaseMotion;
@@ -113,14 +121,14 @@ final class LiveWorkspace {
         java.util.ArrayList<String> keys = data.getStringArrayListExtra("quickPins");
         if (keys == null) return;
         pinned = keys; pinRevision = version;
-        if (quickBar != null) quickBar.updateOrder();
+        if (quickBar != null) {quickBar.updateOrder();quickBar.loadTopWall();}
     }
     static boolean running() { return current != null && !current.closed; }
     static void open(ResultReceiver report, Intent options) {
         if (!StepRuntime.enabled || running() || Wm.active) { StepRuntime.report(report, 13, "工作台已关闭或正在运行", -1); return; }
         LiveWorkspace workspace = new LiveWorkspace(report, options); current = workspace; workspace.prepare();
     }
-    static void stop(String reason) { if (running()) current.close(reason); }
+    static void stop(String reason) { if (running()) {current.layoutRestart=null;current.close(reason);} }
     void log(String message) { StepRuntime.report(reportTo, 10, message, -1); }
     void prepare(){
         Rect bounds=Shell.context.getSystemService(WindowManager.class).getCurrentWindowMetrics().getBounds();
@@ -177,10 +185,18 @@ final class LiveWorkspace {
         Context themed = new android.view.ContextThemeWrapper(Shell.context, android.R.style.Theme_Material_Light_NoActionBar);
         windows = Shell.context.getSystemService(WindowManager.class);
         input=new WorkspaceInput(themed,main,this::log,message->{
-            log(message);if(!closed){closing=true;cleaning=false;fence.close();requestEnd();}
+            log(message);if(!closed){exitReason=message;closing=true;cleaning=false;fence.close();requestEnd();}
         });
         Rect screen = windows.getCurrentWindowMetrics().getBounds();
-        geometry = new WorkspaceLayout(screen.width(),screen.height(),themed.getResources().getDisplayMetrics().density,leftSide);
+        android.view.WindowInsets insets=windows.getCurrentWindowMetrics().getWindowInsets();
+        int physicalInset=insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.statusBars()
+                |android.view.WindowInsets.Type.displayCutout()).top;
+        // The device/menu entry stays visible for every count. Reserve the real
+        // cutout bounds before placing controls, including central/off-center holes.
+        layoutInset=0;
+        if(insets.getDisplayCutout()!=null)for(Rect hole:insets.getDisplayCutout().getBoundingRects())
+            if(hole.top<physicalInset)layoutInset=Math.max(layoutInset,hole.bottom);
+        geometry = WorkspaceLayout.create(screen.width(),screen.height(),themed.getResources().getDisplayMetrics().density,leftSide,visibleSlots,layoutInset,nativeReflow);
         if(geometry.top<StepMaterial.dp(themed,92))throw new IllegalStateException("工作区顶栏物理高度不足");
         previewWidth=geometry.sideWidth; previewHeight=geometry.railHeight;
         if (OwnershipBridge.method(view.getClass(), "setObscuredTouchRect", Rect.class).getReturnType() != void.class)
@@ -311,12 +327,7 @@ final class LiveWorkspace {
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) cell.getLayoutParams();
             if(slot < visibleSlots) { params.height=geometry.rowHeight(slot,visibleSlots); params.topMargin=slot==0?0:geometry.gap; cell.setLayoutParams(params); }
             boolean empty = slots.task(slot) < 0 || slot==pendingNativeSlot;
-            cell.setText(empty ? "＋" : "");
-            cell.setTextSize(34);
-            cell.setTextColor(0xffeeeeee);
-            if(empty)cell.setBackground(StepMaterial.glass(cell.getContext(),true,0));
-            else cell.setBackgroundColor(0x00000000);
-            cell.setTextColor(StepMaterial.ink(cell.getContext()));
+            StepMaterial.slot(cell,empty);
             cell.setContentDescription((empty ? "收纳到副格 " : "交换副格 ") + (slot + 1));
         }
         if (quickBar != null) quickBar.updateCapacity();
@@ -326,38 +337,35 @@ final class LiveWorkspace {
             preflight();
             if(count==visibleSlots && upper==upperEnabled)return;
             if(!WorkspaceCapacity.fitsLayout(count,upper) || upper && !topAvailable)return;
-            if(retained!=null || !slots.fits(count) || !upper && upperId>=0){quickBar.logUnavailable("请先归还所选布局容纳不了的副任务");return;}
-            long ticket = fence.begin();
-            input.acquire(() -> {
-                if (!fence.current(ticket)) return;
-                visibleSlots=count;
-                if(upperEnabled!=upper){upperEnabled=upper;quickBar.configureUpper();}
-                showSlots();
-                Shell.executor.execute(() -> {
-                    try {
-                        render(() -> main.post(() -> {
-                            if (fence.current(ticket)) input.release(() -> {
-                                fence.complete(ticket);
-                                Bundle data=new Bundle();data.putInt("sideCount",count);data.putBoolean("upperEnabled",upper);
-                                try{Bundle result=Shell.context.getContentResolver().call(WorkspacePrefsProvider.URI,"sideCount",null,data);
-                                    if(result==null || !result.getBoolean("saved"))quickBar.logUnavailable("已调整本次布局，未保存默认数量");}
-                                catch(RuntimeException error){quickBar.logUnavailable("已调整本次布局，未保存默认数量");}
-                            });
-                        }));
-                    } catch (Throwable error) { main.post(() -> fail("预览布局提交失败：" + error)); }
-                });
-            });
-        } catch (Throwable error) { log("暂未调整副格：" + error.getMessage()); }
+            if(retained!=null || !slots.fits(count) || !upper && (upperAppId>=0 || upperNavigationId>=0)){quickBar.logUnavailable("请先归还所选布局容纳不了的副任务");return;}
+            quickBar.validateLayout(count);
+            // A geometry change affects native main/input/IME and an optional
+            // upper task too. Return the exact scene before preparing the new
+            // layout, rather than exposing mixed old/new dimensions in-place.
+            Bundle data=new Bundle();data.putInt("sideCount",count);data.putBoolean("upperEnabled",upper);
+            Bundle result=Shell.context.getContentResolver().call(WorkspacePrefsProvider.URI,"sideCount",null,data);
+            if(result==null || !result.getBoolean("saved") || result.getInt("sideCount",-1)!=count
+                    || result.getBoolean("upperEnabled")!=upper)throw new IllegalStateException("工作区布局未保存");
+            layoutRestart=new Intent().putExtras(result).putExtra("normalEntry",renewable).putExtra("leftSide",leftSide);
+            StepRuntime.diagnostic("LAYOUT","reprepare;from="+visibleSlots+";to="+count+";upper="+upper);
+            close("配置暂挂");
+        } catch (Throwable error) {
+            if(quickBar!=null)quickBar.note(error);else log("暂未调整副格：" + error.getMessage());
+        }
     }
     void beginNative() {
-        if (ready || closing || closed) return;
+        if (ready || entry!=null || closing || closed) return;
         try {
-            surface();
+            entry=new WorkspaceEntry((android.view.SurfaceControl)surface());
+            final long deadline=SystemClock.uptimeMillis()+WorkspaceEntry.TIMEOUT_MS;
+            input.holdEntry(deadline);
+            main.postAtTime(()->{if(!closing && !closed && !entry.complete)fail("整组工作区准备超时");},deadline);
             Bundle b = new Bundle();
             b.putBoolean("leftSide", leftSide);
             b.putBoolean("renewable",renewable);
+            b.putBoolean("transitionStart",WorkspaceFinish.startAvailable);
             int user=android.os.Process.myUserHandle().equals(quickUser)?(Integer)call(quickUser,"getIdentifier"):-1;
-            b.putInt("user",user);b.putInt("sideCount",visibleSlots);b.putBoolean("upperEnabled",upperEnabled);
+            b.putInt("user",user);b.putInt("sideCount",visibleSlots);b.putInt("layoutInset",layoutInset);b.putBoolean("upperEnabled",upperEnabled);
             try{
                 ActivityManager.RunningTaskInfo launcher=home(user);
                 b.putInt("home",launcher.taskId);b.putParcelable("homeToken",(Parcelable)field(launcher,"token"));
@@ -374,16 +382,28 @@ final class LiveWorkspace {
                     }
                     if(code==96){WorkspaceRoutes.hostRoute(LiveWorkspace.this,data);return;}
                     if (code == 97) retireSlot(data.getInt("slot"), data.getInt("removed"));
-                    if (code == 98 && !closing) startRecovery(() -> {});
+                    if (code == 98 && !closing) {
+                        if("息屏暂挂".equals(data.getString("recoveryReason"))){
+                            WorkspaceWake.remember(LiveWorkspace.this);exitReason="息屏暂挂";
+                        }
+                        startRecovery(() -> {});
+                    }
                     if (code == 99) { closing = true; fence.close(); cleanup(); }
                 }
             }));
             rpc("begin", b, result -> { logical = result.getParcelable("logical");ready=true;topAvailable=result.getBoolean("topAvailable");
+                if(result.getInt("layoutCount",-1)!=visibleSlots || result.getInt("layoutInset",-1)!=layoutInset)
+                    throw new IllegalStateException("系统与界面的工作区布局不一致");
                 homeBackdropAvailable=result.getBoolean("homeBackdropAvailable");
                 leftSide=result.getBoolean("left",leftSide);
-                geometry=new WorkspaceLayout(logical.width(),logical.height(),Shell.context.getResources().getDisplayMetrics().density,leftSide);
-                WindowManager.LayoutParams bounds=(WindowManager.LayoutParams)panel.getLayoutParams();bounds.x=geometry.sideX;windows.updateViewLayout(panel,bounds);
+                nativeReflow=result.getBoolean("mainReflow");
+                geometry=WorkspaceLayout.create(logical.width(),logical.height(),Shell.context.getResources().getDisplayMetrics().density,leftSide,visibleSlots,layoutInset,nativeReflow);
+                previewWidth=geometry.sideWidth;previewHeight=geometry.railHeight;
+                call(taskView,"setObscuredTouchRect",new Rect(0,0,previewWidth,previewHeight));
+                WindowManager.LayoutParams bounds=(WindowManager.LayoutParams)panel.getLayoutParams();bounds.x=geometry.sideX;bounds.y=geometry.top;bounds.width=geometry.sideWidth;bounds.height=geometry.railHeight;windows.updateViewLayout(panel,bounds);
                 restorePage=result.getInt("page",0);restoreTopFace=result.getBoolean("topFace");
+                retained=result.getIntArray("retained");
+                if(retained==null || retained.length!=ParkedWorkspace.COUNT)throw new IllegalStateException("原格恢复集合缺失");
                 forceResize=result.getBoolean("forceResize");localLandscape=result.getBoolean("localLandscape");edgeHandoff=result.getBoolean("edgeHandoff");
                 try {
                     quickBar = new WorkspaceQuickBar(this);
@@ -392,26 +412,26 @@ final class LiveWorkspace {
                     closeQuickBar();
                     log("工作区顶区不可用：" + unavailable.getMessage()); close("归还原任务"); return;
                 }
-                zoom(true,()->{
-                    if(renewable)CornerEntry.completedAt=android.os.SystemClock.elapsedRealtime();
-                    StepRuntime.report(reportTo,11,"工作区已就绪；任务交接路径=" + ownership.path()
-                            +(renewable?"；角部工作区，宿主续期。":"；90秒自动退出。"),-1);
-                    if(renewable)main.postDelayed(renew,25000);
-                    retained=result.getIntArray("retained");resumeNext();
-                }); });
+                resumeNext(); });
         } catch (Throwable error) { fail("原任务工作区初始化失败: " + error); }
     }
     void rpc(String action, Bundle args, Consumer<Bundle> success) {
         if (closed || (closing && !"end".equals(action)&&!"state".equals(action))) return;
         final long request = ++rpcSequence;
+        final long sent=SystemClock.uptimeMillis();
         final boolean[] answered = {false};
         ResultReceiver callback = new ResultReceiver(main) {
             @Override protected void onReceiveResult(int code, Bundle data) {
                 if (answered[0] || closed) return;
                 answered[0] = true;
+                diagnostic("RPC","reply;action="+action+";request="+request+";elapsedMs="+(SystemClock.uptimeMillis()-sent));
+                if("begin".equals(action) && code==0)channel=data.getBinder("channel");
                 if (!session.equals(data.getString("session"))) { fail("系统服务会话不匹配"); return; }
                 if(closing&&!"end".equals(action)&&!"state".equals(action))return;
                 if (code != 0) {
+                    if("renew".equals(action) && !interactive(Shell.context) && !closing){
+                        WorkspaceWake.renewalSuspended(LiveWorkspace.this);return;
+                    }
                     if(closing){log(data.getString("message","归还尚未确认"));main.postDelayed(thisWorkspace()::requestEnd,1000);}
                     else fail(data.getString("message", "系统服务未完成请求"));
                     return;
@@ -433,8 +453,13 @@ final class LiveWorkspace {
         };
         args.putBinder("owner", owner); args.putString("session", session); args.putLong("sequence", request);
         args.putString("operation", action); args.putParcelable("reply",remote(callback));
+        args.putLong("sentAt",sent);
         android.app.BroadcastOptions delivery=android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true);
-        Shell.context.sendBroadcast(new Intent(NativeWorkspaceGuard.ACTION).setPackage("android").putExtras(args),null,delivery.toBundle());
+        Intent intent=new Intent(NativeWorkspaceGuard.ACTION).setPackage("android").addFlags(Intent.FLAG_RECEIVER_FOREGROUND).putExtras(args);
+        try{
+            if(channel!=null)WorkspaceChannel.command(channel,owner,intent);
+            else Shell.context.sendBroadcast(intent,null,delivery.toBundle());
+        }catch(android.os.RemoteException unavailable){fail("系统服务交接通道中断："+unavailable);return;}
         main.postDelayed(() -> {
             if (!answered[0] && !closed) {
                 answered[0] = true;
@@ -540,13 +565,15 @@ final class LiveWorkspace {
         quickBar.bar.getViewTreeObserver().registerFrameCommitCallback(()->main.post(()->{
             if(closing || quickBar==null || !fence.busy())return;
             int[] at=new int[2];quickBar.bar.getLocationOnScreen(at);
-            if(at[0]==0 && at[1]==0 && quickBar.bar.getHeight()==quickBar.upper.caption)reply.send(1,new Bundle());
+            if(at[0]==0 && at[1]==0
+                    && quickBar.bar.getHeight()==1)reply.send(1,new Bundle());
             else if(android.os.SystemClock.uptimeMillis()<deadline)awaitUpperCaption(reply,deadline);
         }));quickBar.bar.invalidate();
     }
     void fadeWindow(View view,float alpha){
         if(view==null || !view.isAttachedToWindow())return;
         WindowManager.LayoutParams lp=(WindowManager.LayoutParams)view.getLayoutParams();lp.alpha=alpha;windows.updateViewLayout(view,lp);
+        if(quickBar!=null && view==quickBar.bar && quickBar.sideToolbar!=null)quickBar.sideToolbar.setChromeAlpha(alpha);
     }
     void zoom(boolean enter,Runnable done){
         long ticket=fence.begin();input.acquire(()->{
@@ -560,12 +587,14 @@ final class LiveWorkspace {
                 try{float value=(Float)a.getAnimatedValue();fadeWindow(panel,value);fadeWindow(quickBar.bar,value);}
                 catch(RuntimeException e){fail("顶区转场失败："+e);}
             });
-            Bundle b=new Bundle();b.putLong("starts",starts);chromeMotion.start();
+            Bundle b=new Bundle();b.putLong("starts",starts);
+            if(enter){b.putParcelable("entryStage",entry.surface);b.putIntArray("entrySlots",slots.snapshot());}
+            chromeMotion.start();
             rpc(enter?"enterZoom":"exitZoom",b,result->{
                 if(!fence.current(ticket))return;
                 chromeMotion.cancel();chromeMotion=null;fadeWindow(panel,enter?1:0);fadeWindow(quickBar.bar,enter?1:0);
                 if(!enter){fence.complete(ticket);done.run();return;}
-                input.release(()->{if(fence.complete(ticket))done.run();});
+                releaseStepInput(()->{if(fence.complete(ticket))done.run();});
             });
         });
     }
@@ -582,7 +611,8 @@ final class LiveWorkspace {
     static int number(Object value, String name) { return StepMembers.getIntField(value, name); }
     static boolean flag(Object value, String name) { return StepMembers.getBooleanField(value, name); }
     static boolean root(ActivityManager.RunningTaskInfo info) { return !Boolean.TRUE.equals(call(info, "hasParentTask")); }
-    ActivityManager.RunningTaskInfo focused() {
+    ActivityManager.RunningTaskInfo focused() {return WorkspaceMainFocus.read(this);}
+    ActivityManager.RunningTaskInfo cachedFocus() {
         synchronized (organizerLock) {
             SparseArray<?> tasks = (SparseArray<?>) field(organizer, "mTasks"); ActivityManager.RunningTaskInfo found = null;
             for (int n=0; n<tasks.size(); n++) {
@@ -604,8 +634,10 @@ final class LiveWorkspace {
             if (found == null) throw new IllegalStateException("原屏桌面不可用"); return found;
         }
     }
-    void preflight() {preflight(false);}
-    void preflight(boolean atOuterEdge) {
+    void preflight() {preflight(false,false);}
+    void preflight(boolean atOuterEdge) {preflight(atOuterEdge,false);}
+    void preflight(boolean atOuterEdge,boolean preparing) {
+        if(!preparing && entry!=null && !entry.complete)throw new IllegalStateException("请等待整组工作区准备完成");
         if (!ready || closing || closed || checkingState || fence.busy() || releaseMotion!=null || dragSlot>=0 && !atOuterEdge)
             throw new IllegalStateException("请等待当前操作结束");
         if (!interactive(Shell.context) || !Boolean.TRUE.equals(call(nativeTransitions, "isIdle"))) throw new IllegalStateException("系统正在切换界面，请稍后重试");
@@ -620,7 +652,7 @@ final class LiveWorkspace {
             if(lost && !java.util.Arrays.equals(slots.snapshot(),SideSlots.compacted(slots.snapshot()))){
                 long ticket=fence.begin();
                 input.acquire(()->{if(fence.current(ticket))compactCells(ticket,()->{
-                    showSlots();input.release(()->{if(fence.complete(ticket))finishReadmission();});
+                    showSlots();releaseStepInput(()->{if(fence.complete(ticket))finishReadmission();});
                 });});
             }else finishReadmission();
             return;
@@ -628,28 +660,80 @@ final class LiveWorkspace {
         if(!Boolean.TRUE.equals(call(nativeTransitions,"isIdle")) && resumeWait++<18){main.postDelayed(this::resumeNext,80);return;}
         resumeWait=0;
         int slot=resumeIndex++,id=retained[slot];
-        if(slot==ParkedWorkspace.UPPER && quickBar.upper==null){main.post(this::resumeNext);return;}
-        if(slot!=ParkedWorkspace.UPPER && slot>=visibleSlots){main.post(this::resumeNext);return;}
-        change(slot==ParkedWorkspace.UPPER?-1:slot,id);
+        if(slot>=ParkedWorkspace.UPPER && quickBar.upper==null){main.post(this::resumeNext);return;}
+        if(slot<ParkedWorkspace.UPPER && slot>=visibleSlots){main.post(this::resumeNext);return;}
+        change(slot>=ParkedWorkspace.UPPER?-1:slot,id,slot==ParkedWorkspace.NAVIGATION);
     }
     void finishReadmission(){
-        retained=null;quickBar.deck.restorePage(restorePage);
-        if(restoreTopFace && quickBar.upper!=null && upperId>=0)upperAction("show");
-        else if(restoreTopFace && quickBar.upper!=null)quickBar.upper.render(true,false);
+        if(closing || closed || entry==null || !entry.preparing)return;
+        entry.preparing=false;retained=null;quickBar.deck.restorePage(restorePage);
+        if(restoreTopFace && quickBar.upper!=null && upperId<0)quickBar.upper.render(false);
+        Shell.executor.execute(()->{
+            try{render(()->main.post(()->{
+                if(closing || closed)return;
+                // All real side windows are drawn, still behind the shared alpha.
+                // Paint final cells and the restored deck before starting entry.
+                entry.frames(main,()->{
+                    if(closing || closed)return;
+                    zoom(true,()->{
+                        int restoredTop=restorePage==WorkspaceDeck.NAVIGATION?upperNavigationId:upperAppId;
+                        if(restoreTopFace && quickBar.upper!=null && restoredTop>=0)upperActionFor(restoredTop,"show",this::finishEntry);
+                        else finishEntry();
+                    });
+                },this::fail,panel,quickBar.bar);
+            }));}catch(Throwable error){main.post(()->fail("整组副卡准备失败："+error));}
+        });
+    }
+    void releaseStepInput(Runnable done){
+        // Per-task fences still serialize recovery, but input is held until the
+        // entire entry (including the final native/view frames) is acknowledged.
+        if(entry!=null && !entry.complete && !closing && !closed)done.run();
+        else input.release(done);
+    }
+    void finishEntry(){
+        if(closing || closed || entry==null || entry.finishing || entry.complete)return;
+        entry.finishing=true;
+        final long ticket=fence.begin();
+        entry.frames(main,()->{
+            if(!fence.current(ticket))return;
+            int[] at=new int[2];panel.getLocationOnScreen(at);
+            if(at[0]!=geometry.sideX || at[1]!=geometry.top || panel.getWidth()!=previewWidth){fail("整组副栏最终位置未确认");return;}
+            Bundle b=new Bundle();b.putIntArray("entrySlots",slots.snapshot());
+            rpc("entryReady",b,result->{
+                if(!fence.current(ticket))return;
+                if(!result.getBoolean("entryReady") || !java.util.Arrays.equals(slots.snapshot(),result.getIntArray("slots")))
+                    throw new IllegalStateException("整组工作区最终结果不一致");
+                input.endEntryHold();
+                input.release(()->{
+                    if(!fence.complete(ticket) || closing || closed)return;
+                    entry.complete=true;
+                    if(renewable)CornerEntry.completedAt=android.os.SystemClock.elapsedRealtime();
+                    StepRuntime.report(reportTo,11,"工作区已就绪；整组任务、图层与界面已确认；任务交接路径="+ownership.path()
+                            +(renewable?"；角部工作区，宿主续期。":"；90秒自动退出。"),-1);
+                    if(renewable)main.postDelayed(renew,25000);
+                    publishViewState();
+                });
+            });
+        },this::fail,panel,quickBar.bar);
     }
     void change(int slot){if(retained==null)change(slot,-1);}
     void change(int slot,int resumeId) {
+        change(slot,resumeId,false);
+    }
+    void change(int slot,int resumeId,boolean navigation) {
+        diagnostic("ACTION","change;slot="+slot+";resume="+resumeId+";busy="+fence.busy()+";ready="+ready+";closing="+closing);
         try {
-            preflight();
+            preflight(false,resumeId>=0);
             final boolean upper=slot==-1;
             final int previous=upper?-1:slots.task(slot);
-            if(upper && (!topAvailable || upperId>=0))throw new IllegalStateException("顶部窗口当前不可收纳");
-            if(previous<0 && !WorkspaceCapacity.canAdd(slots.count(),upperId>=0))throw new IllegalStateException("工作区最多六个任务");
+            if(upper && (!topAvailable || (navigation?upperNavigationId:upperAppId)>=0))throw new IllegalStateException("顶部窗口当前不可收纳");
+            if(previous<0 && !WorkspaceCapacity.canAdd(slots.count(),!upper && (upperAppId>=0 || upperNavigationId>=0)))throw new IllegalStateException("侧边最多五个副区，顶部页面独立保留");
             ActivityManager.RunningTaskInfo target = resumeId<0?focused():info(resumeId);
             if(resumeId>=0 && (target==null || !root(target) || number(target,"displayId")!=0)){
                 main.post(this::resumeNext);return;
             }
-            if (previous >= 0 && target != null && (Integer) call(target, "getActivityType") == 2) { returnSide(slot, false); return; }
+            if (previous >= 0 && target != null && ((Integer) call(target, "getActivityType") == 2
+                    || target.taskId==upperId && homeAloneBehindUpper())) { returnSide(slot, false); return; }
             if (target == null || (Integer) call(target, "getActivityType") != 1 || (Integer) call(target, "getWindowingMode") != 1
                     || (!forceResize && !flag(target, "isResizeable")) || target.topActivity == null)
                 throw new IllegalStateException("请先打开一个普通全屏应用");
@@ -657,12 +741,12 @@ final class LiveWorkspace {
             input.acquire(()->{
             if(!fence.current(ticket))return;
             Bundle reserve = new Bundle(); reserve.putInt("task", target.taskId); reserve.putParcelable("token", (Parcelable) field(target, "token"));
-            if(resumeId>=0)reserve.putInt("retainedSlot",upper?ParkedWorkspace.UPPER:slot);
+            if(resumeId>=0)reserve.putInt("retainedSlot",upper?(navigation?ParkedWorkspace.NAVIGATION:ParkedWorkspace.UPPER):slot);
             try { synchronized (organizerLock) { reserve.putInt("layerId", (Integer) call(leash(target.taskId), "getLayerId")); } }
             catch(Throwable error){fail("收纳前任务已变化: "+error);return;}
             rpc("reserve", reserve, snapshot -> {
                 if (!fence.current(ticket)) return;
-                if(snapshot.getBoolean("skip")){input.release(()->{fence.complete(ticket);resumeNext();});return;}
+                if(snapshot.getBoolean("skip")){releaseStepInput(()->{fence.complete(ticket);resumeNext();});return;}
                 ActivityManager.RunningTaskInfo admitted = snapshot.getParcelable("info");
                 Shell.executor.execute(() -> {
                     try {
@@ -681,6 +765,7 @@ final class LiveWorkspace {
                                 }
                                 if(upper){
                                     b.putString("topAction",resumeId<0?"take":"resume");b.putParcelable("bounds",quickBar.upper.bounds());
+                                    b.putBoolean("navigation",navigation);
                                     rpc("top",b,result->completeUpper(ticket,lease,result,resumeId<0));return;
                                 }
                                 b.putParcelable("surface", (Parcelable) surface()); b.putInt("width", previewWidth); b.putInt("height",geometry.rowHeight(slot,visibleSlots)); b.putInt("rowTop",geometry.rowTop(slot,visibleSlots));
@@ -694,6 +779,7 @@ final class LiveWorkspace {
             });
         } catch (Throwable refusal) {
             String message="暂未操作: " + refusal.getMessage();
+            diagnostic("ACTION_REFUSED","change;slot="+slot+";reason="+refusal);
             if(resumeId<0 && quickBar!=null)quickBar.logUnavailable(message);else log(message);
             if(resumeId>=0)main.post(this::resumeNext);
         }
@@ -706,39 +792,54 @@ final class LiveWorkspace {
             SparseArray<?> tasks=(SparseArray<?>)field(organizer,"mTasks");boolean home=false;
             for(int n=0;n<tasks.size();n++){
                 ActivityManager.RunningTaskInfo t=(ActivityManager.RunningTaskInfo)call(tasks.valueAt(n),"getTaskInfo");
-                if(t.taskId==upperId || !root(t) || number(t,"displayId")!=0 || !flag(t,"isVisible"))continue;
+                if(holdsUpper(t.taskId) || !root(t) || number(t,"displayId")!=0 || !flag(t,"isVisible"))continue;
                 if((Integer)call(t,"getActivityType")==2)home=true;
                 else if((Integer)call(t,"getWindowingMode")==1)return false;
             }
             return home;
         }
     }
-    void upperAction(String action){
+    void upperAction(String action){upperAction(action,null);}
+    void upperAction(String action,Runnable completed){
+        upperActionFor(upperId,action,completed);
+    }
+    void upperActionFor(int id,String action,Runnable completed){
+        diagnostic("ACTION","upper;action="+action+";task="+upperId+";busy="+fence.busy()+";closing="+closing);
         try{
-            preflight();Lease lease=leases.get(upperId);
+            preflight(false,completed!=null);Lease lease=leases.get(id);
             if(lease==null || lease.checkedInfo()==null)throw new IllegalStateException("顶部原任务不可用");
             final long ticket=fence.begin();
+            // Draw the resting page before the original task changes orientation
+            // and returns to main. Releasing an inactive task preserves its peer.
+            if("release".equals(action) && id==upperId && quickBar.upper.visible)quickBar.upper.render(false);
             input.acquire(()->{
                 if(!fence.current(ticket))return;
                 Bundle b=new Bundle();b.putInt("task",lease.id);b.putParcelable("token",(Parcelable)lease.token);b.putString("topAction",action);
-                rpc("top",b,result->completeUpper(ticket,lease,result,"show".equals(action)));
+                rpc("top",b,result->completeUpper(ticket,lease,result,"show".equals(action),completed));
             });
-        }catch(Throwable error){log("顶部操作未执行："+error.getMessage());}
+        }catch(Throwable error){diagnostic("ACTION_REFUSED","upper;action="+action+";reason="+error);if(completed!=null)fail("顶部恢复未完成："+error);else log("顶部操作未执行："+error.getMessage());}
     }
     void completeUpper(long ticket,Lease lease,Bundle result,boolean face){
+        completeUpper(ticket,lease,result,face,null);
+    }
+    void completeUpper(long ticket,Lease lease,Bundle result,boolean face,Runnable completed){
         if(!fence.current(ticket))return;
         int next=result.getInt("upper",-2);
         final boolean refused=result.getBoolean("topRefused");
         if(refused)log(result.getString("message","顶窗未接管"));
-        if(next!=-1 && next!=lease.id)throw new IllegalStateException("顶部任务提交不匹配");
+        boolean released=result.getInt("released",-1)==lease.id;
+        if(next!=-1 && next!=lease.id && !(released && holdsUpper(next)))throw new IllegalStateException("顶部任务提交不匹配");
         upperId=next;
+        upperAppId=result.getInt("upperApp",next);upperNavigationId=result.getInt("upperNavigation",-1);
         Shell.executor.execute(()->{
             try{
                 if(!fence.current(ticket))return;
-                if(next<0){ownership.releaseIfOwned(lease.id,lease.listener);leases.remove(lease.id);}
+                if(next<0 || result.getInt("released",-1)==lease.id){ownership.releaseIfOwned(lease.id,lease.listener);leases.remove(lease.id);}
                 main.post(()->{
                     if(!fence.current(ticket))return;
-                    try{quickBar.upper.render(refused?face:face && next>=0);input.release(()->{if(fence.complete(ticket))resumeNext();});}
+                    try{quickBar.configureUpper();quickBar.upper.render(refused?face:(released?next>=0 && !result.getBoolean("hidden"):face && next>=0));releaseStepInput(()->{
+                        if(fence.complete(ticket)){if(completed!=null)completed.run();else resumeNext();}
+                    });}
                     catch(Throwable e){fail("顶部窗口布局失败："+e);}
                 });
             }catch(Throwable e){main.post(()->fail("顶部任务恢复失败："+e));}
@@ -749,7 +850,7 @@ final class LiveWorkspace {
             log("桌面绘制接口不可用，沿用原生任务交接");submitRoles(roles,ticket,slot,previous,next);return;
         }
         boolean targetLeft=WorkspaceMotion.targetLeft(leftSide,next,previous);
-        WorkspaceLayout target=new WorkspaceLayout(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,targetLeft);
+        WorkspaceLayout target=WorkspaceLayout.create(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,targetLeft,visibleSlots,layoutInset,nativeReflow);
         try{
             if(!panel.isHardwareAccelerated())throw new IllegalStateException("副栏不能确认绘制提交");
             flipStage=new FlipStage(input.view,geometry,slot,slots.snapshot(),visibleSlots,leftSide,quickBar.wallpaper,next<0);
@@ -763,6 +864,7 @@ final class LiveWorkspace {
             if(!fence.current(ticket))return;
             if(!result.containsKey("targetLeft") || result.getBoolean("targetLeft")!=targetLeft)
                 throw new IllegalStateException("主副换边方向未提交");
+            if(result.getBoolean("flipLanded")){confirmRoles(result,ticket,slot,previous,next);return;}
             if(targetLeft==leftSide){submitRoles(roles,ticket,slot,previous,next);return;}
             leftSide=targetLeft;geometry=target;
             WindowManager.LayoutParams lp=(WindowManager.LayoutParams)panel.getLayoutParams();
@@ -790,7 +892,7 @@ final class LiveWorkspace {
                 throw new IllegalStateException("请先关闭当前选择窗口");
             if(leftSide==right)return;
             final long ticket=fence.begin();
-            final WorkspaceLayout target=new WorkspaceLayout(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,right);
+            final WorkspaceLayout target=WorkspaceLayout.create(geometry.width,geometry.height,panel.getResources().getDisplayMetrics().density,right,visibleSlots,layoutInset,nativeReflow);
             final Bundle request=new Bundle();request.putBoolean("fromLeft",leftSide);request.putBoolean("leftSide",right);
             request.putIntArray("slots",slots.snapshot());
             input.acquire(()->{
@@ -858,7 +960,7 @@ final class LiveWorkspace {
                 try{
                     Lease lease=leases.get(next);
                     if(lease!=null){ownership.releaseIfOwned(next,lease.listener);leases.remove(next);}
-                    main.post(()->{if(fence.current(ticket))input.release(()->{if(fence.complete(ticket))resumeNext();});});
+                    main.post(()->{if(fence.current(ticket))releaseStepInput(()->{if(fence.complete(ticket))resumeNext();});});
                 }catch(Throwable error){main.post(()->fail("跳过副格后监听归还失败："+error));}
             });
             return;
@@ -902,7 +1004,7 @@ final class LiveWorkspace {
         rpc("replay",new Bundle(),replayed->{
             if(!fence.current(ticket))return;
             clearDrag();closeFlipStage();
-            input.release(()->{
+            releaseStepInput(()->{
                 if(!fence.complete(ticket))return;
                 log("交接完成；"+detail+"；任务、图层事务与副格绘制已提交");
                 resumeNext();
@@ -938,7 +1040,8 @@ final class LiveWorkspace {
     }
     Object surface() {
         if (controller == null || !Boolean.TRUE.equals(field(controller, "mSurfaceCreated"))) throw new IllegalStateException("预览图层尚未创建");
-        Object value = field(controller, "mSurfaceControl"); NativeWorkspaceGuard.validSurface(value); return value;
+        Object value = field(controller, "mSurfaceControl"); NativeWorkspaceGuard.validSurface(value);
+        return entry==null?value:entry.parent((android.view.SurfaceControl)value);
     }
     void compactCells(long ticket,Runnable done){
         int[] before=slots.snapshot(),after=SideSlots.compacted(before);
@@ -964,6 +1067,36 @@ final class LiveWorkspace {
         });
     }
     void render() throws Exception {render(null);}
+    int[] stageFinishedPreviews(Object tx) throws Exception {
+        synchronized(organizerLock){
+            // A Shell finish must not overwrite a swap, drag, entry or exit that
+            // owns a different intermediate pose. Only settled leases are copied.
+            if(this!=current || !ready || closing || closed || fence.busy()
+                    || flipStage!=null || shiftFrom!=null || dragSlot>=0)return null;
+            stagePreviews(tx,true);
+            return slots.snapshot();
+        }
+    }
+    void stagePreviews(Object tx,boolean requireAll) throws Exception {
+        Object parent=surface();
+        for(int slot=0;slot<visibleSlots;slot++){
+            int id=slots.task(slot);if(id<0)continue;
+            Lease lease=leases.get(id);
+            if(lease==null)throw new IllegalStateException("副任务未持有："+id);
+            ActivityManager.RunningTaskInfo info=lease.checkedInfo();
+            if(info==null || (Integer)call(info,"getWindowingMode")!=6){
+                if(!requireAll && info==null)continue;
+                throw new IllegalStateException("副任务离开预览模式："+id);
+            }
+            Object child=lease.checkedLeash();
+            PreviewGeometry fit=new PreviewGeometry(logical.width(),logical.height(),previewWidth,geometry.rowHeight(slot,visibleSlots));
+            call(tx,"reparent",child,parent);call(tx,"setMatrix",child,fit.scale,0f,0f,fit.scale);
+            float y=geometry.rowTop(slot,visibleSlots);int[] origins=shiftFrom;
+            if(origins!=null && origins[slot]>=0)y+=(geometry.rowTop(origins[slot],visibleSlots)-y)*(1-shiftProgress);
+            call(tx,"setPosition",child,fit.x+(dragSlot==slot?dragX:0f),fit.y+y);call(tx,"setWindowCrop",child,logical);
+            call(tx,"setAlpha",child,1f);call(tx,"show",child);
+        }
+    }
     void render(Runnable committed) throws Exception {
         if (closing || closed) return;
         if(flipStage!=null && fence.busy() && committed==null)return;
@@ -971,28 +1104,9 @@ final class LiveWorkspace {
         synchronized (organizerLock) {
             // A renderer may have passed the outer check before exit took this lock.
             if(closing || closed)return;
-            Object parent = surface();
-
             Object tx = NativeWorkspaceGuard.surfaceTransaction();
             try {
-                for (int slot = 0; slot < visibleSlots; slot++) {
-                    int id = slots.task(slot);
-                    if (id < 0) continue;
-                    Lease lease = leases.get(id);
-                    if (lease == null) throw new IllegalStateException("副任务未持有：" + id);
-                    ActivityManager.RunningTaskInfo info = lease.checkedInfo();
-                    if (info == null || (Integer) call(info, "getWindowingMode") != 6) {
-                        if (committed == null && info == null) continue; // Native removal confirms retirement.
-                        throw new IllegalStateException("副任务离开预览模式：" + id);
-                    }
-                    Object child = lease.checkedLeash();
-                    PreviewGeometry fit = new PreviewGeometry(logical.width(),logical.height(),previewWidth,geometry.rowHeight(slot,visibleSlots));
-                    call(tx, "reparent", child, parent); call(tx, "setMatrix", child, fit.scale, 0f, 0f, fit.scale);
-                    float y=geometry.rowTop(slot,visibleSlots);int[] origins=shiftFrom;
-                    if(origins!=null && origins[slot]>=0)y+=(geometry.rowTop(origins[slot],visibleSlots)-y)*(1-shiftProgress);
-                    call(tx, "setPosition", child, fit.x+(dragSlot==slot?dragX:0f), fit.y+y);call(tx, "setWindowCrop", child, logical);
-                    call(tx, "setAlpha", child, 1f); call(tx, "show", child);
-                }
+                stagePreviews(tx,committed!=null);
                 final long frame=previewFrames.add();
                 SurfaceCommit.observe(tx,Shell.executor,()->{
                     previewFrames.commit(frame);
@@ -1068,7 +1182,7 @@ final class LiveWorkspace {
                     }
                     main.post(() -> {
                         if(closing)return;
-                        if(upperId==id){close("顶部原任务监听结束，归还工作区");return;}
+                        if(holdsUpper(id)){close("顶部原任务监听结束，归还工作区");return;}
                         if(slots.index(id)<0)return;
                         Bundle b = new Bundle(); b.putInt("task", id); b.putParcelable("token", (Parcelable) token);
                         rpc("lost", b, result -> {});
@@ -1085,9 +1199,12 @@ final class LiveWorkspace {
             return value;
         }
         void acquire(boolean readmit) throws Exception {
+            ActivityManager.RunningTaskInfo selected=readmit?null:focused();
             synchronized (organizerLock) {
                 ActivityManager.RunningTaskInfo value = checkedInfo();
-                if (value == null || (Integer) call(value, "getWindowingMode") != 1 || !readmit && !flag(value,"isFocused")) throw new IllegalStateException("目标已不在原来的角色");
+                if (value == null || (Integer) call(value, "getWindowingMode") != 1
+                        || !readmit && (selected==null || selected.taskId!=id || !token.equals(field(selected,"token"))))
+                    throw new IllegalStateException("目标已不在原来的角色");
                 ownership.acquire(id, value, checkedLeash(), listener);
             }
         }
@@ -1097,13 +1214,14 @@ final class LiveWorkspace {
             return surface;
         }
     }
-    void fail(String message) { StepRuntime.diagnostic("WORKSPACE_FAILURE",message);log(message); close("异常退出并归还原任务"); }
+    void fail(String message) { layoutRestart=null;StepRuntime.diagnostic("WORKSPACE_FAILURE",message);log(message); close("异常退出并归还原任务"); }
     void close(String reason) {
         if (closing || closed) return;
+        exitReason=reason;
         log(reason);
         homeExit="桌面暂挂".equals(reason);
         if(quickBar!=null){exitPage=quickBar.deck.savedPage();exitTopFace=quickBar.upper!=null && quickBar.upper.visible;}
-        retainOnExit=!fence.busy() && ("手动退出工作区".equals(reason)||"桌面暂挂".equals(reason)||"息屏暂挂".equals(reason)||"配置暂挂".equals(reason));
+        retainOnExit=!fence.busy() && (entry==null || entry.complete) && ("手动退出工作区".equals(reason)||"桌面暂挂".equals(reason)||"息屏暂挂".equals(reason)||"配置暂挂".equals(reason));
         if(retainOnExit && "手动退出工作区".equals(reason) && ready && quickBar!=null && interactive(Shell.context)){
             zoom(false,()->startRecovery(this::requestEnd));return;
         }
@@ -1111,6 +1229,8 @@ final class LiveWorkspace {
     }
     void startRecovery(Runnable readyToRestore) {
         closing = true;
+        if(entry!=null)entry.cancelFrames();
+        if(input!=null)input.endEntryHold();
         if(chromeMotion!=null){chromeMotion.cancel();chromeMotion=null;}
         main.removeCallbacks(renew);retained=null;
         clearDrag();
@@ -1138,6 +1258,7 @@ final class LiveWorkspace {
         // stopped; the server still verifies and commits its own recovery transaction.
         Bundle end=new Bundle();end.putBoolean("retain",retainOnExit);end.putInt("page",exitPage);end.putBoolean("topFace",exitTopFace);
         end.putBoolean("homeExit",homeExit);
+        end.putString("exitReason",exitReason);
         rpc("end", end, reply -> {
             if("RESTORED".equals(reply.getString("state")))cleanup();
             else main.postDelayed(()->{if(!closed)requestEnd();},2000);
@@ -1155,6 +1276,7 @@ final class LiveWorkspace {
                 leases.clear();
                 main.post(() -> {
                     try {
+                        if(entry!=null)entry.close();
                         if (taskView != null) {
                             if (controller != null && field(controller, "mTaskToken") != null) throw new IllegalStateException("容器意外持有其他任务，未释放");
                             call(taskView, "release");
@@ -1163,7 +1285,8 @@ final class LiveWorkspace {
                         panel = null; taskView = null;
                         Runnable done=()->{closed=true;ready=false;
                             StepRuntime.diagnostic("EXIT_UI","session="+session+";listenersReleased=true;containerRemoved=true;inputRemoved=true");
-                            StepRuntime.report(reportTo,3,"工作区已退出，原任务未删除",-1);};
+                            StepRuntime.report(reportTo,3,"工作区已退出，原任务未删除",-1);
+                            restartLayout();};
                         if(input!=null)input.release(done);else done.run();
                     } catch (Throwable error) { cleaning = false; log("容器清理尚未完成: " + error);main.postDelayed(this::cleanup,1000); }
                 });
@@ -1174,6 +1297,16 @@ final class LiveWorkspace {
     void closeFlipStage(){
         FlipStage done=flipStage;flipStage=null;
         if(done!=null)try{done.close();}catch(RuntimeException e){log("换边辅助图层释放："+e);}
+    }
+    void restartLayout(){
+        Intent next=layoutRestart;layoutRestart=null;
+        if(next==null)return;
+        main.post(()->{
+            if(current!=this || !closed || !"配置暂挂".equals(exitReason) || !StepRuntime.enabled
+                    || !interactive(Shell.context) || !android.os.Process.myUserHandle().equals(quickUser)
+                    || !Shell.context.getSystemService(android.os.UserManager.class).isUserForeground())return;
+            open(reportTo,next);
+        });
     }
     void closeQuickBar() {
         WorkspaceQuickBar old = quickBar;

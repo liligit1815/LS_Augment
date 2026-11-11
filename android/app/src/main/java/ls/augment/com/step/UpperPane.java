@@ -6,7 +6,7 @@ import android.view.*;
 import android.widget.*;
 import static ls.augment.com.step.StepRuntime.*;
 
-/** Only the caption covers the physical app after adoption. Android routes app touch and Back. */
+/** The adopted app owns the entire top page. Android routes its touch and Back. */
 final class UpperPane {
     final WorkspaceQuickBar owner;
     final LiveWorkspace host;
@@ -18,9 +18,9 @@ final class UpperPane {
     final UpperRoll roll;
     UpperPane(WorkspaceQuickBar owner,int inset){
         this.owner=owner;host=owner.host;
-        caption=Math.max(0,inset)+owner.dp(34);
-        face=new LinearLayout(owner.ctx);face.setOrientation(LinearLayout.VERTICAL);face.setPadding(0,Math.max(0,inset),0,0);
-        LinearLayout row=new LinearLayout(owner.ctx);face.addView(row,-1,owner.dp(34));
+        caption=0;
+        face=new LinearLayout(owner.ctx);face.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row=new LinearLayout(owner.ctx);
         TextView controls=StepMaterial.label(owner.ctx,"‹  控制页",14,true);
         controls.setOnClickListener(v->toggle(false));row.addView(controls,new LinearLayout.LayoutParams(0,-1,1));
         StepMaterial.feedback(controls);
@@ -30,23 +30,30 @@ final class UpperPane {
         add=StepMaterial.label(owner.ctx,"＋",36,false);add.setContentDescription("收纳当前主应用到顶部");
         add.setOnClickListener(v->host.change(-1));face.addView(add,new LinearLayout.LayoutParams(-1,0,1));
         StepMaterial.feedback(add);
-        face.setVisibility(View.GONE);owner.bar.addView(face,-1,-1);
+        face.setVisibility(View.GONE);owner.bar.addView(face,-1,host.geometry.contentHeight);
         roll=new UpperRoll(this);owner.bar.addView(roll,-1,-1);
         monitor=TopGestureMonitor.open(this);
     }
-    Rect bounds(){return new Rect(0,caption,host.geometry.width,host.geometry.top);}
+    Rect bounds(){return new Rect(0,0,host.geometry.width,host.geometry.contentHeight);}
     boolean canSwitch(){return !owner.closed && host.ready && !host.closing && host.topAvailable
-                && owner.picker==null && owner.tools.clipboard==null && host.retained==null && !host.fence.busy()
+                && owner.picker==null && owner.recent==null && owner.tools.clipboard==null && owner.tools.toolMenu==null
+                && (owner.counts==null || !owner.counts.dialog.isShowing()) && host.retained==null && !host.fence.busy()
                 && host.dragSlot<0 && !owner.launching && interactive(owner.ctx);}
     void toggle(boolean toTask){
         if(toTask==visible || !canSwitch())return;
-        if(roll.begin())roll.settle(true);
+        applyFace(toTask);
     }
     void applyFace(boolean toTask){
         if(owner.closed || !canSwitch()){if(!owner.closed)render(visible);return;}
+        if(toTask){
+            if(host.upperAppId<0){owner.deck.jump(WorkspaceDeck.CONTROLS);render(false);return;}
+            owner.deck.jump(WorkspaceDeck.UPPER);
+            if(host.upperAppId>=0){host.upperActionFor(host.upperAppId,"show",null);return;}
+            if(visible && host.upperId>=0){host.upperAction("park",()->render(true,false));return;}
+            render(true,false);return;
+        }
         if(toTask==visible){render(toTask);return;}
         if(host.upperId<0){render(toTask);return;}
-        if(toTask){host.upperAction("show");return;}
         // An unknown background stays untouched. Return the upper app only over an identified Home.
         boolean home=false;
         try{home=host.homeAloneBehindUpper();}catch(RuntimeException unknown){host.log("主区身份未知，顶部任务暂存");}
@@ -60,16 +67,17 @@ final class UpperPane {
         if(roll.running)roll.reset();
         visible=taskFace;
         WindowManager.LayoutParams lp=(WindowManager.LayoutParams)owner.bar.getLayoutParams();
-        lp.height=taskFace && occupied?caption:host.geometry.top;
+        boolean nativeContent=taskFace && occupied;
+        lp.y=0;
+        lp.height=nativeContent?1:host.geometry.top;
         owner.windowsUpdate(lp);
-        owner.band.setVisibility(taskFace?View.GONE:View.VISIBLE);
-        face.setVisibility(taskFace?View.VISIBLE:View.GONE);
+        owner.band.setVisibility(nativeContent?View.GONE:View.VISIBLE);
+        ((View)owner.deck.getParent()).setVisibility(taskFace?View.GONE:View.VISIBLE);
+        face.setVisibility(taskFace && !occupied?View.VISIBLE:View.GONE);
         promote.setVisibility(occupied?View.VISIBLE:View.INVISIBLE);add.setVisibility(occupied?View.GONE:View.VISIBLE);
-        View shown=taskFace?face:owner.band;
-        shown.animate().cancel();shown.setPivotY(taskFace?0:shown.getHeight());
-        shown.setRotationX(taskFace?-18:18);shown.setAlpha(.72f);
-        shown.animate().rotationX(0).alpha(1).setDuration(160).start();
+        owner.band.setRotationX(0);owner.band.setAlpha(1);
         if(!taskFace)owner.deck.leaveUpperPage();
+        else if(nativeContent)owner.deck.jump(host.upperId==host.upperNavigationId?WorkspaceDeck.NAVIGATION:WorkspaceDeck.UPPER);
         host.publishViewState();
     }
     void close(){if(monitor!=null)monitor.close();roll.close();face.animate().cancel();}

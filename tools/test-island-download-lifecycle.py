@@ -58,7 +58,7 @@ static int hookListenerLifecycle(AugmentModule module,ClassLoader loader,String 
 static void connected(Object owner) CONNECTED
 static void disconnected(Object owner) DISCONNECTED
 static class Power {boolean interactive=true;boolean isInteractive(){return interactive;}}
-static class Host {int expansions;boolean readyForFirstExpansion(){return visible;}void expand(){expansions++;}boolean visible=true,expanded=true;boolean visible(){return visible;}boolean expanded(){return expanded;}}
+static class Host {int expansions;boolean retained;void panelActivity(){}boolean holdsActivity(){return retained;}boolean readyForFirstExpansion(){return visible;}void expand(){expansions++;}boolean visible=true,expanded=true;boolean visible(){return visible;}boolean expanded(){return expanded;}}
 static class State {
 final android.content.Context context=new android.content.Context();final IslandDownloadSource downloads=new IslandDownloadSource(context);
 boolean closed,enabled=true,screenOff,lock;int user,activity=IslandActivityPolicy.DOWNLOAD,refreshes,notices,withdrawals,opens;
@@ -142,7 +142,13 @@ state.rankingAllowed=false;state.noticeAction(ordinary,noticeButton);check(state
 ordinary.notification.actions=new Notification.Action[0];state.noticeAction(ordinary,noticeButton);check(state.opens==before,"removed notice button executed");
 ordinary.notification.contentIntent=noticeButton;state.noticeAction(ordinary,noticeButton);check(state.opens==before+1,"notice content PendingIntent lost");before=state.opens;
 state.lock=true;state.snoozeNotice(ordinary);state.lock=false;
-state.noticeUntil=100;state.snoozeNotice(ordinary);state.noticeUntil=1000;
+state.noticeUntil=100;state.snoozeNotice(ordinary);
+state.nativeHost.retained=true;int heldBefore=state.opens;state.noticeAction(ordinary,noticeButton);
+check(state.opens==heldBefore+1,"expanded notice button remains valid after compact expiry");
+listener.active=new StatusBarNotification[0];state.noticeAction(ordinary,noticeButton);
+check(state.opens==heldBefore+1,"expanded lease cannot authorize a withdrawn source");
+before=state.opens;
+listener.active=new StatusBarNotification[]{ordinary};state.nativeHost.retained=false;state.noticeUntil=1000;
 ordinary.notification.flags=32;state.snoozeNotice(ordinary);ordinary.notification.flags=0;
 String disable="1"+IslandDownloadConfig.channel(0,ordinary.pkg,"messages");state.noticeRules=IslandNoticeRules.parse(disable);
 state.snoozeNotice(ordinary);state.noticeAction(ordinary,noticeButton);

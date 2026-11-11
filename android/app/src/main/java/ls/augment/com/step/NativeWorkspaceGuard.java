@@ -35,6 +35,9 @@ final class NativeWorkspaceGuard {
     static final SideSlots slots = new SideSlots();
     static Rect logical;
     static boolean sideLeft;
+    static int layoutCount=SideSlots.DEFAULT_COUNT, layoutInset;
+    static boolean mainReflow;
+    static boolean transitionStart;
     static volatile NativeFlip flip;
     static ParkedWorkspace parked=new ParkedWorkspace(), readmitting=new ParkedWorkspace(), afterRestore;
     static boolean renewable;
@@ -61,6 +64,7 @@ final class NativeWorkspaceGuard {
         final Point position;
         final TaskIdentity identity;
         boolean dirty;
+        boolean readmitFocus=true;
         SavedTask(Object t, ActivityManager.RunningTaskInfo info) {
             id = info.taskId; user = StepMembers.getIntField(info, "userId"); token = field(info, "token"); task = t;
             identity = new TaskIdentity(id, user, 0, token);
@@ -74,6 +78,8 @@ final class NativeWorkspaceGuard {
 
     static void install(ClassLoader loader) {
         WorkspaceReadmit.probe(loader);
+        WorkspaceMainBounds.install(loader);
+        UpperAppLayout.install(loader);
         try{
             Class<?> policy=Class.forName("com.android.server.policy.PhoneWindowManager",false,loader);
             java.lang.reflect.Method home=OwnershipBridge.method(policy,"handleShortPressOnHome",int.class);
@@ -98,6 +104,12 @@ final class NativeWorkspaceGuard {
             }
             if(focusMethods.isEmpty())throw new NoSuchMethodException("WindowState.canReceiveKeys");
             focusMethods.add(SideFocus.imeMethod(window));
+            try{
+                java.lang.reflect.Method bars=OwnershipBridge.method(window,"canAffectSystemUiFlags");
+                if(bars.getReturnType()!=boolean.class || java.lang.reflect.Modifier.isStatic(bars.getModifiers()))
+                    throw new NoSuchMethodException("canAffectSystemUiFlags contract");
+                focusMethods.add(bars);
+            }catch(NoSuchMethodException absent){diagnostic("SIDE_SYSTEM_BARS","native_fallback;reason="+absent);}
             java.lang.reflect.Method updateFocus=OwnershipBridge.method(Wm.service.getClass(),"updateFocusedWindowLocked",int.class,boolean.class);
             if(updateFocus.getReturnType()!=boolean.class)throw new NoSuchMethodException("WMS focus update result");
             StepHooks.hookMethod(updateFocus,new StepHook(){
@@ -109,7 +121,7 @@ final class NativeWorkspaceGuard {
                     }catch(RuntimeException|LinkageError ignored){}
                 }
                 @Override protected void beforeHookedMethod(MethodHookParam p){observe();}
-                @Override protected void afterHookedMethod(MethodHookParam p){observe();GameInput.refreshUnderLock();WorkspaceIme.request();}
+                @Override protected void afterHookedMethod(MethodHookParam p){observe();WorkspaceMainBounds.refresh();GameInput.refreshUnderLock();WorkspaceIme.request();}
             });
             for(java.lang.reflect.Method method:focusMethods){
                 if(method.getReturnType()!=boolean.class||java.lang.reflect.Modifier.isStatic(method.getModifiers()))
@@ -135,6 +147,7 @@ final class NativeWorkspaceGuard {
                     }
                 });
             }
+            SideLifecycle.install(loader);
             Class<?> transition=StepMembers.findClass("com.android.server.wm.Transition",loader);
             replayPending=TransitionCompletion.transactionReplay(Wm.display.getClass(),
                     Class.forName("android.view.SurfaceControl$Transaction",false,loader));
@@ -239,10 +252,10 @@ final class NativeWorkspaceGuard {
                     if (p.hasThrowable() || !active || ending) return;
                     synchronized (Wm.lock) {
                         int id = StepMembers.getIntField(p.thisObject, "mTaskId");
-                        if(NativeTopTask.upper!=null && NativeTopTask.upper.task==p.thisObject){
-                            IBinder expected=owner;SavedTask upper=NativeTopTask.upper;
+                        if(NativeTopTask.held(p.thisObject)!=null){
+                            IBinder expected=owner;SavedTask upper=NativeTopTask.held(p.thisObject);
                             Wm.handler.post(()->{
-                                boolean gone;synchronized(Wm.lock){gone=owner==expected && NativeTopTask.upper==upper && liveTask(upper.id,upper.token)==null;}
+                                boolean gone;synchronized(Wm.lock){gone=owner==expected && NativeTopTask.held(upper.id) && liveTask(upper.id,upper.token)==null;}
                                 if(gone)finish("顶部任务已结束");
                             });
                         }
@@ -286,7 +299,7 @@ final class NativeWorkspaceGuard {
     }
     static boolean ownsTask(Object candidate) {
         if (candidate == null || !active) return false;
-        SavedTask upper=NativeTopTask.upper;
+        SavedTask upper=NativeTopTask.held(candidate);
         if(!ending && upper!=null && upper.dirty && upper.task==candidate)return true;
         NativeFlip moving=flip;
         if (!ending && moving!=null)for(SavedTask actor:moving.actors)
@@ -372,7 +385,7 @@ final class NativeWorkspaceGuard {
             if("viewState".equals(action)){
                 long revision=intent.getLongExtra("viewRevision",-1);
                 if(revision>hostRevision){
-                    hostRevision=revision;hostPage=Math.max(0,Math.min(4,intent.getIntExtra("page",0)));
+                    hostRevision=revision;hostPage=Math.max(0,Math.min(5,intent.getIntExtra("page",0)));
                     hostTopFace=intent.getBooleanExtra("topFace",false);
                 }
                 return;
@@ -380,10 +393,26 @@ final class NativeWorkspaceGuard {
             long sequence = intent.getLongExtra("sequence", -1);
             if (sequence <= lastSequence) throw new IllegalStateException("过期的工作区操作");
             lastSequence = sequence;
+            diagnostic("RPC","received;action="+action+";request="+sequence+";queueMs="
+                    +Math.max(0,android.os.SystemClock.uptimeMillis()-intent.getLongExtra("sentAt",android.os.SystemClock.uptimeMillis())));
             if(pendingCommit!=null&& !"end".equals(action))throw new IllegalStateException("等待前一次图层提交");
             if(WorkspaceZoom.motion!=null && !"end".equals(action))throw new IllegalStateException("原屏正在转场");
             if("enterZoom".equals(action) || "exitZoom".equals(action)){
+                if("enterZoom".equals(action)){synchronized(Wm.lock){NativeEntry.prepare(intent);}}
                 WorkspaceZoom.start("enterZoom".equals(action),intent.getLongExtra("starts",android.os.SystemClock.uptimeMillis()),reply);return;
+            }
+            if("entryReady".equals(action)){
+                final IBinder expected=owner;
+                CommitBarrier group=pendingCommit=new CommitBarrier();
+                synchronized(Wm.lock){NativeEntry.checkReady(intent);replay(group,null);}
+                group.seal();
+                awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
+                    synchronized(Wm.lock){NativeEntry.checkReady(intent);}
+                    NativeEntry.reset();
+                    diagnostic("ENTRY_GROUP","committed;slots="+java.util.Arrays.toString(slots.snapshot()));
+                    Bundle b=base();b.putBoolean("entryReady",true);b.putIntArray("slots",slots.snapshot());
+                    respond(reply,0,b,"整组工作区任务、绘制与入场末帧已确认");
+                },()->finish("整组工作区最终提交未确认"));return;
             }
             if ("lost".equals(action)) {
                 int id = intent.getIntExtra("task", -1);
@@ -408,8 +437,14 @@ final class NativeWorkspaceGuard {
                 position(intent,reply);
             }
             else if ("renew".equals(action)) {
-                if(!renewable || !interactive(Wm.context) || owner==null || !owner.isBinderAlive())
+                if(!renewable || owner==null || !owner.isBinderAlive())
                     throw new IllegalStateException("当前会话不能续期");
+                // SCREEN_OFF may be queued behind an already sent renewal.
+                // Return a suspended state instead of a fatal session error.
+                if(!interactive(Wm.context)){
+                    Bundle sleep=base();sleep.putBoolean("sleeping",true);
+                    respond(reply,0,sleep,"息屏期间暂停续期，保留解锁恢复");return;
+                }
                 Wm.handler.removeCallbacks(Wm.TIMEOUT);Wm.handler.postDelayed(Wm.TIMEOUT,LIFETIME);
                 respond(reply,0,base(),"原屏工作区已续期");
             }
@@ -441,7 +476,7 @@ final class NativeWorkspaceGuard {
                 applyingRoles=true;
                 try{NativeTopTask.change(intent,reply);}
                 catch(IllegalStateException refused){
-                    if(pendingCommit!=null || NativeTopTask.upper!=null)throw refused;
+                    if(pendingCommit!=null || NativeTopTask.occupied())throw refused;
                     Bundle b=base();b.putBoolean("topRefused",true);b.putInt("upper",-1);
                     respond(reply,0,b,"此任务保留原窗口："+refused.getMessage());
                 }
@@ -470,7 +505,7 @@ final class NativeWorkspaceGuard {
                         ()->finish("主屏缩放交接提交未确认"));
             } else if ("end".equals(action)) {
                 hostPage=intent.getIntExtra("page",0);hostTopFace=intent.getBooleanExtra("topFace",false);
-                finish(!intent.getBooleanExtra("retain",false)?"手动退出":intent.getBooleanExtra("homeExit",false)?"桌面暂挂":"工作区暂挂");
+                finish(!intent.getBooleanExtra("retain",false)?intent.getStringExtra("exitReason")!=null?intent.getStringExtra("exitReason"):"工作区归还":intent.getBooleanExtra("homeExit",false)?"桌面暂挂":"工作区暂挂");
                 respond(reply, 0, base(), "系统服务已接收归还请求");
             } else throw new IllegalArgumentException("unknown workspace command");
         } catch (Throwable error) {
@@ -504,9 +539,15 @@ final class NativeWorkspaceGuard {
         // before enabling magnification or borrowing any original task surface.
         WorkspaceTransform.requireCache(Class.forName("com.android.server.wm.WindowContainer",false,cl),
                 Class.forName("android.view.MagnificationSpec",false,cl));
-        WorkspaceZoom.entered=false;principal=WorkspaceUsers.foreground();
+        int requestedCount=i.getIntExtra("sideCount",SideSlots.DEFAULT_COUNT),requestedInset=i.getIntExtra("layoutInset",0);
+        Rect displayBounds=(Rect)call(Wm.display,"getBounds");
+        mainReflow=WorkspaceMainBounds.available;
+        WorkspaceLayout.create(displayBounds.width(),displayBounds.height(),Wm.context.getResources().getDisplayMetrics().density,false,requestedCount,requestedInset,mainReflow);
+        NativeEntry.reset();WorkspaceZoom.entered=false;principal=WorkspaceUsers.foreground();
+        layoutCount=requestedCount;layoutInset=requestedInset;
         if(principal<0 || i.getIntExtra("user",-1)!=principal)throw new IllegalStateException("当前用户未核实");
         owner = candidate; session = candidateSession; lastSequence = i.getLongExtra("sequence", 0);
+        transitionStart=i.getBooleanExtra("transitionStart",false);
         events = i.getParcelableExtra("events"); saved.clear(); slots.clear();NativeTopTask.reset();WorkspaceReadmit.pending=null;
         logical = new Rect((Rect) call(Wm.display, "getBounds")); logical.offsetTo(0, 0);
         death = () -> Wm.handler.post(() -> {
@@ -542,10 +583,12 @@ final class NativeWorkspaceGuard {
             }else rememberMain();
         }
         b.putBoolean("left",sideLeft);b.putInt("page",readmitting.page);b.putBoolean("topFace",readmitting.topFace);
+        b.putInt("layoutCount",layoutCount);b.putInt("layoutInset",layoutInset);b.putBoolean("mainReflow",mainReflow);
         PhysicalIme.refreshParent();
         WorkspaceGestureGate.keepAlive(owner);
         if(LocalLandscape.available)LocalLandscape.watch(owner);
         b.putIntArray("retained",readmitting.idsFor(user->WorkspaceUsers.allows(Wm.context,principal,user)));
+        b.putBinder("channel",new WorkspaceChannel(owner));
         respond(reply, 0, b, "工作区已准备；90秒恢复计时由系统服务持有");
     }
     static boolean runningActivity(Object task){
@@ -575,6 +618,14 @@ final class NativeWorkspaceGuard {
         }
     }
     static TaskIdentity mainAtExit(String reason){
+        // Keyguard may make topRunningActivity unavailable before SCREEN_OFF.
+        // Keep the last exact identity as a bookmark only; restoreMain still
+        // requires an unlocked eligible task when the workspace re-enters.
+        if("息屏暂挂".equals(reason) && lastMain!=null){
+            Object task=liveTask(lastMain.id,lastMain.token);
+            if(task!=null && task==call(task,"getRootTask") && (Integer)call(task,"getWindowingMode")==1
+                    && !ownsTask(task) && WorkspaceUsers.allows(Wm.context,principal,lastMain.user))return lastMain;
+        }
         if("桌面暂挂".equals(reason) && mainBeforeHomeKey!=null && android.os.SystemClock.uptimeMillis()-homeKeyAt<1800){
             return eligibleMain(mainBeforeHomeKey)!=null?mainBeforeHomeKey:sessionHome;
         }
@@ -631,12 +682,12 @@ final class NativeWorkspaceGuard {
             if(from>=0)WorkspaceReadmit.wake(task,owner);
             ActivityManager.RunningTaskInfo info = (ActivityManager.RunningTaskInfo) call(task, "getTaskInfo");
             if ((Integer) call(info, "getActivityType") != 1 || (Integer) call(info, "getWindowingMode") != 1
-                    || from<0 && !StepMembers.getBooleanField(info, "isFocused") || (!WorkspaceResize.available && !StepMembers.getBooleanField(info, "isResizeable")) || info.topActivity == null
+                    || from<0 && !WorkspaceMainFocus.matches(task) || (!WorkspaceResize.available && !StepMembers.getBooleanField(info, "isResizeable")) || info.topActivity == null
                     || Boolean.TRUE.equals(call(task, "isAlwaysOnTop")) || Boolean.TRUE.equals(call(task, "isForceTranslucent"))
                     || !Boolean.TRUE.equals(call(task, "isFocusable")) || StepMembers.getIntField(task, "mForceHiddenFlags") != 0)
                 throw new IllegalStateException("当前应用不是可收纳的普通全屏任务");
             SavedTask existing = saved.get(id);
-            if(NativeTopTask.upper!=null && NativeTopTask.upper.id==id)throw new IllegalStateException("顶窗已持有任务");
+            if(NativeTopTask.held(id))throw new IllegalStateException("顶窗已持有任务");
             if (slots.index(id) >= 0) throw new IllegalStateException("任务已经在副格中");
             if(!WorkspaceUsers.allows(Wm.context,principal,(Integer)field(info,"userId")))throw new IllegalStateException("任务不属于当前用户或已解锁的原生分身");
             if (existing != null && !existing.token.equals(token)) throw new IllegalStateException("拒绝复用任务编号");
@@ -702,7 +753,7 @@ final class NativeWorkspaceGuard {
         // The returned task is already the new main, not a fullscreen frame
         // waiting for a later magnification replay to shrink it again.
         WorkspaceLayout target=!ending && Wm.active && field(Wm.display,"mMagnificationSpec")==Wm.ownedSpec && (r.requestedMode==0 || r.requestedMode==1)
-                ?flip!=null?flip.to:new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft):null;
+                ?flip!=null?flip.to:WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft,layoutCount,layoutInset,mainReflow):null;
         stageMainTransform(r,st,surface,target);
         call(st, "setWindowCrop", surface, (Object) null);
         call(st, "setAlpha", surface, 1f); call(st, "show", surface);
@@ -786,7 +837,7 @@ final class NativeWorkspaceGuard {
                     throw new IllegalStateException("没有对应的原格记录");
                 if (task == null || task != incoming.task || call(task, "getParent") != incoming.parent
                         || (Integer) call(call(task, "getSurfaceControl"), "getLayerId") != incoming.layerId
-                        || !resuming && !Boolean.TRUE.equals(field(call(task, "getTaskInfo"), "isFocused"))
+                        || !resuming && !WorkspaceMainFocus.matches(task)
                         || (Integer) call(task, "getWindowingMode") != 1) throw new IllegalStateException("待收纳任务已离开主屏");
                 if(!WorkspaceUsers.allows(Wm.context,principal,incoming.user))throw new IllegalStateException("副任务用户已变化");
             }
@@ -798,12 +849,13 @@ final class NativeWorkspaceGuard {
                 Object parent = i.getParcelableExtra("surface"); validSurface(parent);
                 PreviewGeometry geometry = new PreviewGeometry(logical.width(), logical.height(), i.getIntExtra("width", 0), i.getIntExtra("height", 0));
                 incoming.dirty = true; // Recovery ownership precedes any task mutation.
-                if(resuming && WorkspaceReadmit.available)WorkspaceReadmit.pending=incoming;
+                if(resuming && WorkspaceReadmit.available){WorkspaceReadmit.prepare(incoming);WorkspaceReadmit.pending=incoming;}
                 call(wct, "setWindowingMode", incoming.token, 6);
                 call(wct, "setBounds", incoming.token, logical);
                 call(wct, "setAlwaysOnTop", incoming.token, true);
                 call(wct, "setForceTranslucent", incoming.token, true);
-                call(wct, "setFocusable", incoming.token, resuming && WorkspaceReadmit.available);
+                call(wct, "setFocusable", incoming.token, SideLifecycle.keepResumed()
+                        || resuming && WorkspaceReadmit.available && incoming.readmitFocus);
                 call(wct, "setHidden", incoming.token, false);
                 Object surface = call(incoming.task, "getSurfaceControl"); validSurface(surface);
                 Object st = landing==null?surfaceTransaction():landing;
@@ -865,6 +917,7 @@ final class NativeWorkspaceGuard {
             if(resuming)readmitting.consumed(slot);
             committedOperations++;
             Bundle b = base(); b.putInt("slot", slot); b.putInt("side", next); b.putInt("previous", previous);b.putBoolean("committed",true);
+            if(i.getBooleanExtra("flipLanded",false)){b.putBoolean("flipLanded",true);b.putBoolean("targetLeft",sideLeft);}
             respond(reply, 0, b, "任务角色与原生图层提交已确认；副任务="+next);
         };
         awaitCommit(group,expected,android.os.SystemClock.uptimeMillis()+1800,()->{
@@ -903,6 +956,19 @@ final class NativeWorkspaceGuard {
         // Older displays retain their existing no-argument replay path.
         if(replayPending!=null)replayPending.invoke(Wm.display,transaction);
     }
+    static boolean settledSideSnapshot(int[] expected){
+        if(!active || ending || !Thread.holdsLock(Wm.lock) || flip!=null || pendingCommit!=null
+                || expected==null || !java.util.Arrays.equals(expected,slots.snapshot()))return false;
+        for(int id:expected){
+            if(id<0)continue;
+            SavedTask r=saved.get(id);
+            if(r==null || !r.dirty || liveTask(id,r.token)!=r.task || call(r.task,"getParent")!=r.parent
+                    || call(r.task,"getDisplayContent")!=Wm.display || (Integer)call(r.task,"getWindowingMode")!=6
+                    || (Integer)call(call(r.task,"getSurfaceControl"),"getLayerId")!=r.layerId
+                    || !WorkspaceUsers.allows(Wm.context,principal,r.user))return false;
+        }
+        return true;
+    }
     /** Move the same main/side tasks together; no role exchange or task relaunch. */
     static void position(Intent request,ResultReceiver reply)throws Exception{
         final boolean targetLeft=request.getBooleanExtra("leftSide",sideLeft);
@@ -912,7 +978,7 @@ final class NativeWorkspaceGuard {
             if(!interactive(Wm.context) || !java.util.Arrays.equals(slots.snapshot(),request.getIntArrayExtra("slots"))
                     || request.getBooleanExtra("fromLeft",!sideLeft)!=sideLeft)
                 throw new IllegalStateException("工作区位置或任务已变化");
-            WorkspaceLayout target=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,targetLeft);
+            WorkspaceLayout target=WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,targetLeft,layoutCount,layoutInset,mainReflow);
             Wm.moveWorkspace(target);
             Object tx=call(Wm.display,"getPendingTransaction");
             trackCommit(tx,group);call(tx,"apply");
@@ -1019,12 +1085,14 @@ final class NativeWorkspaceGuard {
                 for(int n=0;n<SideSlots.MAX_COUNT;n++){
                     SavedTask r=saved.get(slots.task(n));if(r!=null && r.dirty && runningActivity(r.task))afterRestore.put(n,r.identity);
                 }
-                if(NativeTopTask.upper!=null && NativeTopTask.upper.dirty)afterRestore.put(ParkedWorkspace.UPPER,NativeTopTask.upper.identity);
+                if(NativeTopTask.app!=null && NativeTopTask.app.dirty)afterRestore.put(ParkedWorkspace.UPPER,NativeTopTask.app.identity);
+                if(NativeTopTask.navigation!=null && NativeTopTask.navigation.dirty)afterRestore.put(ParkedWorkspace.NAVIGATION,NativeTopTask.navigation.identity);
             }
         }
         ending = true;
         GameInput.geometry(1,0,0);
         WorkspaceZoom.cancel();
+        NativeEntry.reset();
         UpperMotion.cancel();
         if(flip!=null)flip.cancelAnimator();
         WorkspaceGestureGate.publish();
@@ -1050,6 +1118,7 @@ final class NativeWorkspaceGuard {
         try {
             Object wct = transaction();
             synchronized (Wm.lock) {
+                WorkspaceMainBounds.clear();
                 WorkspaceFloatingIme.reset();
                 LocalLandscape.clear();EdgeHandoff.pending=false;
                 for (SavedTask record : saved.values()) if (record.dirty) restore(wct, record,group);

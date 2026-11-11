@@ -10,7 +10,7 @@ def method(signature):
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[start:end]
 methods='\n'.join(method(sig) for sig in ['static final class Pose','static Method exact(', 'static void capture(',
-    'static boolean contains(', 'static void retire(', 'static boolean owns(', 'static WorkspaceTransform spec(',
+    'static boolean contains(', 'static void startIn(', 'static void retire(', 'static boolean owns(', 'static WorkspaceTransform spec(',
     'static WorkspaceTransform inherited(', 'static void stage(', 'static void applyPose(', 'static void refresh(']).replace('android.graphics.Point','Point')
 harness=r'''
 package ls.augment.com.step;
@@ -19,10 +19,11 @@ public class TransitionPoseCases {
     static int checks;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
     static void near(float a,float b,String why){check(Math.abs(a-b)<.0001,why+": "+a+" / "+b);}
     static class IBinder {}
+    static class Token {IBinder binder=new IBinder();}
     static class Rect {int left,top,w=1216,h=2688;int width(){return w;}int height(){return h;}}
     static class Point {int x,y;}
     static class Spec {float scale,offsetX,offsetY;Spec(float s,float x,float y){scale=s;offsetX=x;offsetY=y;}}
-    static class Surface {static int sequence;int layer=++sequence;boolean valid=true;}
+    static class Surface {static int sequence;int layer=++sequence;boolean valid=true;public int hashCode(){return layer;}public boolean equals(Object other){return other instanceof Surface s && s.layer==layer;}}
     static class Parent {Object parent;Spec cache;Rect bounds=new Rect();}
     static class Info {Object token=new Object();}
     static class Task extends Parent {int user,mode=1,type=1;Object display;Surface surface=new Surface();Info info=new Info();boolean owned,wall;
@@ -48,9 +49,10 @@ public class TransitionPoseCases {
         for(Class<?> c=type;c!=null;c=c.getSuperclass())try{Method m=c.getDeclaredMethod(n,args);m.setAccessible(true);return m;}catch(NoSuchMethodException ignored){}throw new NoSuchMethodException(n);}}
     static final IdentityHashMap<Object,Pose> poses=new IdentityHashMap<>();
     static Method ancestor,wallpaper;static Class<?> taskType=Task.class;static IBinder owner=new IBinder();static boolean active=true,ending;static Object flip;
-    static int principal;static Rect logical=new Rect();static String session="session";static Parent common;
+    static int principal;static boolean transitionStart;static Rect logical=new Rect();static String session="session";static Parent common;
     static boolean ownsTask(Object task){return ((Task)task).owned;}
     static void validSurface(Object surface){if(!(surface instanceof Surface s) || !s.valid)throw new IllegalStateException("invalid surface");}
+    static Object retainSurface(Object surface){Surface copy=new Surface();copy.layer=((Surface)surface).layer;return copy;}
     static void diagnostic(String stage,String text){}
     public static Object common(ArrayList<?> changes,Object first){return common;}
     public static boolean wall(Object task){return task instanceof Task t && t.wall;}
@@ -61,7 +63,8 @@ public class TransitionPoseCases {
         if(o instanceof Info i && n.equals("token"))return i.token;throw new AssertionError(n);
     }
     static Object call(Object o,String n,Object... a){
-        if(o instanceof Surface s)return n.equals("isValid")?s.valid:s.layer;
+        if(o instanceof Token token && n.equals("getToken"))return token.binder;
+        if(o instanceof Surface s){if(n.equals("release")){s.valid=false;return null;}if(n.equals("isValid"))return s.valid;if(!s.valid)throw new IllegalStateException("released wrapper");return s.layer;}
         if(o instanceof Tx t){if(n.equals("apply")){presented.putAll(t.values);rootWrites++;t.applied=true;if(t.committed!=null)t.committed.run();return null;}if(n.equals("close"))return null;
             Surface s=(Surface)a[0];WorkspaceTransform old=t.values.getOrDefault(s,new WorkspaceTransform(1,0,0));
             if(n.equals("setMatrix"))t.values.put(s,new WorkspaceTransform((Float)a[1],old.x,old.y));
@@ -75,9 +78,9 @@ public class TransitionPoseCases {
         if(o instanceof Target t)return n.equals("getTaskInfo")?t.info:t.leash;throw new AssertionError(n);
     }
     METHODS
-    static class Fixture {Task home,app;ArrayList<Change> changes=new ArrayList<>();TransitionInfo info=new TransitionInfo();Tx tx=new Tx();Object transition=new Object();
+    static class Fixture {Task home,app;ArrayList<Change> changes=new ArrayList<>();TransitionInfo info=new TransitionInfo();Tx tx=new Tx();Token transition=new Token();
         Fixture(){poses.clear();presented.clear();rootWrites=0;active=true;ending=false;Wm.active=true;flip=null;WorkspaceZoom.entered=true;WorkspaceZoom.motion=null;owner=new IBinder();
-            current=Wm.ownedSpec=new Spec(.7466518f,0,681);common=new Parent();common.parent=Wm.display;
+            transitionStart=false;current=Wm.ownedSpec=new Spec(.7466518f,0,681);common=new Parent();common.parent=Wm.display;
             home=new Task(2);app=new Task(1);for(Task t:new Task[]{home,app}){changes.add(new Change(t));info.targets.add(new Target(t));t.cache=Wm.ownedSpec;}}
         void capture()throws Exception{TransitionPoseCases.capture(transition,info,changes,tx);}
     }
@@ -91,6 +94,15 @@ public class TransitionPoseCases {
         for(Class<?> type:new Class<?>[]{Object.class,Wrong.class,BadReturn.class})try{exact(type,"calculateTransitionInfo",Object.class,true,int.class,int.class,ArrayList.class,Tx.class);throw new AssertionError("unknown contract");}catch(NoSuchMethodException expected){checks++;}
     }
     static void calibrated()throws Exception{
+        Fixture application=new Fixture();transitionStart=true;application.home.type=1;
+        Task side=new Task(1);side.owned=true;side.mode=6;application.changes.add(new Change(side));application.info.targets.add(new Target(side));application.capture();
+        check(owns(application.app) && !owns(side),"calibrate app-only main transition while side keeps separate physical pose");
+        application.info.root.leash.valid=false; // Native parcel transfer released its wrapper.
+        Tx start=new Tx();startIn(start,List.of(application.transition.binder));
+        near(start.values.get(application.info.root.leash).scale,.7466518f,"actual start transaction retains calibrated main scale");
+        check(poses.size()==1,"start retains animation owner until finish");
+        start=new Tx();startIn(start,List.of(new IBinder()));check(start.values.isEmpty(),"unrelated start cannot change a root");
+        owner=new IBinder();startIn(start,List.of(application.transition.binder));check(start.values.isEmpty(),"retired session start cannot change new owner");
         for(Object unknown:new Object[]{new WindowToken(),new Parent(),null}){
             Fixture f=new Fixture();f.changes.add(new Change(unknown));f.capture();
             check(f.tx.values.isEmpty() && poses.isEmpty() && f.home.cache!=null,"non-task target preserves native transaction and cache");

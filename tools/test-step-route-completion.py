@@ -8,6 +8,8 @@ java=r'''
 import java.util.*;
 import java.util.function.Consumer;
 class RouteCompletion {
+ static final int UPPER=5;
+ static int taskAt(LiveWorkspace h,int slot){return slot==UPPER?h.upperId:h.slots.task(slot);}
  static int checks;static void check(boolean b){checks++;if(!b)throw new AssertionError("check "+checks);}
  static class SystemClock {static long now;static long uptimeMillis(){return now;}}
  static class ActivityManager {static class RunningTaskInfo {int taskId=7,mode=6;Object token=new Object();}}
@@ -17,10 +19,11 @@ class RouteCompletion {
  static class Quick {Object picker;Tools tools=new Tools();}static class Tools {Object clipboard;}
  static class LiveWorkspace {
   Object retained;Quick quickBar=new Quick();Fence fence=new Fence();Slots slots=new Slots();Handler main=new Handler();
-  boolean closing,closed,accept=true;ActivityManager.RunningTaskInfo info=new ActivityManager.RunningTaskInfo();
+  boolean closing,closed,accept=true;boolean holdsUpper(int id){return upperId>=0&&upperId==id;}void upperActionFor(int id,String a,Runnable r){upperAction(a); }int upperId=-1,upperReleases;ActivityManager.RunningTaskInfo info=new ActivityManager.RunningTaskInfo();
   void preflight(){} ActivityManager.RunningTaskInfo info(int id){return info;}
   ActivityManager.RunningTaskInfo focused(){throw new AssertionError("focus notification may depend on original launch continuing");}
   void change(int slot){fence.busy=accept;}
+  void upperAction(String action){check(action.equals("release"));upperReleases++;fence.busy=accept;}
  }
  static Object field(Object o,String n){return ((ActivityManager.RunningTaskInfo)o).token;}
  static Object call(Object o,String n){return ((ActivityManager.RunningTaskInfo)o).mode;}
@@ -40,6 +43,13 @@ class RouteCompletion {
   h=begin();h.closing=true;tick(h);check(replies==1 && !result);
   h=begin();h.closed=true;tick(h);check(replies==1 && !result);
   h=new LiveWorkspace();h.accept=false;check(!promote(h,0,ok->{throw new AssertionError();}) && h.main.work.isEmpty());
+  h=new LiveWorkspace();h.upperId=7;h.slots.occupied=false;SystemClock.now=0;replies=0;result=false;
+  check(promote(h,UPPER,ok->{replies++;result=ok;}) && h.upperReleases==1);tick(h);check(replies==0);
+  h.fence.busy=false;h.info.mode=1;tick(h);check(replies==1 && !result); // top role must also be cleared
+  h=new LiveWorkspace();h.upperId=7;h.slots.occupied=false;replies=0;result=false;
+  check(promote(h,UPPER,ok->{replies++;result=ok;}));h.upperId=-1;settle(h);tick(h);check(replies==1 && result);
+  h=new LiveWorkspace();h.upperId=7;h.slots.occupied=false;replies=0;result=false;
+  check(promote(h,UPPER,ok->{replies++;result=ok;}));h.upperId=-1;settle(h);h.info.token=new Object();tick(h);check(replies==1 && !result);
   System.out.println("PASS "+checks+" production route completion checks");
  }
 }

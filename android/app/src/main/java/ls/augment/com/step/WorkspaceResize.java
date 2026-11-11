@@ -37,11 +37,11 @@ final class WorkspaceResize {
                     android.graphics.Rect.class,android.content.res.Configuration.class);
             StepHooks.hookMethod(adjust,new StepHook(){protected void beforeHookedMethod(MethodHookParam p){
                 if(!active || ending || !Thread.holdsLock(Wm.lock))return;
-                SavedTask top=NativeTopTask.upper;
+                SavedTask top=NativeTopTask.held(p.thisObject);
                 if(top==null || !top.dirty || top.task!=p.thisObject || NativeTopTask.bounds==null ||
                         !NativeTopTask.bounds.equals(p.args[0]) || call(top.task,"getParent")!=top.parent ||
                         call(top.task,"getDisplayContent")!=Wm.display || (Integer)call(top.task,"getWindowingMode")!=6)return;
-                // Only this previously validated, physical upper viewport may be shorter than the ROM's desktop minimum.
+                // Only this previously validated upper app canvas may bypass desktop minimums.
                 p.setResult(null);
             }});
         }catch(Throwable e){report(null,0,"原厂最小顶窗尺寸仍适用："+e,-1);}

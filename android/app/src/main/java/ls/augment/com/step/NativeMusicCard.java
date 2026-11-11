@@ -27,6 +27,7 @@ final class NativeMusicCard extends FrameLayout {
     final Field nativeSessions,nativeListener,nativeDetail;
     final Method unregister,stopDetail;
     final View previous,play,next,cast;
+    final FrameLayout deviceButton;
     final int detailLayout;
     final Class<?> detailType;
     final Method detailEnable,detailData,detailState,detailTime;
@@ -83,9 +84,13 @@ final class NativeMusicCard extends FrameLayout {
         if(!type.isInstance(inflated))throw new IllegalStateException("原厂音乐布局根节点不匹配");
         card=(LinearLayout)inflated;
         previous=view("mPrevButton");play=view("mPlayPauseButton");next=view("mNextButton");cast=view("mCastIcon");
+        deviceButton=new FrameLayout(nativeContext);
         reflow();
         // Native showDeviceDetail targets the shade's container. Host its native panel locally.
-        card.setOnClickListener(v->openDetail());cast.setOnClickListener(v->openDetail());
+        card.setOnClickListener(null);card.setClickable(false);
+        cast.setOnClickListener(null);cast.setClickable(false);cast.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        deviceButton.setContentDescription("选择播放设备");deviceButton.setFocusable(true);
+        deviceButton.setOnClickListener(v->player.output.performClick());
         for(View button:new View[]{previous,play,next})button.setOnClickListener(v->{
             try{
                 player.owner.checkAction();
@@ -115,15 +120,21 @@ final class NativeMusicCard extends FrameLayout {
             throw new IllegalStateException("原厂音乐控件不属于当前卡片");
         detach(album);detach(titles);detach(buttons);detach(cast);card.removeAllViews();
         // Preserve original controls, drawables, typefaces and actions; fit the horizontal top band.
-        card.setOrientation(LinearLayout.HORIZONTAL);card.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout art=new LinearLayout(nativeContext);art.setOrientation(LinearLayout.VERTICAL);art.setGravity(Gravity.CENTER);
-        art.addView(album,new LinearLayout.LayoutParams(dp(50),dp(50)));
-        art.addView(cast,new LinearLayout.LayoutParams(dp(44),dp(44)));
-        card.addView(art,new LinearLayout.LayoutParams(dp(58),-2));
-        LinearLayout text=new LinearLayout(nativeContext);text.setOrientation(LinearLayout.VERTICAL);text.setGravity(Gravity.CENTER_VERTICAL);
-        text.addView(titles,new LinearLayout.LayoutParams(-1,-2));
-        text.addView(buttons,new LinearLayout.LayoutParams(-1,dp(44)));
-        card.addView(text,new LinearLayout.LayoutParams(0,-1,1));
+        card.setOrientation(LinearLayout.VERTICAL);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(0,0,0,0);
+        card.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        LinearLayout metadata=new LinearLayout(nativeContext);metadata.setGravity(Gravity.CENTER_VERTICAL);
+        metadata.addView(album,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        titles.setPadding(dp(8),0,0,0);((TextView)title).setTextSize(13);((TextView)artist).setTextSize(11);
+        metadata.addView(titles,new LinearLayout.LayoutParams(0,dp(48),1));
+        cast.setBackground(null);cast.setPadding(dp(10),dp(10),dp(10),dp(10));
+        if(cast instanceof ImageView)((ImageView)cast).setScaleType(ImageView.ScaleType.FIT_CENTER);
+        cast.setScaleX(.7f);cast.setScaleY(.7f);
+        deviceButton.addView(cast,new FrameLayout.LayoutParams(dp(44),dp(44),Gravity.CENTER));
+        StepMaterial.feedback(deviceButton);
+        int deviceSize=Math.round(dp(44)*.7f);
+        metadata.addView(deviceButton,new LinearLayout.LayoutParams(deviceSize,deviceSize));card.addView(metadata,-1,dp(52));
+        for(View button:new View[]{previous,play,next})button.setLayoutParams(new LinearLayout.LayoutParams(0,dp(44),1));
+        card.addView(buttons,new LinearLayout.LayoutParams(-1,dp(44)));
     }
     static boolean descendant(View view,ViewGroup parent){
         for(ViewParent p=view.getParent();p!=null;p=p.getParent())if(p==parent)return true;
@@ -164,7 +175,8 @@ final class NativeMusicCard extends FrameLayout {
         next.setEnabled((flags&PlaybackState.ACTION_SKIP_TO_NEXT)!=0);
         long action=state!=null&&state.getState()==PlaybackState.STATE_PLAYING?PlaybackState.ACTION_PAUSE:PlaybackState.ACTION_PLAY;
         play.setEnabled((flags&(action|PlaybackState.ACTION_PLAY_PAUSE))!=0);
-        cast.setEnabled(valid);
+        cast.setEnabled(valid && player.router!=null);deviceButton.setEnabled(valid && player.router!=null);
+        deviceButton.setVisibility(player.router==null?GONE:VISIBLE);
         if(detail!=null){
             if(!valid || !value.getSessionToken().equals(detailToken) || !player.identity.equals(detailTrack))closeDetail();
             else try{bindDetail(value);}catch(Exception|LinkageError error){closeDetail();missing(error);}

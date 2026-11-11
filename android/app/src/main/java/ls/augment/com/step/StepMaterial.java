@@ -31,6 +31,11 @@ final class StepMaterial {
         GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,colors);
         g.setCornerRadius(dp(c,radius));g.setStroke(1,dark(c)?0x447d8694:0xbaffffff);return g;
     }
+    static void slot(Button cell,boolean empty){
+        cell.setPadding(0,0,0,0);
+        cell.setText(empty?"＋":"");cell.setTextSize(34);cell.setTextColor(ink(cell.getContext()));
+        if(empty)cell.setBackground(glass(cell.getContext(),true,0));else cell.setBackgroundColor(Color.TRANSPARENT);
+    }
     static TextView label(Context c,String text,float sp,boolean bold){
         TextView v=new TextView(c);v.setText(text);v.setTextColor(ink(c));v.setTextSize(sp);
         v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);
@@ -38,6 +43,9 @@ final class StepMaterial {
     }
     /** Decode a bounded wallpaper thumbnail. Live wallpapers without a readable image use the color material. */
     static Bitmap wallpaper(Context c) {
+        return wallpaper(c,320);
+    }
+    static Bitmap wallpaper(Context c,int maxSize) {
         WallpaperManager manager=c.getSystemService(WallpaperManager.class);
         try {
             BitmapFactory.Options options=new BitmapFactory.Options();options.inJustDecodeBounds=true;
@@ -47,7 +55,7 @@ final class StepMaterial {
             if(options.outWidth<=0 || options.outHeight<=0)return null;
             options.inJustDecodeBounds=false;
             options.inSampleSize=1;
-            while(Math.max(options.outWidth,options.outHeight)/options.inSampleSize>320)options.inSampleSize*=2;
+            while(Math.max(options.outWidth,options.outHeight)/options.inSampleSize>maxSize)options.inSampleSize*=2;
             try(ParcelFileDescriptor file=manager.getWallpaperFile(WallpaperManager.FLAG_SYSTEM)){
                 return file==null?null:BitmapFactory.decodeFileDescriptor(file.getFileDescriptor(),null,options);
             }

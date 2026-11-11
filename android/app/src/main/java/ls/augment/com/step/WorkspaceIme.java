@@ -58,7 +58,7 @@ final class WorkspaceIme {
                     // A disappearing editor must not strand the next app above its main region.
                     try{
                         if(Wm.active && field(Wm.display,"mMagnificationSpec")==Wm.ownedSpec)
-                            Wm.moveWorkspace(new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft));
+                            Wm.moveWorkspace(WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft,layoutCount,layoutInset,mainReflow));
                     }catch(Exception|LinkageError restore){report(null,0,"键盘避让归位未确认："+restore,-1);}
                     if(!reportedFailure){reportedFailure=true;report(null,0,"键盘避让读回不可用："+error,-1);}
                 }
@@ -66,7 +66,7 @@ final class WorkspaceIme {
         });
     }
     static void update(IBinder expected)throws Exception{
-        WorkspaceLayout layout=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft);
+        WorkspaceLayout layout=WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft,layoutCount,layoutInset,mainReflow);
         WorkspaceImeGeometry.Pose target=WorkspaceImeGeometry.pose(layout,false,0,0,0);
         Object item=source.invoke(sourceProvider.invoke(controller));
         Rect keyboard=new Rect((Rect)frame.invoke(item));

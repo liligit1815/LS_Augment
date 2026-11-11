@@ -16,6 +16,7 @@ final class WorkspaceActions {
     static final String TITLE="StepWorkspaceTools";
     final WorkspaceQuickBar owner;
     Dialog clipboard;
+    WorkspaceToolMenu toolMenu;
     PopupWindow providers;
     LinearLayout rows;
     static Object screenshot;
@@ -34,17 +35,44 @@ final class WorkspaceActions {
     }
     void menu(View anchor){
         try{owner.checkAction();}catch(RuntimeException e){owner.note(e);return;}
-        PopupMenu menu=new PopupMenu(owner.ctx,anchor);
-        entry(menu,"工作区布局 · "+owner.host.visibleSlots+" 个侧格",owner::chooseCount);
-        entry(menu,"自定义快捷应用",owner::edit);
+        closeMenu();
+        if(owner.sideToolbar!=null){owner.sideToolbar.setOpen(true);return;}
+        WorkspaceToolMenu menu=new WorkspaceToolMenu(owner);
+        toolMenu=menu;
+        menu.dialog.setOnDismissListener(d->{if(toolMenu==menu)toolMenu=null;});
+        for(Tool tool:availableTools(anchor))entry(menu,tool.label,tool.open);
+        try{menu.show(anchor);}catch(RuntimeException e){closeMenu();owner.note(e);}
+    }
+    static final class Tool {
+        final String label,glyph;final Runnable open;
+        Tool(String label,String glyph,Runnable open){this.label=label;this.glyph=glyph;this.open=open;}
+    }
+    List<Tool> availableTools(View anchor){
+        List<Tool> result=new ArrayList<>();
+        result.add(new Tool("工作区布局 · "+owner.host.visibleSlots+" 个侧格","workspace",owner::chooseCount));
+        result.add(new Tool("自定义快捷应用","apps",owner::edit));
+        result.add(new Tool("顶部壁纸","wallpaper",()->{
+            owner.checkAction();owner.ctx.startActivity(new Intent().setClassName("ls.augment.com","ls.augment.com.StepWallpaperActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        }));
+        if(owner.upper!=null && owner.host.upperAppId<0)
+            result.add(new Tool("主应用移到顶部","moveUp",()->owner.host.change(-1)));
+        if(owner.sideToolbar!=null){
+            result.add(new Tool(owner.host.leftSide?"主工作区移到左侧":"主工作区移到右侧",owner.host.leftSide?"mainLeft":"mainRight",()->owner.host.positionMain(!owner.host.leftSide)));
+            if(takeShot!=null)result.add(new Tool("截图","capture",this::capture));
+            if(owner.hasRecorder)result.add(new Tool("录屏","record",()->owner.activateTile("videoscreen",anchor)));
+            result.add(new Tool("退出工作区","workspaceExit",()->owner.host.close("手动退出工作区")));
+        }
+        if(owner.upper!=null && owner.host.upperId>=0)
+            result.add(new Tool("顶部应用回到主区","moveDown",()->owner.host.upperAction("release")));
         android.app.ActivityManager.RunningTaskInfo target=owner.host.focused();
         if(target!=null && (Integer)StepRuntime.call(target,"getActivityType")==1 && (Integer)StepRuntime.call(target,"getWindowingMode")==1){
-            if(owner.host.localLandscape)entry(menu,"切换当前应用横屏",()->local("localLandscape",target));
-            if(owner.host.edgeHandoff)entry(menu,"原厂小窗贴边",()->local("edgeHandoff",target));
+            if(owner.host.localLandscape)result.add(new Tool("切换当前应用横屏","landscape",()->local("localLandscape",target)));
+            if(owner.host.edgeHandoff)result.add(new Tool("原厂小窗贴边","edgeWindow",()->local("edgeHandoff",target)));
         }
-        if(NativeTiles.read(owner.userId,"wallet")>0)entry(menu,"系统钱包",()->owner.activateTile("wallet",anchor));
-        menu.show();
+        if(NativeTiles.read(owner.userId,"wallet")>0)result.add(new Tool("系统钱包","wallet",()->owner.activateTile("wallet",anchor)));
+        return result;
     }
+    void closeMenu(){WorkspaceToolMenu menu=toolMenu;toolMenu=null;if(menu!=null)menu.dismiss();}
     void capture(){
         try{
             owner.checkAction();
@@ -155,7 +183,7 @@ final class WorkspaceActions {
             LinearLayout row=new LinearLayout(owner.ctx);row.setGravity(Gravity.CENTER);
             HorizontalScrollView list=new HorizontalScrollView(owner.ctx);list.setHorizontalScrollBarEnabled(false);
             list.setFillViewport(true);list.setBackground(StepMaterial.glass(owner.ctx,true,18));list.addView(row);
-            int width=owner.deck.networks.codeAreaWidth(),height=Math.max(owner.dp(32),anchor.getHeight());
+            int width=Math.max(owner.dp(180),owner.deck.getWidth()),height=Math.max(owner.dp(32),anchor.getHeight());
             PopupWindow bubble=new PopupWindow(list,width,height,true);
             bubble.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
             bubble.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);bubble.setOutsideTouchable(true);
@@ -168,7 +196,7 @@ final class WorkspaceActions {
             bubble.setOnDismissListener(()->{if(providers==bubble)providers=null;});
             bubble.setEnterTransition(new android.transition.Fade().setDuration(180));
             bubble.setExitTransition(new android.transition.Fade().setDuration(140));
-            providers=bubble;bubble.showAsDropDown(anchor,owner.deck.networks.codeLeft()-anchor.getLeft(),-anchor.getHeight(),Gravity.LEFT);
+            providers=bubble;bubble.showAsDropDown(anchor,-anchor.getLeft(),-anchor.getHeight(),Gravity.LEFT);
             list.setScaleX(.94f);list.setScaleY(.94f);list.animate().scaleX(1).scaleY(1).setDuration(180).start();
         }catch(RuntimeException e){owner.note(e);}
     }
@@ -178,8 +206,8 @@ final class WorkspaceActions {
         b.putParcelable("token",(android.os.Parcelable)StepRuntime.field(task,"token"));
         owner.host.rpc(action,b,r->owner.logUnavailable(r.getString("message","系统未返回结果")));
     }
-    void entry(PopupMenu menu,String label,Runnable action){
-        menu.getMenu().add(label).setOnMenuItemClickListener(i->{try{owner.checkAction();action.run();}catch(RuntimeException e){owner.note(e);}return true;});
+    void entry(WorkspaceToolMenu menu,String label,Runnable action){
+        menu.add(label,action);
     }
     void afterPromotion(String pkg,Runnable start){
         LiveWorkspace h=owner.host;
@@ -191,10 +219,12 @@ final class WorkspaceActions {
             }))return;
             owner.logUnavailable("原任务正在切换");return;
         }
-        for(int id:h.slots.snapshot())if(id>=0){
+        for(int slotIndex=0;slotIndex<=WorkspaceRoutes.NAVIGATION;slotIndex++){
+            if(slotIndex>=h.visibleSlots && slotIndex<WorkspaceRoutes.UPPER)continue;
+            int id=WorkspaceRoutes.taskAt(h,slotIndex);if(id<0)continue;
             android.app.ActivityManager.RunningTaskInfo t=h.info(id);
             if(t!=null && LiveWorkspace.number(t,"userId")==owner.userId && WorkspaceQuickBar.belongs(t.baseActivity,pkg)){
-                owner.logUnavailable("有多个同包任务，请先点选目标副格");return;
+                owner.logUnavailable("有多个同包任务，请先归还目标工作区应用");return;
             }
         }
         start.run();
@@ -211,33 +241,7 @@ final class WorkspaceActions {
         }catch(RuntimeException e){owner.host.log("应用快捷方式不可读："+e.getClass().getSimpleName());}
         return result;
     }
-    void openClips(){
-        if(clipboard!=null){closeClips();return;}
-        try{owner.checkAction();}catch(RuntimeException e){owner.note(e);return;}
-        if(!WorkspaceClipboard.readable())return;
-        android.view.Display display=owner.ctx.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
-        Context c=StepMaterial.statusBarPanelContext(owner.ctx,display);
-        clipboard=new Dialog(c,StepMaterial.dark(c)?android.R.style.Theme_Material_Dialog_NoActionBar:android.R.style.Theme_Material_Light_Dialog_NoActionBar);
-        clipboard.setCanceledOnTouchOutside(false);
-        LinearLayout card=new LinearLayout(c);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(owner.dp(16),owner.dp(12),owner.dp(16),owner.dp(12));card.setBackground(StepMaterial.glass(c,true,20));
-        LinearLayout header=new LinearLayout(c);header.setGravity(Gravity.CENTER_VERTICAL);card.addView(header,-1,owner.dp(48));
-        TextView heading=StepMaterial.label(c,"剪贴板历史",18,true);heading.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
-        header.addView(heading,new LinearLayout.LayoutParams(0,-1,1));
-        header.addView(new StepGlyph(c,"trash","清空历史",()->{WorkspaceClipboard.history.clear();renderRows();}),owner.dp(48),-1);
-        header.addView(new StepGlyph(c,"close","关闭剪贴板",this::closeClips),owner.dp(48),-1);
-        ScrollView scroll=new ScrollView(c);rows=new LinearLayout(c);rows.setOrientation(LinearLayout.VERTICAL);scroll.addView(rows);card.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        clipboard.setContentView(card);Window w=clipboard.getWindow();w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
-        WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);w.setAttributes(lp);
-        w.setBackgroundDrawableResource(android.R.color.transparent);
-        w.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        // Keep the toolbar reachable so its clipboard button can also close this panel.
-        w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
-        w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        w.setLayout(Math.min(owner.dp(430),owner.host.geometry.width*9/10),Math.min(owner.dp(440),owner.host.geometry.height*2/3));
-        clipboard.setOnDismissListener(d->{WorkspaceClipboard.changed=null;clipboard=null;rows=null;});
-        WorkspaceClipboard.changed=closing->{if(closing)closeClips();else renderRows();};
-        WorkspaceClipboard.read();renderRows();clipboard.show();
-    }
+    void openClips(){owner.openRecent(2);}
     void renderRows(){
         if(rows==null || !WorkspaceClipboard.readable())return;
         rows.removeAllViews();Context c=rows.getContext();

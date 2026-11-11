@@ -62,20 +62,22 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         body.addView(layout, ui.margins(0, 8, 0, 0));
         count = ui.tonalButton("");
         count.setOnClickListener(v -> chooseCount());
-        layout.addView(ui.featureTitle("工作区布局", "默认一主三侧副，可增加一个顶部副区，合计最多六个任务。"), ui.wrap());
+        layout.addView(ui.featureTitle("工作区布局", "默认一主三侧副，支持五个侧边副区和一个独立顶部副区。"), ui.wrap());
         layout.addView(count, ui.wrap());
         upper = new Switch(this);
-        layout.addView(ui.featureRow("顶部副工作区", "需要系统支持原屏顶部窗口。启用时最多可设四个侧边副区。", upper), ui.wrap());
+        layout.addView(ui.featureRow("顶部副工作区", "需要系统支持原屏顶部窗口。顶部应用与音乐左右滑动切换，导航直接使用地图应用原界面；工具栏从顶部两侧边缘呼出，向外滑动或点击中间收起。原厂侧栏资源不可用时保留原工具页。", upper), ui.wrap());
         pageIndicator = new Switch(this);
         pageIndicator.setTag("config:" + StepConfig.PAGE_INDICATOR);
-        layout.addView(ui.featureRow("页面指示器", "在红魔 Step 标题上方显示顶部面板的页数和当前位置。", pageIndicator), ui.wrap());
+        layout.addView(ui.featureRow("页面指示器", "在顶部内容底部显示页数和当前位置。", pageIndicator), ui.wrap());
         layout.addView(ui.preferenceRow("atomic_workbench_apps", "快捷应用",
                 "选择工作台快捷栏中显示的应用", () -> startActivity(new Intent(this, QuickPinsActivity.class))), ui.wrap());
+        layout.addView(ui.preferenceRow("step_top_wallpaper", "顶部壁纸",
+                "跟随桌面壁纸，或从相册单独选择", () -> startActivity(new Intent(this, StepWallpaperActivity.class))), ui.wrap());
         layout.addView(ui.featureTitle("音乐与歌词",
                 "优先使用本机红魔原生音乐卡片，并跟随系统当前媒体会话；原厂不支持的播放器或缺失接口使用兼容控件。\n\n"
                 + "歌词优先取自播放器。缺失时自动匹配网易云音乐、酷狗、汽水音乐和 LRCLIB，点击歌词可重试、选来源或导入本地歌词。在线查询会向所查询来源发送歌名、歌手、时长，以及对应来源可识别的歌曲编号；不发送剪贴板、应用页面或账号凭据。\n\n"
                 + "查询结果仅缓存在当前进程内，切换系统用户时清空。无需额外勾选播放器作用域。进度跳转、输出设备和歌词是否可用，取决于播放器、系统接口及网络服务。"), ui.wrap());
-        layout.addView(ui.featureTitle("退出与恢复", "底部上滑可在主区回桌面选应用。退出工作台时显示主区应用，主区为空则回桌面。再次进入时只恢复仍在后台运行的原任务。"), ui.wrap());
+        layout.addView(ui.featureTitle("退出与恢复", "底部上滑可在主区回桌面选应用。息屏或锁屏后，解锁会自动回到工作台。手动退出后再次进入时，只恢复仍在后台运行的原任务。"), ui.wrap());
         fold = ui.fold(master, layout);
         fold.show(state != null && state.getBoolean("expanded"));
         master.setOnCheckedChangeListener((v, on) -> {
@@ -129,7 +131,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         count.setText("侧边副工作区数量　" + sides);
         count.setEnabled(available);
         upper.setChecked(StepConfig.upper(this));
-        upper.setEnabled(available && sides < 5 && (topSupported || upper.isChecked()));
+        upper.setEnabled(available && (topSupported || upper.isChecked()));
         pageIndicator.setChecked(StepConfig.pageIndicator(this));
         pageIndicator.setEnabled(available);
         fold.sync();
@@ -137,7 +139,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     }
     private void chooseCount() {
         boolean hasUpper = StepConfig.upper(this);
-        String[] choices = new String[hasUpper ? 4 : 5];
+        String[] choices = new String[5];
         for (int i = 0; i < choices.length; i++) choices[i] = (i + 1) + " 个侧边副工作区";
         ui.choiceDialog("侧边副工作区数量", choices, null, i -> saveLayout(i + 1, hasUpper));
     }

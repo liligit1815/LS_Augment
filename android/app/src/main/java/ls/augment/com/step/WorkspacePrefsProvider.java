@@ -11,7 +11,7 @@ import java.util.*;
 public final class WorkspacePrefsProvider extends ContentProvider {
     static final Uri URI=Uri.parse("content://ls.augment.com.step.preferences");
     public boolean onCreate(){return true;}
-    @Override public synchronized Bundle call(String method,String arg,Bundle data) {
+    void authorize(){
         Context c=getContext();
         int caller=Binder.getCallingUid();
         if(caller!=android.os.Process.myUid()) {
@@ -21,7 +21,14 @@ public final class WorkspacePrefsProvider extends ContentProvider {
                     throw new SecurityException("Caller is not this user's SystemUI");
             } catch(android.content.pm.PackageManager.NameNotFoundException e){throw new SecurityException(e);}
         }
-        long identity=Binder.clearCallingIdentity();
+    }
+    @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws java.io.FileNotFoundException{
+        authorize();
+        if(!TopWallpaper.URI.equals(uri) || !"r".equals(mode))throw new java.io.FileNotFoundException("read-only top wallpaper");
+        return ParcelFileDescriptor.open(TopWallpaper.path(getContext()),ParcelFileDescriptor.MODE_READ_ONLY);
+    }
+    @Override public synchronized Bundle call(String method,String arg,Bundle data) {
+        authorize();Context c=getContext();long identity=Binder.clearCallingIdentity();
         try {
             boolean saved=false;
             if ("save".equals(method)) {
@@ -35,6 +42,7 @@ public final class WorkspacePrefsProvider extends ContentProvider {
                 saved=QuickPreferences.save(c,selected,data.getLong("revision",-1));
             } else if("sideCount".equals(method)){
                 saved=data!=null && QuickPreferences.saveLayout(c,data.getInt("sideCount",-1),data.getBoolean("upperEnabled",QuickPreferences.upper(c)));
+
             } else if(!"read".equals(method)) throw new IllegalArgumentException("unknown preference action");
             Bundle result=QuickPreferences.snapshot(c,new Intent()).getExtras(); result.putBoolean("saved",saved);return result;
         } finally {Binder.restoreCallingIdentity(identity);}

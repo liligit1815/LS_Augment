@@ -91,7 +91,7 @@ public class LyricCases {
 
     binding=source[source.index('        String pkg=current==null?'):source.index('        Bitmap art=null;')]
     session=folder/'SessionCases.java'
-    session.write_text('''package ls.augment.com.step;
+    session.write_text(r'''package ls.augment.com.step;
 class SessionCases {
     static class Player {
         String pkg;
@@ -104,7 +104,9 @@ class SessionCases {
         String lyrics="",id="one";
         long getLong(String k){return 240000;}
     }
-    static class Owner {int userId=1;}
+    static class Owner {int userId=1;Object ctx;}
+    static class StepRuntime {static boolean interactive(Object ctx){return true;}}
+    static class SystemClock {static long elapsedRealtime(){return 0;}}
     static class Bookmark {
         int user;Object player;String track,sessionLyrics;SongLines lines;boolean manualLyrics;
     }
@@ -112,13 +114,15 @@ class SessionCases {
     static String lyric(MediaMetadata m){return m.lyrics;}
     final Owner owner=new Owner();
     Bookmark bookmark;String identity="",rawLyrics="",liveLine="",titleText="",artist="";
-    long duration;boolean failed,manualLyrics;int generation,queries,selected=-1,lyricSource;
+    long duration,nextAutoLookup;boolean failed,manualLyrics,closed,fetching;int generation,queries,selected=-1,lyricSource,autoAttempts;
+    Player controller;
     LyricLookup.Status lyricStatus;
     SongLines lines=new SongLines(null);
-    void cancelLookup(){generation++;}
-    void findLyrics(int src,boolean manual){if(manual)throw new AssertionError();queries++;selected=src;}
+    void cancelLookup(){generation++;fetching=false;}
+    void findLyrics(int src,boolean manual){if(manual)throw new AssertionError();queries++;selected=src;fetching=true;}
+    ENSURE
     void bind(Player current,boolean boundPlayerChanged,MediaMetadata m,String title,String by){
-        titleText=title;artist=by;
+        controller=current;titleText=title;artist=by;
         BINDING
     }
     static void check(boolean yes){if(!yes)throw new AssertionError();}
@@ -136,8 +140,15 @@ class SessionCases {
         check(c.lines.context(1000).equals("播放器原文") && c.queries==1);
         m.lyrics="";c.bind(new Player("unknown"),true,m,"下一首","歌手");
         check(c.lines.empty() && c.queries==2 && c.selected==-1);
+        c.lines=new SongLines("[00:00]first\n[00:30]second\n[01:00]third");c.lyricStatus=LyricLookup.Status.FOUND;c.fetching=false;
+        m.lyrics="[00:03]frozen credit";c.bind(q,false,m,"下一首","歌手");
+        check(c.lines.timeline() && c.lines.at(35000).equals("second") && c.queries==2);
+        m.lyrics="[00:04]another single line";c.bind(q,false,m,"下一首","歌手");
+        check(c.lines.at(61000).equals("third") && c.queries==2);
+        m.lyrics="[00:00]session first\n[00:30]session second";c.bind(q,false,m,"下一首","歌手");
+        check(c.lines.at(35000).equals("session second"));
     }
-}'''.replace('BINDING',binding),encoding='utf-8')
+}'''.replace('BINDING',binding).replace('ENSURE',source[source.index('    void ensureLyrics(){'):source.index('    void findLyrics(')]),encoding='utf-8')
     subprocess.run([java/'javac','-encoding','UTF-8','-cp',folder,'-d',folder,STEP/'SongLines.java',STEP/'LyricLookup.java',session],check=True)
     subprocess.run([java/'java','-cp',folder,package+'.SessionCases'],check=True)
     print('PASS Step production binding: lyric ticks, manual choice, track switch, automatic source and session replacement')

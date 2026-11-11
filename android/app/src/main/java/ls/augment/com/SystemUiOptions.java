@@ -31,7 +31,7 @@ public final class SystemUiOptions {
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
         out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
-        out.add(EnhancementOption.toggle(ISLAND,"system","红魔Duo灵动岛","统一管理设备灵动岛，沿用系统卡片、动画和交互，补全新通知及所选渠道的下载进度与来源操作。保留系统已有场景；通知补充在锁屏、息屏或隐藏状态栏时收起。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND,"system","红魔Duo灵动岛","开启后，原厂已有场景直接使用灵动岛，沿用系统卡片、动画和操作，不再重复显示对应胶囊。场景补全只增加本机缺失的场景或卡片接入；关闭总开关后退出接管，恢复原厂显示行为。通知和下载按各自开关与渠道选择补充。首次更新需重启系统界面。"));
         out.add(EnhancementOption.toggle(ISLAND_STATUS_AVOIDANCE,"system","通知状态自动避让岛","开启时，灵动岛出现后，状态栏按系统逻辑折叠通知图标并为岛腾出空间。关闭时不再因岛出现而避让，图标可能与岛重叠；原有通知显示设置仍然生效。",true));
         out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","显示系统音乐卡片，沿用原有播放控制和收起规则。",1,"关闭","开启"));
         out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","按应用与渠道展示普通通知。展开后可执行来源操作，或让系统在 15 分钟后再次提醒。",1,"关闭","开启"));

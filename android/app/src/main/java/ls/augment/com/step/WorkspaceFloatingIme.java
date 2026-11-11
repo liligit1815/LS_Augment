@@ -57,7 +57,7 @@ final class WorkspaceFloatingIme {
             reset();return false; // Already-floating or unknown native layouts remain native.
         }
         if(surface!=null && surface!=target)reset();
-        WorkspaceLayout layout=new WorkspaceLayout(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft);
+        WorkspaceLayout layout=WorkspaceLayout.create(logical.width(),logical.height(),Wm.context.getResources().getDisplayMetrics().density,sideLeft,layoutCount,layoutInset,mainReflow);
         float scale=Math.min(.75f,(layout.width*layout.mainScale-2*layout.gap)/keyboard.width());
         float x=layout.mainX+(layout.width*layout.mainScale-keyboard.width()*scale)/2f;
         float bottom=logical.height()-24*Wm.context.getResources().getDisplayMetrics().density;

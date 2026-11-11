@@ -92,9 +92,7 @@ final class NativeIslandClockSource {
     }
 
     private boolean requested(Context context) {
-        if (context == null || !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
-                || !FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
-                || !FeatureSettings.enabled(context, NativeIslandSceneOptions.key("countdown"))) return false;
+        if (context == null || !FeatureSettings.enabled(context, SystemUiOptions.ISLAND)) return false;
         try {
             return !Boolean.TRUE.equals(fullScreen.invoke(null))
                     && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1;

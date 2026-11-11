@@ -93,7 +93,7 @@ final class DuoDownloadPanel {
         host.removeAllViews();host.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));
         host.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         @SuppressWarnings("unchecked") List<View> views=(List<View>)list;views.clear();views.add(scroll);
-        panel.setOnClickListener(null);nativeAppearance();
+        panel.setOnClickListener(null);panel.setClickable(false);nativeAppearance();
     }
     void bind(IslandDownloadPolicy.Entry<StatusBarNotification> entry,Drawable artwork,String app,
             BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> action){

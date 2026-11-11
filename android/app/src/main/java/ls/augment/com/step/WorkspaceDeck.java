@@ -9,27 +9,27 @@ import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
 import java.util.*;
-import ls.augment.com.StepRouteFeed;
 
 /** Horizontal pages inside the top band. All displayed actions call a real local system service. */
 final class WorkspaceDeck extends FrameLayout {
     final WorkspaceQuickBar owner;
     final Context ctx;
-    final StepControlFace networks;
+    final View networks;
     final EnumMap<WorkspaceActions.Code,View> codeButtons=new EnumMap<>(WorkspaceActions.Code.class);
     final PlayerCard media;
-    final LinearLayout routeCard;
-    final TextView routeApp,routeTitle,routeDetail,routeHint;
-    final StepRouteFeed routes;
-    static final int CONTROLS=0,MUSIC=1,UPPER=2,ROUTE=3,CHOSEN_CONTROLS=4;
-    boolean navigating,musicActive,manualPage,restored,gesture,interrupted;
+    final View mediaPage;
+    static final int CONTROLS=0,MUSIC=1,UPPER=2,LEGACY_ROUTE=3,CHOSEN_CONTROLS=4,NAVIGATION=5;
+    final WorkspaceNavigation navigation;
+    final TextView navigationPage;
+    boolean musicActive,manualPage,restored,gesture,interrupted,pendingMusicRestore;
     int savedPage;
     final TextView topPage;
     final java.util.List<Runnable> tileRefresh=new ArrayList<>();
     boolean closed;
     int mediaPoll;
-    final Runnable tick=new Runnable(){public void run(){if(closed)return;for(Runnable update:tileRefresh)update.run();if((mediaPoll++&1)==0)refreshMedia();if(page==1)media.tick();postDelayed(this,500);}};
+    final Runnable tick=new Runnable(){public void run(){if(closed)return;for(Runnable update:tileRefresh)update.run();if((mediaPoll++&1)==0){refreshMedia();navigation.poll();}if(page==1)media.tick();postDelayed(this,500);}};
     final MediaSessionManager sessions;
+    final WorkspacePlayback playback;
     MediaController controller;
     MediaSession.Token preferred;
     boolean dragging,observing,vertical,blocked;
@@ -40,97 +40,70 @@ final class WorkspaceDeck extends FrameLayout {
     float downX,downY;
     final MediaController.Callback player=new MediaController.Callback(){
         @Override public void onMetadataChanged(MediaMetadata m){renderMedia();}
-        @Override public void onPlaybackStateChanged(PlaybackState state){renderMedia();}
+        @Override public void onPlaybackStateChanged(PlaybackState state){refreshMedia();}
         @Override public void onSessionDestroyed(){refreshMedia();}
     };
     final MediaSessionManager.OnActiveSessionsChangedListener listener=ignored->refreshMedia();
     WorkspaceDeck(WorkspaceQuickBar owner){
         super(owner.ctx);this.owner=owner;ctx=owner.ctx;
-        networks=new StepControlFace(ctx);
-        LinearLayout network=new LinearLayout(ctx);network.setOrientation(LinearLayout.VERTICAL);network.setBackground(StepMaterial.glass(ctx,false,17));
-        int pad=owner.dp(4);network.setPadding(pad,pad,pad,pad);
-        LinearLayout first=new LinearLayout(ctx),second=new LinearLayout(ctx);
-        network.addView(first,new LinearLayout.LayoutParams(-1,0,1));network.addView(second,new LinearLayout.LayoutParams(-1,0,1));
-        tile(first,"WLAN",Settings.ACTION_WIFI_SETTINGS);tile(first,"移动网络",Settings.ACTION_WIRELESS_SETTINGS);
-        tile(second,"蓝牙",Settings.ACTION_BLUETOOTH_SETTINGS);tile(second,"VPN",Settings.ACTION_VPN_SETTINGS);
-        TextView model=StepMaterial.label(ctx,Build.MODEL+"  ⋯",12,true);model.setMaxLines(2);
-        model.setContentDescription(Build.MODEL+"，工作区布局与更多工具");
-        model.setOnClickListener(owner.tools::menu);
-        StepMaterial.feedback(model);
-        LevelControl volume=new LevelControl(owner,false),brightness=new LevelControl(owner,true);
-        networks.setControls(network,model,volume,brightness);
-        tileRefresh.add(volume::refresh);tileRefresh.add(brightness::refresh);
-        for(WorkspaceActions.Code kind:WorkspaceActions.Code.values()){
-            LinearLayout button=new LinearLayout(ctx);
-            button.setOrientation(LinearLayout.VERTICAL);button.setGravity(Gravity.CENTER);
-            StepGlyph icon=new StepGlyph(ctx,kind.icon,kind.label,()->{});
-            icon.setClickable(false);icon.setFocusable(false);icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-            button.addView(icon,new LinearLayout.LayoutParams(-1,0,1));
-            TextView caption=StepMaterial.label(ctx,kind.label,10,false);caption.setSingleLine();
-            button.setMinimumWidth((int)Math.ceil(caption.getPaint().measureText(kind.label))+owner.dp(6));
-            caption.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-            button.addView(caption,-1,-2);button.setFocusable(true);
-            StepMaterial.feedback(button);
-            networks.addCode(kind,button);codeButtons.put(kind,button);
+        if(owner.sideToolbar==null)networks=owner.controls;
+        else{
+            ImageView resting=new ImageView(ctx);resting.setContentDescription("顶部壁纸");
+            resting.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            networks=resting;
         }
-        bindCodes(Collections.emptyMap());
         addView(networks,-1,-1);
-        media=new PlayerCard(owner);addView(media,-1,-1);
-        routeCard=new LinearLayout(ctx);routeCard.setOrientation(LinearLayout.VERTICAL);routeCard.setGravity(Gravity.CENTER_VERTICAL);
-        routeCard.setPadding(owner.dp(16),0,owner.dp(16),0);routeCard.setBackground(StepMaterial.glass(ctx,false,16));
-        routeApp=routeLabel(12,false);routeTitle=routeLabel(19,true);routeDetail=routeLabel(13,false);routeHint=routeLabel(11,false);
+        media=new PlayerCard(owner);mediaPage=viewport(media);
         topPage=StepMaterial.label(ctx,"打开顶部任务窗口",16,true);topPage.setOnClickListener(v->{if(owner.upper!=null)owner.upper.toggle(true);});
+        navigation=new WorkspaceNavigation(this);
+        navigationPage=StepMaterial.label(ctx,"打开导航",16,true);navigationPage.setOnClickListener(v->navigation.open());
         StepMaterial.feedback(topPage);
         positionPages();
         sessions=ctx.getSystemService(MediaSessionManager.class);
+        playback=new WorkspacePlayback(ctx);
         preferred=media.nativeCard==null?PlayerCard.previousPlayer(owner.userId):null;
         if(sessions!=null)try{sessions.addOnActiveSessionsChangedListener(listener,null,owner.host.main);observing=true;}
         catch(SecurityException unavailable){owner.host.log("媒体会话不可用："+unavailable);}
         refreshMedia();
-        routes=new StepRouteFeed(ctx,owner.user,owner.host.main,this::showRoute,owner.host::log);
         post(tick);
     }
-    TextView routeLabel(int size,boolean bold){
-        TextView t=StepMaterial.label(ctx,"",size,bold);t.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
-        t.setSingleLine(true);t.setEllipsize(android.text.TextUtils.TruncateAt.END);routeCard.addView(t,-1,-2);return t;
-    }
-    void showRoute(StepRouteFeed.Route route){
-        if(closed)return;
-        if(route!=null){
-            routeApp.setText(route.app+" · 导航");routeTitle.setText(route.title);
-            routeDetail.setText(route.detail);routeDetail.setVisibility(route.detail.isEmpty()?GONE:VISIBLE);
-        }
-        if(navigating==(route!=null))return;
-        stopPaging();interrupted=gesture;navigating=route!=null;
-        if(navigating)addView(routeCard,2,new FrameLayout.LayoutParams(-1,-1));else removeView(routeCard);
-        int destination=page;
-        if(!navigating && page==ROUTE){
-            destination=musicActive || pausedTrack()?MUSIC:CONTROLS;
-            // The selected route vanished; the fallback is automatic, not a user-pinned controls page.
-            manualPage=false;savedPage=destination;
-        }
-        else if(navigating && !manualPage && (savedPage==ROUTE || page==CONTROLS && !musicActive))destination=ROUTE;
-        jump(destination);hint();
-    }
-    void hint(){routeHint.setText(musicActive?"向右滑动查看音乐":"");routeHint.setVisibility(musicActive?VISIBLE:GONE);}
-    boolean pausedTrack(){
-        PlaybackState state=controller==null?null:controller.getPlaybackState();
-        return state!=null && state.getState()==PlaybackState.STATE_PAUSED && controller.getMetadata()!=null;
+    View viewport(View content){
+        if(!owner.host.geometry.compact)return content;
+        // Keep the native card intact; vertical scrolling reaches every control
+        // when the app-filling geometry leaves a shorter top band.
+        ScrollView viewport=new ScrollView(ctx);viewport.setFillViewport(true);
+        viewport.addView(content,new ScrollView.LayoutParams(-1,owner.dp(96)));
+        return viewport;
     }
     void updatePlayback(){
         boolean active=controller!=null && playing(controller);
-        if(!active && controller==null && page==MUSIC && !manualPage)jump(navigating?ROUTE:CONTROLS);
-        if(active==musicActive)return;
-        musicActive=active;hint();
-        if(active && page==CONTROLS && !manualPage && !gesture)jump(MUSIC);
-        if(!active && !navigating && page==CONTROLS)manualPage=false;
+        if(active==musicActive && (indexOfChild(mediaPage)>=0)==active)return;
+        stopPaging();interrupted=gesture;
+        musicActive=active;
+        if(active && indexOfChild(mediaPage)<0)addView(mediaPage,1,new FrameLayout.LayoutParams(-1,-1));
+        else if(!active)removeView(mediaPage);
+        int destination=page;
+        if(active && pendingMusicRestore){destination=MUSIC;pendingMusicRestore=false;}
+        if(!active && page==MUSIC){destination=CONTROLS;manualPage=false;savedPage=destination;}
+        jump(destination);
     }
-    View card(int id){return id==ROUTE?routeCard:id==MUSIC?media:id==UPPER?topPage:networks;}
-    int id(View view){return view==routeCard?ROUTE:view==media?MUSIC:view==topPage?UPPER:CONTROLS;}
-    String caption(){return page==ROUTE?"导航页":page==MUSIC?(navigating?"音乐页，左滑查看导航":"音乐页"):page==UPPER?"顶部任务":"控制页";}
+    View card(int id){return id==MUSIC?mediaPage:id==UPPER?topPage:id==NAVIGATION?navigationPage:networks;}
+    int id(View view){return view==mediaPage?MUSIC:view==topPage?UPPER:view==navigationPage?NAVIGATION:CONTROLS;}
+    String caption(){return page==NAVIGATION?"地图导航":page==MUSIC?"音乐页":page==UPPER?"顶部任务":owner.sideToolbar==null?"控制页":"顶部壁纸";}
+    void navigationChanged(boolean active){
+        active=active && owner.upper!=null;
+        if(active==(navigationPage.getParent()!=null) || gesture || paging!=null || navigation.opening)return;
+        if(active)addView(navigationPage,-1,-1);else removeView(navigationPage);
+        jump(page==NAVIGATION && !active?CONTROLS:page);
+    }
+    void openNativePage(){
+        if(owner.upper==null)return;
+        if(page==NAVIGATION)navigation.open();
+        else if(page==UPPER)owner.upper.applyFace(true);
+    }
     void jump(int target){
         stopPaging();View v=card(target);int index=indexOfChild(v);
-        page=index<0?CONTROLS:target;offset=index<0?0:index;positionPages();setContentDescription(caption());
+        page=index<0?id(getChildAt(0)):target;offset=index<0?0:index;positionPages();setContentDescription(caption());
         if(restored && owner.host.quickBar!=null)owner.host.publishViewState();
     }
     void tile(LinearLayout row,String label,String action){
@@ -167,7 +140,7 @@ final class WorkspaceDeck extends FrameLayout {
             tile.postDelayed(refresh,250);
         });
         tile.setOnLongClickListener(t->{owner.systemAction(i);return true;});tileRefresh.add(refresh);
-        int size=Math.min(owner.dp(41),Math.max(owner.dp(15),(owner.host.geometry.top-owner.dp(70))/3));
+        int size=owner.host.geometry.compact?owner.dp(26):Math.min(owner.dp(41),Math.max(owner.dp(15),(owner.host.geometry.top-owner.dp(70))/3));
         int inset=Math.max(2,size/5);layers.setPadding(inset,inset,inset,inset);
         tile.addView(layers,new FrameLayout.LayoutParams(size,size,Gravity.CENTER));
         refresh.run();
@@ -176,7 +149,7 @@ final class WorkspaceDeck extends FrameLayout {
     void bindCodes(Map<WorkspaceActions.Code,List<WorkspaceActions.Service>> available){
         owner.tools.closeProviders();
         for(WorkspaceActions.Code kind:WorkspaceActions.Code.values()){
-            View button=codeButtons.get(kind);
+            View button=codeButtons.get(kind);if(button==null)continue;
             List<WorkspaceActions.Service> targets=available.getOrDefault(kind,Collections.emptyList());
             button.setOnClickListener(v->owner.tools.openCode(v,targets));
             button.setEnabled(!targets.isEmpty());button.setAlpha(targets.isEmpty()?.45f:1f);
@@ -184,9 +157,13 @@ final class WorkspaceDeck extends FrameLayout {
         }
     }
     void refreshMedia(){
-        if(!observing){media.bind(null);return;}
+        if(owner.host.ready && !StepRuntime.interactive(ctx))return;
+        if(!observing){controller=null;renderMedia();return;}
         try{
-            List<MediaController> candidates=sessions.getActiveSessions(null);
+            Set<Integer> activeUids=playback.activeUids();
+            List<MediaController> candidates=new ArrayList<>();
+            for(MediaController candidate:sessions.getActiveSessions(null))
+                if(playback.playing(candidate,activeUids))candidates.add(candidate);
             MediaController next=SystemMediaSelection.current(sessions,candidates);
             for(MediaController c:candidates){
                 if(c.getSessionToken().equals(preferred)){next=c;break;}
@@ -203,32 +180,27 @@ final class WorkspaceDeck extends FrameLayout {
         }catch(RuntimeException error){if(controller!=null)controller.unregisterCallback(player);controller=null;renderMedia();}
     }
     static boolean playing(MediaController c){PlaybackState s=c.getPlaybackState();return s!=null && s.getState()==PlaybackState.STATE_PLAYING;}
-    void players(View anchor){
-        if(!observing || closed)return;
-        try{
-            PopupMenu menu=new PopupMenu(ctx,anchor);
-            menu.getMenu().add("跟随系统播放").setCheckable(true).setChecked(preferred==null)
-                    .setOnMenuItemClickListener(i->{preferred=null;refreshMedia();return true;});
-            for(MediaController c:sessions.getActiveSessions(null)){
-                String label=c.getPackageName();
-                try{label=ctx.getPackageManager().getApplicationLabel(ctx.getPackageManager().getApplicationInfo(label,0)).toString();}
-                catch(android.content.pm.PackageManager.NameNotFoundException ignored){}
-                menu.getMenu().add(label).setCheckable(true).setChecked(controller!=null && controller.getSessionToken().equals(c.getSessionToken()))
-                    .setOnMenuItemClickListener(i->{preferred=c.getSessionToken();refreshMedia();return true;});
-            }
-            if(menu.getMenu().size()>0)menu.show();
-        }catch(RuntimeException error){owner.note(error);}
-    }
     void renderMedia(){media.bind(controller);updatePlayback();}
     void restorePage(int previous){
         savedPage=previous;restored=true;
+        pendingMusicRestore=previous==MUSIC && !musicActive;
+        if(pendingMusicRestore)postDelayed(()->pendingMusicRestore=false,5000);
         manualPage=previous==CHOSEN_CONTROLS || previous==MUSIC;
         if(previous==CHOSEN_CONTROLS)jump(CONTROLS);
-        else if(previous==ROUTE && !navigating || previous==CONTROLS)jump(musicActive?MUSIC:navigating?ROUTE:CONTROLS);
-        else jump(previous);
+        else if(previous==LEGACY_ROUTE || previous==CONTROLS)jump(CONTROLS);
+        else jump(pendingMusicRestore?CONTROLS:previous);
     }
-    int savedPage(){return page==CONTROLS && manualPage?CHOSEN_CONTROLS:page;}
-    void leaveUpperPage(){if(page==UPPER)jump(navigating && !musicActive?ROUTE:MUSIC);}
+    int savedPage(){return pendingMusicRestore?MUSIC:page==CONTROLS && manualPage?CHOSEN_CONTROLS:page;}
+    void fromUpper(int direction){
+        pendingMusicRestore=false;
+        int current=indexOfChild(owner.host.upperId==owner.host.upperNavigationId && owner.host.upperId>=0?navigationPage:topPage),next=current+direction;
+        if(next<0 || next>=getChildCount())next=indexOfChild(networks);
+        int destination=id(getChildAt(Math.max(0,next)));
+        Runnable done=()->{manualPage=true;savedPage=destination;jump(destination);openNativePage();};
+        if(owner.host.upperId>=0)owner.host.upperAction("park",done);
+        else{owner.upper.render(false);done.run();}
+    }
+    void leaveUpperPage(){if(page==UPPER || page==NAVIGATION)jump(CONTROLS);}
     void positionPages(){
         for(int n=0;n<getChildCount();n++){
             View v=getChildAt(n);float dx=n-offset;
@@ -240,6 +212,7 @@ final class WorkspaceDeck extends FrameLayout {
     @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);positionPages();}
     void stopPaging(){android.animation.ValueAnimator old=paging;paging=null;if(old!=null)old.cancel();}
     void settlePage(int next){
+        pendingMusicRestore=false;
         stopPaging();int index=Math.max(0,Math.min(getChildCount()-1,next));page=id(getChildAt(index));
         android.animation.ValueAnimator run=android.animation.ValueAnimator.ofFloat(offset,index);paging=run;
         run.setDuration(200);run.setInterpolator(new android.view.animation.DecelerateInterpolator());
@@ -247,7 +220,7 @@ final class WorkspaceDeck extends FrameLayout {
         run.addListener(new android.animation.AnimatorListenerAdapter(){public void onAnimationEnd(android.animation.Animator a){
             if(paging!=run)return;paging=null;
             setContentDescription(caption());
-            if(page==UPPER && owner.upper!=null)owner.upper.toggle(true);
+            openNativePage();
             owner.host.publishViewState();
         }});run.start();
     }
@@ -273,10 +246,19 @@ final class WorkspaceDeck extends FrameLayout {
     @Override public boolean dispatchTouchEvent(MotionEvent e){
         int action=e.getActionMasked();
         if(action==MotionEvent.ACTION_DOWN){
+            pendingMusicRestore=false;
             if(velocity!=null)velocity.recycle();
             velocity=VelocityTracker.obtain();
             stopPaging();downX=e.getX();downY=e.getY();startOffset=offset;
             dragging=vertical=blocked=interrupted=false;gesture=true;
+            // Reserve edge-origin streams for the input monitor. Paging must
+            // not move even one frame before the sidebar direction is known.
+            if(owner.sideToolbar!=null && owner.upper!=null && owner.upper.monitor!=null)
+                blocked=owner.sideToolbar.edgeStart(e.getRawX(),e.getRawY())>=0;
+            if(owner.sideToolbar==null && page==CONTROLS && owner.scroll.isShown()){
+                android.graphics.Rect appBounds=new android.graphics.Rect();owner.scroll.getDrawingRect(appBounds);
+                offsetDescendantRectToMyCoords(owner.scroll,appBounds);blocked=appBounds.contains((int)downX,(int)downY);
+            }
             if(page==MUSIC && media.seek.isShown() && media.seek.isEnabled()){
                 android.graphics.Rect bounds=new android.graphics.Rect();
                 media.seek.getDrawingRect(bounds);offsetDescendantRectToMyCoords(media.seek,bounds);
@@ -324,7 +306,7 @@ final class WorkspaceDeck extends FrameLayout {
     }
     void close(){
         owner.tools.closeProviders();
-        closed=true;routes.close();removeCallbacks(tick);stopPaging();media.close();
+        closed=true;removeCallbacks(tick);stopPaging();media.close();
         if(velocity!=null){velocity.recycle();velocity=null;}
         if(controller!=null)controller.unregisterCallback(player);
         if(observing)sessions.removeOnActiveSessionsChangedListener(listener);controller=null;observing=false;

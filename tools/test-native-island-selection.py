@@ -44,7 +44,7 @@ files = {
     'ls/augment/com/DuoIslandPolicy.java':'package ls.augment.com;public class DuoIslandPolicy{public static String CAPABILITY="host";}',
     'ls/augment/com/BuildConfig.java':'package ls.augment.com;public class BuildConfig{public static int VERSION_CODE=1;}',
     'ls/augment/com/hook/NativeIslandSettingsHook.java':'package ls.augment.com.hook;class NativeIslandSettingsHook{static void synchronize(Object c,boolean on){android.provider.Settings.System.function=on?1:0;android.provider.Settings.System.enabled=on?1:0;}}',
-    'ls/augment/com/hook/DuoNotificationCards.java':'package ls.augment.com.hook;class DuoNotificationCards{DuoNotificationCards(Object...args){}void close(){}}',
+    'ls/augment/com/hook/DuoNotificationCards.java':'package ls.augment.com.hook;class DuoNotificationCards{Runnable panelChanged;DuoNotificationCards(Object...args){}void close(){}}',
     'ls/augment/com/MagicIslandPolicy.java':'package ls.augment.com;public class MagicIslandPolicy{public static String CAPABILITY="magic";}',
     'com/zte/base/Feature.java': '''package com.zte.base;public class Feature{public static Feature current;
  public Object mDynamicIslandManager;public boolean mEnabled;public boolean enabled(){return mEnabled;}public static Feature get(String key){return current;}}''',
@@ -59,7 +59,7 @@ public class TestNativeSelection {
  static Object nativeFeature,initializedManager;static TestNativeSelection nativeOwner;
  static WeakReference<View> keyguardView=new WeakReference<>(new View());
  final android.content.Context context=new android.content.Context();final ClassLoader loader=getClass().getClassLoader();final View phone=new View();
- NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;DuoNotificationCards notificationCards;final Runnable click=()->{};boolean nativeRequested,nativeSelected;
+ NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;DuoNotificationCards notificationCards;Runnable panelChanged;final Runnable click=()->{};boolean nativeRequested,nativeSelected;
  View waitingNativeRoot;View.OnAttachStateChangeListener nativeAttach;String diagnostic;
  // TIMEOUT
  static class Permanent {

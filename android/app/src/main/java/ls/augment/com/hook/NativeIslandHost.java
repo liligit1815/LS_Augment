@@ -46,6 +46,7 @@ final class NativeIslandHost {
     private final View phone;
     private final Context context;
     private final Runnable click,longClick;
+    private Runnable panelChanged;
     private final java.util.function.Consumer<Runnable> action;
     private final Map<Integer,String> dimensions=new HashMap<>();
     private final Map<View,Drawable> backgrounds=new HashMap<>();
@@ -92,6 +93,7 @@ final class NativeIslandHost {
 
     static int install(AugmentModule module,ClassLoader classLoader){
         loader=classLoader;
+        IslandPanelInteraction.install(module);
         int count=hookNamed(module,loader,"native_island",N+"DynamicIslandManager","initDynamicIsland",0,(o,a,r)->
                 initializedManager==o&&field(field(o,"mPermanentIslandManager"),"mDynamicIslandRoot")!=null?null:PASS,null);
         count+=hookNamed(module,loader,"native_island",N+"DynamicIslandFeature","onKeyguardStatusBarInflate",1,null,(o,a,r)->{
@@ -226,6 +228,7 @@ final class NativeIslandHost {
             if(NativeIslandScenes.blocked(a[0]))return null;
             if(initializedByDuo&&!nativeSelected&&active==null&&o==field(initializedManager,"mPermanentIslandManager"))return null;
             NativeIslandHost h=active;
+            if(h!=null&&o==h.permanent&&h.dormantNativeScene(o,a[0],true))return null;
             if(h!=null&&o==h.permanent&&a[0]==field(o,"mMediaIsland"))return null;
             return PASS;
         },null);
@@ -233,6 +236,7 @@ final class NativeIslandHost {
             if(NativeIslandScenes.blocked(a[0]))return null;
             if(initializedByDuo&&!nativeSelected&&active==null&&o==field(initializedManager,"mDisposableIslandManager"))return null;
             NativeIslandHost h=active;
+            if(h!=null&&o==h.disposable&&h.dormantNativeScene(o,a[0],false))return null;
             if(h!=null&&o==h.disposable&&a[0]==field(o,"mChargingIsland"))return null;
             return PASS;
         },null);
@@ -240,6 +244,18 @@ final class NativeIslandHost {
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){h.originalEnabled=(Boolean)a[0];set(o,"mIsDynamicIslandEnable",true);}return PASS;
         });
         return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader);
+    }
+
+    private boolean dormantNativeScene(Object owner,Object island,boolean persistent){
+        if(originalFeature||!(island instanceof View))return false;
+        // A fallback host cannot complete OEM scenes. Do not accidentally wake their
+        // second renderer while the original capsule still owns them. Duo's own
+        // separately inflated activities continue through the same native host.
+        String[] names=persistent?new String[]{"mRecordIsland","mFlashlightIsland","mCallIsland","mMediaIsland",
+                "mCountDownIsland","mFaceDetectIsland","mMeetingIsland","mAIIsland","mAIMemIsland"}
+                :new String[]{"mChargingIsland","mLowPowerIsland","mBluetoothIsland","mHeadsetIsland"};
+        for(String name:names)if(field(owner,name)==island)return true;
+        return false;
     }
 
     private static void rotateOrdinary(Object owner,int rotation){
@@ -391,13 +407,14 @@ final class NativeIslandHost {
             if(power!=null&&power.isInteractive())NativeIslandWake.synchronize(m,pm);
             if(nativeScenes!=null)nativeScenes.close();
             nativeScenes=null;
-            if(on&&!fullscreen){nativeScenes=new NativeIslandScenes(context,loader,m,pm,(View)view);nativeScenes.start();}
+            if(on&&!fullscreen){nativeScenes=new NativeIslandScenes(context,loader,m,pm,(View)view,baselineFeature);nativeScenes.start();}
             if(on&&fullscreen&&magicScenes==null){
                 try{magicScenes=new MagicIslandScenes(context,pm);magicScenes.start();}
                 catch(Exception unavailable){FeatureSettings.diagnostic(context,ls.augment.com.MagicIslandPolicy.CAPABILITY,"unavailable:"+unavailable.getMessage());}
             }
             if(notificationCards==null)try{
                 notificationCards=new DuoNotificationCards((Context)field(m,"mContext"),loader,pm,fullscreen,click,phone);
+                notificationCards.panelChanged=()->{if(panelChanged!=null)panelChanged.run();};
                 FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"ready:"+ls.augment.com.BuildConfig.VERSION_CODE);
             }catch(Exception missing){FeatureSettings.diagnostic(context,ls.augment.com.DuoIslandPolicy.CAPABILITY,"unavailable:"+cause(missing));}
             report("duo_owner;enabled="+on+";feature="+call(f,"enabled")+";windowAttached=true;duo=true;fullscreen="+fullscreen
@@ -681,6 +698,9 @@ final class NativeIslandHost {
                 &&!Boolean.TRUE.equals(field(permanent,"mPriorityProcessing"));
     }
     boolean expanded(){return notificationCards!=null?notificationCards.expanded():ownsSelected(permanent)&&Boolean.TRUE.equals(field(permanent,"mDynamicPanelShowing"));}
+    void onPanelChanged(Runnable changed){panelChanged=changed;}
+    boolean holdsActivity(){return IslandPanelInteraction.holds(notificationCards!=null?notificationCards:this);}
+    void panelActivity(){IslandPanelInteraction.activity(notificationCards!=null?notificationCards:this);}
     private static int installPanelStatusBar(AugmentModule module, ClassLoader loader) {
         try {
             Method fade = IslandPanelStatusBar.fade(loader);
@@ -726,6 +746,7 @@ final class NativeIslandHost {
             NativeIslandHost h=owner.get();if(h!=null){MAIN.post(h::applyAppearance);MAIN.post(h.observe);}
         })){reportPanel("panel_capability_missing:animation_callback_bridge");return;}
         Object panel=call(current,"getPanelIsland");
+        IslandPanelInteraction.bind(this,permanent,current,panel,true,()->{if(panelChanged!=null)panelChanged.run();});
         FeatureSettings.diagnostic(context,"ls_augment_native_island_panel","request;panel="+(panel==null?"null":panel.getClass().getSimpleName())+";anim="+field(permanent,"mAnimProcessing")+";priority="+field(permanent,"mPriorityProcessing"));
         call(permanent,"showPermanentPanelIsland");MAIN.postDelayed(observe,500);
     }catch(Exception e){report("expand_failed:"+cause(e));}}
@@ -737,6 +758,7 @@ final class NativeIslandHost {
     }
     void hide(){
         if(notificationCards!=null){notificationCards.hide();return;}
+        IslandPanelInteraction.release(this);
         MAIN.removeCallbacks(publish);dismiss();
         // end() dispatches the owned close callback while the manager, panel and getter hooks are still alive.
         // Removing the scene or releasing the host before that callback leaves a dangling native transition.

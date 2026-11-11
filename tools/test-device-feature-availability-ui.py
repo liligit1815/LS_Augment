@@ -95,9 +95,9 @@ public void setOnCheckedChangeListener(Listener value){listener=value;}public vo
     "android/widget/Button.java": "package android.widget;public class Button {public boolean enabled;}",
     "android/view/View.java": "package android.view;public class View {public static final int GONE=8;public void setVisibility(int value){}}",
     "android/widget/TextView.java": "package android.widget;public class TextView extends android.view.View {public void setTag(Object value){}}",
-    "ls/augment/com/NativeIslandSceneOptions.java": "package ls.augment.com;class NativeIslandSceneOptions {static final String ENABLED=\"ls_augment_native_island_scene_support\";}",
+    "ls/augment/com/NativeIslandSceneOptions.java": "package ls.augment.com;class NativeIslandSceneOptions {static final String ENABLED=\"ls_augment_native_island_scene_support\";static boolean ordinaryCardSupplement(String id){throw new AssertionError(\"brightness queried island scene supplement\");}}",
     "ls/augment/com/SystemUiOptions.java": "package ls.augment.com;class SystemUiOptions {static final String ISLAND=\"ls_augment_rm_dynamic_island\",VOLUME_SAME_SIDE=\"ls_augment_rm_volume_same_side\",ISLAND_STATUS_AVOIDANCE=\"ls_augment_rm_island_status_avoidance\";}",
-    "ls/augment/com/NativeIslandMode.java": "package ls.augment.com;class NativeIslandMode{static String MODERN=\"fullscreen\";static String detect(Object c){return \"ordinary\";}static String name(String m){return \"星云岛\";}}",
+    "ls/augment/com/NativeIslandMode.java": "package ls.augment.com;class NativeIslandMode{static String MODERN=\"fullscreen\",LEGACY=\"ordinary\";static String detect(Object c){return LEGACY;}static String name(String m){return \"星云岛\";}}",
     "ls/augment/com/MagicIslandPolicy.java": "package ls.augment.com;class MagicIslandPolicy{static String detail(String id){return \"\";}}",
     "ls/augment/com/VolumePositionSettings.java": "package ls.augment.com;class VolumePositionSettings {static boolean multiAppEnabled(Object context){return true;}}",
     "android/widget/LinearLayout.java": """package android.widget;public class LinearLayout {

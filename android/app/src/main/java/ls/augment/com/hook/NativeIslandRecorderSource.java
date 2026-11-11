@@ -10,6 +10,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -25,6 +26,7 @@ final class NativeIslandRecorderSource {
     private final Method currentState, foreground, fullScreen, nubia, publishVisible, publishCount;
     private final Uri visibleUri;
     private volatile Binding current;
+    private boolean snapshotReady;
 
     static void install(AugmentModule module, ClassLoader loader) {
         try { new NativeIslandRecorderSource(module, loader); }
@@ -71,16 +73,38 @@ final class NativeIslandRecorderSource {
         module.registerFeatureHook(module.prepareFeatureHook(publishCount, "rm.recorder.native_island.tick", false).intercept(chain -> {
             Object result = chain.proceed(chain.getArgs().toArray());
             Binding binding = current;
-            if (binding != null) binding.request(false);
+            if (binding != null && !binding.samplingHere()) binding.request(false);
             return result;
         }));
+        Method info=NativeIslandSceneContract.method(publisher,"updateInfo",void.class,Context.class,String.class);
+        if (info!=null && Modifier.isStatic(info.getModifiers())) {
+            module.registerFeatureHook(module.prepareFeatureHook(info,"rm.recorder.native_island.count",false).intercept(chain->{
+                Object result=chain.proceed(chain.getArgs().toArray());
+                Binding binding=current;
+                if (binding!=null) {
+                    if (binding.samplingHere()) binding.count=(String)chain.getArgs().get(1);
+                    else binding.request(true);
+                }
+                return result;
+            }));
+            snapshotReady=true;
+            // The ordinary producer publishes through these methods at state/front transitions.
+            // Re-read its model after the call; never infer audio state from the callback argument.
+            for (Method event:new Method[]{publishVisible,
+                    NativeIslandSceneContract.method(service,"setForeGround",void.class,boolean.class)}) {
+                if (event==null || !Modifier.isStatic(event.getModifiers())) continue;
+                module.registerFeatureHook(module.prepareFeatureHook(event,"rm.recorder.native_island.event."+event.getName(),false).intercept(chain->{
+                    Object result=chain.proceed(chain.getArgs().toArray()); Binding binding=current;
+                    if (binding!=null && !binding.samplingHere()) binding.request(true);
+                    return result;
+                }));
+            }
+        } else module.logFeatureInfo("NATIVE_RECORDER_SNAPSHOT_MISSING updateInfo(Context,String):void;legacy_provider");
         module.logFeatureInfo("NATIVE_RECORDER_SOURCE_READY ordinary_state");
     }
 
     private boolean requested(Context context) throws Exception {
         return FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
-                && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
-                && FeatureSettings.enabled(context, NativeIslandSceneOptions.key("record"))
                 && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1
                 && !Boolean.TRUE.equals(fullScreen.invoke(null)) && !Boolean.TRUE.equals(nubia.invoke(null));
     }
@@ -88,6 +112,13 @@ final class NativeIslandRecorderSource {
     private final class Binding {
         private final WeakReference<Service> service;
         private final Runnable tick = () -> sync(false), changed = () -> request(true), refresh = () -> sync(true);
+        // Paused recordings also renew ownership; no service restart or audio command is used.
+        private final Runnable pulse = () -> sync(true);
+        private final long generation=SystemClock.elapsedRealtimeNanos();
+        private long sequence;
+        private volatile String count;
+        private volatile Thread samplingThread;
+        private boolean transported;
         private final ContentObserver setting = new ContentObserver(main) {
             @Override public void onChange(boolean selfChange) { request(true); }
         };
@@ -113,18 +144,45 @@ final class NativeIslandRecorderSource {
         void request(boolean force) {
             if (!closed) { Runnable callback = force ? refresh : tick; main.removeCallbacks(callback); main.post(callback); }
         }
+        boolean samplingHere() { return samplingThread==Thread.currentThread(); }
         void sync(boolean force) {
             Service instance = service.get();
             if (closed || instance == null) return;
             try {
+                main.removeCallbacks(pulse);
                 if (!requested(instance)) return;
                 int state = (Integer) currentState.invoke(null);
-                int visible = !Boolean.TRUE.equals(foreground.invoke(null)) && (state == 1 || state == 2) ? state : 0;
+                boolean front=Boolean.TRUE.equals(foreground.invoke(null));
+                int visible = !front && (state == 1 || state == 2) ? state : 0;
+                if (snapshotReady) {
+                    if (state!=1 && state!=2) count=null;
+                    else {
+                        // Sample the current model, not a delayed updateInfo argument from an old session.
+                        count=null; samplingThread=Thread.currentThread();
+                        try { publishCount.invoke(null,instance,state); }
+                        finally { samplingThread=null; }
+                    }
+                    // A state change during sampling must not combine old duration with new state.
+                    if (state!=(Integer)currentState.invoke(null) || front!=Boolean.TRUE.equals(foreground.invoke(null))) {
+                        request(true); return;
+                    }
+                    boolean accepted=NativeIslandRecorderBridge.publish(instance,generation,++sequence,
+                            state==1 || state==2?state:0,front,count);
+                    transported|=accepted;
+                    main.postDelayed(pulse,1000);
+                    if (accepted) {
+                        report("atomic_model;state="+state+";foreground="+front+";countReady="+(count!=null));
+                        return;
+                    }
+                }
                 if (!force && matches(instance, visible)) return;
                 // updateCount carries the OEM duration and localized pause suffix. Its hook
                 // queues one non-forced check, which stops once provider and model match.
-                if (force && (state == 1 || state == 2)) publishCount.invoke(null, instance, state);
-                publishVisible.invoke(null, instance, visible);
+                samplingThread=Thread.currentThread();
+                try {
+                    if (force && !snapshotReady && (state == 1 || state == 2)) publishCount.invoke(null, instance, state);
+                    publishVisible.invoke(null, instance, visible);
+                } finally { samplingThread=null; }
                 report("published_actual_state=" + state + ";visible=" + visible);
             } catch (Exception failure) { report("publish_failed:" + failure.getClass().getSimpleName() + ":" + failure.getMessage()); }
         }
@@ -140,8 +198,10 @@ final class NativeIslandRecorderSource {
             closed = true;
             FeatureSettings.removeSnapshotListener(changed);
             main.removeCallbacks(refresh); main.removeCallbacks(tick);
+            main.removeCallbacks(pulse);
             Service instance = service.get();
             if (instance != null) {
+                if (transported) NativeIslandRecorderBridge.publish(instance,generation,++sequence,0,true,null);
                 if (observing) try { instance.getContentResolver().unregisterContentObserver(setting); } catch (RuntimeException ignored) { }
                 if (receiving) try { instance.unregisterReceiver(recovery); } catch (RuntimeException ignored) { }
             }

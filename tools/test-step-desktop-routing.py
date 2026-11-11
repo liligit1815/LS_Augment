@@ -79,12 +79,20 @@ public class TestRoutes {
         }
     }
     static class NativeWorkspaceGuard {
+        static Task sessionHome;static boolean homeValid=true;
+        static Object eligibleMain(Task home){return homeValid?home:null;}
         static boolean active=true,ending;static int principal;static Object pendingCommit,flip;
         static Map<Integer,SavedTask> saved=new LinkedHashMap<>();static Slots slots=new Slots();static ResultReceiver events;
         static class SavedTask {int id,user;boolean dirty=true,live=true;Token token=new Token();Task task=new Task();}
-        static class Slots {int[] snapshot(){return saved.keySet().stream().mapToInt(i->i).toArray();}}
+        static class Slots {int[] snapshot(){return saved.keySet().stream().filter(i->saved.get(i)!=NativeTopTask.app).mapToInt(i->i).toArray();}}
         static Task liveTask(int id,Object token){SavedTask r=saved.get(id);return r!=null && r.live && token==r.token?r.task:null;}
         static Bundle base(){return new Bundle();}
+    }
+    static class NativeTopTask {static NativeWorkspaceGuard.SavedTask app,navigation;}
+    static class WorkspaceMainFocus {
+        static boolean unique=true;
+        static boolean secondary(Object t){return NativeTopTask.app!=null && t==NativeTopTask.app.task;}
+        static boolean matches(Object t){check(Binder.uid==1000,"main identity query uses server identity");return unique && t==NativeWorkspaceGuard.sessionHome;}
     }
     static boolean unlocked=true;
     static void diagnostic(String stage,String detail){}
@@ -135,6 +143,7 @@ public class TestRoutes {
     static void reset(){
         NativeWorkspaceGuard.active=true;NativeWorkspaceGuard.ending=false;NativeWorkspaceGuard.pendingCommit=null;NativeWorkspaceGuard.flip=null;
         NativeWorkspaceGuard.principal=0;NativeWorkspaceGuard.saved.clear();
+        NativeTopTask.app=null;WorkspaceMainFocus.unique=true;NativeWorkspaceGuard.homeValid=true;NativeWorkspaceGuard.sessionHome=new Task();
         task=new NativeWorkspaceGuard.SavedTask();task.id=42;task.task.info.taskId=42;task.task.info.baseActivity=component;
         NativeWorkspaceGuard.saved.put(42,task);Binder.uid=10045;Wm.context=new Context();Wm.front=new Task();
         unlocked=true;Looper.current=new Object();dispatches=0;reply=1;WorkspaceUsers.missing=false;falseReceipt=false;
@@ -151,6 +160,20 @@ public class TestRoutes {
     static void rejected(String why)throws Exception{check(!route() && dispatches==0,why);}
     public static void main(String[] argv)throws Exception {
         reset();check(route() && dispatches==1,"desktop route");check(Binder.uid==10045,"original caller restored for native launch checks");
+        reset();NativeTopTask.app=task;check(route() && dispatches==1,"top task is routed through exact restoration");
+        reset();NativeTopTask.app=task;task.task.type=1;Wm.front=task.task;
+        check(route() && dispatches==1,"top input focus permits the unique visible session HOME launch");
+        check(Binder.uid==10045,"top-focus query restores launcher identity");
+        WorkspaceMainFocus.unique=false;dispatches=0;rejected("hidden or ambiguous main cannot impersonate HOME");
+        WorkspaceMainFocus.unique=true;NativeWorkspaceGuard.homeValid=false;rejected("stale HOME identity rejected");
+        reset();NativeTopTask.app=task;Wm.front=null;rejected("missing focus does not admit top HOME fallback");
+        reset();NativeTopTask.app=task;task.dirty=false;rejected("released top lease rejected");
+        reset();NativeTopTask.app=task;task.live=false;rejected("replaced top identity rejected");
+        reset();NativeTopTask.app=task;task.user=10;rejected("foreign top user rejected");
+        reset();NativeTopTask.app=task;check(routeNative(null,0,42,null,null),"recents restores exact top task");
+        reset();NativeTopTask.app=task;NativeWorkspaceGuard.SavedTask side=new NativeWorkspaceGuard.SavedTask();
+        side.id=43;side.task.info.taskId=43;side.task.info.baseActivity=component;NativeWorkspaceGuard.saved.put(43,side);
+        rejected("top and side sharing launcher identity remain ambiguous");
         reset();WorkspaceUsers.missing=true;
         try{route();throw new AssertionError("missing service must retain native path");}
         catch(IllegalStateException expected){check(Binder.uid==10045 && dispatches==0,"failing user query restores original caller");}

@@ -24,6 +24,7 @@ public class SlotFrameCases {
     final Queue main=new Queue();final Panel panel=new Panel();final Geometry geometry=new Geometry();final Input input=new Input();final OperationFence fence=new OperationFence();
     boolean closing,closed;long slotFrameGeneration;int pendingNativeSlot=0,previewWidth=280,slotsShown,completions,stagesClosed,resumes,logs;String failure;Consumer<Bundle> reply;
     void showSlots(){slotsShown++;}void fail(String s){failure=s;closing=true;fence.close();}void clearDrag(){}void closeFlipStage(){stagesClosed++;}void log(String s){logs++;}void resumeNext(){resumes++;}
+    void releaseStepInput(Runnable done){input.release(done);}
     void rpc(String action,Bundle args,Consumer<Bundle> done){check(action.equals("replay"),"shared final native replay");reply=done;}
     METHODS
     void painted(){panel.frames.remove().run();main.drain();}

@@ -45,14 +45,17 @@ final class UpperRoll extends View {
         LiveWorkspace h=pane.host;
         final LiveWorkspace.Lease lease=h.leases.get(id);
         if(lease==null || !WorkspaceUsers.allows(pane.owner.ctx,pane.owner.userId,lease.user))return;
-        final Rect bounds=pane.bounds();
         worker.execute(()->{
             Bitmap frame=null;
             try{
                 if(!running || epoch!=ticket || !interactive(pane.owner.ctx)
                         || !WorkspaceUsers.allows(pane.owner.ctx,pane.owner.userId,lease.user))return;
-                Object source;
-                synchronized(h.organizerLock){if(lease.checkedInfo()==null)return;source=lease.checkedLeash();}
+                Object source;Rect bounds;
+                synchronized(h.organizerLock){
+                    android.app.ActivityManager.RunningTaskInfo info=lease.checkedInfo();if(info==null)return;
+                    bounds=new Rect((Rect)call(field(field(info,"configuration"),"windowConfiguration"),"getBounds"));
+                    source=lease.checkedLeash();
+                }
                 frame=permittedFrame(source,bounds.width(),bounds.height());
             }catch(ReflectiveOperationException|RuntimeException|LinkageError unavailable){/* Use the neutral task face. */}
             finally{

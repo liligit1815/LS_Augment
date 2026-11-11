@@ -79,7 +79,7 @@ public class TestIslandPanel {
   final Runnable collapse=()->{},tick=()->{};final Power power=new Power();final Host nativeHost=new Host();int dismisses;
   boolean locked(){return isLocked;}int currentUser(){return user;}void dismiss(){dismisses++;}
   static class Power {boolean interactive=true;boolean isInteractive(){return interactive;}}
-  static class Host {boolean expanded=true;boolean expanded(){return expanded;}}
+  static class Host {boolean expanded=true;int activity;boolean expanded(){return expanded;}void panelActivity(){if(expanded)activity++;}}
   // ACTION
  }
  static class OwnedHost {
@@ -158,7 +158,7 @@ public class TestIslandPanel {
   Actions actions=new Actions();int[] commands={0};
   for(int i=0;i<3;i++)actions.runAction(()->commands[0]++);
   check(commands[0]==3&&actions.dismisses==0,"previous pause next never force panel collapse");
-  check(actions.MAIN.jobs.get(actions.collapse)==8000&&actions.MAIN.jobs.get(actions.tick)==150,"media actions renew panel timeout and schedule refresh");
+  check(actions.nativeHost.activity==3&&actions.MAIN.jobs.get(actions.tick)==150,"media actions renew panel interaction and schedule refresh");
   actions.nativeHost.expanded=false;actions.runAction(()->{});check(!actions.MAIN.jobs.containsKey(actions.collapse),"collapsed controls cannot create stale timeout");
   actions.isLocked=true;actions.runAction(()->commands[0]++);check(commands[0]==3,"locked action blocked");
   actions.isLocked=false;actions.user=10;actions.runAction(()->commands[0]++);check(commands[0]==3,"wrong user blocked");
@@ -177,6 +177,7 @@ def main():
     host=(JAVA/'NativeIslandHost.java').read_text('utf-8')
     harness=HARNESS.replace('// ACTION',method(source,'void runAction(')).replace('// HIDE',method(host,'void hide('))
     files=dict(FILES)
+    files['ls/augment/com/hook/IslandPanelInteraction.java']='package ls.augment.com.hook;class IslandPanelInteraction{static void release(Object o){}}'
     for name in ['NativeIslandPanelCompat','IslandPanelTransition']:
         files[f'ls/augment/com/hook/{name}.java']=(JAVA/f'{name}.java').read_text('utf-8')
     files['ls/augment/com/hook/TestIslandPanel.java']=harness

@@ -83,9 +83,10 @@ SOURCES = {
  boolean failed=false;try{a.run();}catch(Exception expected){failed=true;}check(failed,label);}
  public static void main(String[] args)throws Exception{
  for(int mask=0;mask<8;mask++)check(NativeIslandScenePolicy.enhance((mask&1)!=0,(mask&2)!=0,(mask&4)!=0)==(mask==7),"master, scene and capability all required");
+ for(int mask=0;mask<16;mask++)check(NativeIslandScenePolicy.takeover((mask&1)!=0,(mask&2)!=0,(mask&4)!=0,(mask&8)!=0)==(mask==15),"Duo, master, scene and capability all required");
  for(int mask=0;mask<32;mask++){
  boolean duo=(mask&1)!=0,music=(mask&2)!=0,scenes=(mask&4)!=0,media=(mask&8)!=0,ready=(mask&16)!=0;
- check(NativeIslandScenePolicy.music(duo,music,scenes,media,ready)==(duo&&music&&ready&&(!scenes||media)),"primary music gate and explicit scene exclusions");}
+ check(NativeIslandScenePolicy.music(duo,music,ready)==(duo&&music&&ready),"native music is independent of completion and media completion option");}
  for(String value:new String[]{null,"","4","-1","01"," 1","paused"})check(NativeIslandScenePolicy.countdownState(value)==-1,"unknown/broadcast status rejected");
  for(boolean modern:new boolean[]{false,true}){
  Fixture f=new Fixture(modern);f.sync();check(f.context().resolver.registrations==0&&f.permanent.adds==0,"OFF has no observers or mutations");

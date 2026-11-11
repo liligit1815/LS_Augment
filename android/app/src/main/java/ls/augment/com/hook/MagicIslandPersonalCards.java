@@ -20,7 +20,7 @@ final class MagicIslandPersonalCards {
         {"train_travel","travel.starryisland.TravelToolTrain"}};
     private final Map<Class<?>,String> scenes=new LinkedHashMap<>();
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final Method nativeSupport,remove;
+    private final Method nativeSupport;
     private final Field contextField,adapters;
     private Binding binding;
     static void install(AugmentModule module,ClassLoader loader){
@@ -34,20 +34,15 @@ final class MagicIslandPersonalCards {
         Class<?> renderer=Class.forName("com.zte.briefagent.event.cards.render.StarryIslandCardRender",false,loader);
         contextField=MagicIslandScenes.typed(renderer,"context",Context.class);
         adapters=MagicIslandScenes.typed(renderer,"cardIdToAdapterMap",Map.class);
-        remove=MagicIslandScenes.exact(renderer,"removeCard",void.class,String.class);
+        MagicIslandScenes.exact(renderer,"removeCard",void.class,String.class);
         Method init=MagicIslandScenes.exact(renderer,"initCardPusher",void.class);
         Method render=MagicIslandScenes.exact(renderer,"render",void.class,List.class);
         Class<?> cc=Class.forName("com.zte.briefagent.event.cards.CardContext",false,loader);
         Class<?> message=Class.forName("com.zte.toolsdk.common.CardMessage",false,loader);
         for(String[] spec:ADAPTERS)try{
             Class<?> adapter=Class.forName(PREFIX+spec[1]+"StarryIslandAdapter",false,loader);
-            Method create=MagicIslandScenes.exact(adapter,"createCardMessage",message,cc);
+            MagicIslandScenes.exact(adapter,"createCardMessage",message,cc);
             scenes.put(adapter,spec[0]);
-            module.registerFeatureHook(module.prepareFeatureHook(create,"native_island.magic_source."+spec[0],false).intercept(chain->{
-                Binding current=binding;
-                if(current!=null&&!current.closed&&denied(current.context,spec[0]))return null;
-                return chain.proceed();
-            }));
         }catch(Exception missing){module.logFeatureInfo("MAGIC_PERSONAL_SCENE_UNAVAILABLE "+spec[0]+":"+missing);}
         if(scenes.isEmpty())throw new IllegalStateException("no_verified_adapter");
         module.registerFeatureHook(module.prepareFeatureHook(init,"native_island.magic_source_init",false).intercept(chain->{
@@ -63,11 +58,6 @@ final class MagicIslandPersonalCards {
         }));
     }
     private boolean nativeMode(Context c){try{return c!=null&&Boolean.TRUE.equals(nativeSupport.invoke(null,c));}catch(Exception missing){return false;}}
-    private boolean denied(Context c,String scene){
-        return nativeMode(c)&&FeatureSettings.enabled(c, SystemUiOptions.ISLAND)&&NativeIslandMode.enabled(c,NativeIslandMode.MODERN)
-                &&FeatureSettings.enabled(c,NativeIslandSceneOptions.ENABLED)&&!FeatureSettings.enabled(c,NativeIslandSceneOptions.key(scene));
-    }
-    private String scene(Object adapter){for(Map.Entry<Class<?>,String> entry:scenes.entrySet())if(entry.getKey().isInstance(adapter))return entry.getValue();return null;}
     private void bindSafely(Object renderer,AugmentModule module){
         try{bind(renderer);}catch(Exception failure){
             if(binding!=null)binding.unavailable(failure.getClass().getSimpleName());
@@ -93,12 +83,9 @@ final class MagicIslandPersonalCards {
         void refresh(){
             if(closed)return;Object renderer=owner.get();if(renderer==null){close();return;}
             try{
-                Map<?,?> current=(Map<?,?>)adapters.get(renderer);
-                for(Object key:new ArrayList<>(current.keySet())){
-                    String id=scene(current.get(key));
-                    if(key instanceof String&&id!=null&&denied(context,id))remove.invoke(renderer,key);
-                }
-                // Enabling waits for a fresh native business update. Never replay expired orders or reset source deadlines.
+                // Capability reporting does not confer ownership of the OEM's existing cards.
+                // OFF leaves their native content, expiry and removal path intact.
+                adapters.get(renderer);
             }catch(Exception failure){
                 unavailable(failure.getClass().getSimpleName());
             }

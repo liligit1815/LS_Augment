@@ -13,6 +13,8 @@ import static ls.augment.com.step.StepRuntime.*;
 
 /** Only a unique, current-user original task may take over an ordinary launcher or notification open. */
 final class WorkspaceRoutes {
+    static final int UPPER=ParkedWorkspace.UPPER,NAVIGATION=UPPER+1;
+    static int taskAt(LiveWorkspace host,int slot){return slot==UPPER?host.upperAppId:slot==NAVIGATION?host.upperNavigationId:host.slots.task(slot);}
     static void installNotification(ClassLoader cl){
         try{
             Class<?> type=Class.forName("com.android.systemui.statusbar.phone.StatusBarNotificationActivityStarter",false,cl);
@@ -50,8 +52,9 @@ final class WorkspaceRoutes {
     }
     static int match(LiveWorkspace h,String pkg,int targetUser,int id,Object token){
         int found=-1;
-        for(int slot=0;slot<h.visibleSlots;slot++){
-            int task=h.slots.task(slot);if(task<0 || id>=0 && task!=id)continue;
+        for(int slot=0;slot<=NAVIGATION;slot++){
+            if(slot>=h.visibleSlots && slot<UPPER)continue;
+            int task=taskAt(h,slot);if(task<0 || id>=0 && task!=id)continue;
             ActivityManager.RunningTaskInfo info=h.info(task);
             if(info==null || info.baseActivity==null || !pkg.equals(info.baseActivity.getPackageName())
                     || LiveWorkspace.number(info,"userId")!=targetUser || LiveWorkspace.number(info,"displayId")!=0
@@ -63,8 +66,9 @@ final class WorkspaceRoutes {
     static boolean promote(LiveWorkspace host,int slot,Consumer<Boolean> done){
         if(host.retained!=null || host.quickBar==null || host.quickBar.picker!=null || host.quickBar.tools.clipboard!=null)return false;
         host.preflight();
-        int id=host.slots.task(slot);ActivityManager.RunningTaskInfo before=host.info(id);
-        if(before==null)return false;Object token=field(before,"token");host.change(slot);
+        int id=taskAt(host,slot);ActivityManager.RunningTaskInfo before=host.info(id);
+        if(before==null)return false;Object token=field(before,"token");
+        if(slot>=UPPER)host.upperActionFor(id,"release",null);else host.change(slot);
         if(!host.fence.busy())return false;
         long limit=SystemClock.uptimeMillis()+2300;
         host.main.post(new Runnable(){public void run(){
@@ -76,7 +80,7 @@ final class WorkspaceRoutes {
                     // Its focus notification may follow only after that call resumes.
                     // Confirm the exact completed role handoff, independently of focus.
                     ActivityManager.RunningTaskInfo now=host.info(id);
-                    ok=!host.fence.busy() && host.slots.index(id)<0 && now!=null && now.taskId==id
+                    ok=!host.fence.busy() && host.slots.index(id)<0 && !host.holdsUpper(id) && now!=null && now.taskId==id
                             && token.equals(field(now,"token")) && (Integer)call(now,"getWindowingMode")==1;
                 }
             }catch(RuntimeException ignored){}
@@ -207,12 +211,10 @@ final class WorkspaceRoutes {
         Bundle event;ResultReceiver host;CountDownLatch latch=new CountDownLatch(1);AtomicBoolean success=new AtomicBoolean();
         synchronized(Wm.lock){
             if(NativeWorkspaceGuard.pendingCommit!=null || NativeWorkspaceGuard.flip!=null || NativeWorkspaceGuard.events==null)return routeSkip("handoff_busy_or_host_missing");
-            Object focus=field(Wm.display,"mCurrentFocus");
-            Object front=focus==null?null:call(focus,"getTask");
-            if(!recents && (front==null || (Integer)call(front,"getActivityType")!=2))return routeSkip("focus_not_home");
+            if(!recents && !desktopHomeVisible())return routeSkip("focus_not_home");
             NativeWorkspaceGuard.SavedTask candidate=null,related=null;
             int exactCount=0,relatedCount=0;
-            for(int id:NativeWorkspaceGuard.slots.snapshot()){
+            for(int id:routeTasks()){
                 NativeWorkspaceGuard.SavedTask r=NativeWorkspaceGuard.saved.get(id);
                 if(r==null || !r.dirty || (recents ? r.id!=recentId || !routeUserAllowed(callerUser,r.user) : r.user!=user)
                         || NativeWorkspaceGuard.liveTask(r.id,r.token)!=r.task)continue;
@@ -223,7 +225,7 @@ final class WorkspaceRoutes {
             }
             if(exactCount>1 || exactCount==0 && relatedCount>1){diagnostic("DESKTOP_ROUTE","ambiguous_tasks");return false;}
             if(candidate==null && relatedCount==1)candidate=related;
-            if(candidate==null){diagnostic("DESKTOP_ROUTE","no_matching_side_task;singleEntry="+singleEntry);return false;}
+            if(candidate==null){diagnostic("DESKTOP_ROUTE","no_matching_workspace_task;singleEntry="+singleEntry);return false;}
             ActivityManager.RunningTaskInfo t=(ActivityManager.RunningTaskInfo)call(candidate.task,"getTaskInfo");
             host=NativeWorkspaceGuard.events;event=NativeWorkspaceGuard.base();
             event.putString("pkg",t.baseActivity.getPackageName());event.putInt("id",t.taskId);event.putInt("routeUser",candidate.user);
@@ -243,8 +245,29 @@ final class WorkspaceRoutes {
                     && NativeWorkspaceGuard.liveTask(current.id,current.token)==current.task
                     && (Integer)call(current.task,"getWindowingMode")==1;
         }
-        report(null,0,"桌面副任务路由：task="+event.getInt("id")+"；restored="+restored,event.getInt("id"));
+        report(null,0,"桌面工作区任务路由：task="+event.getInt("id")+"；restored="+restored,event.getInt("id"));
         return restored;
+    }
+    static int[] routeTasks(){
+        int[] side=NativeWorkspaceGuard.slots.snapshot();
+        int n=side.length;
+        int[] all=java.util.Arrays.copyOf(side,n+2);
+        all[n]=NativeTopTask.app==null?-1:NativeTopTask.app.id;
+        all[n+1]=NativeTopTask.navigation==null?-1:NativeTopTask.navigation.id;
+        return all;
+    }
+    static boolean desktopHomeVisible(){
+        Object focus=field(Wm.display,"mCurrentFocus");
+        Object front=focus==null?null:call(focus,"getTask");
+        if(front!=null && (Integer)call(front,"getActivityType")==2)return true;
+        if(!WorkspaceMainFocus.secondary(front))return false;
+        // A visible upper app may retain input focus after a tap on HOME. Accept
+        // only the exact session HOME when it is still the unique live main.
+        long identity=Binder.clearCallingIdentity();
+        try{
+            Object home=NativeWorkspaceGuard.eligibleMain(NativeWorkspaceGuard.sessionHome);
+            return home!=null && (Integer)call(home,"getActivityType")==2 && WorkspaceMainFocus.matches(home);
+        }finally{Binder.restoreCallingIdentity(identity);}
     }
     static boolean routeUserAllowed(int owner,int user){
         // The caller has already been authenticated as the native HOME package.

@@ -24,7 +24,7 @@ FILES.update({
 'android/R.java':'package android;public class R{public static class attr{public static final int progressBarStyleHorizontal=1;}}',
 'android/view/View.java':'''package android.view;import android.content.Context;public class View{
 public static final int VISIBLE=0,GONE=8;public Object parent;public Object getParent(){return parent;}public int visibility,padding,minHeight;public Object params;public Context context;
-public interface OnClickListener{void onClick(View v);}public OnClickListener click;public View(Context c){context=c;}
+public interface OnClickListener{void onClick(View v);}public OnClickListener click;public boolean clickable;public void setClickable(boolean value){clickable=value;}public View(Context c){context=c;}
 public static class MeasureSpec{public static final int UNSPECIFIED=0,EXACTLY=1;public static int makeMeasureSpec(int size,int mode){return size;}public static int getSize(int n){return n;}}
 public void measure(int w,int h){}public int getMeasuredWidth(){return 40;}public int getMeasuredHeight(){return 60;}public int getVisibility(){return visibility;}
 public int getPaddingLeft(){return 8;}public int getPaddingTop(){return 8;}public int getPaddingRight(){return 8;}public int getPaddingBottom(){return 8;}public Context getContext(){return context;}public void setOnClickListener(OnClickListener l){click=l;}public void click(){if(click!=null)click.onClick(this);}

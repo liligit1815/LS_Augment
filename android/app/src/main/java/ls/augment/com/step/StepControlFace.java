@@ -10,6 +10,7 @@ import android.widget.FrameLayout;
 /** The network pad and the two level controls leave the centerline for the three code actions. */
 final class StepControlFace extends FrameLayout {
     private View network, device, volume, brightness;
+    private boolean compact;
     private final View[] codes = new View[WorkspaceActions.Code.values().length];
     private final int[] origin = new int[2];
 
@@ -26,11 +27,29 @@ final class StepControlFace extends FrameLayout {
         codes[kind.ordinal()] = child;
         addView(child);
     }
+    void setCompact(boolean value){compact=value;}
     int codeLeft() { return codes[0].getLeft(); }
     int codeAreaWidth() { return Math.max(1,codes[codes.length-1].getRight()-codeLeft()); }
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec), height = MeasureSpec.getSize(heightSpec);
+        if(compact){
+            int gap=StepMaterial.dp(getContext(),2),level=StepMaterial.dp(getContext(),44);
+            int code=0;for(View v:codes)code=Math.max(code,v.getMinimumWidth());
+            int padWidth=Math.min(StepMaterial.dp(getContext(),128),width-2*level-3*gap-3*code);
+            padWidth=Math.max(StepMaterial.dp(getContext(),96),padWidth);
+            int codeWidth=(width-padWidth-2*level-3*gap)/3;
+            int row=StepMaterial.dp(getContext(),44),y=height-row;
+            boolean showDevice=y>=StepMaterial.dp(getContext(),22);
+            device.setVisibility(showDevice?VISIBLE:GONE);
+            if(showDevice)place(device,0,0,width,y);
+            place(network,0,y,padWidth,row);
+            int x=padWidth+gap;
+            for(View v:codes){place(v,x,y,codeWidth,row);x+=codeWidth;}
+            x+=gap;place(brightness,x,y,level,row);
+            place(volume,x+level+gap,y,level,row);
+            super.onMeasure(widthSpec,heightSpec);return;
+        }
         int gap = Math.max(1, Math.min(StepMaterial.dp(getContext(), 8), Math.min(width / 24, height / 12)));
         int square = Math.max(1, Math.min(height, Math.round((width - 3 * gap) * .35f)));
         int cellWidth = 0;

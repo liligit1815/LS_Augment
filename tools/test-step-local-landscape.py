@@ -13,6 +13,7 @@ harness=r'''
 package ls.augment.com.step;
 import java.util.*;
 public class LandscapeCases {
+    static class WorkspaceMainBounds {static int height(Object t){return logical.height();}static void activity(Object a){}}
     static int checks,traversals,applied;static boolean changing;static Object focused;
     static class ActivityInfo {static final int SCREEN_ORIENTATION_REVERSE_LANDSCAPE=8;}
     static class Probe {Object invoke(Object app,Object... args){return ((App)app).leash;}}
@@ -26,7 +27,7 @@ public class LandscapeCases {
     static class Surface {boolean valid=true;}
     static class App {Object state=new Object();Task task;Surface surface=new Surface(),leash=new Surface();Tx tx=new Tx();Rect bounds=new Rect(2688,1216);Point at=new Point();boolean side;int request=0;}
     static class Task {Object display=Wm.display,root=this;App top;int mode=1,user;Task(App a){top=a;a.task=this;}}
-    static class Tx {Map<Object,float[]> matrices=new HashMap<>(),positions=new HashMap<>();}
+    static class Tx {Map<Object,float[]> matrices=new HashMap<>(),positions=new HashMap<>();Map<Object,Object> parents=new HashMap<>();}
     static class Wm {static Object display=new Object(),service=new Object(),context=new Object();}
     static class WorkspaceUsers {static boolean allows(Object c,int p,int u){return u==p;}}
     static int principal;static Object manualApp;static Rect logical=new Rect(1216,2688);
@@ -37,12 +38,13 @@ public class LandscapeCases {
     static Object field(Object o,String n){if(o instanceof App a)return a.state;return ((Task)o).user;}
     static Object call(Object o,String n,Object... args){
         if(o==Wm.service){if(n.equals("requestTraversal"))traversals++;return null;}
-        if(o instanceof App a)return switch(n){case "getFixedRotationTransformDisplayBounds"->a.bounds;case "getSurfaceControl"->a.surface;case "getSyncTransaction"->a.tx;case "getLastSurfacePosition"->a.at;case "getTask"->a.task;case "getRequestedOrientation"->a.request;default->throw new AssertionError(n);};
+        if(o instanceof App a)return switch(n){case "getFixedRotationLeash"->a.leash;case "getFixedRotationTransformDisplayBounds"->a.bounds;case "getSurfaceControl"->a.surface;case "getSyncTransaction"->a.tx;case "getLastSurfacePosition"->a.at;case "getTask"->a.task;case "getRequestedOrientation"->a.request;default->throw new AssertionError(n);};
         if(o instanceof Task t)return switch(n){case "getDisplayContent"->t.display;case "getRootTask"->t.root;case "getWindowingMode"->t.mode;case "topRunningActivity"->t.top;default->throw new AssertionError(n);};
         if(o instanceof Surface s)return s.valid;
         if(o instanceof Tx t){
             if(n.equals("setMatrix"))t.matrices.put(args[0],new float[]{(Float)args[1],(Float)args[2],(Float)args[3],(Float)args[4]});
             else if(n.equals("setPosition"))t.positions.put(args[0],new float[]{(Float)args[1],(Float)args[2]});
+            else if(n.equals("reparent"))t.parents.put(args[0],args[1]);
             else throw new AssertionError(n);return null;
         }
         throw new AssertionError(n);
@@ -51,7 +53,7 @@ public class LandscapeCases {
     public static void main(String[] args)throws Exception{
         for(int rotation:new int[]{1,3})for(boolean side:new boolean[]{false,true}){
             App app=new App();new Task(app);app.side=side;Token token=new Token(app.state,rotation);tokens.put(app,token);
-            Surface leash=new Surface();fit(app,app.tx,leash);float[] m=app.tx.matrices.get(app.surface);
+            Surface leash=app.leash;fit(app,app.tx,leash);float[] m=app.tx.matrices.get(app.surface);
             near(m[0],m[3],"uniform aspect, no stretching");near(m[1]+m[2],0,"activity surface has no shear");
             float[] lm=app.tx.matrices.get(leash),pos=app.tx.positions.get(leash);
             {
@@ -73,7 +75,13 @@ public class LandscapeCases {
             near(app.tx.matrices.get(app.surface)[0],1,"native matrix restored");near(app.tx.positions.get(app.surface)[0],3,"native x restored");near(app.tx.positions.get(app.surface)[1],5,"native y restored");
             check(token.surface==null,"duplicate native/explicit completion cannot reset twice");
         }
-        App changed=new App();new Task(changed);Token token=new Token(changed.state,1);tokens.put(changed,token);Surface leash=new Surface();fit(changed,changed.tx,leash);
+        App changed=new App();new Task(changed);Token token=new Token(changed.state,1);tokens.put(changed,token);Surface leash=changed.leash;fit(changed,changed.tx,leash);
+        check(changed.tx.parents.get(changed.surface)==leash,"owned activity is inside its native rotation leash");
+        changed.tx.parents.put(changed.surface,changed.task);
+        fit(changed,changed.tx,leash);
+        check(changed.tx.parents.get(changed.surface)==leash,"late native transition reparent is repaired, preventing landscape black area");
+        changed.tx=new Tx();fit(changed,changed.tx,new Surface());
+        check(changed.tx.parents.isEmpty() && changed.tx.matrices.isEmpty(),"stale rotation leash cannot acquire the activity");
         changed.side=true;int before=traversals;
         check(refresh(changed,null),"stable owned side orientation remains eligible without a foreground transition");
         check(traversals==before+1,"queued local pose must reach display traversal even when the side app is idle");

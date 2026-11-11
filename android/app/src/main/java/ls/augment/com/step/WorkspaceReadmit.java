@@ -55,8 +55,22 @@ final class WorkspaceReadmit {
         }catch(RuntimeException|ReflectiveOperationException|LinkageError e){report(null,0,"无法核验原任务进程："+e,-1);}
     }
     static int thaws,drawn;
+    static void prepare(SavedTask record){
+        // Ordinary side windows can draw without becoming the focused application.
+        // Preserve the established resume/focus lease for declared game renderers;
+        // unknown application metadata keeps that checked legacy path as well.
+        record.readmitFocus=true;
+        try{
+            Object a=call(record.task,"topRunningActivity");
+            android.content.pm.ActivityInfo info=(android.content.pm.ActivityInfo)field(a,"info");
+            android.content.pm.ApplicationInfo app=info.applicationInfo;
+            if(app!=null)record.readmitFocus=app.category==android.content.pm.ApplicationInfo.CATEGORY_GAME
+                    || (app.flags&android.content.pm.ApplicationInfo.FLAG_IS_GAME)!=0;
+        }catch(RuntimeException|LinkageError missing){diagnostic("READMIT_CAPABILITY","legacy_focus;reason="+missing);}
+        diagnostic("READMIT_POLICY","task="+record.id+";focusLease="+record.readmitFocus);
+    }
     static boolean allowsFocus(SavedTask record,Object task){
-        return record!=null && pending==record && record.task==task && record.dirty;
+        return record!=null && pending==record && record.task==task && record.dirty && record.readmitFocus;
     }
     static void settle(SavedTask r,IBinder expected,TaskIdentity main,long start,Runnable complete,Runnable skipped){
         if(owner!=expected || !active || ending)return;
@@ -77,11 +91,15 @@ final class WorkspaceReadmit {
                 if(elapsed<32)diagnostic("READMIT_DRAW","task="+r.id+";state="+activityState.invoke(a)+";decorDrawn="+frame+";windowFocused="+focused);
                 // A drawn decor can predate onResume and the game's SurfaceView.
                 // Keep the native focus lease until resume has actually occurred.
-                if((!frame || !resumed || !focused || elapsed<500) && elapsed<1500){Wm.handler.postDelayed(()->settle(r,expected,main,start,complete,skipped),32);return;}
-                if(!frame || !resumed || !focused){skip(r,expected,skipped,"原副任务未完成恢复绘制");return;}
-                diagnostic("READMIT_DRAW","task="+r.id+";state=RESUMED;decorDrawn=true;windowFocused=true;elapsedMs="+elapsed);
+                boolean lifecycleReady=!r.readmitFocus || resumed && focused;
+                if((!frame || !lifecycleReady || elapsed<(r.readmitFocus?500:32)) && elapsed<1500){Wm.handler.postDelayed(()->settle(r,expected,main,start,complete,skipped),32);return;}
+                if(!frame || !lifecycleReady){skip(r,expected,skipped,"原副任务未完成恢复绘制");return;}
+                diagnostic("READMIT_DRAW","task="+r.id+";state="+activityState.invoke(a)+";decorDrawn=true;windowFocused="+focused+";focusLease="+r.readmitFocus+";elapsedMs="+elapsed);
                 drawn++;
-                Object wct=transaction();call(wct,"setFocusable",r.token,false);
+                // End the temporary game focus lease before native focus is recomputed.
+                // The task can remain resumable while the main window takes keyboard focus.
+                pending=null;
+                Object wct=transaction();call(wct,"setFocusable",r.token,SideLifecycle.keepResumed());
                 if(main!=null && main.id!=r.id && WorkspaceUsers.allows(Wm.context,principal,main.user)){
                     Object previous=liveTask(main.id,main.token);
                     if(runningActivity(previous) && !ownsTask(previous) && (Integer)call(previous,"getWindowingMode")==1)call(wct,"reorder",main.token,true);

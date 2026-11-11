@@ -23,6 +23,7 @@ final class ModuleNavigation {
         if(owner instanceof StatusBarSettingsActivity)return "status_legacy";
         if(owner instanceof CompetitiveKeySettingsActivity)return "competitive_key";
         if(owner instanceof AtomicWorkbenchSettingsActivity)return "atomic_workbench";
+        if(owner instanceof StepWallpaperActivity)return "atomic_workbench_wallpaper";
         if(owner instanceof StepGestureGuideActivity)return "atomic_workbench_guide";
         if(owner instanceof AtomicWorkbenchActivity)return "atomic_workbench_session";
         if(owner instanceof StatusBarAssetsActivity)return "status_assets";
@@ -86,6 +87,7 @@ final class ModuleNavigation {
         switch (route) {
             case "atomic_workbench":destination=AtomicWorkbenchSettingsActivity.class;break;
             case "atomic_workbench_guide":destination=StepGestureGuideActivity.class;break;
+            case "atomic_workbench_wallpaper":destination=StepWallpaperActivity.class;break;
             case "atomic_workbench_apps":case "atomic_workbench_app_sort":destination=ls.augment.com.step.QuickPinsActivity.class;break;
             case "competitive_key":destination=CompetitiveKeySettingsActivity.class;break;
             case "home":case "settings":case "about":

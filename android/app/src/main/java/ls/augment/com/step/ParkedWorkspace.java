@@ -3,10 +3,11 @@ package ls.augment.com.step;
 /** A volatile, exact-identity bookmark. Never resolves a task by application or by ID alone. */
 public final class ParkedWorkspace {
     public static final int UPPER=SideSlots.MAX_COUNT;
+    public static final int NAVIGATION=UPPER+1,COUNT=NAVIGATION+1;
     int principal=-1,page;
     boolean left,topFace,manualMain;
     TaskIdentity main;
-    private final TaskIdentity[] items=new TaskIdentity[UPPER+1];
+    private final TaskIdentity[] items=new TaskIdentity[COUNT];
     ParkedWorkspace copy(){
         ParkedWorkspace scene=new ParkedWorkspace();scene.principal=principal;scene.page=page;scene.left=left;
         scene.topFace=topFace;scene.manualMain=manualMain;scene.main=main;
@@ -17,7 +18,7 @@ public final class ParkedWorkspace {
         boolean partial=false;
         if(main!=null && !running.test(main)){main=null;manualMain=false;partial=true;}
         for(int i=0;i<items.length;i++){
-            if(items[i]!=null && (!running.test(items[i]) || i==UPPER && !upperEnabled)){
+            if(items[i]!=null && (!running.test(items[i]) || i>=UPPER && !upperEnabled)){
                 items[i]=null;partial=true;
             }else if(i>=sideCount && i<UPPER && items[i]!=null)partial=true;
         }

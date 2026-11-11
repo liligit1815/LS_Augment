@@ -445,6 +445,7 @@ public final class AugmentModule extends RootEarlyModule {
         }
         if ("com.zte.mifavor.launcher".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
+            NativeIslandLauncherCapsule.install(this, param.getClassLoader());
             ls.augment.com.step.WorkspaceGestureGate.installLauncher(this,param.getClassLoader());
             LauncherResetHook.install(this);
             LauncherGridHook.install(this, param.getClassLoader());

@@ -8,11 +8,15 @@ harness=r'''
 package ls.augment.com.step;
 import java.util.*;
 public class MotionCases {
-    static int checks,replies;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
+    static int layoutCount=3,layoutInset;
+    static boolean mainReflow;
+    static int checks,replies,roleCalls,lastCode;static boolean failRoles,delayRoles;static Runnable landing;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
     interface Parcelable {}
     static class ResultReceiver {}
     static class Bundle {Map<String,Object> data=new HashMap<>();void putBoolean(String k,boolean v){data.put(k,v);}}
     static class Intent extends Bundle {
+        Intent(){}Intent(Intent original){data.putAll(original.data);}
+        Intent putExtra(String k,boolean v){return put(k,v);}
         Intent put(String k,Object v){data.put(k,v);return this;}
         int getIntExtra(String k,int d){return (Integer)data.getOrDefault(k,d);}
         boolean getBooleanExtra(String k,boolean d){return (Boolean)data.getOrDefault(k,d);}
@@ -51,13 +55,14 @@ public class MotionCases {
     static class Wm {static Object lock=new Object(),display=new Object(),ownedSpec=new Object();static boolean active=true;static Handler handler=new Handler();static Context context=new Context();}
     static class Point {int x,y;}
     static class Task {SurfaceControl sc=new SurfaceControl();Object parent=new Object();int mode;boolean focused;}
+    static class WorkspaceMainFocus {static boolean matches(Task task){return task.focused;}}
     static class SavedTask {int id,user,layerId;Object token=new Object(),parent;Task task=new Task();boolean dirty=true;Point position=new Point();
         SavedTask(int id,int mode){this.id=id;task.mode=mode;task.focused=mode==1;layerId=task.sc.id;parent=task.parent;}}
     static class WorkspaceUsers {static boolean allows(Context c,int p,int u){return u==0;}}
     static class WorkspaceIme {static void cancel(){}}
     static class WorkspaceImeHandoff {static void prepare(NativeFlip f,Runnable r){r.run();}}
     static class NativeBackdrop {static Runnable pending;NativeBackdrop(Intent i,SavedTask r){}void prepare(NativeFlip f,Runnable r){pending=r;}}
-    static class StepMembers {static float getFloatField(Object o,String n){return new WorkspaceLayout(1080,2400,2.5f,sideLeft).top;}}
+    static class StepMembers {static float getFloatField(Object o,String n){return new WorkspaceLayout(1080,2400,2.5f,sideLeft,layoutCount,layoutInset).top;}}
     static NativeFlip flip;static boolean ending,sideLeft;static int principal;static Rect logical=new Rect();
     static SideSlots slots=new SideSlots();static Map<Integer,SavedTask> saved=new HashMap<>();static Map<Object,SurfaceControl> parents=new HashMap<>();
     static Object liveTask(int id,Object token){SavedTask s=saved.get(id);return s!=null && s.token==token?s.task:null;}
@@ -71,12 +76,19 @@ public class MotionCases {
     }
     static void validSurface(Object s){if(!(s instanceof SurfaceControl c) || !c.valid)throw new IllegalStateException();}
     static Bundle base(){return new Bundle();}
-    static void respond(ResultReceiver reply,int code,Bundle b,String message){replies++;}
+    static void respond(ResultReceiver reply,int code,Bundle b,String message){replies++;lastCode=code;}
+    static void report(Object a,int b,String c,int d){}
+    static void roles(Intent request,ResultReceiver reply){
+        roleCalls++;check(flip.committed,"roles cannot start before native final-frame confirmation");
+        check(request.getBooleanExtra("flipLanded",false),"landing reply must identify completed server handoff");
+        flip.checkRoles(request);if(failRoles)throw new IllegalStateException("native identity changed");
+        landing=()->respond(reply,0,base(),"landed");if(!delayRoles)landing.run();
+    }
     static void finish(String why){ending=true;if(flip!=null)flip.cancelAnimator();}
     static void stageMagnification(Object tx){check(tx instanceof SurfaceControl.Transaction,"native parent normalization shares first frame transaction");check(flip.ownsTransforms,"physical isolation starts inside the first surface transaction");}
     NATIVE
-    static Intent reset(boolean returning,boolean left){
-        saved.clear();parents.clear();slots.clear();Choreographer.clock=new Choreographer();ending=false;sideLeft=left;replies=0;
+    static Intent reset(boolean returning,boolean left){layoutCount=3;layoutInset=0;
+        saved.clear();parents.clear();slots.clear();Choreographer.clock=new Choreographer();ending=false;sideLeft=left;replies=roleCalls=0;failRoles=delayRoles=false;landing=null;
         SavedTask out=new SavedTask(1,1),in=new SavedTask(2,6),peer=new SavedTask(3,6);
         saved.put(1,out);saved.put(2,in);saved.put(3,peer);slots.replace(0,-1,2);slots.replace(1,-1,3);
         WorkspaceLayout from=new WorkspaceLayout(1080,2400,2.5f,left),to=new WorkspaceLayout(1080,2400,2.5f,left);
@@ -113,8 +125,8 @@ public class MotionCases {
         for(int s=0;s<count;s++){
             int id=s==selected?2:10+s;saved.put(id,new SavedTask(id,6));slots.replace(s,-1,id);lanes[s+1]=new SurfaceControl();
         }
-        WorkspaceLayout layout=new WorkspaceLayout(1080,2400,2.5f,left);
-        request.put("slot",selected).put("visible",count).put("height",layout.rowHeight(selected,count)).put("rowTop",layout.rowTop(selected,count));
+        layoutCount=count;WorkspaceLayout layout=new WorkspaceLayout(1080,2400,2.5f,left,count,layoutInset);
+        request.put("fromX",layout.mainX).put("toX",layout.mainX).put("top",layout.top).put("width",layout.sideWidth).put("slot",selected).put("visible",count).put("height",layout.rowHeight(selected,count)).put("rowTop",layout.rowTop(selected,count));
         flip=new NativeFlip(request);NativeFlip f=flip;f.start(new ResultReceiver());
         for(long nanos:new long[]{1,80_000_001,160_000_001,240_000_001,320_000_001}){
             Choreographer.clock.frame(nanos);
@@ -143,8 +155,24 @@ public class MotionCases {
         Choreographer.clock.frame(400_000_000);check(replies==0 && Choreographer.clock.pending.isEmpty(),"cancelled animation cannot send late success");
         request=reset(true,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());Choreographer.clock.frame(1);saved.get(2).task.parent=new Object();
         Choreographer.clock.frame(320_000_001);check(ending && replies==0,"changed native parent fails final identity check");
+        request=reset(false,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());Choreographer.clock.frame(1);saved.get(1).task.focused=false;
+        Choreographer.clock.frame(320_000_001);check(ending && replies==0,"changed live main fails final role check");
         request=reset(true,false).put("background",true);try{new NativeFlip(request);throw new AssertionError("background return");}catch(IllegalStateException expected){checks++;}
         request=reset(true,false).put("previous",99);try{new NativeFlip(request);throw new AssertionError("stale slot");}catch(IllegalStateException expected){checks++;}
+        request=reset(false,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());delayRoles=true;
+        Choreographer.clock.frame(1);Choreographer.clock.frame(320_000_001);
+        check(roleCalls==1 && replies==0 && landing!=null,"native landing starts without any host reply or second request");
+        check(!request.getBooleanExtra("flipLanded",false),"request copy does not mutate caller payload");
+        landing.run();check(replies==1 && lastCode==0,"host success waits for landing confirmation");flip.close();
+        request=reset(false,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());failRoles=true;
+        Choreographer.clock.frame(1);Choreographer.clock.frame(320_000_001);
+        check(ending && roleCalls==1 && replies==1 && lastCode==-1,"failed final handoff restores ownership and reports failure");flip.close();
+        request=reset(false,false);flip=new NativeFlip(request);NativeFlip obsolete=flip;flip=null;obsolete.finishFrame(new ResultReceiver());
+        check(roleCalls==0 && replies==0 && !obsolete.committed,"stale session final callback does nothing");obsolete.close();
+        request=reset(false,false);flip=new NativeFlip(request);ending=true;flip.finishFrame(new ResultReceiver());
+        check(roleCalls==0 && replies==0 && !flip.committed,"closing session never starts another handoff");flip.close();
+        request=reset(false,false);flip=new NativeFlip(request);sideLeft=true;flip.finishFrame(new ResultReceiver());
+        check(roleCalls==0 && replies==1 && !ending,"changed-side legacy path still awaits host relayout");flip.close();
         System.out.println("PASS "+checks+" production Step animation checks: fixed left/right regions, every row in 3/4/5 slots, stationary peers, desktop promotion, cancellation, stale identity and landing");
     }
 }

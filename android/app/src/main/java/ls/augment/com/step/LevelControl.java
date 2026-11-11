@@ -126,11 +126,22 @@ final class LevelControl extends FrameLayout {
         try{temporary.invoke(display,0,Float.NaN);previewOwned=false;}
         catch(Exception|LinkageError failure){capability("preview_release_failed:"+failure.getClass().getSimpleName());}
     }
+    boolean compact;
+    void setCompact(){
+        compact=true;setMinimumWidth(owner.dp(44));
+        FrameLayout.LayoutParams icon=new FrameLayout.LayoutParams(owner.dp(18),owner.dp(18),Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+        icon.topMargin=owner.dp(3);symbol.setLayoutParams(icon);
+        FrameLayout.LayoutParams text=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+        text.bottomMargin=owner.dp(3);caption.setLayoutParams(text);caption.setGravity(Gravity.CENTER);caption.setMaxLines(1);
+        showValue();
+    }
     void refresh(){adjustable=read(false,0);showValue();}
     void showValue(){
         String name=light?"亮度":"媒体音量";
         String value=adjustable?name+" "+Math.round(100*fraction)+"%":name+"设置";
-        if(!value.contentEquals(caption.getText())){caption.setText(value);setContentDescription(value);}
+        String shown=compact?(adjustable?Math.round(100*fraction)+"%":"设置"):value;
+        if(!shown.contentEquals(caption.getText()))caption.setText(shown);
+        setContentDescription(value);
         caption.setTextColor(0xfff5f7fa);
         symbol.accent=0xfff5f7fa;symbol.invalidate();invalidate();
     }

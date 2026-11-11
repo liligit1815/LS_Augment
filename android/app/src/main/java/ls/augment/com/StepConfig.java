@@ -8,7 +8,6 @@ import ls.augment.com.step.WorkspaceCapacity;
 public final class StepConfig {
     static final String UPPER = "atomic_workbench_upper_enabled";
     static final String PAGE_INDICATOR = "atomic_workbench_page_indicator";
-
     public static boolean pageIndicator(Context context) {
         return new AppConfig(context).getBoolean(PAGE_INDICATOR);
     }

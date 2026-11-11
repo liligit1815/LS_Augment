@@ -48,8 +48,8 @@ final class QuickPicker {
         header.addView(title,new LinearLayout.LayoutParams(0,-1,1));
         TextView cross=StepMaterial.label(ctx,"×",23,false);cross.setContentDescription("关闭，不保存");cross.setOnClickListener(v->dialog.dismiss());
         header.addView(cross,dp(44),-1);body.addView(header,-1,dp(44));
-        TextView desc=StepMaterial.label(ctx,"按选择顺序，固定在应用栏最前",13,false);desc.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
-        body.addView(desc,-1,dp(28));
+        TextView desc=StepMaterial.label(ctx,"按选择顺序保存，取消后重新选择可调整顺序",13,false);desc.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        desc.setMinHeight(dp(28));body.addView(desc,-1,-2);
         search=new EditText(ctx); search.setSingleLine(); search.setTextSize(15); search.setTextColor(StepMaterial.ink(ctx));
         search.setHint("搜索应用");search.setContentDescription("搜索快捷应用");search.setBackground(StepMaterial.glass(ctx,false,15));
         search.setPadding(pad,0,pad,0); body.addView(search,-1,dp(44));
@@ -95,18 +95,37 @@ final class QuickPicker {
         int preferred=Math.min(dp(540),Math.round(screen.height()*.76f));
         int width=Math.min(dp(430),Math.round(screen.width()*.90f));
         w.setLayout(width,preferred);
-        // A floating window may stay the same size when the IME appears. Use the
-        // physical IME insets, keeping both action buttons above its upper edge.
-        w.getDecorView().setOnApplyWindowInsetsListener((v,insets)->{
-            int ime=insets.getInsets(WindowInsets.Type.ime()).bottom;
+        // Some OEM panel windows consume IME insets while still reporting the
+        // reduced visible display frame. Observe both; do not reuse this dialog's
+        // own bounds as the available display, which would shrink it repeatedly.
+        View decor=w.getDecorView();
+        Runnable fit=()->{
+            if(!decor.isAttachedToWindow())return;
+            WindowInsets root=decor.getRootWindowInsets();
             WindowInsets physical=ctx.getSystemService(WindowManager.class).getCurrentWindowMetrics().getWindowInsets();
-            int keyboard=Math.max(ime,physical.getInsets(WindowInsets.Type.ime()).bottom);
-            int available=screen.height()-keyboard-physical.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).top-dp(16);
-            int size=Math.min(preferred,Math.max(dp(170),available));
-            if(w.getAttributes().height!=size)w.setLayout(width,size);
-            return v.onApplyWindowInsets(insets);
-        });
+            int keyboard=Math.max(root==null?0:root.getInsets(WindowInsets.Type.ime()).bottom,
+                    physical.getInsets(WindowInsets.Type.ime()).bottom);
+            int safeTop=physical.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).top;
+            Rect visible=new Rect();decor.getWindowVisibleDisplayFrame(visible);
+            int[] location=new int[2];decor.getLocationOnScreen(location);
+            int bottom=availableBottom(screen,visible,location[1]+decor.getHeight(),keyboard);
+            int available=Math.max(1,bottom-screen.top-safeTop-dp(16));
+            int size=Math.min(preferred,available);
+            if(w.getAttributes().height!=size){
+                StepRuntime.diagnostic("PICKER_VIEWPORT","ime="+keyboard+";visible="+visible.toShortString()+";height="+size);
+                w.setLayout(width,size);
+            }
+        };
+        decor.setOnApplyWindowInsetsListener((v,insets)->{v.post(fit);return v.onApplyWindowInsets(insets);});
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(fit::run);
         refresh();
+    }
+    static int availableBottom(Rect screen,Rect visible,int ownBottom,int ime){
+        int bottom=screen.bottom-Math.max(0,ime);
+        if(visible.left<=screen.left && visible.right>=screen.right && visible.bottom>screen.top
+                && visible.bottom<=screen.bottom && Math.abs(visible.bottom-ownBottom)>1)
+            bottom=Math.min(bottom,visible.bottom);
+        return Math.max(screen.top,bottom);
     }
     void refresh(){
         String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);

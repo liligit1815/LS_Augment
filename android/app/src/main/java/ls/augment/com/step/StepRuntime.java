@@ -89,7 +89,7 @@ public final class StepRuntime {
             if(enabled && server)GameInput.prepare();
             if(!enabled){
                 if(server){if(Wm.active)Wm.stop("配置暂挂");}
-                else{LiveWorkspace.stop("配置暂挂");WorkspaceClipboard.history.reset();PlayerCard.forget();}
+                else{WorkspaceWake.cancel();LiveWorkspace.stop("配置暂挂");WorkspaceClipboard.history.reset();PlayerCard.forget();}
             }
         });
         StepHooks.module.observeStep(ctx,changed);
@@ -136,7 +136,10 @@ public final class StepRuntime {
                             else if(PhysicalIme.window(p.thisObject,attrs)){p.setResult(false);PhysicalIme.exclusions++;}
                             else if (side || NativeWorkspaceGuard.physicalNativeWindow(task) || TITLE.contentEquals(attrs.getTitle()) || WorkspaceInput.TITLE.contentEquals(attrs.getTitle())
                                     || WorkspaceQuickBar.TITLE.contentEquals(attrs.getTitle()) || QuickPicker.TITLE.contentEquals(attrs.getTitle())
-                                    || SlotCountDialog.TITLE.contentEquals(attrs.getTitle()) || WorkspaceActions.TITLE.contentEquals(attrs.getTitle())) p.setResult(false);
+                                    || SlotCountDialog.TITLE.contentEquals(attrs.getTitle()) || WorkspaceActions.TITLE.contentEquals(attrs.getTitle())
+                                    || WorkspaceToolMenu.TITLE.contentEquals(attrs.getTitle())
+                                    || WorkspaceSideToolbar.physical(attrs.type,attrs.getTitle(),StepMembers.getIntField(p.thisObject,"mOwnerUid"),NativeWorkspaceGuard.systemUiUid)
+                                    || WorkspaceRecentSheet.physical(attrs.type,attrs.getTitle(),StepMembers.getIntField(p.thisObject,"mOwnerUid"),NativeWorkspaceGuard.systemUiUid)) p.setResult(false);
                             else if(!PhysicalIme.current() && (attrs.type==2011 || attrs.type==2012)){
                                 Object target=call(display,"getImeInputTarget");
                                 Object w=target==null?null:call(target,"getWindowState"),t=w==null?null:call(w,"getTask");
@@ -256,6 +259,7 @@ public final class StepRuntime {
             }
         }
         static void moveWorkspace(WorkspaceLayout target) throws Exception {
+            if(target.reflow)WorkspaceMainBounds.use(target);
             moveSpec(target.mainScale,target.mainX,target.top);
         }
         static void moveSpec(float scale,float x,float y)throws Exception{
@@ -280,6 +284,7 @@ public final class StepRuntime {
             handler.removeCallbacks(TIMEOUT);
             try {
                 synchronized (lock) {
+                    WorkspaceMainBounds.clear();
                     Object current = field(display, "mMagnificationSpec");
                     active = false;
                     if (current == ownedSpec) {
@@ -385,6 +390,7 @@ public final class StepRuntime {
             loader = cl;
             try {
                 CornerEntry.install(cl);
+                WorkspaceFinish.install(cl);
                 NativeTiles.install(cl);
                 NativeBrightnessBinding.install(cl);
                 WorkspaceRoutes.installNotification(cl);
@@ -422,10 +428,16 @@ public final class StepRuntime {
                     }
                 });
                 IntentFilter life = new IntentFilter(Intent.ACTION_SCREEN_OFF); life.addAction(Intent.ACTION_CONFIGURATION_CHANGED);
+                life.addAction(Intent.ACTION_SCREEN_ON);life.addAction(Intent.ACTION_USER_PRESENT);
                 life.addAction("android.intent.action.USER_SWITCHED");
                 life.addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
                 context.registerReceiver(new BroadcastReceiver() {
                     @Override public void onReceive(Context c, Intent i) {
+                        if(Intent.ACTION_SCREEN_ON.equals(i.getAction()) || Intent.ACTION_USER_PRESENT.equals(i.getAction())){
+                            WorkspaceWake.awaken();return;
+                        }
+                        if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))WorkspaceWake.remember(LiveWorkspace.current);
+                        if("android.intent.action.USER_SWITCHED".equals(i.getAction()))WorkspaceWake.cancel();
                         if(Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(i.getAction())){
                             if("homekey".equals(i.getStringExtra("reason")))LiveWorkspace.stop("桌面暂挂");
                             return;

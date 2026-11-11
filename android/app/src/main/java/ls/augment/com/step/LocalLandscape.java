@@ -33,6 +33,7 @@ final class LocalLandscape {
                     token=Class.forName("com.android.server.wm.WindowToken",false,cl), dr=Class.forName("com.android.server.wm.DisplayRotation",false,cl);
             start=exact(dc,"startFixedRotationTransform",void.class,token,int.class);finish=exact(token,"finishFixedRotationTransform",void.class);
             Class<?> surface=Class.forName("android.view.SurfaceControl",false,cl),tx=Class.forName("android.view.SurfaceControl$Transaction",false,cl);
+            exact(tx,"reparent",tx,surface,surface);
             leash=exact(token,"getOrCreateFixedRotationLeash",surface,tx);
             exact(token,"getFixedRotationLeash",surface);
             exact(token,"getLastSurfacePosition",android.graphics.Point.class);
@@ -58,10 +59,12 @@ final class LocalLandscape {
                     Object app=field(w,"mActivityRecord");Token held=tokens.get(app);
                     if(held==null || field(app,"mFixedRotationTransformState")!=held.state || call(w,"getDisplayContent")!=Wm.display)return;
                     Object task=call(w,"getTask");
-                    if(task==null || (Integer)call(task,"getWindowingMode")!=1 || task!=call(task,"getRootTask") || !logical.equals(call(task,"getBounds")))return;
+                    if(task==null || (Integer)call(task,"getWindowingMode")!=1 || task!=call(task,"getRootTask"))return;
+                    android.graphics.Rect footprint=new android.graphics.Rect(0,0,logical.width(),WorkspaceMainBounds.height(task));
+                    if(!footprint.equals(call(task,"getBounds")))return;
                     android.graphics.Rect rotated=(android.graphics.Rect)call(app,"getFixedRotationTransformDisplayBounds");
                     if(rotated==null || rotated.width()!=logical.height() || rotated.height()!=logical.width())return;
-                    ((android.graphics.Region)p.args[0]).op(rotated,android.graphics.Region.Op.INTERSECT);p.setResult(null);
+                    ((android.graphics.Region)p.args[0]).op(new android.graphics.Rect(0,0,footprint.height(),footprint.width()),android.graphics.Region.Op.INTERSECT);p.setResult(null);
                 }catch(Throwable e){error(e);}
             }});
             Method request=exact(ar,"setRequestedOrientation",void.class,int.class);
@@ -192,6 +195,7 @@ final class LocalLandscape {
             Object state=field(target,"mFixedRotationTransformState");
             if(state==null)return false;
             tokens.put(target,new Token(state,desired));applied++;
+            WorkspaceMainBounds.activity(target);
             Object tx=call(target,"getSyncTransaction");fit(target,tx,leash.invoke(target,tx));
             call(Wm.service,"requestTraversal");return true;
         }finally{changing=false;}
@@ -223,6 +227,7 @@ final class LocalLandscape {
     }
     static void fit(Object a,Object tx,Object rotationLeash)throws Exception{
         if(!owned(a))return;
+        if(rotationLeash!=call(a,"getFixedRotationLeash"))return;
         android.graphics.Rect bounds=(android.graphics.Rect)call(a,"getFixedRotationTransformDisplayBounds");
         if(bounds==null || bounds.width()!=logical.height() || bounds.height()!=logical.width())
             throw new IllegalStateException("横屏原始尺寸未确认");
@@ -231,9 +236,14 @@ final class LocalLandscape {
         // The main magnification or side task parent supplies the only scale;
         // native input windows inherit this exact rotation when roles change.
         float turn=tokens.get(a).rotation==1?1f:-1f;
+        // A finishing native transition can put the activity back under its
+        // task after our next layout has acquired a new rotation leash. The
+        // native getter returns that existing leash without repairing ancestry.
+        // Reassert only this token's current native leash, together with its pose.
+        call(tx,"reparent",surface,rotationLeash);
         call(tx,"setMatrix",surface,1f,0f,0f,1f);
         call(tx,"setMatrix",rotationLeash,0f,turn,-turn,0f);
-        call(tx,"setPosition",rotationLeash,turn>0?(float)logical.width():0f,turn>0?0f:(float)logical.height());
+        call(tx,"setPosition",rotationLeash,turn>0?(float)logical.width():0f,turn>0?0f:(float)WorkspaceMainBounds.height(call(a,"getTask")));
         call(tx,"setPosition",surface,0f,0f);
         tokens.get(a).surface=surface;
     }

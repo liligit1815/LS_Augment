@@ -14,7 +14,6 @@ final class MagicIslandScenes {
     private static boolean installed;
     private final Context context;
     private final Object host;
-    private final Method remove;
     private final Field cards;
     private boolean closed;
     private final Runnable changed=()->MAIN.post(this::refresh);
@@ -41,7 +40,7 @@ final class MagicIslandScenes {
             if(flag.getType()!=boolean.class||!Modifier.isStatic(flag.getModifiers())||!flag.getBoolean(null))return 0;
             Class<?> type=Class.forName("com.zte.feature.dynamicisland.PermanentIslandManager",false,loader);
             Method disabled=exact(type,"isDynamicIslandDisabled",boolean.class,String.class);
-            exact(type,"handleRemoveIsland",void.class,String.class);typed(type,"mAppIslandList",Map.class);
+            Method remove=exact(type,"handleRemoveIsland",void.class,String.class);typed(type,"mAppIslandList",Map.class);
             Class<?> message=Class.forName("com.zte.toolsdk.common.CardMessage",false,loader);
             Method receive=exact(type,"handleCardMessage",void.class,message,boolean.class);
             Method id=exact(message,"getCardId",String.class);
@@ -50,10 +49,9 @@ final class MagicIslandScenes {
                 // MultiScreen's SDK prefixes its already package-qualified raw ID. The native settings
                 // gate recognizes the raw alias; preserve the wire ID for views, actions and removal.
                 if(Boolean.FALSE.equals(result)&&current!=null&&current.host==chain.getThisObject()
-                        &&current.selected()&&FeatureSettings.enabled(current.context,NativeIslandSceneOptions.ENABLED)
+                        &&current.completing(key)
                         &&"com.zte.multscr_com.zte.multscr.share_transfer".equals(key))
                     result=chain.proceed(new Object[]{"com.zte.multscr.share_transfer"});
-                if(Boolean.FALSE.equals(result)&&current!=null&&current.host==chain.getThisObject()&&current.denied(key))return true;
                 return result;
             }));
             module.registerFeatureHook(module.prepareFeatureHook(receive,"native_island.magic_live_update",false).intercept(chain->{
@@ -62,38 +60,48 @@ final class MagicIslandScenes {
                 boolean recreate=false;
                 try{
                     String key=(String)id.invoke(messageValue);
-                    if(current.denied(key))return null;
                     // A fresh UPDATE after withdrawal may recreate the card; never replay saved messages.
-                    recreate=current.selected()&&FeatureSettings.enabled(current.context,NativeIslandSceneOptions.ENABLED)
-                            &&MagicIslandPolicy.scene(key)!=null&&!((Map<?,?>)current.cards.get(current.host)).containsKey(key);
+                    recreate=current.completing(key)&&!((Map<?,?>)current.cards.get(current.host)).containsKey(key);
                 }catch(Exception failure){current.unavailable(failure);}
-                if(recreate)return chain.proceed(new Object[]{messageValue,true});
-                return chain.proceed();
+                Object result=recreate?chain.proceed(new Object[]{messageValue,true}):chain.proceed();
+                MAIN.post(current::refresh);
+                return result;
             }));
-            installed=true;return 2;
+            module.registerFeatureHook(module.prepareFeatureHook(remove,"native_island.magic_capsule_remove",false).intercept(chain->{
+                Object result=chain.proceed();MagicIslandScenes current=active;
+                if(current!=null&&current.host==chain.getThisObject())MAIN.post(current::refresh);
+                return result;
+            }));
+            installed=true;return 3;
         }catch(Throwable missing){module.logFeatureError("MAGIC_ISLAND_SCENE_CONTRACT",missing);return 0;}
     }
     MagicIslandScenes(Context context,Object host)throws Exception{
         if(!installed)throw new IllegalStateException("magic_scene_hooks_missing");
         this.context=context;this.host=host;
-        remove=exact(host.getClass(),"handleRemoveIsland",void.class,String.class);
+        exact(host.getClass(),"handleRemoveIsland",void.class,String.class);
         cards=typed(host.getClass(),"mAppIslandList",Map.class);
     }
     void start(){active=this;FeatureSettings.addSnapshotListener(context,changed);refresh();}
     private boolean selected(){return !closed&&FeatureSettings.enabled(context,SystemUiOptions.ISLAND);}
-    private boolean denied(String key){String scene=MagicIslandPolicy.scene(key);
-        if(selected()&&("media".equals(scene)||"charging".equals(scene))
-                &&!FeatureSettings.enabled(context,SystemUiOptions.PREFIX+"island_"+("media".equals(scene)?"music":"charging")))return true;
-        return selected()&&scene!=null&&FeatureSettings.enabled(context,NativeIslandSceneOptions.ENABLED)
-                &&!FeatureSettings.enabled(context,NativeIslandSceneOptions.key(scene));}
+    private boolean completing(String key) {
+        String scene=MagicIslandPolicy.scene(key);
+        // Known native card routes belong to the master. Completion only owns missing producers.
+        return selected() && scene!=null;
+    }
     void refresh(){
         if(closed)return;
         try{
-            for(Object key:new ArrayList<>(((Map<?,?>)cards.get(host)).keySet()))
-                if(key instanceof String&&denied((String)key))remove.invoke(host,key);
+            // This is an already-native fullscreen receiver. Unselected scenes stay OEM-owned.
             FeatureSettings.diagnostic(context,MagicIslandPolicy.CAPABILITY,"ready:"+BuildConfig.VERSION_CODE);
+            Set<String> owned=new HashSet<>();
+            if(selected())for(Object key:((Map<?,?>)cards.get(host)).keySet()) {
+                if(!(key instanceof String))continue;
+                String scene=MagicIslandPolicy.scene((String)key);
+                if("record".equals(scene)||"call".equals(scene)||"meeting".equals(scene)||"ai".equals(scene))owned.add(scene);
+            }
+            NativeIslandScenes.fullscreenCapsules(owned);
         }catch(Exception failure){unavailable(failure);}
     }
     private void unavailable(Exception failure){FeatureSettings.diagnostic(context,MagicIslandPolicy.CAPABILITY,"unavailable:"+failure.getClass().getSimpleName());close();}
-    void close(){closed=true;FeatureSettings.removeSnapshotListener(changed);if(active==this)active=null;}
+    void close(){closed=true;FeatureSettings.removeSnapshotListener(changed);if(active==this){active=null;NativeIslandScenes.fullscreenCapsules(Collections.emptySet());}}
 }

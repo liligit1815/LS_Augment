@@ -54,11 +54,12 @@ public class InteractionCases {
         READ
         RELEASE
     }
-    static class View {int minimum=60,x,y,w,h;int getMinimumWidth(){return minimum;}}
-    static class Base {protected void onMeasure(int w,int h){}Object getContext(){return this;}}
+    static class View {int minimum=60,x,y,w,h,visibility;int getMinimumWidth(){return minimum;}void setVisibility(int v){visibility=v;}}
+    static class Base {static final int VISIBLE=0,GONE=8;protected void onMeasure(int w,int h){}Object getContext(){return this;}}
     static class MeasureSpec {static int getSize(int v){return v;}}
     static class StepMaterial {static float density=1;static int dp(Object c,int v){return Math.round(v*density);}}
     static class Face extends Base {
+        boolean compact;
         View network=new View(),device=new View(),volume=new View(),brightness=new View();View[] codes={new View(),new View(),new View()};
         void place(View v,int x,int y,int w,int h){v.x=x;v.y=y;v.w=w;v.h=h;}
         MEASURE

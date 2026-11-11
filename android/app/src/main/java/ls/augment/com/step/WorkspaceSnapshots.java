@@ -24,13 +24,13 @@ final class WorkspaceSnapshots {
         boolean ready;
         Frame(Object task,Object app,LocalLandscape.Token token,boolean side){
             this.task=task;this.app=app;state=token.state;surface=token.surface;rotation=token.rotation;mode=side?6:1;
-            width=logical.height();height=logical.width();
+            width=WorkspaceMainBounds.height(task);height=logical.width();
             // Both roles capture Activity children below rotation and task scaling.
             crop=new Rect(0,0,width,height);
         }
         boolean current(){
             return LocalLandscape.scene() && !LocalLandscape.changing && flip==null && Thread.holdsLock(Wm.lock)
-                    && logical.height()==width && logical.width()==height && LocalLandscape.owned(app)
+                    && WorkspaceMainBounds.height(task)==width && logical.width()==height && LocalLandscape.owned(app)
                     && field(app,"mFixedRotationTransformState")==state && call(app,"getSurfaceControl")==surface
                     && call(app,"getTask")==task && call(task,"topRunningActivity")==app
                     && (Integer)call(task,"getWindowingMode")==mode && LocalLandscape.side(app)==(mode==6)

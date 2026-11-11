@@ -118,6 +118,7 @@ IslandDownloadPolicy<StatusBarNotification> p=new IslandDownloadPolicy<>();Statu
 p.update("task","channel",1,2,true,false,12,100,n);
 check(host.showDownload(p.get("task"),null,"App",(e,i)->{}),"create failed");Object current=m.current;
 check(current!=null&&m.adds==1,"native host did not receive card");
+if(full){m.consumeThrottle=true;host.expand();check(m.nativeExpansions==1&&m.throttleCalls==1,"fullscreen expansion must consume OEM throttle exactly once");m.consumeThrottle=false;m.blocked=false;}
 p.update("task","channel",1,3,true,false,45,100,n);check(host.showDownload(p.get("task"),null,"App",(e,i)->{}),"update failed");
 check(m.current==current&&m.adds==1,"update recreated native card");check(m.mAppIslandList.get("foreign")==foreign,"native card replaced");
 StatusBarNotification message=new StatusBarNotification("message",2,0);message.notification.flags=0;
@@ -157,7 +158,9 @@ public class RemoteViewIsland extends IslandParent{public RemoteViewIsland(Conte
     variant['ls/augment/com/hook/Manager.java']='''package ls.augment.com.hook;import java.util.*;import android.view.*;import com.zte.feature.dynamicisland.*;
 public class Manager{public Map<String,Object> mAppIslandList=new HashMap<>();public DynamicPermanentIsland current;public int adds,removes,beats,windowUpdates;
 public boolean mDynamicPanelShowing;public View mDynamicIslandContainer=new View(new android.content.Context());
-public boolean blocked;public boolean forceNotClick(){return blocked;}public void onClick(){}public void onLongClick(){}
+public boolean blocked,consumeThrottle;public int throttleCalls,nativeExpansions;
+public boolean forceNotClick(){throttleCalls++;boolean result=blocked;if(consumeThrottle)blocked=true;return result;}
+public void onClick(){if(!forceNotClick())nativeExpansions++;}public void onLongClick(){}
 public Manager(){mDynamicIslandContainer.setLayoutParams(new ViewGroup.LayoutParams(-1,200));}
 public void updateDynamicWindowHeightParams(boolean on){windowUpdates++;}
 public void addPermanentIslandFullScreen(DynamicPermanentIsland i,boolean a){addPermanentIslandInner(i);}

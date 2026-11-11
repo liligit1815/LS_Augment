@@ -11,6 +11,7 @@ import static ls.augment.com.step.StepRuntime.*;
 
 /** A system_server lease on the participating original surfaces, before changing any task roles. */
 final class NativeFlip {
+    final Intent request;
     final int selected, outgoing, promoted, count;
     final boolean targetLeft;
     final WorkspaceLayout from, to;
@@ -30,15 +31,16 @@ final class NativeFlip {
     int frames;
 
     NativeFlip(Intent i) {
+        request=new Intent(i);
         selected=i.getIntExtra("slot",-1); outgoing=i.getIntExtra("task",-1); promoted=i.getIntExtra("previous",-1);
         count=i.getIntExtra("visible",0);targetLeft=WorkspaceMotion.targetLeft(sideLeft,outgoing,promoted);
-        if(!SideSlots.validCount(count) || selected<0 || selected>=count || promoted< -1 || outgoing< -1
+        if(!SideSlots.validCount(count) || count!=layoutCount || selected<0 || selected>=count || promoted< -1 || outgoing< -1
                 || outgoing<0 && promoted<0 || i.getBooleanExtra("background",false)
                 || slots.task(selected)!=promoted || i.getBooleanExtra("leftSide",!sideLeft)!=sideLeft)
             throw new IllegalStateException("交换格或方向已经变化");
         float density=Wm.context.getResources().getDisplayMetrics().density;
-        from=new WorkspaceLayout(logical.width(),logical.height(),density,sideLeft);
-        to=new WorkspaceLayout(logical.width(),logical.height(),density,targetLeft);
+        from=WorkspaceLayout.create(logical.width(),logical.height(),density,sideLeft,layoutCount,layoutInset,mainReflow);
+        to=WorkspaceLayout.create(logical.width(),logical.height(),density,targetLeft,layoutCount,layoutInset,mainReflow);
         if(i.getIntExtra("fromX",-1)!=from.mainX || i.getIntExtra("toX",-1)!=to.mainX
                 || i.getIntExtra("top",-1)!=from.top || i.getIntExtra("width",-1)!=from.sideWidth
                 || i.getIntExtra("height",-1)!=from.rowHeight(selected,count)
@@ -77,7 +79,7 @@ final class NativeFlip {
                 throw new IllegalStateException("换边任务身份或模式变化："+r.id);
             validSurface(lanes[k]);
         }
-        if(actors[0]!=null && !Boolean.TRUE.equals(field(call(actors[0].task,"getTaskInfo"),"isFocused")))
+        if(actors[0]!=null && !WorkspaceMainFocus.matches(actors[0].task))
             throw new IllegalStateException("换边期间主任务失去焦点");
     }
     void start(ResultReceiver reply) {
@@ -155,14 +157,28 @@ final class NativeFlip {
                 tx.setScale(lane,pos.scale,pos.scale).setPosition(lane,pos.x,pos.y-from.top);
             }
             if(first)SurfaceCommit.observe(tx,Wm.handler::post,()->animate(reply));
-            if(last)SurfaceCommit.observe(tx,Wm.handler::post,()->{
-                if(flip!=this || ending)return;
-                committed=true;
-                android.os.Bundle b=base();b.putBoolean("targetLeft",targetLeft);
-                respond(reply,0,b,"工作区转场末帧已提交；路径="+(outgoing<0?"副区展开":"主副交换")
-                        +"；回调帧数="+frames+"；最大回调间隔ms="+(maxFrameGapNanos/1_000_000f)+"；非屏幕呈现帧率");
-            });
+            if(last)SurfaceCommit.observe(tx,Wm.handler::post,()->finishFrame(reply));
             tx.apply();attached=true;frames++;
+        }
+    }
+    void finishFrame(ResultReceiver reply){
+        if(flip!=this || ending)return;
+        committed=true;
+        String message="工作区转场末帧已提交；路径="+(outgoing<0?"副区展开":"主副交换")
+                +"；回调帧数="+frames+"；最大回调间隔ms="+(maxFrameGapNanos/1_000_000f)+"；非屏幕呈现帧率";
+        if(targetLeft==sideLeft){
+            // Fixed placement needs no host relayout. Land the original tasks now,
+            // while their final animation pose is still owned, without waiting for
+            // SystemUI's render queue to round-trip another roles request.
+            report(null,0,message,-1);
+            try{roles(new Intent(request).putExtra("flipLanded",true),reply);}
+            catch(Exception|LinkageError failure){
+                respond(reply,-1,base(),"转场末帧交接失败："+failure);
+                finish("转场末帧交接失败，归还原任务");
+            }
+        }else{
+            android.os.Bundle b=base();b.putBoolean("targetLeft",targetLeft);
+            respond(reply,0,b,message);
         }
     }
     void checkRoles(Intent i) {
