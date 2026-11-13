@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20762,
-    "versionName": "2.0.0-alpha1-test20762",
+    "versionCode": 20876,
+    "versionName": "2.0.0-alpha1-test20876",
     "minSdk": 35,
-    "publishedAt": "2026-11-08T16:31:21Z",
-    "notes": "- 优化通知堆叠顶部过渡，通知在时钟下方渐进模糊、淡出，保持时间与日期清晰。\n- 完善 NX819J 风扇五档、磁贴增强、转速测量与息屏延续适配，识别完成后自动更新可用状态。\n- 修复极暗开关与磁贴状态同步，改善开启失败后的状态恢复。\n- 优化红魔Step横屏切换、应用恢复和键盘避让，减少缩放跳变与画面残留。\n- 完善灵动岛展开、下载活动与音乐通知衔接。\n- 更新后请重启手机。",
+    "publishedAt": "2026-11-13T04:23:18Z",
+    "notes": "- 重构灵动岛界面与展开交互，统一红魔12原生样式，完善音乐、导航及系统场景。\n- 修复音乐首次播放未出岛、场景切换和重复通知问题，按接管场景协调原厂胶囊与悬浮提醒。\n- 新增普通通知应用黑名单，仅限制红魔Duo普通通知上岛，不影响系统提醒及音乐、导航、上传下载等独立场景。\n- 精简灵动岛设置，移除旧外观配置、无效选项及“系统灵动岛设置”入口。\n- 优化红魔Step工具栏、音乐歌词、顶部手势、应用交换及过渡动画。\n- 修复从主区桌面打开应用时动画偶发越界，保持副区画面稳定。\n- 修复主区运行游戏时顶区侧滑误开游戏工具栏，保留主区与退出Step后的原厂游戏手势。\n- 完善按电量自动旁路充电与提示控制，优化桌面清理动画和隐私屏显示。\n- 更新后请重启手机。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20762/redmagic-duo-20762.apk",
-      "size": 16397655,
-      "sha256": "93d90f5780337a765f00240092ab01647b27f2590e59b1c9eb231748092ebf56",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20876/redmagic-duo-20876.apk",
+      "size": 16704559,
+      "sha256": "85292fca4d8f60b725487acfbeebf588b4de1c7ecec828d00466b64467bf892c",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
