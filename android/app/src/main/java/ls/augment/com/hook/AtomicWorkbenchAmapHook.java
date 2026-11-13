@@ -318,7 +318,8 @@ final class AtomicWorkbenchAmapHook {
     private static boolean enabled() {
         Context context = FeatureSettings.from(null);
         return context != null && AtomicWorkbenchAmapData.PACKAGE.equals(context.getPackageName())
-                && FeatureSettings.enabled(context, AtomicWorkbenchConfig.ENABLED);
+                && (FeatureSettings.enabled(context, AtomicWorkbenchConfig.ENABLED)
+                    ||FeatureSettings.enabled(context,ls.augment.com.SystemUiOptions.ISLAND)&&IslandSceneSelection.enabled(context,"navigation"));
     }
 
     private static void watchConfigurationSafely() {
@@ -485,7 +486,7 @@ final class AtomicWorkbenchAmapHook {
         if (result.extras == null) result.extras = new Bundle();
         for (String key : new String[]{AtomicWorkbenchAmapData.VERSION, AtomicWorkbenchAmapData.STATUS,
                 AtomicWorkbenchAmapData.TITLE, AtomicWorkbenchAmapData.CONTENT, AtomicWorkbenchAmapData.UPDATED,
-                AtomicWorkbenchAmapData.SOURCE}) result.extras.remove(key);
+                AtomicWorkbenchAmapData.SOURCE,AtomicWorkbenchAmapData.NOTIFICATION_METRICS}) result.extras.remove(key);
         return result;
     }
 
@@ -501,6 +502,7 @@ final class AtomicWorkbenchAmapHook {
             extras.putString(AtomicWorkbenchAmapData.CONTENT, frame.content);
             extras.putLong(AtomicWorkbenchAmapData.UPDATED, frame.elapsed);
             extras.putString(AtomicWorkbenchAmapData.SOURCE, frame.source);
+            if(frame.metrics!=null)extras.putBundle(AtomicWorkbenchAmapData.NOTIFICATION_METRICS,new Bundle(frame.metrics));
         }
         return result;
     }

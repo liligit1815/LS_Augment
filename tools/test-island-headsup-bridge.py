@@ -75,13 +75,16 @@ public class TestHeadsUp{
  void show(){manager.showNotification(entry,false);}void prepare(){show();Handler.advance(0);}}
  public static void main(String[] args){
  NotificationEntry unbound=new NotificationEntry(new StatusBarNotification("unbound",1));
+ check(IslandHeadsUpBridge.sameIdentity(unbound.sbn,new StatusBarNotification("unbound",2)),"same source updates can own an already expanded panel");
+ check(!IslandHeadsUpBridge.sameIdentity(unbound.sbn,new StatusBarNotification("another",2)),"another notification cannot replace the busy panel");
  check(!IslandHeadsUpBridge.downloadMayShow(unbound.sbn,unbound.ranking),"missing heads-up capability preserves high-importance native download");
  unbound.ranking.importance=2;check(IslandHeadsUpBridge.downloadMayShow(unbound.sbn,unbound.ranking),"legacy LOW download stays supported");
  check(IslandHeadsUpBridge.install(new AugmentModule(),TestHeadsUp.class.getClassLoader())==3,"native contract installed");
  Fixture f=new Fixture();f.show();check(f.manager.shows==0&&DynamicIslandHook.preparations==0,"hook neither blocks nor prepares synchronously");
  Handler.advance(0);check(DynamicIslandHook.preparations==1&&f.entry.interrupted==0,"queued source alone is not success");DynamicIslandHook.draw();
  check(f.entry.interrupted==1&&f.manager.shows==0,"draw commits exactly one island reminder");Handler.advance(200);check(f.manager.shows==0,"success cancels fallback");
- f=new Fixture();f.prepare();Handler.advance(99);check(f.manager.shows==0,"bounded preparation");Handler.advance(1);
+ for(int delay:new int[]{250,600,800,900}){f=new Fixture();f.prepare();DynamicIslandHook.drawn=true;Handler.advance(delay);check(f.entry.interrupted==1&&f.manager.shows==0,"native animation / queued final draw wins: "+delay);}
+ f=new Fixture();f.prepare();Handler.advance(799);check(f.manager.shows==0,"bounded preparation");Handler.advance(1);
  check(f.manager.shows==1&&DynamicIslandHook.shown==null,"timeout withdraws island then restores original");DynamicIslandHook.draw();check(f.manager.shows==1&&f.entry.interrupted==0,"late draw cannot commit");
  check(!IslandHeadsUpBridge.listenerMayShow(f.entry.sbn,f.entry.ranking),"restored native reminder cannot duplicate through listener");
  check(!IslandHeadsUpBridge.downloadMayShow(f.entry.sbn,f.entry.ranking),"download failed revision remains native");
@@ -100,8 +103,8 @@ public class TestHeadsUp{
  f=new Fixture();f.prepare();f.entry.sbn.n.extras.put("title","mutated");DynamicIslandHook.draw();check(f.entry.interrupted==0,"in-place source mutation is also a new revision");
  f=new Fixture();f.prepare();f.provider.allowed=false;DynamicIslandHook.draw();check(f.manager.shows==0&&f.entry.interrupted==0&&DynamicIslandHook.shown==null,"native policy changed before draw");
  f=new Fixture();f.prepare();DynamicIslandHook.eligible=false;DynamicIslandHook.draw();check(f.manager.shows==1&&f.entry.interrupted==0,"environment change restores if native still permits");
- f=new Fixture();f.prepare();f.provider.fail=true;Handler.advance(100);check(f.manager.shows==1,"broken optional recheck preserves authorized original request");
- f=new Fixture();f.prepare();f.manager.fail=true;Handler.advance(100);check(f.manager.shows==1,"original show exception is never dispatched twice");
+ f=new Fixture();f.prepare();f.provider.fail=true;Handler.advance(800);check(f.manager.shows==1,"broken optional recheck preserves authorized original request");
+ f=new Fixture();f.prepare();f.manager.fail=true;Handler.advance(800);check(f.manager.shows==1,"original show exception is never dispatched twice");
  f=new Fixture();f.prepare();IslandHeadsUpBridge.clear();check(f.manager.shows==1&&DynamicIslandHook.shown==null,"host retirement restores pending valid request");
  for(int mode=0;mode<9;mode++){
   f=new Fixture();Notification n=f.entry.sbn.n;
@@ -112,7 +115,7 @@ public class TestHeadsUp{
  f=new Fixture();f.manager.already=true;f.show();check(f.manager.shows==1&&DynamicIslandHook.preparations==0,"already shown stays native");
  f=new Fixture();f.manager.showNotification(f.entry,true);check(f.manager.shows==1,"user pinned heads-up untouched");
  f=new Fixture();Looper.current=new Looper();f.show();Looper.current=Looper.getMainLooper();check(f.manager.shows==1,"unknown non-main presentation preserved");
- f=new Fixture();f.prepare();f.show();Handler.advance(100);check(f.manager.shows==1,"duplicate revision has one pending transaction");
+ f=new Fixture();f.prepare();f.show();Handler.advance(800);check(f.manager.shows==1,"duplicate revision has one pending transaction");
  f=new Fixture();f.prepare();f.entry.sbn=new StatusBarNotification("message",2);DynamicIslandHook.drawn=false;f.show();Handler.advance(0);DynamicIslandHook.draw();Handler.advance(100);
  check(f.entry.interrupted==1&&f.manager.shows==0,"replacement invalidates old callbacks and owns new transaction");
  f=new Fixture();f.entry.ranking.importance=3;check(IslandHeadsUpBridge.listenerMayShow(f.entry.sbn,f.entry.ranking),"ordinary non-banner policy stays independent");

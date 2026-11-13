@@ -54,8 +54,8 @@ final class NativeTopTask {
     }
     static void change(Intent i,ResultReceiver reply,boolean collapsed)throws Exception{
         String action=i.getStringExtra("topAction");
-        boolean dismiss="dismiss".equals(action),swap="swap".equals(action);
-        boolean resume="resume".equals(action),take="take".equals(action)||resume||swap, show="show".equals(action), park="park".equals(action)||resume, release="release".equals(action)||dismiss;
+        boolean dismiss="dismiss".equals(action),disable="disable".equals(action),swap="swap".equals(action);
+        boolean resume="resume".equals(action),take="take".equals(action)||resume||swap, show="show".equals(action), park="park".equals(action)||resume, release="release".equals(action)||dismiss||disable;
         if(!take && !show && !park && !release)throw new IllegalArgumentException("未知的顶窗操作");
         int id=i.getIntExtra("task",-1);
         boolean nav=i.getBooleanExtra("navigation",false);
@@ -120,7 +120,13 @@ final class NativeTopTask {
                         || !bounds.equals(call(record.task,"getBounds")))throw new IllegalStateException("顶窗已被其他窗口接管");
                 pendingCommit=group;
                 if(!release && upper!=null && upper!=record && !hidden){call(wct,"setFocusable",upper.token,false);call(wct,"setHidden",upper.token,true);}
-                if(release){unpublishedSurface=landing;restore(wct,record,group,landing);trackCommit(landing,group);call(wct,"reorder",record.token,!dismiss);}
+                if(release){
+                    // Decide under the same WM lock as the return transaction.
+                    // Never cover a live main app when disabling the top region.
+                    boolean toMain=!dismiss && (!disable || disabledReturnsToMain());
+                    unpublishedSurface=landing;restore(wct,record,group,landing);trackCommit(landing,group);call(wct,"reorder",record.token,toMain);
+                    if(disable)diagnostic("UPPER_DISABLE","task="+id+";destination="+(toMain?"main":"background"));
+                }
                 else{
                     if(show){upper=record;progress=1f;WorkspaceBackFocus.mainPreferred=false;}
                     call(wct,"setFocusable",record.token,show);call(wct,"setHidden",record.token,park);
@@ -215,6 +221,10 @@ final class NativeTopTask {
         if(ready){complete.run();return;}
         if(android.os.SystemClock.uptimeMillis()>=deadline){finish("分区目标绘制未确认，归还原任务");return;}
         Wm.handler.postDelayed(()->awaitFrames(expected,actors,deadline,complete),16);
+    }
+    static boolean disabledReturnsToMain(){
+        Object home=eligibleMain(sessionHome);
+        return home!=null && (Integer)call(home,"getActivityType")==2 && WorkspaceMainFocus.matches(home);
     }
     static void revealWhenDrawn(SavedTask record,IBinder expected,long deadline,Runnable complete){
         if(owner!=expected || !active || ending)return;

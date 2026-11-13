@@ -15,6 +15,7 @@ public final class AtomicWorkbenchAmapData {
     public static final String TITLE = PREFIX + "title", CONTENT = PREFIX + "content", UPDATED = PREFIX + "elapsed";
     public static final String SOURCE = PREFIX + "source";
     public static final String METRICS = "metrics";
+    public static final String NOTIFICATION_METRICS = PREFIX + "metrics";
     private static final Set<String> METRIC_KEYS = new HashSet<>(Arrays.asList("eventType", "curManeuverID",
             "segmentRemainDist", "speed", "routeRemainTime", "routeRemainDist", "curRouteName", "nextRouteName"));
     public static final int CONTRACT = 1;

@@ -68,6 +68,7 @@ final class NativeIslandHost {
     private NativeIslandScenes nativeScenes;
     private NativeIslandFullscreen nativeFullscreen;
     private MagicIslandScenes magicScenes;
+    private IslandNativeSurface nativeSurface;
     private NativeIslandMusicRecovery musicRecovery;
     private DuoNotificationCards notificationCards;
     private IslandLiveScenes liveScenes;
@@ -238,7 +239,7 @@ final class NativeIslandHost {
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onDynamicIslandSettingsChanged",1,null,(o,a,r)->{
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){h.originalEnabled=(Boolean)a[0];set(o,"mIsDynamicIslandEnable",true);}return PASS;
         });
-        return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader);
+        return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader)+IslandNativeSurface.install(module,loader);
     }
 
     private boolean dormantNativeScene(Object owner,Object island,boolean persistent){
@@ -346,6 +347,7 @@ final class NativeIslandHost {
         boolean wasRequested=nativeRequested;
         nativeRequested=selected;
         if(!selected){
+            if(nativeSurface!=null){nativeSurface.close();nativeSurface=null;}
             if(musicRecovery!=null){musicRecovery.close();musicRecovery=null;}
             if(liveScenes!=null){liveScenes.close();liveScenes=null;}
             if(notificationCards!=null){notificationCards.close();notificationCards=null;}
@@ -366,7 +368,7 @@ final class NativeIslandHost {
             }
             return;
         }
-        if(nativeSelected&&nativeOwner==this){if(nativeScenes!=null)nativeScenes.configurationChanged();if(magicScenes!=null)magicScenes.refresh();return;}
+        if(nativeSelected&&nativeOwner==this){if(nativeScenes!=null)nativeScenes.configurationChanged();if(magicScenes!=null)magicScenes.refresh();if(nativeSurface!=null)nativeSurface.refresh();return;}
         if(nativeOwner!=null&&nativeOwner!=this)nativeOwner.selectNative(false);
         try{
             Object f=invokeStatic("com.zte.base.Feature","get",new Class<?>[]{String.class},"DYNAMIC_ISLAND");
@@ -420,9 +422,14 @@ final class NativeIslandHost {
             if(liveScenes==null&&notificationCards!=null){
                 liveScenes=new IslandLiveScenes(context,loader,pm,fullscreen,(View)view,phone);liveScenes.start();
             }
+            if(fullscreen&&nativeSurface==null)try{
+                nativeSurface=new IslandNativeSurface(context,pm);nativeSurface.start();
+                FeatureSettings.diagnostic(context,"ls_augment_island_surface","ready:"+ls.augment.com.BuildConfig.VERSION_CODE);
+            }catch(Exception missing){FeatureSettings.diagnostic(context,"ls_augment_island_surface","unavailable:"+cause(missing));}
             report("duo_owner;enabled="+on+";feature="+call(f,"enabled")+";windowAttached=true;duo=true;fullscreen="+fullscreen
                     +";scene_extensions="+(fullscreen?(magicScenes!=null?"fullscreen_native_scenes":"fullscreen_native_only"):"capability_checked"));
         }catch(Exception failure){
+            if(nativeSurface!=null){nativeSurface.close();nativeSurface=null;}
             if(musicRecovery!=null){musicRecovery.close();musicRecovery=null;}
             if(liveScenes!=null){liveScenes.close();liveScenes=null;}
             if(notificationCards!=null){notificationCards.close();notificationCards=null;}
@@ -582,13 +589,12 @@ final class NativeIslandHost {
         }catch(Exception unavailable){hide();report("download_unavailable:"+cause(unavailable));return false;}
     }
     boolean showNotice(android.service.notification.StatusBarNotification source,String title,String subtitle,String app,Drawable icon,
-            java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action,
-            java.util.function.Consumer<android.service.notification.StatusBarNotification> remind){
-        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action,remind);
+            java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action){
+        if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action);
         if(!show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),icon,false,0,null))return false;
         try{
             if(noticeContent==null)noticeContent=new DuoDownloadPanel(noticePanel);
-            noticeContent.bindNotice(source,icon,app,action,remind);
+            noticeContent.bindNotice(source,icon,app,action);
             applyAppearance();
         }catch(Exception unavailable){report("notice_controls_unavailable:"+cause(unavailable));}
         return true;

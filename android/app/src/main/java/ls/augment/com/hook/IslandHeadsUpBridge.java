@@ -15,7 +15,10 @@ import java.util.Objects;
 /** Per-notification handoff at the native asynchronous heads-up presentation boundary. */
 final class IslandHeadsUpBridge {
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
-    private static final long DEADLINE_MS=100;
+    // Native entry/replace animations take 250–350 ms and can be chained. A 100 ms
+    // budget races their first visible frame. Keep a bounded handoff, including a
+    // final frame-proof check when the main-thread timeout itself was delayed.
+    private static final long DEADLINE_MS=800;
     private static final Map<String,Pending> pending=new LinkedHashMap<>();
     private static final Map<String,String> nativeAlerts=new LinkedHashMap<>();
     private static final ThreadLocal<Boolean> replay=ThreadLocal.withInitial(()->false);
@@ -26,7 +29,7 @@ final class IslandHeadsUpBridge {
     private static final class Pending {
         final Object manager,entry,decisionProvider;final Method show;final Object[] args;
         final StatusBarNotification source;final String revision;final long deadline;
-        final Runnable timeout=()->finish(this,false,"deadline");
+        final Runnable timeout=()->confirm(this);
         final Runnable nextFrame=()->confirm(this);
         Pending(Object manager,Object entry,Object decisionProvider,Method show,Object[] args,StatusBarNotification source){
             this.manager=manager;this.entry=entry;this.decisionProvider=decisionProvider;this.show=show;this.args=args;this.source=source;
@@ -101,6 +104,9 @@ final class IslandHeadsUpBridge {
         return source.getUserId()+":"+source.getUid()+":"+source.getKey()+":"+source.getPostTime()+":"+content;
     }
     static boolean same(StatusBarNotification a,StatusBarNotification b){return a!=null&&b!=null&&revision(a).equals(revision(b));}
+    static boolean sameIdentity(StatusBarNotification a,StatusBarNotification b){
+        return a!=null&&b!=null&&a.getUid()==b.getUid()&&a.getUserId()==b.getUserId()&&a.getKey().equals(b.getKey());
+    }
     static boolean listenerMayShow(StatusBarNotification source,Ranking ranking){
         if(revision(source).equals(nativeAlerts.get(source.getKey())))return false;
         // High-importance messages await the original heads-up decision/binding. Lower importance
@@ -132,7 +138,6 @@ final class IslandHeadsUpBridge {
     }
     private static void confirm(Pending request){
         if(pending.get(request.source.getKey())!=request)return;
-        if(SystemClock.uptimeMillis()>request.deadline){finish(request,false,"deadline");return;}
         try{
             if(!valid(request)){cancel(request);return;}
             if(!DynamicIslandHook.canPrepareHeadsUp(request.source,(Ranking)rankingMethod.invoke(request.entry))){
@@ -140,6 +145,7 @@ final class IslandHeadsUpBridge {
             }
             MAIN.removeCallbacks(request.nextFrame);
             if(DynamicIslandHook.confirmHeadsUp(request.source,request.nextFrame))finish(request,true,"drawn");
+            else if(SystemClock.uptimeMillis()>=request.deadline)finish(request,false,"deadline");
             else MAIN.postDelayed(request.nextFrame,16); // Only this bounded, active transaction.
         }catch(Exception missing){finish(request,false,"draw_failed");}
     }

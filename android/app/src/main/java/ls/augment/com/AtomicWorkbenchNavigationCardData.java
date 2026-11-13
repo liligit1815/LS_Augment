@@ -4,9 +4,9 @@ import android.os.Bundle;
 import java.util.Locale;
 
 /** Presentation of actual route fields; notification/TTS text never becomes numeric metrics. */
-final class AtomicWorkbenchNavigationCardData {
-    final boolean available, structured;
-    final String packageName, title, subtitle, speed, remaining, glyph, maneuver,sourceGeneration;
+public final class AtomicWorkbenchNavigationCardData {
+    public final boolean available, structured;
+    public final String packageName, title, subtitle, speed, remaining, glyph, maneuver,sourceGeneration;
 
     private AtomicWorkbenchNavigationCardData(boolean available, boolean structured, String packageName,
             String title, String subtitle, String speed, String remaining, String glyph, String maneuver,String sourceGeneration) {
@@ -16,7 +16,7 @@ final class AtomicWorkbenchNavigationCardData {
         this.sourceGeneration=sourceGeneration;
     }
 
-    static AtomicWorkbenchNavigationCardData from(Bundle state) {
+    public static AtomicWorkbenchNavigationCardData from(Bundle state) {
         boolean available = state != null && state.getBoolean("available", false)
                 && (state.getBoolean("has_session", false) || state.getBoolean("active", false));
         if (!available) return new AtomicWorkbenchNavigationCardData(false, false, "", "", "", "", "", "navigation", "","");

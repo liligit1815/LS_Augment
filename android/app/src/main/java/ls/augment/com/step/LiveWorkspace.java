@@ -117,6 +117,8 @@ final class LiveWorkspace {
         if (quickUser == null || !quickUser.equals(data.getParcelableExtra("quickUser", android.os.UserHandle.class))) return;
         pageIndicator=data.getBooleanExtra("pageIndicator",true);
         toolbarAutoCollapse=data.getBooleanExtra("toolbarAutoCollapse",true);
+        upperEnabled=data.getBooleanExtra("upperEnabled",upperEnabled) && WorkspaceCapacity.fitsLayout(visibleSlots,true);
+        scheduleUpperDisable();
         if(quickBar!=null)quickBar.updatePageIndicator();
         long version = data.getLongExtra("quickRevision", -1);
         if (version < pinRevision) return;
@@ -339,7 +341,7 @@ final class LiveWorkspace {
             preflight();
             if(count==visibleSlots && upper==upperEnabled)return;
             if(!WorkspaceCapacity.fitsLayout(count,upper) || upper && !topAvailable)return;
-            if(retained!=null || !slots.fits(count) || !upper && (upperAppId>=0 || upperNavigationId>=0)){quickBar.logUnavailable("请先归还所选布局容纳不了的副任务");return;}
+            if(retained!=null || !slots.fits(count) || count!=visibleSlots && !upper && (upperAppId>=0 || upperNavigationId>=0)){quickBar.logUnavailable("请先归还所选布局容纳不了的副任务");return;}
             quickBar.validateLayout(count);
             // A geometry change affects native main/input/IME and an optional
             // upper task too. Return the exact scene before preparing the new
@@ -348,6 +350,13 @@ final class LiveWorkspace {
             Bundle result=Shell.context.getContentResolver().call(WorkspacePrefsProvider.URI,"sideCount",null,data);
             if(result==null || !result.getBoolean("saved") || result.getInt("sideCount",-1)!=count
                     || result.getBoolean("upperEnabled")!=upper)throw new IllegalStateException("工作区布局未保存");
+            if(count==visibleSlots){
+                upperEnabled=upper;
+                scheduleUpperDisable();
+                if(quickBar.sideToolbar!=null)quickBar.sideToolbar.refreshStates();
+                StepRuntime.diagnostic("LAYOUT","upper_admission="+upper+";scene_retained=true");
+                return;
+            }
             layoutRestart=new Intent().putExtras(result).putExtra("normalEntry",renewable).putExtra("leftSide",leftSide);
             StepRuntime.diagnostic("LAYOUT","reprepare;from="+visibleSlots+";to="+count+";upper="+upper);
             close("配置暂挂");
@@ -665,7 +674,7 @@ final class LiveWorkspace {
         if(!Boolean.TRUE.equals(call(nativeTransitions,"isIdle")) && resumeWait++<18){main.postDelayed(this::resumeNext,80);return;}
         resumeWait=0;
         int slot=resumeIndex++,id=retained[slot];
-        if(slot>=ParkedWorkspace.UPPER && quickBar.upper==null){main.post(this::resumeNext);return;}
+        if(slot>=ParkedWorkspace.UPPER && (!upperEnabled || quickBar.upper==null)){main.post(this::resumeNext);return;}
         if(slot<ParkedWorkspace.UPPER && slot>=visibleSlots){main.post(this::resumeNext);return;}
         change(slot>=ParkedWorkspace.UPPER?-1:slot,id,slot==ParkedWorkspace.NAVIGATION);
     }
@@ -721,6 +730,25 @@ final class LiveWorkspace {
             });
         },this::fail,panel,quickBar.bar);
     }
+    final Runnable upperDisable=this::drainDisabledUpper;
+    void scheduleUpperDisable(){
+        main.removeCallbacks(upperDisable);
+        if(!upperEnabled && !closing && !closed)main.post(upperDisable);
+    }
+    void drainDisabledUpper(){
+        if(upperEnabled || closing || closed || quickBar==null || !ready)return;
+        int id=upperId>=0?upperId:upperAppId>=0?upperAppId:upperNavigationId;
+        if(id<0)return;
+        // Preference writes may arrive during an existing native handoff. Wait
+        // for its normal commit; never race or replace its task identity.
+        try{preflight();}catch(RuntimeException busy){main.postDelayed(upperDisable,80);return;}
+        upperActionFor(id,"disable",this::scheduleUpperDisable);
+    }
+    void requireUpperAdmission(){
+        if(!upperEnabled)throw new IllegalStateException("请先在布局设置中启用顶部工作区");
+        if(!topAvailable || quickBar==null || quickBar.upper==null)
+            throw new IllegalStateException("当前系统暂不支持顶部应用窗口");
+    }
     void change(int slot){if(retained==null)change(slot,-1);}
     void change(int slot,int resumeId) {
         change(slot,resumeId,false);
@@ -732,6 +760,7 @@ final class LiveWorkspace {
         return quickBar!=null && quickBar.upper!=null && quickBar.upper.visible?upperId:upperAppId;
     }
     boolean canSwapMainTop(){
+        if(!upperEnabled)return false;
         int id=topExchangeId();
         if(id<0 || id==upperNavigationId && upperAppId>=0)return false;
         try{
@@ -749,6 +778,7 @@ final class LiveWorkspace {
         try {
             preflight(false,resumeId>=0);
             final boolean upper=slot==-1;
+            if(upper)requireUpperAdmission();
             final int previous=upper?-1:slots.task(slot);
             final int outgoing=exchangeId>=0?exchangeId:upperAppId;
             final Lease exchanged=upper && !navigation && resumeId<0 && outgoing>=0?leases.get(outgoing):null;
@@ -847,7 +877,7 @@ final class LiveWorkspace {
             final long ticket=fence.begin();
             // Draw the resting page before the original task changes orientation
             // and returns to main. Releasing an inactive task preserves its peer.
-            if("dismiss".equals(action) && id==upperId && quickBar.upper.visible)quickBar.upper.render(false);
+            if(("dismiss".equals(action) || "disable".equals(action)) && id==upperId && quickBar.upper.visible)quickBar.upper.render(false);
             input.acquire(()->{
                 if(!fence.current(ticket))return;
                 Runnable submit=()->{
@@ -889,6 +919,7 @@ final class LiveWorkspace {
                     if(!fence.current(ticket))return;
                     try{quickBar.configureUpper();quickBar.upper.render(refused?face:(released?next>=0 && !result.getBoolean("hidden"):face && next>=0));finishRegionTransition(()->releaseStepInput(()->{
                         if(fence.complete(ticket)){
+                            scheduleUpperDisable();
                             if(quickBar.sideToolbar!=null)quickBar.sideToolbar.refreshTools();
                             if(completed!=null)completed.run();else resumeNext();
                         }
@@ -1313,7 +1344,7 @@ final class LiveWorkspace {
         if(entry!=null)entry.cancelFrames();
         if(input!=null)input.endEntryHold();
         if(chromeMotion!=null){chromeMotion.cancel();chromeMotion=null;}
-        main.removeCallbacks(renew);retained=null;
+        main.removeCallbacks(renew);main.removeCallbacks(upperDisable);retained=null;
         clearDrag();
         closeQuickBar();
         fence.close();

@@ -22,7 +22,7 @@ class OwnershipBridge {static java.lang.reflect.Method method(Class<?> c,String 
 class StepHook {}class StepHooks{static void hookMethod(java.lang.reflect.Method m,StepHook h){}}
 class WorkspaceRoutes {static boolean promote(LiveWorkspace h,int s,java.util.function.Consumer<Boolean> done){done.accept(true);return true;}}
 class LiveWorkspace {
- boolean ready=true,closing;int upperId=-1,upperAppId=-1,upperNavigationId=-1,changes;Object organizerLock=new Object(),organizer;
+ boolean ready=true,closing,upperEnabled=true;int upperId=-1,upperAppId=-1,upperNavigationId=-1,changes;Object organizerLock=new Object(),organizer;
  Handler main=new Handler();Fence fence=new Fence();Transitions nativeTransitions=new Transitions();Slots slots=new Slots();ActivityManager.RunningTaskInfo task=new ActivityManager.RunningTaskInfo(),front=task;
  LiveWorkspace(){task.taskId=42;task.token=new Object();}
  static class Handler {ArrayDeque<Runnable> queue=new ArrayDeque<>();void post(Runnable r){queue.add(r);}void postDelayed(Runnable r,long d){queue.add(r);}void next(){queue.remove().run();}}

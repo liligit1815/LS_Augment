@@ -260,9 +260,11 @@ final class WorkspaceRoutes {
         Object focus=field(Wm.display,"mCurrentFocus");
         Object front=focus==null?null:call(focus,"getTask");
         if(front!=null && (Integer)call(front,"getActivityType")==2)return true;
-        if(!WorkspaceMainFocus.secondary(front))return false;
+        if(front!=null && !WorkspaceMainFocus.secondary(front))return false;
         // A visible upper app may retain input focus after a tap on HOME. Accept
         // only the exact session HOME when it is still the unique live main.
+        // Focus may temporarily be a task-less system window after the input
+        // region changes. Verify the live root instead of rejecting that gap.
         long identity=Binder.clearCallingIdentity();
         try{
             Object home=NativeWorkspaceGuard.eligibleMain(NativeWorkspaceGuard.sessionHome);

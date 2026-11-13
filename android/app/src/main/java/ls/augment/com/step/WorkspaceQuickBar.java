@@ -213,7 +213,9 @@ final class WorkspaceQuickBar {
             throw new IllegalStateException("当前屏幕安全空间不足以显示三行工具和 "+count+" 格布局");
     }
     void configureUpper(){
-        boolean enabled=host.upperEnabled && host.topAvailable;
+        // Admission is a preference, while existing pages and return controls
+        // remain available when it is disabled.
+        boolean enabled=host.topAvailable;
         if(enabled && upper==null)upper=new UpperPane(this,topInset);
         if(!enabled && upper!=null){
             upper.render(false);upper.close();bar.removeView(upper.face);bar.removeView(upper.roll);upper=null;

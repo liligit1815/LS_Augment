@@ -113,7 +113,7 @@ static class StatusBarNotification{String getPackageName(){return "test";}}
 static class Downloads{Activities activities=new Activities();void clear(){}}static class Activities{IslandDownloadPolicy.Entry<StatusBarNotification> choose(String k){return null;}}
 static class Host{final Fixture f;Host(Fixture f){this.f=f;}boolean holdsActivity(){return IslandPanelInteraction.holds(f.owner);}
 boolean managesNativeScenes(){return true;}boolean showDownload(Object n,Object icon,String app,java.util.function.BiConsumer<Object,Object> action){return true;}
-boolean showNotice(StatusBarNotification n,String a,String b,String c,Object i,java.util.function.BiConsumer<Object,Object> action,java.util.function.Consumer<Object> snooze){return true;}
+boolean showNotice(StatusBarNotification n,String a,String b,String c,Object i,java.util.function.BiConsumer<Object,Object> action){return true;}
 boolean show(Object...a){return true;}}
 static class State{
 boolean enabled=true,screenOff,holdingArtwork,charging,playing;int ownerUser=0,activity=IslandActivityPolicy.NOTICE,battery;long noticeUntil=6000,artworkMissingSince=-1;
@@ -123,7 +123,7 @@ String title="",subtitle="";Object icon;Handler MAIN=new Handler(Looper.getMainL
 State(Fixture f){nativeHost=new Host(f);}boolean locked(){return false;}int currentUser(){return 0;}boolean option(String k){return true;}
 MediaController selectMedia(){return null;}boolean sameSession(MediaController a,MediaController b){return a==b;}boolean hostVisible(){return true;}
 void clearNotice(){notice=null;}void hide(){hides++;}void dismiss(){}void updateContent(){}void diagnostic(String s){}String appLabel(String p){return p;}
-void downloadAction(Object a,Object b){}void noticeAction(Object a,Object b){}void snoozeNotice(Object a){}
+void downloadAction(Object a,Object b){}void noticeAction(Object a,Object b){}
 long earlier(long a,long b){return a==0?b:Math.min(a,b);}
 // REFRESH
 }

@@ -89,8 +89,7 @@ final class WorkspaceDeck extends FrameLayout {
         if(closed || page!=CONTROLS || paging!=null || owner.sideToolbar==null)return;
         try{
             owner.checkAction();
-            if(!owner.host.topAvailable){owner.logUnavailable("当前系统暂不支持顶部应用窗口");return;}
-            if(owner.upper==null){owner.logUnavailable("请先在布局设置中启用顶部副区");return;}
+            owner.host.requireUpperAdmission();
             if(!owner.upper.canSwitch() || owner.upper.visible)return;
             owner.host.change(-1);
         }catch(RuntimeException error){owner.note(error);}
@@ -119,7 +118,7 @@ final class WorkspaceDeck extends FrameLayout {
     int id(View view){return view==mediaPage?MUSIC:view==topPage?UPPER:view==navigationPage?NAVIGATION:CONTROLS;}
     String caption(){return page==NAVIGATION?"地图导航":page==MUSIC?"音乐页":page==UPPER?"顶部任务":owner.sideToolbar==null?"控制页":"顶部壁纸";}
     void navigationChanged(boolean active){
-        active=active && owner.upper!=null;
+        active=active && owner.upper!=null && (owner.host.upperEnabled || owner.host.upperNavigationId>=0);
         if(active==(navigationPage.getParent()!=null) || gesture || paging!=null || navigation.opening)return;
         if(active)addView(navigationPage,-1,-1);else removeView(navigationPage);
         jump(page==NAVIGATION && !active?CONTROLS:page);

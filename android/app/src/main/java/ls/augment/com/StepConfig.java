@@ -40,7 +40,9 @@ public final class StepConfig {
     }
     public static boolean saveLayout(Context context, int sides, boolean upper) {
         if (ResetWriteFence.blocked() || !WorkspaceCapacity.fitsLayout(sides, upper)) return false;
-        return new AppConfig(context).save(Map.of(AtomicWorkbenchConfig.SIDE_COUNT,
+        boolean saved = new AppConfig(context).save(Map.of(AtomicWorkbenchConfig.SIDE_COUNT,
                 Integer.toString(sides), UPPER, upper ? "1" : "0")).success;
+        if (saved) ls.augment.com.step.StepRuntime.notifyUiPreferences(context);
+        return saved;
     }
 }

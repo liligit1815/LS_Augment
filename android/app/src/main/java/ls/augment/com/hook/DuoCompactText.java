@@ -16,12 +16,17 @@ final class DuoCompactText {
 
     DuoCompactText(TextView label) {
         this.label=label;
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+        label.setMarqueeRepeatLimit(-1);
+        label.setSelected(true);
         label.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol)render();});
     }
     void bind(String summary,String metric) {
         this.summary=summary;this.metric=metric;
         render();
     }
+    float naturalWidth() { return label.getPaint().measureText(summary+(metric.isEmpty()?"":"  "+metric)); }
     private void render() {
         String text=summary;
         if(!metric.isEmpty()){
@@ -57,7 +62,24 @@ final class DuoCompactText {
         String title=line(n.extras.getCharSequence(Notification.EXTRA_TITLE));
         return title.isEmpty()?app:title;
     }
+    static String messageSummary(Notification n,String app) {
+        String sender=senderOrTitle(n,app),body="";
+        try {
+            Parcelable[] raw=n.extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+            if(raw!=null){
+                List<Notification.MessagingStyle.Message> messages=Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw);
+                if(!messages.isEmpty())body=line(messages.get(messages.size()-1).getText());
+            }
+        }catch(RuntimeException malformed){/* Use the notification's normal text below. */}
+        if(body.isEmpty())body=line(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
+        if(body.isEmpty())body=line(n.extras.getCharSequence(Notification.EXTRA_TEXT));
+        return body.isEmpty()||body.equals(sender)?sender:sender+"  ·  "+body;
+    }
     private static String line(CharSequence text) {
-        return text==null?"":text.toString().replace('\n',' ').replace('\r',' ').trim();
+        if(text==null)return "";
+        String value=text.toString().replace('\n',' ').replace('\r',' ').trim();
+        if(value.length()<=4096)return value;
+        int end=Character.isHighSurrogate(value.charAt(4095))?4095:4096;
+        return value.substring(0,end);
     }
 }

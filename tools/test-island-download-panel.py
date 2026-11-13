@@ -37,8 +37,8 @@ public void addView(View v,int index,Object p){v.parent=this;v.setLayoutParams(p
 'android/widget/FrameLayout.java':'''package android.widget;public class FrameLayout extends android.view.ViewGroup{public FrameLayout(android.content.Context c){super(c);}
 public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public void setMarginEnd(int margin){}public LayoutParams(int w,int h){super(w,h);}}}''',
 'android/widget/LinearLayout.java':'''package android.widget;public class LinearLayout extends android.view.ViewGroup{public static final int VERTICAL=1;
-public static final int HORIZONTAL=0;public LinearLayout(android.content.Context c){super(c);}public void setOrientation(int v){}public int getOrientation(){return 0;}public void setGravity(int v){}protected void onMeasure(int w,int h){}
-public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public int topMargin;public LayoutParams(int w,int h){super(w,h);}public LayoutParams(int w,int h,float weight){super(w,h);}public void setMarginStart(int v){}}}''',
+public static final int HORIZONTAL=0;public LinearLayout(android.content.Context c){super(c);}public int orientation;public void setOrientation(int v){orientation=v;}public int getOrientation(){return orientation;}@Override public void measure(int w,int h){onMeasure(w,h);}public void setGravity(int v){}protected void onMeasure(int w,int h){}
+public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public int topMargin,start;public float weight;public LayoutParams(int w,int h){super(w,h);}public LayoutParams(int w,int h,float weight){super(w,h);this.weight=weight;}public void setMarginStart(int v){start=v;}public int getMarginStart(){return start;}}}''',
 'android/widget/ScrollView.java':'''package android.widget;public class ScrollView extends FrameLayout{public ScrollView(android.content.Context c){super(c);}public void setFillViewport(boolean v){}}''',
 'android/widget/TextView.java':'''package android.widget;public class TextView extends android.view.View{public CharSequence text;public int color=0xff222222,maxLines;public float size=16,spacing;public boolean include=true;public android.graphics.Typeface typeface=new android.graphics.Typeface();
 public TextView(android.content.Context c){super(c);}public void setText(CharSequence t){text=t;}public CharSequence getText(){return text;}public float getTextSize(){return size;}public void setTextSize(int v){size=v;}public void setTextSize(int u,float v){size=v;}public android.content.res.ColorStateList getTextColors(){return android.content.res.ColorStateList.valueOf(color);}public int getCurrentTextColor(){return color;}public void setTextColor(android.content.res.ColorStateList v){color=v.color;}public float getLetterSpacing(){return spacing;}public void setLetterSpacing(float v){spacing=v;}public boolean getIncludeFontPadding(){return include;}public void setIncludeFontPadding(boolean v){include=v;}public android.graphics.Typeface getTypeface(){return typeface;}public void setTextColor(int c){color=c;}
@@ -67,6 +67,12 @@ static class Child extends Panel{}
 static class Missing extends FrameLayout{Missing(){super(new Context());addView(new View(context),new FrameLayout.LayoutParams(5,5));}}
 static class Wrong extends Missing{public String mViewList="unknown";}
 static Object field(Object o,String name){return SystemUiAdapter.field(o,name);}
+static int visibleButtons(View view){
+if(view.getVisibility()==View.GONE)return 0;
+int count=view instanceof Button?1:0;
+if(view instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++)count+=visibleButtons(group.getChildAt(i));
+return count;
+}
 public static void main(String[] args)throws Exception{
 for(FrameLayout invalid:new FrameLayout[]{new Missing(),new Wrong()}){
 boolean failed=false;try{new DuoDownloadPanel(invalid);}catch(IllegalStateException expected){failed=true;}
@@ -77,7 +83,7 @@ check(((TextView)field(content,"title")).color==panel.mDisplayText.color&&((Text
 check(((TextView)field(content,"title")).size==19&&((TextView)field(content,"title")).typeface==panel.mDisplayText.typeface,"OEM title font and size retained");
 check(panel.getChildCount()==1&&panel.mViewList.size()==1&&panel.mViewList.get(0)==panel.getChildAt(0),"native animation tracks current download content");
 check(panel.getChildAt(0) instanceof ScrollView&&panel.padding==32,"scrollable content retains the single native outer padding");
-check(content.desiredHeight(300)==76,"desired height includes native outer padding and the full body");
+check(content.desiredHeight(300)==88,"short content has a readable minimum without clipping the measured body");
 FrameLayout.LayoutParams bounds=(FrameLayout.LayoutParams)panel.params;check(bounds.width==-1&&bounds.height==-1,"content respects native panel bounds");
 IslandDownloadPolicy<StatusBarNotification> policy=new IslandDownloadPolicy<>();
 StatusBarNotification n=new StatusBarNotification("task",1,12);n.notification.extras.put("title","Large filename");n.notification.extras.put("text","source text");
@@ -90,34 +96,44 @@ Button[] buttons=(Button[])field(content,"actionButtons");Button original=button
 check(original.visibility==0&&original.minHeight>=48&&original.text.equals("鏆傚仠"),"source button label and touch height preserved");
 check(buttons[1].visibility==8&&buttons[2].visibility==8,"no fabricated buttons");
 check(progress.progress==12&&!progress.indeterminate,"determinate progress bound");
-check(original.getParent()==field(content,"trackRow"),"one download action belongs beside progress");original.click();check(commands.get(0)==pause&&revisions.get(0)==first.revision,"button dispatches exact source intent and revision");
+check(original.getParent()==field(content,"buttons"),"download actions do not squeeze the progress track");original.click();check(commands.get(0)==pause&&revisions.get(0)==first.revision,"button dispatches exact source intent and revision");
 ((TextView)field(content,"title")).click();check(commands.get(1)==open,"content opens original intent");
 policy.update("task","channel",1,2,true,false,34,100,n);var second=policy.get("task");content.bind(second,null,"Downloader",dispatch);
 check(buttons[0]==original&&progress.progress==34,"progress update reuses control instead of canceling touch");
 original.click();check(revisions.get(2)==second.revision,"reused button targets latest source revision");
 content.foreground(0xff101010);check(original.color==0xff101010&&((TextView)field(content,"title")).color==0xff101010,"glass foreground propagates to text and controls");
 policy.update("task","channel",1,3,true,true,-1,0,n);content.bind(policy.get("task"),null,"Downloader",dispatch);check(progress.indeterminate,"indeterminate source supported");
-List<PendingIntent> notices=new ArrayList<>();List<StatusBarNotification> reminders=new ArrayList<>();
+List<PendingIntent> notices=new ArrayList<>();
 n.notification.flags=0;
-content.bindNotice(n,null,"App",(source,intent)->{check(source==n,"notice source identity lost");notices.add(intent);},reminders::add);
-Button remind=(Button)field(content,"snooze");remind.click();check(remind.visibility==0&&reminders.equals(List.of(n)),"snooze targets original notification, separate from app actions");
-check(original.getParent()==field(content,"headingRow"),"single message action placed next to message");check(progress.visibility==8&&!progress.indeterminate,"ordinary notice fabricated progress");original.click();
+content.bindNotice(n,null,"App",(source,intent)->{check(source==n,"notice source identity lost");notices.add(intent);});
+check(visibleButtons(panel)==1,"ordinary notice shows only its original action");
+check(original.getParent()==field(content,"buttons"),"message action leaves the full heading width");check(progress.visibility==8&&!progress.indeterminate,"ordinary notice fabricated progress");original.click();
 check(notices.size()==1&&notices.get(0)==pause,"notice button did not preserve PendingIntent");
-n.notification.actions=new Notification.Action[]{new Notification.Action("A",pause),new Notification.Action("B",open)};content.bindNotice(n,null,"App",(item,intent)->{},reminders::add);
+n.notification.actions=new Notification.Action[]{new Notification.Action("A",pause),new Notification.Action("B",open)};content.bindNotice(n,null,"App",(item,intent)->{});
 check(original.getParent()==field(content,"buttons")&&buttons[1].visibility==0,"multiple actions use separate row in source order");
-n.notification.actions=new Notification.Action[0];n.notification.flags=32;content.bindNotice(n,null,"App",(item,intent)->{},reminders::add);
-check(remind.visibility==8&&remind.click==null,"non-clearable notice has no snooze");
+LinearLayout row=(LinearLayout)field(content,"buttons");row.measure(90,0);
+LinearLayout.LayoutParams next=(LinearLayout.LayoutParams)buttons[1].getLayoutParams();
+check(row.getOrientation()==LinearLayout.VERTICAL&&next.width==-1&&next.weight==0&&next.topMargin==8&&next.getMarginStart()==0,"narrow labels stack with full-width touch targets");
+row.measure(300,0);next=(LinearLayout.LayoutParams)buttons[1].getLayoutParams();
+check(row.getOrientation()==LinearLayout.HORIZONTAL&&next.width==0&&next.weight==1&&next.topMargin==0&&next.getMarginStart()==8,"widening restores equal buttons without stale stacked margins");
+CharSequence oldLabel=buttons[0].getText();buttons[0].setText("X".repeat(20));row.measure(300,0);
+check(row.getOrientation()==LinearLayout.VERTICAL,"one long label must fit its equal-width cell, not only the total row width");buttons[0].setText(oldLabel);
+n.notification.actions=new Notification.Action[0];
+for(int flags:new int[]{0,32}){
+n.notification.flags=flags;content.bindNotice(n,null,"App",(item,intent)->{});
+check(visibleButtons(panel)==0,"notification without source actions has no added button, regardless of clearability");
+}
 check(((LinearLayout)field(content,"buttons")).getVisibility()==8&&original.click==null,"no action leaves no row or callback");
 content.bind(policy.get("task"),null,"Downloader",dispatch);check(progress.visibility==0&&progress.indeterminate,"download progress not restored after notice");
-check(remind.visibility==8&&remind.click==null,"reused download panel cannot snooze an old notice");
+check(visibleButtons(panel)==0,"reused download panel cannot retain a notification button");
 android.content.res.Resources.colors.put("dynamic_island_panel_text_color",0xe6000000);
 android.content.res.Resources.colors.put("dynamic_island_text_color",0xa6000000);
 content.bind(policy.get("task"),null,"Downloader",dispatch);
-check(((TextView)field(content,"title")).color==0xe6000000&&((TextView)field(content,"detail")).color==0xa6000000,"OEM named light resources override legacy white text");
+check(((TextView)field(content,"title")).color==0xe6000000&&((TextView)field(content,"detail")).color==0xa6000000,"light glass retains native primary and secondary contrast");
 android.content.res.Resources.colors.put("dynamic_island_panel_text_color",0xffffffff);
 android.content.res.Resources.colors.put("dynamic_island_text_color",0xffffffff);
-content.bindNotice(n,null,"App",(item,intent)->{},reminders::add);
-check(((TextView)field(content,"title")).color==0xffffffff&&((TextView)field(content,"detail")).color==0xffffffff,"night theme resources retained when reused for notice");
+content.bindNotice(n,null,"App",(item,intent)->{});
+check(((TextView)field(content,"title")).color==0xffffffff&&((TextView)field(content,"detail")).color==0xffffffff,"dark glass follows the current native palette");
 android.content.res.Resources.colors.clear();
 List<IslandEvent.Action> liveActions=new ArrayList<>();
 IslandEvent.Action stop=new IslandEvent.Action("Stop",()->{}),resume=new IslandEvent.Action("Resume",()->{});
@@ -126,7 +142,7 @@ content.bindEvent(live,liveActions::add);
 check(progress.visibility==8&&((View)field(content,"trackRow")).visibility==8,"source event cannot retain a download track");
 check(original.getParent()==field(content,"buttons")&&original.visibility==0&&buttons[1].visibility==0,"source actions follow details in their own flow row");
 original.click();buttons[1].click();check(liveActions.equals(List.of(resume,stop)),"source controls dispatch their exact action objects");
-check(remind.visibility==8&&remind.click==null&&((TextView)field(content,"title")).click==null,"source event clears old notification handlers");
+check(visibleButtons(panel)==2&&((TextView)field(content,"title")).click==null,"source event keeps only its own actions and clears notification handlers");
 content.bindEvent(new IslandEvent("hotspot","hotspot",0,1000,new Object(),2,"Hotspot","0 devices","0",null,null,List.of()),liveActions::add);
 check(original.click==null&&buttons[1].click==null&&((View)field(content,"buttons")).visibility==8,"replacement with no source controls removes all stale actions");
 content.bind(policy.get("task"),null,"Downloader",dispatch);
@@ -145,7 +161,7 @@ with tempfile.TemporaryDirectory(prefix='duo-download-panel-') as tmp:
     for name in ('DuoDownloadPanel','IslandDownloadSource','IslandEvent'):
         files['ls/augment/com/hook/'+name+'.java']=(base['SRC']/'hook'/(name+'.java')).read_text(encoding='utf-8')
     # Presentation is verified in the device/native-resource suite; keep the legacy custom layout here.
-    files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int PANEL_ICON=42,TEXT_GAP=6,TITLE=16,DETAIL=12,COMPACT_TEXT=14;static boolean custom(Context c){return true;}static void panel(android.view.View v){}static void text(TextView v,int s,boolean p){}}'
+    files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int PANEL_ICON=48,TEXT_GAP=12,TITLE=17,DETAIL=13,COMPACT_TEXT=14;static boolean night(Context c){return false;}static void action(android.widget.Button b){}static void panel(android.view.View v){}static void text(TextView v,int s,boolean p){}}'
     files['ls/augment/com/hook/DownloadPanelTest.java']=HARNESS
     for name,content in files.items():
         path=folder/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8')

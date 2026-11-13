@@ -136,7 +136,15 @@ public final class IslandFixtureRunner extends Instrumentation {
             case "notice-expiry":requireReleased();post(1,"EXPIRY");phase="notice-expiry";break;
             case "notice-click":requireReleased();post(2,"CLICK");phase="notice-click";break;
             case "notice-reply":requireReleased();postReply();phase="notice-reply";break;
-            case "notice-remove":notifications.cancel(tag,1);notifications.cancel(tag,2);notifications.cancel(tag,5);phase="notice-removed";break;
+            case "notice-remove":notifications.cancel(tag,1);notifications.cancel(tag,2);notifications.cancel(tag,5);notifications.cancel(tag,6);phase="notice-removed";break;
+            case "notice-short":requireReleased();postMessage(false);phase=command;break;
+            case "notice-long":requireReleased();postMessage(true);phase=command;break;
+            case "call-incoming":requireReleased();postCall(false);phase=command;break;
+            case "call-active":requireReleased();postCall(true);phase=command;break;
+            case "call-end":notifications.cancel(tag,7);phase=command;break;
+            case "order-start":requireReleased();postOrder(false);phase=command;break;
+            case "order-update":requireReleased();postOrder(true);phase=command;break;
+            case "order-end":notifications.cancel(tag,8);phase=command;break;
             case "download":requireReleased();postDownload(35);phase="download";break;
             case "download-update":requireReleased();postDownload(78);phase="download-update";break;
             case "download-remove":notifications.cancel(tag,4);phase="download-removed";break;
@@ -174,6 +182,30 @@ public final class IslandFixtureRunner extends Instrumentation {
             .setContentText("临时下载进度验证 · 不下载实际文件").setProgress(100,percent,false)
             .setContentIntent(sourceIntent("download")).setOngoing(true).setOnlyAlertOnce(true)
             .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());}
+    private Notification.Builder controlled(int icon,String title,String text,String kind){
+        return new Notification.Builder(context,channel).setSmallIcon(icon).setContentTitle(title).setContentText(text)
+                .setContentIntent(sourceIntent(kind)).setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime()));
+    }
+    private void postMessage(boolean longText){
+        String body=longText?"在送货，稍等。我会先把这批货送到仓库，再联系你确认收货地址，请留意后续消息。":"收到";
+        notifications.notify(tag,6,controlled(android.R.drawable.ic_dialog_email,longText?"没烦恼":"消息",body,"message")
+                .setStyle(new Notification.BigTextStyle().bigText(body)).build());
+    }
+    // Controlled notification presentations, never a Telecom call or a merchant order.
+    private void postCall(boolean activeCall){
+        Notification.Builder b=controlled(android.R.drawable.sym_action_call,"模拟通话 · 测试联系人",
+                activeCall?"通话中 · 00:15（可控事件）":"来电等待接听（可控事件）","call-open").setCategory(Notification.CATEGORY_CALL);
+        if(!activeCall)b.addAction(new Notification.Action.Builder(null,"模拟接听",sourceIntent("call-answer")).build());
+        b.addAction(new Notification.Action.Builder(null,activeCall?"模拟挂断":"模拟拒接",sourceIntent("call-end")).build());
+        notifications.notify(tag,7,b.build());
+    }
+    private void postOrder(boolean arriving){
+        notifications.notify(tag,8,controlled(android.R.drawable.ic_menu_send,"模拟订单 · 配送中",
+                arriving?"骑手即将到达 · 距离 200 米":"预计 12 分钟送达 · 骑手正在配送","order-open")
+                .addAction(new Notification.Action.Builder(null,"查看模拟订单",sourceIntent("order-open")).build())
+                .addAction(new Notification.Action.Builder(null,"模拟完成",sourceIntent("order-end")).build()).build());
+    }
     private void postReply(){
         Intent reply=new Intent(PACKAGE+".REPLY").setPackage(PACKAGE).setData(Uri.parse("duo-island://"+runId+"/reply"))
                 .putExtra("runId",runId).putExtra("secret",secret);
@@ -187,7 +219,11 @@ public final class IslandFixtureRunner extends Instrumentation {
     private boolean valid(Intent i){return runId!=null&&runId.equals(i.getStringExtra("runId"))&&secret.equals(i.getStringExtra("secret"))&&!closed;}
     private void sourceOpened(ContentActivity activity){
         if(!valid(activity.getIntent())){activity.finish();return;}
-        content=activity;clicks++;event("content_opened");
+        content=activity;clicks++;String kind=activity.getIntent().getStringExtra("kind");
+        if("call-answer".equals(kind)){postCall(true);phase="call-active";}
+        if("call-end".equals(kind)){notifications.cancel(tag,7);phase="call-end";}
+        if("order-end".equals(kind)){notifications.cancel(tag,8);phase="order-end";}
+        event("content_opened");
     }
     private void event(String name){
         try{events.put(new JSONObject().put("event",name).put("sequence",sequence).put("atElapsed",SystemClock.elapsedRealtime()).put("phase",phase));persist();}
@@ -212,7 +248,7 @@ public final class IslandFixtureRunner extends Instrumentation {
     private void cleanup(String reason){
         if(closed)return;closed=true;phase="closed";
         try{if(session!=null){session.setActive(false);session.release();session=null;}released=true;}catch(Throwable t){error+=";release:"+t;}
-        try{if(notifications!=null&&tag!=null){for(int id=1;id<=5;id++)notifications.cancel(tag,id);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
+        try{if(notifications!=null&&tag!=null){for(int id=1;id<=8;id++)notifications.cancel(tag,id);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
         try{if(receiverRegistered){context.unregisterReceiver(commands);receiverRegistered=false;}}catch(Throwable t){error+=";receiver:"+t;}
         try{if(replyRegistered){context.unregisterReceiver(replies);replyRegistered=false;}}catch(Throwable t){error+=";reply_receiver:"+t;}
         if(background!=null)background.finish();if(content!=null)content.finish();if(cover!=null){cover.recycle();cover=null;}

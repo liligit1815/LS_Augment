@@ -27,10 +27,10 @@ public class WallpaperTapCases {
   int getScaledTouchSlop(){return 10;}static int getLongPressTimeout(){return 500;}
  }
  static class View {int clicks;void performClick(){clicks++;}}
- static class Host {boolean topAvailable=true;int upperAppId=-1,actions;void change(int slot){check(slot==-1,"only upper slot");actions++;}}
+ static class Host {boolean topAvailable=true,upperEnabled=true;Owner quickBar;Host(Owner o){quickBar=o;}int upperAppId=-1,actions;void change(int slot){requireUpperAdmission();check(slot==-1,"only upper slot");actions++;} ADMISSION }
  static class Upper {boolean allowed=true,visible;boolean canSwitch(){return allowed;}}
  static class Owner {
-  Object sideToolbar=new Object();Host host=new Host();Upper upper=new Upper();boolean valid=true;String note;
+  Object sideToolbar=new Object();Host host=new Host(this);Upper upper=new Upper();boolean valid=true;String note;
   void checkAction(){if(!valid)throw new IllegalStateException("stale");}
   void logUnavailable(String value){note=value;}void note(RuntimeException e){note=e.getMessage();}
  }
@@ -62,17 +62,19 @@ public class WallpaperTapCases {
   }
   c=new WallpaperTapCases();c.takeMainFromWallpaper();check(c.owner.host.actions==1,"touch and accessibility share real upper action");
   c=new WallpaperTapCases();c.owner.host.upperAppId=42;c.takeMainFromWallpaper();check(c.owner.host.actions==1,"occupied upper uses the same transactional exchange action");
-  for(int guard=0;guard<9;guard++){
+  for(int guard=0;guard<10;guard++){
    c=new WallpaperTapCases();
    switch(guard){case 0:c.closed=true;break;case 1:c.page=1;break;case 2:c.paging=new Object();break;
     case 3:c.owner.sideToolbar=null;break;case 4:c.owner.valid=false;break;case 5:c.owner.host.topAvailable=false;break;
-    case 6:c.owner.upper=null;break;case 7:c.owner.upper.allowed=false;break;case 8:c.owner.upper.visible=true;break;}
+    case 6:c.owner.upper=null;break;case 7:c.owner.upper.allowed=false;break;case 8:c.owner.upper.visible=true;break;case 9:c.owner.host.upperEnabled=false;break;}
    c.takeMainFromWallpaper();check(c.owner.host.actions==0,"stale session or disabled capability preserved "+guard);
   }
   System.out.println("PASS "+checks+" production wallpaper click and action guard checks");
  }
 }
 '''.replace('TOUCH',method('    boolean wallpaperTouch(')).replace('TAKE',method('    void takeMainFromWallpaper('))
+source=(root/'android/app/src/main/java/ls/augment/com/step/LiveWorkspace.java').read_text(encoding='utf-8')
+code=code.replace('ADMISSION',method('    void requireUpperAdmission('))
 java = Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8')) / 'bin'
 with tempfile.TemporaryDirectory(prefix='step-wallpaper-tap-') as directory:
     path=Path(directory); file=path/'WallpaperTapCases.java'; file.write_text(code,encoding='utf-8')

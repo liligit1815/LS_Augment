@@ -53,12 +53,14 @@ public class CountLayoutCases {
  static class Shell {static Context context=new Context();}
  static class StepRuntime {static boolean enabled=true;static void diagnostic(String a,String b){}}
  static class WorkspacePrefsProvider {static Object URI=new Object();}
- static class QuickBar {int warnings;void logUnavailable(String s){warnings++;}void note(Throwable e){warnings++;}void validateLayout(int count){}}
+ static class Toolbar {void refreshStates(){}}
+ static class QuickBar {Toolbar sideToolbar=new Toolbar();int warnings;void logUnavailable(String s){warnings++;}void note(Throwable e){warnings++;}void validateLayout(int count){}}
  static class Host {
   static Host current;static int opens;Queue main=new Queue();Intent layoutRestart;Object quickUser=Process.user,reportTo;
   int visibleSlots=3,upperAppId=-1,upperNavigationId=-1;boolean upperEnabled,topAvailable=true,leftSide,renewable=true,closed,closing,busy;String exitReason="";
   SideSlots slots=new SideSlots();int[] retained;QuickBar quickBar=new QuickBar();int closes,logs;
   void preflight(){if(busy||closing||closed)throw new IllegalStateException();}void log(String s){logs++;}
+  int disableChecks;void scheduleUpperDisable(){disableChecks++;}
   void close(String reason){if(closing||closed)return;closes++;exitReason=reason;closing=true;}
   static boolean running(){return current!=null&&!current.closed;}
   static boolean interactive(Context c){return c.unlocked;}
@@ -75,6 +77,8 @@ public class CountLayoutCases {
   h=fresh();Shell.context.wrong=true;h.resizeSlots(5,false);check(h.closes==0,"wrong saved geometry rejected");
   h=fresh();h.slots.replace(2,-1,12);h.resizeSlots(2,false);check(h.closes==0&&h.quickBar.warnings==1,"occupied tail cannot be discarded");
   h=fresh();h.upperEnabled=true;h.upperAppId=14;h.resizeSlots(5,false);check(h.closes==0,"occupied top cannot be disabled");
+  h=fresh();h.upperEnabled=true;h.upperAppId=14;h.resizeSlots(3,false);check(!h.upperEnabled&&h.closes==0&&h.layoutRestart==null&&h.disableChecks==1,"disabling schedules exact top return without restarting music and wallpaper");
+  h.resizeSlots(3,true);check(h.upperEnabled&&h.closes==0,"enabling admission is immediate without rebuilding music or wallpaper");
   h=fresh();h.topAvailable=false;h.resizeSlots(4,true);check(h.closes==0,"missing top capability stays unchanged");
   h=fresh();h.resizeSlots(5,true);check(h.closes==1,"five side slots and independent upper slot supported");
   h=fresh();h.busy=true;h.resizeSlots(5,false);check(h.closes==0,"in-flight handoff blocks layout");

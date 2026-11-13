@@ -32,7 +32,10 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private boolean busy, rendering, resumed;
     private AppConfig config;
     private UiKit ui;
-    private Switch master, pageIndicator, toolbarAutoCollapse;
+    private Switch master, upperWorkspace, pageIndicator, toolbarAutoCollapse;
+    private final android.database.ContentObserver preferences = new android.database.ContentObserver(main) {
+        @Override public void onChange(boolean selfChange) { if (resumed && !isDestroyed()) render(); }
+    };
     private Button check;
     private Spinner count;
     private TextView status;
@@ -72,6 +75,9 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         count.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,choices));
         layout.addView(ui.featureTitle("工作区布局", "默认一主三侧副，支持五个侧边副区和一个独立顶部副区。"), ui.wrap());
         layout.addView(count, ui.wrap());
+        upperWorkspace = new Switch(this);
+        upperWorkspace.setTag("config:" + StepConfig.UPPER);
+        layout.addView(ui.featureRow("顶部工作区", "允许将主区应用移到顶区或与顶部应用交换。关闭时，顶部应用移回主区；若主区已有应用，则将顶部应用放入后台。顶部壁纸、工具栏和播放中的音乐卡片保留。", upperWorkspace), ui.wrap());
         pageIndicator = new Switch(this);
         pageIndicator.setTag("config:" + StepConfig.PAGE_INDICATOR);
         layout.addView(ui.featureRow("页面指示器", "在顶部内容底部显示页数和当前位置。", pageIndicator), ui.wrap());
@@ -88,6 +94,9 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
             if (rendering) return;
             render();
             if (on) probe(true); else saveMaster(false);
+        });
+        upperWorkspace.setOnCheckedChangeListener((v, on) -> {
+            if (!rendering) saveLayout(StepConfig.sideCount(this), on);
         });
         pageIndicator.setOnCheckedChangeListener((v, on) -> {
             if (!rendering) commit(() -> StepConfig.savePageIndicator(this, on), on ? "页面指示器已显示。" : "页面指示器已隐藏。");
@@ -111,6 +120,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume(); resumed=true; render();
+        getContentResolver().registerContentObserver(android.net.Uri.parse("content://" + AppConfig.PROVIDER_AUTHORITY + "/config"), false, preferences);
         if(StepConfig.enabled(this) && StepGestureGuideActivity.needsOffer(this)){
             StepRuntime.query(this,"com.android.systemui",new ResultReceiver(main){
                 @Override protected void onReceiveResult(int code,Bundle answer){
@@ -124,7 +134,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         super.onSaveInstanceState(out);
         out.putBoolean("expanded", fold.content.getVisibility() == View.VISIBLE);
     }
-    @Override protected void onPause(){resumed=false;super.onPause();}
+    @Override protected void onPause(){resumed=false;getContentResolver().unregisterContentObserver(preferences);super.onPause();}
     @Override protected void onDestroy() { request++; main.removeCallbacksAndMessages(null); super.onDestroy(); }
 
     private void render() {
@@ -139,6 +149,8 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
             count.setSelection(countSelection);
         }
         count.setEnabled(available);
+        upperWorkspace.setChecked(StepConfig.upper(this));
+        upperWorkspace.setEnabled(available);
         pageIndicator.setChecked(StepConfig.pageIndicator(this));
         pageIndicator.setEnabled(available);
         toolbarAutoCollapse.setChecked(StepConfig.toolbarAutoCollapse(this));
@@ -147,7 +159,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         rendering = false;
     }
     private void saveLayout(int sides, boolean top) {
-        commit(() -> StepConfig.saveLayout(this, sides, top), "布局已保存，下次进入工作台时使用。");
+        commit(() -> StepConfig.saveLayout(this, sides, top), "顶部工作区已同步；侧边数量在下次进入工作台时使用。");
     }
     private void saveMaster(boolean on) {
         commit(() -> config.save(Collections.singletonMap(AtomicWorkbenchConfig.ENABLED, on ? "1" : "0")).success,

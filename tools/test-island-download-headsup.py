@@ -19,6 +19,7 @@ files['ls/augment/com/IslandNoticeRules.java']='package ls.augment.com;public cl
 files['ls/augment/com/hook/IslandHeadsUpBridge.java']='''package ls.augment.com.hook;import android.service.notification.*;class IslandHeadsUpBridge{
 static boolean downloadMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return true;}
 static String revision(StatusBarNotification s){return s.getKey()+":"+s.getPostTime();}
+static boolean sameIdentity(StatusBarNotification a,StatusBarNotification b){return a!=null&&b!=null&&a.getUid()==b.getUid()&&a.getUserId()==b.getUserId()&&a.getKey().equals(b.getKey());}
 static boolean same(StatusBarNotification a,StatusBarNotification b){return a!=null&&b!=null&&revision(a).equals(revision(b));}}'''
 for name in ['IslandDownloadConfig','IslandDownloadPolicy','IslandActivityPolicy']:
     files['ls/augment/com/'+name+'.java']=(src/(name+'.java')).read_text('utf-8')
@@ -37,7 +38,7 @@ IslandDownloadPolicy.Entry<StatusBarNotification> download;
 State(){downloads.user(0);}boolean locked(){return lock;}boolean hostVisible(){return visible;}int currentUser(){return user;}
 boolean rankingAllowed(NotificationListenerService.Ranking r){return r!=null&&r.getImportance()>=3&&!r.isSuspended()&&r.matchesInterruptionFilter();}
 boolean option(String k){return notices;}int noticeMode(StatusBarNotification s){return blacklisted?0:1;}
-void notice(StatusBarNotification n,boolean ignored){notice=n;activity=IslandActivityPolicy.NOTICE;}
+void notice(StatusBarNotification n,boolean ignored,boolean nativeAlert){if(!nativeAlert)throw new AssertionError("native authorization lost");notice=n;activity=IslandActivityPolicy.NOTICE;}
 void clearNotice(){notice=null;}void cancelFirst(){}void refresh(){download=downloads.activities.choose(null);activity=download==null?0:IslandActivityPolicy.DOWNLOAD;}
 boolean canPrepareHeadsUp(StatusBarNotification sbn,NotificationListenerService.Ranking ranking) CAN
 }
@@ -64,6 +65,10 @@ s.lock=s.screenOff=s.nativeHost.hold=false;s.visible=s.enabled=s.power.interacti
 StatusBarNotification ordinary=new StatusBarNotification("ordinary",12,0);ordinary.notification.flags=0;ordinary.notification.extras.clear();ordinary.notification.extras.put("title","message");
 check(!s.canPrepareHeadsUp(ordinary,rank),"blacklisted ordinary notice remains original");s.notices=true;s.blacklisted=false;
 check(s.canPrepareHeadsUp(ordinary,rank)&&prepareHeadsUp(ordinary,rank)&&s.notice==ordinary,"ordinary non-blacklisted handoff preserved");
+s.nativeHost.hold=true;StatusBarNotification updated=new StatusBarNotification("ordinary",13,0);updated.notification.flags=0;updated.notification.extras.clear();updated.notification.extras.put("title","updated");
+check(s.canPrepareHeadsUp(updated,rank),"same notification may update its expanded panel");
+StatusBarNotification other=new StatusBarNotification("other",13,0);other.notification.flags=0;other.notification.extras.clear();other.notification.extras.put("title","other");
+check(!s.canPrepareHeadsUp(other,rank),"another notification cannot take over the expanded panel");
 System.out.println("PASS independent download heads-up routing: "+checks+" checks");
 }}'''
 for token,marker in [('CAN','        boolean canPrepareHeadsUp('),('PREPARE','    static boolean prepareHeadsUp('),('CONFIRM','    static boolean confirmHeadsUp('),('ABORT','    static void abortHeadsUp(')]:

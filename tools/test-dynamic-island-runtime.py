@@ -71,7 +71,7 @@ public class TestIslandReview {
  static class NativeHost{boolean fade;boolean ownsStatusBarFade(){return fade;}}
  static class IslandNoticeRules{static final int OFF=1;}
  static class State{NativeHost nativeHost=new NativeHost();Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=()->{};
-  int noticeMode(StatusBarNotification source){return ruleMode;}int ruleMode;void scheduleFirst(String key,int kind){} StatusBarNotification notice,snoozeRequested;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing,circularAppStyle;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
+  int noticeMode(StatusBarNotification source){return ruleMode;}int ruleMode;void scheduleFirst(String key,int kind){} StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing,circularAppStyle;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
   String foreground="launcher";String foregroundPackage(){return foreground;}
   State(){host.state=this;}boolean locked(){return isLocked;}int currentUser(){return user;}boolean option(String key){return true;}void refresh(){}void dismiss(){}void requestRefresh(){refreshRequests++;}
   boolean touch(MotionEvent e){return false;}
@@ -132,6 +132,8 @@ public class TestIslandReview {
   check(n.notice==message&&n.noticeUntil==7234,"new eligible notification starts one deadline");
   SystemClock.now=2234;n.notice(message,map);check(n.noticeUntil==7234,"reposted same content never extends its deadline");
   n.clearNotice();n.notice(message,map);check(n.notice==null,"expired identical notification does not pin the island again");
+  n.notice(message,true,true);check(n.notice==message,"native-authorized repeat must not fall back because of expired content history");
+  n.clearNotice();n.notice(message,map);check(n.notice==null,"native reminder does not disable passive-update deduplication");
   message.notification.extras.put(Notification.EXTRA_TEXT,"New text");n.notice(message,map);check(n.notice==message,"meaningful changed content can present a new notification");
   n.clearNotice();message.notification.flags=Notification.FLAG_ONLY_ALERT_ONCE;message.notification.extras.put(Notification.EXTRA_TEXT,"Silent update");n.notice(message,map);check(n.notice==null,"only-alert-once content updates cannot restart the island");
   n.noticeHistory.remove(message.getKey());message.notification.flags=0;n.notice(message,map);check(n.notice==message,"a genuinely new post after removal is allowed");
@@ -154,7 +156,7 @@ public class TestIslandReview {
  }
 }
 '''
-harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map)', 'void notice(StatusBarNotification sbn,boolean rankingPermits)','void withdrawNotice(','void clearNotice(','boolean allowedRanking(', 'boolean rankingAllowed(','boolean openNotice(','void openDiagnostic(']))
+harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map)', 'void notice(StatusBarNotification sbn,boolean rankingPermits)', 'void notice(StatusBarNotification sbn,boolean rankingPermits,boolean nativeAlert)','void withdrawNotice(','void clearNotice(','boolean allowedRanking(', 'boolean rankingAllowed(','boolean openNotice(','void openDiagnostic(']))
 # Uses the caller's configured JDK, like the other host regression scripts.
 with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  path=Path(tmp)/'TestIslandReview.java';path.write_text(harness,encoding='utf-8')

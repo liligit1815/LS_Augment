@@ -38,6 +38,9 @@ final class DuoNotificationCards {
     private static DuoNotificationCards forView(Object view){
         for(DuoNotificationCards host:hosts)if(host.island==view||host.panelFor(view)!=null)return host;return null;
     }
+    static boolean ownsSurface(Object manager,Object view){
+        DuoNotificationCards host=forView(view);return host!=null&&!host.closed&&host.manager==manager;
+    }
     private static DuoNotificationCards forHeight(Object value){
         for(DuoNotificationCards host:hosts)if(Integer.valueOf(host.panelHeightId).equals(value)&&host.selectedHeight()>0)return host;return null;
     }
@@ -72,6 +75,7 @@ final class DuoNotificationCards {
     private ViewGroup island,panel;
     private View compact,content;
     private DuoCompactText compactText;
+    private IslandCompactWidth compactWidth;
     private ImageView mini;
     private DuoDownloadPanel download;
     private int height;
@@ -233,6 +237,9 @@ final class DuoNotificationCards {
         DuoDownloadPanel progressPanel=progress?new DuoDownloadPanel(large):null;
         if(!progress)large.setOnLongClickListener(v->{open.run();return true;});
         island=next;panel=expanded;compact=small;content=large;download=progressPanel;mini=smallIcon;
+        compactWidth=null;
+        if(progress)try{compactWidth=new IslandCompactWidth(context,manager,island);}
+        catch(Exception missing){FeatureRuntimeLog.state("ISLAND_COMPACT_WIDTH","native",missing.getMessage());}
         Native12IslandStyle.compact(small);Native12IslandStyle.panel(large);
         if (!fullscreen && NativeIslandPanelCompat.ordinary(manager))
             ordinaryCards.put(next,new OrdinaryClose(manager,statusBar));
@@ -286,15 +293,16 @@ final class DuoNotificationCards {
             image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);download.bind(entry,icon,app,action);publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
-    boolean showNotice(StatusBarNotification source,Drawable icon,String app,BiConsumer<StatusBarNotification,PendingIntent> action,
-            java.util.function.Consumer<StatusBarNotification> remind){
+    boolean showNotice(StatusBarNotification source,Drawable icon,String app,BiConsumer<StatusBarNotification,PendingIntent> action){
         if(closed||source==null)return false;
         try{
-            create(true);compactText.bind(DuoCompactText.senderOrTitle(source.getNotification(),app),"");image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);
-            download.bindNotice(source,icon,app,action,remind);publish();return true;
+            create(true);compactText.bind(DuoCompactText.messageSummary(source.getNotification(),app),"");image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);
+            download.bindNotice(source,icon,app,action);publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
     private void publish()throws Exception{
+        if(compactWidth!=null&&compactText!=null)try{compactWidth.apply(compactText.naturalWidth(),published);}
+        catch(Exception missing){FeatureRuntimeLog.state("ISLAND_COMPACT_WIDTH","native",missing.getClass().getSimpleName());compactWidth=null;}
         int available=content.getWidth()>0?Math.min(content.getWidth(),panelWidth):panelWidth;
         content.measure(View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int minimum=download!=null?Math.round(56*context.getResources().getDisplayMetrics().density)
@@ -334,7 +342,10 @@ final class DuoNotificationCards {
     boolean selected(){try{return island!=null&&call(manager,"getPermanentIsland")==island;}catch(Exception missing){return false;}}
     boolean visible(){return island!=null&&(island.isShown()||expanded());}
     boolean confirmedFrame(Object revision,Runnable drawn){
-        return !closed&&selected()&&frames.confirm(expanded()?panel:island,revision,drawn);
+        // Fullscreen expansion may temporarily remove the compact child. mTempIsland
+        // still binds the visible panel to this exact source while getPermanentIsland is null.
+        boolean showingPanel=expanded();
+        return !closed&&(showingPanel||selected())&&frames.confirm(showingPanel?panel:island,revision,drawn);
     }
     boolean readyForFirstExpansion(){
         return visible()&&selected()&&!Boolean.TRUE.equals(field(manager,"mAnimProcessing"))

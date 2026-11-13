@@ -508,7 +508,7 @@ final class WorkspaceSideToolbar implements AutoCloseable {
             }else if("wallet".equals(cell.name)){enabled&=NativeTiles.read(owner.userId,"wallet")>0;}
             else if("workspace".equals(cell.name)){note=owner.host.visibleSlots+" 个侧格";mark=String.valueOf(owner.host.visibleSlots);}
             else if("moveDown".equals(cell.name)){enabled&=owner.host.upperId>=0 || owner.host.upperAppId>=0 || owner.host.upperNavigationId>=0;note=enabled?"顶部应用可归还主区":"顶部没有应用";}
-            else if("moveUp".equals(cell.name)){enabled&=owner.host.upperAppId<0;note=enabled?"收纳当前主应用":"顶部已有应用";}
+            else if("moveUp".equals(cell.name)){enabled&=owner.host.upperEnabled && owner.host.upperAppId<0;note=!owner.host.upperEnabled?"顶部工作区已关闭":enabled?"收纳当前主应用":"顶部已有应用";}
             else if("swapTop".equals(cell.name)){enabled&=owner.host.canSwapMainTop();note=enabled?"交换主区与顶部原任务":"请先在主区和顶区打开可交换的应用";}
             else if("mainLeft".equals(cell.name)||"mainRight".equals(cell.name)){note="主区当前在"+(owner.host.leftSide?"右侧":"左侧");}
             if(!enabled)note=!ready?"工作区当前不可操作":cell.available?note.equals("可用")?"当前不可用":note:"应用当前不可用";

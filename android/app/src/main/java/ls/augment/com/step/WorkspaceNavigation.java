@@ -58,6 +58,7 @@ final class WorkspaceNavigation {
     }
     void open(){
         if(opening || !deck.owner.upper.canSwitch())return;
+        if(!host.upperEnabled){deck.owner.logUnavailable("请先在布局设置中启用顶部工作区");return;}
         if(host.upperNavigationId>=0){host.upperActionFor(host.upperNavigationId,"show",null);return;}
         final int id=task;final Object expected=token;
         ActivityManager.RunningTaskInfo t=host.info(id);

@@ -49,9 +49,7 @@ def check_framework(path):
         'Landroid/app/INotificationManager;': {'getNotificationChannelsForPackage(Ljava/lang/String;IZ)Landroid/content/pm/ParceledListSlice;'},
         'Landroid/app/INotificationManager$Stub;': {'asInterface(Landroid/os/IBinder;)Landroid/app/INotificationManager;'},
         'Landroid/service/notification/NotificationListenerService;': {
-            'snoozeNotification(Ljava/lang/String;J)V',
             'getActiveNotifications([Ljava/lang/String;)[Landroid/service/notification/StatusBarNotification;'},
-        'Landroid/service/notification/StatusBarNotification;': {'isClearable()Z'},
     }
     slices={};slice_type='Landroid/content/pm/ParceledListSlice;'
     with zipfile.ZipFile(path) as archive:
@@ -72,7 +70,7 @@ def check_framework(path):
     else:missing.append(slice_type+'getList()Ljava/util/List;')
     return {'apk':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
             'missing':missing,
-            'scope':'Static notification service, channel inventory and snooze contracts only'}
+            'scope':'Static notification service and channel inventory contracts only'}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('apk',type=Path,nargs='+');parser.add_argument('--out',type=Path,required=True)

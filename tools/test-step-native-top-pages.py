@@ -22,6 +22,7 @@ import java.util.*;import static ls.augment.com.step.NativeWorkspaceGuard.*;
 class StepRuntime {
  static Object call(Object o,String n,Object... a){return StepMembers.callMethod(o,n,a);}static Object field(Object o,String n){return StepMembers.getObjectField(o,n);}
  static boolean interactive(Object c){return true;}static ResultReceiver remote(ResultReceiver r){return r;}
+ static void diagnostic(String stage,String detail){}
  static class Handler{List<Runnable> queued=new ArrayList<>();void postDelayed(Runnable r,long delay){queued.add(r);}}
  static class Wm {static Object lock=new Object();static Handler handler=new Handler();static Context context=new Context();static ClassLoader loader=TopCases.class.getClassLoader();static Display display=new Display();}
  static class Context {Context getResources(){return this;}Context getDisplayMetrics(){return this;}float density=3.25f;int densityDpi=520;}
@@ -55,15 +56,16 @@ class NativeWorkspaceGuard {
  static Slots slots=new Slots();static Readmitting readmitting=new Readmitting();static Map<Integer,SavedTask> saved=new HashMap<>();
  static IBinder owner=new Binder();static int principal,layoutCount=5,layoutInset;static boolean sideLeft=true,mainReflow=true,active=true,ending;
  static Rect logical=new Rect(0,0,1216,2688);static Task main;static CommitBarrier pendingCommit;static Object unpublishedSurface,flip;static Set<Integer> gone=new HashSet<>();
+ static SavedTask sessionHome;static Object eligibleMain(SavedTask r){return r==null?null:liveTask(r.id,r.token);}
  static boolean drawOccluded,checkRevealOrder,nativeAcknowledged;static Bundle result;static ResultReceiver events=new ResultReceiver(null){protected void onReceiveResult(int c,Bundle b){if(checkRevealOrder&&!nativeAcknowledged)throw new AssertionError("retained upper uncovered before its unhide transaction committed");drawOccluded=false;((ResultReceiver)b.get("ready")).send(1,new Bundle());}};
  static class Wct{Task boundsTarget;List<Runnable> changes=new ArrayList<>();Task task(Object token){for(SavedTask s:saved.values())if(s.token==token)return s.task;throw new AssertionError("token");}
   void setWindowingMode(Object token,int mode){changes.add(()->task(token).mode=mode);}void setBounds(Object token,Rect bounds){changes.add(()->task(token).bounds=bounds);}void setAlwaysOnTop(Object token,boolean b){}
-  void setFocusable(Object token,boolean b){changes.add(()->task(token).focus=b);}void setHidden(Object token,boolean b){changes.add(()->task(token).hidden=b);}void setBoundsChangeTransaction(Object token,Object tx){boundsTarget=task(token);}void reorder(Object token,boolean b){changes.add(()->task(token).toFront=b);}
+  void setFocusable(Object token,boolean b){changes.add(()->task(token).focus=b);}void setHidden(Object token,boolean b){changes.add(()->task(token).hidden=b);}void setBoundsChangeTransaction(Object token,Object tx){boundsTarget=task(token);}void reorder(Object token,boolean b){changes.add(()->{task(token).toFront=b;if(b)main=task(token);});}
  }
  static Object transaction(){return new Wct();}static Object surfaceTransaction(){return new SurfaceControl.Transaction();}
  static Object liveTask(int id,Object token){SavedTask s=saved.get(id);return !gone.contains(id)&&s!=null&&s.task.token==token?s.task:null;}
  static boolean runningActivity(Object t){return true;}static void trackCommit(Object tx,CommitBarrier b){b.surfaces.add((SurfaceControl.Transaction)tx);}static void apply(Object w){Wct c=(Wct)w;c.changes.forEach(Runnable::run);drawOccluded=c.boundsTarget!=null && c.boundsTarget.mode==6 && !c.boundsTarget.hidden;}
- static void rememberMain(Object t){main=(Task)t;}static void restore(Object w,SavedTask s,CommitBarrier b){Wct c=(Wct)w;c.setWindowingMode(s.token,1);c.setBounds(s.token,logical);c.setFocusable(s.token,true);c.setHidden(s.token,false);main=s.task;}
+ static void rememberMain(Object t){main=(Task)t;}static void restore(Object w,SavedTask s,CommitBarrier b){Wct c=(Wct)w;c.setWindowingMode(s.token,1);c.setBounds(s.token,logical);c.setFocusable(s.token,true);c.setHidden(s.token,false);}
  static void restore(Object w,SavedTask s,CommitBarrier b,Object shared){if(shared==null)throw new AssertionError("hidden outgoing exchange needs the incoming commit carrier");restore(w,s,b);}
  static void verifyRestored(SavedTask s){if(s.task.mode!=1||!s.task.bounds.equals(logical)||s.task.hidden||!s.task.focus)throw new AssertionError("restore");}
  static void replay(){}static void replay(CommitBarrier b,SavedTask s){}static void traceHandoff(String n,int a,int b,int c){}
@@ -86,7 +88,7 @@ public class TopCases {
    .putExtra("previous",outgoing.id).putExtra("previousToken",outgoing.token).putExtra("bounds",new Rect(0,0,1216,684)).putExtra("frameBridge",bridge),null);
  }
  public static void main(String[] args)throws Exception{
-  SavedTask home=add(1);home.task.type=2;SavedTask video=add(42),map=add(43);main=video.task;
+  SavedTask home=add(1);sessionHome=home;home.task.type=2;SavedTask video=add(42),map=add(43);main=video.task;
   action(video,"take",false);check(NativeTopTask.app==video&&NativeTopTask.upper==video&&result.getInt("upperApp")==42,"take original video");
   action(video,"park",false);check(video.task.hidden&&!video.task.focus&&video.dirty,"park keeps video lease");
   main=map.task;action(map,"take",true);check(NativeTopTask.navigation==map&&NativeTopTask.app==video&&result.getInt("upperNavigation")==43,"navigation coexists with video and five side slots");
@@ -120,6 +122,13 @@ public class TopCases {
   check(NativeTopTask.navigation==map && map.dirty && map.task.hidden,"removing video preserves hidden navigation");
   action(map,"show",true);action(map,"release",true);
   check(map.task.toFront && NativeTopTask.navigation==null,"down returns original navigation to main");
+  main=video.task;action(video,"take",false);main=home.task;action(video,"disable",false);
+  check(video.task.toFront && video.task.mode==1 && !video.dirty && NativeTopTask.app==null,"disable returns top to empty/home main");
+  main=video.task;action(video,"take",false);main=map.task;action(video,"disable",false);
+  check(!video.task.toFront && video.task.mode==1 && !video.dirty && main==map.task,"disable backgrounds top when main has an app");
+  main=map.task;action(map,"take",true);main=video.task;action(video,"take",false);main=home.task;
+  action(video,"disable",false);main=video.task;action(map,"disable",true);
+  check(video.task.toFront && !map.task.toFront && !NativeTopTask.occupied(),"disable drains hidden navigation without replacing the first returned app");
   SavedTask next=add(44);main=map.task;action(map,"take",true);main=video.task;action(video,"take",false);action(video,"park",false);
   main=next.task;swap(next,video);
   check(NativeTopTask.app==next && NativeTopTask.upper==next && next.dirty && next.task.mode==6 && !next.task.hidden,"wallpaper exchange adopts original main task");

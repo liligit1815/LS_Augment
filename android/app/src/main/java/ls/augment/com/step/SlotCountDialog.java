@@ -24,10 +24,10 @@ final class SlotCountDialog {
             row.setEnabled(WorkspaceCapacity.fitsLayout(n,upper));row.setAlpha(row.isEnabled()?1f:.45f);
             final int count=n;row.setOnClickListener(v->{dialog.dismiss();select.layout(count,upper);});
         }
-        CheckBox top=new CheckBox(c);top.setText("启用顶部副区");top.setChecked(upper);top.setTextColor(StepMaterial.ink(c));
+        CheckBox top=new CheckBox(c);top.setText("顶部工作区");top.setChecked(upper);top.setTextColor(StepMaterial.ink(c));
         top.setEnabled(upper || topSupported && WorkspaceCapacity.fitsLayout(current,true));top.setAlpha(top.isEnabled()?1f:.45f);
         top.setOnClickListener(v->{dialog.dismiss();select.layout(current,top.isChecked());});card.addView(top,-1,StepMaterial.dp(c,48));
-        TextView hint=StepMaterial.label(c,"主区固定为 1 个，侧边最多 5 个，顶部独立 1 个。",13,false);card.addView(hint,-1,-2);
+        TextView hint=StepMaterial.label(c,"关闭顶部工作区后，顶部应用移回主区；主区已有应用时放入后台。壁纸、工具栏和播放中的音乐卡片保留。",13,false);card.addView(hint,-1,-2);
         dialog.setContentView(card);dialog.setCanceledOnTouchOutside(true);
         Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.MODAL_PANEL);
         w.setBackgroundDrawableResource(android.R.color.transparent);

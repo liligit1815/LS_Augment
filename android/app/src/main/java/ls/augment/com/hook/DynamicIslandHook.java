@@ -145,7 +145,7 @@ final class DynamicIslandHook {
                 state.downloads.posted(source,listener.getCurrentRanking());state.refresh();
                 return state.activity==IslandActivityPolicy.DOWNLOAD&&state.download!=null&&IslandHeadsUpBridge.same(state.download.source,source);
             }
-            state.notice(source,true);return IslandHeadsUpBridge.same(state.notice,source);
+            state.notice(source,true,true);return IslandHeadsUpBridge.same(state.notice,source);
         }
         return false;
     }
@@ -239,7 +239,6 @@ final class DynamicIslandHook {
         int battery,activity,ownerUser=-1;
         long noticeUntil;String lastState="";
         StatusBarNotification notice;MediaController media;
-        StatusBarNotification snoozeRequested;
         Bitmap cachedArt;Drawable cachedArtDrawable,cachedAppIcon;String cachedIconPackage="",popupContent="";
         MediaSession.Token artworkSession;long artworkMissingSince=-1;boolean holdingArtwork;
         String title="",subtitle="";Drawable icon;boolean playing;
@@ -446,7 +445,7 @@ final class DynamicIslandHook {
             if(downloads.canPrepareHeadsUp(sbn,ranking))return !nativeHost.holdsActivity()
                     ||activity==IslandActivityPolicy.DOWNLOAD&&download!=null&&IslandHeadsUpBridge.same(download.source,sbn);
             if(!option("notifications")||noticeMode(sbn)==IslandNoticeRules.OFF
-                    ||nativeHost.holdsActivity()&&!IslandHeadsUpBridge.same(notice,sbn))return false;
+                    ||nativeHost.holdsActivity()&&!IslandHeadsUpBridge.sameIdentity(notice,sbn))return false;
             Notification n=sbn.getNotification();
             return ownerUser>=0&&(sbn.getUserId()==ownerUser||sbn.getUserId()==-1)
                     &&n.visibility!=Notification.VISIBILITY_SECRET&&n.fullScreenIntent==null
@@ -456,6 +455,9 @@ final class DynamicIslandHook {
                         ||!TextUtils.isEmpty(n.extras.getCharSequence(Notification.EXTRA_TEXT)));
         }
         void notice(StatusBarNotification sbn,boolean rankingPermits){
+            notice(sbn,rankingPermits,false);
+        }
+        void notice(StatusBarNotification sbn,boolean rankingPermits,boolean nativeAlert){
             if(closed||!enabled||screenOff||!option("notifications")||locked()||power==null||!power.isInteractive())return;
             Notification n=sbn.getNotification();
             // No work-profile/other-user content, group summaries, silent items,
@@ -471,7 +473,10 @@ final class DynamicIslandHook {
             // repeated post or ONLY_ALERT_ONCE update must not pin the island.
             int fingerprint=31*String.valueOf(heading).hashCode()+String.valueOf(text).hashCode();
             Integer previous=noticeHistory.get(sbn.getKey());
-            if(previous!=null&&(previous==fingerprint||(n.flags&Notification.FLAG_ONLY_ALERT_ONCE)!=0)){
+            // The native heads-up decision already authorized a new reminder. An old,
+            // expired content fingerprint must not turn that authorized alert into a banner.
+            // Passive listener updates retain the original bounded deduplication policy.
+            if(!nativeAlert&&previous!=null&&(previous==fingerprint||(n.flags&Notification.FLAG_ONLY_ALERT_ONCE)!=0)){
                 if(notice!=null&&notice.getKey().equals(sbn.getKey())&&sbn.getPostTime()>=notice.getPostTime()){
                     notice=sbn;noticeHistory.put(sbn.getKey(),fingerprint);
                 }
@@ -497,7 +502,7 @@ final class DynamicIslandHook {
         }
         int currentUser(){try{return (Integer)Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null);}catch(Exception ignored){return -1;}}
         void withdrawNotice(String key){if(notice!=null&&notice.getKey().equals(key)){clearNotice();refresh();}}
-        void clearNotice(){notice=null;snoozeRequested=null;noticeUntil=0;}
+        void clearNotice(){notice=null;noticeUntil=0;}
         void refresh(){
             MAIN.removeCallbacks(tick);if(closed)return;
             try{refreshState();}catch(RuntimeException failure){
@@ -536,7 +541,7 @@ final class DynamicIslandHook {
                 String compact=activity==IslandActivityPolicy.NOTICE?appLabel(notice.getPackageName()):title;
                 boolean shown=activity==IslandActivityPolicy.DOWNLOAD
                         ?nativeHost.showDownload(download,icon,appLabel(download.source.getPackageName()),this::downloadAction)
-                        :activity==IslandActivityPolicy.NOTICE?nativeHost.showNotice(notice,title,subtitle,compact,icon,this::noticeAction,this::snoozeNotice)
+                        :activity==IslandActivityPolicy.NOTICE?nativeHost.showNotice(notice,title,subtitle,compact,icon,this::noticeAction)
                         :nativeHost.show(activity,title,subtitle,compact,icon,playing,battery,media);
                 if(!shown){diagnostic("native_unavailable");return;}
                 diagnostic("activity="+next+",playing="+playing);
@@ -658,7 +663,7 @@ final class DynamicIslandHook {
             if(intent==null)return false;
             try{
                 StatusBarNotification current=activeNotice(source,notificationListener.get());
-                if(current==null||source==snoozeRequested)return false;
+                if(current==null)return false;
                 Notification n=current.getNotification();
                 boolean allowed=intent.equals(n.contentIntent);
                 for(Notification.Action button:IslandDownloadSource.actions(n))allowed|=intent.equals(button.actionIntent);
@@ -667,17 +672,6 @@ final class DynamicIslandHook {
                 return sent;
             }catch(RuntimeException failure){openDiagnostic("notice_action_unavailable:"+failure.getClass().getSimpleName());}
             return false;
-        }
-        void snoozeNotice(StatusBarNotification source){
-            if(source==null||source==snoozeRequested)return;
-            try{
-                NotificationListenerService listener=notificationListener.get();
-                StatusBarNotification current=activeNotice(source,listener);
-                if(current==null||!current.isClearable())return;
-                listener.snoozeNotification(current.getKey(),15*60_000L);
-                snoozeRequested=source; // System removal and repost remain authoritative.
-                openDiagnostic("snooze_requested");
-            }catch(RuntimeException failure){openDiagnostic("snooze_unavailable:"+failure.getClass().getSimpleName());}
         }
         boolean openNotice(PendingIntent intent){
             openDiagnostic("clicked");

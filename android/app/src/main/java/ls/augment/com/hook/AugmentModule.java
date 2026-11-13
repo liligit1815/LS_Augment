@@ -456,11 +456,13 @@ public final class AugmentModule extends RootEarlyModule {
             LauncherPageIndicatorHook.install(this, param.getClassLoader());
             LauncherWidgetResizeHook.install(this, param.getClassLoader());
             LauncherDockCapacityHook.install(this, param.getClassLoader());
+            LauncherDockRebindHook.install(this, param.getClassLoader());
             LauncherNewAppsLastPageHook.install(this, param.getClassLoader());
             ThirdPartyRecentsBackgroundHook.install(this, param.getClassLoader());
             LauncherRecentsMemoryHook.install(this, param.getClassLoader());
             LauncherRecentsCardRadiusHook.install(this, param.getClassLoader());
             LauncherRecentsPrivacyHook.install(this, param.getClassLoader());
+            RecentsPrivacyTransition.install(this, param.getClassLoader());
             LauncherCleanupBombHook.install(this, param.getClassLoader());
             LiquidGlassDockHook.install(this, param.getClassLoader());
             return;

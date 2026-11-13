@@ -154,7 +154,7 @@ public class TestIslandPanel {
   host=new OwnedHost();host.download=host.current;host.downloadContent=new OwnedHost.DownloadContent();host.hide();
   check(host.downloadContent.clears==1&&host.callbackComplete,"download controls cleared after owned close callback");
   host=new OwnedHost();host.notice=host.current;host.noticeContent=new OwnedHost.DownloadContent();host.hide();
-  check(host.noticeContent.clears==1&&host.callbackComplete,"retired legacy notice releases snooze and source controls");
+  check(host.noticeContent.clears==1&&host.callbackComplete,"retired legacy notice releases source controls");
 
   Actions actions=new Actions();int[] commands={0};
   for(int i=0;i<3;i++)actions.runAction(()->commands[0]++);

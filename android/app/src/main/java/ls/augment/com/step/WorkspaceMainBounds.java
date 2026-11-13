@@ -55,6 +55,13 @@ final class WorkspaceMainBounds {
             if((type!=1 && type!=2) || call(task,"getDisplayContent")!=Wm.display || task!=call(task,"getRootTask")
                     || (Integer)call(task,"getWindowingMode")!=1
                     || !WorkspaceUsers.allows(Wm.context,principal,(Integer)field(task,"mUserId")))return false;
+            // Native launches can briefly put a held upper task in fullscreen
+            // while its explicit landscape bounds still belong to that task.
+            // Use the same ownership rule for both override and verification.
+            Rect requested=(Rect)call(task,"getRequestedOverrideBounds");
+            if(requested!=null && !requested.isEmpty() && !requested.equals(logical))return false;
+            Object previous=touched.get(task);
+            if(previous!=null && previous!=call(task,"getParent"))return false;
             return true;
         }catch(RuntimeException unknown){return false;}
     }
@@ -106,8 +113,9 @@ final class WorkspaceMainBounds {
         if(wanted && bounds.width()==layout.width && bounds.height()==layout.mainLogicalHeight)return;
         call(task,"onConfigurationChanged",call(parent,"getConfiguration"));
         Object app=call(task,"topRunningActivity");if(app!=null)ensure(app);
-        if(wanted && !new Rect(0,0,layout.width,layout.mainLogicalHeight).equals(call(task,"getBounds")))
-            throw new IllegalStateException("原生主区边界未接受重排");
+        if(wanted && eligible(task) && !new Rect(0,0,layout.width,layout.mainLogicalHeight).equals(call(task,"getBounds")))
+            throw new IllegalStateException("原生主区边界未接受重排；task="+field(task,"mTaskId")+";actual="+call(task,"getBounds")
+                    +";requested="+call(task,"getRequestedOverrideBounds"));
         if(!wanted)touched.remove(task);
     }
     static void clear(){

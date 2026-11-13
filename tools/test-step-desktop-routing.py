@@ -166,7 +166,9 @@ public class TestRoutes {
         check(Binder.uid==10045,"top-focus query restores launcher identity");
         WorkspaceMainFocus.unique=false;dispatches=0;rejected("hidden or ambiguous main cannot impersonate HOME");
         WorkspaceMainFocus.unique=true;NativeWorkspaceGuard.homeValid=false;rejected("stale HOME identity rejected");
-        reset();NativeTopTask.app=task;Wm.front=null;rejected("missing focus does not admit top HOME fallback");
+        reset();NativeTopTask.app=task;Wm.front=null;check(route(),"task-less focus gap admits only verified unique session HOME");
+        reset();NativeTopTask.app=task;Wm.front=null;WorkspaceMainFocus.unique=false;rejected("task-less focus without unique live HOME remains native");
+        reset();NativeTopTask.app=task;Wm.front=null;NativeWorkspaceGuard.homeValid=false;rejected("task-less focus with stale HOME remains native");
         reset();NativeTopTask.app=task;task.dirty=false;rejected("released top lease rejected");
         reset();NativeTopTask.app=task;task.live=false;rejected("replaced top identity rejected");
         reset();NativeTopTask.app=task;task.user=10;rejected("foreign top user rejected");

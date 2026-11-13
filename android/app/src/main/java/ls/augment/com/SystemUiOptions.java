@@ -29,7 +29,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.toggle(ISLAND,"system","红魔Duo灵动岛","开启后，仅接管已选择且能力可用的场景，沿用原厂卡片、动画和交互。确认岛已显示后隐藏对应重复提醒；关闭场景、关闭总开关或无法接管时恢复原厂路径。通知黑名单仅限制红魔Duo的普通通知上岛，上传下载按所选渠道接入。更新后需重启系统界面并确认新版本已加载。"));
         out.add(EnhancementOption.toggle(ISLAND_STATUS_AVOIDANCE,"system","通知状态自动避让岛","开启时，灵动岛出现后，状态栏按系统逻辑折叠通知图标并为岛腾出空间。关闭时不再因岛出现而避让，图标可能与岛重叠；原有通知显示设置仍然生效。",true));
         out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐播放","显示系统音乐卡片，沿用原有播放控制和收起规则。",1,"关闭","开启"));
-        out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","普通通知","按黑名单及应用、渠道规则展示普通通知。展开后可执行来源操作，或让系统在 15 分钟后再次提醒。",1,"关闭","开启"));
+        out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","普通通知","按黑名单及应用、渠道规则展示普通通知。展开后可执行原通知提供的操作。",1,"关闭","开启"));
         out.add(EnhancementOption.custom(IslandNoticeRules.KEY,"system","应用与通知渠道","黑名单优先；渠道优先于应用，未设置的应用跟随首次提醒开关。","",IslandNoticeRules::normalize));
         out.add(EnhancementOption.custom(IslandNoticeBlacklist.KEY,"system","通知黑名单","仅限制红魔Duo的普通通知上岛，系统通知与原厂提醒保持原样。","",IslandNoticeBlacklist::normalize));
         out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电","显示系统充电卡片，沿用原有显示时机和收起规则。",1,"关闭","开启"));

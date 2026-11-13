@@ -43,6 +43,7 @@ final class IslandLiveScenes {
     private final IslandOwnershipRegistry ownership=new IslandOwnershipRegistry();
     private final IslandFrameProof nativeFrames=new IslandFrameProof();
     private final Runnable changed=this::refresh;
+    private final Runnable guidanceExpired=this::refresh;
     private final Runnable expiry=this::updateOwnership;
     private Object hotspot,hotspotCallback;
     private Method hotspotEnabled,hotspotCount,hotspotRemove;
@@ -179,7 +180,7 @@ final class IslandLiveScenes {
         updateOwnership();
     }
     private void refresh(){
-        MAIN.removeCallbacks(changed);if(closed)return;
+        MAIN.removeCallbacks(changed);MAIN.removeCallbacks(guidanceExpired);if(closed)return;
         int nextUser=currentUser();boolean next=allowed()&&nextUser>=0;
         if(user!=nextUser){release();if(user>=0)screen=null;user=nextUser;hotspotInstance=null;}
         permitted=next;
@@ -273,6 +274,7 @@ final class IslandLiveScenes {
     }
     private void navigation(NotificationListenerService listener,Map<String,IslandEvent> next){
         try{
+            long now=SystemClock.elapsedRealtime(),nearestExpiry=Long.MAX_VALUE;
             StatusBarNotification[] active=listener.getActiveNotifications();if(active==null)return;
             NotificationListenerService.RankingMap ranks=listener.getCurrentRanking();
             for(StatusBarNotification source:active){
@@ -292,7 +294,10 @@ final class IslandLiveScenes {
                 if(words.contains("导航已结束")||words.contains("导航结束")||words.contains("已退出导航")||words.contains("已到达目的地")
                         ||words.contains("规划路线")||words.contains("算路中")||"ended".equals(n.extras.getString(AtomicWorkbenchAmapData.STATUS)))continue;
                 String key="navigation_"+source.getUid()+"_"+source.getId()+"_"+Integer.toHexString(source.getKey().hashCode());
-                Object revision=IslandHeadsUpBridge.revision(source);IslandEvent old=events.get(key);
+                IslandNavigationPresentation data=IslandNavigationPresentation.read(pkg,n,now);
+                title=data.title;detail=data.detail;
+                if(data.expires>now)nearestExpiry=Math.min(nearestExpiry,data.expires);
+                Object revision=Objects.hash(IslandHeadsUpBridge.revision(source),title,detail);IslandEvent old=events.get(key);
                 Object instance=old!=null&&old.uid==source.getUid()?old.instance:new Object();
                 Runnable open=()->sendNavigation(source,n.contentIntent);
                 List<IslandEvent.Action> actions=new ArrayList<>();
@@ -300,6 +305,7 @@ final class IslandLiveScenes {
                 if(actions.isEmpty())actions.add(new IslandEvent.Action("返回导航",open));
                 next.put(key,new IslandEvent(key,"navigation",user,source.getUid(),instance,revision,title,detail,title,icon(pkg),open,actions));
             }
+            if(nearestExpiry<Long.MAX_VALUE)MAIN.postDelayed(guidanceExpired,Math.max(1,nearestExpiry-now));
         }catch(RuntimeException missing){capability("navigation",false,"snapshot:"+missing.getClass().getSimpleName());}
     }
     private void sendNavigation(StatusBarNotification source,PendingIntent intent){
@@ -329,6 +335,7 @@ final class IslandLiveScenes {
         FeatureSettings.diagnostic(context,IslandSceneRegistry.key(scene)+"_capability",ready?"ready:"+BuildConfig.VERSION_CODE:"unavailable:"+reason);
     }
     private void release(){
+        MAIN.removeCallbacks(guidanceExpired);
         MAIN.removeCallbacks(expiry);
         for(DuoNotificationCards card:cards.values())card.close();cards.clear();events.clear();nativeFrames.clear();ownership.clear();
         if(!claims.isEmpty()){claims=Collections.emptySet();NativeIslandScenes.refreshLiveCapsules();}

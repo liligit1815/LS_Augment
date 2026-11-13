@@ -30,7 +30,7 @@ final class DuoPanelShape extends ViewOutlineProvider implements View.OnAttachSt
     }
 
     @Override public void getOutline(View view, Outline outline) {
-        float maxRadius = 24 * view.getResources().getDisplayMetrics().density;
+        float maxRadius = ls.augment.com.IslandVisualSpec.PANEL_RADIUS * view.getResources().getDisplayMetrics().density;
         outline.setRoundRect(0,0,view.getWidth(),view.getHeight(),Math.min(maxRadius,view.getHeight()/2f));
     }
 
