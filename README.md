@@ -6,7 +6,7 @@
 
 源码仓库 [liligit1815/LS_Augment](https://github.com/liligit1815/LS_Augment) 维护源码、必要资源与当前文档；安装包及在线更新清单由 `lispacerelease` 分发。源码版本与已发布安装包可能不同，源码同步不代表已经发布在线更新。
 
-当前公开版本为 **2.0.0-alpha1-test20876（20876）**：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20876/redmagic-duo-20876.apk) · [版本详情](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20876)。更新后请重启手机。
+当前公开版本为 **2.0.0-alpha1-test20881（20881）**：[下载 APK](https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20881/redmagic-duo-20881.apk) · [版本详情](https://github.com/liligit1815/lispacerelease/releases/tag/redmagic-duo-v20881)。更新后请重启手机。
 
 后续推送版本以[红魔 Duo 专属更新清单](https://raw.githubusercontent.com/liligit1815/lispacerelease/main/updates/redmagic-duo.json)为准。更新仓库同时分发多个软件，不能使用仓库级 `releases/latest` 作为红魔 Duo 下载入口；下载 `.apk` 附件，GitHub 自动生成的 Source code ZIP/TAR 不能安装。
 
