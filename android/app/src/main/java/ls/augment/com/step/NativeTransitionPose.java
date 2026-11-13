@@ -17,7 +17,7 @@ final class NativeTransitionPose {
     static Class<?> taskType;
     static final class Pose {
         final IBinder owner;final Object root,parent;final ArrayList<Object> tasks;
-        WorkspaceTransform last;
+        WorkspaceTransform last;boolean cropped;
         Pose(IBinder owner,Object root,Object parent,ArrayList<Object> tasks){this.owner=owner;this.root=root;this.parent=parent;this.tasks=tasks;}
     }
     static Method exact(Class<?> type,String name,Class<?> result,boolean isStatic,Class<?>... args)throws NoSuchMethodException{
@@ -51,7 +51,11 @@ final class NativeTransitionPose {
             StepHooks.hookMethod(build,new StepHook(){protected void afterHookedMethod(MethodHookParam p){
                 if(p.hasThrowable() || preparing.get()==null || !active || ending)return;
                 synchronized(Wm.lock){
-                    try{capture(preparing.get(),p.getResult(),(ArrayList<?>)p.args[2],p.args[3]);}
+                    try{
+                        UpperTaskPresentation.isolateTransition(p.getResult(),(android.view.SurfaceControl.Transaction)p.args[3]);
+                        SideTransitionTargets.isolate(p.getResult());
+                        capture(preparing.get(),p.getResult(),(ArrayList<?>)p.args[2],p.args[3]);
+                    }
                     catch(Exception|LinkageError missing){
                         diagnostic("TRANSITION_POSE","native_fallback;reason="+missing);
                         if(poses.containsKey(preparing.get())){
@@ -94,7 +98,7 @@ final class NativeTransitionPose {
                     && (Integer)call(task,"getWindowingMode")==6)continue;
             if(call(task,"getDisplayContent")!=Wm.display || call(task,"getRootTask")!=task
                     || (Integer)call(task,"getWindowingMode")!=1 || !WorkspaceUsers.allows(Wm.context,principal,(Integer)field(task,"mUserId"))
-                    || ownsTask(task) || contains(task))throw new IllegalStateException("non-fullscreen or already owned animation target");
+                    || ownsTask(task))throw new IllegalStateException("non-fullscreen or workspace-owned animation target");
             int type=(Integer)call(task,"getActivityType");
             if(type!=1 && type!=2 && type!=3)throw new IllegalStateException("unknown task activity type="+type);
             home|=type==2 || type==3;tasks.add(task);if(first==null)first=task;
@@ -119,6 +123,10 @@ final class NativeTransitionPose {
         }
         // TransitionInfo releases its Java wrapper when delivered to Shell.
         // Keep an independent native reference for the actual start and exit.
+        // A new launch may collect the same native task before the previous
+        // transition finishes. Its verified leash is reparented to the NEW root;
+        // excluding it here leaves that launch at full-display scale. Keep both
+        // roots scoped to their own transition token until native completion.
         Pose pose=new Pose(owner,retainSurface(leash),parent,tasks);poses.put(transition,pose);
         for(Object task:tasks)call(task,"clearMagnificationSpec",tx);
         applyPose(pose,local);
@@ -155,7 +163,7 @@ final class NativeTransitionPose {
             Pose pose=entry.getValue();
             if(pose.owner!=owner || !tokens.contains(call(entry.getKey(),"getToken")))continue;
             WorkspaceTransform local=spec(Wm.ownedSpec).inside(inherited(pose.parent));
-            stage(tx,pose.root,local);pose.last=local;
+            stage(tx,pose.root,local);pose.last=local;pose.cropped=bounded();
         }
     }
     static void retire(IBinder expected){
@@ -195,9 +203,19 @@ final class NativeTransitionPose {
     }
     static void stage(Object tx,Object root,WorkspaceTransform pose){
         call(tx,"setMatrix",root,pose.scale,0f,0f,pose.scale);call(tx,"setPosition",root,pose.x,pose.y);
+        // Native icon/spring animations may extend beyond their logical display
+        // (including shadows). Clip at the common root, before its calibrated
+        // workspace transform, without changing any app animation or duration.
+        // An inherited parent can make the local pose identity while still
+        // owning Step's scale. Only lease release removes the crop.
+        call(tx,"setWindowCrop",root,bounded()?logical:(Object)null);
+    }
+    static boolean bounded(){
+        Object current=field(Wm.display,"mMagnificationSpec");
+        return active && !ending && Wm.active && current!=null && (current==Wm.ownedSpec || current==Wm.applyingSpec);
     }
     static void applyPose(Pose pose,WorkspaceTransform value)throws Exception{
-        if(pose.last!=null && pose.last.scale==value.scale && pose.last.x==value.x && pose.last.y==value.y)return;
+        if(pose.last!=null && pose.last.scale==value.scale && pose.last.x==value.x && pose.last.y==value.y && pose.cropped==bounded())return;
         // Never put a Step matrix in Shell's deferred start/finish transaction:
         // that transaction can arrive after this workspace has already exited.
         Object tx=surfaceTransaction();
@@ -209,7 +227,7 @@ final class NativeTransitionPose {
                 if(pose.owner==owner)diagnostic("TRANSITION_POSE_COMMIT","session="+captured+";root="+layer
                         +";scale="+value.scale+";x="+value.x+";y="+value.y+";evidence=transaction_committed_not_screen_capture");
             });
-            call(tx,"apply");pose.last=value;
+            call(tx,"apply");pose.last=value;pose.cropped=bounded();
         }finally{call(tx,"close");}
     }
     static void refresh(Object tx){

@@ -26,13 +26,16 @@ final class AppSelectionDialog {
     private AppSelectionDialog() { }
     static AlertDialog show(Activity activity, UiKit ui, String title,
             String initial, Consumer<String> onSave) {
-        return show(activity, ui, title, initial, false, onSave);
+        return show(activity, ui, title, initial, false, false, onSave);
     }
     static AlertDialog pick(Activity activity, UiKit ui, String knownPackages, Consumer<String> onPick) {
-        return show(activity, ui, "选择通知应用", knownPackages, true, onPick);
+        return show(activity, ui, "选择通知应用", knownPackages, true, true, onPick);
+    }
+    static AlertDialog notifications(Activity activity,UiKit ui,String title,String initial,Consumer<String> onSave) {
+        return show(activity,ui,title,initial,false,true,onSave);
     }
     private static AlertDialog show(Activity activity, UiKit ui, String title,
-            String initial, boolean single, Consumer<String> onSave) {
+            String initial, boolean single, boolean allInstalled, Consumer<String> onSave) {
         Set<String> selected = new TreeSet<>(AppPackageSet.parse(initial));
         Set<String> initialSelection = new TreeSet<>(selected);
         ArrayList<Item> items = new ArrayList<>(), visible = new ArrayList<>();
@@ -40,6 +43,7 @@ final class AppSelectionDialog {
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(ui.dp(14), 0, ui.dp(14), 0);
         EditText search = new EditText(activity);
+        ui.styleInput(search);
         search.setSingleLine(true);
         search.setHint("搜索应用名称或包名");
         body.addView(search, new LinearLayout.LayoutParams(-1, -2));
@@ -86,7 +90,7 @@ final class AppSelectionDialog {
             try {
                 PackageManager pm = activity.getPackageManager();
                 LinkedHashMap<String, ApplicationInfo> applications = new LinkedHashMap<>();
-                if (single) for (ApplicationInfo info : pm.getInstalledApplications(0))
+                if (allInstalled) for (ApplicationInfo info : pm.getInstalledApplications(0))
                     applications.put(info.packageName, info);
                 // Match getLaunchIntentForPackage's INFO/LAUNCHER scope without
                 // relying on OEM-restricted enumeration of all installed apps.
@@ -106,13 +110,13 @@ final class AppSelectionDialog {
                     try {
                         applications.put(packageName, pm.getApplicationInfo(packageName, 0));
                     } catch (PackageManager.NameNotFoundException ignored) {
-                        if (single) discovered.add(new Item(packageName, packageName));
+                        if (allInstalled) discovered.add(new Item(packageName, packageName));
                     }
                 }
                 for (ApplicationInfo info : applications.values()) {
-                    if (single && IslandNoticeRules.app(android.os.Process.myUid()/100000, info.packageName).isEmpty()) continue;
+                    if (allInstalled && IslandNoticeRules.app(android.os.Process.myUid()/100000, info.packageName).isEmpty()) continue;
                     if ((!info.enabled || (info.flags & ApplicationInfo.FLAG_INSTALLED) == 0)
-                            && !(single && initialSelection.contains(info.packageName))) continue;
+                            && !(allInstalled && initialSelection.contains(info.packageName))) continue;
                     discovered.add(new Item(info.packageName, String.valueOf(pm.getApplicationLabel(info))));
                 }
                 discovered.sort(Comparator.comparing((Item item) -> item.label,

@@ -132,6 +132,7 @@ design-qa.md
 /ui-preview/review-log-test.txt
 
 # 仅用于本机单次取证或迭代的包装脚本
+/tools/build-install-release.ps1
 /tools/check-back-gesture-probe.py
 /tools/check-header-clock-20455.py
 /tools/check-notification-viewport.py

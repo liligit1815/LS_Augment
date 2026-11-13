@@ -155,6 +155,10 @@ public final class ConfigSnapshot {
                     if(number<min||number>max||!String.valueOf(number).equals(value))return invalid("retired_value_invalid;line="+i);
                     continue;
                 }
+                if(IslandSceneRegistry.retiredSetting(key)) {
+                    if(!IslandSceneRegistry.validRetiredValue(key,value))return invalid("retired_value_invalid;line="+i);
+                    continue;
+                }
                 if (!ConfigSchema.isRuntimeKey(key)) {
                     if (allowAdditionalKeys && key.matches("[a-z][a-z0-9_]{0,159}")) continue;
                     return invalid("unknown_key;line="+i);

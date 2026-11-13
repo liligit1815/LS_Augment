@@ -85,10 +85,23 @@ SOURCES['android/graphics/PixelFormat.java']='package android.graphics;public cl
 SOURCES['android/graphics/drawable/Drawable.java']=SOURCES['android/graphics/drawable/Drawable.java'].replace('public Drawable mutate()', 'public void invalidateSelf(){}public void setAlpha(int a){}public void setColorFilter(android.graphics.ColorFilter f){}public int getOpacity(){return -3;}public Drawable mutate()')
 SOURCES['android/view/View.java']=SOURCES['android/view/View.java'].replace('public ViewParent parent;', 'public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}public java.util.List<OnAttachStateChangeListener> attaches=new java.util.ArrayList<>();public final ViewTreeObserver observer=new ViewTreeObserver();public ViewTreeObserver getViewTreeObserver(){return observer;}public void addOnAttachStateChangeListener(OnAttachStateChangeListener l){attaches.add(l);}public void removeOnAttachStateChangeListener(OnAttachStateChangeListener l){attaches.remove(l);}public boolean isAttachedToWindow(){return true;}public void invalidate(){invalidations++;}public static class Overlay{public java.util.List<android.graphics.drawable.Drawable> items=new java.util.ArrayList<>();public void add(android.graphics.drawable.Drawable d){items.add(d);}public void remove(android.graphics.drawable.Drawable d){items.remove(d);}}public final Overlay overlay=new Overlay();public Overlay getOverlay(){return overlay;}public ViewParent parent;')
 SOURCES['ls/augment/com/hook/FeatureSettings.java']=SOURCES['ls/augment/com/hook/FeatureSettings.java'].replace('static ConfigSnapshot', 'static void diagnostic(android.content.Context c,String k,String v){}static ConfigSnapshot',1)
-SOURCES['ls/augment/com/hook/RecentsPrivacyOverlay.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/RecentsPrivacyOverlay.java').read_text(encoding='utf-8')
+SOURCES['ls/augment/com/hook/AugmentModule.java']=SOURCES['ls/augment/com/hook/AugmentModule.java'].replace('void logFeatureError(', 'void logFeatureInfo(String text){}void logFeatureError(')
+for name in ('RecentsPrivacyOverlay','RecentsPrivacyDraw'):
+    SOURCES[f'ls/augment/com/hook/{name}.java']=(ROOT/f'android/app/src/main/java/ls/augment/com/hook/{name}.java').read_text(encoding='utf-8')
 
-for mode in ('both', 'legacy', 'modern', 'nested', 'missing', 'field_data', 'abstract_snapshot'):
+for mode in ('both', 'legacy', 'modern', 'nested', 'missing', 'field_data', 'abstract_snapshot', 'concrete', 'inherited_draw'):
     sources = dict(SOURCES)
+    if mode in ('concrete','inherited_draw'):
+        path='com/android/quickstep/task/thumbnail/TaskThumbnailView.java'
+        lifecycle='public void onAttachedToWindow(){}public void onRecycle(){}public void setState(TaskThumbnailUiState s,Integer id){uiState=s;}'
+        draw='public void draw(android.graphics.Canvas c){c.nativeDraws++;}'
+        sources[path]=sources[path].replace('public TaskThumbnailUiState uiState=',lifecycle+('' if mode=='inherited_draw' else draw)+'public TaskThumbnailUiState uiState=')
+        if mode=='inherited_draw':
+            sources[path]=sources[path].replace('extends android.view.ViewGroup','extends BaseThumbnail')
+            sources['com/android/quickstep/task/thumbnail/BaseThumbnail.java']='package com.android.quickstep.task.thumbnail;public class BaseThumbnail extends android.view.ViewGroup{'+draw+'}'
+        test='ls/augment/com/hook/TestRecentsPrivacy.java'
+        sources[test]=sources[test].replace('launcher.recents.privacy.modern','launcher.recents.privacy.draw').replace('m.call("modern",','m.call("draw",')
+        sources[test]=sources[test].replace('c=new Canvas();m.call("draw",new android.view.ViewGroup(),c);check(c.nativeDraws==1&&c.masks==0,"unrelated ViewGroup untouched");','check(m.hooks.keySet().stream().noneMatch(k->k.contains("overlay")),"concrete draw takes priority over lifecycle overlay");')
     if mode == 'nested':
         body = sources.pop('com/android/quickstep/views/TaskContainer.java').split('public class TaskContainer', 1)[1]
         sources['com/android/quickstep/views/TaskView.java'] = sources['com/android/quickstep/views/TaskView.java'].replace('import java.util.*;', 'import java.util.*;import com.android.systemui.shared.recents.model.Task;').replace('public final List', 'public static class TaskContainer' + body + ' public final List')

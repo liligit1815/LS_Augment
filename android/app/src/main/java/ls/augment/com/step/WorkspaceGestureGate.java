@@ -113,12 +113,14 @@ public final class WorkspaceGestureGate {
         return context.getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
     }
     static void installServer(){
+        GameGestureGate.installServer();
         StepRuntime.Wm.context.registerReceiver(new BroadcastReceiver(){public void onReceive(Context c,Intent i){
             ResolveInfo home=launcher(c);
             if(home!=null && home.activityInfo!=null && home.activityInfo.applicationInfo.uid==getSentFromUid())publish();
         }},new IntentFilter(QUERY),NativeWorkspaceGuard.SYSTEM_CONTROL,StepRuntime.Wm.handler,Context.RECEIVER_EXPORTED);
     }
     static void publish(){
+        GameGestureGate.publish();
         try{
             ResolveInfo home=launcher(StepRuntime.Wm.context);
             if(home==null || home.activityInfo==null)return;

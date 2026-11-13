@@ -101,8 +101,9 @@ def apk_hash(ar,package):
     return m[1]
 
 def fixture_valid(value,run_id,previous=None):
-    if value.get('schema')!=1 or value.get('fixtureRevision')!='island-lifecycle-r2-controls' or value.get('package')!=PACKAGE or value.get('runId')!=run_id:
+    if value.get('schema')!=1 or value.get('fixtureRevision') not in ('island-lifecycle-r2-controls','island-lifecycle-r3-notices') or value.get('package')!=PACKAGE or value.get('runId')!=run_id:
         raise extra.Inconclusive('Foreign/stale fixture evidence')
+    if value.get('notificationsOnly',False) is not False:raise extra.Inconclusive('Notification-only fixture cannot prove media lifecycle')
     for key in ('pid','startedElapsed','deadlineElapsed','observedElapsed','sequence'):
         if not isinstance(value.get(key),int) or value[key]<0:raise extra.Inconclusive('Incomplete fixture times')
     if not 0<value['deadlineElapsed']-value['startedElapsed']<=180000:raise extra.Inconclusive('Fixture exceeds bounded lifetime')
@@ -399,7 +400,7 @@ def main():
     extra.gates(ar)
     if ar.shell('am get-current-user')!='0' or not re.search(r'\bmWakefulness=Awake\b',ar.shell('dumpsys power')):raise extra.Inconclusive('Current unlocked/awake user0 prerequisite; no unlock or wake attempted')
     build=json.loads(a.fixture_build.read_text('utf-8'));apk=Path(build['apk'])
-    if build.get('fixtureRevision')!='island-lifecycle-r2-controls' or digest(apk.read_bytes())!=build['sha256'] or apk_hash(ar,PACKAGE)!=build['sha256']:raise extra.Inconclusive('Reviewed fixture APK identity mismatch')
+    if build.get('fixtureRevision') not in ('island-lifecycle-r2-controls','island-lifecycle-r3-notices') or digest(apk.read_bytes())!=build['sha256'] or apk_hash(ar,PACKAGE)!=build['sha256']:raise extra.Inconclusive('Reviewed fixture APK identity mismatch')
     if build['sourceSha256']!=digest((ROOT/'tools/fixtures/island/IslandFixtureRunner.java').read_bytes()):raise extra.Inconclusive('Fixture source changed since build')
     if build.get('sourceHashes')!={p.name:digest(p.read_bytes()) for p in (ROOT/'tools/fixtures/island').glob('*.java')}:raise extra.Inconclusive('Fixture protocol/source set changed since build')
     testhash=digest(a.test_apk.read_bytes())

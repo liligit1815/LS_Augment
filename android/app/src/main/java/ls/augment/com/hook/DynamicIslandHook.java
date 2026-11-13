@@ -40,6 +40,7 @@ import java.util.WeakHashMap;
 import ls.augment.com.IslandActivityPolicy;
 import ls.augment.com.IslandDownloadPolicy;
 import ls.augment.com.IslandNoticeRules;
+import ls.augment.com.IslandNoticeBlacklist;
 import ls.augment.com.SystemUiOptions;
 import static ls.augment.com.hook.SystemUiAdapter.*;
 
@@ -67,7 +68,8 @@ final class DynamicIslandHook {
 
     static int install(AugmentModule module,ClassLoader loader) {
         int taskHooks=NativeIslandHost.install(module,loader)+NativeIslandSettingsHook.install(module,loader)
-                +IslandStatusBarAvoidanceHook.install(module,loader)+MagicIslandScenes.install(module,loader);
+                +IslandStatusBarAvoidanceHook.install(module,loader)+MagicIslandScenes.install(module,loader)
+                +IslandHeadsUpBridge.install(module,loader)+IslandLiveScenes.install(module,loader);
         for(String listener:new String[]{"com.android.systemui.shared.system.TaskStackChangeListeners$Impl",
                 "com.android.wm.shell.common.TaskStackListenerImpl"}){
             for(String method:new String[]{"onTaskStackChanged","onTaskMovedToFront","onTaskDisplayChanged",
@@ -95,13 +97,13 @@ final class DynamicIslandHook {
             if(args[0] instanceof StatusBarNotification){
                 StatusBarNotification sbn=(StatusBarNotification)args[0];
                 NotificationListenerService.RankingMap rankings=(NotificationListenerService.RankingMap)args[1];
-                MAIN.post(()->{for(State state:new ArrayList<>(STATES.values()))try{state.posted(sbn,rankings);}
+                MAIN.post(()->{IslandLiveScenes.notificationsChanged();for(State state:new ArrayList<>(STATES.values()))try{state.posted(sbn,rankings);}
                     catch(RuntimeException failure){state.downloads.removed(sbn);state.requestRefresh();state.withdrawNotice(sbn.getKey());state.diagnostic("notice_unavailable:"+failure.getClass().getSimpleName());}});
             }return PASS;
         });
         count+=hookNamed(module,loader,"island",LISTENER,"onNotificationRemoved",3,null,(owner,args,result)->{
             if(args[0] instanceof StatusBarNotification){StatusBarNotification removed=(StatusBarNotification)args[0];String key=removed.getKey();
-                MAIN.post(()->{for(State state:new ArrayList<>(STATES.values())){
+                MAIN.post(()->{IslandLiveScenes.notificationsChanged();IslandHeadsUpBridge.removed(removed);for(State state:new ArrayList<>(STATES.values())){
                     state.downloads.removed(removed);state.requestRefresh();
                     if(state.downloads.activities.get(key)==null)state.announcedDownloads.remove(key);
                     if(state.notice!=null&&key.equals(state.notice.getKey())
@@ -114,7 +116,7 @@ final class DynamicIslandHook {
         count+=hookNamed(module,loader,"island",LISTENER,"onNotificationRankingUpdate",1,null,(owner,args,result)->{
             if(args[0] instanceof NotificationListenerService.RankingMap){
                 NotificationListenerService.RankingMap rankings=(NotificationListenerService.RankingMap)args[0];
-                MAIN.post(()->{for(State state:new ArrayList<>(STATES.values())){
+                MAIN.post(()->{IslandLiveScenes.notificationsChanged();for(State state:new ArrayList<>(STATES.values())){
                     state.downloadSnapshot();state.downloads.ranking(rankings);state.requestRefresh();
                     if(state.notice!=null&&!state.allowedRanking(state.notice.getKey(),rankings)){state.clearNotice();state.refresh();}
                 }});
@@ -122,14 +124,51 @@ final class DynamicIslandHook {
         });
         count+=hookListenerLifecycle(module,loader,"onListenerConnected",owner->{
             if(owner instanceof NotificationListenerService){notificationListener=new java.lang.ref.WeakReference<>((NotificationListenerService)owner);
-                MAIN.post(()->{for(State state:new ArrayList<>(STATES.values())){state.restoreDownloadSnapshot();state.requestRefresh();}});}
+                MAIN.post(()->{IslandLiveScenes.notificationsChanged();for(State state:new ArrayList<>(STATES.values())){state.restoreDownloadSnapshot();state.requestRefresh();}});}
         });
         count+=hookListenerLifecycle(module,loader,"onListenerDisconnected",owner->{
-            MAIN.post(()->{if(notificationListener.get()!=owner)return;notificationListener.clear();
+            MAIN.post(()->{if(notificationListener.get()!=owner)return;notificationListener.clear();IslandHeadsUpBridge.clear();IslandLiveScenes.notificationsChanged();
                 for(State state:new ArrayList<>(STATES.values())){state.downloads.clear();state.clearNotice();state.requestRefresh();}});
         });
         module.logFeatureInfo("DYNAMIC_ISLAND_READY hooks="+count+",taskHooks="+taskHooks);
         return count+taskHooks;
+    }
+    static boolean canPrepareHeadsUp(StatusBarNotification source,NotificationListenerService.Ranking ranking){
+        for(State state:new ArrayList<>(STATES.values()))if(state.canPrepareHeadsUp(source,ranking))return true;
+        return false;
+    }
+    static NotificationListenerService notificationSource(){return notificationListener.get();}
+    static boolean prepareHeadsUp(StatusBarNotification source,NotificationListenerService.Ranking ranking){
+        for(State state:new ArrayList<>(STATES.values()))if(state.canPrepareHeadsUp(source,ranking)){
+            if(state.downloads.canPrepareHeadsUp(source,ranking)){
+                NotificationListenerService listener=notificationListener.get();if(listener==null)return false;
+                state.downloads.posted(source,listener.getCurrentRanking());state.refresh();
+                return state.activity==IslandActivityPolicy.DOWNLOAD&&state.download!=null&&IslandHeadsUpBridge.same(state.download.source,source);
+            }
+            state.notice(source,true);return IslandHeadsUpBridge.same(state.notice,source);
+        }
+        return false;
+    }
+    static boolean confirmHeadsUp(StatusBarNotification source,Runnable drawn){
+        for(State state:new ArrayList<>(STATES.values()))if(!state.closed&&state.enabled&&!state.locked()
+                &&state.hostVisible()&&(state.activity==IslandActivityPolicy.NOTICE&&IslandHeadsUpBridge.same(state.notice,source)
+                    ||state.activity==IslandActivityPolicy.DOWNLOAD&&state.download!=null&&IslandHeadsUpBridge.same(state.download.source,source)))
+            return state.nativeHost.confirmedFrame(IslandHeadsUpBridge.revision(source),drawn);
+        return false;
+    }
+    static void abortHeadsUp(StatusBarNotification source){
+        for(State state:new ArrayList<>(STATES.values())){
+            if(IslandHeadsUpBridge.same(state.notice,source)){
+                state.nativeHost.abortPresentation();state.clearNotice();state.cancelFirst();state.refresh();
+            }
+            IslandDownloadPolicy.Entry<StatusBarNotification> entry=state.downloads.activities.get(source.getKey());
+            if(entry!=null&&IslandHeadsUpBridge.same(entry.source,source)){
+                if(state.activity==IslandActivityPolicy.DOWNLOAD&&state.download==entry){
+                    state.nativeHost.abortPresentation();state.download=null;state.cancelFirst();
+                }
+                state.downloads.removed(source);state.refresh();
+            }
+        }
     }
     private static int hookListenerLifecycle(AugmentModule module,ClassLoader loader,String name,java.util.function.Consumer<Object> callback){
         try{
@@ -163,6 +202,7 @@ final class DynamicIslandHook {
         final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();
         final Map<String,Integer> noticeHistory=new LinkedHashMap<>();
         IslandNoticeRules noticeRules=IslandNoticeRules.parse("");
+        IslandNoticeBlacklist noticeBlacklist=IslandNoticeBlacklist.parse("");
         final IslandActivityPolicy.ChargingActivity chargeActivity=new IslandActivityPolicy.ChargingActivity();
         // Query the current user's list again: a delayed callback from the previous
         // user must never republish that user's media after a user switch.
@@ -205,7 +245,7 @@ final class DynamicIslandHook {
         String title="",subtitle="";Drawable icon;boolean playing;
         State(FrameLayout host){this.host=host;context=host.getContext();
             downloads=new IslandDownloadSource(context);
-            nativeHost=new NativeIslandHost(host,this::openActivity,this::expand,this::runAction);
+            nativeHost=new NativeIslandHost(host,this::expand,this::openActivity,this::runAction);
             nativeHost.onPanelChanged(this::requestRefresh);
             sessions=context.getSystemService(MediaSessionManager.class);keyguard=context.getSystemService(KeyguardManager.class);
             power=context.getSystemService(PowerManager.class);
@@ -243,6 +283,7 @@ final class DynamicIslandHook {
         void configure(){
             if(closed)return;cancelFirst();boolean next=FeatureSettings.enabled(context,SystemUiOptions.ISLAND);
             noticeRules=IslandNoticeRules.parse(FeatureSettings.text(context,IslandNoticeRules.KEY,""));
+            noticeBlacklist=IslandNoticeBlacklist.parse(FeatureSettings.text(context,IslandNoticeBlacklist.KEY,""));
             if(next!=enabled){
                 enabled=next;if(enabled)listen();else {stopListening();nativeHost.release();}
             }
@@ -276,7 +317,9 @@ final class DynamicIslandHook {
                 announcedDownloads.retainAll(downloads.activities.keys());
                 return;
             }
-            notice(sbn,rankings);requestRefresh();
+            NotificationListenerService.Ranking ranking=new NotificationListenerService.Ranking();
+            if(rankings!=null&&rankings.getRanking(key,ranking)&&IslandHeadsUpBridge.listenerMayShow(sbn,ranking))notice(sbn,rankings);
+            requestRefresh();
         }
         void scheduleFirst(String key,int kind){
             int mode=kind==IslandActivityPolicy.NOTICE&&notice!=null?noticeMode(notice):IslandNoticeRules.INHERIT;
@@ -391,9 +434,28 @@ final class DynamicIslandHook {
         }
         boolean sameSession(MediaController first,MediaController second){return first!=null&&second!=null&&first.getSessionToken().equals(second.getSessionToken());}
         int noticeMode(StatusBarNotification source){
+            if(noticeBlacklist==null||noticeBlacklist.contains(ownerUser,source.getPackageName()))return IslandNoticeRules.OFF;
             return noticeRules==null?IslandNoticeRules.OFF:noticeRules.resolve(ownerUser,source.getPackageName(),source.getNotification().getChannelId());
         }
         void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map){
+            notice(sbn,allowedRanking(sbn.getKey(),map));
+        }
+        boolean canPrepareHeadsUp(StatusBarNotification sbn,NotificationListenerService.Ranking ranking){
+            if(closed||!enabled||screenOff||locked()||!hostVisible()||power==null||!power.isInteractive()
+                    ||ownerUser<0||ownerUser!=currentUser()||!rankingAllowed(ranking))return false;
+            if(downloads.canPrepareHeadsUp(sbn,ranking))return !nativeHost.holdsActivity()
+                    ||activity==IslandActivityPolicy.DOWNLOAD&&download!=null&&IslandHeadsUpBridge.same(download.source,sbn);
+            if(!option("notifications")||noticeMode(sbn)==IslandNoticeRules.OFF
+                    ||nativeHost.holdsActivity()&&!IslandHeadsUpBridge.same(notice,sbn))return false;
+            Notification n=sbn.getNotification();
+            return ownerUser>=0&&(sbn.getUserId()==ownerUser||sbn.getUserId()==-1)
+                    &&n.visibility!=Notification.VISIBILITY_SECRET&&n.fullScreenIntent==null
+                    &&(n.flags&(Notification.FLAG_GROUP_SUMMARY|Notification.FLAG_ONGOING_EVENT))==0
+                    &&n.extras!=null&&!n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+                    &&(!TextUtils.isEmpty(n.extras.getCharSequence(Notification.EXTRA_TITLE))
+                        ||!TextUtils.isEmpty(n.extras.getCharSequence(Notification.EXTRA_TEXT)));
+        }
+        void notice(StatusBarNotification sbn,boolean rankingPermits){
             if(closed||!enabled||screenOff||!option("notifications")||locked()||power==null||!power.isInteractive())return;
             Notification n=sbn.getNotification();
             // No work-profile/other-user content, group summaries, silent items,
@@ -402,7 +464,7 @@ final class DynamicIslandHook {
             if(user<0||(sbn.getUserId()!=user&&sbn.getUserId()!=-1)||n.visibility==Notification.VISIBILITY_SECRET
                     ||(n.flags&(Notification.FLAG_GROUP_SUMMARY|Notification.FLAG_ONGOING_EVENT))!=0
                     ||n.extras==null||n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
-                    ||noticeMode(sbn)==IslandNoticeRules.OFF||!allowedRanking(sbn.getKey(),map)){withdrawNotice(sbn.getKey());return;}
+                    ||noticeMode(sbn)==IslandNoticeRules.OFF||!rankingPermits){withdrawNotice(sbn.getKey());return;}
             CharSequence text=n.extras.getCharSequence(Notification.EXTRA_TEXT),heading=n.extras.getCharSequence(Notification.EXTRA_TITLE);
             if(TextUtils.isEmpty(text)&&TextUtils.isEmpty(heading)){withdrawNotice(sbn.getKey());return;}
             // Keep a bounded, content-free fingerprint after expiration: a
@@ -425,7 +487,10 @@ final class DynamicIslandHook {
         }
         boolean allowedRanking(String key,NotificationListenerService.RankingMap map){
             NotificationListenerService.Ranking ranking=new NotificationListenerService.Ranking();
-            return map!=null&&map.getRanking(key,ranking)&&ranking.getImportance()>=NotificationManager.IMPORTANCE_DEFAULT
+            return map!=null&&map.getRanking(key,ranking)&&rankingAllowed(ranking);
+        }
+        boolean rankingAllowed(NotificationListenerService.Ranking ranking){
+            return ranking!=null&&ranking.getImportance()>=NotificationManager.IMPORTANCE_DEFAULT
                     &&!ranking.isSuspended()&&ranking.matchesInterruptionFilter()&&(ranking.getSuppressedVisualEffects()&
                     (NotificationManager.Policy.SUPPRESSED_EFFECT_STATUS_BAR|NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK
                             |NotificationManager.Policy.SUPPRESSED_EFFECT_NOTIFICATION_LIST))==0;

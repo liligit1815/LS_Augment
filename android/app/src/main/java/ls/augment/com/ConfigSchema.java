@@ -257,6 +257,7 @@ public final class ConfigSchema {
         add("atomic_workbench_side_count", "3", false, value -> "6".equals(value) ? "5" : integer(value, 1, 5));
         add("atomic_workbench_upper_enabled", "0", false, value -> truthy(value) ? "1" : "0");
         add("atomic_workbench_page_indicator", "1", false, value -> truthy(value) ? "1" : "0");
+        add("atomic_workbench_toolbar_auto_collapse", "1", false, value -> truthy(value) ? "1" : "0");
         addBoolean(FREEFORM_UNLIMITED, false);
         addBoolean(FREEFORM_ALL_APPS, false);
         addBoolean(FREEFORM_GAME_LOGIN, false);

@@ -210,6 +210,20 @@ files['ls/augment/com/hook/TestCleanupBomb.java']=test
 files['ls/augment/com/hook/HookCompatibility.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook/HookCompatibility.java').read_text(encoding='utf-8')
 files['ls/augment/com/hook/CleanupIconImage.java']=(SRC/'hook/CleanupIconImage.java').read_text(encoding='utf8')
 files['ls/augment/com/hook/CleanupIconLayout.java']=(SRC/'hook/CleanupIconLayout.java').read_text(encoding='utf8')
+files['ls/augment/com/hook/CleanupCapsule.java']=(SRC/'hook/CleanupCapsule.java').read_text(encoding='utf8')
+# Placement is exercised against Android view matrices in test-cleanup-capsule-android.py.
+files['ls/augment/com/hook/CleanupCapsulePosition.java']='package ls.augment.com.hook;final class CleanupCapsulePosition{CleanupCapsulePosition(android.view.View v){}void update(boolean b){}}'
+files['android/graphics/Shader.java']='package android.graphics;public class Shader{public enum TileMode{CLAMP}}'
+files['android/graphics/LinearGradient.java']='package android.graphics;public class LinearGradient extends Shader{public LinearGradient(float a,float b,float c,float d,int[] e,float[] f,TileMode g){}}'
+files['android/graphics/Paint.java']=files['android/graphics/Paint.java'].replace('setShader(RuntimeShader s)', 'setShader(Shader s)')
+files['android/graphics/RuntimeShader.java']=files['android/graphics/RuntimeShader.java'].replace('class RuntimeShader{','class RuntimeShader extends Shader{')
+files['android/view/View.java']=files['android/view/View.java'].replace('public int width=', 'public void drawableStateChanged(){}public boolean isPressed(){return false;}public int width=')
+files['android/graphics/drawable/Drawable.java']=files['android/graphics/drawable/Drawable.java'].replace('public int getIntrinsicWidth()', 'public boolean setVisible(boolean v,boolean r){return true;}public int getIntrinsicWidth()')
+files['android/graphics/Color.java']=files['android/graphics/Color.java'].replace('public static int argb','public static final int TRANSPARENT=0;public static int argb')
+files['android/util/DisplayMetrics.java']=files['android/util/DisplayMetrics.java'].replace('{', '{public int widthPixels=1080;',1)
+files['android/util/DisplayMetrics.java']=files['android/util/DisplayMetrics.java'].replace('density=1','scaledDensity=1,density=1')
+files['android/graphics/Paint.java']=files['android/graphics/Paint.java'].replace('public float ascent()', 'public float descent(){return 4;}public float ascent()')
+files['android/graphics/Typeface.java']=files['android/graphics/Typeface.java'].replace('BOLD=1','NORMAL=0,BOLD=1')
 files['android/view/ViewGroup.java']='package android.view;public class ViewGroup extends View {public static class LayoutParams {public int width,height;public LayoutParams(int w,int h){width=w;height=h;}}}'
 files['android/view/View.java']=files['android/view/View.java'].replace('public int width=', 'public ViewGroup.LayoutParams params;public ViewGroup.LayoutParams getLayoutParams(){return params;}public void setLayoutParams(ViewGroup.LayoutParams p){params=p;width=p.width;height=p.height;}public int width=')
 files['android/content/res/Resources.java']=files['android/content/res/Resources.java'].replace('public int getIdentifier', 'public java.io.InputStream openRawResource(int id){return new java.io.ByteArrayInputStream(new byte[]{2});}public int getIdentifier')

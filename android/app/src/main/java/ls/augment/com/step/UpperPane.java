@@ -39,6 +39,16 @@ final class UpperPane {
                 && owner.picker==null && owner.recent==null && owner.tools.clipboard==null && owner.tools.toolMenu==null
                 && (owner.counts==null || !owner.counts.dialog.isShowing()) && host.retained==null && !host.fence.busy()
                 && host.dragSlot<0 && !owner.launching && interactive(owner.ctx);}
+    LiveWorkspace.Lease gestureTarget(){
+        if(!canSwitch() || !visible || host.upperId<0 || !owner.currentUser())return null;
+        LiveWorkspace.Lease lease=host.leases.get(host.upperId);
+        try{return lease!=null && lease.checkedInfo()!=null?lease:null;}
+        catch(RuntimeException changed){return null;}
+    }
+    void finishGesture(LiveWorkspace.Lease original,boolean dismiss){
+        if(original==null || gestureTarget()!=original)return;
+        host.upperActionFor(original.id,dismiss?"dismiss":"release",null);
+    }
     void toggle(boolean toTask){
         if(toTask==visible || !canSwitch())return;
         applyFace(toTask);
@@ -61,6 +71,21 @@ final class UpperPane {
     }
     void render(boolean taskFace){
         render(taskFace,host.upperId>=0);
+    }
+    void coverBeforePark(Runnable ready){
+        render(false);
+        final long deadline=android.os.SystemClock.uptimeMillis()+1000;
+        awaitCover(ready,deadline);
+    }
+    void awaitCover(Runnable ready,long deadline){
+        if(owner.closed || host.closing || !host.fence.busy())return;
+        owner.bar.getViewTreeObserver().registerFrameCommitCallback(()->host.main.post(()->{
+            if(owner.closed || host.closing || !host.fence.busy())return;
+            if(owner.bar.getHeight()==host.geometry.top && owner.band.getVisibility()==View.VISIBLE){ready.run();return;}
+            if(android.os.SystemClock.uptimeMillis()<deadline)awaitCover(ready,deadline);
+            else host.fail("顶部目标页面绘制未确认");
+        }));
+        owner.bar.invalidate();
     }
     void render(boolean taskFace,boolean occupied){
         if(owner.closed)return;

@@ -28,7 +28,7 @@ final class QuickPicker {
                 android.graphics.Bitmap wallpaper, Commit commit, Runnable closed) {
         if(overlay){
             android.view.Display display=base.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
-            Context physical=StepMaterial.statusBarPanelContext(base,display);
+            Context physical=StepMaterial.modalPanelContext(base,display);
             ctx=new android.view.ContextThemeWrapper(physical,StepMaterial.dark(base)?
                     android.R.style.Theme_Material_Dialog_NoActionBar:android.R.style.Theme_Material_Light_Dialog_NoActionBar);
         }else ctx=base;
@@ -86,7 +86,7 @@ final class QuickPicker {
         });
         footer.addView(cancel,new LinearLayout.LayoutParams(0,-1,1));footer.addView(done,new LinearLayout.LayoutParams(0,-1,1));
         body.setFocusableInTouchMode(true);body.requestFocus();dialog.setContentView(card);
-        Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
+        Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.MODAL_PANEL);
         w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);lp.gravity=Gravity.CENTER;lp.dimAmount=.28f;w.setAttributes(lp);

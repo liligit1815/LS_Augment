@@ -32,9 +32,9 @@ public class TestCleanupBomb {
   View beforeAttach=new View();beforeAttach.attached=false;CleanupIconImage early=new CleanupIconImage(beforeAttach);early.update("f".repeat(64));
   check(ContentResolver.opens==opens,"inflation defers file read until attachment");beforeAttach.attached=true;early.update("f".repeat(64));Handler.await();check(early.draw(c,30,40,20),"first attachment loads the same configured hash");
   View restart=new View();restart.attached=false;CleanupIconImage fresh=new CleanupIconImage(restart);fresh.update("f".repeat(64));restart.attached=true;fresh.update("f".repeat(64));Handler.await();check(fresh.draw(c,30,40,20),"fresh process/view path reloads persisted custom selection");
-  artwork.update(CleanupIconImage.C17);Handler.await();opens=ContentResolver.opens;check(artwork.draw(c,30,40,20)&&ContentResolver.opens==opens,"C17 loads bundled asset without provider image access");
+  opens=ContentResolver.opens;artwork.update(CleanupIconImage.C17);check(artwork.ready()&&artwork.draw(c,30,40,20)&&ContentResolver.opens==opens,"C17 draws immediately without provider or bitmap access");
   View wide=new ImageView(),hostView=new View();wide.root=new View();wide.root.width=400;wide.setLayoutParams(new ViewGroup.LayoutParams(40,40));hostView.setLayoutParams(new ViewGroup.LayoutParams(60,60));
-  CleanupIconLayout layout=new CleanupIconLayout(wide,hostView);layout.update(true);check(wide.params.width==140&&wide.params.height==40&&hostView.params.width==160&&hostView.params.height==60,"C17 widens existing centered display and click host only");
+  CleanupIconLayout layout=new CleanupIconLayout(wide,hostView);layout.update(true);check(wide.params.width==127&&wide.params.height==40&&hostView.params.width==147&&hostView.params.height==60,"C17 uses measured reference width while preserving native touch height");
   layout.update(true);layout.update(false);check(wide.params.width==40&&hostView.params.width==60,"repeated refresh preserves original dimensions for custom/off restore");
   wide.root.width=100;layout.update(true);check(wide.params.width<=100&&hostView.params.width<=100,"C17 respects available screen width");layout.update(false);
   legacy.setLayoutParams(new ViewGroup.LayoutParams(73,41));CleanupIconLayout pageLayout=new CleanupIconLayout(legacy,null);pageLayout.update(true);pageLayout.update(false);

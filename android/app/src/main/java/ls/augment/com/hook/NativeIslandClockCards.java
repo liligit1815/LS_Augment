@@ -192,7 +192,7 @@ final class NativeIslandClockCards {
 
     private boolean enabled(Context source) {
         return bound && source != null && FeatureSettings.enabled(source, SystemUiOptions.ISLAND)
-                && FeatureSettings.enabled(source, NativeIslandSceneOptions.ENABLED)
+                && FeatureSettings.enabled(source, ls.augment.com.SystemUiOptions.ISLAND)
                 && FeatureSettings.enabled(source, NativeIslandSceneOptions.key("countdown"))
                 && Settings.System.getInt(source.getContentResolver(), "dynamic_island_switch_state", 0) == 1
                 && arithmeticSafe()

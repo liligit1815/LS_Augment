@@ -74,11 +74,16 @@ final class WorkspaceNavigation {
         };
         if(deck.owner.upper.visible && host.upperId>=0)host.upperAction("park",start);else start.run();
     }
+    // Runs inside SystemUI; the host permission is checked immediately before the call.
+    @android.annotation.SuppressLint("MissingPermission")
     void focus(int id,Object expected){
         ActivityManager.RunningTaskInfo before=host.info(id);
         if(before==null || !expected.equals(field(before,"token")) || (Integer)call(before,"getWindowingMode")!=1){refuse();return;}
         ActivityManager.RunningTaskInfo current=host.focused();
-        try{if(current==null || current.taskId!=id)deck.ctx.getSystemService(ActivityManager.class).moveTaskToFront(id,0);}
+        try{if(current==null || current.taskId!=id){
+            if(deck.ctx.checkSelfPermission(android.Manifest.permission.REORDER_TASKS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){refuse();return;}
+            deck.ctx.getSystemService(ActivityManager.class).moveTaskToFront(id,0);
+        }}
         catch(RuntimeException error){refuse();return;}
         long deadline=SystemClock.uptimeMillis()+2200;
         host.main.post(new Runnable(){long idleSince=-1;public void run(){

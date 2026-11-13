@@ -25,7 +25,7 @@ public final class LauncherOptions {
             EnhancementOption.integer(LauncherGridSpec.COLUMNS,"launcher","桌面列数","每排可放置的图标格数；与行数独立设置。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_COLUMNS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
             EnhancementOption.integer(LauncherGridSpec.ROWS,"launcher","桌面行数","每页从上到下的图标排数；小组件可能占用多格。修改会自动保存，重启系统桌面后生效。",LauncherGridSpec.DEFAULT_ROWS,LauncherGridSpec.MIN,LauncherGridSpec.MAX),
             EnhancementOption.toggle(CLEANUP_BOMB,"launcher","自定义清理图标与动画","清理图标可选择 C17 样式或自定义图片，清理动画独立选择。清理对象和锁定规则沿用原厂逻辑。更新后重启系统桌面加载功能；之后更换图标无需重启桌面。关闭后恢复原厂图标并保留已选图片。"),
-            EnhancementOption.choice(CLEANUP_ICON_STYLE,"launcher","清理图标","C17样式使用胶囊形“清除”按钮；选择自定义后上传图片。切换样式保留已上传图片。",0,"C17样式","自定义"),
+            EnhancementOption.choice(CLEANUP_ICON_STYLE,"launcher","清理图标","C17按参考截图绘制深色磨砂“清除”胶囊，在支持的桌面布局中使用校准后的固定居中位置；选择自定义后上传图片。切换样式保留已上传图片。",0,"C17样式","自定义"),
             EnhancementOption.custom(CLEANUP_ICON,"launcher","自定义清理图片","支持静态 PNG、WebP、JPEG，可裁剪或完整显示并保留透明区域。未上传图片时保留原厂清理图标。","",v->v.isEmpty()||v.matches("[0-9a-f]{64}")?v:null),
             EnhancementOption.choice(CLEANUP_STYLE,"launcher","清理动画","炸弹爆炸：闪光、火球、烟尘、火星与爆破音效，声音遵循系统音量及静音设置。粒子破碎：青紫解构光束、发光晶片与高速光轨。原厂动画：使用桌面原有清理动画，保留所选清理图标。退出最近任务后结束。",0,"炸弹爆炸","粒子破碎","原厂动画"),
             EnhancementOption.toggle(PAGE_REORDER, "launcher", "整页移动桌面",

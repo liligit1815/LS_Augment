@@ -165,6 +165,7 @@ final class LauncherRecentsPrivacyHook {
                     }
                     return false;
             };
+            if(RecentsPrivacyDraw.install(module,type,painter))return;
             if(RecentsPrivacyOverlay.install(module,type,stateType,painter))return;
             Class<?> declaration = type;
             Method draw = null;

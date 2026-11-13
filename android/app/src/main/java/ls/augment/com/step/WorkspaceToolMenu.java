@@ -15,7 +15,7 @@ final class WorkspaceToolMenu {
     final Context context;
     WorkspaceToolMenu(WorkspaceQuickBar owner){
         this.owner=owner;
-        context=StepMaterial.statusBarPanelContext(owner.ctx,owner.ctx.getDisplay());
+        context=StepMaterial.modalPanelContext(owner.ctx,owner.ctx.getDisplay());
         dialog=new Dialog(context,StepMaterial.dark(context)?android.R.style.Theme_Material_Dialog_NoActionBar:
                 android.R.style.Theme_Material_Light_Dialog_NoActionBar);
         rows=new LinearLayout(context);rows.setOrientation(LinearLayout.VERTICAL);
@@ -23,7 +23,7 @@ final class WorkspaceToolMenu {
         rows.setBackground(StepMaterial.glass(context,true,20));
         ScrollView scroll=new ScrollView(context);scroll.setFillViewport(true);scroll.addView(rows);
         dialog.setContentView(scroll);dialog.setCanceledOnTouchOutside(true);
-        Window w=dialog.getWindow();w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
+        Window w=dialog.getWindow();w.setType(StepMaterial.MODAL_PANEL);
         w.setBackgroundDrawableResource(android.R.color.transparent);
         w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         w.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);

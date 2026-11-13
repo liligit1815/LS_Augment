@@ -46,6 +46,13 @@ public final class IslandFixtureRunner extends Instrumentation {
     private long started,deadline;private int sequence,playback=PlaybackState.STATE_PAUSED,clicks;
     private volatile boolean finished;private boolean closed,receiverRegistered,released=true,channelCreated;
     private BackgroundActivity background;private ContentActivity content;
+    private boolean replyRegistered,notificationsOnly;
+    private final BroadcastReceiver replies=new BroadcastReceiver(){
+        @Override public void onReceive(Context c,Intent intent){
+            if(!valid(intent)||android.app.RemoteInput.getResultsFromIntent(intent)==null)return;
+            notifications.cancel(tag,5);phase="replied";event("native_reply_received");
+        }
+    };
     private final BroadcastReceiver commands=new BroadcastReceiver(){
         @Override public void onReceive(Context c,Intent i){
             if(!ACTION.equals(i.getAction()))return;
@@ -53,7 +60,8 @@ public final class IslandFixtureRunner extends Instrumentation {
             int admission=IslandFixtureProtocol.admit(runId,secret,sequence,deadline,closed,i.getStringExtra("runId"),i.getStringExtra("secret"),next,command,SystemClock.elapsedRealtime());
             if(admission==IslandFixtureProtocol.REJECT)return;
             try{if(admission==IslandFixtureProtocol.EXPIRED){cleanup("timeout");return;}
-                if(audio.isMusicActive()){error="External audible media became active";cleanup("external_audio");return;}
+                if(!IslandFixtureProtocol.allowedInMode(notificationsOnly,command)){error="Media commands disabled in notifications-only mode";cleanup("invalid_mode_command");return;}
+                if(!notificationsOnly&&audio.isMusicActive()){error="External audible media became active";cleanup("external_audio");return;}
                 sequence=next;execute(command);
             }catch(Throwable failure){error=failure.toString();cleanup("command_error");}
         }
@@ -82,14 +90,22 @@ public final class IslandFixtureRunner extends Instrumentation {
         if(!PACKAGE.equals(context.getPackageName()))throw new IllegalStateException("Wrong fixture target");
         notifications=context.getSystemService(NotificationManager.class);audio=context.getSystemService(AudioManager.class);
         if(notifications==null||!notifications.areNotificationsEnabled())throw new IllegalStateException("Fixture notification permission unavailable");
-        if(audio==null||audio.isMusicActive())throw new IllegalStateException("User audio must be idle before fixture starts");
+        notificationsOnly=Boolean.parseBoolean(arguments.getString("notificationsOnly","false"));
+        if(notificationsOnly&&Boolean.parseBoolean(arguments.getString("mediaNotification","false")))throw new IllegalArgumentException("Notifications-only mode cannot create a media notification");
+        if(audio==null||!notificationsOnly&&audio.isMusicActive())throw new IllegalStateException("User audio must be idle before fixture starts");
         KeyguardManager keyguard=context.getSystemService(KeyguardManager.class);
         if(keyguard==null||keyguard.isKeyguardLocked())throw new IllegalStateException("Unlocked foreground required; never unlock user credentials");
-        NotificationChannel nc=new NotificationChannel(channel,"Duo 灵动岛临时事件",NotificationManager.IMPORTANCE_DEFAULT);
+        int importance=Integer.parseInt(arguments.getString("importance",Integer.toString(NotificationManager.IMPORTANCE_DEFAULT)));
+        if(importance!=NotificationManager.IMPORTANCE_DEFAULT&&importance!=NotificationManager.IMPORTANCE_HIGH)throw new IllegalArgumentException("Invalid test importance");
+        NotificationChannel nc=new NotificationChannel(channel,"Duo 灵动岛临时事件",importance);
         nc.setSound(null,null);nc.enableVibration(false);nc.enableLights(false);nc.setShowBadge(false);
         notifications.createNotificationChannel(nc);channelCreated=true;
         // Only shell/system with DUMP may drive this private, nonce-scoped test receiver.
         context.registerReceiver(commands,new IntentFilter(ACTION),"android.permission.DUMP",main,Context.RECEIVER_EXPORTED);receiverRegistered=true;
+        context.registerReceiver(replies,new IntentFilter(PACKAGE+".REPLY"),Context.RECEIVER_NOT_EXPORTED);replyRegistered=true;
+        // Notification coexistence checks never create or control a media session.
+        // The default media fixture retains its idle-audio admission requirement.
+        if(!notificationsOnly){
         cover=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(cover);canvas.drawColor(0xff007f75);
         Paint p=new Paint(3);p.setColor(Color.WHITE);p.setTextSize(55);canvas.drawText("D",27,68,p);
         session=new MediaSession(context,"DuoIsland-"+runId);released=false;
@@ -105,9 +121,10 @@ public final class IslandFixtureRunner extends Instrumentation {
                 .putString(MediaMetadata.METADATA_KEY_ARTIST,"自有无声测试事件")
                 .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART,cover).build());
         playback(PlaybackState.STATE_PAUSED);session.setActive(true);
+        }
         active=this;
         context.startActivity(new Intent(context,BackgroundActivity.class).putExtra("runId",runId).putExtra("secret",secret).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        phase="initial-paused";event("ready");
+        phase=notificationsOnly?"notifications-only":"initial-paused";event("ready");
         main.postDelayed(()->cleanup("timeout"),Math.max(1,deadline-SystemClock.elapsedRealtime()));
     }
     private void execute(String command){
@@ -118,6 +135,8 @@ public final class IslandFixtureRunner extends Instrumentation {
             case "release":if(session!=null){session.setActive(false);session.release();session=null;}notifications.cancel(tag,3);released=true;phase="released";break;
             case "notice-expiry":requireReleased();post(1,"EXPIRY");phase="notice-expiry";break;
             case "notice-click":requireReleased();post(2,"CLICK");phase="notice-click";break;
+            case "notice-reply":requireReleased();postReply();phase="notice-reply";break;
+            case "notice-remove":notifications.cancel(tag,1);notifications.cancel(tag,2);notifications.cancel(tag,5);phase="notice-removed";break;
             case "download":requireReleased();postDownload(35);phase="download";break;
             case "download-update":requireReleased();postDownload(78);phase="download-update";break;
             case "download-remove":notifications.cancel(tag,4);phase="download-removed";break;
@@ -155,6 +174,16 @@ public final class IslandFixtureRunner extends Instrumentation {
             .setContentText("临时下载进度验证 · 不下载实际文件").setProgress(100,percent,false)
             .setContentIntent(sourceIntent("download")).setOngoing(true).setOnlyAlertOnce(true)
             .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());}
+    private void postReply(){
+        Intent reply=new Intent(PACKAGE+".REPLY").setPackage(PACKAGE).setData(Uri.parse("duo-island://"+runId+"/reply"))
+                .putExtra("runId",runId).putExtra("secret",secret);
+        PendingIntent action=PendingIntent.getBroadcast(context,5,reply,PendingIntent.FLAG_MUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+        notifications.notify(tag,5,new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("DuoIsland 原厂快捷回复").setContentText("自有回复验证，仅在临时验证应用内接收。")
+                .setContentIntent(sourceIntent("reply")).setVisibility(Notification.VISIBILITY_PUBLIC)
+                .addAction(new Notification.Action.Builder(null,"回复",action).addRemoteInput(new android.app.RemoteInput.Builder("reply").setLabel("测试回复").build()).build())
+                .setTimeoutAfter(IslandFixtureProtocol.notificationTimeout(deadline,SystemClock.elapsedRealtime())).build());
+    }
     private boolean valid(Intent i){return runId!=null&&runId.equals(i.getStringExtra("runId"))&&secret.equals(i.getStringExtra("secret"))&&!closed;}
     private void sourceOpened(ContentActivity activity){
         if(!valid(activity.getIntent())){activity.finish();return;}
@@ -167,7 +196,7 @@ public final class IslandFixtureRunner extends Instrumentation {
     private void persist()throws Exception{
         if(progress==null)return;JSONArray ids=new JSONArray();
         if(notifications!=null)for(android.service.notification.StatusBarNotification n:notifications.getActiveNotifications())if(tag.equals(n.getTag()))ids.put(n.getId());
-        JSONObject report=new JSONObject().put("schema",1).put("fixtureRevision","island-lifecycle-r2-controls").put("package",PACKAGE)
+        JSONObject report=new JSONObject().put("schema",1).put("fixtureRevision","island-lifecycle-r3-notices").put("package",PACKAGE)
                 .put("runId",runId).put("pid",android.os.Process.myPid()).put("startedElapsed",started).put("deadlineElapsed",deadline)
                 .put("observedElapsed",SystemClock.elapsedRealtime()).put("phase",phase).put("sequence",sequence)
                 .put("playbackState",playback).put("sessionReleased",released).put("sessionToken",session==null?JSONObject.NULL:session.getSessionToken().toString())
@@ -176,15 +205,16 @@ public final class IslandFixtureRunner extends Instrumentation {
                 .put("receiverRegistered",receiverRegistered).put("channelPresent",notifications!=null&&channel!=null&&notifications.getNotificationChannel(channel)!=null)
                 .put("activitiesFinishing",(background==null||background.isFinishing())&&(content==null||content.isFinishing()))
                 .put("closed",closed).put("error",error).put("audioOutput",false).put("audioFocusRequested",false)
-                .put("musicActive",audio!=null&&audio.isMusicActive()).put("events",events);
+                .put("musicActive",audio!=null&&audio.isMusicActive()).put("notificationsOnly",notificationsOnly).put("events",events);
         FileOutputStream stream=null;try{stream=progress.startWrite();stream.write(report.toString().getBytes(StandardCharsets.UTF_8));progress.finishWrite(stream);}
         catch(Throwable failure){progress.failWrite(stream);throw failure;}
     }
     private void cleanup(String reason){
         if(closed)return;closed=true;phase="closed";
         try{if(session!=null){session.setActive(false);session.release();session=null;}released=true;}catch(Throwable t){error+=";release:"+t;}
-        try{if(notifications!=null&&tag!=null){notifications.cancel(tag,1);notifications.cancel(tag,2);notifications.cancel(tag,3);notifications.cancel(tag,4);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
+        try{if(notifications!=null&&tag!=null){for(int id=1;id<=5;id++)notifications.cancel(tag,id);if(channelCreated)notifications.deleteNotificationChannel(channel);}}catch(Throwable t){error+=";notifications:"+t;}
         try{if(receiverRegistered){context.unregisterReceiver(commands);receiverRegistered=false;}}catch(Throwable t){error+=";receiver:"+t;}
+        try{if(replyRegistered){context.unregisterReceiver(replies);replyRegistered=false;}}catch(Throwable t){error+=";reply_receiver:"+t;}
         if(background!=null)background.finish();if(content!=null)content.finish();if(cover!=null){cover.recycle();cover=null;}
         event(reason);finished=true;
     }

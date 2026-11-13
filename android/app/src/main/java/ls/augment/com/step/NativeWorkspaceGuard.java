@@ -38,6 +38,8 @@ final class NativeWorkspaceGuard {
     static int layoutCount=SideSlots.DEFAULT_COUNT, layoutInset;
     static boolean mainReflow;
     static boolean transitionStart;
+    static IBinder gameGestureGate;
+    static boolean nativeGestureCoordinates;
     static volatile NativeFlip flip;
     static ParkedWorkspace parked=new ParkedWorkspace(), readmitting=new ParkedWorkspace(), afterRestore;
     static boolean renewable;
@@ -131,6 +133,15 @@ final class NativeWorkspaceGuard {
                         if(p.hasThrowable()||!Boolean.TRUE.equals(p.getResult())||!active||ending)return;
                         try{
                             Object task=call(p.thisObject,"getTask");
+                            // The physical status bar belongs to the main region.
+                            // Top windows keep native touch/IME, but their landscape
+                            // canvas cannot choose the main bar's icon contrast.
+                            if(method.getName().equals("canAffectSystemUiFlags") && UpperTaskPresentation.owns(task)){
+                                p.setResult(false);return;
+                            }
+                            if(WorkspaceBackFocus.mainPreferred && UpperTaskPresentation.owns(task)){
+                                p.setResult(false);return;
+                            }
                             int id=task==null?-1:StepMembers.getIntField(task,"mTaskId");
                             if (slots.index(id) < 0) return;
                             SavedTask record=saved.get(id);
@@ -254,10 +265,7 @@ final class NativeWorkspaceGuard {
                         int id = StepMembers.getIntField(p.thisObject, "mTaskId");
                         if(NativeTopTask.held(p.thisObject)!=null){
                             IBinder expected=owner;SavedTask upper=NativeTopTask.held(p.thisObject);
-                            Wm.handler.post(()->{
-                                boolean gone;synchronized(Wm.lock){gone=owner==expected && NativeTopTask.held(upper.id) && liveTask(upper.id,upper.token)==null;}
-                                if(gone)finish("顶部任务已结束");
-                            });
+                            Wm.handler.post(()->NativeTopTask.removed(expected,upper));
                         }
                         SavedTask side = slots.index(id) < 0 ? null : saved.get(id);
                         if (side != null && side.dirty && side.task == p.thisObject) {
@@ -417,6 +425,11 @@ final class NativeWorkspaceGuard {
             if ("lost".equals(action)) {
                 int id = intent.getIntExtra("task", -1);
                 SavedTask record = saved.get(id);
+                if(record!=null && NativeTopTask.held(id) && record.token.equals(intent.getParcelableExtra("token"))){
+                    NativeTopTask.removed(owner,record);
+                    if(!ending && NativeTopTask.held(id) && liveTask(id,record.token)!=null)
+                        finish("顶部任务监听权已移交，归还原窗口");
+                }
                 if (record != null && slots.index(id) >= 0 && record.token.equals(intent.getParcelableExtra("token"))) {
                     recoverRemovedSide(owner, record);
                     if (!ending && slots.index(id) >= 0) finish("副任务监听权已移交，归还工作区");
@@ -548,6 +561,8 @@ final class NativeWorkspaceGuard {
         if(principal<0 || i.getIntExtra("user",-1)!=principal)throw new IllegalStateException("当前用户未核实");
         owner = candidate; session = candidateSession; lastSequence = i.getLongExtra("sequence", 0);
         transitionStart=i.getBooleanExtra("transitionStart",false);
+        gameGestureGate=i.getExtras().getBinder("gameGestureGate");
+        nativeGestureCoordinates=i.getBooleanExtra("nativeGestureCoordinates",false);
         events = i.getParcelableExtra("events"); saved.clear(); slots.clear();NativeTopTask.reset();WorkspaceReadmit.pending=null;
         logical = new Rect((Rect) call(Wm.display, "getBounds")); logical.offsetTo(0, 0);
         death = () -> Wm.handler.post(() -> {
@@ -717,7 +732,11 @@ final class NativeWorkspaceGuard {
             return;
         }
         if(android.os.SystemClock.uptimeMillis()>=deadline){group.cancel();pendingCommit=null;failed.run();return;}
-        Wm.handler.postDelayed(()->awaitCommit(group,expected,deadline,done,failed),16);
+        // Wake on the actual compositor acknowledgement. Polling every 16 ms
+        // inserted an extra frame at each of the sequential handoff barriers.
+        group.whenReady(()->Wm.handler.post(()->awaitCommit(group,expected,deadline,done,failed)));
+        Wm.handler.postDelayed(()->awaitCommit(group,expected,deadline,done,failed),
+                Math.max(1,deadline-android.os.SystemClock.uptimeMillis()));
     }
     static void apply(Object wct) throws Exception {
         Object organizer = Class.forName("android.window.WindowOrganizer").getDeclaredConstructor().newInstance();
@@ -1090,6 +1109,7 @@ final class NativeWorkspaceGuard {
             }
         }
         ending = true;
+        gameGestureGate=null;
         GameInput.geometry(1,0,0);
         WorkspaceZoom.cancel();
         NativeEntry.reset();

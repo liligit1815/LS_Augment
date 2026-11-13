@@ -37,7 +37,7 @@ public class SidebarCases {
   float alpha,translation;boolean attached,touchTracking;WindowManager.LayoutParams lp;
   final ViewTreeObserver observer=new ViewTreeObserver();final List<Runnable> posted=new ArrayList<>();
   ViewTreeObserver getViewTreeObserver(){return observer;}
-  void postOnAnimation(Runnable r){posted.add(r);}void removeCallbacks(Runnable r){posted.remove(r);}
+  void postOnAnimation(Runnable r){posted.add(r);}void post(Runnable r){posted.add(r);}void removeCallbacks(Runnable r){posted.remove(r);}
   void frame(){List<Runnable> run=new ArrayList<>(posted);posted.clear();for(Runnable r:run)r.run();}
   void setTranslationX(float v){translation=v;}void setAlpha(float v){alpha=v;}
   boolean isAttachedToWindow(){return attached;}Object getLayoutParams(){return lp;}
@@ -64,8 +64,10 @@ public class SidebarCases {
  static class PixelFormat {static final int TRANSLUCENT=-3;}
  static class Gravity {static final int TOP=1,LEFT=2;}
  static class StepMaterial {static final int STATUS_BAR_SUB_PANEL=2017;}
- static class Host {void close(String reason){}void log(String reason){}}
+ static class Host {boolean toolbarAutoCollapse=true;void close(String reason){}void log(String reason){}}
  static class Owner {Host host=new Host();boolean closed;int actions,errors;void checkAction(){actions++;}void note(RuntimeException e){errors++;}}
+ static class Lamp {float phase=1;void phase(float value){phase=value;}}
+ static class Level {void releasePreview(){}}
  static class Drawer {
   static final String TITLE="RedMagicDuoStepSideToolbar",LEFT=TITLE+"LeftHandle",RIGHT=TITLE+"RightHandle";
   final WindowManager windows=new WindowManager();final Owner owner=new Owner();
@@ -73,10 +75,11 @@ public class SidebarCases {
   final Set<View> registered=Collections.newSetFromMap(new IdentityHashMap<>());
   int width=1216,height=684,edgeWidth=44,edgeY=254,edgeHeight=176,appGeneration,slop=12;
   boolean closed,opened,panelAttached,attached,edgeTracking,allowed=true;float chromeAlpha=1,progress;
-  Runnable afterClose;ValueAnimator animator;
+  Runnable afterClose;ValueAnimator animator,lampAnimator;
+  final Lamp leftLamp=new Lamp(),rightLamp=new Lamp();final Level brightness=new Level(),volume=new Level();final Runnable states=()->{};
   ViewTreeObserver.OnPreDrawListener motionReady;Runnable motionStart;
   boolean usable(){return allowed && !closed && !owner.closed;}
-  void refreshApps(){}void refreshTools(){}
+  void refreshApps(){}void refreshTools(){}void refreshStates(){}
   METHODS
  }
  public static void main(String[] args){
@@ -113,14 +116,17 @@ public class SidebarCases {
    reverse.fraction(.5f);near(d.progress,.2f,"closing from interrupted opening");
    d.afterClose=()->{throw new AssertionError("stale action");};d.setOpen(true);check(d.afterClose==null,"reopen clears stale pending action");
    d.animator.end();near(d.progress,1,"open completes");check(d.windows.adds==1,"rapid reversals never attach twice");
-   int[] delivered={0};d.afterClose(()->delivered[0]++);d.animator.end();check(delivered[0]==1 && !d.panelAttached,"action runs once only after closing");
+   int[] delivered={0};d.runAction(()->delivered[0]++);d.animator.end();check(delivered[0]==1 && !d.panelAttached,"default action runs once only after closing");
    check(Arrays.equals(before,new int[]{l.mainX,l.sideX,l.sideWidth,l.top,l.railHeight,l.rowHeight(0,count)}),"main and every side boundary unchanged");
    d.setOpen(true);d.animator.end();d.afterClose(()->delivered[0]++);d.allowed=false;d.animator.end();check(delivered[0]==1,"changed user/session cannot run pending action");
-   d.allowed=true;d.setOpen(true);ValueAnimator closing=d.animator;d.afterClose=()->delivered[0]++;
+   d.allowed=true;d.setOpen(true);d.animator.end();d.owner.host.toolbarAutoCollapse=false;
+   d.runAction(()->delivered[0]++);check(delivered[0]==2 && d.opened && d.panelAttached && d.animator==null,"disabled auto-collapse executes action and leaves panel open");
+   d.owner.host.toolbarAutoCollapse=true;check(d.opened,"changing preference alone does not collapse panel");
+   d.runAction(()->delivered[0]++);ValueAnimator closing=d.animator;d.afterClose=()->delivered[0]++;
    d.add(d.leftHandle,d.params(44,176,0,254,Drawer.LEFT));d.add(d.rightHandle,d.params(44,176,1172,254,Drawer.RIGHT));
    d.setChromeAlpha(.5f);check((d.root.lp.flags&16)!=0 && (d.leftHandle.lp.flags&16)!=0,"entry/exit shields cannot leak touch");
    d.setChromeAlpha(1);check((d.root.lp.flags&16)==0,"touch restored at settled geometry");
-   d.close();closing.end();check(d.windows.views.isEmpty() && d.registered.isEmpty() && delivered[0]==1,"close disposes all windows and callbacks before traversal too");
+   d.close();closing.end();check(d.windows.views.isEmpty() && d.registered.isEmpty() && delivered[0]==2,"close disposes all windows and callbacks before traversal too");
    d.close();
   }
   Drawer d=new Drawer();check(d.ownsGesture(0,300) && d.ownsGesture(1215,300),"both edge handles excluded from upper paging");
@@ -163,12 +169,23 @@ public class SidebarCases {
   check(Drawer.physical(Drawer.TITLE) && Drawer.physical(Drawer.LEFT) && !Drawer.physical(null) && !Drawer.physical("unowned"),"exact physical window titles");
   check(Drawer.physical(2017,Drawer.TITLE,10343,10343) && !Drawer.physical(2017,Drawer.TITLE,-1,-1)
       && !Drawer.physical(2038,Drawer.TITLE,10343,10343) && !Drawer.physical(2017,Drawer.TITLE,10000,10343),"only trusted SystemUI panels escape task magnification");
+  Drawer lit=new Drawer();lit.setOpen(true);check(lit.lampAnimator==null,"sweep waits for slide completion");
+  lit.animator.end();ValueAnimator sweep=lit.lampAnimator;
+  check(sweep!=null&&sweep.duration==1800&&sweep.started,"slide completion starts bounded entry sweep");
+  lit.setOpen(true);check(lit.lampAnimator==sweep,"repeated open does not interrupt an active lamp sweep");
+  sweep.fraction(.45f);near(lit.leftLamp.phase,lit.rightLamp.phase,"both lamps share their entry clock");
+  check(GameSpacePanelMotion.lampLevel(.45f,.3f)>1,"entry briefly lights the complete border");
+  near(GameSpacePanelMotion.lampLevel(1,.3f),.3f,"entry settles to decoration, not an invented CPU reading");
+  lit.setOpen(false);check(lit.lampAnimator==null,"closing cancels lamp animation");
+  float held=lit.leftLamp.phase;sweep.end();near(lit.leftLamp.phase,held,"cancelled lamp callback cannot relight panel");
+  lit.animator.end();lit.setOpen(true);near(lit.leftLamp.phase,0,"fresh opening resets entry illumination");
+  lit.animator.end();lit.close();check(lit.lampAnimator==null&&lit.root.posted.isEmpty(),"dispose clears lamp and status callbacks");
   System.out.println("PASS "+checks+" production sidebar lifecycle, interruption, input and workspace checks");
  }
 }
 '''
-signatures=['    static boolean physical(CharSequence', '    static boolean physical(int', '    WindowManager.LayoutParams params(', '    void attach(', '    boolean ownsGesture(',
-            '    void setChromeAlpha(', '    void afterClose(', '    void setOpen(', '    void stopMotion(', '    void apply(',
+signatures=['    static boolean physical(CharSequence', '    static boolean physical(int', '    WindowManager.LayoutParams params(', '    void attach(', '    boolean handleContains(', '    boolean ownsGesture(',
+            '    void setChromeAlpha(', '    void afterClose(', '    void runAction(', '    void setOpen(', '    void stopMotion(', '    void startLamp(', '    void stopLamp(', '    void apply(',
             '    void finish(', '    boolean panelSwipe(', '    void add(', '    void remove(', '    @Override public void close(']
 code=code.replace('HANDLE_WIDTH',str(round(int(re.search(r'edgeWidth=owner.dp\((\d+)\)',source)[1])*3.25)))
 code=code.replace('METHODS','\n'.join(method(s).replace('@Override public void close','public void close') for s in signatures))

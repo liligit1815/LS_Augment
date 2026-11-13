@@ -76,7 +76,7 @@ public class TestPackageReadyDispatch {
         check(loader == PROVIDER_LOADER, "server callback loader/source was changed");
         calls.add("server:" + source);
     }
-    void feature(String name, ClassLoader loader) {
+    public void feature(String name, ClassLoader loader) {
         check(loader == TARGET_LOADER, "app hooks used a resource/provider loader"); calls.add(name);
     }
     void installAiTriggerHooks(ClassLoader loader, String name) { feature("ai:" + name, loader); }
@@ -211,10 +211,10 @@ def main():
         'private static String safeDiagnostic(',
     ))
     stubs = []
-    for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook',
+    for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook', 'BypassChargingHook',
                  'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook', 'MagicIslandAppCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l, String p) {{ m.feature("{name}:" + p, l); }} }}')
-    for name in ('StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
+    for name in ('SearchWallpaperHook', 'NativeIslandLauncherCapsule', 'StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
                  'LauncherPagesHook', 'LauncherPageIndicatorHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
                  'ShoulderMacroSwitchHook', 'AtomicWorkbenchQuickstepHook', 'LauncherGridHook',
                  'LauncherWidgetResizeHook', 'LauncherDockCapacityHook', 'LauncherNewAppsLastPageHook',
@@ -224,6 +224,7 @@ def main():
                  'NativeIslandRecorderSource', 'NativeIslandTranslationCards', 'NativeIslandTransferCards',
                  'NativeIslandNfcTransferCards', 'NativeIslandCallCards', 'NativeIslandPersonalCards', 'MagicIslandPersonalCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l) {{ m.feature("{name}", l); }} }}')
+    stubs.append('static final class RecorderDiagnosticsHook { static void install(TestPackageReadyDispatch m, ClassLoader l, boolean server) { m.feature("RecorderDiagnosticsHook",l); } }')
     stubs.append('static final class FeatureSettings { static void awaitBootSnapshot() {} }')
     stubs.append('static final class AtomicWorkbenchSourceDragHook { static void install(TestPackageReadyDispatch m) { m.calls.add("AtomicWorkbenchSourceDragHook"); } }')
     stubs.append('static final class LauncherResetHook { static void install(TestPackageReadyDispatch m) { m.calls.add("LauncherResetHook"); } }')
@@ -233,7 +234,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix='lsa-package-dispatch-') as directory:
         harness = Path(directory) / 'TestPackageReadyDispatch.java'
         harness.write_text(java, encoding='utf-8')
-        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, str(REGISTRY), str(harness)], check=True)
+        gate=Path(directory)/'WorkspaceGestureGate.java'
+        gate.write_text('package ls.augment.com.step;public class WorkspaceGestureGate { public static void installLauncher(ls.augment.com.hook.TestPackageReadyDispatch m,ClassLoader l){m.feature("WorkspaceGestureGate",l);} }',encoding='utf-8')
+        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, str(REGISTRY), str(harness), str(gate)], check=True)
         subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestPackageReadyDispatch'], check=True)
 
 

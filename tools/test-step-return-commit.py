@@ -8,7 +8,7 @@ def method(file,signature):
     while depth: depth+=(s[end]=='{')-(s[end]=='}');end+=1
     return s[start:end].replace('android.os.SystemClock','SystemClock')
 top=(STEP/'NativeTopTask.java').read_text('utf-8')
-assert top.index('awaitCommit(group,expected')<top.index('normalizeReturn(record,expected')<top.index('record.dirty=false;reset();')
+assert top.index('awaitCommit(group,expected')<top.index('normalizeReturn(record,expected')<top.index('record.dirty=false;if(!occupied())reset();')
 guard=(STEP/'NativeWorkspaceGuard.java').read_text('utf-8')
 assert '()->normalizeExit(expected,()->{' in guard
 harness=r'''
@@ -21,7 +21,7 @@ public class ReturnCommitCases {
  static IBinder owner=new IBinder();static boolean active=true,ending;static CommitBarrier pendingCommit;
  static Map<Integer,SavedTask> saved=new LinkedHashMap<>();
  static class SavedTask{int id=7;boolean dirty=true,valid=true;}
- static class Handler{List<Runnable> queue=new ArrayList<>();void postDelayed(Runnable r,long ms){queue.add(r);}void tick(){var q=new ArrayList<>(queue);queue.clear();q.forEach(Runnable::run);}}
+ static class Handler{List<Runnable> queue=new ArrayList<>();void post(Runnable r){queue.add(r);}void postDelayed(Runnable r,long ms){queue.add(r);}void tick(){var q=new ArrayList<>(queue);queue.clear();q.forEach(Runnable::run);}}
  static class Tx{boolean applied;List<Runnable> ack=new ArrayList<>();void commit(){check(applied,"ack after apply");ack.forEach(Runnable::run);ack.clear();}}
  static class Wm{static Object lock=new Object(),display=new Object(),spec;static boolean active;static Handler handler;static Tx tx;}
  static Object field(Object o,String n){return n.equals("mMagnificationSpec")?Wm.spec:new Object();}

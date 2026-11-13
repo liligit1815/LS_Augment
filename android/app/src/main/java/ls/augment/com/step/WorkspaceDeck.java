@@ -32,7 +32,7 @@ final class WorkspaceDeck extends FrameLayout {
     final WorkspacePlayback playback;
     MediaController controller;
     MediaSession.Token preferred;
-    boolean dragging,observing,vertical,blocked;
+    boolean dragging,observing,vertical,blocked,wallpaperTap;
     VelocityTracker velocity;
     int page;
     float offset,startOffset;
@@ -48,13 +48,15 @@ final class WorkspaceDeck extends FrameLayout {
         super(owner.ctx);this.owner=owner;ctx=owner.ctx;
         if(owner.sideToolbar==null)networks=owner.controls;
         else{
-            ImageView resting=new ImageView(ctx);resting.setContentDescription("顶部壁纸");
+            ImageView resting=new ImageView(ctx);resting.setContentDescription("顶部壁纸，点击将主区应用移到顶部，已有应用时交换");
             resting.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            resting.setOnClickListener(v->takeMainFromWallpaper());
+            resting.setOnTouchListener(this::wallpaperTouch);
             networks=resting;
         }
         addView(networks,-1,-1);
         media=new PlayerCard(owner);mediaPage=viewport(media);
-        topPage=StepMaterial.label(ctx,"打开顶部任务窗口",16,true);topPage.setOnClickListener(v->{if(owner.upper!=null)owner.upper.toggle(true);});
+        topPage=StepMaterial.label(ctx,"",16,true);topPage.setContentDescription("顶部应用");topPage.setOnClickListener(v->{if(owner.upper!=null)owner.upper.toggle(true);});
         navigation=new WorkspaceNavigation(this);
         navigationPage=StepMaterial.label(ctx,"打开导航",16,true);navigationPage.setOnClickListener(v->navigation.open());
         StepMaterial.feedback(topPage);
@@ -66,6 +68,32 @@ final class WorkspaceDeck extends FrameLayout {
         catch(SecurityException unavailable){owner.host.log("媒体会话不可用："+unavailable);}
         refreshMedia();
         post(tick);
+    }
+    boolean wallpaperTouch(View view,MotionEvent e){
+        int action=e.getActionMasked();
+        if(action==MotionEvent.ACTION_DOWN)
+            wallpaperTap=!blocked && !interrupted && page==CONTROLS
+                    && Math.abs(offset-indexOfChild(networks))<.001f;
+        int slop=ViewConfiguration.get(ctx).getScaledTouchSlop();
+        if(e.getPointerCount()!=1 || action==MotionEvent.ACTION_POINTER_DOWN || action==MotionEvent.ACTION_CANCEL
+                || Math.abs(e.getX()-downX)>slop || Math.abs(e.getY()-downY)>slop
+                || e.getEventTime()-e.getDownTime()>ViewConfiguration.getLongPressTimeout())wallpaperTap=false;
+        if(action==MotionEvent.ACTION_UP){
+            boolean click=wallpaperTap && !blocked && !interrupted && !dragging && !vertical;
+            wallpaperTap=false;
+            if(click)view.performClick();
+        }
+        return true;
+    }
+    void takeMainFromWallpaper(){
+        if(closed || page!=CONTROLS || paging!=null || owner.sideToolbar==null)return;
+        try{
+            owner.checkAction();
+            if(!owner.host.topAvailable){owner.logUnavailable("当前系统暂不支持顶部应用窗口");return;}
+            if(owner.upper==null){owner.logUnavailable("请先在布局设置中启用顶部副区");return;}
+            if(!owner.upper.canSwitch() || owner.upper.visible)return;
+            owner.host.change(-1);
+        }catch(RuntimeException error){owner.note(error);}
     }
     View viewport(View content){
         if(!owner.host.geometry.compact)return content;
@@ -196,9 +224,13 @@ final class WorkspaceDeck extends FrameLayout {
         int current=indexOfChild(owner.host.upperId==owner.host.upperNavigationId && owner.host.upperId>=0?navigationPage:topPage),next=current+direction;
         if(next<0 || next>=getChildCount())next=indexOfChild(networks);
         int destination=id(getChildAt(Math.max(0,next)));
-        Runnable done=()->{manualPage=true;savedPage=destination;jump(destination);openNativePage();};
-        if(owner.host.upperId>=0)owner.host.upperAction("park",done);
-        else{owner.upper.render(false);done.run();}
+        manualPage=true;savedPage=destination;
+        // Switch native pages with one show transaction, preserving the old
+        // task until its replacement is ready. UI pages draw before parking.
+        jump(destination);
+        if(destination==UPPER || destination==NAVIGATION){openNativePage();return;}
+        if(owner.host.upperId>=0)owner.host.upperAction("park");
+        else owner.upper.render(false);
     }
     void leaveUpperPage(){if(page==UPPER || page==NAVIGATION)jump(CONTROLS);}
     void positionPages(){

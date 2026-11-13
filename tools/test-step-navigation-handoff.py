@@ -4,6 +4,9 @@ import os, subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
 step=root/'android/app/src/main/java/ls/augment/com/step'
 sources={
+'android/annotation/SuppressLint.java':'package android.annotation;public @interface SuppressLint {String[] value();}',
+'android/Manifest.java':'package android;public class Manifest {public static class permission {public static String REORDER_TASKS="reorder";}}',
+'android/content/pm/PackageManager.java':'package android.content.pm;public class PackageManager {public static final int PERMISSION_GRANTED=0;}',
 'android/os/SystemClock.java':'package android.os; public class SystemClock {public static long now;public static long uptimeMillis(){return now;}}',
 'android/app/Notification.java':'package android.app; public class Notification {public static final String CATEGORY_NAVIGATION="navigation";public static final int FLAG_ONGOING_EVENT=2;public String category;public int flags;}',
 'android/app/ActivityManager.java':'''package android.app; public class ActivityManager {public void moveTaskToFront(int id,int flags){}public static class RunningTaskInfo {public int taskId,mode=1;public Object token;public Component baseActivity;public int getWindowingMode(){return mode;}public int getActivityType(){return 1;}}public static class Component {public String getPackageName(){return "map";}}}''',
@@ -35,7 +38,7 @@ class WorkspaceDeck {
  static final int NAVIGATION=5;boolean closed;Owner owner=new Owner();Context ctx=new Context();int page=-1;
  static class Owner {LiveWorkspace host=new LiveWorkspace();Upper upper=new Upper();java.util.concurrent.Executor worker=Runnable::run;int userId,refusals;void logUnavailable(String s){refusals++;}}
  static class Upper {boolean visible;boolean canSwitch(){return true;}}
- static class Context {String getPackageName(){return "systemui";}<T>T getSystemService(Class<T> type){return type.cast(new ActivityManager());}}
+ static class Context {int checkSelfPermission(String p){return 0;}String getPackageName(){return "systemui";}<T>T getSystemService(Class<T> type){return type.cast(new ActivityManager());}}
  void navigationChanged(boolean active){}void jump(int target){page=target;}
 }
 public class NavigationCases {

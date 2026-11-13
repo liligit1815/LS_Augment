@@ -33,6 +33,7 @@ public class TestIslandWindowMotion {
  static class Failing {boolean enabled=true;public boolean canPlayMoveAnimation(){return enabled;}
   public void setCanPlayMoveAnimation(boolean value){if(!value)throw new IllegalStateException();enabled=value;}}
  static class Context {Context getResources(){return this;}Context getDisplayMetrics(){return this;}int widthPixels=1216;}
+ static class Native12IslandStyle {static final int PANEL_WIDTH=344;}
  static class Host {
   boolean acquired=true,selected=true,panel;Object current=new Object(),permanent=new Object();final Context context=new Context();
   int nativeX=0,nativeY=5,nativeWidth=1053,nativeHeight=90,width=360,height=96,offsetX=0,offsetY=9;
@@ -69,7 +70,7 @@ public class TestIslandWindowMotion {
   check(initialSurfaceLeft==compactLeft,"production collapse must never replay previous left edge");
   check(params.width==360&&params.height==96&&params.x==0&&params.y==9,"compact bounds and hit area stay configured");
   check(params.windowAnimations==123,"production does not disable native show animations");
-  h.panel=true;h.window(params);check(params.width==1053&&params.x==0&&!params.canPlayMoveAnimation(),"expansion retains native size without WMS movement");
+  h.panel=true;h.window(params);check(params.width==1032&&params.x==0&&!params.canPlayMoveAnimation(),"expansion retains native size without WMS movement");
   h.panel=false;h.offsetX=-33;h.window(params);check(params.x==-33&&!params.canPlayMoveAnimation(),"configured offset uses same motion policy");
   h.offsetX=81;h.width=540;h.window(params);check(params.x==81&&params.width==540&&!params.canPlayMoveAnimation(),"hot geometry stays stable");
   h.context.widthPixels=900;h.panel=true;h.window(params);check(params.width==900,"narrow screen panel remains bounded");

@@ -8,6 +8,16 @@ import ls.augment.com.step.WorkspaceCapacity;
 public final class StepConfig {
     static final String UPPER = "atomic_workbench_upper_enabled";
     static final String PAGE_INDICATOR = "atomic_workbench_page_indicator";
+    static final String TOOLBAR_AUTO_COLLAPSE = "atomic_workbench_toolbar_auto_collapse";
+    public static boolean toolbarAutoCollapse(Context context) {
+        return new AppConfig(context).getBoolean(TOOLBAR_AUTO_COLLAPSE);
+    }
+    public static boolean saveToolbarAutoCollapse(Context context, boolean enabled) {
+        if (ResetWriteFence.blocked()) return false;
+        boolean saved = new AppConfig(context).save(Map.of(TOOLBAR_AUTO_COLLAPSE, enabled ? "1" : "0")).success;
+        if (saved) ls.augment.com.step.StepRuntime.notifyUiPreferences(context);
+        return saved;
+    }
     public static boolean pageIndicator(Context context) {
         return new AppConfig(context).getBoolean(PAGE_INDICATOR);
     }

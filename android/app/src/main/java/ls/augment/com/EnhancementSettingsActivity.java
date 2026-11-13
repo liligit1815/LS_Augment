@@ -37,10 +37,8 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private final Map<String,TextView> aodParameterStates=new LinkedHashMap<>();
     private final Map<String,Button> aodParameterRestores=new LinkedHashMap<>();
     private final Runnable autoSave=this::flush;
-    private Dialog islandAppStyleDialog;
     private IslandNoticeRuleEditor noticeRuleEditor;
     private boolean bindingIslandMaster;
-    private UiKit.Fold nativeScenesFold;
     private SharedPreferences islandPreferences;
     private SharedPreferences sceneDiagnostics;
     private final SharedPreferences.OnSharedPreferenceChangeListener sceneDiagnosticListener=(prefs,key)->{
@@ -225,14 +223,6 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
                 addSectionFeatures(card,features);
             }
             String id=selected==null?group:selected.id;
-            if("island".equals(id)){
-                LinearLayout nativeCard=ui.preferenceCard();
-                nativeCard.addView(ui.preferenceRow("native-island-settings","更多灵动岛设置",
-                        "沿用系统设置，与红魔Duo灵动岛使用同一开关",()->{
-                            flush();NativeIslandSettings.open(this,worker);
-                        }),ui.wrap());
-                body.addView(nativeCard,ui.margins(0,12,0,0));
-            }
             if(selected!=null&&!selected.deviceSettings.isEmpty())DeviceSettingsActions.add(this,ui,category(id,title),worker,selected.deviceSettings.toArray(new String[0]));
             if("collab_audio".equals(id))CollabAudioImporter.addAction(this,ui,category(id,title),worker);
         }
@@ -359,29 +349,16 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             active=gateMemory.getBoolean("open:"+key,active);
         String unavailable=FanFeatureAvailability.reason(this,key);
         if(SystemUiOptions.VOLUME_SAME_SIDE.equals(key)&&!VolumePositionSettings.multiAppEnabled(this))unavailable="请先在系统设置中开启多应用音量调节功能";
-        if(NativeIslandSceneOptions.ENABLED.equals(key)&&!nativeIslandEnabled())unavailable=nativeIslandUnavailable();
         if(SystemUiOptions.ISLAND_STATUS_AVOIDANCE.equals(key)){
             String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString("ls_augment_island_avoidance_capability","");
             if(capability.startsWith("unavailable:"))unavailable="当前系统缺少状态栏避让接口，保留原厂行为";
         }
-        if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_"))unavailable=nativeSceneUnavailable(key);
         boolean available=unavailable.isEmpty();
         toggle.setChecked(active&&available);toggle.setEnabled(available);
-        String featureTitle=NativeIslandSceneOptions.ENABLED.equals(key)?"场景补全":f.title;
-        String featureHelp=available||key.startsWith(NativeIslandSceneOptions.ENABLED)?FeatureHelp.forOption(option):unavailable;
-        if(key.startsWith(NativeIslandSceneOptions.ENABLED+"_")&&NativeIslandMode.LEGACY.equals(NativeIslandMode.detect(this))){
-            String scene=key.substring((NativeIslandSceneOptions.ENABLED+"_").length());
-            if(NativeIslandSceneOptions.ordinaryCardSupplement(scene)){
-                featureTitle=f.title+"卡片补全";
-                featureHelp=("record".equals(scene)?"补充旧系统缺少的录音转写卡片；普通录音岛已随总开关启用。":"补充旧系统缺少的来源卡片；已有原厂场景随总开关启用。")
-                        +"关闭本项仅撤下补充卡片，不关闭原厂岛。";
-            }
-        }
-        if(key.startsWith(NativeIslandSceneOptions.ENABLED)&&NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))
-            featureHelp=(key.equals(NativeIslandSceneOptions.ENABLED)?"":MagicIslandPolicy.detail(key.substring((NativeIslandSceneOptions.ENABLED+"_").length())))
-                    +"原厂已有场景随灵动岛总开关显示。这里只补充缺失的来源或更新环节，关闭后保留原厂卡片，不回放过期内容。";
+        String featureTitle=f.title;
+        String featureHelp=available?FeatureHelp.forOption(option):unavailable;
         card.addView(ui.featureRow(featureTitle,featureHelp,toggle),ui.wrap());
-        if(!available||SystemUiOptions.ISLAND.equals(key)||key.startsWith(NativeIslandSceneOptions.ENABLED)){
+        if(!available||SystemUiOptions.ISLAND.equals(key)){
             TextView state=ui.text(unavailable,12,ui.muted,false);state.setTag("device-feature-unavailable:"+key);
             if(available)state.setVisibility(View.GONE);
             card.addView(state,ui.margins(0,4,0,8));
@@ -418,13 +395,12 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         syncConditionalInputs();
         UiKit.Fold fold=null;if(f.hasConfiguration()||updateLink){card.addView(content,ui.wrap());fold=ui.fold(toggle,content);}
         final UiKit.Fold configFold=fold;
-        if(NativeIslandSceneOptions.ENABLED.equals(key))nativeScenesFold=fold;
         toggle.setOnCheckedChangeListener((view,on)->{
             if(on&&SystemUiOptions.VOLUME_SAME_SIDE.equals(key)&&!VolumePositionSettings.multiAppEnabled(this)){
                 toggle.setChecked(false);android.widget.Toast.makeText(this,"请先开启多应用音量调节功能",android.widget.Toast.LENGTH_SHORT).show();return;
             }
             if(configFold!=null)configFold.sync();
-            if(bindingIslandMaster&&(SystemUiOptions.ISLAND.equals(key)||key.startsWith(NativeIslandSceneOptions.ENABLED)))return;
+            if(bindingIslandMaster&&SystemUiOptions.ISLAND.equals(key))return;
             if(f.toggleKey!=null)change(key,on?"1":"0",toggle);
             else{
                 SharedPreferences.Editor memory=gateMemory.edit().putBoolean("open:"+key,on);String next;
@@ -512,44 +488,25 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         aodFontImportPending=false;refreshAodParameterState(AOD_FONT_KEY);
         toast("字体未导入："+error.getMessage());
     }
+    private IslandSettingsEditor islandEditor;
     private void islandControls(LinearLayout content){
         content.setPadding(0,0,0,0);
-        content.addView(ui.text("沿用系统卡片和交互，补全通知与下载活动",12,ui.muted,false),ui.margins(0,8,0,8));
-        for(String suffix:new String[]{"music","notifications","charging","downloads","first_expand"}){
-            String key=SystemUiOptions.PREFIX+"island_"+suffix;
-            EnhancementOption option=options.get(key);
-            Switch control=new Switch(this);control.setTag("config:"+key);control.setChecked(ConfigSchema.truthy(value(key)));
-            controls.put(key,control);
-            content.addView(ui.featureRow(option.title,FeatureHelp.forOption(option),control),ui.wrap());
-            control.setOnCheckedChangeListener((button,on)->change(key,on?"1":"0",control));
-            if("notifications".equals(suffix)){
-                LinearLayout timing=new LinearLayout(this);timing.setOrientation(LinearLayout.VERTICAL);timing.setPadding(ui.dp(12),0,0,0);
-                timing.addView(input(options.get(SystemUiOptions.PREFIX+"island_notice_seconds")),ui.wrap());
-                noticeRuleEditor=new IslandNoticeRuleEditor(this,ui,()->value(IslandNoticeRules.KEY),
-                        next->change(IslandNoticeRules.KEY,next,null));
-                View rules=noticeRuleEditor.view();
-                controls.put(IslandNoticeRules.KEY,rules);
-                timing.addView(rules,ui.wrap());content.addView(timing,ui.wrap());
-                UiKit.Fold timingFold=ui.fold(control,timing);
-                control.setOnCheckedChangeListener((button,on)->{timingFold.sync();change(key,on?"1":"0",control);});
-            }
-            if("downloads".equals(suffix)){
-                LinearLayout channels=new LinearLayout(this);channels.setOrientation(LinearLayout.VERTICAL);
-                channels.setPadding(ui.dp(12),0,0,0);
-                View editor=new IslandDownloadChannelEditor(this,ui,this::value,(k,v)->change(k,v,null)).view();
-                controls.put(IslandDownloadConfig.CHANNELS,editor);channels.addView(editor,ui.wrap());content.addView(channels,ui.wrap());
-                UiKit.Fold channelFold=ui.fold(control,channels);
-                control.setOnCheckedChangeListener((button,on)->{channelFold.sync();change(key,on?"1":"0",control);});
-            }
-            divider(content);
-        }
-
+        islandEditor=new IslandSettingsEditor(this,ui,this::value,(key,next)->change(key,next,controls.get(key)),
+                this::islandSceneUnavailable,this::islandSceneHelp,controls);
+        content.addView(islandEditor.view(key->input(options.get(key))),ui.wrap());
     }
-    private void refreshIslandRanges(){
-        for(String suffix:new String[]{"width","height","offset_x","offset_y"}){
-            String key=SystemUiOptions.PREFIX+"island_"+suffix;View control=controls.get(key);
-            if(control instanceof ParameterSlider)PhoneParameterRanges.island(this,(ParameterSlider)control,key,this::value);
-        }
+    private String islandSceneHelp(String id){
+        String help=FeatureHelp.forOption(options.get(IslandSceneRegistry.key(id)));
+        String detail=NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this))?MagicIslandPolicy.detail(id):"";
+        return detail.isEmpty()?help:detail+"\n\n"+help;
+    }
+    private String islandSceneUnavailable(String id){
+        if("notifications".equals(id)||"downloads".equals(id))return magicHostUnavailable();
+        String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(NativeIslandSceneOptions.key(id)+"_capability","");
+        if(("ready:"+BuildConfig.VERSION_CODE).equals(capability))return "";
+        if("navigation".equals(id)||"screen_record".equals(id)||"hotspot".equals(id))
+            return capability.startsWith("unavailable:")?"当前设备缺少此场景所需能力，保留原厂提醒":"等待系统界面检测场景能力";
+        return nativeSceneUnavailable(NativeIslandSceneOptions.key(id));
     }
     private void monitorControls(LinearLayout content){
         content.addView(ui.featureTitle("监测项目","勾选游戏空间性能监控弹窗需要显示的项目，至少保留一项。时间为当前时间，游戏时长由原厂插件统计。"),ui.margins(0,3,0,0));
@@ -908,10 +865,6 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }
         else if(view instanceof Button){
             if(RecentsPrivacyOptions.APPS.equals(key))((Button)view).setText(RecentsPrivacyOptions.selectionLabel(next));
-            else if(SystemUiOptions.ISLAND_APP_STYLE.equals(key)){
-                ((Button)view).setText(options.get(key).choices[Integer.parseInt(next)]);
-                view.setContentDescription(options.get(key).title+"，当前："+((Button)view).getText());
-            }
             else ((Button)view).setText(NotificationSummaryOptions.ASSET.equals(key)?(next.isEmpty()?"选择图片":"更换图片"):(next.isEmpty()?"选择字体文件":"更换字体"));
         }
         else if(view instanceof LinearLayout){LinearLayout checks=(LinearLayout)view;Set<String> selected=tokens(next);for(int i=0;i<checks.getChildCount();i++){CheckBox box=(CheckBox)checks.getChildAt(i);box.setChecked(selected.contains(box.getTag()));}}
@@ -959,7 +912,6 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(LauncherGridSpec.ENABLED.equals(key))traceLauncherGridIntent("toggle");
         refreshAodParameterState(key);
         if("ls_augment_rm_recents_memory_style".equals(key)&&memoryContentAdapter!=null)memoryContentAdapter.notifyDataSetChanged();
-        if((SystemUiOptions.PREFIX+"island_width").equals(key)||(SystemUiOptions.PREFIX+"island_height").equals(key))refreshIslandRanges();
         if("ls_augment_rm_recents_memory_color_mode".equals(key))syncMemoryColorsVisibility();
         if(key.startsWith("ls_augment_rm_recents_memory_")&&!key.endsWith("_left")&&!key.endsWith("_top"))refreshMemoryPosition();
         syncConditionalInputs();
@@ -1058,7 +1010,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(isDestroyed())return;String message=inputSession.takeFailure();if(message!=null)toast(message);
     }
     private void refreshIslandMaster(){
-        refreshNativeSceneGate();
+        if(islandEditor!=null)islandEditor.refresh();
         if(isDestroyed()||body==null||islandPreferences==null||pending.restorableValues().containsKey(SystemUiOptions.ISLAND))return;
         String saved=config.get(SystemUiOptions.ISLAND);
         draft.put(SystemUiOptions.ISLAND,saved);
@@ -1076,40 +1028,11 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         }}
         finally{bindingIslandMaster=false;}
     }
-    private boolean nativeIslandEnabled(){
-        return config.getBoolean(SystemUiOptions.ISLAND);
-    }
     private String magicHostUnavailable(){
         if(!NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this)))return "";
         String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(MagicIslandPolicy.CAPABILITY,"");
         if(("ready:"+BuildConfig.VERSION_CODE).equals(capability))return "";
         return capability.startsWith("unavailable:")?"灵动岛显示接口不完整，保留原厂行为":"等待灵动岛显示接口检测，请确认系统界面作用域";
-    }
-    private String nativeIslandUnavailable(){
-        return "请先开启红魔Duo灵动岛";
-    }
-    private void refreshNativeSceneGate(){
-        if(body==null||isDestroyed())return;
-        View view=body.findViewWithTag("config:"+NativeIslandSceneOptions.ENABLED);
-        if(!(view instanceof Switch))return;
-        boolean available=nativeIslandEnabled();
-        boolean expanded=nativeScenesFold!=null&&nativeScenesFold.content.getVisibility()==View.VISIBLE;
-        bindingIslandMaster=true;
-        try{view.setEnabled(available);((Switch)view).setChecked(available&&ConfigSchema.truthy(value(NativeIslandSceneOptions.ENABLED)));
-            if(nativeScenesFold!=null){nativeScenesFold.sync();nativeScenesFold.show(expanded);}
-            for(String id:NativeIslandSceneOptions.IDS){
-                String key=NativeIslandSceneOptions.key(id),reason=nativeSceneUnavailable(key);
-                View row=body.findViewWithTag("native-feature:"+key);
-                if(row!=null)row.setVisibility(automaticNativeScene(id)?View.GONE:View.VISIBLE);
-                View child=body.findViewWithTag("config:"+key);
-                if(child instanceof Switch){child.setEnabled(reason.isEmpty());((Switch)child).setChecked(reason.isEmpty()&&ConfigSchema.truthy(value(key)));}
-                View status=body.findViewWithTag("device-feature-unavailable:"+key);
-                if(status instanceof TextView){((TextView)status).setText(reason);status.setVisibility(reason.isEmpty()?View.GONE:View.VISIBLE);}
-            }
-        }
-        finally{bindingIslandMaster=false;}
-        View state=body.findViewWithTag("device-feature-unavailable:"+NativeIslandSceneOptions.ENABLED);
-        if(state instanceof TextView){((TextView)state).setText(available?"":nativeIslandUnavailable());state.setVisibility(available?View.GONE:View.VISIBLE);}
     }
     private String nativeSceneUnavailable(String key){
         if(NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this))){
@@ -1165,16 +1088,6 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if(capability.contains("recorder_waiting_user_unlock"))return "解锁手机后会自动检测录音支持";
         return capability.startsWith("unavailable:")?"此场景暂不可用，具体原因已记录到日志":"等待灵动岛报告场景能力";
     }
-    private boolean automaticNativeScene(String id){
-        String mode=NativeIslandMode.detect(this);
-        // Fullscreen producers already send these cards without a completion switch.
-        // AI memory retains its optional missing-pipeline completion.
-        if(NativeIslandMode.MODERN.equals(mode))return MagicIslandPolicy.managed(id)&&!"ai_memory".equals(id);
-        if(!NativeIslandMode.LEGACY.equals(mode)||NativeIslandSceneOptions.ordinaryCardSupplement(id))return false;
-        for(int i=0;i<NativeIslandSceneOptions.TYPES.length;i++)if(NativeIslandSceneOptions.IDS[i].equals(id))
-            return "ready".equals(getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(NativeIslandSceneOptions.key(id)+"_capability",""));
-        return false;
-    }
     private void considerQuery(View view,String title,String summary){if(queryAnchor==null&&!query.isEmpty()&&(title+summary).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))queryAnchor=view;}
     private boolean isApplicationDirectory(){return targetId!=null&&ModuleHierarchy.group(ModuleNavigation.route(this))==null;}
     private ScrollView scrollView(){ViewParent parent=body==null?null:body.getParent();while(parent!=null){if(parent instanceof ScrollView)return (ScrollView)parent;parent=parent.getParent();}return null;}
@@ -1220,7 +1133,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             for(Map.Entry<String,String> e:pending.restorableValues().entrySet())values.putString(e.getKey(),e.getValue());
             state.putBundle("draft",values);
         }Bundle saved=new Bundle();for(Map.Entry<String,NativeEditorController> entry:editors.entrySet()){Bundle b=new Bundle();entry.getValue().onSaveInstanceState(b);saved.putBundle(entry.getKey(),b);}state.putBundle("editors",saved);}
-    @Override protected void onDestroy(){if(batteryHealthPanel!=null)batteryHealthPanel.close();if(sceneDiagnostics!=null)sceneDiagnostics.unregisterOnSharedPreferenceChangeListener(sceneDiagnosticListener);if(islandPreferences!=null)islandPreferences.unregisterOnSharedPreferenceChangeListener(islandListener);stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(islandAppStyleDialog!=null)islandAppStyleDialog.dismiss();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(batteryHealthPanel!=null)batteryHealthPanel.close();if(sceneDiagnostics!=null)sceneDiagnostics.unregisterOnSharedPreferenceChangeListener(sceneDiagnosticListener);if(islandPreferences!=null)islandPreferences.unregisterOnSharedPreferenceChangeListener(islandListener);stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onDestroy();if(sectionPreferences!=null)sectionPreferences.unregisterOnSharedPreferenceChangeListener(sectionListener);if(updateLinksPreferences!=null)updateLinksPreferences.unregisterOnSharedPreferenceChangeListener(updateLinksListener);main.removeCallbacks(reloadUpdateLinks);main.removeCallbacks(autoSave);flush();for(NativeEditorController editor:editors.values())editor.onDestroy();if(!isChangingConfigurations())worker.shutdown();super.onDestroy();}
     @Override public Object onRetainNonConfigurationInstance(){
         Bundle invalid=new Bundle();
         for(Map.Entry<String,View> e:controls.entrySet())if(pending.isInvalid(e.getKey())&&e.getValue() instanceof EditText)invalid.putString(e.getKey(),((EditText)e.getValue()).getText().toString());

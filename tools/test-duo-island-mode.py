@@ -14,16 +14,19 @@ while depth:
 configure=text[start:end]
 config=(src/'AppConfig.java').read_text(encoding='utf-8')
 start=config.index('            DuoIslandPolicy.normalizeSelection(clean, next);')
-end=config.index('            // Both entry points publish',start)
+end=config.index('\n',start)  # Scene-schema migration is exercised separately by test-island-rebuild-core.py.
 selection=config[start:end]
 files={
 'ls/augment/com/ConfigSchema.java':'''package ls.augment.com;public class ConfigSchema{public static final String NATIVE_ISLAND_SELECTED="native";public static boolean truthy(String s){return "1".equals(s);}}''',
 'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo";}',
 'ls/augment/com/DuoIslandPolicy.java':(src/'DuoIslandPolicy.java').read_text(encoding='utf-8'),
 'ls/augment/com/IslandNoticeRules.java':(src/'IslandNoticeRules.java').read_text(encoding='utf-8'),
+'ls/augment/com/IslandNoticeBlacklist.java':(src/'IslandNoticeBlacklist.java').read_text(encoding='utf-8'),
+'ls/augment/com/AppPackageSet.java':(src/'AppPackageSet.java').read_text(encoding='utf-8'),
 'ls/augment/com/IslandDownloadConfig.java':(src/'IslandDownloadConfig.java').read_text(encoding='utf-8'),
 'TestDuoModes.java':'''import java.util.*;import ls.augment.com.ConfigSchema;import ls.augment.com.DuoIslandPolicy;
 import ls.augment.com.IslandNoticeRules;
+import ls.augment.com.IslandNoticeBlacklist;
 public class TestDuoModes{
 static int checks;static void check(boolean ok,String reason){checks++;if(!ok)throw new AssertionError(reason);}
 static class SystemUiOptions{static String ISLAND="duo";}
@@ -31,7 +34,7 @@ static class FeatureSettings{static Map<String,String> values=new HashMap<>();st
 static class Host{boolean nativeOn;List<String> events=new ArrayList<>();void selectNative(boolean value){nativeOn=value;events.add("owner="+value);}void release(){events.add("release");}}
 static class Activity{void clear(){}void configure(){}}
 static class State{boolean closed,enabled;Object context=new Object();Host nativeHost=new Host();Activity chargeActivity=new Activity(),downloads=new Activity();void downloadSnapshot(){}Map<String,String> mediaActivities=new HashMap<>();boolean option(String suffix){return true;}void listen(){}void stopListening(){}void clearNotice(){}void dismiss(){}void refresh(){}
-Object notice;IslandNoticeRules noticeRules;int noticeMode(Object n){return IslandNoticeRules.OFF;}void restoreDownloadSnapshot(){}void cancelFirst(){}
+Object notice;IslandNoticeBlacklist noticeBlacklist;IslandNoticeRules noticeRules;int noticeMode(Object n){return IslandNoticeRules.OFF;}void restoreDownloadSnapshot(){}void cancelFirst(){}
 // CONFIGURE
 }
 static void save(Map<String,String> clean,Map<String,String> next){next.putAll(clean);

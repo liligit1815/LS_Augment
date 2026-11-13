@@ -8,29 +8,6 @@ import android.graphics.Rect;
 /** Geometry comes from the phone's current OEM resources, never a desktop helper. */
 final class PhoneParameterRanges {
     private PhoneParameterRanges() { }
-    static void island(Activity activity,ParameterSlider slider,String key,java.util.function.Function<String,String> value){
-        android.view.WindowMetrics metrics=activity.getSystemService(android.view.WindowManager.class).getMaximumWindowMetrics();
-        float density=activity.getResources().getDisplayMetrics().density;
-        int hostWidth=metrics.getBounds().width();
-        int hostHeight=metrics.getWindowInsets().getInsetsIgnoringVisibility(android.view.WindowInsets.Type.statusBars()).top;
-        if(hostHeight<=0){slider.unavailable("暂未读取到本机状态栏高度，请返回后重新进入");return;}
-        String prefix=SystemUiOptions.PREFIX+"island_";
-        int width=Math.min(Math.round(Integer.parseInt(value.apply(prefix+"width"))*density),Math.max(0,hostWidth-Math.round(16*density)));
-        int height=Math.min(Math.round(Integer.parseInt(value.apply(prefix+"height"))*density),Math.max(0,hostHeight-Math.round(2*density)));
-        int min=0,max=0;
-        if(key.equals(prefix+"width")){min=96;max=Math.min(240,(int)Math.floor((hostWidth-Math.round(16*density))/density));}
-        else if(key.equals(prefix+"height")){min=20;max=Math.min(48,(int)Math.floor((hostHeight-Math.round(2*density))/density));}
-        else if(key.equals(prefix+"offset_x")){
-            max=Math.min(120,Math.max(0,(int)Math.floor(((hostWidth-width)/2-Math.round(8*density))/density)));min=-max;
-        }else if(key.equals(prefix+"offset_y")){
-            int available=Math.max(0,hostHeight-height);
-            min=-Math.min(24,(int)Math.floor((available/2)/density));
-            max=Math.min(24,(int)Math.floor((available-available/2)/density));
-        }
-        if(max<min){slider.unavailable("当前状态栏空间不足以使用此尺寸，请先调整状态栏高度");return;}
-        slider.range(min,max,"本机范围："+min+"～"+max+" dp · 随胶囊尺寸与状态栏空间变化");
-    }
-
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     // Names belong to runtime OEM/module packages, not this APK's compile-time resources; preserve missing-resource fallback.
     //noinspection DiscouragedApi,PrivateApi

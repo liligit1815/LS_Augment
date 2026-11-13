@@ -8,8 +8,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ResultReceiver;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import java.util.Collections;
@@ -25,12 +28,13 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
     private static final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private long generation;
-    private int request;
-    private boolean busy, rendering, topSupported, resumed;
+    private int request, countSelection=-1;
+    private boolean busy, rendering, resumed;
     private AppConfig config;
     private UiKit ui;
-    private Switch master, upper, pageIndicator;
-    private Button check, count;
+    private Switch master, pageIndicator, toolbarAutoCollapse;
+    private Button check;
+    private Spinner count;
     private TextView status;
     private UiKit.Fold fold;
 
@@ -51,7 +55,7 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         status = ui.text("", 12, ui.muted, false);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         card.addView(status, ui.margins(0, 4, 0, 8));
-        check = ui.tonalButton("检查工作台接入");
+        check = ui.button("检查工作台接入");
         check.setOnClickListener(v -> probe(false));
         card.addView(check, ui.wrap());
         Button guide=ui.textButton("手势引导");
@@ -60,24 +64,24 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
 
         LinearLayout layout = ui.preferenceCard();
         body.addView(layout, ui.margins(0, 8, 0, 0));
-        count = ui.tonalButton("");
-        count.setOnClickListener(v -> chooseCount());
+        count = ui.choiceSpinner("侧边副工作区数量");
+        count.setContentDescription("侧边副工作区数量");
+        count.setTag("config:" + AtomicWorkbenchConfig.SIDE_COUNT);
+        String[] choices = new String[5];
+        for (int i=0;i<choices.length;i++) choices[i]=(i+1)+" 个侧边副工作区";
+        count.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,choices));
         layout.addView(ui.featureTitle("工作区布局", "默认一主三侧副，支持五个侧边副区和一个独立顶部副区。"), ui.wrap());
         layout.addView(count, ui.wrap());
-        upper = new Switch(this);
-        layout.addView(ui.featureRow("顶部副工作区", "需要系统支持原屏顶部窗口。顶部应用与音乐左右滑动切换，导航直接使用地图应用原界面；工具栏从顶部两侧边缘呼出，向外滑动或点击中间收起。原厂侧栏资源不可用时保留原工具页。", upper), ui.wrap());
         pageIndicator = new Switch(this);
         pageIndicator.setTag("config:" + StepConfig.PAGE_INDICATOR);
         layout.addView(ui.featureRow("页面指示器", "在顶部内容底部显示页数和当前位置。", pageIndicator), ui.wrap());
+        toolbarAutoCollapse = new Switch(this);
+        toolbarAutoCollapse.setTag("config:" + StepConfig.TOOLBAR_AUTO_COLLAPSE);
+        layout.addView(ui.featureRow("自动收起工具栏", "操作工具栏按钮后自动收起；关闭后保持展开，点击顶区非工具栏区域收起。", toolbarAutoCollapse), ui.wrap());
         layout.addView(ui.preferenceRow("atomic_workbench_apps", "快捷应用",
                 "选择工作台快捷栏中显示的应用", () -> startActivity(new Intent(this, QuickPinsActivity.class))), ui.wrap());
         layout.addView(ui.preferenceRow("step_top_wallpaper", "顶部壁纸",
                 "跟随桌面壁纸，或从相册单独选择", () -> startActivity(new Intent(this, StepWallpaperActivity.class))), ui.wrap());
-        layout.addView(ui.featureTitle("音乐与歌词",
-                "优先使用本机红魔原生音乐卡片，并跟随系统当前媒体会话；原厂不支持的播放器或缺失接口使用兼容控件。\n\n"
-                + "歌词优先取自播放器。缺失时自动匹配网易云音乐、酷狗、汽水音乐和 LRCLIB，点击歌词可重试、选来源或导入本地歌词。在线查询会向所查询来源发送歌名、歌手、时长，以及对应来源可识别的歌曲编号；不发送剪贴板、应用页面或账号凭据。\n\n"
-                + "查询结果仅缓存在当前进程内，切换系统用户时清空。无需额外勾选播放器作用域。进度跳转、输出设备和歌词是否可用，取决于播放器、系统接口及网络服务。"), ui.wrap());
-        layout.addView(ui.featureTitle("退出与恢复", "底部上滑可在主区回桌面选应用。息屏或锁屏后，解锁会自动回到工作台。手动退出后再次进入时，只恢复仍在后台运行的原任务。"), ui.wrap());
         fold = ui.fold(master, layout);
         fold.show(state != null && state.getBoolean("expanded"));
         master.setOnCheckedChangeListener((v, on) -> {
@@ -85,14 +89,24 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
             render();
             if (on) probe(true); else saveMaster(false);
         });
-        upper.setOnCheckedChangeListener((v, on) -> {
-            if (!rendering) saveLayout(StepConfig.sideCount(this), on);
-        });
         pageIndicator.setOnCheckedChangeListener((v, on) -> {
             if (!rendering) commit(() -> StepConfig.savePageIndicator(this, on), on ? "页面指示器已显示。" : "页面指示器已隐藏。");
         });
+        toolbarAutoCollapse.setOnCheckedChangeListener((v, on) -> {
+            if (!rendering) commit(() -> StepConfig.saveToolbarAutoCollapse(this, on), on ? "操作后自动收起工具栏。" : "操作后保持工具栏展开。");
+        });
         status.setText("可检查当前系统框架与系统界面是否已加载本版工作台。");
         render();
+        count.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            @Override public void onNothingSelected(AdapterView<?> parent){}
+            @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
+                if(rendering || busy || !resumed || isDestroyed() || !count.isEnabled()
+                        || ResetWriteFence.stale(generation) || position==countSelection)return;
+                countSelection=position;
+                if(position+1!=StepConfig.sideCount(AtomicWorkbenchSettingsActivity.this))
+                    saveLayout(position+1,StepConfig.upper(AtomicWorkbenchSettingsActivity.this));
+            }
+        });
     }
 
     @Override protected void onResume() {
@@ -105,14 +119,6 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
                 }
             });
         }
-        StepRuntime.query(this, "android", new ResultReceiver(main) {
-            @Override protected void onReceiveResult(int code, Bundle data) {
-                if (isDestroyed()) return;
-                topSupported = code == 1 && data != null && data.getInt("version") == BuildConfig.VERSION_CODE
-                        && data.getBoolean("topAvailable");
-                render();
-            }
-        });
     }
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
@@ -128,20 +134,17 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
         master.setEnabled(available);
         check.setEnabled(available);
         int sides = StepConfig.sideCount(this);
-        count.setText("侧边副工作区数量　" + sides);
+        if(!busy){
+            countSelection=Math.max(0,Math.min(4,sides-1));
+            count.setSelection(countSelection);
+        }
         count.setEnabled(available);
-        upper.setChecked(StepConfig.upper(this));
-        upper.setEnabled(available && (topSupported || upper.isChecked()));
         pageIndicator.setChecked(StepConfig.pageIndicator(this));
         pageIndicator.setEnabled(available);
+        toolbarAutoCollapse.setChecked(StepConfig.toolbarAutoCollapse(this));
+        toolbarAutoCollapse.setEnabled(available);
         fold.sync();
         rendering = false;
-    }
-    private void chooseCount() {
-        boolean hasUpper = StepConfig.upper(this);
-        String[] choices = new String[5];
-        for (int i = 0; i < choices.length; i++) choices[i] = (i + 1) + " 个侧边副工作区";
-        ui.choiceDialog("侧边副工作区数量", choices, null, i -> saveLayout(i + 1, hasUpper));
     }
     private void saveLayout(int sides, boolean top) {
         commit(() -> StepConfig.saveLayout(this, sides, top), "布局已保存，下次进入工作台时使用。");
@@ -187,7 +190,6 @@ public final class AtomicWorkbenchSettingsActivity extends Activity {
                     if (request != token || answer == null || replied[host]) return;
                     replied[host] = true;
                     ready[host] = code == 1 && answer.getInt("version") == BuildConfig.VERSION_CODE;
-                    if (host == 0) topSupported = ready[host] && answer.getBoolean("topAvailable");
                     results[host] = answer.getString("details", hosts[host]) + (ready[host] ? "已就绪" : "未就绪");
                     if (replied[0] && replied[1]) finish.run();
                 }

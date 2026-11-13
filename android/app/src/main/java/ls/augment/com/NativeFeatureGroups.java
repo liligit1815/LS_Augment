@@ -199,9 +199,8 @@ final class NativeFeatureGroups {
             new Feature("systemui:notification_media_hide","取消通知中心的音乐卡片",SystemUiOptions.NOTIFICATION_MEDIA_HIDE,new String[]{},"boolean","0",new Feature[]{})
         }),
         new Section("systemui","island","灵动岛", new Feature[]{
-            new Feature("systemui:island_status_avoidance","通知状态自动避让岛",SystemUiOptions.ISLAND_STATUS_AVOIDANCE,new String[]{},"boolean","0",new Feature[]{}),
-            new Feature("systemui:island_enabled","红魔Duo灵动岛",SystemUiOptions.ISLAND,new String[]{"ls_augment_rm_island_music","ls_augment_rm_island_notifications","ls_augment_rm_island_charging","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x",SystemUiOptions.ISLAND_OFFSET_Y,SystemUiOptions.ISLAND_TRANSPARENT,SystemUiOptions.ISLAND_APP_STYLE,"ls_augment_rm_island_notice_seconds",IslandDownloadConfig.ENABLED,IslandDownloadConfig.CHANNELS,IslandNoticeRules.KEY,SystemUiOptions.ISLAND_FIRST_EXPAND},"boolean","0",new Feature[]{}),
-            NativeIslandSceneOptions.feature()
+            new Feature("systemui:island_status_avoidance","通知状态自动避让岛",SystemUiOptions.ISLAND_STATUS_AVOIDANCE,new String[]{},"boolean","1",new Feature[]{}),
+            new Feature("systemui:island_enabled","红魔Duo灵动岛",SystemUiOptions.ISLAND,IslandSceneRegistry.parameterKeys(),"boolean","0",new Feature[]{})
         }),
         new Section("systemui","quicksettings","控制中心", new Feature[]{
             new Feature("systemui:notification_stack","通知堆叠",SystemUiOptions.NOTIFICATION_STACK,new String[]{NotificationAppearanceOptions.STACK_SHADE,NotificationAppearanceOptions.STACK_LOCK,NotificationAppearanceOptions.STACK_GRADIENT,NotificationAppearanceOptions.STACK_START,NotificationAppearanceOptions.STACK_LOCK_START},"boolean","0",new Feature[]{
@@ -294,6 +293,7 @@ final class NativeFeatureGroups {
             new Feature(GameOptions.COMBO_BUTTON_SIZE_ENABLED,"一键连招按键大小",GameOptions.COMBO_BUTTON_SIZE_ENABLED,new String[]{GameOptions.COMBO_BUTTON_SIZE},"boolean","0",new Feature[]{})
         }),
         new Section("game","performance","游戏面板与性能模式", new Feature[]{
+            new Feature(GameOptions.HIDE_AWAKENING_TIP,"取消觉醒模式进入提示",GameOptions.HIDE_AWAKENING_TIP,new String[]{},"boolean","0",new Feature[]{}),
             new Feature("ls_augment_game_hide_diablo_dialog","隐藏破坏神模式提示","ls_augment_game_hide_diablo_dialog",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_game_prevent_panel_collapse","切换模式时保持游戏面板","ls_augment_game_prevent_panel_collapse",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("ls_augment_game_remember_active","记住活跃模式","ls_augment_game_remember_active",new String[]{},"boolean","0", new Feature[]{}),
@@ -360,7 +360,9 @@ final class NativeFeatureGroups {
             new Feature("ls_augment_rm_screenshot_crop_unlimited","取消截图裁剪最小尺寸限制","ls_augment_rm_screenshot_crop_unlimited",new String[]{},"boolean","0", new Feature[]{})
         }),
         new Section("system","battery","电池", new Feature[]{
-            new Feature(SystemOptions.BATTERY_KEEP_REFRESH,"省电模式保持当前帧率",SystemOptions.BATTERY_KEEP_REFRESH,new String[]{},"boolean","0",new Feature[]{})
+            new Feature(SystemOptions.BATTERY_KEEP_REFRESH,"省电模式保持当前帧率",SystemOptions.BATTERY_KEEP_REFRESH,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature(BypassChargingOptions.HIDE_PROMPTS,"拦截旁路充电提示",BypassChargingOptions.HIDE_PROMPTS,new String[]{},"boolean","0",new Feature[]{}),
+            new Feature(BypassChargingOptions.AUTO,"按电量自动进入旁路充电",BypassChargingOptions.AUTO,new String[]{BypassChargingOptions.LEVEL},"boolean","0",new Feature[]{})
         }),
         new Section("gallery","gallery","相册", new Feature[]{
             new Feature(SystemOptions.GALLERY_WATERMARK,"相册水印自定义",SystemOptions.GALLERY_WATERMARK,new String[]{SystemOptions.GALLERY_WATERMARK_TEXT},"boolean","0",new Feature[]{})

@@ -24,7 +24,7 @@ files={
  'com/zte/utils/ResourceUtil.java':'package com.zte.utils;public class ResourceUtil {public static int getDimensionPixelSizeInDefaultDpi(int id){return id;}}',
  'android/media/session/MediaController.java':'''package android.media.session;public class MediaController {
  public String pkg="music";public Object state=new Object();public String getPackageName(){return pkg;}public Object getPlaybackState(){return state;}}''',
- 'ls/augment/com/EnhancementOption.java':'package ls.augment.com;public class EnhancementOption {public static EnhancementOption toggle(String k,String t,String l,String h){return new EnhancementOption();}}',
+ 'ls/augment/com/EnhancementOption.java':'package ls.augment.com;public class EnhancementOption {public static EnhancementOption internal(String k,String d,java.util.function.UnaryOperator<String> v){return new EnhancementOption();}public static EnhancementOption toggle(String k,String t,String l,String h){return new EnhancementOption();}}',
  'ls/augment/com/NativeFeatureGroups.java':'package ls.augment.com;public class NativeFeatureGroups {public static class Feature {public Feature(String a,String b,String c,String[] d,String e,String f,Feature[] g){}}}',
  'com/zte/feature/dynamicisland/islands/RecorderIsland.java':'package com.zte.feature.dynamicisland.islands;public class RecorderIsland extends android.view.View {}',
  'com/zte/feature/dynamicisland/islands/CountDownIsland.java':'package com.zte.feature.dynamicisland.islands;public class CountDownIsland extends android.view.View {}',
@@ -49,6 +49,7 @@ public class TestNativeIslandPanelGates {
  static Object call(Object owner,String name)throws Exception{return owner.getClass().getMethod(name).invoke(owner);}
  static String reason(Exception e){return e.getClass().getSimpleName();}void report(String value){}
  boolean usable(){return usable;}static int currentUser(){return user;}
+ static class IslandSceneSelection {static boolean enabled(Map<String,Boolean> c,String id){String key="media".equals(id)?"ls_augment_rm_island_music":"charging".equals(id)?"ls_augment_rm_island_charging":NativeIslandSceneOptions.key(id);return c.getOrDefault("duo",false)&&c.getOrDefault(key,false);}}
  static class FeatureSettings {static boolean enabled(Map<String,Boolean> c,String k){return c.getOrDefault(k,false);}}
  static Object field(Object o,String name){if(o==null)return null;for(Class<?> t=o.getClass();t!=null;t=t.getSuperclass())try{
  Field f=t.getDeclaredField(name);f.setAccessible(true);return f.get(o);}catch(Exception ignored){}return null;}
@@ -61,11 +62,11 @@ public class TestNativeIslandPanelGates {
  String[] ids={"record","torch","countdown"};
  for(int i=0;i<ids.length;i++){String id=ids[i];Object scene=scenes[i];View panel=new View();g.panels.put(scene,panel);g.enhancedScenes.add(id);g.supportedScenes.add(id);
  g.context.clear();check(g.completedPanel(scene)==null,"default OFF preserves OEM null panel");
- g.context.put(ls.augment.com.SystemUiOptions.ISLAND,true);check(g.completedPanel(scene)==panel,"master alone exposes supported OEM scene without completion");g.context.put(ls.augment.com.SystemUiOptions.ISLAND,false);
+ g.context.put(ls.augment.com.SystemUiOptions.ISLAND,true);check(g.completedPanel(scene)==null,"unselected scene keeps native panel ownership");g.context.put(ls.augment.com.SystemUiOptions.ISLAND,false);
  g.context.put(NativeIslandSceneOptions.key(id),true);check(g.completedPanel(scene)==null,"child alone cannot enable panel");
  g.context.put(NativeIslandSceneOptions.ENABLED,true);check(g.completedPanel(scene)==null,"Duo OFF does not take over despite both scene switches ON");g.context.put(ls.augment.com.SystemUiOptions.ISLAND,true);check(g.completedPanel(scene)==panel,"selected existing panel exposed, including inherited scene");
- g.context.put(NativeIslandSceneOptions.key(id),false);check(g.completedPanel(scene)==panel,"completion child OFF preserves supported OEM scene");
- g.context.put(NativeIslandSceneOptions.ENABLED,false);check(g.completedPanel(scene)==panel,"completion master OFF preserves supported OEM scene");
+ g.context.put(NativeIslandSceneOptions.key(id),false);check(g.completedPanel(scene)==null,"scene OFF releases its enhancement");
+ g.context.put(NativeIslandSceneOptions.ENABLED,false);check(g.completedPanel(scene)==null,"retired master cannot override scene OFF");
  g.context.put(NativeIslandSceneOptions.key(id),true);g.supportedScenes.remove(id);check(g.completedPanel(scene)==null,"missing capability preserves native behavior");g.supportedScenes.add(id);
  g.usable=false;check(g.completedPanel(scene)==null,"detached/closed host cannot lend panel");g.usable=true;
  }
@@ -82,7 +83,7 @@ public class TestNativeIslandPanelGates {
  check(g.completedPanel(music)==null,"previous user media rejected");user=0;p.mPanelNext.listener=false;
  check(g.completedPanel(music)==null,"unbound native actions are not exposed");p.mPanelNext.listener=true;
  g.context.put(NativeIslandSceneOptions.ENABLED,false);check(g.completedPanel(music)==p&&g.hasEnhancements(),"native music works independently of scene completion");
- g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",false);check(g.completedPanel(music)==null&&g.hasEnhancements(),"music OFF releases its panel while other OEM scenes remain available");
+ g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",false);check(g.completedPanel(music)==null,"music OFF releases its own panel");
  g.context.put(ls.augment.com.SystemUiOptions.PREFIX+"island_music",true);g.context.put(NativeIslandSceneOptions.ENABLED,true);
  g.context.put(NativeIslandSceneOptions.key("media"),false);check(g.completedPanel(music)==p,"completion media switch does not gate native music");
  g.context.put(NativeIslandSceneOptions.ENABLED,false);g.supportedScenes.remove("media");check(g.completedPanel(music)==null,"music option cannot bypass missing contract");g.supportedScenes.add("media");
@@ -93,7 +94,7 @@ public class TestNativeIslandPanelGates {
  adjustWindow(new View(),wp);check(wp.width==884,"unrelated window unchanged");
  adjustWindow(g.root,wp);check(wp.width==1118,"ordinary capsule window expands to OEM animation width");
  adjustWindow(g.root,wp);check(g.panelWindowBefore==884,"repeated window updates retain original size");
- g.context.put(NativeIslandSceneOptions.key("countdown"),false);adjustWindow(g.root,wp);check(wp.width==1118,"completion child OFF preserves native panel width");
+ g.context.put(NativeIslandSceneOptions.key("countdown"),false);adjustWindow(g.root,wp);check(wp.width==884,"scene OFF restores the native window width");
  g.context.put(ls.augment.com.SystemUiOptions.ISLAND,false);adjustWindow(g.root,wp);check(wp.width==884&&g.panelWindowBefore==-1,"Duo OFF releases window width");g.context.put(ls.augment.com.SystemUiOptions.ISLAND,true);
  g.context.put(NativeIslandSceneOptions.key("countdown"),true);wp.width=1200;adjustWindow(g.root,wp);check(wp.width==1200&&g.panelWindowBefore==-1,"older wide native window retained");
  wp.width=884;g.context.res.widthPixels=1024;adjustWindow(g.root,wp);check(wp.width==1024,"narrow display clamps to actual screen width");

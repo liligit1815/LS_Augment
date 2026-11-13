@@ -10,8 +10,8 @@ def method(signature):
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[start:end]
 methods='\n'.join(method(sig) for sig in ['static final class Pose','static Method exact(', 'static void capture(',
-    'static boolean contains(', 'static void startIn(', 'static void retire(', 'static boolean owns(', 'static WorkspaceTransform spec(',
-    'static WorkspaceTransform inherited(', 'static void stage(', 'static void applyPose(', 'static void refresh(']).replace('android.graphics.Point','Point')
+    'static boolean contains(', 'static void finishIn(', 'static void startIn(', 'static void retire(', 'static boolean owns(', 'static WorkspaceTransform spec(',
+    'static WorkspaceTransform inherited(', 'static void stage(', 'static boolean bounded(', 'static void applyPose(', 'static void refresh(']).replace('android.graphics.Point','Point')
 harness=r'''
 package ls.augment.com.step;
 import java.util.*;import java.lang.reflect.*;
@@ -34,8 +34,8 @@ public class TransitionPoseCases {
     static class Target {Info info;Surface leash;Target(Task t){info=t.info;leash=t.surface;}}
     static class Root {int display;Point offset=new Point();Surface leash=new Surface();}
     static class TransitionInfo {int roots=1;Root root=new Root();List<Target> targets=new ArrayList<>();}
-    static Map<Surface,WorkspaceTransform> presented=new HashMap<>();static int rootWrites;
-    static class Tx {Map<Surface,WorkspaceTransform> values=new HashMap<>();int writes;boolean applied;Runnable committed;}
+    static Map<Surface,WorkspaceTransform> presented=new HashMap<>();static Map<Surface,Object> crops=new HashMap<>();static int rootWrites;
+    static class Tx {Map<Surface,WorkspaceTransform> values=new HashMap<>();Map<Surface,Object> clips=new HashMap<>();int writes;boolean applied;Runnable committed;}
     static class Handler {void post(Runnable r){r.run();}}
     static class SurfaceCommit {static void observe(Object tx,java.util.concurrent.Executor executor,Runnable done){((Tx)tx).committed=()->executor.execute(done);}}
     static Object surfaceTransaction(){return new Tx();}static Object pendingCommit;
@@ -65,7 +65,8 @@ public class TransitionPoseCases {
     static Object call(Object o,String n,Object... a){
         if(o instanceof Token token && n.equals("getToken"))return token.binder;
         if(o instanceof Surface s){if(n.equals("release")){s.valid=false;return null;}if(n.equals("isValid"))return s.valid;if(!s.valid)throw new IllegalStateException("released wrapper");return s.layer;}
-        if(o instanceof Tx t){if(n.equals("apply")){presented.putAll(t.values);rootWrites++;t.applied=true;if(t.committed!=null)t.committed.run();return null;}if(n.equals("close"))return null;
+        if(o instanceof Tx t){if(n.equals("apply")){presented.putAll(t.values);crops.putAll(t.clips);rootWrites++;t.applied=true;if(t.committed!=null)t.committed.run();return null;}if(n.equals("close"))return null;
+            if(n.equals("setWindowCrop")){t.clips.put((Surface)a[0],a[1]);t.writes++;return t;}
             Surface s=(Surface)a[0];WorkspaceTransform old=t.values.getOrDefault(s,new WorkspaceTransform(1,0,0));
             if(n.equals("setMatrix"))t.values.put(s,new WorkspaceTransform((Float)a[1],old.x,old.y));
             else if(n.equals("setPosition"))t.values.put(s,new WorkspaceTransform(old.scale,(Float)a[1],(Float)a[2]));else throw new AssertionError(n);t.writes++;return t;}
@@ -117,6 +118,7 @@ public class TransitionPoseCases {
             Fixture f=new Fixture();f.home.type=activity;if(inherited)common.cache=Wm.ownedSpec;f.capture();
             check(!f.tx.values.containsKey(f.info.root.leash),"Shell deferred start transaction never carries workspace root matrix");
             WorkspaceTransform root=presented.get(f.info.root.leash),parent=spec(common.cache);
+            check(crops.get(f.info.root.leash)==logical,"main animation and shadows clipped even when parent owns scale");
             WorkspaceTransform physical=root.then(parent);near(physical.scale,.7466518f,"one workspace scale during HOME/RECENTS");near(physical.y,681,"same main origin");
             check(f.home.cache==null && f.app.cache==null && owns(f.home),"original task never gets a second scale under animation root");
             common.cache=null;refresh(f.tx);root=presented.get(f.info.root.leash);near(root.scale,.7466518f,"ancestor migration recalibrates root");
@@ -127,12 +129,28 @@ public class TransitionPoseCases {
             physical=presented.get(f.info.root.leash).then(spec(common.cache));near(physical.scale,.8f,"animation follows current owned geometry");
             Wm.applyingSpec=null;
             ending=true;pendingCommit=new Object();Wm.active=false;active=false;current=null;refresh(f.tx);check(presented.get(f.info.root.leash).identity(),"exit removes root transform before old animation finishes");
+            check(crops.get(f.info.root.leash)==null,"exit releases native animation crop before deferred start");
             call(f.tx,"apply");check(presented.get(f.info.root.leash).identity(),"late Shell start cannot resurrect exited root pose");
             check(!owns(f.home),"exit releases target exclusion");int writes=rootWrites;owner=new IBinder();refresh(f.tx);check(writes==rootWrites,"late transition cannot modify new owner");pendingCommit=null;
         }
         Fixture external=new Fixture();external.capture();current=new Spec(2,10,10);refresh(external.tx);
         check(presented.get(external.info.root.leash).identity() && !owns(external.home),"external magnifier regains its native children");
         Fixture profile=new Fixture();profile.app.user=10;profile.capture();check(owns(profile.app),"allowed managed profile retained");
+    }
+    static void overlapping()throws Exception{
+        Fixture f=new Fixture();transitionStart=true;f.capture();
+        Token next=new Token();TransitionInfo second=new TransitionInfo();second.targets.addAll(f.info.targets);
+        Tx start=new Tx();capture(next,second,f.changes,start);
+        check(poses.size()==2 && owns(f.app),"overlapping launch retains both token-scoped roots");
+        WorkspaceTransform newer=presented.get(second.root.leash);
+        near(newer.scale,.7466518f,"new launch inherits main scale before previous finishes");
+        near(newer.y,681,"new launch stays at main origin");
+        finishIn(new Tx(),List.of(f.transition.binder));
+        check(poses.size()==1 && poses.containsKey(next) && owns(f.app),"old finish cannot release new task ownership");
+        startIn(start,List.of(next.binder));call(start,"apply");
+        near(presented.get(second.root.leash).scale,.7466518f,"new start survives old finish");
+        finishIn(new Tx(),List.of(next.binder));
+        check(poses.isEmpty() && !owns(f.app),"final completion releases the overlapping task once");
     }
     static void rejected()throws Exception{
         for(int kind=0;kind<16;kind++){
@@ -153,7 +171,7 @@ public class TransitionPoseCases {
         }
     }
     public static void main(String[] args)throws Exception{ancestor=TransitionPoseCases.class.getMethod("common",ArrayList.class,Object.class);wallpaper=TransitionPoseCases.class.getMethod("wall",Object.class);
-        capabilities();calibrated();rejected();System.out.println("PASS "+checks+" production transition pose checks: HOME/RECENTS, native parent calibration, exit/new owner, inherited/missing contracts and unknown targets");}
+        capabilities();calibrated();overlapping();rejected();System.out.println("PASS "+checks+" production transition pose checks: HOME/RECENTS, native parent calibration, exit/new owner, inherited/missing contracts and unknown targets");}
 }
 '''.replace('METHODS',methods)
 java=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'

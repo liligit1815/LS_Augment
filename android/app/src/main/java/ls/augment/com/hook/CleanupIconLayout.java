@@ -4,7 +4,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
 
-/** Widen only the attested clear control and its existing click host; retain native height/centering. */
+/** Resize only the attested control, never the legacy recents scroll page. */
 final class CleanupIconLayout {
     private final WeakReference<View> image,clickHost;
     private int nativeWidth,nativeHostWidth,appliedWidth,appliedHostWidth;
@@ -18,7 +18,7 @@ final class CleanupIconLayout {
         if(!c17||!(view instanceof android.widget.ImageView)){restore(view,host,params);return;}
         int height=params.height>0?params.height:view.getHeight();if(height<=0)return;
         if(!changed){nativeWidth=params.width;nativeHostWidth=host!=null&&host.getLayoutParams()!=null?host.getLayoutParams().width:0;}
-        int width=Math.round(height*3.5f),screen=view.getRootView().getWidth();
+        int width=Math.round(CleanupCapsule.width(view)),screen=view.getRootView().getWidth();
         if(screen>0)width=Math.min(width,screen);
         appliedWidth=width;changed=true;
         if(params.width!=width){params.width=width;view.setLayoutParams(params);}

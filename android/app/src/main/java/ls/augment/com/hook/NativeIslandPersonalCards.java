@@ -511,7 +511,7 @@ final class NativeIslandPersonalCards {
         }
         boolean configured(NativeIslandPersonalScene scene) {
             return !closed && FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
-                    && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED)
+                    && FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND)
                     && FeatureSettings.enabled(context, NativeIslandSceneOptions.key(scene.id))
                     && Settings.System.getInt(context.getContentResolver(), "dynamic_island_switch_state", 0) == 1;
         }

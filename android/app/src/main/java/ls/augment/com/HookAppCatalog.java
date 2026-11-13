@@ -76,7 +76,7 @@ public final class HookAppCatalog {
 
     private static final List<Target> TARGETS = immutable(Arrays.asList(
             target(SYSTEM, "系统框架", "小窗、音量、安装规则与无线连接", "device",
-                    "system", "com.zte.recommend"),
+                    "system", "com.zte.recommend", "cn.zte.chargeseparation", "com.zte.powersavemode"),
             target(SYSTEM_UI, "系统界面", "状态栏、控制中心、锁屏与息屏显示", "systemui",
                     "com.android.systemui", "zte.com.cn.alarmclock", "cn.zte.recorder", "com.zte.nebulatranslation", "com.zte.cn.zteshare", "com.zte.multscr", "com.android.dialer", "com.zte.personalagent", "com.zte.ai.knowledge"),
             target(SETTINGS, "系统设置", "显示与时间、USB 连接及开发者选项", "settings",
@@ -239,6 +239,9 @@ public final class HookAppCatalog {
             return immutable(Arrays.asList("com.android.systemui", "com.zte.multscr"));
         if (NativeIslandSceneOptions.key("meeting").equals(key) || NativeIslandSceneOptions.key("ai").equals(key))
             return immutable(Arrays.asList("com.android.systemui", "com.zte.nebulatranslation"));
+        if(BypassChargingOptions.AUTO.equals(key)||BypassChargingOptions.LEVEL.equals(key))return immutable(Arrays.asList(BypassChargingOptions.SERVICE_PACKAGE,"com.zte.powersavemode"));
+        if(BypassChargingOptions.HIDE_PROMPTS.equals(key))return immutable(Arrays.asList(BypassChargingOptions.SERVICE_PACKAGE,"com.zte.powersavemode","com.android.systemui","cn.nubia.gameassist"));
+        if(GameOptions.HIDE_AWAKENING_TIP.equals(key))return Collections.singletonList("cn.zte.gamefloat");
         Target target = find(targetForKey(key));
         if (target == null || MODULE.equals(target.id)) return Collections.emptyList();
         String suffix = suffix(key);

@@ -71,7 +71,7 @@ public class TestCardHost {
  public static class User {public int mCurrentUser;}
  public static class Island extends DynamicPermanentIsland {public String action;public ViewGroup panel;public int clicks;public ViewGroup getPanelIsland(){return panel;}
  public void initIsland(String p,String id,String a,int type){action=a;}public void setPanelIsland(ViewGroup p){panel=p;}public boolean handleIslandClick(){clicks++;return true;}}
- public static class Remote {View content=new View();boolean fail;public View apply(Context c,ViewGroup parent){if(fail)throw new IllegalStateException("inflate failed");return content;}}
+ public static class Remote {static Remote previous;View content=new View();boolean fail;public View apply(Context c,ViewGroup parent){if(fail)throw new IllegalStateException("inflate failed");if(previous==this){previous=null;return new View();}previous=this;return content;}}
  public static class Message {String id="zte.com.cn.alarmclock_timer_countdown",pkg="zte.com.cn.alarmclock",action="open";Remote compact=new Remote(),expanded=new Remote();int p=2;
  public String getCardId(){return id;}public String getSenderPackage(){return pkg;}public Remote getSmallRemoteViews(){return compact;}
  public Remote getRemoteViews(){return expanded;}public String getLaunchAction(){return action;}public int getDisplayPriority(){return p;}}
@@ -138,10 +138,10 @@ public class TestCardHost {
  LayoutInflater.wrong=false;FeatureSettings.flags.put("meeting",true);FeatureSettings.flags.put("ai",true);second.configurationChanged();
  Message meeting=new Message();meeting.pkg="com.zte.nebulatranslation";meeting.id=meeting.pkg+"_transcription";meeting.expanded=null;meeting.p=1;
  second.receive(meeting);Handler.flush();Card compact=second.cards.get(meeting.id);
- check(compact!=null&&compact.panel==null&&compact.panelHeight==0&&second.pending==null,"known transcription compact card does not fabricate or auto-open a panel");
+ check(compact!=null&&compact.panel!=null&&compact.panelHeight>0,"known transcription detail reuses the source summary without fabricated fields");
  check(!meeting.compact.content.clickable,"SDK child callback relinquishes touch to actual OEM source action");
- second.handleClick(false);second.handleClick(true);check(((Island)compact.island).clicks==2&&second.permanent.opens==0,"both gestures return through source launch action without panel");
- second.permanent.mDynamicPanelShowing=true;second.stateChanged();check(second.permanent.resizes==0,"compact cards cannot resize window to zero-height panel");
+ second.handleClick(false);second.handleClick(true);check(((Island)compact.island).clicks==1&&second.permanent.opens==1,"tap opens source summary; long press uses the original launch action");
+ second.permanent.mDynamicPanelShowing=true;second.stateChanged();check(second.permanent.resizes==1&&compact.panelHeight>0,"source summary detail resizes to its measured positive height");
  Message assist=new Message();assist.pkg=meeting.pkg;assist.id=meeting.pkg+"_call";assist.expanded=null;second.receive(assist);
  FeatureSettings.flags.put("meeting",false);second.configurationChanged();check(!second.cards.containsKey(meeting.id)&&second.cards.containsKey(assist.id),"meeting and call assistant scene gates remain independent");
  Message noPanel=new Message();noPanel.expanded=null;try{second.receive(noPanel);throw new AssertionError();}catch(IllegalArgumentException expected){}
@@ -158,8 +158,8 @@ public class TestCardHost {
  check(second.cards.containsKey(nfc.id),"ordinary transfer switch cannot remove NFC business");
  FeatureSettings.flags.put("nfc_transfer",false);second.configurationChanged();check(!second.cards.containsKey(nfc.id)&&second.cards.containsKey(assist.id),"NFC switch removes only its own card");
  FeatureSettings.flags.put("call",true);second.configurationChanged();Message phone=new Message();phone.pkg="com.android.dialer";phone.id=phone.pkg+"_call_background";phone.expanded=null;phone.action=null;
- second.receive(phone);Handler.flush();Card callCard=second.cards.get(phone.id);check(callCard!=null&&callCard.panel==null&&phone.compact.content.listener,"call compact root retains actual SDK callback, no fake panel");
- second.handleClick(false);second.handleClick(true);check(phone.compact.content.taps==1&&((Island)callCard.island).clicks==0,"tap forwards source callback once, long press has no fabricated launch action");
+ second.receive(phone);Handler.flush();Card callCard=second.cards.get(phone.id);check(callCard!=null&&callCard.panel!=null&&phone.compact.content.listener,"call detail reuses the real summary and keeps its source callback");
+ second.handleClick(false);second.handleClick(true);check(phone.compact.content.taps==1&&((Island)callCard.island).clicks==0,"tap expands real summary; long press invokes original source callback once");
  Message invalidCall=new Message();invalidCall.pkg=phone.pkg;invalidCall.id=phone.id;invalidCall.expanded=null;invalidCall.action=null;invalidCall.compact.content.resourceName="unknown";
  try{second.receive(invalidCall);throw new AssertionError();}catch(IllegalArgumentException expected){}check(callCard.island.children.get(0)==phone.compact.content,"unknown call action resource cannot replace valid card");
  invalidCall.compact.content.resourceName="call_island_layout";invalidCall.compact.content.listener=false;

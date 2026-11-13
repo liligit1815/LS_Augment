@@ -135,6 +135,21 @@ final class AppConfig {
             // Retain existing uploaded icons when introducing the explicit preset selector.
             if(!prefs.contains(LauncherOptions.CLEANUP_ICON_STYLE)&&!get(LauncherOptions.CLEANUP_ICON).isEmpty())
                 migrationEditor().putString(LauncherOptions.CLEANUP_ICON_STYLE,"1").commit();
+            if (!IslandSceneRegistry.VERSION.equals(get(IslandSceneRegistry.SCHEMA))) {
+                Map<String,String> old=new LinkedHashMap<>();
+                for(String key:DEFAULTS.keySet())if(prefs.contains(key))old.put(key,get(key));
+                Map<String,String> sceneMigration=IslandSceneRegistry.migrate(old,
+                        NativeIslandMode.MODERN.equals(NativeIslandMode.detect(this.context)));
+                DurablePreferences.Editor migration=migrationEditor();
+                for(Map.Entry<String,String> entry:sceneMigration.entrySet())migration.putString(entry.getKey(),entry.getValue());
+                migration.commit();
+            }
+            DurablePreferences.Editor retiredIsland=null;
+            for(String key:prefs.getAll().keySet())if(IslandSceneRegistry.retiredSetting(key)) {
+                if(retiredIsland==null)retiredIsland=migrationEditor();
+                retiredIsland.remove(key);
+            }
+            if(retiredIsland!=null)retiredIsland.commit();
             initializePrivateDefaults();
             if (!prefs.getBoolean("duo_island_unified_owner_v1", false)) {
                 boolean enabled = DuoIslandPolicy.migratedEnabled(getBoolean(SystemUiOptions.ISLAND),
@@ -327,6 +342,16 @@ final class AppConfig {
             }
             next.putAll(clean);
             DuoIslandPolicy.normalizeSelection(clean, next);
+            // Old backups contain completion controls but no scene schema. Convert atomically,
+            // including full reset; ordinary per-scene edits must never rerun migration.
+            if (!IslandSceneRegistry.VERSION.equals(next.get(IslandSceneRegistry.SCHEMA))
+                    || clean.containsKey(NativeIslandSceneOptions.ENABLED)&&!clean.containsKey(IslandSceneRegistry.SCHEMA)) {
+                Map<String,String> legacy=new LinkedHashMap<>(next);
+                legacy.put(IslandSceneRegistry.SCHEMA,"0");
+                Map<String,String> migrated=IslandSceneRegistry.migrate(legacy,
+                        NativeIslandMode.MODERN.equals(NativeIslandMode.detect(context)));
+                clean.putAll(migrated); next.putAll(migrated);
+            }
             // Both entry points publish the same state under the same lock. A
             // stale Settings page cannot enable dual signals over three-in-one.
             if (ConfigSchema.truthy(clean.get(ConfigSchema.STATUSBAR_CONNECTIVITY_GROUP))) {

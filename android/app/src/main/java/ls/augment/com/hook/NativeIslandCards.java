@@ -225,7 +225,7 @@ final class NativeIslandCards {
         ready = !closed && !failed && selected == this && root.isAttachedToWindow() && sameUser()
                 && Boolean.TRUE.equals(field(permanent, "mIsDynamicIslandEnable"))
                 && FeatureSettings.enabled(context, SystemUiOptions.ISLAND)
-                && FeatureSettings.enabled(context, NativeIslandSceneOptions.ENABLED);
+                && FeatureSettings.enabled(context, ls.augment.com.SystemUiOptions.ISLAND);
         int mask = 0;
         for (String scene : new String[]{"countdown", "record", "meeting", "ai", "transfer", "nfc_transfer", "call", "calendar_meeting", "scenic_guide", "nearby_charging", "cycling", "flight", "preflight_battery", "weather_travel"})
             if (!failedScenes.contains(scene) && NativeIslandScenes.capsuleSupported(scene)
@@ -319,7 +319,9 @@ final class NativeIslandCards {
                 || (compactCallback && action != null && !action.isEmpty()))
             throw new IllegalArgumentException("card_content_missing:" + id);
         View compactView = (View) apply.invoke(compact, context, new AppWidgetHostView(context));
-        View largeView = expanded == null ? null : (View) apply.invoke(expanded, context, new AppWidgetHostView(context));
+        // Compact-only sources still have a detail surface: reuse a second instance of their
+        // real summary, retaining its actions instead of fabricating business fields or buttons.
+        View largeView = (View) apply.invoke(expanded == null ? compact : expanded, context, new AppWidgetHostView(context));
         if (compactView == null || (!compactOnly && largeView == null)) throw new IllegalStateException("card_apply_empty");
         // These OEM cards only have a launch action. Their SDK child click callbacks have no
         // registered producer listener; let the ordinary manager dispatch the original action.
@@ -352,7 +354,7 @@ final class NativeIslandCards {
             ViewGroup island = (ViewGroup) LayoutInflater.from(context).inflate(islandLayout, null);
             if (!islandType.isInstance(island)) throw new IllegalStateException("card_layout_type");
             card = new Card(id, scene, island);
-            if (!compactOnly) {
+            if (largeView != null) {
                 ViewGroup panel = (ViewGroup) LayoutInflater.from(context).inflate(panelLayout, null);
                 if (!panelType.isInstance(panel)) throw new IllegalStateException("panel_layout_type");
                 card.panel = panel; setPanel.invoke(island, panel);
@@ -439,7 +441,8 @@ final class NativeIslandCards {
         if (closed || !ready || card == null || Boolean.TRUE.equals(field(permanent, "mOnKeyguard"))) return false;
         if (Boolean.TRUE.equals(throttle.invoke(permanent))) return true;
         if (card.compactAction != null) {
-            if (!longPress) card.compactAction.performClick();
+            if (longPress) card.compactAction.performClick();
+            else if(card.panel!=null)openPanel(card);
             return true;
         }
         if (!longPress && card.panel != null) openPanel(card); else click.invoke(card.island);

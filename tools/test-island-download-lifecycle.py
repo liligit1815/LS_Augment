@@ -42,7 +42,7 @@ Builder registered;String diagnostic="";Builder prepareFeatureHook(java.lang.ref
 void registerFeatureHook(Builder b){registered=b;}void logFeatureInfo(String value){diagnostic=value;}
 }
 '''
-for name in ('IslandDownloadConfig', 'IslandDownloadPolicy', 'IslandActivityPolicy', 'IslandNoticeRules'):
+for name in ('IslandDownloadConfig', 'IslandDownloadPolicy', 'IslandActivityPolicy', 'IslandNoticeRules', 'IslandNoticeBlacklist', 'AppPackageSet'):
     FILES['ls/augment/com/' + name + '.java'] = (SRC / (name + '.java')).read_text(encoding='utf-8')
 FILES['ls/augment/com/hook/IslandDownloadSource.java'] = (SRC / 'hook/IslandDownloadSource.java').read_text(encoding='utf-8')
 FILES['ls/augment/com/TestIslandNoticeRules.java'] = (ROOT/'tools/TestIslandNoticeRules.java').read_text(encoding='utf-8')
@@ -63,7 +63,7 @@ static class State {
 final android.content.Context context=new android.content.Context();final IslandDownloadSource downloads=new IslandDownloadSource(context);
 boolean closed,enabled=true,screenOff,lock;int user,activity=IslandActivityPolicy.DOWNLOAD,refreshes,notices,withdrawals,opens;
 StatusBarNotification notice,snoozeRequested;boolean rankingAllowed=true;boolean option(String name){return true;}
-long noticeUntil=1000;IslandNoticeRules noticeRules=IslandNoticeRules.parse("");int noticeMode(StatusBarNotification source) NOTICE_MODE
+IslandNoticeBlacklist noticeBlacklist=IslandNoticeBlacklist.parse("");long noticeUntil=1000;IslandNoticeRules noticeRules=IslandNoticeRules.parse("");int noticeMode(StatusBarNotification source) NOTICE_MODE
 boolean allowedRanking(String key,NotificationListenerService.RankingMap ranking){return rankingAllowed;}
 final Runnable firstExpansion=this::expandFirst;String firstKey;int firstKind,ownerUser,entryWaits;final Set<String> announcedDownloads=new HashSet<>();void firstDiagnostic(String v){}IslandDownloadPolicy.Entry<StatusBarNotification> download;
 boolean hostVisible(){return nativeHost.visible();}void cancelFirst() CANCEL_FIRST
@@ -180,15 +180,17 @@ for shape, declaration in {
     'wrong': 'public class NotificationListener {public void onListenerConnected(){}}',
     'abstract': 'public abstract class NotificationListener extends android.service.notification.NotificationListenerService {public abstract void onListenerConnected();}',
 }.items():
+    FILES['ls/augment/com/hook/IslandLiveScenes.java']='package ls.augment.com.hook;class IslandLiveScenes{static void notificationsChanged(){}}'
+    FILES['ls/augment/com/hook/IslandHeadsUpBridge.java']='package ls.augment.com.hook;import android.service.notification.*;class IslandHeadsUpBridge{static boolean permit=true;static void clear(){}static boolean downloadMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return permit;}static boolean listenerMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return true;}}'
     with tempfile.TemporaryDirectory(prefix='duo-download-listener-') as tmp:
-        folder = Path(tmp)
-        files = dict(FILES)
-        files['com/android/systemui/statusbar/NotificationListener.java'] = 'package com.android.systemui.statusbar;' + declaration
-        for name, content in files.items():
-            path = folder / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding='utf-8')
-        subprocess.run([str(JDK / 'javac'), '-encoding', 'UTF-8', '-d', str(folder), *map(str, folder.rglob('*.java'))], check=True)
-        subprocess.run([str(JDK / 'java'), '-cp', str(folder), 'ls.augment.com.hook.DownloadLifecycleTest', shape], check=True)
-        if shape == 'inherited':
-            subprocess.run([str(JDK / 'java'), '-cp', str(folder), 'ls.augment.com.TestIslandNoticeRules'], check=True)
+            folder = Path(tmp)
+            files = dict(FILES)
+            files['com/android/systemui/statusbar/NotificationListener.java'] = 'package com.android.systemui.statusbar;' + declaration
+            for name, content in files.items():
+                path = folder / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding='utf-8')
+            subprocess.run([str(JDK / 'javac'), '-encoding', 'UTF-8', '-d', str(folder), *map(str, folder.rglob('*.java'))], check=True)
+            subprocess.run([str(JDK / 'java'), '-cp', str(folder), 'ls.augment.com.hook.DownloadLifecycleTest', shape], check=True)
+            if shape == 'inherited':
+                subprocess.run([str(JDK / 'java'), '-cp', str(folder), 'ls.augment.com.TestIslandNoticeRules'], check=True)

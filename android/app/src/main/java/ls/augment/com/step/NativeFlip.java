@@ -25,7 +25,9 @@ final class NativeFlip {
     Choreographer clock;
     Choreographer.FrameCallback callback;
     SurfaceControl.Transaction animationTx;
-    final PathInterpolator easing=new PathInterpolator(.22f,.7f,.12f,1);
+    // A gentle initial velocity keeps the journey visible; the former curve
+    // spent most of the 320ms coasting after a very abrupt first movement.
+    final PathInterpolator easing=new PathInterpolator(.25f,.1f,.25f,1);
     long firstFrameNanos,lastFrameNanos,maxFrameGapNanos;
     boolean attached, committed, ownsTransforms;
     int frames;

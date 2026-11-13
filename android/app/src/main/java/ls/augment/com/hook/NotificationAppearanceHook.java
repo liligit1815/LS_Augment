@@ -198,14 +198,18 @@ final class NotificationAppearanceHook {
         final TextUtils.TruncateAt ellipsize;
         final boolean singleLine,horizontalScroll;final int maxLines,maxWidth,visibility;
         final android.text.method.TransformationMethod transformation;
-        final boolean heightOnly,weatherPayload;int ownedHeight;
+        final boolean heightOnly,weatherPayload,ownsVisibility;int ownedHeight;
         Original(View v){this(v,false);}
-        Original(View v,boolean heightOnly){view=new WeakReference<>(v);layout=v.getLayoutParams()==null?null:copy(v.getLayoutParams());size=v instanceof TextView?((TextView)v).getTextSize():-1;ellipsize=v instanceof TextView?((TextView)v).getEllipsize():null;this.heightOnly=heightOnly;weatherPayload="ls_augment_notification_weather".equals(v.getTag());ownedHeight=layout==null?0:layout.height;
+        Original(View v,boolean heightOnly){this(v,heightOnly,false);}
+        Original(View v,boolean heightOnly,boolean ownsVisibility){view=new WeakReference<>(v);layout=v.getLayoutParams()==null?null:copy(v.getLayoutParams());size=v instanceof TextView?((TextView)v).getTextSize():-1;ellipsize=v instanceof TextView?((TextView)v).getEllipsize():null;this.heightOnly=heightOnly;this.ownsVisibility=ownsVisibility;weatherPayload="ls_augment_notification_weather".equals(v.getTag());ownedHeight=layout==null?0:layout.height;
             TextView t=v instanceof TextView?(TextView)v:null;singleLine=t!=null&&t.isSingleLine();horizontalScroll=t!=null&&t.isHorizontallyScrollable();maxLines=t==null?0:t.getMaxLines();maxWidth=t==null?0:t.getMaxWidth();transformation=t==null?null:t.getTransformationMethod();visibility=v.getVisibility();}
         void observeHeight(){View v=view.get();ViewGroup.LayoutParams current=v==null?null:v.getLayoutParams();if(heightOnly&&layout!=null&&current!=null&&current.height!=ownedHeight)layout.height=current.height;}
         void restore(){View v=view.get();if(v==null)return;
             if(heightOnly){ViewGroup.LayoutParams current=v.getLayoutParams();if(layout!=null&&current!=null&&current.height==ownedHeight)changedSize(v,current.width,layout.height);return;}
-            if(layout!=null)v.setLayoutParams(copy(layout));if(size>=0){TextView t=(TextView)v;if(!weatherPayload)textSize(t,size);t.setSingleLine(singleLine);t.setHorizontallyScrolling(horizontalScroll);t.setMaxLines(maxLines);if(maxWidth>=0&&t.getMaxWidth()!=maxWidth)t.setMaxWidth(maxWidth);t.setTransformationMethod(transformation);t.setEllipsize(ellipsize);}if(!weatherPayload&&v.getVisibility()!=visibility)v.setVisibility(visibility);}
+            // Traffic is published asynchronously after the OEM resource callback.
+            // Geometry ownership must never overwrite that source's live visibility.
+            // Only the duplicate AM/PM label is hidden by this adapter.
+            if(layout!=null)v.setLayoutParams(copy(layout));if(size>=0){TextView t=(TextView)v;if(!weatherPayload)textSize(t,size);t.setSingleLine(singleLine);t.setHorizontallyScrolling(horizontalScroll);t.setMaxLines(maxLines);if(maxWidth>=0&&t.getMaxWidth()!=maxWidth)t.setMaxWidth(maxWidth);t.setTransformationMethod(transformation);t.setEllipsize(ellipsize);}if(ownsVisibility&&v.getVisibility()!=visibility)v.setVisibility(visibility);}
     }
     private static final class HeaderState implements ViewTreeObserver.OnGlobalLayoutListener {
         final WeakReference<View> header;
@@ -264,7 +268,7 @@ final class NotificationAppearanceHook {
                     View period=nativeChild(view,"am_pm_view");
                     if(period!=null&&FeatureSettings.enabled(view.getContext(),"ls_augment_rm_qs_clock_period")){
                         if(nativePeriod!=null&&nativePeriod.view.get()!=period)restoreNativePeriod();
-                        if(nativePeriod==null)nativePeriod=new Original(period);
+                        if(nativePeriod==null)nativePeriod=new Original(period,false,true);
                         if(period.getVisibility()!=View.GONE)period.setVisibility(View.GONE);
                     }else restoreNativePeriod();
                     if(nativeStack!=null)stack(nativeStack).updatePadding();
@@ -283,7 +287,7 @@ final class NotificationAppearanceHook {
                     // Only height is owned on the outer header. Parent width/margins
                     // may already contain the new orientation before this callback.
                     originals.add(new Original(view,true));
-                    for(View child:new View[]{time,date,group,dateGroup,right,footer,period,below})if(child!=null)originals.add(new Original(child));
+                    for(View child:new View[]{time,date,group,dateGroup,right,footer,period,below})if(child!=null)originals.add(new Original(child,false,child==period));
                     weather=nextWeather;if(weather!=null)originals.add(new Original(weather));
                     ArrayList<HeaderClockLayout.Below> payloads=new ArrayList<>();
                     for(int i=0;i<((ViewGroup)view).getChildCount();i++){

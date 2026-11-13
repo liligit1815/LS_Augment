@@ -25,20 +25,30 @@ final class IslandDownloadSource {
     Set<String> selected(){return IslandDownloadConfig.selected(FeatureSettings.text(context,IslandDownloadConfig.CHANNELS,""));}
     void configure(){if(!enabled())clear();else activities.retainChannels(selected());}
     private boolean permitted(StatusBarNotification sbn,NotificationListenerService.RankingMap map,boolean discovery){
+        NotificationListenerService.Ranking rank=new NotificationListenerService.Ranking();
+        return map!=null&&map.getRanking(sbn.getKey(),rank)&&permitted(sbn,rank,discovery);
+    }
+    private boolean permitted(StatusBarNotification sbn,NotificationListenerService.Ranking rank,boolean discovery){
         Notification n=sbn.getNotification();
         if(user<0||sbn.getUserId()!=user||sbn.getUid()/100000!=user||n==null||n.extras==null
                 ||n.visibility==Notification.VISIBILITY_SECRET||(n.flags&Notification.FLAG_GROUP_SUMMARY)!=0
                 ||n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION))return false;
-        NotificationListenerService.Ranking rank=new NotificationListenerService.Ranking();
-        if(map==null||!map.getRanking(sbn.getKey(),rank)||rank.isSuspended())return false;
+        if(rank==null||rank.isSuspended())return false;
         // Progress channels commonly use LOW importance: selection explicitly opts into their island.
-        return rank.getImportance()>=NotificationManager.IMPORTANCE_LOW&&(discovery||rank.matchesInterruptionFilter()
+        return rank.getImportance()>=NotificationManager.IMPORTANCE_LOW&&(discovery||IslandHeadsUpBridge.downloadMayShow(sbn,rank)&&rank.matchesInterruptionFilter()
                 &&(rank.getSuppressedVisualEffects()&(NotificationManager.Policy.SUPPRESSED_EFFECT_STATUS_BAR
                 |NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK|NotificationManager.Policy.SUPPRESSED_EFFECT_NOTIFICATION_LIST))==0);
     }
     private static boolean hasProgress(Notification n){return n.extras!=null
             &&IslandDownloadPolicy.progress(n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false),
                 n.extras.getInt(Notification.EXTRA_PROGRESS,-1),n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0));}
+    boolean canPrepareHeadsUp(StatusBarNotification sbn,NotificationListenerService.Ranking ranking){
+        Notification n=sbn.getNotification();
+        return enabled()&&selected().contains(IslandDownloadConfig.channel(sbn.getUserId(),sbn.getPackageName(),n.getChannelId()))
+                &&permitted(sbn,ranking,false)&&(n.flags&Notification.FLAG_ONGOING_EVENT)!=0&&hasProgress(n)
+                &&(n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false)
+                    ||n.extras.getInt(Notification.EXTRA_PROGRESS,-1)<n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0));
+    }
     boolean posted(StatusBarNotification sbn,NotificationListenerService.RankingMap map){
         Notification n=sbn.getNotification();String key=IslandDownloadConfig.channel(sbn.getUserId(),sbn.getPackageName(),n.getChannelId());
         boolean progress=hasProgress(n),ongoing=(n.flags&Notification.FLAG_ONGOING_EVENT)!=0;

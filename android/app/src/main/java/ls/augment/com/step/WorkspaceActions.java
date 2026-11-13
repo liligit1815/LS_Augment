@@ -54,7 +54,11 @@ final class WorkspaceActions {
         result.add(new Tool("顶部壁纸","wallpaper",()->{
             owner.checkAction();owner.ctx.startActivity(new Intent().setClassName("ls.augment.com","ls.augment.com.StepWallpaperActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         }));
-        if(owner.upper!=null && owner.host.upperAppId<0)
+        if(owner.upper!=null){
+            result.add(new Tool("主顶交换","swapTop",owner.host::swapMainTop));
+        }
+        int moveTarget=owner.host.upperId>=0?owner.host.upperId:owner.host.upperAppId>=0?owner.host.upperAppId:owner.host.upperNavigationId;
+        if(owner.upper!=null && moveTarget<0)
             result.add(new Tool("主应用移到顶部","moveUp",()->owner.host.change(-1)));
         if(owner.sideToolbar!=null){
             result.add(new Tool(owner.host.leftSide?"主工作区移到左侧":"主工作区移到右侧",owner.host.leftSide?"mainLeft":"mainRight",()->owner.host.positionMain(!owner.host.leftSide)));
@@ -62,8 +66,8 @@ final class WorkspaceActions {
             if(owner.hasRecorder)result.add(new Tool("录屏","record",()->owner.activateTile("videoscreen",anchor)));
             result.add(new Tool("退出工作区","workspaceExit",()->owner.host.close("手动退出工作区")));
         }
-        if(owner.upper!=null && owner.host.upperId>=0)
-            result.add(new Tool("顶部应用回到主区","moveDown",()->owner.host.upperAction("release")));
+        if(owner.upper!=null && moveTarget>=0)
+            result.add(new Tool("顶部应用回到主区","moveDown",()->owner.host.upperActionFor(moveTarget,"release",null)));
         android.app.ActivityManager.RunningTaskInfo target=owner.host.focused();
         if(target!=null && (Integer)StepRuntime.call(target,"getActivityType")==1 && (Integer)StepRuntime.call(target,"getWindowingMode")==1){
             if(owner.host.localLandscape)result.add(new Tool("切换当前应用横屏","landscape",()->local("localLandscape",target)));

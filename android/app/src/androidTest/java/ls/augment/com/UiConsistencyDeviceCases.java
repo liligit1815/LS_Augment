@@ -88,11 +88,10 @@ final class UiConsistencyDeviceCases {
             }
             if(route.equals("group/interaction/gestures"))require(choices==0,"side editors have no redundant stock dropdown");
             if(route.equals("group/notifications/island")){
-                View style=root.findViewWithTag("config:"+SystemUiOptions.ISLAND_APP_STYLE);
-                // Spinner tags are optional elsewhere; controls are authoritative in this host.
                 Map<?,?> controls=(Map<?,?>)field(activity,"controls");
-                require(controls.get(SystemUiOptions.ISLAND_APP_STYLE) instanceof Spinner,"island uses common choice");
-                require(controls.get(SystemUiOptions.PREFIX+"island_height") instanceof ParameterSlider,"island size uses slider");
+                require(!controls.containsKey("ls_augment_rm_island_app_style"),"retired island shape setting removed");
+                require(!controls.containsKey("ls_augment_rm_island_height"),"retired island size setting removed");
+                require(controls.containsKey(IslandNoticeBlacklist.KEY),"ordinary notification blacklist available");
             }
             if(route.equals("health"))for(View view:views)require(!"减少一倍".equals(String.valueOf(view.getContentDescription()))&&!"增加一倍".equals(String.valueOf(view.getContentDescription())),"health has no stepper");
             View path=root.findViewWithTag("page-path");

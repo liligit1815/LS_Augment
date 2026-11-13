@@ -16,11 +16,6 @@ public final class SystemUiOptions {
     public static final String NOTIFICATION_MEDIA_HIDE = PREFIX + "notification_media_hide";
     public static final String ISLAND = PREFIX + "island_enabled";
     public static final String ISLAND_STATUS_AVOIDANCE = PREFIX + "island_status_avoidance";
-    public static final String ISLAND_OFFSET_Y = PREFIX + "island_offset_y";
-    // Keep the persisted key and values 0/1 so existing opaque/transparent settings survive upgrades.
-    public static final String ISLAND_TRANSPARENT = PREFIX + "island_transparent";
-    public static final int ISLAND_BACKGROUND_CLASSIC = 0, ISLAND_BACKGROUND_TRANSPARENT = 1, ISLAND_BACKGROUND_GLASS = 2;
-    public static final String ISLAND_APP_STYLE = PREFIX + "island_app_style";
     public static final String ISLAND_FIRST_EXPAND = PREFIX + "island_first_expand";
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
     public static final String QS_BRIGHTNESS_PERCENT = PREFIX + "qs_brightness_percent";
@@ -31,22 +26,17 @@ public final class SystemUiOptions {
     public static List<EnhancementOption> options() {
         ArrayList<EnhancementOption> out = new ArrayList<>();
         out.add(EnhancementOption.toggle(NOTIFICATION_MEDIA_HIDE,"quicksettings","取消通知中心的音乐卡片","隐藏通知中心的原厂音乐卡片；保留音乐播放、媒体会话及其他通知。关闭后恢复，首次更新需重启系统界面。"));
-        out.add(EnhancementOption.toggle(ISLAND,"system","红魔Duo灵动岛","开启后，原厂已有场景直接使用灵动岛，沿用系统卡片、动画和操作，不再重复显示对应胶囊。场景补全只增加本机缺失的场景或卡片接入；关闭总开关后退出接管，恢复原厂显示行为。通知和下载按各自开关与渠道选择补充。首次更新需重启系统界面。"));
+        out.add(EnhancementOption.toggle(ISLAND,"system","红魔Duo灵动岛","开启后，仅接管已选择且能力可用的场景，沿用原厂卡片、动画和交互。确认岛已显示后隐藏对应重复提醒；关闭场景、关闭总开关或无法接管时恢复原厂路径。通知黑名单仅限制红魔Duo的普通通知上岛，上传下载按所选渠道接入。更新后需重启系统界面并确认新版本已加载。"));
         out.add(EnhancementOption.toggle(ISLAND_STATUS_AVOIDANCE,"system","通知状态自动避让岛","开启时，灵动岛出现后，状态栏按系统逻辑折叠通知图标并为岛腾出空间。关闭时不再因岛出现而避让，图标可能与岛重叠；原有通知显示设置仍然生效。",true));
-        out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐活动","显示系统音乐卡片，沿用原有播放控制和收起规则。",1,"关闭","开启"));
-        out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","通知活动","按应用与渠道展示普通通知。展开后可执行来源操作，或让系统在 15 分钟后再次提醒。",1,"关闭","开启"));
-        out.add(EnhancementOption.custom(IslandNoticeRules.KEY,"system","应用与通知渠道","渠道优先于应用，未设置的应用跟随首次提醒开关。","",IslandNoticeRules::normalize));
-        out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电提示","显示系统充电卡片，沿用原有显示时机和收起规则。",1,"关闭","开启"));
-        out.add(EnhancementOption.toggle(IslandDownloadConfig.ENABLED,"system","下载活动","仅显示所选通知渠道中带标准进度的持续任务。进度和按钮来自原通知，完成、结束或撤销后收起；没有操作按钮时只提供详情入口。锁屏、息屏隐藏，保留原通知。"));
-        out.add(EnhancementOption.toggle(ISLAND_FIRST_EXPAND,"system","首次提醒自动展开","新消息或新下载首次上岛时展开。后续更新沿用当前状态，手动收起后保持收起。"));
-        out.add(EnhancementOption.custom(IslandDownloadConfig.CHANNELS,"system","下载通知渠道","先发起一次带进度通知的下载，再选择对应渠道。未选择渠道时不显示下载活动。","",IslandDownloadConfig::normalize));
-        out.add(EnhancementOption.integer(PREFIX+"island_width","system","胶囊宽度（dp）","紧凑状态的宽度。可配合状态栏图标位置调整，避免遮挡。",120,96,240));
-        out.add(EnhancementOption.integer(PREFIX+"island_height","system","胶囊高度（dp）","实际高度不超过当前状态栏。",32,20,48));
-        out.add(EnhancementOption.integer(PREFIX+"island_offset_x","system","水平偏移（dp）","正数向右，负数向左；保持在屏幕范围内。",0,-120,120));
-        out.add(EnhancementOption.integer(ISLAND_OFFSET_Y,"system","上下偏移（dp）","正数向下，负数向上；以居中位置为基准，实际偏移受状态栏可用高度限制，不会超出状态栏。",0,-24,24));
-        out.add(EnhancementOption.choice(ISLAND_TRANSPARENT,"system","背景样式","经典黑色保留原有外观；透明仅去掉紧凑胶囊背景；液态玻璃应用于胶囊和展开详情，呈现透色材质与边缘高光。系统支持安全背景采样时显示真实背景折射，否则使用半透明玻璃。",ISLAND_BACKGROUND_CLASSIC,"经典黑色","透明","液态玻璃"));
-        out.add(EnhancementOption.choice(ISLAND_APP_STYLE,"system","灵动岛显示样式","选择灵动岛中的应用图标与音乐封面形状，紧凑态和长按展开的详情同步生效。",0,"圆角方形","圆形"));
-        out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","到期后恢复仍在进行的音乐；没有活动则隐藏。",6,3,15));
+        out.add(EnhancementOption.choice(PREFIX+"island_music","system","音乐播放","显示系统音乐卡片，沿用原有播放控制和收起规则。",1,"关闭","开启"));
+        out.add(EnhancementOption.choice(PREFIX+"island_notifications","system","普通通知","按黑名单及应用、渠道规则展示普通通知。展开后可执行来源操作，或让系统在 15 分钟后再次提醒。",1,"关闭","开启"));
+        out.add(EnhancementOption.custom(IslandNoticeRules.KEY,"system","应用与通知渠道","黑名单优先；渠道优先于应用，未设置的应用跟随首次提醒开关。","",IslandNoticeRules::normalize));
+        out.add(EnhancementOption.custom(IslandNoticeBlacklist.KEY,"system","通知黑名单","仅限制红魔Duo的普通通知上岛，系统通知与原厂提醒保持原样。","",IslandNoticeBlacklist::normalize));
+        out.add(EnhancementOption.choice(PREFIX+"island_charging","system","充电","显示系统充电卡片，沿用原有显示时机和收起规则。",1,"关闭","开启"));
+        out.add(EnhancementOption.toggle(IslandDownloadConfig.ENABLED,"system","上传与下载","仅显示所选通知渠道中带标准进度的持续任务。进度和按钮来自原通知，完成、结束或撤销后收起；没有操作按钮时只提供详情入口。锁屏、息屏隐藏，保留原通知。"));
+        out.add(EnhancementOption.toggle(ISLAND_FIRST_EXPAND,"system","首次提醒展开","新普通通知或上传下载任务首次上岛时展开。后续更新沿用当前状态，手动收起后保持收起。"));
+        out.add(EnhancementOption.custom(IslandDownloadConfig.CHANNELS,"system","传输通知渠道","先发起一次带标准进度通知的上传或下载，再选择对应渠道。未选择渠道时不接管传输通知。","",IslandDownloadConfig::normalize));
+        out.add(EnhancementOption.integer(PREFIX+"island_notice_seconds","system","通知停留时间（秒）","普通通知到期后收起，恢复仍在运行的其他活动；不撤销原通知。",6,3,15));
         out.add(EnhancementOption.toggle(NOTIFICATION_STACK,"quicksettings","通知堆叠","同应用通知组中的真实子通知分别显示并参与渐进堆叠，后方卡片逐层缩小、重叠。可分别设置通知中心和锁屏，并调整模糊与透明度渐变。保留原生通知操作、顺序、滚动和隐私规则。关闭后恢复原厂分组；单条通知内部的多条消息不会拆分。"));
         out.add(EnhancementOption.toggle(POWER_MODES,"system","电源菜单高级重启","长按电源后的菜单增加 Recovery、Fastboot、Fastbootd、9008。通过红魔Duo的 Root 授权提交请求；能否进入对应模式取决于设备固件支持。"));
         out.add(EnhancementOption.toggle(BackGestureIconPolicy.ENABLED,"system","自定义侧滑返回图标","系统界面作用域。两侧独立选择图标和遮罩，支持 GIF、动态 WebP 及初音未来预设；大小最高 10 倍。保留原厂返回判定和悬停动作，更新后需重启系统界面。"));

@@ -19,6 +19,7 @@ public final class GameOptions {
     public static final String COMBO_BUTTON_SIZE = "ls_augment_combo_button_size";
     public static final int COMBO_BUTTON_SIZE_MIN=50,COMBO_BUTTON_SIZE_MAX=200,COMBO_BUTTON_SIZE_DEFAULT=100;
     public static final String HIDE_DIABLO_DIALOG = "ls_augment_game_hide_diablo_dialog";
+    public static final String HIDE_AWAKENING_TIP = "ls_augment_game_hide_awakening_tip";
     public static final String COLLAPSE_PANEL = "ls_augment_game_prevent_panel_collapse";
     public static final String REMEMBER_ACTIVE = "ls_augment_game_remember_active";
     public static final String FREE_RECORD = "ls_augment_game_free_record";
@@ -41,6 +42,7 @@ public final class GameOptions {
             EnhancementOption.toggle(COMBO_BUTTON_SIZE_ENABLED,"game","一键连招按键大小","调整游戏内连招悬浮按键的大小，图标、进度圈和点击区域同步变化。修改后自动更新已显示的按键，关闭后恢复原厂大小。"),
             EnhancementOption.integer(COMBO_BUTTON_SIZE,"game","按键大小（%）","相对于原厂按键大小调整，100% 为原厂大小。范围 50%～200%，过大时按当前屏幕可用空间缩小；不改变录制内容、播放速度和拖动操作。",COMBO_BUTTON_SIZE_DEFAULT,COMBO_BUTTON_SIZE_MIN,COMBO_BUTTON_SIZE_MAX),
             EnhancementOption.toggle(HIDE_DIABLO_DIALOG,"game","隐藏破坏神模式提示","隐藏原厂破坏神模式提示与退出悬浮提示。"),
+            EnhancementOption.toggle(HIDE_AWAKENING_TIP,"game","取消觉醒模式进入提示","隐藏切换到觉醒模式后的“已切换至高档位模式，设备的温度和耗电将显著增加”短提示。模式切换、省电限制及退出高档位的提示保持原厂行为。需启用游戏悬浮窗作用域，首次更新后重启手机。"),
             EnhancementOption.toggle(COLLAPSE_PANEL,"game","切换模式时保持游戏面板","切换破坏神模式或超境画质时，阻止随后的自动收起。"),
             EnhancementOption.toggle(REMEMBER_ACTIVE,"game","记住活跃模式","按游戏保留手动选择，退出游戏后不再清除。"),
             EnhancementOption.toggle(FREE_RECORD,"game","随心录制模式解限","在节能、破坏神模式下保留原厂随心录制入口。"),

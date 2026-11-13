@@ -53,11 +53,14 @@ public class EdgeCases {
   void setOpen(boolean b){opens++;panelAttached=b;}
  }
  static class Deck{int pages;void fromUpper(int d){pages+=d;}}
+ static class WorkspaceBackFocus {static void observe(MotionEvent e){}}
  static class Owner{WorkspaceSideToolbar sideToolbar=new WorkspaceSideToolbar();Deck deck=new Deck();int dp(int n){return n*3;}}
  static class Geometry{int width=1216;}
  static class Host{Geometry geometry=new Geometry();}
  static class Pane{Owner owner=new Owner();Host host=new Host();boolean visible=true;boolean canSwitch(){return true;}}
  static class Pilfer{int count;void invoke(Object p){count++;}}
+ static class AppGesture{boolean onTouch(MotionEvent e){return false;}}
+ AppGesture appGesture=new AppGesture();
  Pane pane=new Pane();Pilfer pilfer=new Pilfer();Object platform;int edge=-1,first=-1,second=-1;float x1,y1;boolean edgeRejected,edgeOpened,horizontal;
  void reset(){edge=-1;first=second=-1;edgeRejected=edgeOpened=horizontal=false;}
  boolean inside(MotionEvent e,int n){return e.x>=0&&e.x<1216&&e.y>=0&&e.y<684;}

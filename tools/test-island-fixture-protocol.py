@@ -13,8 +13,10 @@ public final class FixtureProtocolCases {
  public static void main(String[] args){
   check(IslandFixtureProtocol.identity(RUN),"valid UUID hex");
   for(String bad:new String[]{null,"","a","A".repeat(32),"a".repeat(31),"a".repeat(33),"/".repeat(32)})check(!IslandFixtureProtocol.identity(bad),"bad identity");
-  String[] commands={"play","pause","stop","release","notice-expiry","notice-click","download","download-update","download-remove","finish","observe"};
+  String[] commands={"play","pause","stop","release","notice-expiry","notice-click","notice-reply","notice-remove","download","download-update","download-remove","finish","observe"};
   for(String c:commands){
+   check(IslandFixtureProtocol.allowedInMode(false,c),"default fixture retains all owned commands");
+   check(IslandFixtureProtocol.allowedInMode(true,c)==!(c.equals("play")||c.equals("pause")||c.equals("stop")),"notifications-only cannot drive media");
    check(admit(RUN,SECRET,4,5,c,1999,false)==1,"actual known command accepted before deadline");
    check(admit(RUN,SECRET,4,5,c,2000,false)==2,"deadline inclusive; no command extends lifetime");
    check(admit(RUN,SECRET,4,5,c,2001,false)==2,"late authenticated command cleanup only");
@@ -32,6 +34,7 @@ public final class FixtureProtocolCases {
   check(IslandFixtureProtocol.notificationTimeout(2000,1999)==1,"one millisecond remaining");
   check(IslandFixtureProtocol.notificationTimeout(2000,2000)==1,"timeout not zero Android no-timeout sentinel");
   check(IslandFixtureProtocol.notificationTimeout(2000,3000)==1,"expired notification no renewed lifetime");
+  check(!IslandFixtureProtocol.allowedInMode(true,null),"notifications-only unknown commands rejected");
   System.out.println("PASS "+checks);
  }
 }'''
@@ -43,7 +46,8 @@ def main():
         ('replay-allowed',actual.replace('||next!=sequence+1','')),
         ('deadline-exclusive',actual.replace('now>=deadline','now>deadline')),
         ('renew-notification-lifetime',actual.replace('Math.max(1,deadline-now)','175000')),
-        ('closed-restarts',actual.replace('if(closed||','if('))]
+        ('closed-restarts',actual.replace('if(closed||','if(')),
+        ('notice-mode-controls-media',actual.replace('!notificationsOnly||!(', '!notificationsOnly||('))]
     for name,source in variants:
         if name!='actual' and source==actual:raise AssertionError('Mutation not applied '+name)
         with tempfile.TemporaryDirectory() as td:

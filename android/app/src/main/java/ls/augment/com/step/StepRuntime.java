@@ -132,7 +132,10 @@ public final class StepRuntime {
                             WindowManager.LayoutParams attrs = (WindowManager.LayoutParams) field(p.thisObject, "mAttrs");
                             Object task = call(p.thisObject, "getTask");
                             boolean side = task != null && (NativeTransitionPose.owns(task) || NativeWorkspaceGuard.ownsMagnification(task) || StepMembers.getIntField(task, "mTaskId") == sideTask);
-                            if(PhysicalFingerprint.window(p.thisObject))p.setResult(false);
+                            if(NativeWorkspaceGuard.nativeGestureCoordinates && task==null && attrs.type==2027
+                                    && StepMembers.getIntField(p.thisObject,"mOwnerUid")==NativeWorkspaceGuard.systemUiUid
+                                    && ("GestureStubLeft".contentEquals(attrs.getTitle()) || "GestureStubRight".contentEquals(attrs.getTitle())))p.setResult(true);
+                            else if(PhysicalFingerprint.window(p.thisObject))p.setResult(false);
                             else if(PhysicalIme.window(p.thisObject,attrs)){p.setResult(false);PhysicalIme.exclusions++;}
                             else if (side || NativeWorkspaceGuard.physicalNativeWindow(task) || TITLE.contentEquals(attrs.getTitle()) || WorkspaceInput.TITLE.contentEquals(attrs.getTitle())
                                     || WorkspaceQuickBar.TITLE.contentEquals(attrs.getTitle()) || QuickPicker.TITLE.contentEquals(attrs.getTitle())
@@ -391,6 +394,8 @@ public final class StepRuntime {
             try {
                 CornerEntry.install(cl);
                 WorkspaceFinish.install(cl);
+                WorkspaceBackFocus.install(cl);
+                WorkspaceNativeGesture.install(cl);
                 NativeTiles.install(cl);
                 NativeBrightnessBinding.install(cl);
                 WorkspaceRoutes.installNotification(cl);

@@ -83,6 +83,7 @@ public class TestIslandPanel {
   // ACTION
  }
  static class OwnedHost {
+  static class Proof{void clear(){}}final Proof frames=new Proof();
   static class DownloadContent{int clears;void clear(){clears++;}}
   static class SupplementalCards{void hide(){}}
   SupplementalCards notificationCards;

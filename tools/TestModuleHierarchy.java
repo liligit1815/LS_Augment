@@ -136,10 +136,13 @@ public final class TestModuleHierarchy {
         }
         require(ModulePresentationCatalog.related("status_layout").size()==3,"Status ambiguity has three cross-category explanations");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/shoulder"),key->"1")==4,"Shoulder count includes two embedded controls, quick switching and its position lock");
-        owner(NativeIslandSceneOptions.ENABLED,"group/notifications/island");
-        for(String id:NativeIslandSceneOptions.IDS)owner(NativeIslandSceneOptions.key(id),"group/notifications/island");
+        require(ModuleHierarchy.featureRoute(NativeIslandSceneOptions.ENABLED)==null,"retired completion master has no second UI control");
+        for(IslandSceneRegistry.Scene scene:IslandSceneRegistry.scenes())owner(scene.key,"group/notifications/island");
         owner(GameOptions.MONITOR_PIN,"group/gaming/plugins");owner(GameOptions.SHOULDER_PIN,"group/gaming/shoulder");
-        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==6,"Performance count includes the embedded super-resolution controls");
+        owner(GameOptions.HIDE_AWAKENING_TIP,"group/gaming/performance");
+        owner(BypassChargingOptions.AUTO,"group/system_settings/battery");owner(BypassChargingOptions.LEVEL,"group/system_settings/battery");
+        owner(BypassChargingOptions.HIDE_PROMPTS,"group/system_settings/battery");
+        require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/gaming/performance"),key->"1")==7,"Performance count includes the embedded super-resolution controls and awakening entry tip");
         require(ModuleHierarchy.activeCount(ModuleHierarchy.group("group/audio/audio_gain"),key->ConfigSchema.AUDIO_GAIN_ENABLED.equals(key)?"1":"0")==1,"Audio gain count remains truthful");
         System.out.println("V2.0 presentation hierarchy: OK (14 categories, "+total+" capabilities, "+covered.size()+" generic keys, "+routes.size()+" route cases)");
     }

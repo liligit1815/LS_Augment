@@ -1,4 +1,4 @@
-"""Exercise real setting observers, authenticated publication and phone settings entry, old/new branches."""
+"""Exercise real setting observers and authenticated publication, old/new branches."""
 import ast
 import os
 from pathlib import Path
@@ -64,27 +64,6 @@ public class TestMagicSettingHook{
   check(c.resolver.settings.get(key)==0,"unverified configuration wrote system settings");
   System.out.println("PASS production "+args[0]+" selection hooks: "+checks+" assertions");
  }}'''
-files['android/app/Activity.java']='package android.app;import android.content.*;public class Activity extends Context{public void runOnUiThread(Runnable r){r.run();}public boolean isDestroyed(){return false;}}'
-files['android/content/Intent.java']='package android.content;public class Intent{}'
-files['android/content/ComponentName.java']=files['android/content/ComponentName.java'].replace('public ComponentName(', 'public String flattenToString(){return pkg+"/"+name;}public ComponentName(')
-files['android/content/pm/PackageManager.java']=files['android/content/pm/PackageManager.java'].replace('public static int MATCH_DISABLED_COMPONENTS', 'public static int COMPONENT_ENABLED_STATE_DISABLED_USER=3;public static int MATCH_DISABLED_COMPONENTS')
-files['ls/augment/com/RootShell.java']='''package ls.augment.com;import java.util.*;public class RootShell{public static List<String> commands=new ArrayList<>();public static boolean failStart;
- public static class Result{public String output="Status: ok";public boolean success=true;public boolean isSuccess(){return success;}}
- public static Result run(String c,Object x,int t,int n){commands.add(c);Result r=new Result();if(c.startsWith("am start")&&failStart){r.success=false;r.output="Error";}return r;}}'''
-files['ls/augment/com/NativeIslandSettings.java']=(SRC/'NativeIslandSettings.java').read_text(encoding='utf-8')
-files['ls/augment/com/TestMagicEntry.java']='''package ls.augment.com;import android.app.*;import android.content.pm.*;
-public class TestMagicEntry{static void check(boolean b,String s){if(!b)throw new AssertionError(s);}public static void main(String[] args){
- java.util.concurrent.ExecutorService worker=new java.util.concurrent.AbstractExecutorService(){public void execute(Runnable r){r.run();}public void shutdown(){}public java.util.List<Runnable> shutdownNow(){return java.util.List.of();}public boolean isShutdown(){return false;}public boolean isTerminated(){return false;}public boolean awaitTermination(long t,java.util.concurrent.TimeUnit u){return true;}};
- Activity c=new Activity();c.pm.pages.put(NativeIslandMode.OLD_PAGE,new ActivityInfo());c.pm.pages.put(NativeIslandMode.NEW_PAGE,new ActivityInfo());
- NativeIslandSettings.open(c,worker);check(RootShell.commands.isEmpty(),"unknown mode guessed an entry");
- for(String mode:new String[]{NativeIslandMode.LEGACY,NativeIslandMode.MODERN}){
-  RootShell.commands.clear();c.prefs.values.put(NativeIslandMode.DIAGNOSTIC,NativeIslandMode.stamp(c,mode));
-  NativeIslandSettings.open(c,worker);check(RootShell.commands.size()==2&&RootShell.commands.get(0).startsWith("pm enable")&&RootShell.commands.get(1).contains(NativeIslandMode.page(mode)),"wrong page or no phone entry");
-  check(c.resolver.settings.isEmpty(),"browsing altered system switches");
-  RootShell.failStart=true;RootShell.commands.clear();NativeIslandSettings.open(c,worker);
-  check(RootShell.commands.size()==3&&RootShell.commands.get(2).startsWith("pm default-state"),"failed entry did not restore component");RootShell.failStart=false;
- }
- System.out.println("PASS real settings entry: modern/legacy target, unknown mode, browse isolation and failure rollback");}}'''
 with tempfile.TemporaryDirectory(prefix='duo-magic-selection-') as temp:
     folder=Path(temp)
     for name,source in files.items():
@@ -93,4 +72,3 @@ with tempfile.TemporaryDirectory(prefix='duo-magic-selection-') as temp:
     subprocess.run([str(java/'javac.exe'),'-encoding','UTF-8','-d',str(folder),*map(str,folder.rglob('*.java'))],check=True)
     for mode in ['modern','legacy']:
         subprocess.run([str(java/'java.exe'),'-cp',str(folder),'ls.augment.com.hook.TestMagicSettingHook',mode],check=True,timeout=20)
-    subprocess.run([str(java/'java.exe'),'-cp',str(folder),'ls.augment.com.TestMagicEntry'],check=True,timeout=20)

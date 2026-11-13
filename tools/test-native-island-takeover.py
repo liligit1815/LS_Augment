@@ -108,101 +108,9 @@ files = {
  }
 }''',
 }
-source = (ROOT / 'android/app/src/main/java/ls/augment/com/hook/NativeIslandScenes.java').read_text('utf-8')
-def member(marker, text=source):
-    start = text.index(marker)
-    end = text.index('{', start) + 1
-    depth = 1
-    while depth:
-        depth += (text[end] == '{') - (text[end] == '}')
-        end += 1
-    return text[start:end].replace('NativeIslandScenes owner', 'SceneOwner owner')
-
-files.update({
- 'ls/augment/com/SystemUiOptions.java': 'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo",PREFIX="ls_augment_rm_";}',
- 'ls/augment/com/EnhancementOption.java': 'package ls.augment.com;public class EnhancementOption{public static EnhancementOption toggle(String...args){return new EnhancementOption();}}',
- 'ls/augment/com/NativeFeatureGroups.java': 'package ls.augment.com;public class NativeFeatureGroups{public static class Feature{public Feature(Object...args){}}}',
- 'ls/augment/com/NativeIslandSceneOptions.java': (ROOT / 'android/app/src/main/java/ls/augment/com/NativeIslandSceneOptions.java').read_text('utf-8'),
- 'ls/augment/com/hook/SceneOwner.java': '''package ls.augment.com.hook;
-import android.view.View;import android.os.SystemClock;import java.util.*;import java.lang.reflect.*;import ls.augment.com.*;
-class SceneOwner {
- static final String OEM="com.zte.feature.dynamicisland.";static SceneOwner selected;static boolean capsuleReady=true;
- boolean nativeBaseline,closed,originalFeature;static final String P=SystemUiOptions.PREFIX+"island_";View root=new View();Map<String,Boolean> context=new HashMap<>();
- Set<String> supportedScenes=new HashSet<>(),enhancedScenes=new HashSet<>();Method visibleState;
- Manager manager=new Manager();Permanent permanent=new Permanent();NativeIslandCards cardsBridge=new NativeIslandCards();
- Object record;boolean recorderRenderFailed;NativeIslandRecorderState recorderModel=new NativeIslandRecorderState();boolean recorderForeground(){return false;}
- Set<String> automaticCapsules=Collections.emptySet();static Set<String> fullscreenCapsules=Collections.emptySet();
- String visibleCapsule="";
- static boolean recorderTakeover(){return false;}void report(String s){}static String reason(Exception e){return e.getClass().getSimpleName();}
- static class NativeIslandCards {Map<Object,String> scenes=new IdentityHashMap<>();String scene(Object i){return scenes.get(i);}}
- static class Manager {public Disposable mDisposableIslandManager=new Disposable();}
- static class Disposable {public View mChargingIsland,mLowPowerIsland,mBluetoothIsland,mHeadsetIsland;}
- static class Permanent {public boolean mIsDynamicIslandEnable=true,mInteractive=true,mAODVisibility,mSuperPowerSave,mOnKeyguard,landscape;
- public boolean isOrientationLandscape(){return landscape;}
- public View mRecordIsland;public Object current,mTempIsland;public Object getPermanentIsland(){return current;}}
- static class FeatureSettings {static boolean enabled(Map<String,Boolean> c,String k){return c.getOrDefault(k,false);}static int integer(Map<String,Boolean> c,String k,int d,int min,int max){return c.getOrDefault(k,d!=0)?1:0;}}
- static Object call(Object o,String n,Object...args)throws Exception{return SystemUiAdapter.call(o,n,args);}
- static Object field(Object o,String n){if(o!=null)for(Class<?> c=o.getClass();c!=null;c=c.getSuperclass())try{Field f=c.getDeclaredField(n);f.setAccessible(true);return f.get(o);}catch(Exception ignored){}return null;}
- public static boolean visible(int n){return n==1;}
- // METHODS
- static int checks;static void check(boolean b,String why){checks++;if(!b)throw new AssertionError(why);}
- public static void main(String[] args)throws Exception{
-  SceneOwner o=new SceneOwner();selected=o;o.visibleState=SceneOwner.class.getDeclaredMethod("visible",int.class);
-  o.context.put(SystemUiOptions.PREFIX+"island_music",true);o.context.put(SystemUiOptions.PREFIX+"island_charging",true);
-  for(int i=0;i<NativeIslandSceneOptions.TYPES.length;i++){
-   String id=NativeIslandSceneOptions.IDS[i];View scene=(View)Class.forName(OEM+"islands."+NativeIslandSceneOptions.TYPES[i]).getConstructor().newInstance();
-   o.supportedScenes.add(id);o.enhancedScenes.add(id);o.permanent.current=scene;
-   for(int mask=0;mask<8;mask++){
-    o.context.put(SystemUiOptions.ISLAND,(mask&1)!=0);o.context.put(NativeIslandSceneOptions.ENABLED,(mask&2)!=0);o.context.put(NativeIslandSceneOptions.key(id),(mask&4)!=0);
-    o.nativeBaseline=false;check(blocked(scene)==((mask&1)==0),"existing OEM scene follows master independently of completion and child");
-    if(id.equals("media")||id.equals("charging"))check(o.option(id.equals("media")?"music":"charging")== ((mask&1)!=0),"fallback activity follows master without completion gates");
-    check(o.capsuleScene().equals((mask&1)!=0?id:""),"same native ownership gate used for duplicate suppression");
-    o.nativeBaseline=true;check(!blocked(scene),"unselected pre-existing OEM scene must survive");
-   }
-   o.nativeBaseline=false;scene.shown=false;check(o.capsuleScene().isEmpty(),"hidden selected island is not a replacement");scene.shown=true;
-   o.root.shown=false;check(o.capsuleScene().isEmpty(),"hidden root restores capsule");o.root.shown=true;
-   o.permanent.current=null;o.permanent.mTempIsland=scene;check(o.capsuleScene().isEmpty(),"pending island alone cannot hide capsule");o.permanent.current=scene;
-   o.supportedScenes.remove(id);check(blocked(scene)&&o.capsuleScene().isEmpty(),"missing completion capability keeps original capsule and cannot add a dormant island");
-  }
-  o.nativeBaseline=false;Disposable d=o.manager.mDisposableIslandManager;
-  View[] views={new com.zte.feature.dynamicisland.DynamicDisposableIsland(),new com.zte.feature.dynamicisland.DynamicDisposableIsland(),new com.zte.feature.dynamicisland.DynamicDisposableIsland(),new com.zte.feature.dynamicisland.DynamicDisposableIsland()};
-  d.mChargingIsland=views[0];d.mLowPowerIsland=views[1];d.mBluetoothIsland=views[2];d.mHeadsetIsland=views[3];
-  String[] ids={"charging","low_power","bluetooth","headset"};for(int i=0;i<4;i++){
-   o.supportedScenes.add(ids[i]);o.context.put(NativeIslandSceneOptions.key(ids[i]),false);check(ids[i].equals(o.sceneId(views[i]))&&!blocked(views[i]),"native shared disposable follows master with completion child OFF");
-   o.context.put(NativeIslandSceneOptions.key(ids[i]),true);check(!blocked(views[i]),"selected generic disposable permitted");}
-  check(!blocked(new com.zte.feature.dynamicisland.DynamicDisposableIsland()),"unknown generic instance remains native");
-  check(!blocked(new View()),"unknown permanent type remains native");
-  View card=new View();o.cardsBridge.scenes.put(card,"call");o.permanent.current=card;o.context.put(NativeIslandSceneOptions.key("call"),true);
-  check(o.capsuleScene().equals("call"),"verified app card participates in same scene arbitration");
-  o.context.put(NativeIslandSceneOptions.key("call"),false);check(o.capsuleScene().isEmpty(),"app card releases duplicate suppression immediately on OFF");
-  o.context.put(NativeIslandSceneOptions.key("call"),true);o.closed=true;check(o.capsuleScene().isEmpty(),"closed owner cannot suppress");
-  o.permanent.mRecordIsland=new com.zte.feature.dynamicisland.islands.RecorderIsland();
-  check(o.dormantNativeScene(o.permanent,o.permanent.mRecordIsland,true),"fallback cannot wake second recorder renderer");
-  check(!o.dormantNativeScene(o.permanent,new com.zte.feature.dynamicisland.islands.RecorderIsland(),true),"Duo separately inflated activity is retained");
-  check(o.dormantNativeScene(d,views[0],false),"fallback cannot wake second disposable renderer");
-  o.originalFeature=true;check(!o.dormantNativeScene(o.permanent,o.permanent.mRecordIsland,true),"fallback preserves OEM-enabled engine");
-  o.closed=false;o.context.put(SystemUiOptions.ISLAND,true);o.context.put(NativeIslandSceneOptions.ENABLED,false);
-  o.permanent.current=null;o.supportedScenes.addAll(Arrays.asList("call","meeting","ai"));o.enhancedScenes.addAll(o.supportedScenes);
-  o.updateAutomaticCapsules();for(String id:new String[]{"call","meeting","ai"})check(capsuleOwned(id),"native capsule yields through first frame and transition with completion OFF");
-  check(!capsuleOwned("cast"),"unmapped capsule remains native");
-  o.context.put(SystemUiOptions.ISLAND,false);check(!capsuleOwned("call"),"master OFF immediately releases ownership before queued refresh");
-  o.context.put(SystemUiOptions.ISLAND,true);o.permanent.landscape=true;o.updateAutomaticCapsules();check(!capsuleOwned("call"),"unavailable island orientation preserves native capsule");
-  o.permanent.landscape=false;capsuleReady=false;o.updateAutomaticCapsules();check(!capsuleOwned("call"),"missing native capsule contract keeps original path");capsuleReady=true;
-  System.out.println("PASS production scene owner: "+checks+" checks; all native scenes, original/dormant engines, shared classes, actual visibility and card ownership");
- }
-}'''
-})
-owner_methods = [member(m) for m in (
-    'static boolean blocked(', 'private String sceneId(', 'private boolean requested(', 'private boolean usable(',
-    'private boolean enhancing(', 'private String capsuleScene(', 'private void updateAutomaticCapsules(', 'static boolean capsuleOwned(')]
-owner_methods.append(member('private boolean dormantNativeScene(', (ROOT / 'android/app/src/main/java/ls/augment/com/hook/NativeIslandHost.java').read_text('utf-8')))
-owner_methods.append(member('boolean option(', (ROOT / 'android/app/src/main/java/ls/augment/com/hook/DynamicIslandHook.java').read_text('utf-8')))
-files['ls/augment/com/hook/SceneOwner.java'] = files['ls/augment/com/hook/SceneOwner.java'].replace('// METHODS', '\n'.join(owner_methods))
-for name in ('RecorderIsland', 'FlashlightIsland', 'CallIsland', 'MediaIsland', 'CountDownIsland', 'FaceDetectIsland',
-             'MeetingIsland', 'AIIsland', 'AIMemIsland', 'ChargingIsland', 'LowPowerIsland', 'BluetoothIsland', 'HeadsetIsland'):
-    files[f'com/zte/feature/dynamicisland/islands/{name}.java'] = f'''package com.zte.feature.dynamicisland.islands;
-public class {name} extends android.view.View {{public int mCurState=1;public boolean mKeyguardIsland;}}'''
-files['com/zte/feature/dynamicisland/DynamicDisposableIsland.java'] = '''package com.zte.feature.dynamicisland;public class DynamicDisposableIsland extends android.view.View {}'''
+# Actual post-draw ownership and migration live in test-island-rebuild-core.py.
+# Enum inherited/new/missing contracts live in test-island-enum-capsules.py.
+files['ls/augment/com/hook/AugmentModule.java']=files['ls/augment/com/hook/AugmentModule.java'].replace('public Hook prepareFeatureHook', 'public boolean deoptimize(Method m){return true;}public Hook prepareFeatureHook')
 with tempfile.TemporaryDirectory(prefix='duo-scene-takeover-') as directory:
     paths = []
     for name, source in files.items():
@@ -211,9 +119,8 @@ with tempfile.TemporaryDirectory(prefix='duo-scene-takeover-') as directory:
         path.write_text(source, encoding='utf-8')
         paths.append(str(path))
     paths += [str(ROOT / f'android/app/src/main/java/ls/augment/com/hook/{name}.java')
-              for name in ('NativeIslandCapsules', 'NativeIslandScenePolicy', 'NativeIslandSceneContract', 'NativeIslandRecorderState')]
+              for name in ('NativeIslandCapsules', 'NativeIslandScenePolicy', 'NativeIslandSceneContract', 'NativeIslandRecorderState', 'EnumIslandCapsules')]
     java = Path(os.environ['JAVA_HOME']) / 'bin'
     suffix = '.exe' if os.name == 'nt' else ''
     subprocess.run([str(java / ('javac' + suffix)), '-encoding', 'UTF-8', '-d', directory, *paths], check=True)
     subprocess.run([str(java / ('java' + suffix)), '-cp', directory, 'ls.augment.com.hook.TestTakeover'], check=True)
-    subprocess.run([str(java / ('java' + suffix)), '-cp', directory, 'ls.augment.com.hook.SceneOwner'], check=True)

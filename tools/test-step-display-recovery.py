@@ -12,7 +12,7 @@ source = (STEP / 'NativeWorkspaceGuard.java').read_text(encoding='utf-8')
 assert '"buildFinishTransaction"' not in source
 callback = source.split('StepHooks.hookMethod(finish,new StepHook(){', 1)[1].split('\n            });', 1)[0]
 replay = source[source.index('    static void replay() {'):source.index('    static void resetReturnedTransform(')]
-stage = source[source.index('    static void stageMagnification('):source.index('    /** Move the same main/side tasks')]
+stage = source[source.index('    static void stageMagnification('):source.index('    static boolean settledSideSnapshot(')]
 java = Path(os.environ['JAVA_HOME']) / 'bin' if 'JAVA_HOME' in os.environ else Path()
 harness = '''
 import java.util.ArrayDeque;

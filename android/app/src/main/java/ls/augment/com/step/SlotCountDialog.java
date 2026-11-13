@@ -11,7 +11,7 @@ final class SlotCountDialog {
     final Dialog dialog;
     interface Select {void layout(int sides,boolean upper);}
     SlotCountDialog(Context base,boolean overlay,int current,boolean upper,boolean topSupported,Select select){
-        Context c=overlay?StepMaterial.statusBarPanelContext(base,base.getDisplay()):base;
+        Context c=overlay?StepMaterial.modalPanelContext(base,base.getDisplay()):base;
         dialog=new Dialog(c,StepMaterial.dark(c)?android.R.style.Theme_Material_Dialog_NoActionBar:
                 android.R.style.Theme_Material_Light_Dialog_NoActionBar);
         LinearLayout card=new LinearLayout(c);card.setOrientation(LinearLayout.VERTICAL);
@@ -29,7 +29,7 @@ final class SlotCountDialog {
         top.setOnClickListener(v->{dialog.dismiss();select.layout(current,top.isChecked());});card.addView(top,-1,StepMaterial.dp(c,48));
         TextView hint=StepMaterial.label(c,"主区固定为 1 个，侧边最多 5 个，顶部独立 1 个。",13,false);card.addView(hint,-1,-2);
         dialog.setContentView(card);dialog.setCanceledOnTouchOutside(true);
-        Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.STATUS_BAR_SUB_PANEL);
+        Window w=dialog.getWindow();if(overlay)w.setType(StepMaterial.MODAL_PANEL);
         w.setBackgroundDrawableResource(android.R.color.transparent);
         WindowManager.LayoutParams lp=w.getAttributes();lp.setTitle(TITLE);lp.gravity=Gravity.CENTER;
         lp.width=Math.min(StepMaterial.dp(c,320),c.getResources().getDisplayMetrics().widthPixels-2*pad);

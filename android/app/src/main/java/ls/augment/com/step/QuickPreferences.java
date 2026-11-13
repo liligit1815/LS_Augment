@@ -30,6 +30,7 @@ final class QuickPreferences {
                 .putExtra("quickRevision", prefs(c).getLong("revision", 0))
                 .putExtra("sideCount",count(c)).putExtra("upperEnabled",upper(c))
                 .putExtra("pageIndicator",ls.augment.com.StepConfig.pageIndicator(c))
+                .putExtra("toolbarAutoCollapse",ls.augment.com.StepConfig.toolbarAutoCollapse(c))
                 .putExtra("leftSide", prefs(c).getBoolean("leftSide", false));
     }
     static boolean save(Context c, LinkedHashSet<String> keys, long revision) {

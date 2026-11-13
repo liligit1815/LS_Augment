@@ -24,6 +24,26 @@ import static org.junit.Assert.*;
 @Config(manifest=Config.NONE,sdk=36)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class HeaderClockHooksAndroidTest {
+    @Test public void lateNativeTrafficVisibilitySurvivesClockReformatAndResourceRefresh()throws Exception{
+        for(float font:new float[]{1f,1.3f})for(boolean rtl:new boolean[]{false,true}){
+            init();HeaderClockAndroidTest.Model m=new HeaderClockAndroidTest.Model(1216,2688,rtl,font);
+            Object[] state=attach(m);clockOptions(1);frame(m,state);
+            // OEM publishes traffic AFTER updateHeaderResources has returned. The
+            // formatting adapter may already have captured the old GONE state.
+            call(state[0],"beginNative");call(state[0],"endNative");
+            m.usage.setText("今日：1.1GB  本月：125.29GB");m.usage.setVisibility(View.VISIBLE);frame(m,state);
+            clockOptions(3);frame(m,state);
+            assertEquals("live traffic must survive seconds/period mode changes",View.VISIBLE,m.usage.getVisibility());
+            call(state[0],"beginNative");call(state[0],"endNative");frame(m,state);
+            assertEquals("resource updates must not restore stale GONE",View.VISIBLE,m.usage.getVisibility());
+            assertTrue("traffic below date",m.usage.getTop()>=m.dateGroup.getBottom());
+            assertTrue("header includes traffic",m.usage.getBottom()<=m.header.getHeight());
+            m.usage.setVisibility(View.GONE);clockOptions(1);frame(m,state);
+            assertEquals("native null data stays hidden",View.GONE,m.usage.getVisibility());
+            clockOptions(0);frame(m,state);assertEquals(View.GONE,m.usage.getVisibility());
+            call(state[0],"close");call(state[1],"detach");
+        }
+    }
     @Test public void nativePendingLayoutNeverCancelsShadeDraw()throws Exception{
         init();HeaderClockAndroidTest.Model m=new HeaderClockAndroidTest.Model(988,2688,false,1);
         try(var activity=org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup()){

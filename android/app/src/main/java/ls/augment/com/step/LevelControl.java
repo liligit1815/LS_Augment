@@ -7,6 +7,7 @@ import android.media.AudioManager;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 import java.lang.reflect.*;
 
@@ -31,7 +32,7 @@ final class LevelControl extends FrameLayout {
     final Runnable sync=()->{if(isAttachedToWindow())refresh();};
     float pendingValue;boolean writePending;
     boolean previewOwned;
-    final Runnable applyDrag=()->{writePending=false;if(isAttachedToWindow() && horizontal && adjustable){adjustable=read(true,pendingValue);showValue();}};
+    final Runnable applyDrag=()->{writePending=false;if(isAttachedToWindow() && horizontal && canAdjust() && this.inputAllowed.getAsBoolean()){adjustable=read(true,pendingValue);showValue();}};
     final android.database.ContentObserver settings=new android.database.ContentObserver(updates){
         @Override public void onChange(boolean self){scheduleRefresh();}
     };
@@ -43,6 +44,12 @@ final class LevelControl extends FrameLayout {
         public void onDisplayChanged(int id){if(id==0)scheduleRefresh();}
     };
     float x,y;
+    boolean sidebar,sidebarRight;
+    final Path stairClip=new Path();
+    int stairWidth,stairHeight,stairPadding;
+    ImageView nativeSymbol;
+    java.util.function.BooleanSupplier inputAllowed=()->true;
+    Runnable unavailableAction;
     LevelControl(WorkspaceQuickBar bar,boolean light) {
         super(bar.ctx);owner=bar;this.light=light;
         audio=bar.ctx.getSystemService(AudioManager.class);display=bar.ctx.getSystemService(DisplayManager.class);
@@ -135,42 +142,115 @@ final class LevelControl extends FrameLayout {
         text.bottomMargin=owner.dp(3);caption.setLayoutParams(text);caption.setGravity(Gravity.CENTER);caption.setMaxLines(1);
         showValue();
     }
+    void setSidebar(boolean right,java.util.function.BooleanSupplier allowed,Runnable fallback){
+        sidebar=true;sidebarRight=right;compact=true;inputAllowed=allowed;unavailableAction=fallback;
+        setMinimumWidth(owner.dp(44));setMinimumHeight(0);setClipToOutline(false);setBackground(null);setForeground(null);
+        int gravity=right?Gravity.RIGHT:Gravity.LEFT;
+        FrameLayout.LayoutParams text=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP|gravity);
+        caption.setLayoutParams(text);caption.setGravity(gravity);caption.setMaxLines(1);caption.setIncludeFontPadding(false);
+        symbol.setFixedInk(0xccffffff);
+        String name=light?"game_assist_bright_icon":"game_assist_volume_icon";
+        try{
+            Context stock=getContext().createPackageContext(GameSpacePanelStyle.PACKAGE,0);
+            int id=stock.getResources().getIdentifier(name,"drawable",GameSpacePanelStyle.PACKAGE);
+            if(id==0)throw new IllegalStateException("missing drawable/"+name);
+            android.graphics.drawable.Drawable drawable=stock.getDrawable(id);
+            if(drawable==null || drawable.getIntrinsicWidth()<=0 || drawable.getIntrinsicHeight()<=0)
+                throw new IllegalStateException("invalid drawable/"+name);
+            nativeSymbol=new ImageView(getContext());nativeSymbol.setImageDrawable(drawable);
+            nativeSymbol.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            nativeSymbol.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            addView(nativeSymbol);symbol.setVisibility(INVISIBLE);
+        }catch(Exception|LinkageError unavailable){
+            StepRuntime.diagnostic("SIDEBAR_STAIR_ICON","fallback;name="+name+";reason="+unavailable);
+        }
+        showValue();
+    }
+    void sidebarGeometry(int width,int height,int iconSize){
+        stairWidth=width;stairHeight=height;stairPadding=iconSize/2;
+        int gravity=sidebarRight?Gravity.RIGHT:Gravity.LEFT;
+        FrameLayout.LayoutParams icon=new FrameLayout.LayoutParams(iconSize,iconSize,Gravity.BOTTOM|gravity);
+        symbol.setLayoutParams(icon);if(nativeSymbol!=null)nativeSymbol.setLayoutParams(new FrameLayout.LayoutParams(icon));
+        FrameLayout.LayoutParams text=(FrameLayout.LayoutParams)caption.getLayoutParams();
+        text.leftMargin=sidebarRight?0:stairPadding;text.rightMargin=sidebarRight?stairPadding:0;caption.setLayoutParams(text);
+        invalidate();
+    }
+    @Override public void setPressed(boolean pressed){
+        super.setPressed(pressed);
+        if(sidebar && caption!=null)caption.setVisibility(pressed || !canAdjust()?VISIBLE:INVISIBLE);
+    }
+    boolean canAdjust(){
+        if(!adjustable)return false;
+        try{return light || audio!=null && !audio.isVolumeFixed();}catch(RuntimeException unavailable){return false;}
+    }
     void refresh(){adjustable=read(false,0);showValue();}
     void showValue(){
         String name=light?"亮度":"媒体音量";
         String value=adjustable?name+" "+Math.round(100*fraction)+"%":name+"设置";
         String shown=compact?(adjustable?Math.round(100*fraction)+"%":"设置"):value;
         if(!shown.contentEquals(caption.getText()))caption.setText(shown);
+        if(sidebar)caption.setVisibility(isPressed() || !canAdjust()?VISIBLE:INVISIBLE);
         setContentDescription(value);
+        setStateDescription(!canAdjust()?"当前不能直接调节，可打开系统设置":!light && fraction==0?"静音":"可调节");
+        setAlpha(sidebar && !canAdjust()?.45f:1f);
         caption.setTextColor(0xfff5f7fa);
         symbol.accent=0xfff5f7fa;symbol.invalidate();invalidate();
     }
     float cornerRadius(){return Math.min(Math.min(getWidth(),getHeight())/2f,owner.dp(18));}
     @Override public void onDraw(Canvas c){
+        if(sidebar){drawStairs(c);return;}
         track.set(0,0,getWidth(),getHeight());float r=cornerRadius();
         paint.setColor(0xb2353f49);c.drawRoundRect(track,r,r,paint);
         float shown=Float.isFinite(fraction)?Math.max(0f,Math.min(1f,fraction)):0f;
         if(adjustable && shown>0){
-            c.save();c.clipRect(0,0,track.width()*shown,track.height());
+            c.save();
+            c.clipRect(0,0,track.width()*shown,track.height());
             paint.setColor(0x55f5f7fa);c.drawRoundRect(track,r,r,paint);c.restore();
         }
     }
+    void drawStairs(Canvas c){
+        if(stairWidth<=0 || stairHeight<=0)return;
+        int save=c.save();
+        c.translate(sidebarRight?getWidth()-stairWidth-stairPadding:stairPadding,owner.dp(16));
+        // GameAssist StairSeekBar: 15 bars, line:gap = 1.4, 16% bottom
+        // edge, ceil(progress * count), mirrored ALIGN_LEFT / ALIGN_RIGHT.
+        stairClip.reset();stairClip.moveTo(0,0);stairClip.lineTo(stairWidth,0);
+        stairClip.lineTo(sidebarRight?stairWidth:stairWidth*.16f,stairHeight);
+        stairClip.lineTo(sidebarRight?stairWidth*.84f:0,stairHeight);stairClip.close();c.clipPath(stairClip);
+        float gap=stairHeight/(14+15*1.4f),line=gap*1.4f;
+        float value=Float.isFinite(fraction)?Math.max(0,Math.min(1,fraction)):0;
+        int lit=adjustable?(int)Math.ceil(value*15):0;
+        paint.setStrokeWidth(line);paint.setStrokeCap(Paint.Cap.BUTT);
+        for(int i=0;i<15;i++){
+            paint.setColor(i<lit?0xccffffff:0x99545454);
+            float y=stairHeight-line/2-i*(line+gap);c.drawLine(0,y,stairWidth,y,paint);
+        }
+        c.restoreToCount(save);
+    }
     @Override public boolean onTouchEvent(MotionEvent e){
-        float value=e.getX()/Math.max(1,getWidth());
+        if(!inputAllowed.getAsBoolean()){
+            removeCallbacks(applyDrag);writePending=false;releasePreview();setPressed(false);return false;
+        }
+        if(e.getPointerCount()>1){
+            vertical=true;horizontal=false;removeCallbacks(applyDrag);writePending=false;releasePreview();setPressed(false);return true;
+        }
+        float value=sidebar?(owner.dp(16)+stairHeight-e.getY())/Math.max(1,stairHeight)
+                :e.getX()/Math.max(1,getWidth());
+        value=Math.max(0f,Math.min(1f,value));
         switch(e.getActionMasked()){
             case MotionEvent.ACTION_DOWN:x=e.getX();y=e.getY();vertical=horizontal=false;drawableHotspotChanged(x,y);setPressed(true);
                 getParent().requestDisallowInterceptTouchEvent(true);return true;
             case MotionEvent.ACTION_MOVE:
                 float dx=Math.abs(e.getX()-x),dy=Math.abs(e.getY()-y);
                 if(!horizontal && !vertical && Math.max(dx,dy)>ViewConfiguration.get(getContext()).getScaledTouchSlop()){
-                    horizontal=dx>=dy;vertical=!horizontal;cancelLongPress();
+                    horizontal=sidebar?dy>=dx:dx>=dy;vertical=!horizontal;cancelLongPress();
                 }
-                if(horizontal && adjustable){pendingValue=value;if(!writePending){writePending=true;postOnAnimation(applyDrag);}}return true;
+                if(horizontal && canAdjust()){pendingValue=value;if(!writePending){writePending=true;postOnAnimation(applyDrag);}}return true;
             case MotionEvent.ACTION_UP:
                 setPressed(false);
                 removeCallbacks(applyDrag);writePending=false;
                 getParent().requestDisallowInterceptTouchEvent(false);
-                if(!vertical && adjustable){read(true,value);releasePreview();refresh();
+                if(!vertical && canAdjust()){read(true,value);releasePreview();refresh();
                     if(light)StepRuntime.diagnostic("BRIGHTNESS_WRITE","fraction="+value+";readback="+fraction+";ready="+adjustable+";previewOwned="+previewOwned);
                     if(!horizontal)super.performClick();}
                 else if(!horizontal && !vertical)performClick();
@@ -180,7 +260,33 @@ final class LevelControl extends FrameLayout {
         }
         return true;
     }
-    @Override public boolean performClick(){releasePreview();super.performClick();owner.systemAction(new Intent(light?Settings.ACTION_DISPLAY_SETTINGS:Settings.Panel.ACTION_VOLUME));return true;}
+    @Override public boolean performClick(){
+        releasePreview();super.performClick();if(!inputAllowed.getAsBoolean())return false;
+        if(unavailableAction!=null)unavailableAction.run();
+        else owner.systemAction(new Intent(light?Settings.ACTION_DISPLAY_SETTINGS:Settings.Panel.ACTION_VOLUME));return true;
+    }
+    @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
+        super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.SeekBar.class.getName());
+        if(canAdjust()){
+            info.setRangeInfo(android.view.accessibility.AccessibilityNodeInfo.RangeInfo.obtain(android.view.accessibility.AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT,0,100,Math.round(fraction*100)));
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS);
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD);
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD);
+        }
+    }
+    @Override public boolean performAccessibilityAction(int action,android.os.Bundle args){
+        if(action==android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId()
+                || action==android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                || action==android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD){
+            if(!inputAllowed.getAsBoolean() || !canAdjust())return false;
+            float requested=action==android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId()
+                    ?args==null?Float.NaN:args.getFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,Float.NaN)/100f
+                    :fraction+(action==android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD?.05f:-.05f);
+            if(!Float.isFinite(requested))return false;
+            boolean result=read(true,requested);releasePreview();refresh();return result;
+        }
+        return super.performAccessibilityAction(action,args);
+    }
     void scheduleRefresh(){updates.removeCallbacks(sync);updates.post(sync);}
     @Override protected void onAttachedToWindow(){
         super.onAttachedToWindow();

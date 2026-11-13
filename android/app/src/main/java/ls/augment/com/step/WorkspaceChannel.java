@@ -10,14 +10,21 @@ import static ls.augment.com.step.NativeWorkspaceGuard.*;
 /** Session-scoped phone IPC. Interactive handoffs must not wait in the broadcast queue. */
 final class WorkspaceChannel extends Binder {
     static final String DESCRIPTOR="ls.augment.com.step.WorkspaceChannel";
-    static final int COMMAND=FIRST_CALL_TRANSACTION, FINISH=COMMAND+1, START=FINISH+1;
+    static final int COMMAND=FIRST_CALL_TRANSACTION, FINISH=COMMAND+1, START=FINISH+1, FOCUS=START+1;
     final IBinder expected;
     WorkspaceChannel(IBinder expected){this.expected=expected;}
     @Override protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException{
-        if(code!=COMMAND && code!=FINISH && code!=START)return super.onTransact(code,data,reply,flags);
+        if(code!=COMMAND && code!=FINISH && code!=START && code!=FOCUS)return super.onTransact(code,data,reply,flags);
         if(Binder.getCallingUid()!=systemUiUid)throw new SecurityException("workspace host identity");
         data.enforceInterface(DESCRIPTOR);
         if(!expected.equals(data.readStrongBinder()))throw new SecurityException("workspace session identity");
+        if(code==FOCUS){
+            float x=data.readFloat(),y=data.readFloat();boolean selected=false;
+            long identity=Binder.clearCallingIdentity();
+            try{synchronized(Wm.lock){if(expected.equals(owner))selected=WorkspaceBackFocus.select(x,y);}}
+            finally{Binder.restoreCallingIdentity(identity);}
+            reply.writeNoException();reply.writeBoolean(selected);return true;
+        }
         if(code==COMMAND){
             Intent intent=data.readTypedObject(Intent.CREATOR);
             if(intent==null || !expected.equals(intent.getExtras().getBinder("owner")))throw new SecurityException("workspace command owner");
@@ -41,6 +48,7 @@ final class WorkspaceChannel extends Binder {
                     if(code==FINISH)NativeTransitionPose.finishIn(tx,tokens);
                     stageMagnification(tx);
                     if(code==START)NativeTransitionPose.startIn(tx,tokens);
+                    UpperTaskPresentation.stage(tx);
                     if(previews!=null && settledSideSnapshot(previewSlots))call(tx,"merge",previews);
                     call(tx,"apply",sync);applied=true;transitionReplays++;
                     diagnostic(code==FINISH?"TRANSITION_FINISH":"TRANSITION_START","atomic;session="+session+";transitions="+tokens.size());
@@ -56,6 +64,14 @@ final class WorkspaceChannel extends Binder {
             data.writeInterfaceToken(DESCRIPTOR);data.writeStrongBinder(owner);data.writeTypedObject(intent,0);
             if(!channel.transact(COMMAND,data,null,IBinder.FLAG_ONEWAY))throw new RemoteException("workspace command channel unavailable");
         }finally{data.recycle();}
+    }
+    static boolean focusRegion(IBinder channel,IBinder owner,float x,float y)throws RemoteException{
+        Parcel data=Parcel.obtain(),reply=Parcel.obtain();
+        try{
+            data.writeInterfaceToken(DESCRIPTOR);data.writeStrongBinder(owner);data.writeFloat(x);data.writeFloat(y);
+            if(!channel.transact(FOCUS,data,reply,0))return false;
+            reply.readException();return reply.readBoolean();
+        }finally{data.recycle();reply.recycle();}
     }
     static boolean finish(IBinder channel,IBinder owner,ArrayList<IBinder> tokens,SurfaceControl.Transaction tx,SurfaceControl.Transaction previews,int[] previewSlots,boolean sync,boolean finishing)throws RemoteException{
         Parcel data=Parcel.obtain(),reply=Parcel.obtain();

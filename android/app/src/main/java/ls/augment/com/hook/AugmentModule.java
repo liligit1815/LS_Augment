@@ -340,6 +340,7 @@ public final class AugmentModule extends RootEarlyModule {
         installPackageStage("oem_extras", () -> OemAppExtrasHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("connections", () -> ConnectionExtrasHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("game_extras", () -> GameExtrasHook.install(this, param.getClassLoader(), readyPackageName));
+        installPackageStage("bypass_charging", () -> BypassChargingHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("collab_unlock", () -> CollabUnlockHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("collab_render", () -> CollabRenderHook.install(this, param.getClassLoader(), readyPackageName));
         installPackageStage("entry_visibility", () -> EntryVisibilityHook.install(this, param.getClassLoader(), readyPackageName));
@@ -417,6 +418,7 @@ public final class AugmentModule extends RootEarlyModule {
             return;
         }
         if (GAME_ASSIST_PACKAGE.equals(readyPackageName)) {
+            ls.augment.com.step.GameGestureGate.install(this,param.getClassLoader());
             installAiTriggerHooks(param.getClassLoader(), GAME_ASSIST_PACKAGE);
             installGameAssistShoulderHooks(param.getClassLoader());
             installSuperMirrorHooks(param.getClassLoader());

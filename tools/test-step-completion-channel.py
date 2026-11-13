@@ -27,6 +27,7 @@ public class CompletionCases {
   @SuppressWarnings("unchecked") <T>T readTypedObject(Object creator){return (T)(reads++==0?value:previews);}
   ArrayList<IBinder> createBinderArrayList(){return tokens;}boolean readBoolean(){return sync;}
   int[] createIntArray(){return new int[]{7,-1,-1,-1,-1};}
+  float readFloat(){return 100;}
   void writeNoException(){}void writeBoolean(boolean b){result=b;}
  }
  static class Handler {ArrayDeque<Runnable> work=new ArrayDeque<>();void post(Runnable r){work.add(r);}}
@@ -40,13 +41,15 @@ public class CompletionCases {
   if(object instanceof Token t && n.equals("getToken"))return t.binder;if(n.equals("release"))return null;throw new AssertionError(n);
  }
  static void diagnostic(String stage,String detail){}
+ static class WorkspaceBackFocus {static int calls;static boolean select(float x,float y){check(Thread.holdsLock(Wm.lock),"region focus under owner lock");calls++;return true;}}
+ static class UpperTaskPresentation {static void stage(SurfaceControl.Transaction tx){check(Thread.holdsLock(Wm.lock),"top pose shares native transition transaction");}}
  static void execute(Intent intent){if(intent.owner==owner)executed++;}
  static void stageMagnification(Object tx){check(Thread.holdsLock(Wm.lock),"calibration and apply share the lock");if(failStage)throw new IllegalStateException("missing native path");staged++;}
  static class Token {IBinder binder=new Binder();}
  static class Pose {IBinder owner;Object root=new Object();List<Object> tasks=List.of(new Object());Pose(IBinder b){owner=b;}}
  static class NativeTransitionPose {static IdentityHashMap<Object,Pose> poses=new IdentityHashMap<>();static void startIn(Object tx,List<IBinder> tokens){check(Thread.holdsLock(Wm.lock),"start calibration under current lock");} FINISH_IN }
  static class Channel extends Binder {
-  static final int COMMAND=1,FINISH=2,START=3;static final String DESCRIPTOR="ls.augment.com.step.WorkspaceChannel";final IBinder expected;
+  static final int COMMAND=1,FINISH=2,START=3,FOCUS=4;static final String DESCRIPTOR="ls.augment.com.step.WorkspaceChannel";final IBinder expected;
   Channel(IBinder expected){this.expected=expected;} ON_TRANSACT
  }
  STALE
@@ -84,6 +87,9 @@ public class CompletionCases {
   Wm.handler.work.remove().run();check(executed==1,"one command, one dispatch");
   fresh();c=new Channel(owner);d=new Parcel();d.owner=owner;d.value=new Intent(new Binder());
   try{c.onTransact(1,d,null,1);throw new AssertionError("wrong payload owner");}catch(SecurityException expected){checks++;}
+  fresh();c=new Channel(owner);d=new Parcel();d.owner=owner;r=new Parcel();
+  c.onTransact(4,d,r,0);check(r.result && WorkspaceBackFocus.calls==1,"region focus completes before native Back resolves target");
+  owner=new Binder();r=new Parcel();c.onTransact(4,d,r,0);check(!r.result && WorkspaceBackFocus.calls==1,"old input callback cannot focus a new session");
   System.out.println("PASS "+checks+" production completion channel and gesture recovery checks");
  }
 }

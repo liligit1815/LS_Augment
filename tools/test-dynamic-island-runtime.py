@@ -154,7 +154,7 @@ public class TestIslandReview {
  }
 }
 '''
-harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(','void withdrawNotice(','void clearNotice(','boolean allowedRanking(','boolean openNotice(','void openDiagnostic(']))
+harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean hostVisible(','boolean observeHostVisibility(','MediaController selectMedia(','boolean sameSession(','void notice(StatusBarNotification sbn,NotificationListenerService.RankingMap map)', 'void notice(StatusBarNotification sbn,boolean rankingPermits)','void withdrawNotice(','void clearNotice(','boolean allowedRanking(', 'boolean rankingAllowed(','boolean openNotice(','void openDiagnostic(']))
 # Uses the caller's configured JDK, like the other host regression scripts.
 with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  path=Path(tmp)/'TestIslandReview.java';path.write_text(harness,encoding='utf-8')

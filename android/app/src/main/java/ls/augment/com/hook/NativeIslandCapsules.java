@@ -25,6 +25,7 @@ final class NativeIslandCapsules {
     private java.util.function.Consumer<String> report;
     private boolean textFailureReported;
     private boolean ready;
+    private EnumIslandCapsules enumAdapter;
 
     NativeIslandCapsules(Predicate<String> owns) { this.owns = owns; }
 
@@ -38,6 +39,17 @@ final class NativeIslandCapsules {
         // Do not hook framework View globally when an OEM override or the renderer is missing.
         Method set = method(type, "setVisibility", void.class, int.class);
         Method visible = method(type, "isViewVisible", boolean.class, int.class);
+        if (visible == null) {
+            try {
+                enumAdapter = new EnumIslandCapsules(owns);
+                int count = enumAdapter.install(module, type);
+                ready = enumAdapter.ready();
+                return count;
+            } catch (ReflectiveOperationException missing) {
+                module.logFeatureInfo("NATIVE_SCENE_MISSING capsule_render_contract:" + missing.getMessage());
+                return 0;
+            }
+        }
         refresh = method(type, "handleVisibilityChanged", void.class);
         update = method(type, "updateVisibility", void.class);
         recordTime=method(type,"getTimeCount",String.class,int.class);
@@ -130,8 +142,8 @@ final class NativeIslandCapsules {
             })); count++;
         } else module.logFeatureInfo("NATIVE_SCENE_MISSING capsule_launcher_entry");
         // Old queued text callbacks must not overwrite the freshly restored recording label.
-        for (Class<?> current=type;current!=null && current!=View.class;current=current.getSuperclass())
-        for (Method callback:current.getDeclaredMethods()) {
+        for (Class<?> current=type;current!=null && current!=View.class;current=current.getSuperclass()) {
+            for (Method callback:current.getDeclaredMethods()) {
             boolean text=callback.getName().startsWith("lambda$updateDisplayText$")
                     && Arrays.equals(callback.getParameterTypes(),new Class<?>[]{String.class});
             boolean pause=callback.getName().startsWith("lambda$updateRecorderTimeCount$") && callback.getParameterCount()==0;
@@ -141,6 +153,7 @@ final class NativeIslandCapsules {
                 if (prepareRecordText(chain.getThisObject())) return null;
                 return chain.proceed();
             })); count++;
+        }
         }
         Method attach = method(type, "onAttachedToWindow", void.class);
         if (attach != null && attach.getDeclaringClass() != View.class) {
@@ -173,6 +186,7 @@ final class NativeIslandCapsules {
         }
     }
     boolean supportsScene(String scene) {
+        if (enumAdapter != null) return enumAdapter.supportsScene(scene);
         return !Arrays.asList(SCENES).contains(scene) || ready && scenes.containsKey(scene);
     }
     private Object track(Object layout) { if (layout instanceof View) layouts.put(layout, Boolean.TRUE); return layout; }
@@ -188,6 +202,7 @@ final class NativeIslandCapsules {
         return false;
     }
     void refresh(java.util.function.Consumer<String> report) {
+        if (enumAdapter != null) { enumAdapter.refresh(report); return; }
         ArrayList<Object> copy;
         synchronized (layouts) { copy = new ArrayList<>(layouts.keySet()); }
         for (Object layout : copy) if (layout instanceof View && ((View) layout).isAttachedToWindow()) try {

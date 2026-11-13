@@ -13,11 +13,18 @@ final class StepMaterial {
     // TYPE_STATUS_BAR_SUB_PANEL is the SystemUI window above the scaled main pane.
     // Android exposes createWindowContext but omits this privileged type from its SDK IntDef.
     static final int STATUS_BAR_SUB_PANEL = 2017;
+    // SystemUI's modal panel layer is above the OEM KEYGUARD_DIALOG island.
+    // Only dialogs use it; the ordinary toolbars keep their existing layer.
+    static final int MODAL_PANEL = 2024;
     @android.annotation.SuppressLint("WrongConstant")
     static Context statusBarPanelContext(Context base, android.view.Display display) {
         return base.createDisplayContext(display).createWindowContext(STATUS_BAR_SUB_PANEL, null);
     }
     static int dp(Context c,float n){return Math.round(c.getResources().getDisplayMetrics().density*n);}
+    @android.annotation.SuppressLint("WrongConstant")
+    static Context modalPanelContext(Context base,android.view.Display display){
+        return base.createDisplayContext(display).createWindowContext(MODAL_PANEL,null);
+    }
     static boolean dark(Context c){return (c.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;}
     static int ink(Context c){return dark(c)?0xfff1f4f7:0xff1a2634;}
     static void feedback(android.view.View view){

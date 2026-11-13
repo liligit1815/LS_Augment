@@ -26,7 +26,7 @@ import android.widget.Toast;
 import ls.augment.com.step.CornerEntryPolicy;
 import ls.augment.com.step.StepRuntime;
 
-/** A real status-bar practice: drawing only, never a second gesture detector. */
+/** Native entry practice and illustrated top-workspace gestures; no second gesture detector. */
 public final class StepGestureGuideActivity extends Activity {
     static SharedPreferences prefs(Context c){return c.getSharedPreferences("step_entry_guide",Context.MODE_PRIVATE);}
     static boolean needsOffer(Context c){return !prefs(c).getBoolean("offered",false) && !prefs(c).getBoolean("completed",false);}
@@ -38,6 +38,7 @@ public final class StepGestureGuideActivity extends Activity {
     UiKit ui;
     TextView state;
     Hints hints;
+    final java.util.ArrayList<GestureDiagram> diagrams=new java.util.ArrayList<>();
     ValueAnimator animator;
     long began,generation;
     boolean resumed,waiting,finished;
@@ -60,6 +61,13 @@ public final class StepGestureGuideActivity extends Activity {
         arrows.setGravity(Gravity.CENTER);card.addView(arrows,ui.margins(0,20,0,16));
         state=ui.text("等待你的手势…",13,ui.muted,false);state.setTag("step-entry-guide-state");
         state.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(state,ui.margins(0,0,0,12));
+        ui.addDetailSectionTitle(body,"顶部工作区手势");
+        gesture(body,"左右滑动 · 切换顶部页面",
+                "在顶部内容区域用一根手指向左或向右滑动，切换壁纸、音乐、顶部应用和导航。只显示当前可用的页面；从两侧边缘向内滑会呼出工具栏。",0);
+        gesture(body,"双指上滑 · 移除当前应用",
+                "顶部正在显示应用时，两根手指同时向上滑动，松手后将当前应用移出顶部并放回后台。壁纸和音乐页不执行此操作。",-1);
+        gesture(body,"双指下滑 · 移回主区",
+                "顶部正在显示应用时，两根手指同时向下滑动，松手后将当前应用移回主工作区。请从顶部内容内起滑，两指同向移动，不做缩放。",1);
         Button later=ui.textButton("稍后练习");later.setOnClickListener(v->finish());body.addView(later,ui.margins(0,8,0,0));
         // The native status-bar window continues receiving all touch events.
         // This drawable has no input channel and uses current window insets.
@@ -68,11 +76,21 @@ public final class StepGestureGuideActivity extends Activity {
         decor.addOnLayoutChangeListener((v,l,t,r,b,oldL,oldT,oldR,oldB)->hints.setBounds(0,0,r-l,b-t));
         decor.post(()->{hints.setBounds(0,0,decor.getWidth(),decor.getHeight());hints.invalidateSelf();});
     }
+    void gesture(LinearLayout body,String title,String description,int direction){
+        LinearLayout card=ui.preferenceCard();body.addView(card,ui.margins(0,0,0,8));
+        TextView heading=ui.text(title,14.5f,ui.text,true);heading.setAccessibilityHeading(true);
+        card.addView(heading,ui.margins(0,12,0,4));
+        GestureDiagram diagram=new GestureDiagram(direction);diagrams.add(diagram);
+        card.addView(diagram,new LinearLayout.LayoutParams(-1,ui.dp(72)));
+        TextView detail=ui.text(description,13,ui.muted,false);detail.setLineSpacing(ui.dp(2),1.05f);
+        card.addView(detail,ui.margins(0,4,0,12));
+    }
     @Override protected void onResume(){
         super.onResume();resumed=true;main.post(poll);
         if(ValueAnimator.areAnimatorsEnabled()){
             animator=ValueAnimator.ofFloat(0,1);animator.setDuration(1500);animator.setRepeatCount(ValueAnimator.INFINITE);
-            animator.addUpdateListener(a->{hints.phase=(Float)a.getAnimatedValue();hints.invalidateSelf();});animator.start();
+            animator.addUpdateListener(a->{hints.phase=(Float)a.getAnimatedValue();hints.invalidateSelf();
+                for(GestureDiagram diagram:diagrams)diagram.invalidate();});animator.start();
         }
     }
     @Override protected void onPause(){
@@ -113,6 +131,49 @@ public final class StepGestureGuideActivity extends Activity {
                 main.postDelayed(poll,350);
             }
         });
+    }
+    final class GestureDiagram extends View {
+        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int direction;
+        GestureDiagram(int direction){
+            super(StepGestureGuideActivity.this);this.direction=direction;
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);
+        }
+        @Override protected void onDraw(Canvas canvas){
+            float cx=getWidth()/2f,cy=getHeight()/2f;
+            float half=Math.min(ui.dp(120),getWidth()/2f-ui.dp(4));
+            float radius=ui.angularCards?0:ui.dp(8);
+            paint.setStyle(Paint.Style.FILL);paint.setColor(ui.accentContainer);
+            canvas.drawRoundRect(cx-half,ui.dp(4),cx+half,getHeight()-ui.dp(4),radius,radius,paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setColor(ui.outline);paint.setStrokeWidth(ui.dp(1));
+            canvas.drawRoundRect(cx-half,ui.dp(4),cx+half,getHeight()-ui.dp(4),radius,radius,paint);
+            paint.setColor(ui.accent);paint.setStrokeWidth(ui.dp(2));
+            float phase=animator==null?.5f:hints.phase;
+            if(direction==0){
+                float travel=Math.min(ui.dp(64),half-ui.dp(18));
+                arrow(canvas,cx-travel,cy,cx+travel,cy);arrow(canvas,cx+travel,cy,cx-travel,cy);
+                finger(canvas,cx+(float)Math.sin(phase*2*Math.PI)*travel*.65f,cy);
+            }else{
+                float start=cy-direction*ui.dp(22),end=cy+direction*ui.dp(22);
+                // Keep the arrowhead visible even while the finger pauses at
+                // its destination, so a still frame also explains direction.
+                float y=cy+direction*ui.dp(9)*(2*Math.min(1,phase/.75f)-1);
+                for(int side:new int[]{-1,1}){
+                    float x=cx+side*ui.dp(17);arrow(canvas,x,start,x,end);finger(canvas,x,y);
+                }
+            }
+        }
+        void arrow(Canvas canvas,float x,float y,float endX,float endY){
+            float angle=(float)Math.atan2(endY-y,endX-x),length=ui.dp(7);
+            paint.setStyle(Paint.Style.STROKE);paint.setColor(ui.accent);
+            canvas.drawLine(x,y,endX,endY,paint);
+            for(int side:new int[]{-1,1})canvas.drawLine(endX,endY,
+                    endX-length*(float)Math.cos(angle+side*.65f),endY-length*(float)Math.sin(angle+side*.65f),paint);
+        }
+        void finger(Canvas canvas,float x,float y){
+            paint.setStyle(Paint.Style.FILL);paint.setColor(ui.card);canvas.drawCircle(x,y,ui.dp(6),paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setColor(ui.accent);canvas.drawCircle(x,y,ui.dp(6),paint);
+        }
     }
     final class Hints extends Drawable {
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);float phase;

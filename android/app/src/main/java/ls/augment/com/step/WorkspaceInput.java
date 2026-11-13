@@ -35,7 +35,7 @@ final class WorkspaceInput {
             if (view==null) {
                 began = SystemClock.uptimeMillis();
                 touches = 0;
-                view=new View(context); view.setBackgroundColor(0x01000000);
+                view=new android.widget.FrameLayout(context); view.setBackgroundColor(0x01000000);
                 view.setOnTouchListener((v,event)->{
                     touches++; lease.touch(event.getActionMasked()); maybeRelease(expectedTicket()); return true;
                 });

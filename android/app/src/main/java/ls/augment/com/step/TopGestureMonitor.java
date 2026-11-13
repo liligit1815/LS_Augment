@@ -6,7 +6,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import static ls.augment.com.step.StepRuntime.*;
 
-/** Native task keeps taps, vertical scrolling and pinch; horizontal swipes page after direction lock. */
+/** Preserve native input until a page swipe or parallel two-finger task gesture locks. */
 final class TopGestureMonitor implements AutoCloseable {
     final UpperPane pane;
     Object monitor,receiver,platform;
@@ -15,8 +15,9 @@ final class TopGestureMonitor implements AutoCloseable {
     float x1,y1,x2,y2;
     boolean active,horizontal;
     int edge=-1;
-    boolean edgeRejected,edgeOpened;
-    TopGestureMonitor(UpperPane pane){this.pane=pane;}
+    boolean edgeRejected,edgeOpened,edgeClaimed,edgeHandle;
+    final UpperAppGesture appGesture;
+    TopGestureMonitor(UpperPane pane){this.pane=pane;appGesture=new UpperAppGesture(this);}
     static TopGestureMonitor open(UpperPane pane){
         TopGestureMonitor g=new TopGestureMonitor(pane);
         try{
@@ -45,14 +46,20 @@ final class TopGestureMonitor implements AutoCloseable {
             });
             g.receiver=factory.invoke(g.monitor,Looper.getMainLooper(),Choreographer.getInstance(),consumer);
             if(g.receiver==null)throw new IllegalStateException("缺少手势接收器");
+            try{
+                Method batching=OwnershipBridge.method(rec,"setBatchingEnabled",boolean.class);
+                if(batching.getReturnType()!=void.class)throw new NoSuchMethodException("input batching contract");
+                batching.invoke(g.receiver,false);
+            }catch(ReflectiveOperationException unavailable){diagnostic("UPPER_GESTURE","native_batching;reason="+unavailable);}
             return g;
-        }catch(Exception|LinkageError missing){g.close();pane.host.log("双指翻面不可用："+missing);return null;}
+        }catch(Exception|LinkageError missing){g.close();pane.host.log("顶部翻页及双指操作不可用："+missing);return null;}
     }
     void reset(){
+        appGesture.reset();
         first=second=-1;
         if(active && !pane.owner.closed && pane.roll.running)pane.roll.settle(false);
         active=false;horizontal=false;
-        edge=-1;edgeRejected=edgeOpened=false;
+        edge=-1;edgeRejected=edgeOpened=edgeClaimed=edgeHandle=false;
     }
     boolean inside(MotionEvent e,int n){
         return e.getRawY(n)>=0 && e.getRawY(n)<pane.host.geometry.contentHeight && e.getRawX(n)>=0 && e.getRawX(n)<pane.host.geometry.width;
@@ -60,12 +67,23 @@ final class TopGestureMonitor implements AutoCloseable {
     void onTouch(MotionEvent e)throws Exception{
         if(!e.isFromSource(InputDevice.SOURCE_TOUCHSCREEN) || (Integer)call(e,"getDisplayId")!=0)return;
         int op=e.getActionMasked();
+        // Also restore upper input after touching the native top page; older
+        // EdgeBack handlers retain this observed-touch fallback.
+        WorkspaceBackFocus.observe(e);
         WorkspaceSideToolbar toolbar=pane.owner.sideToolbar;
         if(op==MotionEvent.ACTION_DOWN){
             reset();
-            if(toolbar!=null && !toolbar.ownsGesture(e.getRawX(),e.getRawY()))
-                edge=toolbar.edgeStart(e.getRawX(),e.getRawY());
-            if(edge>=0){x1=e.getRawX();y1=e.getRawY();return;}
+            if(toolbar!=null)edge=toolbar.edgeStart(e.getRawX(),e.getRawY());
+            if(edge>=0){
+                x1=e.getRawX();y1=e.getRawY();
+                edgeHandle=toolbar.handleContains(x1,y1);
+                // The dedicated handle already consumes this entire stream.
+                // Reserve it at DOWN so a game's global monitor cannot steal it
+                // before our view receives its first MOVE. Content-edge taps
+                // and scrolling still wait for a confirmed inward direction.
+                if(edgeHandle){pilfer.invoke(platform);edgeClaimed=true;}
+                return;
+            }
         }
         // Lock ownership to the DOWN origin until UP/CANCEL, across every
         // wallpaper/music/native page. Taps and vertical scrolls stay native.
@@ -74,15 +92,19 @@ final class TopGestureMonitor implements AutoCloseable {
             if(e.getPointerCount()>1 || Math.abs(dy)>pane.owner.dp(8) && Math.abs(dy)>=Math.abs(dx))edgeRejected=true;
             if(op==MotionEvent.ACTION_MOVE && !edgeRejected && !edgeOpened && toolbar!=null && toolbar.usable()
                     && GameSpacePanelMotion.inward(dx,dy,edge==1,Math.max(4,pane.owner.dp(2)))){
-                pilfer.invoke(platform);edgeOpened=true;toolbar.setOpen(true);
+                if(!edgeClaimed){pilfer.invoke(platform);edgeClaimed=true;}
+                edgeOpened=true;toolbar.setOpen(true);
             }
+            if(op==MotionEvent.ACTION_UP && edgeHandle && !edgeRejected && !edgeOpened
+                    && toolbar!=null && toolbar.usable() && Math.hypot(dx,dy)<pane.owner.dp(8))toolbar.setOpen(true);
             if(op==MotionEvent.ACTION_UP || op==MotionEvent.ACTION_CANCEL)reset();
             return;
         }
         // Sidebar edge streams must not park or replace the native upper task.
         if(pane.owner.sideToolbar!=null && pane.owner.sideToolbar.ownsGesture(e.getRawX(),e.getRawY())){reset();return;}
+        if(appGesture.onTouch(e)){first=second=-1;horizontal=false;return;}
         if(op==MotionEvent.ACTION_DOWN){
-            reset();if(pane.canSwitch() && inside(e,0)){first=e.getPointerId(0);x1=e.getRawX();y1=e.getRawY();}return;
+            if(pane.canSwitch() && inside(e,0)){first=e.getPointerId(0);x1=e.getRawX();y1=e.getRawY();}return;
         }
         if(first<0)return;
         if(!pane.canSwitch() || op==MotionEvent.ACTION_CANCEL || e.getPointerCount()>2){reset();return;}

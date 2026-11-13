@@ -42,6 +42,8 @@ public JSONObject put(String k,Object v)throws JSONException{values.put(k,v);ret
 'ls/augment/com/hook/FeatureSettings.java':'''package ls.augment.com.hook;import java.util.*;import android.content.Context;class FeatureSettings{
 static Map<String,String> values=new HashMap<>(),diagnostics=new HashMap<>();static boolean enabled(Context c,String k){return "1".equals(values.get(k));}
 static String text(Context c,String k,String d){return values.getOrDefault(k,d);}static void diagnostic(Context c,String k,String v){diagnostics.put(k,v);}}''',
+'ls/augment/com/hook/IslandHeadsUpBridge.java':'''package ls.augment.com.hook;import android.service.notification.*;class IslandHeadsUpBridge{
+static boolean permit=true;static boolean downloadMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return permit;}}''',
 }
 HARNESS=r'''package ls.augment.com.hook;
 import java.util.*;import ls.augment.com.*;import android.app.*;import android.service.notification.*;
@@ -94,11 +96,19 @@ FeatureSettings.values.put(IslandDownloadConfig.ENABLED,"1");
 source.posted(first,ranking);check(source.activities.size()==0,"enabled with no channels remains empty");
 FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,key);check(source.posted(first,ranking),"selected structured download consumed");
 check(source.activities.get("download").percent==20,"LOW importance progress notification supported by explicit selection");
+check(source.canPrepareHeadsUp(first,ranking.rank),"selected independent progress can prepare a handoff");
+FeatureSettings.values.put("ls_augment_rm_island_notice_blacklist","0|com.example.downloader");
+FeatureSettings.values.put("ls_augment_rm_island_notifications","0");
+check(source.canPrepareHeadsUp(first,ranking.rank),"ordinary blacklist and switch do not change download ownership");
+IslandHeadsUpBridge.permit=false;check(!source.canPrepareHeadsUp(first,ranking.rank),"native banner blocks a second download surface");
+source.posted(first,ranking);check(source.activities.size()==0,"native ownership withdraws the download model");
+IslandHeadsUpBridge.permit=true;
 StatusBarNotification second=note("download",11,40);source.posted(second,ranking);source.removed(first);
 check(source.activities.get("download").percent==40,"old source removal cannot erase newer progress");
 StatusBarNotification plain=note("plain",12,0);plain.notification.extras.clear();
 check(!source.posted(plain,ranking)&&source.activities.get("plain")==null,"selected channel alone does not classify ordinary text as download");
 StatusBarNotification complete=note("download",12,100);check(source.posted(complete,ranking),"completion consumed rather than replayed as notice");
+check(!source.canPrepareHeadsUp(complete,ranking.rank),"completed download cannot suppress its native alert");
 check(source.activities.size()==0,"100 percent withdraws even if source remains ongoing");source.posted(first,ranking);
 check(source.activities.size()==0,"source layer does not resurrect stale completion");
 for(int guard=0;guard<10;guard++){

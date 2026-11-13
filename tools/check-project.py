@@ -262,7 +262,7 @@ def check_scope():
         'com.zte.cn.doubleapp',
         'com.zte.recommend', 'com.zte.game.plugintrigger',
         'cn.nubia.gamelauncher', 'cn.nubia.gameassist', 'cn.nubia.gamelab',
-        'cn.nubia.fan',
+        'cn.nubia.fan', 'cn.zte.chargeseparation', 'com.zte.powersavemode',
         'com.mi.health', 'com.autonavi.minimap', 'com.zte.mifavor.launcher',
         'com.zte.mifavor.zsearch',
         'com.android.gallery3d',

@@ -78,7 +78,7 @@ public class PageCases {
  void addView(View v,int i,FrameLayout.LayoutParams p){children.add(i,v);}void removeView(View v){children.remove(v);}
  int id(View v){return v==networks?CONTROLS:v==mediaPage?MUSIC:v==topPage?UPPER:ROUTE;}
  void openNativePage(){}void jump(int target){page=target;check(target!=MUSIC || children.contains(mediaPage),"never select absent music");}
- static class Host{int upperId=42,upperNavigationId=-1;boolean home,unknown;String action;boolean homeAloneBehindUpper(){if(unknown)throw new IllegalStateException();return home;}void log(String s){}void upperAction(String a,Runnable done){action=a;if(done!=null)done.run();}}
+ static class Host{int upperId=42,upperNavigationId=-1;boolean home,unknown;String action;boolean homeAloneBehindUpper(){if(unknown)throw new IllegalStateException();return home;}void log(String s){}void upperAction(String a){upperAction(a,null);}void upperAction(String a,Runnable done){action=a;if(done!=null)done.run();}}
  static class Upper {Host host;Upper(Host h){host=h;}void render(boolean taskFace){}}
  static class Owner {Host host=new Host();Upper upper=new Upper(host);}Owner owner=new Owner();
  UPDATE
@@ -123,6 +123,8 @@ public class SideLifecycleCases {
  static boolean active=true,ending,available=true;static int principal;static Object lastMain;
  static Map<Integer,SavedTask> saved=new HashMap<>();static Map<Integer,Task> live=new HashMap<>();static SideSlots slots=new SideSlots();
  static class WorkspaceUsers{static boolean allows(Object c,int p,int u){return p==u;}}
+ static class WorkspaceBackFocus{static boolean mainPreferred;}
+ static class NativeTopTask{static int upper=-1;static boolean held(int id){return id==upper;}}
  static class WorkspaceMainFocus{static boolean secondary(Object t){return t instanceof Task x && slots.index(x.mTaskId)>=0;}}
  static class WorkspaceReadmit{static SavedTask pending;static boolean allowsFocus(SavedTask r,Object t){return r==pending && r.task==t;}}
  static class Info{boolean isVisible=true;}static class Surface {int id=99;int getLayerId(){return id;}}

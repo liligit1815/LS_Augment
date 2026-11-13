@@ -10,6 +10,8 @@ public final class HookTargetRegistry {
     private static final Set<String> PACKAGES = Collections.unmodifiableSet(
             new LinkedHashSet<>(Arrays.asList(
                     "com.android.settings",
+                    "cn.zte.chargeseparation",
+                    "com.zte.powersavemode",
                     "com.android.systemui",
                     "zte.com.cn.alarmclock",
                     "cn.zte.recorder",

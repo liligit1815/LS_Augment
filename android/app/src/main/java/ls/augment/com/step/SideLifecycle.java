@@ -54,7 +54,7 @@ final class SideLifecycle {
     static SavedTask owned(Object task) {
         if(task==null || !active || ending || call(task,"getDisplayContent")!=Wm.display)return null;
         int id=(Integer)field(task,"mTaskId");SavedTask record=saved.get(id);
-        if(slots.index(id)<0 || record==null || !record.dirty || record.task!=task
+        if((slots.index(id)<0 && !(WorkspaceBackFocus.mainPreferred && NativeTopTask.held(id))) || record==null || !record.dirty || record.task!=task
                 || !WorkspaceUsers.allows(Wm.context,principal,record.user)
                 || liveTask(id,record.token)!=task || call(task,"getParent")!=record.parent
                 || (Integer)call(task,"getWindowingMode")!=6

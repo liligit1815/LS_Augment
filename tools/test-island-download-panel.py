@@ -119,6 +119,18 @@ android.content.res.Resources.colors.put("dynamic_island_text_color",0xffffffff)
 content.bindNotice(n,null,"App",(item,intent)->{},reminders::add);
 check(((TextView)field(content,"title")).color==0xffffffff&&((TextView)field(content,"detail")).color==0xffffffff,"night theme resources retained when reused for notice");
 android.content.res.Resources.colors.clear();
+List<IslandEvent.Action> liveActions=new ArrayList<>();
+IslandEvent.Action stop=new IslandEvent.Action("Stop",()->{}),resume=new IslandEvent.Action("Resume",()->{});
+IslandEvent live=new IslandEvent("screen_record","screen_record",0,1000,new Object(),1,"Recording","Paused","00:04",null,null,List.of(resume,stop));
+content.bindEvent(live,liveActions::add);
+check(progress.visibility==8&&((View)field(content,"trackRow")).visibility==8,"source event cannot retain a download track");
+check(original.getParent()==field(content,"buttons")&&original.visibility==0&&buttons[1].visibility==0,"source actions follow details in their own flow row");
+original.click();buttons[1].click();check(liveActions.equals(List.of(resume,stop)),"source controls dispatch their exact action objects");
+check(remind.visibility==8&&remind.click==null&&((TextView)field(content,"title")).click==null,"source event clears old notification handlers");
+content.bindEvent(new IslandEvent("hotspot","hotspot",0,1000,new Object(),2,"Hotspot","0 devices","0",null,null,List.of()),liveActions::add);
+check(original.click==null&&buttons[1].click==null&&((View)field(content,"buttons")).visibility==8,"replacement with no source controls removes all stale actions");
+content.bind(policy.get("task"),null,"Downloader",dispatch);
+check(progress.visibility==0&&progress.indeterminate,"download can reuse an event panel without losing its progress");
 content.clear();int count=commands.size();original.click();((ImageView)field(content,"icon")).click();
 check(commands.size()==count&&original.click==null,"retired panel releases actions");
 check(!progress.indeterminate&&progress.progress==0&&((TextView)field(content,"title")).text.length()==0,"hidden panel stops progress and clears notification content");
@@ -130,8 +142,10 @@ with tempfile.TemporaryDirectory(prefix='duo-download-panel-') as tmp:
     folder=Path(tmp);files=dict(FILES)
     for name in ('IslandDownloadConfig','IslandDownloadPolicy'):
         files['ls/augment/com/'+name+'.java']=(base['SRC']/(name+'.java')).read_text(encoding='utf-8')
-    for name in ('DuoDownloadPanel','IslandDownloadSource'):
+    for name in ('DuoDownloadPanel','IslandDownloadSource','IslandEvent'):
         files['ls/augment/com/hook/'+name+'.java']=(base['SRC']/'hook'/(name+'.java')).read_text(encoding='utf-8')
+    # Presentation is verified in the device/native-resource suite; keep the legacy custom layout here.
+    files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int PANEL_ICON=42,TEXT_GAP=6,TITLE=16,DETAIL=12,COMPACT_TEXT=14;static boolean custom(Context c){return true;}static void panel(android.view.View v){}static void text(TextView v,int s,boolean p){}}'
     files['ls/augment/com/hook/DownloadPanelTest.java']=HARNESS
     for name,content in files.items():
         path=folder/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8')

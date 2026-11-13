@@ -198,9 +198,7 @@ public final class ConfigTransferActivity extends Activity {
     private void prepareImport(JSONObject document)throws Exception{
         AtomicWorkbenchAppPreferencesTransfer.Import apps=AtomicWorkbenchAppPreferencesTransfer.readDocument(document,android.os.Process.myUid()/100000);
         JSONObject values=document.getJSONObject("settings"),images=document.optJSONObject("images");if(images==null)images=new JSONObject();
-        LinkedHashMap<String,String> updates=new LinkedHashMap<>();Iterator<String> keys=values.keys();
-        while(keys.hasNext()){String key=keys.next();if(EXCLUDED.contains(key))continue;if(!ConfigSchema.contains(key)||!(values.get(key) instanceof String))throw new IOException("未知或无效配置项："+key);
-            String value=key.equals(ConfigSchema.HIDE_TARGETS)?values.getString(key):ConfigSchema.normalize(key,values.getString(key));if(value==null)throw new IOException("配置值无效："+key);updates.put(key,value);}
+        LinkedHashMap<String,String> updates=importSettings(values);
         // This new preference did not exist in old backups; never reinterpret the old empty-slot key.
         updates.putIfAbsent(AtomicWorkbenchConfig.SIDE_COUNT, "3");
         // Health bindings and hardware compatibility remain specific to this installation.
@@ -245,6 +243,18 @@ public final class ConfigTransferActivity extends Activity {
         if(raw!=null){RootHideManager.OperationResult validation=new RootHideManager(this).validateImportTargets(targets);if(!validation.success)throw new IOException(validation.message);}
         transfer.phase="import_confirmation";
         transfer.deliver(screen->screen.confirmImport(updates,media,statusbarMedia,fontMedia,statusbarNotices,raw,targets,apps));
+    }
+    static LinkedHashMap<String,String> importSettings(JSONObject values)throws Exception {
+        LinkedHashMap<String,String> updates=new LinkedHashMap<>();Iterator<String> keys=values.keys();
+        while(keys.hasNext()) {
+            String key=keys.next();
+            if(EXCLUDED.contains(key)||IslandSceneRegistry.retiredSetting(key))continue;
+            if(!ConfigSchema.contains(key)||!(values.get(key) instanceof String))throw new IOException("未知或无效配置项："+key);
+            String value=key.equals(ConfigSchema.HIDE_TARGETS)?values.getString(key):ConfigSchema.normalize(key,values.getString(key));
+            if(value==null)throw new IOException("配置值无效："+key);
+            updates.put(key,value);
+        }
+        return updates;
     }
     /** Old backups may carry worksheet-only notices; validate them without restoring an inactive reference. */
     private static Map<String,String> importedNotices(JSONObject object,Map<String,String> values)throws Exception {

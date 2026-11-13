@@ -45,11 +45,12 @@ final class DuoDownloadPanel {
         headingRow=new LinearLayout(context);headingRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
         icon=new ImageView(context);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         android.view.ViewGroup.LayoutParams nativeIcon=((View)art).getLayoutParams();
-        headingRow.addView(icon,new LinearLayout.LayoutParams(nativeIcon!=null&&nativeIcon.width>0?nativeIcon.width:dp(28),nativeIcon!=null&&nativeIcon.height>0?nativeIcon.height:dp(28)));
+        int iconSize=dp(Native12IslandStyle.PANEL_ICON);
+        headingRow.addView(icon,new LinearLayout.LayoutParams(iconSize,iconSize));
         title=text(15);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);
         copyTextAppearance(nativeTitle,title);
         LinearLayout labels=new LinearLayout(context);labels.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);label.setMarginStart(dp(10));
+        LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);label.setMarginStart(dp(Native12IslandStyle.TEXT_GAP));
         headingRow.addView(labels,label);labels.addView(title,new LinearLayout.LayoutParams(-1,-2));
         detail=text(12);detail.setMaxLines(2);detail.setEllipsize(TextUtils.TruncateAt.END);
         copyTextAppearance(nativeDetail,detail);
@@ -104,9 +105,9 @@ final class DuoDownloadPanel {
         title.setText(TextUtils.isEmpty(heading)?app:heading);
         CharSequence body=n.extras.getCharSequence(Notification.EXTRA_TEXT);
         detail.setText(TextUtils.isEmpty(body)?app:body);detail.setVisibility(View.VISIBLE);
-        status.setVisibility(View.VISIBLE);status.setText(entry.indeterminate?"下载中":entry.percent+"%");
+        status.setVisibility(View.VISIBLE);status.setText(entry.indeterminate?"传输中":entry.percent+"%");
         icon.setImageDrawable(artwork);NativeIslandHost.applyIconShape(icon,
-                FeatureSettings.integer(context,ls.augment.com.SystemUiOptions.ISLAND_APP_STYLE,0,0,1)==1,dp(5));
+                false,dp(5));
         progress.setIndeterminate(entry.indeterminate);if(!entry.indeterminate)progress.setProgress(entry.percent);
         title.setOnClickListener(v->{if(n.contentIntent!=null)action.accept(entry,n.contentIntent);});
         icon.setOnClickListener(v->{if(n.contentIntent!=null)action.accept(entry,n.contentIntent);});
@@ -128,6 +129,25 @@ final class DuoDownloadPanel {
         boolean canSnooze=source.isClearable();
         snooze.setVisibility(canSnooze?View.VISIBLE:View.GONE);
         snooze.setOnClickListener(canSnooze?v->remind.accept(source):null);
+    }
+    void bindEvent(IslandEvent event,java.util.function.Consumer<IslandEvent.Action> dispatch){
+        nativeAppearance();title.setText(event.title);detail.setText(event.detail);detail.setVisibility(View.VISIBLE);
+        icon.setImageDrawable(event.icon);title.setOnClickListener(null);title.setClickable(false);
+        icon.setOnClickListener(null);icon.setClickable(false);
+        status.setVisibility(View.GONE);progress.setIndeterminate(false);progress.setVisibility(View.GONE);trackRow.setVisibility(View.GONE);
+        snooze.setVisibility(View.GONE);snooze.setOnClickListener(null);
+        Button first=actionButtons[0];
+        if(first.getParent()!=buttons){((LinearLayout)first.getParent()).removeView(first);buttons.addView(first,0,new LinearLayout.LayoutParams(-2,-2));}
+        buttons.setVisibility(event.actions.isEmpty()?View.GONE:View.VISIBLE);
+        for(int i=0;i<actionButtons.length;i++){
+            Button button=actionButtons[i];
+            if(i>=event.actions.size()){button.setVisibility(View.GONE);button.setOnClickListener(null);continue;}
+            IslandEvent.Action action=event.actions.get(i);button.setText(action.label);button.setVisibility(View.VISIBLE);
+            button.setPadding(dp(10),0,dp(10),0);button.setMinWidth(dp(48));button.setMinimumWidth(dp(48));
+            LinearLayout.LayoutParams bounds=(LinearLayout.LayoutParams)button.getLayoutParams();
+            bounds.width=Math.max(dp(48),Math.min(dp(128),(int)Math.ceil(button.getPaint().measureText(action.label))+dp(22)));
+            button.setLayoutParams(bounds);button.setOnClickListener(v->dispatch.accept(action));
+        }
     }
     private void bindButtons(List<Notification.Action> available,LinearLayout inline,java.util.function.Consumer<PendingIntent> send){
         Button first=actionButtons[0];
@@ -180,6 +200,10 @@ final class DuoDownloadPanel {
         int button=nativeColor("dynamic_island_btn_bg_color",(primary&0x00ffffff)|0x22000000);
         for(Button action:actionButtons)action.setBackgroundTintList(ColorStateList.valueOf(button));
         snooze.setBackgroundTintList(ColorStateList.valueOf(button));
+        {
+            Native12IslandStyle.panel(host);Native12IslandStyle.text(title,Native12IslandStyle.TITLE,true);
+            Native12IslandStyle.text(detail,Native12IslandStyle.DETAIL,false);Native12IslandStyle.text(status,Native12IslandStyle.COMPACT_TEXT,false);
+        }
     }
     int desiredHeight(int width){
         body.measure(View.MeasureSpec.makeMeasureSpec(Math.max(1,width-host.getPaddingLeft()-host.getPaddingRight()),View.MeasureSpec.EXACTLY),

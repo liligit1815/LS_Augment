@@ -20,6 +20,7 @@ final class LauncherCleanupBombHook {
     private static final Map<View,Blast> FRAGMENT_VIEWS=new WeakHashMap<>();
     private static final Map<Object,Blast> SPRINGS=new WeakHashMap<>();
     private static final Map<View,IconBinding> ICONS=new WeakHashMap<>();
+    private static final Map<View,WeakReference<View>> ICON_HOSTS=new WeakHashMap<>();
 
     // Injected OEM/framework boundary: runtime reflection is required; retain capability validation and the caller's failure path.
     //noinspection PrivateApi
@@ -166,7 +167,19 @@ final class LauncherCleanupBombHook {
             }));
             bindIconHost(module,loader,"OverviewActionsView","remove_all_button");
             bindIconHost(module,loader,"MFVClearAllButton","mfv_clear_iv");
+            installIconStateInvalidation(module);
         }catch(Throwable error){module.logFeatureError("CLEANUP_BOMB_UNAVAILABLE",error);}
+    }
+    private static void installIconStateInvalidation(AugmentModule module){
+        try{
+            Method state=View.class.getDeclaredMethod("drawableStateChanged");
+            module.registerFeatureHook(module.prepareFeatureHook(state,"launcher.cleanup.icon_state",false).intercept(chain->{
+                Object result=chain.proceed();View owner=(View)chain.getThisObject();
+                WeakReference<View> child=ICON_HOSTS.get(owner);View image=child==null?null:child.get();
+                if(image!=null)image.invalidate();else if(ICONS.containsKey(owner))owner.invalidate();
+                return result;
+            }));
+        }catch(ReflectiveOperationException error){module.logFeatureError("CLEANUP_ICON_STATE_UNAVAILABLE",error);}
     }
     /** Keep the inspected native completion attached to its own SpringSet. The
      * selected tasks and removal listeners are never rebuilt or called twice. */
@@ -224,21 +237,23 @@ final class LauncherCleanupBombHook {
         return bindControl(image,null);
     }
     private static IconBinding bindControl(View image,View clickHost){
+        if(clickHost!=null)ICON_HOSTS.put(clickHost,new WeakReference<>(image));
         IconBinding binding=ICONS.get(image);
         if(binding==null){binding=new IconBinding(image,clickHost);ICONS.put(image,binding);image.addOnAttachStateChangeListener(binding);if(image.isAttachedToWindow())binding.onViewAttachedToWindow(image);}
         return binding;
     }
     private static final class IconBinding implements View.OnAttachStateChangeListener {
-        final WeakReference<View> view;final CleanupIconImage artwork;final CleanupIconLayout layout;final Runnable changed=this::refresh;boolean attached;
-        IconBinding(View image,View host){view=new WeakReference<>(image);artwork=new CleanupIconImage(image);layout=new CleanupIconLayout(image,host);}
+        final WeakReference<View> view;final CleanupIconImage artwork;final CleanupIconLayout layout;final CleanupCapsulePosition position;final Runnable changed=this::refresh;boolean attached;
+        IconBinding(View image,View host){view=new WeakReference<>(image);artwork=new CleanupIconImage(image);layout=new CleanupIconLayout(image,host);position=new CleanupCapsulePosition(image);}
         void refresh(){View image=view.get();if(image!=null){
             boolean enabled=FeatureSettings.enabled(image.getContext(),LauncherOptions.CLEANUP_BOMB);
             boolean c17=enabled&&"0".equals(FeatureSettings.snapshot(image.getContext()).get(LauncherOptions.CLEANUP_ICON_STYLE));
             layout.update(c17);
+            position.update(c17);
             artwork.update(enabled?(c17?CleanupIconImage.C17:FeatureSettings.snapshot(image.getContext()).get(LauncherOptions.CLEANUP_ICON)):"");image.invalidate();}}
         void draw(Canvas canvas,float x,float y,float radius){artwork.draw(canvas,x,y,radius);}
         @Override public void onViewAttachedToWindow(View image){if(!attached){attached=true;FeatureSettings.addSnapshotListener(image.getContext(),changed);}refresh();}
-        @Override public void onViewDetachedFromWindow(View image){attached=false;FeatureSettings.removeSnapshotListener(changed);artwork.clear();layout.update(false);}
+        @Override public void onViewDetachedFromWindow(View image){attached=false;FeatureSettings.removeSnapshotListener(changed);artwork.clear();position.update(false);layout.update(false);}
     }
     private static final class Blast extends Drawable implements View.OnAttachStateChangeListener {
         final AugmentModule module;final View owner,root,source;final Field overview;

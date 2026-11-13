@@ -77,11 +77,9 @@ final class UpperRoll extends View {
                 Class<?> api=Class.forName(name,false,cl),args=Class.forName(name+"$LayerCaptureArgs",false,cl);
                 Class<?> builder=Class.forName(name+"$LayerCaptureArgs$Builder",false,cl),result=Class.forName(name+"$ScreenshotHardwareBuffer",false,cl);
                 Method read=OwnershipBridge.method(api,"captureLayers",args);
-                Method secure=OwnershipBridge.method(builder,"setCaptureSecureLayers",boolean.class);
-                Method protectedContent=OwnershipBridge.method(builder,"setAllowProtected",boolean.class);
                 if(read.getReturnType()!=result || OwnershipBridge.method(result,"containsSecureLayers").getReturnType()!=boolean.class)continue;
                 Object b=builder.getConstructor(SurfaceControl.class).newInstance(task);
-                secure.invoke(b,false);protectedContent.invoke(b,false);
+                String policy=CaptureSafety.configure(b,cl);
                 call(b,"setSourceCrop",new Rect(0,0,w,h));call(b,"setFrameScale",.5f);
                 Object capture=read.invoke(null,call(b,"build"));if(capture==null)return null;
                 try(HardwareBuffer buffer=(HardwareBuffer)call(capture,"getHardwareBuffer")){
@@ -89,7 +87,10 @@ final class UpperRoll extends View {
                     Bitmap raw=(Bitmap)call(capture,"asBitmap");
                     if(raw==null)return null;
                     try{
-                        if(Math.abs(raw.getWidth()-w*.5f)>1 || Math.abs(raw.getHeight()-h*.5f)>1)return null;
+                        if(Math.abs(raw.getWidth()-w*.5f)>1 || Math.abs(raw.getHeight()-h*.5f)>1){
+                            diagnostic("TASK_FRAME","size_rejected;expected="+w+"x"+h+";actual="+raw.getWidth()+"x"+raw.getHeight());return null;
+                        }
+                        diagnostic("TASK_FRAME","sampled;policy="+policy+";size="+raw.getWidth()+"x"+raw.getHeight());
                         return raw.copy(Bitmap.Config.ARGB_8888,false);
                     }finally{raw.recycle();}
                 }

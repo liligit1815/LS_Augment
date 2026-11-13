@@ -79,6 +79,42 @@ files={
  public StarryIslandCardRender(Context c){context=c;}public void initCardPusher(){}public void render(List<?> list){}
  private void removeCard(String id){removals.add(id);cardIdToAdapterMap.remove(id);}}''',
 }
+# Source messages become real native Views only in this receiver fixture. Ownership requires an explicit draw.
+files.update({
+'android/os/SystemClock.java':'package android.os;public class SystemClock{public static long elapsedRealtime(){return 1;}}',
+'android/graphics/Rect.java':'package android.graphics;public class Rect{public boolean isEmpty(){return false;}}',
+'android/view/ViewParent.java':'package android.view;public interface ViewParent{}',
+'android/view/ViewTreeObserver.java':'''package android.view;import java.util.*;public class ViewTreeObserver{
+ public interface OnDrawListener{void onDraw();}public interface OnPreDrawListener{boolean onPreDraw();}
+ public List<OnDrawListener> draws=new ArrayList<>();public boolean isAlive(){return true;}
+ public void addOnDrawListener(OnDrawListener l){draws.add(l);}public void removeOnDrawListener(OnDrawListener l){draws.remove(l);}
+ public void addOnPreDrawListener(OnPreDrawListener l){}public void removeOnPreDrawListener(OnPreDrawListener l){}
+ public void draw(){for(OnDrawListener l:new ArrayList<>(draws))l.onDraw();}}''',
+'android/view/View.java':'''package android.view;import android.graphics.Rect;public class View implements ViewParent{
+ public static final int VISIBLE=0;public ViewTreeObserver observer=new ViewTreeObserver();public boolean isAttachedToWindow(){return true;}public boolean isShown(){return true;}
+ public int getWindowVisibility(){return 0;}public int getWidth(){return 100;}public int getHeight(){return 32;}public float getAlpha(){return 1;}
+ public ViewParent getParent(){return null;}public boolean getGlobalVisibleRect(Rect r){return true;}public ViewTreeObserver getViewTreeObserver(){return observer;}
+ public void invalidate(){}public void post(Runnable r){new android.os.Handler().post(r);}public View getSmallIsland(){return null;}public View getPanelIsland(){return null;}}''',
+'ls/augment/com/hook/SystemUiAdapter.java':'''package ls.augment.com.hook;import java.lang.reflect.*;class SystemUiAdapter{
+ static Object field(Object o,String n){if(o==null)return null;for(Class<?> c=o.getClass();c!=null;c=c.getSuperclass())try{Field f=c.getDeclaredField(n);f.setAccessible(true);return f.get(o);}catch(Exception ignored){}return null;}
+ static Object call(Object o,String n)throws Exception{return o.getClass().getMethod(n).invoke(o);}}''',
+'ls/augment/com/IslandSceneRegistry.java':'''package ls.augment.com;public class IslandSceneRegistry{public static boolean known(String s){return true;}public static String key(String s){return "media".equals(s)?"ls_augment_rm_island_music":"charging".equals(s)?"ls_augment_rm_island_charging":"scenes_"+s;}}''',
+'ls/augment/com/hook/FeatureRuntimeLog.java':'package ls.augment.com.hook;class FeatureRuntimeLog{static void state(String a,String b,String c){}}',
+})
+for name in ['IslandOwnershipRegistry','IslandNativeUpdateQueue','hook/IslandSceneSelection','hook/IslandFrameProof']:
+    files['ls/augment/com/'+name+'.java']=(SRC/(name+'.java')).read_text(encoding='utf-8')
+files['com/zte/toolsdk/common/CardMessage.java']=files['com/zte/toolsdk/common/CardMessage.java'].replace('class CardMessage{','class CardMessage extends android.view.View{')
+files['com/zte/feature/dynamicisland/PermanentIslandManager.java']=files['com/zte/feature/dynamicisland/PermanentIslandManager.java'].replace('public Map<String,Object>', 'public android.view.View mDynamicIslandRoot=new android.view.View();public boolean mInteractive=true;public Object getPermanentIsland(){return null;}public Map<String,Object>')
+files['com/zte/feature/dynamicisland/DynamicPermanentIsland.java']='''package com.zte.feature.dynamicisland;public class DynamicPermanentIsland extends android.view.View{
+ public String id;public DynamicPermanentIsland(String id){this.id=id;}public String getPackageName(){return id;}}'''
+files['com/zte/feature/dynamicisland/PermanentIslandManager.java']=files['com/zte/feature/dynamicisland/PermanentIslandManager.java'].replace('public Map<String,Object>', '''
+ public boolean mAnimProcessing,mUpdateProcessing;public Runnable mPendingUpdateTask;
+ public List<String> updateCalls=new ArrayList<>();
+ public void addPermanentIslandFullScreen(DynamicPermanentIsland card,boolean launcher){new android.os.Handler().post(()->updateIslandVisibilityFullScreenPolling(card,true,launcher));}
+ public void updateIslandVisibilityFullScreenPolling(DynamicPermanentIsland card,boolean add,boolean launcher){updateCalls.add(card.id+":"+add);}
+ public Map<String,Object>''')
+files['ls/augment/com/hook/NativeIslandScenes.java']=files['ls/augment/com/hook/NativeIslandScenes.java'].replace('static void fullscreenCapsules', 'static boolean capsuleSupported(String s){return true;}static void fullscreenCapsules')
+
 adapters=[('calendar_meeting','meeting.starryisland.Meeting'),('scenic_guide','electronicguide.starryisland.ElectronicGuide'),
 ('nearby_charging','charge.starryisland.ChargingReminder'),('cycling','cycling.starryisland.ReturnBike'),('flight','travel.starryisland.Flight'),
 ('preflight_battery','travel.starryisland.BatteryCharging'),('weather_travel','weather.starryisland.Weather'),('taxi','taxi.starryisland.Taxi'),
@@ -121,8 +157,16 @@ public class TestMagicIsland{
  public static void main(String[] args)throws Throwable{
  TestMagicSelection.run();Context c=new Context();c.resolver.settings.put("dynamic_island_function_switch",1);
  FeatureSettings.flags.put("duo",true);FeatureSettings.flags.put("scenes",true);
- AugmentModule mod=new AugmentModule();check(MagicIslandScenes.install(mod,TestMagicIsland.class.getClassLoader())==3,"receiver contract missing");
+ AugmentModule mod=new AugmentModule();check(MagicIslandScenes.install(mod,TestMagicIsland.class.getClassLoader())==4,"receiver contract missing");
  Child host=new Child();MagicIslandScenes gate=new MagicIslandScenes(c,host);gate.start();
+ FeatureSettings.flags.put("scenes_countdown",true);host.mAnimProcessing=true;
+ DynamicPermanentIsland old=new DynamicPermanentIsland("zte.com.cn.alarmclock_timer_countdown");
+ mod.call(host,"updateIslandVisibilityFullScreenPolling",new Class[]{DynamicPermanentIsland.class,boolean.class,boolean.class},old,false,false);
+ mod.call(host,"updateIslandVisibilityFullScreenPolling",new Class[]{DynamicPermanentIsland.class,boolean.class,boolean.class},new DynamicPermanentIsland(old.id),true,true);
+ check(host.updateCalls.isEmpty(),"busy native animation received an overwriting update");host.mAnimProcessing=false;android.os.Handler.drain();
+ check(host.updateCalls.equals(List.of(old.id+":false",old.id+":true")),"source remove/create order lost");
+ host.mAnimProcessing=true;mod.call(host,"updateIslandVisibilityFullScreenPolling",new Class[]{DynamicPermanentIsland.class,boolean.class,boolean.class},new DynamicPermanentIsland("unknown"),true,false);
+ check(host.updateCalls.get(2).equals("unknown:true"),"unknown native scene delayed");host.mAnimProcessing=false;
  for(String id:new String[]{"charging_island","media_island","zte.com.cn.alarmclock_timer_countdown","com.zte.cn.zteshare_share_transfer","cn.zte.aigcinput_notebook_ai_text_generation_progress",
  "cn.zte.recorder_recorder_background","com.android.dialer_call_background","com.zte.nebulatranslation_transcription","com.zte.nebulatranslation_call","com.zte.multscr_com.zte.multscr.share_transfer","com.zte.ai.knowledge_aik_island_main_card"}){
   String scene=MagicIslandPolicy.scene(id);check(scene!=null,"missing core scene");
@@ -143,7 +187,9 @@ public class TestMagicIsland{
  check(Boolean.FALSE.equals(mod.call(host,"isDynamicIslandDisabled",new Class[]{String.class},"media_island")),"master OFF did not restore native behavior");
  host.mAppIslandList.remove("zte.com.cn.alarmclock_timer_countdown");CardMessage absent=new CardMessage("zte.com.cn.alarmclock_timer_countdown");mod.call(host,"handleCardMessage",new Class[]{CardMessage.class,boolean.class},absent,false);
  check(host.mAppIslandList.get(absent.id)==absent,"existing native countdown still accepts fresh update with completion OFF");
- android.os.Handler.drain();check(NativeIslandScenes.owned.containsAll(Set.of("record","call","meeting","ai")),"native card ownership suppresses capsules independently of completion");
+ android.os.Handler.drain();check(NativeIslandScenes.owned.isEmpty(),"queued cards do not own capsules before draw");
+ for(Object view:host.mAppIslandList.values())if(view instanceof android.view.View)((android.view.View)view).observer.draw();android.os.Handler.drain();
+ check(NativeIslandScenes.owned.containsAll(Set.of("record","call","meeting","ai")),"selected drawn cards own their capsules");
  mod.call(host,"handleRemoveIsland",new Class[]{String.class},"cn.zte.recorder_recorder_background");android.os.Handler.drain();
  check(!NativeIslandScenes.owned.contains("record"),"native card removal releases its capsule ownership");
  FeatureSettings.flags.put("scenes",true);FeatureSettings.flags.put("duo",false);

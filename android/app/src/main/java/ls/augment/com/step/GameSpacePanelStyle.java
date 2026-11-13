@@ -3,6 +3,7 @@ package ls.augment.com.step;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.*;
+import android.graphics.drawable.Drawable;
 
 /** Stock GameAssist artwork, resolved by capability rather than device/version or resource id. */
 final class GameSpacePanelStyle {
@@ -43,7 +44,22 @@ final class GameSpacePanelStyle {
         }
         style.body.lineTo(0,1);style.body.close();return style;
     }
-    Bitmap render(int height,boolean right){
+    int stairInset(int height,int top,int width,int length,int gap){
+        // Fit the full sloping control against the installed artwork's actual
+        // inner edge, including the bend near the illuminated arrow.
+        Bitmap back=images[0];int w=back.getWidth(),h=back.getHeight();int[] row=new int[w];
+        float inset=Float.POSITIVE_INFINITY;
+        for(int i=0;i<=32;i++){
+            float t=i/32f;
+            int y=Math.max(0,Math.min(h-1,Math.round((top+t*length)*(h-1)/height)));
+            back.getPixels(row,0,w,0,y,w,1);int x=0;
+            while(x<w && Color.alpha(row[x])<=10)x++;
+            float edge=height*(OFFSETS[0]+(x+2f)/h);
+            inset=Math.min(inset,edge-gap-width*(1-.84f*t));
+        }
+        return (int)Math.floor(inset);
+    }
+    Bitmap renderBase(int height,boolean right){
         int width=(int)Math.ceil(height*.95f);
         Bitmap result=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
         Canvas c=new Canvas(result);Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
@@ -53,17 +69,39 @@ final class GameSpacePanelStyle {
         c.save();c.clipPath(outline);p.setColor(Color.BLACK);c.drawRect(0,0,width,height*.153f,p);
         p.setShader(new LinearGradient(0,0,width,0,new int[]{0x00ffffff,0x00ffffff,0x66ffffff},new float[]{0,.1f,1},Shader.TileMode.CLAMP));
         p.setStrokeWidth(2*height/1152f);c.drawLine(0,height*.153f,width,height*.153f,p);p.setShader(null);c.restore();
-        for(int i=0;i<images.length;i++){
+        for(int i=0;i<2;i++){
             Bitmap bitmap=images[i];float x=OFFSETS[i]*height;
-            int layer=i>=2?c.saveLayer(0,0,width,height,null):-1;
             c.drawBitmap(bitmap,null,new RectF(x,0,x+height*bitmap.getWidth()/(float)bitmap.getHeight(),height),p);
-            if(i>=2){
-                p.setShader(mask(height,(right?.298f:.598f)-(i==2?.1f:0),i==3));
-                p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));c.drawRect(0,0,width,height,p);
-                p.setXfermode(null);p.setShader(null);c.restoreToCount(layer);
-            }
         }
         return result;
+    }
+    /** Keep the shell cached; only the two original lamp layers are redrawn during entry. */
+    final class LampDrawable extends Drawable {
+        final int height,width;final boolean right;final Bitmap base;
+        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        float phase=1;int opacity=255;
+        LampDrawable(int height,boolean right){
+            this.height=height;this.right=right;width=(int)Math.ceil(height*.95f);base=renderBase(height,right);
+        }
+        void phase(float value){phase=GameSpacePanelMotion.clamp(value);invalidateSelf();}
+        @Override public void draw(Canvas canvas){
+            int save=canvas.save();canvas.translate(getBounds().left,getBounds().top);
+            canvas.scale(getBounds().width()/(float)width,getBounds().height()/(float)height);
+            paint.setAlpha(opacity);canvas.drawBitmap(base,0,0,paint);
+            if(right){canvas.translate(width,0);canvas.scale(-1,1);}
+            float level=GameSpacePanelMotion.lampLevel(phase,right?.298f:.598f);
+            for(int i=2;i<images.length;i++){
+                int layer=canvas.saveLayer(0,0,width,height,null);Bitmap bitmap=images[i];float x=OFFSETS[i]*height;
+                canvas.drawBitmap(bitmap,null,new RectF(x,0,x+height*bitmap.getWidth()/(float)bitmap.getHeight(),height),paint);
+                paint.setAlpha(255);paint.setShader(mask(height,level-(i==2?.1f:0),i==3));
+                paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));canvas.drawRect(0,0,width,height,paint);
+                paint.setXfermode(null);paint.setShader(null);paint.setAlpha(opacity);canvas.restoreToCount(layer);
+            }
+            canvas.restoreToCount(save);
+        }
+        @Override public void setAlpha(int value){opacity=value;invalidateSelf();}
+        @Override public void setColorFilter(ColorFilter filter){paint.setColorFilter(filter);invalidateSelf();}
+        @Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
     }
     static LinearGradient mask(int height,float level,boolean glow){
         int[] colors=new int[STOPS.length];float amount=level*17;int full=(int)amount;float fraction=(amount-full)/6;

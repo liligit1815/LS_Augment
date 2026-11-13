@@ -5,6 +5,10 @@
         android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
     <instrumentation android:name="ls.augment.com.UiGestureRunner"
         android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiUpperGestureRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
+    <instrumentation android:name="ls.augment.com.UiEdgeHoldRunner"
+        android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
     <instrumentation android:name="ls.augment.com.UiDragRunner"
         android:targetPackage="ls.augment.regression.ui" android:functionalTest="true" />
     <instrumentation android:name="ls.augment.com.UiTextRunner"

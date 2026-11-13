@@ -334,6 +334,7 @@ final class GameExtrasHook {
     }
 
     private void gameFloat(){
+        total+=AwakeningPromptHook.install(module,loader);
         try{
             Class<?> dialog=Class.forName("cn.zte.gamefloat.gamekeys.entity.GameChickenModeDialog$ChickenModeDialog",false,loader);
             Method show;

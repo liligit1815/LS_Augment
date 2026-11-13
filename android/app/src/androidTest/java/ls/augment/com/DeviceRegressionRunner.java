@@ -610,10 +610,6 @@ public final class DeviceRegressionRunner extends Instrumentation {
                     report.put("islandOrientation",IslandOrientationDeviceCases.run(this));
                     result.putString("islandOrientation",report.getJSONObject("islandOrientation").toString());
                     break;
-                case "native-island-settings":
-                    report.put("nativeIslandSettings",NativeIslandSettingsDeviceCases.run(this));
-                    result.putString("nativeIslandSettings",report.getJSONObject("nativeIslandSettings").toString());
-                    break;
                 case "island-settings-ui":
                     report.put("islandSettingsUi",IslandSettingsUiCases.run(this));
                     result.putString("islandSettingsUi",report.getJSONObject("islandSettingsUi").toString());

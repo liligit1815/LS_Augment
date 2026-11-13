@@ -11,14 +11,15 @@ spec = importlib.util.spec_from_file_location('panel_fixture', ROOT / 'tools/tes
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
 files = dict(fixture.FILES)
+files['android/content/Intent.java']='package android.content;public class Intent{}'
 files['com/zte/feature/dynamicisland/DynamicPermanentIsland.java'] = '''package com.zte.feature.dynamicisland;
 public class DynamicPermanentIsland extends android.view.View {
- public int mCurState=1;public android.view.View panel=new android.view.View();
+ public android.content.Intent createIntent(){return null;}public int mCurState=1;public android.view.View panel=new android.view.View();
  public android.view.View getPanelIsland(){return panel;}
  public static boolean visible(int state){return state==1;}
 }'''
 files['com/zte/feature/dynamicisland/PermanentIslandManager.java'] = '''package com.zte.feature.dynamicisland;
-import android.view.*;
+import android.view.*;import android.content.Intent;
 public class PermanentIslandManager {
  public interface Callback {
   void onPermanentIslandPanelCloseAnimationStart();
@@ -44,7 +45,7 @@ public class PermanentIslandManager {
 '''
 # The real callback contract is implemented by the manager, including inherited fields/methods.
 files['com/zte/feature/dynamicisland/SceneManager.java'] = '''package com.zte.feature.dynamicisland;
-import android.view.View;
+import android.view.View;import android.content.Intent;
 public class SceneManager extends PermanentIslandManager implements PermanentIslandManager.Callback {
  public SceneManager(){mDynamicAnimation=new Animation(this);}
  public void onPermanentIslandPanelCloseAnimationStart(){mDynamicPanelClosing=true;}
@@ -62,7 +63,7 @@ class AugmentModule {
  interface Interceptor {Object intercept(Chain chain)throws Throwable;}
  static class Chain {final Object owner;final Method method;Chain(Object o,Method m){owner=o;method=m;}
   Object getThisObject(){return owner;}List<Object> getArgs(){return List.of();}
-  Object proceed(Object[] args)throws Throwable{try{return method.invoke(owner,args);}catch(InvocationTargetException e){throw e.getCause();}}}
+  Object proceed()throws Throwable{return proceed(new Object[0]);}Object proceed(Object[] args)throws Throwable{try{return method.invoke(owner,args);}catch(InvocationTargetException e){throw e.getCause();}}}
  class Builder {final Method method;Interceptor handler;Builder(Method m){method=m;}
   Builder intercept(Interceptor i){handler=i;return this;}}
  final Map<Method,Interceptor> hooks=new HashMap<>();
@@ -79,8 +80,9 @@ source = (SOURCE / 'NativeIslandScenes.java').read_text('utf-8')
 methods = '\n'.join(fixture.method(source, marker) for marker in (
     'private static int installPanelClicks(', 'private boolean preparePanelExpansion(', 'private void closeOrdinaryPanel('))
 files['ls/augment/com/hook/NativeIslandScenes.java'] = '''package ls.augment.com.hook;
-import java.lang.reflect.*;import android.view.*;import ls.augment.com.NativeIslandSceneOptions;import static ls.augment.com.hook.SystemUiAdapter.*;
+import java.lang.reflect.*;import android.view.*;import android.content.Intent;import ls.augment.com.NativeIslandSceneOptions;import static ls.augment.com.hook.SystemUiAdapter.*;
 class NativeIslandScenes {
+ static final ThreadLocal<Boolean> sourceClick=ThreadLocal.withInitial(()->false);
  static final String OEM="com.zte.feature.dynamicisland.";static NativeIslandScenes selected;
  final Object permanent;final Method visibleState;Object completed;boolean enabled=true,closed;int changed;String diagnostic;
  NativeIslandScenes(com.zte.feature.dynamicisland.PermanentIslandManager m)throws Exception{
@@ -96,13 +98,13 @@ class NativeIslandScenes {
 for name in ['IslandPanelGuard', 'NativeIslandPanelCompat', 'NativeIslandSceneContract']:
     files[f'ls/augment/com/hook/{name}.java'] = (SOURCE / f'{name}.java').read_text('utf-8')
 files['ls/augment/com/NativeIslandSceneOptions.java'] = (SOURCE.parent / 'NativeIslandSceneOptions.java').read_text('utf-8')
-files['ls/augment/com/EnhancementOption.java'] = 'package ls.augment.com;public class EnhancementOption {public static EnhancementOption toggle(String...a){return new EnhancementOption();}}'
+files['ls/augment/com/EnhancementOption.java'] = 'package ls.augment.com;public class EnhancementOption {public static EnhancementOption internal(String k,String d,java.util.function.UnaryOperator<String> v){return new EnhancementOption();}public static EnhancementOption toggle(String...a){return new EnhancementOption();}}'
 files['ls/augment/com/NativeFeatureGroups.java'] = 'package ls.augment.com;public class NativeFeatureGroups {public static class Feature {public Feature(String a,String b,String c,String[] d,String e,String f,Feature[] g){}}}'
 for name in ['RecorderIsland','FlashlightIsland','CountDownIsland','MediaIsland','CallIsland','FaceDetectIsland','MeetingIsland','AIIsland','AIMemIsland']:
     files[f'com/zte/feature/dynamicisland/islands/{name}.java'] = f'package com.zte.feature.dynamicisland.islands;public class {name} extends com.zte.feature.dynamicisland.DynamicPermanentIsland {{}}'
 files['com/zte/feature/dynamicisland/islands/ChildRecorder.java'] = 'package com.zte.feature.dynamicisland.islands;public class ChildRecorder extends RecorderIsland {}'
 files['ls/augment/com/hook/TestNativePanelEntry.java'] = '''package ls.augment.com.hook;
-import com.zte.feature.dynamicisland.*;import android.view.*;import java.lang.reflect.*;
+import com.zte.feature.dynamicisland.*;import android.view.*;import android.content.Intent;import java.lang.reflect.*;
 public class TestNativePanelEntry {
  static int checks;static void check(boolean value,String label){checks++;if(!value)throw new AssertionError(label);}
  static class Fixture {final SceneManager manager=new SceneManager();final NativeIslandScenes scenes;

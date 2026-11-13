@@ -39,11 +39,14 @@ files = {
  static int started,closed;NativeIslandScenes(Object...args){}void start(){started++;}void close(){closed++;}void configurationChanged(){}}''',
     'ls/augment/com/hook/MagicIslandScenes.java': '''package ls.augment.com.hook;class MagicIslandScenes {
  static int started,closed;MagicIslandScenes(Object...args){}void start(){started++;}void close(){closed++;}void refresh(){}}''',
+    'ls/augment/com/hook/NativeIslandMusicRecovery.java':'package ls.augment.com.hook;class NativeIslandMusicRecovery{NativeIslandMusicRecovery(Object...a){}void start(){}void close(){}}',
+    'ls/augment/com/hook/FeatureRuntimeLog.java':'package ls.augment.com.hook;class FeatureRuntimeLog{static void state(String a,String b,String c){}}',
     'ls/augment/com/hook/FeatureSettings.java':'package ls.augment.com.hook;class FeatureSettings{static boolean on=true;static boolean enabled(Object c,String k){return on;}static void diagnostic(Object c,String k,String v){}}',
     'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static String ISLAND="duo";}',
     'ls/augment/com/DuoIslandPolicy.java':'package ls.augment.com;public class DuoIslandPolicy{public static String CAPABILITY="host";}',
     'ls/augment/com/BuildConfig.java':'package ls.augment.com;public class BuildConfig{public static int VERSION_CODE=1;}',
     'ls/augment/com/hook/NativeIslandSettingsHook.java':'package ls.augment.com.hook;class NativeIslandSettingsHook{static void synchronize(Object c,boolean on){android.provider.Settings.System.function=on?1:0;android.provider.Settings.System.enabled=on?1:0;}}',
+    'ls/augment/com/hook/IslandLiveScenes.java':'package ls.augment.com.hook;class IslandLiveScenes{IslandLiveScenes(Object...a){}void start(){}void close(){}}',
     'ls/augment/com/hook/DuoNotificationCards.java':'package ls.augment.com.hook;class DuoNotificationCards{Runnable panelChanged;DuoNotificationCards(Object...args){}void close(){}}',
     'ls/augment/com/MagicIslandPolicy.java':'package ls.augment.com;public class MagicIslandPolicy{public static String CAPABILITY="magic";}',
     'com/zte/base/Feature.java': '''package com.zte.base;public class Feature{public static Feature current;
@@ -59,7 +62,7 @@ public class TestNativeSelection {
  static Object nativeFeature,initializedManager;static TestNativeSelection nativeOwner;
  static WeakReference<View> keyguardView=new WeakReference<>(new View());
  final android.content.Context context=new android.content.Context();final ClassLoader loader=getClass().getClassLoader();final View phone=new View();
- NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;DuoNotificationCards notificationCards;Runnable panelChanged;final Runnable click=()->{};boolean nativeRequested,nativeSelected;
+ NativeIslandFullscreen nativeFullscreen;NativeIslandScenes nativeScenes;MagicIslandScenes magicScenes;NativeIslandMusicRecovery musicRecovery;DuoNotificationCards notificationCards;IslandLiveScenes liveScenes;Runnable panelChanged;final Runnable longClick=()->{},click=()->{};boolean nativeRequested,nativeSelected;
  View waitingNativeRoot;View.OnAttachStateChangeListener nativeAttach;String diagnostic;
  // TIMEOUT
  static class Permanent {

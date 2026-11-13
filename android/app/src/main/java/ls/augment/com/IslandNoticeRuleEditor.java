@@ -97,7 +97,7 @@ final class IslandNoticeRuleEditor {
     }
 
     private void addRule(String title, String key, boolean channel, IslandNoticeRules rules) {
-        String[] labels = {channel ? "跟随应用" : "跟随全局", "关闭上岛", "只显示胶囊", "首次自动展开"};
+        String[] labels = {channel ? "跟随应用" : "跟随全局", "关闭上岛", "仅紧凑显示", "首次自动展开"};
         Button button = ui.textButton(title + " · " + labels[rules.mode(key)]);
         button.setTag("notice-rule:" + key);
         button.setOnClickListener(v -> ui.choiceDialog(title, labels, null, choice -> {

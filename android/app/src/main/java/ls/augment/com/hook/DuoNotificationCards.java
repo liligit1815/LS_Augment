@@ -30,7 +30,17 @@ final class DuoNotificationCards {
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     // SystemUI process-owned host; close retires callbacks after native removal completes.
     //noinspection StaticFieldLeak
-    private static DuoNotificationCards active;
+    private static final java.util.Set<DuoNotificationCards> hosts=java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    private final String id;
+    private static DuoNotificationCards forManager(Object manager){
+        for(DuoNotificationCards host:hosts)if(host.manager==manager&&host.selected())return host;return null;
+    }
+    private static DuoNotificationCards forView(Object view){
+        for(DuoNotificationCards host:hosts)if(host.island==view||host.panelFor(view)!=null)return host;return null;
+    }
+    private static DuoNotificationCards forHeight(Object value){
+        for(DuoNotificationCards host:hosts)if(Integer.valueOf(host.panelHeightId).equals(value)&&host.selectedHeight()>0)return host;return null;
+    }
     // A close callback can arrive after hide(), even after another card or host was attached.
     private static final Map<View, OrdinaryClose> ordinaryCards = new WeakHashMap<>();
     private static boolean closeHook;
@@ -66,6 +76,7 @@ final class DuoNotificationCards {
     private DuoDownloadPanel download;
     private int height;
     private boolean closed,published;
+    private final IslandFrameProof frames=new IslandFrameProof();
     private final Runnable pulse=this::pulse;
     private final Map<View,Retired> retiring=new IdentityHashMap<>();
     private final Runnable reap=this::reap;
@@ -97,17 +108,17 @@ final class DuoNotificationCards {
         closeHook = completion > 0;
         count += completion;
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","showPermanentPanelIsland",0,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forManager(o);
             if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()&&!h.prepareExpansion())return null;
             return PASS;
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"DynamicPermanentIsland","updateViewVisibility",2,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forView(o);
             if(h!=null&&!h.fullscreen&&h.panelFor(o)!=null){((View)o).setAlpha((Boolean)a[0]?1f:0f);return null;}
             return PASS;
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"DynamicPermanentIsland","updatePanelVisibility",3,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forView(o);
             if(h!=null&&!h.fullscreen&&h.panelFor(o)!=null){
                 Class<?> animation=Class.forName(OEM+"DynamicIslandAnimation",false,loader);
                 Method alpha=animation.getDeclaredMethod("startPanelAlphaAnimation",View.class,boolean.class,boolean.class);
@@ -116,27 +127,25 @@ final class DuoNotificationCards {
             }return PASS;
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards","com.zte.utils.ResourceUtil","getDimensionPixelSizeInDefaultDpi",1,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forHeight(a[0]);
             return h!=null&&!h.fullscreen&&h.selectedHeight()>0&&Integer.valueOf(h.panelHeightId).equals(a[0])?h.selectedHeight():PASS;
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","onClick",0,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forManager(o);
             if(h!=null&&h.fullscreen&&o==h.manager&&h.selected())h.prepareExpansion();
             if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()){
-                if(!Boolean.TRUE.equals(call(o,"forceNotClick")))h.open.run();return null;
+                h.expand();return null;
             }return PASS;
         },null);
         // Fullscreen long press opens the source. Preserve the original PendingIntent,
         // rather than reconstructing a different activity Intent from its package.
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"RemoteViewIsland","handleIslandClick",0,(o,a,r)->{
-            DuoNotificationCards h=active;
+            DuoNotificationCards h=forView(o);
             if(h!=null&&o==h.island){h.open.run();return false;}return PASS;
         },null);
         count+=hookNamed(module,loader,"duo_notification_cards",OEM+"PermanentIslandManager","onLongClick",0,(o,a,r)->{
-            DuoNotificationCards h=active;
-            // Ordinary long press keeps its OEM scale/open interaction; only prepare its callback.
-            if(h!=null&&!h.fullscreen&&o==h.manager&&h.selected()&&!h.prepareExpansion())return null;
-            if(h!=null&&h.fullscreen&&o==h.manager&&h.selected()){
+            DuoNotificationCards h=forManager(o);
+            if(h!=null&&o==h.manager&&h.selected()){
                 if(!Boolean.TRUE.equals(call(o,"forceNotClick")))h.open.run();return null;
             }return PASS;
         },null);
@@ -145,7 +154,11 @@ final class DuoNotificationCards {
 
     @SuppressWarnings("unchecked")
     DuoNotificationCards(Context context,ClassLoader loader,Object manager,boolean fullscreen,Runnable open,View statusBar)throws Exception{
-        this.statusBar=statusBar;
+        this(context,loader,manager,fullscreen,open,statusBar,ID);
+    }
+    @SuppressWarnings("unchecked")
+    DuoNotificationCards(Context context,ClassLoader loader,Object manager,boolean fullscreen,Runnable open,View statusBar,String id)throws Exception{
+        this.id=id;this.statusBar=statusBar;
         this.context=context;this.manager=manager;this.fullscreen=fullscreen;this.open=open;
         Class<?> base=Class.forName(OEM+"DynamicPermanentIsland",false,loader);
         Class<?> type=Class.forName(OEM+"RemoteViewIsland",false,loader);
@@ -192,7 +205,7 @@ final class DuoNotificationCards {
         panelWidth=context.getResources().getDimensionPixelSize(resource("dimen","dynamic_island_window_width"));
         panelHeightId=resource("dimen","dynamic_island_panel_height_normal");
         if(panelWidth<=0)throw new IllegalStateException("notification_card_width");
-        active=this;
+        hosts.add(this);
     }
     private void create(boolean progress)throws Exception{
         if(island!=null&&progress==(download!=null))return;
@@ -206,20 +219,21 @@ final class DuoNotificationCards {
         call(large,"initPanelIsland","ls.augment.com","");
         // New flags grant visibility over fullscreen apps/on keyguard, not the host layout.
         // Supplemental notifications retain the previous native restrictions.
-        if(initialize.getParameterCount()==8)initialize.invoke(next,"ls.augment.com",ID,"duo_notification",null,null,1,false,false);
-        else if(initialize.getParameterCount()==5)initialize.invoke(next,"ls.augment.com",ID,null,null,1);
-        else initialize.invoke(next,"ls.augment.com",ID,null,1);
+        if(initialize.getParameterCount()==8)initialize.invoke(next,"ls.augment.com",id,"duo_notification",null,null,1,false,false);
+        else if(initialize.getParameterCount()==5)initialize.invoke(next,"ls.augment.com",id,null,null,1);
+        else initialize.invoke(next,"ls.augment.com",id,null,1);
         call(next,"setPanelIsland",expanded);set(next,"mKeyguardIsland",false);
         ViewGroup smallHost=(ViewGroup)inflate("remote_view_small_island_layout");
         ImageView smallIcon=new ImageView(context);smallIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int iconSize=Math.round(22*context.getResources().getDisplayMetrics().density);
+        int iconSize=Math.round(Native12IslandStyle.SMALL_ICON*context.getResources().getDisplayMetrics().density);
         FrameLayout.LayoutParams iconParams=new FrameLayout.LayoutParams(iconSize,iconSize);iconParams.gravity=android.view.Gravity.CENTER;
         smallHost.addView(smallIcon,iconParams);call(next,"setSmallIsland",smallHost);
         next.addView(small,new FrameLayout.LayoutParams(-1,-1));
         expanded.addView(large,new FrameLayout.LayoutParams(-1,-2));
         DuoDownloadPanel progressPanel=progress?new DuoDownloadPanel(large):null;
-        if(!progress)large.setOnClickListener(v->open.run());
+        if(!progress)large.setOnLongClickListener(v->{open.run();return true;});
         island=next;panel=expanded;compact=small;content=large;download=progressPanel;mini=smallIcon;
+        Native12IslandStyle.compact(small);Native12IslandStyle.panel(large);
         if (!fullscreen && NativeIslandPanelCompat.ordinary(manager))
             ordinaryCards.put(next,new OrdinaryClose(manager,statusBar));
     }
@@ -255,11 +269,20 @@ final class DuoNotificationCards {
             publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
+    boolean showEvent(IslandEvent event,java.util.function.Consumer<IslandEvent.Action> dispatch){
+        if(closed)return false;
+        try{
+            create(true);compactText.bind(event.compact,"");image(compact,"mDisplayIcon",event.icon);mini.setImageDrawable(event.icon);
+            download.bindEvent(event,dispatch);
+            compact.setContentDescription(event.title+"，"+event.compact);content.setContentDescription(event.title+"，"+event.detail);
+            publish();return true;
+        }catch(Exception failure){failed(failure);return false;}
+    }
     boolean showDownload(IslandDownloadPolicy.Entry<StatusBarNotification> entry,Drawable icon,String app,
             BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> action){
         if(closed||entry==null)return false;
         try{
-            create(true);compactText.bind(DuoCompactText.fileName(entry.source.getNotification()),entry.indeterminate?"下载中":entry.percent+"%");
+            create(true);compactText.bind(DuoCompactText.fileName(entry.source.getNotification()),entry.indeterminate?"传输中":entry.percent+"%");
             image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);download.bind(entry,icon,app,action);publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
@@ -283,13 +306,13 @@ final class DuoNotificationCards {
         if(fullscreen){
             // The native manager removes unregistered views during consistency checks.
             if(!published){
-                if(heartbeat!=null)call(manager,"markIslandOnTime",ID);
-                registry.put(ID,island);
+                if(heartbeat!=null)call(manager,"markIslandOnTime",id);
+                registry.put(id,island);
                 if(heartbeat!=null)call(manager,"reportIslandStatus",island,1);
                 add.invoke(manager,island,true);published=true;
-                if(heartbeat!=null)call(manager,"setIslandShowing",ID,true);
+                if(heartbeat!=null)call(manager,"setIslandShowing",id,true);
             }
-            if(registry.get(ID)!=island){hide();return;}
+            if(registry.get(id)!=island){hide();return;}
             panelHeight.invoke(manager,panel);
         }else{
             if(island.getParent()==null)add.invoke(manager,island);
@@ -300,16 +323,19 @@ final class DuoNotificationCards {
             }
         }
         MAIN.removeCallbacks(pulse);
-        if(fullscreen&&heartbeat!=null){heartbeat.invoke(manager,ID);MAIN.postDelayed(pulse,2000);}
+        if(fullscreen&&heartbeat!=null){heartbeat.invoke(manager,id);MAIN.postDelayed(pulse,2000);}
     }
     private void pulse(){
-        if(closed||!published||registry.get(ID)!=island)return;
-        try{heartbeat.invoke(manager,ID);MAIN.postDelayed(pulse,2000);}
+        if(closed||!published||registry.get(id)!=island)return;
+        try{heartbeat.invoke(manager,id);MAIN.postDelayed(pulse,2000);}
         catch(Exception failure){failed(failure);}
     }
     private void failed(Exception failure){hide();FeatureSettings.diagnostic(context,"ls_augment_duo_notification_cards","unavailable:"+failure.getClass().getSimpleName()+":"+failure.getMessage());}
     boolean selected(){try{return island!=null&&call(manager,"getPermanentIsland")==island;}catch(Exception missing){return false;}}
     boolean visible(){return island!=null&&(island.isShown()||expanded());}
+    boolean confirmedFrame(Object revision,Runnable drawn){
+        return !closed&&selected()&&frames.confirm(expanded()?panel:island,revision,drawn);
+    }
     boolean readyForFirstExpansion(){
         return visible()&&selected()&&!Boolean.TRUE.equals(field(manager,"mAnimProcessing"))
                 &&!Boolean.TRUE.equals(field(manager,"mPriorityProcessing"))&&!Boolean.TRUE.equals(field(manager,"mDynamicPanelClosing"));
@@ -344,14 +370,22 @@ final class DuoNotificationCards {
             if (state != null) state.closing = false;
             FeatureSettings.diagnostic(context,"ls_augment_duo_notification_cards","collapse_failed:"+failure.getClass().getSimpleName());}
     }
+    void abortPresentation(){
+        // These are Duo-owned content views. Native exit animation may still run on the outer
+        // card, so make its content invisible before restoring a native heads-up.
+        for(View view:new View[]{compact,content,mini})if(view!=null)view.setVisibility(View.INVISIBLE);
+        if(island!=null)island.setAlpha(0f);if(panel!=null)panel.setAlpha(0f);
+        hide();
+    }
     void hide(){
+        frames.clear();
         IslandPanelInteraction.release(this);
         MAIN.removeCallbacks(pulse);
         View old=island;
         IslandPanelGuard.withdrawing(manager,old);
         OrdinaryClose state = ordinaryCards.get(old);
         if (state != null) state.withdrawing = true;
-        if(old!=null)try{if(fullscreen){if(registry.get(ID)==old)remove.invoke(manager,ID);}
+        if(old!=null)try{if(fullscreen){if(registry.get(id)==old)remove.invoke(manager,id);}
             else if (state == null || !expanded() || (!state.closing && !Boolean.TRUE.equals(field(manager,"mDynamicPanelClosing"))))
                 remove.invoke(manager,old);}
         catch(Exception failure){FeatureSettings.diagnostic(context,"ls_augment_duo_notification_cards","remove_failed:"+failure.getClass().getSimpleName());}
@@ -372,11 +406,11 @@ final class DuoNotificationCards {
         else if(!retiring.isEmpty()){
             for(Retired old:retiring.values())if(old.content!=null)old.content.clear();
             retiring.clear();FeatureSettings.diagnostic(context,"ls_augment_duo_notification_cards","native_removal_timeout");
-            if(closed&&active==this)active=null;
+            if(closed)hosts.remove(this);
         }
-        else if(closed&&active==this)active=null;
+        else if(closed)hosts.remove(this);
     }
-    void close(){closed=true;hide();if(retiring.isEmpty()&&active==this)active=null;}
+    void close(){closed=true;hide();if(retiring.isEmpty())hosts.remove(this);}
     private void text(Object owner,String name,String value){Object view=field(owner,name);if(view instanceof TextView)((TextView)view).setText(value);}
     private void image(Object owner,String name,Drawable value){Object view=field(owner,name);if(view instanceof ImageView)((ImageView)view).setImageDrawable(value);}
     private View inflate(String name){return LayoutInflater.from(context).inflate(resource("layout",name),null);}

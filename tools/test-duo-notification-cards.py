@@ -71,6 +71,11 @@ files['android/app/Notification.java']=files['android/app/Notification.java'].re
 for name in ['DuoCompactText','DuoNotificationCards','DuoDownloadPanel','IslandDownloadSource','NativeIslandPanelCompat','IslandPanelGuard']:
     files['ls/augment/com/hook/'+name+'.java']=(SRC/'hook'/(name+'.java')).read_text(encoding='utf-8')
 files['ls/augment/com/hook/FeatureRuntimeLog.java']='package ls.augment.com.hook;class FeatureRuntimeLog{static void event(String s,String d){}static String failure(Throwable e){return e.getClass().getName();}}'
+# Current shared collaborators; their policies have focused tests of their own.
+files['ls/augment/com/hook/IslandEvent.java']=(SRC/'hook/IslandEvent.java').read_text('utf-8')
+files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int SMALL_ICON=20,PANEL_ICON=42,TEXT_GAP=6,TITLE=16,DETAIL=12,COMPACT_TEXT=12;static void compact(android.view.View v){}static void panel(android.view.View v){}static void text(TextView v,int size,boolean primary){}}'
+files['ls/augment/com/hook/IslandFrameProof.java']='package ls.augment.com.hook;class IslandFrameProof{boolean confirm(android.view.View v,Object revision,Runnable drawn){return false;}void clear(){}}'
+files['android/view/View.java']=files['android/view/View.java'].replace('VISIBLE=0,GONE=8','VISIBLE=0,INVISIBLE=4,GONE=8').replace('public interface OnClickListener','public interface OnLongClickListener{boolean onLongClick(View v);}public void setOnLongClickListener(OnLongClickListener l){}public void setContentDescription(CharSequence s){}public interface OnClickListener')
 files['ls/augment/com/hook/TestUnifiedCards.java']='''package ls.augment.com.hook;import java.util.*;import android.content.*;import android.os.*;import android.service.notification.*;import ls.augment.com.*;import com.zte.feature.dynamicisland.*;
 public class TestUnifiedCards{static int checks;static void check(boolean b,String s){checks++;if(!b)throw new AssertionError(s);}
 public static void main(String[] args)throws Exception{
@@ -95,13 +100,13 @@ check(SystemUiAdapter.close.apply(ordinary,ending,null)==null,"retired owned vie
 check(!ordinary.mDynamicPanelShowing&&!ordinary.mDynamicPanelClosing&&ordinary.current==null&&ordinary.removes==1,"ordinary close did not finish withdrawal");
 for(Runnable pending:new ArrayList<>(Handler.tasks))pending.run();
 for(boolean download:new boolean[]{false,true}){
- OrdinaryManager m=new OrdinaryManager();DuoNotificationCards h=new DuoNotificationCards(ordinaryContext,TestUnifiedCards.class.getClassLoader(),m,false,()->{},bar);
+ OrdinaryManager m=new OrdinaryManager();int[] openedSource={0};DuoNotificationCards h=new DuoNotificationCards(ordinaryContext,TestUnifiedCards.class.getClassLoader(),m,false,()->openedSource[0]++,bar);
  if(download){IslandDownloadPolicy<StatusBarNotification> p=new IslandDownloadPolicy<>();StatusBarNotification n=new StatusBarNotification("task",1,2);
   p.update("task","channel",1,2,true,false,12,100,n);check(h.showDownload(p.get("task"),null,"App",(e,i)->{}),"download scene prepared");}
  else check(h.show("Title","Body","Label",null),"notice scene prepared");
  DynamicPermanentIsland scene=m.current;
- check(SystemUiAdapter.hold.apply(m,new Object[0],null)==SystemUiAdapter.PASS,"ordinary long press remains original");
- m.onLongClick();check(m.nativeLongs==1&&IslandPanelGuard.owns(m,scene),"long press prepares bridge without replacing native animation entry");
+ check(SystemUiAdapter.hold.apply(m,new Object[0],null)==null&&openedSource[0]==1&&!m.mDynamicPanelShowing,"ordinary long press opens source only");
+ h.expand();check(m.nativeLongs==0&&IslandPanelGuard.owns(m,scene),"tap expansion uses native animation entry");
  m.finish();check(!m.mDynamicPanelShowing&&m.mDynamicPanelContainer.getChildCount()==0,"long press closes without manager hook");
  check(SystemUiAdapter.show.apply(m,new Object[0],null)==SystemUiAdapter.PASS,"ordinary show retains original call");
  m.showPermanentPanelIsland();check(SystemUiAdapter.close.apply(m,new Object[]{scene,false,false},null)==null,"manager close route shares captured ownership");
@@ -112,7 +117,7 @@ for(boolean download:new boolean[]{false,true}){
  for(Runnable pending:new ArrayList<>(Handler.tasks))pending.run();
 }
 for(boolean full:new boolean[]{false,true}){
-Context c=new Context();Manager m=new ChildManager();Object foreign=new Object();m.mAppIslandList.put("foreign",foreign);
+Context c=new Context();Manager m=full?new ChildManager():new OrdinaryManager();Object foreign=new Object();m.mAppIslandList.put("foreign",foreign);
 int[] opened={0};DuoNotificationCards host=new DuoNotificationCards(c,TestUnifiedCards.class.getClassLoader(),m,full,()->opened[0]++,null);
 IslandDownloadPolicy<StatusBarNotification> p=new IslandDownloadPolicy<>();StatusBarNotification n=new StatusBarNotification("task",1,2);
 p.update("task","channel",1,2,true,false,12,100,n);
@@ -124,13 +129,13 @@ check(m.current==current&&m.adds==1,"update recreated native card");check(m.mApp
 StatusBarNotification message=new StatusBarNotification("message",2,0);message.notification.flags=0;
 check(host.showNotice(message,null,"Chat",(s,pi)->{},s->{}),"ordinary message lost its OEM panel");
 Object tap=SystemUiAdapter.tap.apply(m,new Object[0],null),hold=SystemUiAdapter.hold.apply(m,new Object[0],null);
-check(opened[0]==1&&(full?tap==SystemUiAdapter.PASS&&hold==null:tap==null&&hold==SystemUiAdapter.PASS),"ordinary/fullscreen open and native expansion gestures crossed");
-m.blocked=true;(full?SystemUiAdapter.hold:SystemUiAdapter.tap).apply(m,new Object[0],null);
+check(opened[0]==1&&(full?tap==SystemUiAdapter.PASS&&hold==null:tap==null&&hold==null),"ordinary/fullscreen open and native expansion gestures crossed");
+m.blocked=true;SystemUiAdapter.hold.apply(m,new Object[0],null);
 check(opened[0]==1,"OEM forceNotClick gate bypassed");m.blocked=false;
 if(!full){m.mDynamicPanelShowing=true;host.showDownload(p.get("task"),null,"App",(e,i)->{});
 check(m.windowUpdates==1&&m.mDynamicIslandContainer.getLayoutParams().height==316,"expanded ordinary panel height includes native outer padding");m.mDynamicPanelShowing=false;}
-check(Handler.tasks.size()<=1,"multiple heartbeat loops");
-host.hide();check(m.current==null&&m.removes==1,"remove failed");check(Handler.tasks.isEmpty(),"removed activity kept heartbeat");
+check(Collections.frequency(Handler.tasks,SystemUiAdapter.field(host,"pulse"))<=1,"multiple heartbeat loops");
+host.hide();check(m.current==null&&m.removes==1,"remove failed");check(!Handler.tasks.contains(SystemUiAdapter.field(host,"pulse")),"removed activity kept heartbeat");
 check(m.mAppIslandList.size()==1&&m.mAppIslandList.get("foreign")==foreign,"remove touched native source");
 host.close();check(!host.showDownload(p.get("task"),null,"App",(e,i)->{}),"closed host republished");
 android.content.res.Resources.missing="app_island_layout";boolean missing=false;
