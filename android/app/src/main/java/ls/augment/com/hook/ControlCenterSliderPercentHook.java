@@ -177,9 +177,11 @@ final class ControlCenterSliderPercentHook {
             SeekBar seek = slider.get();
             View symbol = icon.get();
             if (!attached || holder == null || seek == null || !horizontal && symbol == null) return;
-            theme.refresh(seek,symbol);
             String fullBrightness = volume ? null : FullBrightnessHook.label(seek);
             boolean percentEnabled=FeatureSettings.enabled(holder.getContext(),key);
+            // Dark slider colors are their own feature; percent text never changes native colors.
+            if(FeatureSettings.enabled(holder.getContext(),SystemUiOptions.QS_SLIDER_DARK))theme.refresh(seek,symbol);
+            else{theme.restore(seek,symbol);theme.dark=false;}
             int stream=volume?liveStream():-1;
             boolean supported=!ls.augment.com.AudioGainPolicy.stream(stream).isEmpty();
             boolean liveWanted=volume&&AudioGainState.wanted(FeatureSettings.snapshot(holder.getContext()),stream);

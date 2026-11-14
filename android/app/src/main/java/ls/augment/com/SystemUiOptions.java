@@ -20,6 +20,7 @@ public final class SystemUiOptions {
     public static final String AUDIO_NO_SAFE_WARNING = PREFIX + "audio_no_safe_warning";
     public static final String QS_BRIGHTNESS_PERCENT = PREFIX + "qs_brightness_percent";
     public static final String QS_VOLUME_PERCENT = PREFIX + "qs_volume_percent";
+    public static final String QS_SLIDER_DARK = PREFIX + "qs_slider_dark";
     public static final String VOLUME_SAME_SIDE = PREFIX + "volume_same_side";
     public static final String VOLUME_POSITION = PREFIX + "volume_position";
     private SystemUiOptions() { }
@@ -102,6 +103,7 @@ public final class SystemUiOptions {
         out.add(EnhancementOption.toggle(QS_BRIGHTNESS_PERCENT, "quicksettings", "亮度显示百分比", "控制中心亮度条显示整数百分比，随调节实时更新；关闭后恢复原厂显示。"));
         out.add(EnhancementOption.toggle(BrightnessRange.ENABLED, "quicksettings", "完整亮度", "通过原厂控制中心和设置亮度条调节扩展范围，需要 Root 和可读写的屏幕驱动。未标定的屏幕需关闭自动亮度，将原厂亮度条分别拖到最低和最高并各停留 2 秒，完成端点标定后自动启用扩展。原厂范围保留 0%–100%，扩展比例按本机标定计算，百分比不代表实测光学亮度。自动亮度、熄屏、省电或温控限制时退出扩展档。更新后重启系统界面和设置作用域。"));
         out.add(EnhancementOption.toggle(QS_VOLUME_PERCENT, "quicksettings", "音量显示百分比", "控制中心及展开音量面板显示百分比；增益开启时可超过 100%，同一行只显示一份数字。"));
+        out.add(EnhancementOption.toggle(QS_SLIDER_DARK, "quicksettings", "亮度与音量条暗色", "深色模式下将控制中心亮度条和音量条的填充改为暗灰色；浅色模式及关闭后恢复原厂颜色。"));
         bool(out, "qs_grid", "quicksettings", "自定义控制中心行列");
         out.add(EnhancementOption.integer(PREFIX + "qs_columns", "quicksettings", "竖屏列数", "控制中心普通磁贴列数。", 4, 2, 8));
         out.add(EnhancementOption.integer(PREFIX + "qs_rows", "quicksettings", "竖屏行数", "普通磁贴的初始可见行数；更多磁贴可滚动查看。", 3, 1, 8));

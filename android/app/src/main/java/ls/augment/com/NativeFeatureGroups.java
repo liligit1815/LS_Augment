@@ -210,6 +210,7 @@ final class NativeFeatureGroups {
             new Feature("systemui:qs_brightness_percent","亮度显示百分比","ls_augment_rm_qs_brightness_percent",new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:full_brightness","完整亮度",BrightnessRange.ENABLED,new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_volume_percent","音量显示百分比","ls_augment_rm_qs_volume_percent",new String[]{},"boolean","0", new Feature[]{}),
+            new Feature("systemui:qs_slider_dark","亮度与音量条暗色",SystemUiOptions.QS_SLIDER_DARK,new String[]{},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_grid","自定义控制中心行列","ls_augment_rm_qs_grid",new String[]{"ls_augment_rm_qs_columns","ls_augment_rm_qs_rows","ls_augment_rm_qs_land_columns","ls_augment_rm_qs_land_rows","ls_augment_rm_qs_edit_columns","ls_augment_rm_qs_land_edit_columns"},"boolean","0", new Feature[]{}),
             new Feature("systemui:qs_carrier","运营商名称",null,new String[]{"ls_augment_rm_qs_carrier"},"number","0", new Feature[]{}),
             new Feature("systemui:qs_search","搜索按钮",null,new String[]{"ls_augment_rm_qs_search"},"number","0", new Feature[]{}),
