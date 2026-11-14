@@ -177,9 +177,11 @@ final class ControlCenterSliderPercentHook {
             SeekBar seek = slider.get();
             View symbol = icon.get();
             if (!attached || holder == null || seek == null || !horizontal && symbol == null) return;
-            theme.refresh(seek,symbol);
             String fullBrightness = volume ? null : FullBrightnessHook.label(seek);
             boolean percentEnabled=FeatureSettings.enabled(holder.getContext(),key);
+            // Recolor only while a module feature draws on this slider; otherwise keep native colors.
+            if(fullBrightness!=null||percentEnabled||FeatureSettings.enabled(holder.getContext(),ls.augment.com.GlassOptions.CONTROL_CENTER))theme.refresh(seek,symbol);
+            else theme.restore(seek,symbol);
             int stream=volume?liveStream():-1;
             boolean supported=!ls.augment.com.AudioGainPolicy.stream(stream).isEmpty();
             boolean liveWanted=volume&&AudioGainState.wanted(FeatureSettings.snapshot(holder.getContext()),stream);
