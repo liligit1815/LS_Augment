@@ -3,15 +3,15 @@
   "appId": "redmagic-duo",
   "packageName": "ls.augment.com",
   "release": {
-    "versionCode": 20881,
-    "versionName": "2.0.0-alpha1-test20881",
+    "versionCode": 20936,
+    "versionName": "2.0.0-alpha1-test20936",
     "minSdk": 35,
-    "publishedAt": "2026-11-13T10:43:16Z",
-    "notes": "- 优化灵动岛玻璃样式、文字排版与按钮布局，改善长消息显示。\n- 完善灵动岛导航信息，补充转向、道路、剩余距离与时间等内容。\n- 修复部分重复通知上岛及悬浮提醒衔接问题。\n- 移除普通通知中的“15分钟后提醒”按钮及相关功能。\n- 新增 Step“顶部工作区”开关，优化应用归还与主顶区切换。\n- 修复桌面 Dock 图标在工作区切换、桌面重建后丢失的问题。\n- 完善最近任务隐私屏，覆盖进入最近任务的过渡动画。\n- 更新后请重启手机。",
+    "publishedAt": "2026-11-19T11:49:29Z",
+    "notes": "- 灵动岛新增通知模板和按应用、渠道设置的显示规则，优化消息、下载进度、媒体和充电信息展示。\n- 灵动岛展开卡片支持向左或向右滑动收起，保留原通知。修复部分系统显示应用岛时系统界面反复崩溃的问题。\n- 修复部分 Android 15 设备无法进入 Step 的问题，优化蓝牙状态变化、退出工作区和返回桌面时的画面恢复。\n- 修复 12.x 游戏空间中王者荣耀部分肩键模式缺失、重开后选项失效的问题，保留左键地图和右键战绩功能。\n- 完善控制中心顶部双排信号的兼容性，适配更多原厂标题栏和移动信号图标布局。\n- 更新后请重启手机。",
     "apk": {
-      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20881/redmagic-duo-20881.apk",
-      "size": 16729667,
-      "sha256": "9f2c8618de60f4c6decaf590c517fed7797ca47e53d3bbeb2052029a120afdf3",
+      "url": "https://github.com/liligit1815/lispacerelease/releases/download/redmagic-duo-v20936/redmagic-duo-20936.apk",
+      "size": 17001783,
+      "sha256": "e5fd6f3dc5e2157feaf9d1b8645fb4cbdd46ca061d265347dc4654a2f78794c7",
       "certificateSha256": "4e5c23c41de3d7d56f120309e9fe8dab7d53483c50ef18a176e00558abf7b8cb"
     }
   }
