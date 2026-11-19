@@ -32,7 +32,7 @@ public final class ModuleHierarchy {
         add(section("notifications","center_layout","控制中心外观与布局"),"systemui:liquid_glass","systemui:qs_grid","systemui:cc_corners","systemui:cc_tiles","systemui:cc_media");
         source(section("notifications","notification_clock","通知页大时钟与布局"),"systemui","notification_clock");
         add(section("notifications","panel_clock","面板日期、天气与时钟"),"systemui:notification_weather","systemui:qs_calendar","systemui:qs_clock_seconds","systemui:qs_clock_period");
-        Section tiles=section("notifications","brightness_tiles","亮度条与通用磁贴");add(tiles,"systemui:qs_brightness_percent");entry(tiles,"extra_dim");
+        Section tiles=section("notifications","brightness_tiles","亮度条与通用磁贴");add(tiles,"systemui:qs_brightness_percent","systemui:qs_slider_dark");entry(tiles,"extra_dim");
         add(section("notifications","panel_carrier_search","面板运营商与搜索"),"systemui:qs_carrier","systemui:carrier_notification","systemui:carrier_control","systemui:qs_search","systemui:qs_browser");
         add(section("notifications","notification_alerts","通知提醒"),"ls_augment_rm_notification_quiet_unlocked");
         add(section("desktop","default_launcher","默认桌面"),"ls_augment_rm_third_party_launcher","ls_augment_rm_third_party_recents_no_scrim",LauncherOptions.SEARCH_NO_SCRIM);
