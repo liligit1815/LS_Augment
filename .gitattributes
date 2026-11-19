@@ -8,5 +8,11 @@
 *.jpg binary
 *.woff2 binary
 *.mp4 binary
+# These shipped assets retain the release bytes, including the checked dictionary digests.
+android/app/src/main/assets/workbench-text-dict/* -text !eol
+android/app/src/main/assets/battery/ios/manifest.json -text !eol
+android/app/src/main/assets/licenses/apache-2.0.txt -text !eol
+android/app/src/main/assets/licenses/duo-ui-icons-LICENSE.txt -text !eol
+android/app/src/main/assets/licenses/liftarc-GPL-3.0.txt -text !eol
 # Preserve upstream header formatting; keep whitespace checks for project code.
 android/app/src/main/cpp/vendor/** whitespace=-blank-at-eol,-blank-at-eof
