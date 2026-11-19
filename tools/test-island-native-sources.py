@@ -83,6 +83,7 @@ public class TestNativeSources{
  }}'''
 for name in ('IslandBuiltinEvents','NativeScreenRecordingNotice','IslandEvent'):
     F['ls/augment/com/hook/'+name+'.java']=(ROOT/'android/app/src/main/java/ls/augment/com/hook'/f'{name}.java').read_text(encoding='utf-8')
+F['ls/augment/com/IslandNotificationProgress.java']=(ROOT/'android/app/src/main/java/ls/augment/com/IslandNotificationProgress.java').read_text(encoding='utf-8')
 with tempfile.TemporaryDirectory(prefix='duo-source-') as tmp:
     folder=Path(tmp)
     for name,source in F.items():

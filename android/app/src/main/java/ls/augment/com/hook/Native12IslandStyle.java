@@ -24,19 +24,20 @@ final class Native12IslandStyle {
     static final int TITLE=IslandVisualSpec.TITLE,DETAIL=IslandVisualSpec.DETAIL,COMPACT_TEXT=IslandVisualSpec.COMPACT_TEXT,TEXT_GAP=IslandVisualSpec.TEXT_GAP;
     static int dp(Context context,float value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
     static boolean night(Context context){return (context.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;}
-    static int foreground(Context context){return color(context,"dynamic_island_panel_text_color",IslandVisualSpec.foreground(night(context)));}
-    static int secondary(Context context){return color(context,"dynamic_island_text_color",IslandVisualSpec.secondary(night(context)));}
+    static int foreground(Context context){return IslandVisualSpec.PRIMARY;}
+    static int secondary(Context context){return IslandVisualSpec.SECONDARY;}
     private static int color(Context context,String name,int fallback){
         int id=context.getResources().getIdentifier(name,"color","com.android.systemui");return id==0?fallback:context.getColor(id);
     }
     static int background(Context context){return IslandVisualSpec.background(night(context));}
     static GradientDrawable background(Context context,boolean panel){
         GradientDrawable shape=new GradientDrawable();shape.setColor(background(context));
-        shape.setCornerRadius(dp(context,panel?PANEL_RADIUS:COMPACT_HEIGHT/2));return shape;
+        shape.setCornerRadius(dp(context,panel?PANEL_RADIUS:COMPACT_HEIGHT/2));
+        shape.setStroke(Math.max(1,dp(context,.5f)),IslandVisualSpec.BORDER);return shape;
     }
     static void text(TextView view,int size,boolean primary){
         Context context=view.getContext();view.setTextSize(TypedValue.COMPLEX_UNIT_SP,size);
-        view.setTypeface(Typeface.create("sans-serif",primary?Typeface.BOLD:Typeface.NORMAL));
+        view.setTypeface(Typeface.create(primary?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
         view.setTextColor(primary?foreground(context):secondary(context));view.setIncludeFontPadding(false);
     }
     static void compact(View view){
@@ -60,9 +61,9 @@ final class Native12IslandStyle {
         RippleDrawable ripple=button.getBackground() instanceof RippleDrawable?(RippleDrawable)button.getBackground():null;
         if(ripple!=null&&!(ripple.getDrawable(0) instanceof GradientDrawable))ripple=null;
         GradientDrawable shape=ripple!=null?(GradientDrawable)ripple.getDrawable(0):new GradientDrawable();
-        shape.setColor(color(context,"dynamic_island_btn_bg_color",night(context)?0x26ffffff:0x14000000));
+        shape.setColor(IslandVisualSpec.CONTROL);
         shape.setCornerRadius(dp(context,24));
-        ColorStateList pressed=ColorStateList.valueOf(night(context)?0x28ffffff:0x18000000);
+        ColorStateList pressed=ColorStateList.valueOf(0x28ffffff);
         if(ripple==null){ripple=new RippleDrawable(pressed,shape,null);button.setBackground(ripple);}else ripple.setColor(pressed);
         button.setBackgroundTintList(null);button.setTextColor(foreground(context));
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP,13);button.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));

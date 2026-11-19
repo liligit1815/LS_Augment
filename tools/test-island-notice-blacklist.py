@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'android/app/src/main/java/ls/augment/com'
 JDK=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 hook=(SRC/'hook/DynamicIslandHook.java').read_text('utf-8')
-method=re.search(r'int noticeMode\(StatusBarNotification source\)\{(.+?)\n        \}',hook,re.S).group(1)
+method=re.search(r'int noticeSourceMode\(StatusBarNotification source\)\{(.+?)\n        \}',hook,re.S).group(1)
 source='''package ls.augment.com;
 public final class TestBlacklist {
  static int checks;static void check(boolean ok,String name){checks++;if(!ok)throw new AssertionError(name);}

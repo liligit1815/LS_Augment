@@ -61,6 +61,10 @@ public final class IslandActivityPolicy {
             initialized=true;connected=plugged;
         }
         public long expiresAt(){return until;}
+        public long expiresAfter(long hold){
+            if(until==0||hold<=0)return 0;
+            long started=until-CHARGE_MILLIS;return hold>=Long.MAX_VALUE-started?Long.MAX_VALUE:started+hold;
+        }
         public void clear(){until=0;}
         public void reset(){initialized=false;connected=false;until=0;}
     }

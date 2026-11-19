@@ -35,10 +35,10 @@ final class IslandScenePresentation {
     void style(View compact,View panel){
         if(compact==null)return;
         int signature=compact.getResources().getConfiguration().hashCode();
-        if(applied.getOrDefault(compact,0)==signature)return;applied.put(compact,signature);
-        save(compact);compact.setBackground(Native12IslandStyle.background(compact.getContext(),false));
+        boolean configurationChanged=applied.getOrDefault(compact,0)!=signature;applied.put(compact,signature);
+        save(compact);if(configurationChanged)compact.setBackground(Native12IslandStyle.background(compact.getContext(),false));
         roles(compact,false);
-        if(panel!=null){save(panel);panel.setBackground(Native12IslandStyle.background(panel.getContext(),true));roles(panel,true);}
+        if(panel!=null){boolean newPanel=!original.containsKey(panel);save(panel);if(configurationChanged||newPanel)panel.setBackground(Native12IslandStyle.background(panel.getContext(),true));roles(panel,true);}
     }
     private void roles(View view,boolean panel){
         for(String name:new String[]{"mDisplayText","mDisplayTitle","mDisplaySecondText"}){

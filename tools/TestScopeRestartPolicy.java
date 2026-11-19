@@ -32,6 +32,9 @@ public final class TestScopeRestartPolicy {
         check("device".equals(ModuleHierarchy.restartScopeForCategory("atomic_workbench")), "workbench category must not narrow to Amap");
         check(ModuleHierarchy.restartScopeForCategory("unknown") == null, "unknown page suggested a reboot");
         check(HookAppCatalog.restartScopeForKey("unknown") == null, "unknown key suggested a reboot");
+        check(HookAppCatalog.affectedPackages(IslandDownloadConfig.ENABLED).equals(List.of("com.android.systemui","com.android.providers.downloads")),"download controls require actual provider and display host");
+        check(HookAppCatalog.affectedPackages(IslandDownloadConfig.CHANNELS).contains("com.android.providers.downloads"),"provider receives the same exact channel selection");
+        check(HookAppCatalog.affectedPackages(SystemUiOptions.ISLAND).contains("com.android.providers.downloads"),"master lifecycle includes download source");
         check(ScopeRestartPolicy.completeScope(null, List.of()) == null, "empty scope suggested reboot");
         check("device".equals(ScopeRestartPolicy.completeScope("apps", List.of("unknown.app"))), "unknown dependency falsely covered");
         check("device".equals(ScopeRestartPolicy.completeScope("games", List.of("system"))), "system_server falsely covered by games");

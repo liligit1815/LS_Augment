@@ -86,11 +86,12 @@ final class LiveWorkspace {
     LinearLayout panel;
     final Button[] cells = new Button[SideSlots.MAX_COUNT];
     volatile WorkspaceLayout geometry;
+    WorkspaceDisplayState sessionDisplay;
     volatile FlipStage flipStage;
     RegionTransition regionTransition;
     WorkspaceEntry entry;
     long slotFrameGeneration;
-    int pendingNativeSlot=-1;
+    int pendingNativeSlot=-1, landingSlot=-1;
     android.animation.ValueAnimator releaseMotion;
     volatile int dragSlot=-1;
     volatile float dragX;
@@ -152,6 +153,8 @@ final class LiveWorkspace {
     void create() {
         if (Shell.factory == null || Shell.executor == null || Shell.transitions == null) { fail("TaskView运行时能力未就绪"); return; }
         try {
+            sessionDisplay = WorkspaceDisplayState.read(Shell.context);
+            if (sessionDisplay == null) throw new IllegalStateException("主屏布局参数不可用");
             call(Shell.factory, "create", Shell.context, Shell.executor, (Consumer<Object>) value -> main.post(() -> {
                 if (closing || closed) { try { call(value, "release"); } catch (Throwable ignored) { } return; }
                 try { attach((View) value); }
@@ -160,18 +163,24 @@ final class LiveWorkspace {
             main.postDelayed(() -> { if (!ready && !closed) fail("工作区创建超时"); }, 10000);
         } catch (Throwable error) { fail("无法创建TaskView容器: " + error); }
     }
+    boolean displayChanged() {
+        return sessionDisplay == null || !sessionDisplay.equals(WorkspaceDisplayState.read(Shell.context));
+    }
     void attach(View view) throws Exception {
         taskView = view;
-        controller = call(view, "getController");
-        organizer = field(controller, "mTaskOrganizer"); organizerLock = field(organizer, "mLock");
-        if (!(field(organizer, "mTasks") instanceof SparseArray) || !(field(organizer, "mTaskListeners") instanceof SparseArray))
+        controller = TaskViewAccess.controller(view, Shell.loader);
+        Object candidateOrganizer = field(controller, "mTaskOrganizer");
+        organizerLock = field(candidateOrganizer, "mLock");
+        if (organizerLock == null || !(field(candidateOrganizer, "mTasks") instanceof SparseArray)
+                || !(field(candidateOrganizer, "mTaskListeners") instanceof SparseArray))
             throw new IllegalStateException("未知任务表结构");
         ClassLoader cl = Shell.loader;
         Class<?> infoClass = Class.forName("android.app.ActivityManager$RunningTaskInfo", false, cl);
         Class<?> surfaceClass = Class.forName("android.view.SurfaceControl", false, cl);
         Class<?> listenerClass = Class.forName("com.android.wm.shell.ShellTaskOrganizer$TaskListener", false, cl);
         OwnershipBridge.taskVanished(listenerClass, infoClass);
-        ownership = new OwnershipBridge(organizer, infoClass, surfaceClass, listenerClass);
+        ownership = new OwnershipBridge(candidateOrganizer, infoClass, surfaceClass, listenerClass);
+        organizer = candidateOrganizer;
         nativeTransitions = field(Shell.transitions, "mTransitions");
         OwnershipBridge.method(nativeTransitions.getClass(), "isIdle");
         Class<?> taskListener = Class.forName("com.android.wm.shell.taskview.TaskView$Listener", false, cl);
@@ -330,7 +339,7 @@ final class LiveWorkspace {
             cell.setVisibility(slot < visibleSlots ? View.VISIBLE : View.GONE);
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) cell.getLayoutParams();
             if(slot < visibleSlots) { params.height=geometry.rowHeight(slot,visibleSlots); params.topMargin=slot==0?0:geometry.gap; cell.setLayoutParams(params); }
-            boolean empty = slots.task(slot) < 0 || slot==pendingNativeSlot;
+            boolean empty = slot!=landingSlot && (slots.task(slot) < 0 || slot==pendingNativeSlot);
             StepMaterial.slot(cell,empty);
             cell.setContentDescription((empty ? "收纳到副格 " : "交换副格 ") + (slot + 1));
         }
@@ -949,13 +958,23 @@ final class LiveWorkspace {
             if(!result.containsKey("targetLeft") || result.getBoolean("targetLeft")!=targetLeft)
                 throw new IllegalStateException("主副换边方向未提交");
             if(result.getBoolean("flipLanded")){confirmRoles(result,ticket,slot,previous,next);return;}
-            if(targetLeft==leftSide){submitRoles(roles,ticket,slot,previous,next);return;}
+            if(targetLeft==leftSide){
+                prepareSlotLanding(ticket,slot,next,()->submitRoles(roles,ticket,slot,previous,next));return;
+            }
             leftSide=targetLeft;geometry=target;
             WindowManager.LayoutParams lp=(WindowManager.LayoutParams)panel.getLayoutParams();
             lp.x=target.sideX;windows.updateViewLayout(panel,lp);
             if(quickBar!=null)quickBar.arrangeHeader();
-            awaitPanel(roles,ticket,slot,previous,next,android.os.SystemClock.uptimeMillis()+800);
+            prepareSlotLanding(ticket,slot,next,()->awaitPanel(roles,ticket,slot,previous,next,android.os.SystemClock.uptimeMillis()+800));
         });
+    }
+    void prepareSlotLanding(long ticket,int slot,int next,Runnable landed){
+        if(!fence.current(ticket) || closing || closed)return;
+        // Keep the real task in its final animation lane while the host removes
+        // the stale empty-cell buffer. Changing task ownership first exposes the
+        // old plus for one or more frames above the newly landed app.
+        landingSlot=next>=0?slot:-1;
+        commitSlotFrame(()->{if(fence.current(ticket))landed.run();});
     }
     void finishRegionTransition(Runnable done){
         RegionTransition bridge=regionTransition;
@@ -1408,6 +1427,7 @@ final class LiveWorkspace {
         if (Shell.executor == null) cleanup.run(); else Shell.executor.execute(cleanup);
     }
     void closeFlipStage(){
+        landingSlot=-1;
         FlipStage done=flipStage;flipStage=null;
         if(done!=null)try{done.close();}catch(RuntimeException e){log("换边辅助图层释放："+e);}
     }

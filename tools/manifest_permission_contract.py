@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 
 ANDROID_URI = 'http://schemas.android.com/apk/res/android'
 APPLICATION_PERMISSION_PURPOSES = {
+    'android.permission.READ_CALENDAR': 'opt-in next timed event from the current user calendar',
     'ls.augment.com.STEP_CONTROL': 'signature-protected Step control between the module and SystemUI',
     'android.permission.QUERY_ALL_PACKAGES': 'hidden-app management and app discovery',
     'android.permission.RECEIVE_BOOT_COMPLETED': 'BootReceiver schedules phone-side recovery',

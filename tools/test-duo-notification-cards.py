@@ -8,6 +8,7 @@ scope={'__file__':str(fixture)}
 exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),str(fixture),'exec'),scope)
 files=dict(scope['FILES'])
 files['ls/augment/com/IslandVisualSpec.java']=(SRC/'IslandVisualSpec.java').read_text('utf-8')
+files['ls/augment/com/IslandNotificationContent.java']=(SRC/'IslandNotificationContent.java').read_text('utf-8')
 files['android/content/Intent.java']='package android.content;public class Intent{}'
 files['android/util/DisplayMetrics.java']='package android.util;public class DisplayMetrics{public float density=1;public int heightPixels=1600,widthPixels=400;}'
 files['android/content/res/Resources.java']='''package android.content.res;import java.util.*;public class Resources{
@@ -16,6 +17,7 @@ public int getIdentifier(String n,String t,String p){if(n.equals(missing))return
 public int getDimensionPixelSize(int id){return names.getOrDefault(id,"").equals("dynamic_island_window_width")?340:200;}
 public android.content.res.Configuration getConfiguration(){return new android.content.res.Configuration();}
 public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}'''
+files['android/content/res/Configuration.java']=files['android/content/res/Configuration.java'].replace('public class Configuration{','public class Configuration{public static final int ORIENTATION_LANDSCAPE=2;public int orientation=1;')
 files['android/view/View.java']=files['android/view/View.java'].replace('public int getMeasuredHeight(){return 60;}','').replace('public int visibility,','public float alpha;public int visibility,').replace('public Context getContext()', '''public boolean isShown(){return parent!=null;}public void setAlpha(float a){alpha=a;}
 public int measured=300;public int getMeasuredHeight(){return measured;}
 public Context getContext()''')
@@ -55,7 +57,7 @@ files['android/view/LayoutInflater.java']='''package android.view;import android
 public class LayoutInflater{Context c;LayoutInflater(Context c){this.c=c;}public static LayoutInflater from(Context c){return new LayoutInflater(c);}
 public View inflate(int id,Object p){String n=Resources.names.get(id);if(n.equals("remote_view_island_layout"))return new RemoteViewIsland(c);
 if(n.equals("remote_view_panel_island_layout"))return new RemoteViewPanelIsland(c);if(n.equals("remote_view_small_island_layout"))return new android.widget.FrameLayout(c);return new AppIsland(c);}}'''
-for name in ['IslandDownloadConfig','IslandDownloadPolicy','DuoIslandPolicy']:
+for name in ['IslandDownloadConfig','IslandDownloadPolicy','DuoIslandPolicy','IslandContentRules','IslandTextExpression','IslandNotificationProgress']:
     files['ls/augment/com/'+name+'.java']=(SRC/(name+'.java')).read_text(encoding='utf-8')
 files['ls/augment/com/ConfigSchema.java']='package ls.augment.com;public class ConfigSchema{public static final String NATIVE_ISLAND_SELECTED="old";}'
 files['ls/augment/com/SystemUiOptions.java']='package ls.augment.com;public class SystemUiOptions{public static final String ISLAND="duo",ISLAND_APP_STYLE="style";}'
@@ -66,20 +68,29 @@ public int width; public void addOnLayoutChangeListener(OnLayoutChangeListener l
 public int getCompoundPaddingLeft(){return 0;}public int getCompoundPaddingRight(){return 0;}public boolean isShown()''')
 files['android/text/TextUtils.java']=files['android/text/TextUtils.java'].replace('public enum','public static boolean equals(CharSequence a,CharSequence b){return java.util.Objects.equals(a,b);}public static CharSequence ellipsize(String s,TextPaint p,float room,TruncateAt at){return s.subSequence(0,Math.min(s.length(),(int)(room/9)));}public enum')
 files['android/os/Parcelable.java']='package android.os;public interface Parcelable{}'
-files['android/os/Bundle.java']=files['android/os/Bundle.java'].replace('public CharSequence','public android.os.Parcelable[] getParcelableArray(String k){return (android.os.Parcelable[])get(k);}public CharSequence')
+files['android/os/Bundle.java']=files['android/os/Bundle.java'].replace('public CharSequence getCharSequence(', 'public android.os.Parcelable[] getParcelableArray(String k){return (android.os.Parcelable[])get(k);}public CharSequence getCharSequence(')
 files['android/app/Person.java']='package android.app;public class Person{public CharSequence getName(){return "Sender";}}'
 files['android/app/Notification.java']=files['android/app/Notification.java'].replace('EXTRA_TITLE="title"','EXTRA_MESSAGES="messages",EXTRA_TITLE="title"').replace('public static class Action','public static class MessagingStyle{public static class Message{public Person getSenderPerson(){return new Person();}public static java.util.List<Message> getMessagesFromBundleArray(android.os.Parcelable[] p){return java.util.List.of(new Message());}}}public static class Action')
 files['android/text/TextUtils.java']=files['android/text/TextUtils.java'].replace('TruncateAt{END}', 'TruncateAt{END,MARQUEE}')
 files['android/widget/TextView.java']=files['android/widget/TextView.java'].replace('public void setMaxLines', 'public boolean selected;public int repeats;public void setSelected(boolean v){selected=v;}public void setMarqueeRepeatLimit(int n){repeats=n;}public void setMaxLines')
 files['android/app/Notification.java']=files['android/app/Notification.java'].replace('public Person getSenderPerson()', 'public CharSequence getText(){return "Message body";}public Person getSenderPerson()')
-files['android/app/Notification.java']=files['android/app/Notification.java'].replace('EXTRA_TITLE="title"','EXTRA_BIG_TEXT="bigText",EXTRA_TITLE="title"')
-for name in ['DuoCompactText','IslandCompactWidth','DuoNotificationCards','DuoDownloadPanel','IslandDownloadSource','NativeIslandPanelCompat','IslandPanelGuard']:
+for name in ['DuoCompactText','IslandCompactWidth','DuoNotificationCards','DuoDownloadPanel','IslandDownloadSource','NativeIslandPanelCompat','IslandPanelGuard','IslandNotificationText','IslandContentPresentation','IslandNotificationArtwork']:
     files['ls/augment/com/hook/'+name+'.java']=(SRC/'hook'/(name+'.java')).read_text(encoding='utf-8')
 files['ls/augment/com/hook/FeatureRuntimeLog.java']='package ls.augment.com.hook;class FeatureRuntimeLog{static void event(String s,String d){}static void state(String a,String b,String c){}static String failure(Throwable e){return e.getClass().getName();}}'
 # Current shared collaborators; their policies have focused tests of their own.
 files['ls/augment/com/hook/IslandEvent.java']=(SRC/'hook/IslandEvent.java').read_text('utf-8')
-files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int SMALL_ICON=20,PANEL_ICON=48,TEXT_GAP=12,TITLE=17,DETAIL=13,COMPACT_TEXT=14;static boolean night(Context c){return false;}static void action(android.widget.Button b){}static void compact(android.view.View v){}static void panel(android.view.View v){}static void text(TextView v,int size,boolean primary){}}'
+files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int SMALL_ICON=20,PANEL_ICON=44,TEXT_GAP=12,TITLE=16,DETAIL=12,COMPACT_TEXT=14;static boolean night(Context c){return false;}static android.graphics.drawable.Drawable background(Context c,boolean p){return new android.graphics.drawable.Drawable();}static void action(android.widget.Button b){}static void compact(android.view.View v){}static void panel(android.view.View v){}static void text(TextView v,int size,boolean primary){}}'
+files['ls/augment/com/hook/IslandNativeSurface.java']='package ls.augment.com.hook;class IslandNativeSurface{static boolean blackSurfaceAvailable(Object manager,boolean panel){return false;}}'
+files['android/view/View.java']=files['android/view/View.java'].replace('public class View{','public class View{public android.graphics.drawable.Drawable background;public void setBackground(android.graphics.drawable.Drawable d){background=d;}')
 files['ls/augment/com/hook/IslandFrameProof.java']='package ls.augment.com.hook;class IslandFrameProof{static boolean drawn;static android.view.View last;boolean confirm(android.view.View v,Object revision,Runnable callback){last=v;return drawn;}void clear(){}}'
+files['ls/augment/com/hook/IslandPanelInteraction.java']='''package ls.augment.com.hook;import java.util.*;
+class IslandPanelInteraction{static Map<Object,Object[]> registered=new IdentityHashMap<>();
+static void bind(Object o,Object m,Object i,Object p,boolean t,Runnable c){registered.put(o,new Object[]{m,i,p,t});}
+static void bind(Object o,Object m,Object i,Object p,boolean t,Runnable c,java.util.function.Supplier<IslandGestureActions.Target> target){bind(o,m,i,p,t,c);}
+static void release(Object o){registered.remove(o);}}'''
+files['ls/augment/com/hook/IslandGestureActions.java']='''package ls.augment.com.hook;class IslandGestureActions{
+static class Target{Target(Object o,android.content.Context c,android.service.notification.StatusBarNotification s,String scene,java.util.function.BooleanSupplier current,Runnable changed){}}
+static Object stamp(android.service.notification.StatusBarNotification s){return s;}static int install(AugmentModule m,ClassLoader l){return 0;}static void release(Object o){}}'''
 files['android/view/View.java']=files['android/view/View.java'].replace('VISIBLE=0,GONE=8','VISIBLE=0,INVISIBLE=4,GONE=8').replace('public interface OnClickListener','public interface OnLongClickListener{boolean onLongClick(View v);}public void setOnLongClickListener(OnLongClickListener l){}public void setContentDescription(CharSequence s){}public interface OnClickListener')
 files['ls/augment/com/hook/TestUnifiedCards.java']='''package ls.augment.com.hook;import java.util.*;import android.content.*;import android.os.*;import android.service.notification.*;import ls.augment.com.*;import com.zte.feature.dynamicisland.*;
 public class TestUnifiedCards{static int checks;static void check(boolean b,String s){checks++;if(!b)throw new AssertionError(s);}
@@ -130,6 +141,9 @@ IslandDownloadPolicy<StatusBarNotification> p=new IslandDownloadPolicy<>();Statu
 p.update("task","channel",1,2,true,false,12,100,n);
 check(host.showDownload(p.get("task"),null,"App",(e,i)->{}),"create failed");Object current=m.current;
 check(current!=null&&m.adds==1,"native host did not receive card");
+Object[] binding=IslandPanelInteraction.registered.get(host);
+check(binding!=null&&binding[0]==m&&binding[1]==current&&binding[2]==SystemUiAdapter.field(host,"panel")&&Boolean.TRUE.equals(binding[3]),"first secondary expansion has no shared interaction registration before primary click");
+if(full){check(((android.view.View)SystemUiAdapter.field(host,"compact")).background!=null&&((android.view.View)SystemUiAdapter.field(host,"content")).background!=null,"missing native black branch keeps Duo-owned text on a contained opaque base");}
 if(full){m.current=null;m.mTempIsland=(DynamicPermanentIsland)current;m.mDynamicPanelShowing=true;IslandFrameProof.drawn=true;
 check(host.confirmedFrame("updated",()->{})&&IslandFrameProof.last==SystemUiAdapter.field(host,"panel"),"detached compact must confirm its owned visible expanded panel");
 m.mTempIsland=null;check(!host.confirmedFrame("unowned",()->{}),"unowned panel reused frame proof");m.mDynamicPanelShowing=false;m.current=(DynamicPermanentIsland)current;IslandFrameProof.drawn=false;}
@@ -138,6 +152,15 @@ p.update("task","channel",1,3,true,false,45,100,n);check(host.showDownload(p.get
 check(m.current==current&&m.adds==1,"update recreated native card");check(m.mAppIslandList.get("foreign")==foreign,"native card replaced");
 StatusBarNotification message=new StatusBarNotification("message",2,0);message.notification.flags=0;
 check(host.showNotice(message,null,"Chat",(s,pi)->{}),"ordinary message lost its OEM panel");
+message.notification.largeIcon=new android.graphics.drawable.Icon();message.notification.smallIcon=new android.graphics.drawable.Icon();
+String artKey=IslandContentRules.key(0,"notifications",message.pkg,message.notification.channel);
+FeatureSettings.values.put(IslandContentRules.KEY,IslandContentRules.parse("").updated(artKey,IslandContentRules.COMPACT_ICON,"notif_small"));
+check(host.showNotice(message,null,"Chat",(s,pi)->{}),"artwork update retains native card");
+Object compact=SystemUiAdapter.field(host,"compact");
+check(((android.widget.ImageView)SystemUiAdapter.field(compact,"mDisplayIcon")).drawable==message.notification.smallIcon.value
+ &&((android.widget.ImageView)SystemUiAdapter.field(host,"mini")).drawable==message.notification.smallIcon.value,"compact and secondary island receive selected actual notification icon");
+check(((android.widget.ImageView)SystemUiAdapter.field(SystemUiAdapter.field(host,"download"),"icon")).drawable==message.notification.largeIcon.value,"panel cover remains independently automatic");
+FeatureSettings.values.put(IslandContentRules.KEY,"");
 Object tap=SystemUiAdapter.tap.apply(m,new Object[0],null),hold=SystemUiAdapter.hold.apply(m,new Object[0],null);
 check(opened[0]==1&&(full?tap==SystemUiAdapter.PASS&&hold==null:tap==null&&hold==null),"ordinary/fullscreen open and native expansion gestures crossed");
 m.blocked=true;SystemUiAdapter.hold.apply(m,new Object[0],null);
@@ -146,6 +169,7 @@ if(!full){m.mDynamicPanelShowing=true;host.showDownload(p.get("task"),null,"App"
 check(m.windowUpdates==1&&m.mDynamicIslandContainer.getLayoutParams().height==316,"expanded ordinary panel height includes native outer padding");m.mDynamicPanelShowing=false;}
 check(Collections.frequency(Handler.tasks,SystemUiAdapter.field(host,"pulse"))<=1,"multiple heartbeat loops");
 host.hide();check(m.current==null&&m.removes==1,"remove failed");check(!Handler.tasks.contains(SystemUiAdapter.field(host,"pulse")),"removed activity kept heartbeat");
+check(!IslandPanelInteraction.registered.containsKey(host),"removed source retained panel interactions");
 check(m.mAppIslandList.size()==1&&m.mAppIslandList.get("foreign")==foreign,"remove touched native source");
 host.close();check(!host.showDownload(p.get("task"),null,"App",(e,i)->{}),"closed host republished");
 android.content.res.Resources.missing="app_island_layout";boolean missing=false;
@@ -204,6 +228,8 @@ public void onPermanentIslandPanelCloseAnimationEnd(DynamicPermanentIsland i,boo
 }'''
     from island_panel_test_support import add_status_bar_support
     add_status_bar_support(variant)
+    from island_notification_template_test_support import add_templates
+    add_templates(variant)
     with tempfile.TemporaryDirectory(prefix='duo-unified-cards-') as tmp:
         folder=Path(tmp)
         for name,text in variant.items():

@@ -68,6 +68,11 @@ final class DuoNotificationCards {
     private final Object manager;
     private final boolean fullscreen;
     private final Runnable open;
+    private IslandGestureActions.Target gesture;
+    private Object gestureRevision;
+    static IslandGestureActions.Target gestureTarget(Object manager){
+        DuoNotificationCards host=forManager(manager);return host==null?null:host.gesture;
+    }
     Runnable panelChanged;
     private final Method initialize,add,remove,panelHeight,heartbeat;
     private final Map<String,Object> registry;
@@ -153,7 +158,7 @@ final class DuoNotificationCards {
                 if(!Boolean.TRUE.equals(call(o,"forceNotClick")))h.open.run();return null;
             }return PASS;
         },null);
-        return count;
+        return count+IslandGestureActions.install(module,loader);
     }
 
     @SuppressWarnings("unchecked")
@@ -241,8 +246,15 @@ final class DuoNotificationCards {
         if(progress)try{compactWidth=new IslandCompactWidth(context,manager,island);}
         catch(Exception missing){FeatureRuntimeLog.state("ISLAND_COMPACT_WIDTH","native",missing.getMessage());}
         Native12IslandStyle.compact(small);Native12IslandStyle.panel(large);
+        if(fullscreen&&!IslandNativeSurface.blackSurfaceAvailable(manager,false)){
+            small.setBackground(Native12IslandStyle.background(context,false));smallHost.setBackground(Native12IslandStyle.background(context,false));
+        }
+        if(fullscreen&&!IslandNativeSurface.blackSurfaceAvailable(manager,true))large.setBackground(Native12IslandStyle.background(context,true));
         if (!fullscreen && NativeIslandPanelCompat.ordinary(manager))
             ordinaryCards.put(next,new OrdinaryClose(manager,statusBar));
+        // A native secondary tap opens this panel directly, without the primary
+        // onClick hook. Register the owned surface before either entry can use it.
+        bindInteraction();
     }
     private void prepareCompactLabel(View card) {
         Object value = field(card,"mDisplayText");
@@ -262,13 +274,12 @@ final class DuoNotificationCards {
         label.setSingleLine(true);
         label.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        // Keep the current OEM text appearance (including light glass and its font).
-        int color=context.getResources().getIdentifier("dynamic_island_text_color","color","com.android.systemui");
-        if(color!=0)label.setTextColor(context.getColor(color));
+        Native12IslandStyle.text(label,Native12IslandStyle.COMPACT_TEXT,true);
         compactText=new DuoCompactText(label);
     }
     boolean show(String title,String subtitle,String label,Drawable icon){
         if(closed)return false;
+        gesture=null;gestureRevision=null;
         try{
             create(false);call(compact,"setDisplayText",label);image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);
             text(content,"mDisplayText",title);text(content,"mDisplaySecondText",subtitle);image(content,"mDisplayIcon",icon);
@@ -279,9 +290,11 @@ final class DuoNotificationCards {
     boolean showEvent(IslandEvent event,java.util.function.Consumer<IslandEvent.Action> dispatch){
         if(closed)return false;
         try{
-            create(true);compactText.bind(event.compact,"");image(compact,"mDisplayIcon",event.icon);mini.setImageDrawable(event.icon);
+            IslandContentPresentation display=IslandContentPresentation.event(context,event);
+            create(true);compactText.bind(display.compact,IslandContentPresentation.compactMetric(event.compact,display.compact,event.progress));image(compact,"mDisplayIcon",event.icon);mini.setImageDrawable(event.icon);
             download.bindEvent(event,dispatch);
-            compact.setContentDescription(event.title+"，"+event.compact);content.setContentDescription(event.title+"，"+event.detail);
+            gestureSource(event.notification,event.scene);
+            compact.setContentDescription(display.title+"，"+display.compact);content.setContentDescription(display.title+"，"+display.detail);
             publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
@@ -289,19 +302,28 @@ final class DuoNotificationCards {
             BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> action){
         if(closed||entry==null)return false;
         try{
-            create(true);compactText.bind(DuoCompactText.fileName(entry.source.getNotification()),entry.indeterminate?"传输中":entry.percent+"%");
-            image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);download.bind(entry,icon,app,action);publish();return true;
+            String state=entry.paused?"已暂停":entry.indeterminate?"传输中":entry.percent+"%";
+            String original=DuoCompactText.fileName(entry.source.getNotification());
+            IslandContentPresentation display=IslandContentPresentation.source(context,entry.source,app,"downloads",
+                    original,"","",entry.indeterminate?"":entry.percent+"%",state);
+            create(true);compactText.bind(display.compact,display.compact.equals(original)?state:"");
+            Drawable selectedIcon=IslandNotificationArtwork.resolve(context,entry.source,"downloads",false,icon);
+            image(compact,"mDisplayIcon",selectedIcon);mini.setImageDrawable(selectedIcon);download.bind(entry,icon,app,action);
+            gestureSource(entry.source,"downloads");publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
     boolean showNotice(StatusBarNotification source,Drawable icon,String app,BiConsumer<StatusBarNotification,PendingIntent> action){
         if(closed||source==null)return false;
         try{
-            create(true);compactText.bind(DuoCompactText.messageSummary(source.getNotification(),app),"");image(compact,"mDisplayIcon",icon);mini.setImageDrawable(icon);
-            download.bindNotice(source,icon,app,action);publish();return true;
+            String original=DuoCompactText.messageSummary(source.getNotification(),app);
+            IslandContentPresentation display=IslandContentPresentation.source(context,source,app,"notifications",original,"","","","");
+            create(true);compactText.bind(display.compact,IslandContentPresentation.compactMetric(original,display.compact,IslandNotificationText.progress(source.getNotification())));
+            Drawable selectedIcon=IslandNotificationArtwork.resolve(context,source,"notifications",false,icon);image(compact,"mDisplayIcon",selectedIcon);mini.setImageDrawable(selectedIcon);
+            download.bindNotice(source,icon,app,action);gestureSource(source,"notifications");publish();return true;
         }catch(Exception failure){failed(failure);return false;}
     }
     private void publish()throws Exception{
-        if(compactWidth!=null&&compactText!=null)try{compactWidth.apply(compactText.naturalWidth(),published);}
+        if(compactWidth!=null&&compactText!=null)try{compactWidth.apply(compactText.naturalWidth(),published&&selected());}
         catch(Exception missing){FeatureRuntimeLog.state("ISLAND_COMPACT_WIDTH","native",missing.getClass().getSimpleName());compactWidth=null;}
         int available=content.getWidth()>0?Math.min(content.getWidth(),panelWidth):panelWidth;
         content.measure(View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
@@ -360,8 +382,23 @@ final class DuoNotificationCards {
         if(!prepareExpansion())return;
         call(manager,fullscreen?"onClick":"showPermanentPanelIsland");
     }}catch(Exception failure){failed(failure);}}
+    private void bindInteraction(){
+        IslandPanelInteraction.bind(this,manager,island,panel,true,()->{if(panelChanged!=null)panelChanged.run();},()->gesture);
+    }
+    private void gestureSource(StatusBarNotification source,String scene){
+        gestureRevision=IslandGestureActions.stamp(source);
+        if(source==null){gesture=null;return;}
+        Object expected=gestureRevision;
+        View expectedIsland=island;
+        gesture=new IslandGestureActions.Target(this,context,source,scene,()->!closed&&island==expectedIsland
+                &&java.util.Objects.equals(gestureRevision,expected)&&statusBar.isShown()&&(!fullscreen||registry.get(id)==expectedIsland)
+                &&context.getResources().getConfiguration().orientation!=android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                &&Boolean.TRUE.equals(field(manager,"mInteractive"))&&Boolean.FALSE.equals(field(manager,"mOnKeyguard"))
+                &&!Boolean.TRUE.equals(field(manager,"mAODVisibility"))&&!Boolean.TRUE.equals(field(manager,"mQsPanelExpanded"))
+                &&!Boolean.TRUE.equals(field(manager,"mControlPanelExpanded")),()->{hide();if(panelChanged!=null)panelChanged.run();});
+    }
     private boolean prepareExpansion(){
-        IslandPanelInteraction.bind(this,manager,island,panel,true,()->{if(panelChanged!=null)panelChanged.run();});
+        bindInteraction();
         if(fullscreen)return true;
         for(String name:new String[]{"mAnimProcessing","mPriorityProcessing","mDynamicPanelShowing","mDynamicPanelClosing"})
             if(Boolean.TRUE.equals(field(manager,name)))return true;
@@ -389,6 +426,7 @@ final class DuoNotificationCards {
         hide();
     }
     void hide(){
+        IslandGestureActions.release(this);gesture=null;gestureRevision=null;
         frames.clear();
         IslandPanelInteraction.release(this);
         MAIN.removeCallbacks(pulse);

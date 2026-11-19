@@ -30,11 +30,15 @@ final class IslandPanelInteraction {
     static void install(AugmentModule value) { module = value; }
 
     static void bind(Object owner, Object manager, Object island, Object panel, boolean timed, Runnable changed) {
+        bind(owner,manager,island,panel,timed,changed,null);
+    }
+    static void bind(Object owner, Object manager, Object island, Object panel, boolean timed, Runnable changed,
+            java.util.function.Supplier<IslandGestureActions.Target> target) {
         if (!(panel instanceof ViewGroup) || module == null) return;
         ViewGroup root = (ViewGroup) panel;
         Binding previous = PANELS.get(root);
         if (previous != null && previous.owner.get() == owner && previous.manager.get() == manager && previous.island.get() == island) {
-            previous.refresh(); return;
+            previous.target=target;previous.refresh(); return;
         }
         try {
             Method dispatch = root.getClass().getMethod("dispatchTouchEvent", MotionEvent.class);
@@ -54,15 +58,15 @@ final class IslandPanelInteraction {
                     MotionEvent event = (MotionEvent) chain.getArgs().get(0);
                     binding.dispatching = true;
                     try {
-                        boolean emptyTap = binding.before(event);
-                        if (emptyTap) {
+                        if (binding.before(event)) {
+                            IslandGestureActions.Capture swipe=binding.upSwipe?binding.captured:null;
                             // Cancel the original recipient before closing. A panel-wide listener must
                             // not open the source as a side effect of tapping non-actionable content.
                             MotionEvent cancel = MotionEvent.obtain(event);
                             cancel.setAction(MotionEvent.ACTION_CANCEL);
                             try { chain.proceed(new Object[]{cancel}); } finally { cancel.recycle(); }
                             binding.after(event);
-                            binding.dismiss();
+                            if(binding.dismiss())binding.completeSwipe(swipe);
                             return true;
                         }
                         Object result = chain.proceed();
@@ -75,7 +79,9 @@ final class IslandPanelInteraction {
             }
             if (previous != null) previous.release();
             Binding binding = new Binding(owner, manager, island, root, close, showing, selected, timed, changed);
+            binding.target=target;
             PANELS.put(root, binding);
+            binding.observeCompletion();
             root.addOnAttachStateChangeListener(binding);
             binding.listen(); binding.refresh();
         } catch (ReflectiveOperationException | RuntimeException missing) {
@@ -87,7 +93,11 @@ final class IslandPanelInteraction {
         for (Binding binding : new ArrayList<>(PANELS.values())) if (binding.owner.get() == owner) {
             binding.refresh(); if (binding.open) return true;
         }
-        return false;
+        return IslandGestureActions.holds(owner);
+    }
+    static void actionFinished(Object owner){
+        for(Binding binding:new ArrayList<>(PANELS.values()))
+            if(!binding.released&&binding.owner.get()==owner&&binding.changed!=null)binding.changed.run();
     }
     static void activity(Object owner) {
         for (Binding binding : new ArrayList<>(PANELS.values())) if (binding.owner.get() == owner) binding.activity();
@@ -132,6 +142,13 @@ final class IslandPanelInteraction {
         final Runnable timeout=this::timeout;
         ViewTreeObserver observer;
         boolean open, touching, blank, moved, closing, dispatching, released;
+        boolean upCandidate,upSwipe;
+        java.util.function.Supplier<IslandGestureActions.Target> target;
+        IslandGestureActions.Capture captured;
+        Field closingField;
+        boolean callbackCompletion;
+        long closeSequence,completedSequence=-1;
+        Object presentation=new Object();
         long idleAt, downAt;
         float downX, downY;
         Binding(Object owner,Object manager,Object island,ViewGroup root,Close close,Field showing,Method selected,boolean timed,Runnable changed) {
@@ -139,6 +156,47 @@ final class IslandPanelInteraction {
             this.root=new WeakReference<>(root);this.close=close;this.timed=timed;this.changed=changed;
             this.showing=showing;this.selected=selected;
             slop=ViewConfiguration.get(root.getContext()).getScaledTouchSlop();
+        }
+        void observeCompletion(){
+            Object engine=manager.get(),scene=island.get();
+            try{
+                // A present but incompatible modern field is not a legacy contract.
+                for(Class<?> type=engine.getClass();type!=null;type=type.getSuperclass()){
+                    Field value;
+                    try{value=type.getDeclaredField("mDynamicPanelClosing");}catch(NoSuchFieldException absent){continue;}
+                    if(value.getType()!=boolean.class||Modifier.isStatic(value.getModifiers()))
+                        throw new NoSuchFieldException("panel_closing_boolean");
+                    value.setAccessible(true);closingField=value;return;
+                }
+                Method end=NativeIslandSceneContract.method(engine.getClass(),"onPermanentIslandPanelCloseAnimationEnd",
+                        void.class,scene.getClass(),boolean.class,boolean.class);
+                if(end==null||Modifier.isStatic(end.getModifiers())||!View.class.isAssignableFrom(end.getParameterTypes()[0]))
+                    throw new NoSuchMethodException("legacy_panel_close_end");
+                if(!HOOKS.contains(end)){
+                    module.registerFeatureHook(module.prepareFeatureHook(end,"rm.ui.island.panel_close_observed",false).intercept(chain->{
+                        ArrayList<Runnable> completed=new ArrayList<>();
+                        for(Binding binding:new ArrayList<>(PANELS.values()))
+                            if(binding.callbackCompletion&&binding.closing&&binding.manager.get()==chain.getThisObject()
+                                    &&binding.island.get()==chain.getArgs().get(0)
+                                    &&Boolean.FALSE.equals(chain.getArgs().get(1))&&Boolean.FALSE.equals(chain.getArgs().get(2))){
+                                long sequence=binding.closeSequence;Object token=binding.presentation;
+                                completed.add(()->binding.closeObserved(sequence,token));
+                            }
+                        Object result=chain.proceed();
+                        for(Runnable finish:completed)finish.run();
+                        return result;
+                    }));HOOKS.add(end);
+                }
+                callbackCompletion=true;
+            }catch(ReflectiveOperationException|RuntimeException unavailable){
+                FeatureRuntimeLog.event("ISLAND_PANEL_INTERACTION","completion_unavailable:"+unavailable.getMessage());
+            }
+        }
+        void closeObserved(long sequence,Object token){
+            ViewGroup view=root.get();Object engine=manager.get();
+            try{if(!released&&closeSequence==sequence&&presentation==token&&engine!=null&&view!=null
+                    &&!showing.getBoolean(engine)&&!view.isAttachedToWindow())completedSequence=sequence;}
+            catch(ReflectiveOperationException unavailable){ /* No observed completion. */ }
         }
         void listen() {
             ViewGroup view=root.get();
@@ -151,7 +209,7 @@ final class IslandPanelInteraction {
             // carry a live gesture or deadline across the detached interval.
             MAIN.removeCallbacks(timeout);
             if(observer!=null&&observer.isAlive())observer.removeOnPreDrawListener(this);observer=null;
-            boolean wasOpen=open;open=false;touching=false;blank=false;closing=false;
+            boolean wasOpen=open;open=false;touching=false;blank=false;closing=false;captured=null;upCandidate=false;
             if(wasOpen&&changed!=null)changed.run();
         }
         void refresh() {
@@ -165,7 +223,7 @@ final class IslandPanelInteraction {
             if(visible==open)return;
             open=visible;touching=false;blank=false;closing=false;
             MAIN.removeCallbacks(timeout);
-            if(open)activity();
+            if(open){presentation=new Object();activity();}
             if(changed!=null)changed.run();
         }
         void activity(){
@@ -176,18 +234,40 @@ final class IslandPanelInteraction {
         }
         void timeout(){
             refresh();if(!open||touching||released||closing)return;
+            if(IslandMessageControls.inside(root.get())){activity();return;}
             long remaining=idleAt-SystemClock.elapsedRealtime();
             if(remaining>0){MAIN.postDelayed(timeout,remaining);return;}
             dismiss();
         }
-        void dismiss(){
+        boolean dismiss(){
             refresh();Object engine=manager.get();
-            if(!open||released||closing||Boolean.TRUE.equals(field(engine,"mDynamicPanelClosing")))return;
-            closing=true;MAIN.removeCallbacks(timeout);
+            if(!open||released||closing||Boolean.TRUE.equals(field(engine,"mDynamicPanelClosing")))return false;
+            closing=true;closeSequence++;MAIN.removeCallbacks(timeout);
             try{close.run();}
             catch(ReflectiveOperationException|RuntimeException failure){
                 closing=false;FeatureRuntimeLog.event("ISLAND_PANEL_INTERACTION","close_failed:"+failure.getClass().getSimpleName());
+                return false;
             }
+            return true;
+        }
+        void completeSwipe(IslandGestureActions.Capture swipe){
+            if(swipe==null)return;
+            Object engine=manager.get(),scene=island.get();
+            Object generation=field(engine,"mPanelGen");
+            long sequence=closeSequence;Object token=presentation;
+            IslandGestureActions.completeWhen(swipe,()->{
+                try{return !showing.getBoolean(engine)&&(closingField!=null?!closingField.getBoolean(engine)
+                        :callbackCompletion&&completedSequence==sequence);}
+                catch(ReflectiveOperationException missing){return false;}
+            },()->!released&&manager.get()==engine&&island.get()==scene
+                    &&closeSequence==sequence&&presentation==token
+                    &&stillSelected(engine,scene)
+                    &&java.util.Objects.equals(generation,field(engine,"mPanelGen"))
+                    &&(field(engine,"mTempIsland")==null||field(engine,"mTempIsland")==scene));
+        }
+        boolean stillSelected(Object engine,Object scene){
+            try{return selected.invoke(engine)==scene;}
+            catch(ReflectiveOperationException unavailable){return false;}
         }
         boolean before(MotionEvent event){
             refresh();if(!open||closing||Boolean.TRUE.equals(field(manager.get(),"mDynamicPanelClosing")))return false;
@@ -195,21 +275,32 @@ final class IslandPanelInteraction {
             if(action==MotionEvent.ACTION_DOWN){
                 touching=true;MAIN.removeCallbacks(timeout);downX=event.getX();downY=event.getY();downAt=event.getEventTime();moved=false;
                 ViewGroup view=root.get();blank=event.getPointerCount()==1&&view!=null&&!controlAt(view,downX,downY);
-            }else if(action==MotionEvent.ACTION_POINTER_DOWN||event.getPointerCount()>1)moved=true;
+                upCandidate=blank&&!controlAt(view,downX,downY,true);upSwipe=false;
+                captured=upCandidate&&target!=null?IslandGestureActions.capture(target.get(),true):null;
+            }else if(action==MotionEvent.ACTION_POINTER_DOWN||event.getPointerCount()>1){moved=true;upCandidate=false;captured=null;}
             else if(action==MotionEvent.ACTION_MOVE||action==MotionEvent.ACTION_UP){
                 if(Math.abs(event.getX()-downX)>slop||Math.abs(event.getY()-downY)>slop)moved=true;
             }
-            return action==MotionEvent.ACTION_UP&&touching&&blank&&!moved
+            upSwipe=action==MotionEvent.ACTION_UP&&touching&&upCandidate&&blank
+                    &&downY-event.getY()>slop*4&&downY-event.getY()>2*Math.abs(event.getX()-downX)
+                    &&event.getEventTime()-downAt<1000;
+            // Swiping the expanded notification sideways dismisses this presentation only.
+            // The compact island and the expanded-up action retain their own source policies.
+            float dx=Math.abs(event.getX()-downX),dy=Math.abs(event.getY()-downY);
+            boolean sideways=action==MotionEvent.ACTION_UP&&touching&&upCandidate&&blank
+                    &&dx>slop*4&&dx>dy*2&&event.getEventTime()-downAt<ViewConfiguration.getLongPressTimeout();
+            return upSwipe||sideways||action==MotionEvent.ACTION_UP&&touching&&blank&&!moved
                     &&event.getEventTime()-downAt<ViewConfiguration.getLongPressTimeout()
                     &&root.get()!=null&&!controlAt(root.get(),event.getX(),event.getY());
         }
         void after(MotionEvent event){
             if(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL){
-                touching=false;blank=false;activity();
+                touching=false;blank=false;captured=null;upCandidate=false;activity();
             }
         }
         void release(){
             if(released)return;released=true;MAIN.removeCallbacks(timeout);
+            if(owner.get()!=null)IslandGestureActions.release(owner.get());captured=null;
             ViewGroup view=root.get();if(view!=null){if(PANELS.get(view)==this)PANELS.remove(view);view.removeOnAttachStateChangeListener(this);}
             if(observer!=null&&observer.isAlive())observer.removeOnPreDrawListener(this);observer=null;
             boolean wasOpen=open;open=false;touching=false;blank=false;
@@ -219,7 +310,11 @@ final class IslandPanelInteraction {
 
     /** Respect transformed children, disabled controls and touch delegates; scrolling is never a tap. */
     private static boolean controlAt(ViewGroup parent,float x,float y){
-        if(parent.getTouchDelegate()!=null)return true;
+        return controlAt(parent,x,y,false);
+    }
+    private static boolean controlAt(ViewGroup parent,float x,float y,boolean scrolling){
+        if(parent.getTouchDelegate()!=null || scrolling && (parent.canScrollVertically(1)
+                ||parent.canScrollVertically(-1)||parent.canScrollHorizontally(1)||parent.canScrollHorizontally(-1)))return true;
         for(int i=parent.getChildCount()-1;i>=0;i--){
             View child=parent.getChildAt(i);if(child.getVisibility()!=View.VISIBLE)continue;
             float[] point={x+parent.getScrollX()-child.getLeft(),y+parent.getScrollY()-child.getTop()};
@@ -228,7 +323,9 @@ final class IslandPanelInteraction {
             if(point[0]<0||point[1]<0||point[0]>=child.getWidth()||point[1]>=child.getHeight())continue;
             if(child.isClickable()||child.isLongClickable()||child instanceof android.widget.AbsSeekBar
                     ||child instanceof android.widget.EditText||child instanceof android.webkit.WebView)return true;
-            if(child instanceof ViewGroup&&controlAt((ViewGroup)child,point[0],point[1]))return true;
+            if(scrolling&&(child.canScrollVertically(1)||child.canScrollVertically(-1)
+                    ||child.canScrollHorizontally(1)||child.canScrollHorizontally(-1)))return true;
+            if(child instanceof ViewGroup&&controlAt((ViewGroup)child,point[0],point[1],scrolling))return true;
         }
         return false;
     }

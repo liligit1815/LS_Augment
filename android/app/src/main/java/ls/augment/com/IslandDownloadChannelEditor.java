@@ -24,11 +24,23 @@ final class IslandDownloadChannelEditor {
     private final LinearLayout content;
     private final SharedPreferences diagnostics;
     private final SharedPreferences.OnSharedPreferenceChangeListener listener;
+    private final boolean ongoing,counting;
+    private final String channelsKey,enabledKey,discoveredKey;
     IslandDownloadChannelEditor(Activity activity,UiKit ui,Function<String,String> value,BiConsumer<String,String> change){
+        this(activity,ui,value,change,false);
+    }
+    IslandDownloadChannelEditor(Activity activity,UiKit ui,Function<String,String> value,BiConsumer<String,String> change,boolean ongoing){
+        this(activity,ui,value,change,ongoing?"ongoing":"downloads");
+    }
+    IslandDownloadChannelEditor(Activity activity,UiKit ui,Function<String,String> value,BiConsumer<String,String> change,String scene){
         this.activity=activity;this.ui=ui;this.value=value;this.change=change;
-        listener=(prefs,key)->{if(IslandDownloadConfig.DISCOVERED.equals(key))activity.runOnUiThread(this::render);};
+        ongoing="ongoing".equals(scene);counting="notification_count".equals(scene);
+        channelsKey=counting?IslandCountConfig.CHANNELS:ongoing?IslandOngoingConfig.CHANNELS:IslandDownloadConfig.CHANNELS;
+        enabledKey=counting?IslandCountConfig.ENABLED:ongoing?IslandOngoingConfig.ENABLED:IslandDownloadConfig.ENABLED;
+        discoveredKey=counting?IslandCountConfig.DISCOVERED:ongoing?IslandOngoingConfig.DISCOVERED:IslandDownloadConfig.DISCOVERED;
+        listener=(prefs,key)->{if(discoveredKey.equals(key))activity.runOnUiThread(this::render);};
         diagnostics=activity.getSharedPreferences(AppConfig.DIAGNOSTICS,0);
-        content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);content.setTag("island-download-channels");
+        content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);content.setTag(counting?"island-count-channels":ongoing?"island-ongoing-channels":"island-download-channels");
         content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
             public void onViewAttachedToWindow(View view){diagnostics.registerOnSharedPreferenceChangeListener(listener);render();}
             public void onViewDetachedFromWindow(View view){diagnostics.unregisterOnSharedPreferenceChangeListener(listener);}
@@ -38,9 +50,9 @@ final class IslandDownloadChannelEditor {
     private void render(){
         if(activity.isDestroyed())return;
         int user=Process.myUid()/100000;Map<String,String> channels=new LinkedHashMap<>();
-        Set<String> selected=IslandDownloadConfig.selected(value.apply(IslandDownloadConfig.CHANNELS));
+        Set<String> selected=IslandDownloadConfig.selected(value.apply(channelsKey));
         try{
-            JSONObject root=new JSONObject(diagnostics.getString(IslandDownloadConfig.DISCOVERED,"{}"));
+            JSONObject root=new JSONObject(diagnostics.getString(discoveredKey,"{}"));
             JSONArray rows=root.optJSONArray("channels");
             if(root.optInt("user",-1)==user&&rows!=null)for(int i=0;i<rows.length()&&i<32;i++){
                 JSONObject row=rows.optJSONObject(i);if(row==null)continue;
@@ -51,21 +63,32 @@ final class IslandDownloadChannelEditor {
         for(String key:selected){String[] parts=IslandDownloadConfig.parts(key);
             if(parts!=null&&Integer.parseInt(parts[0])==user&&!channels.containsKey(key))channels.put(key,parts[2]);}
         content.removeAllViews();
-        content.addView(ui.text(channels.isEmpty()?"尚未发现下载渠道。保持灵动岛开启，发起一次带进度通知的下载后返回选择。"
-                :"仅所选渠道的持续进度通知会上岛；同一渠道中的上传等进度任务也会显示。",12,ui.muted,false),ui.margins(0,4,0,8));
+        String hint=counting?(channels.isEmpty()?"尚未发现可计数通知渠道。保持灵动岛开启，让应用发出普通通知后返回选择。"
+                :"统计仍存在的通知发布次数，包含同一通知的更新；不是未读消息数。撤回扣除该条累计次数。")
+                :ongoing?(channels.isEmpty()?"尚未发现持续通知渠道。保持灵动岛开启，让应用显示持续状态通知后返回选择。"
+                :"仅所选渠道的持续状态会上岛。内容随原通知更新，原通知撤回后退出。")
+                :(channels.isEmpty()?"尚未发现下载渠道。保持灵动岛开启，发起一次带进度通知的下载后返回选择。"
+                :"仅所选渠道的持续进度通知会上岛；同一渠道中的上传等进度任务也会显示。");
+        content.addView(ui.text(hint,12,ui.muted,false),ui.margins(0,4,0,8));
+        Map<String,String> labels=new LinkedHashMap<>();Set<String> used=new java.util.HashSet<>(),duplicates=new java.util.HashSet<>();
+        for(Map.Entry<String,String> item:channels.entrySet()){
+            String[] parts=IslandDownloadConfig.parts(item.getKey());if(parts==null)continue;
+            String label=appLabel(parts[1])+" · "+item.getValue();labels.put(item.getKey(),label);
+            if(!used.add(label))duplicates.add(label);
+        }
         for(Map.Entry<String,String> item:channels.entrySet()){
             String key=item.getKey();String[] parts=IslandDownloadConfig.parts(key);if(parts==null)continue;
             CheckBox box=new CheckBox(activity);ui.styleCheckBox(box);box.setMinHeight(ui.dp(48));box.setMinimumHeight(ui.dp(48));
-            box.setText(appLabel(parts[1])+" · "+item.getValue());box.setTextSize(UiKit.compactTextSize(14));
-            box.setTag("download-channel:"+key);box.setChecked(selected.contains(key));content.addView(box,ui.wrap());
+            String label=labels.get(key);box.setText(duplicates.contains(label)?label+"（"+parts[2]+"）":label);box.setTextSize(UiKit.compactTextSize(14));
+            box.setTag((counting?"count-channel:":ongoing?"ongoing-channel:":"download-channel:")+key);box.setChecked(selected.contains(key));content.addView(box,ui.wrap());
             box.setOnCheckedChangeListener((button,on)->{
                 if(activity.isDestroyed()||!content.isShown()||!ConfigSchema.truthy(value.apply(SystemUiOptions.ISLAND))
-                        ||!ConfigSchema.truthy(value.apply(IslandDownloadConfig.ENABLED)))return;
-                Set<String> next=IslandDownloadConfig.selected(value.apply(IslandDownloadConfig.CHANNELS));
+                        ||!ConfigSchema.truthy(value.apply(enabledKey)))return;
+                Set<String> next=IslandDownloadConfig.selected(value.apply(channelsKey));
                 if(on)next.add(key);else next.remove(key);
                 String normalized=IslandDownloadConfig.normalize(String.join(",",next));
                 if(normalized==null){box.setChecked(false);Toast.makeText(activity,"最多选择 32 个通知渠道",Toast.LENGTH_SHORT).show();return;}
-                change.accept(IslandDownloadConfig.CHANNELS,normalized);
+                change.accept(channelsKey,normalized);
             });
         }
     }

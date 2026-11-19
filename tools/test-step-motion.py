@@ -150,7 +150,11 @@ public class MotionCases {
         NativeBackdrop.pending=null;flip=new NativeFlip(empty);flip.start(new ResultReceiver());
         check(NativeBackdrop.pending!=null && !flip.attached && flip.frames==0,"empty admission must wait for real HOME before moving original task");
         check(!flip.ownsTransforms,"HOME preparation does not prematurely remove the native main transform");
-        NativeBackdrop.pending.run();check(flip.attached && flip.frames==1,"HOME ready starts the real-surface animation");flip.close();
+        NativeBackdrop.pending.run();check(flip.attached && flip.frames==1,"HOME ready starts the real-surface animation");
+        Choreographer.clock.frame(1);Choreographer.clock.frame(320_000_001);
+        check(flip.committed && replies==1 && roleCalls==0 && flip.band.visible,"empty admission holds final pose until host removes stale plus");
+        check(flip.surfaces[0].parent==flip.lanes[0],"original task cannot land below the old host plus before draw acknowledgment");
+        flip.checkRoles(empty);flip.close();
         Intent request=reset(false,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());Choreographer.clock.frame(1);flip.cancelAnimator();
         Choreographer.clock.frame(400_000_000);check(replies==0 && Choreographer.clock.pending.isEmpty(),"cancelled animation cannot send late success");
         request=reset(true,false);flip=new NativeFlip(request);flip.start(new ResultReceiver());Choreographer.clock.frame(1);saved.get(2).task.parent=new Object();

@@ -83,7 +83,8 @@ public class TestIslandPanel {
   // ACTION
  }
  static class OwnedHost {
-  static class Proof{void clear(){}}final Proof frames=new Proof();
+  static class Proof{int clears;void clear(){clears++;}}final Proof frames=new Proof(),lyrics=new Proof(),legacyProgress=new Proof();
+  boolean gestureCleared;void gestureSource(Object source,String scene){gestureCleared=source==null;}
   static class DownloadContent{int clears;void clear(){clears++;}}
   static class SupplementalCards{void hide(){}}
   SupplementalCards notificationCards;
@@ -147,6 +148,7 @@ public class TestIslandPanel {
   check(closing.listeners.size()==1,"transition listener released at end");
   transition.finish();check(next.listeners.isEmpty(),"new animation listener released");
   OwnedHost host=new OwnedHost();host.hide();
+  check(host.lyrics.clears==1&&host.legacyProgress.clears==1&&host.gestureCleared,"retire media bindings and gesture recipient on hide");
   check(host.current==null&&host.permanent.removes==1&&host.closes==1,"production hide completes and removes exactly once");
   host.hide();check(host.permanent.removes==1&&host.closes==1,"production repeated hide is idempotent");
   host=new OwnedHost();host.dismiss();host.hide();

@@ -269,7 +269,7 @@ def check_scope():
         'cn.nubia.gamehelperline', 'cn.nubia.gamehelpmodule',
         'com.android.packageinstaller', 'com.zte.zdm', 'com.zte.mifavor.weather',
         'cn.zte.gamefloat', 'cn.nubia.gamehighlights',
-        'com.android.permissioncontroller', 'com.android.nfc',
+        'com.android.permissioncontroller', 'com.android.nfc', 'com.android.providers.downloads',
         'cn.nubia.filebrowser', 'com.android.mtp', 'com.android.ztescreenshot', 'cn.nubia.photoeditor',
         'system', 'cn.nubia.neostore'
     }, scope

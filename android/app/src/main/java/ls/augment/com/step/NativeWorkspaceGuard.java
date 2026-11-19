@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcelable;
 import android.os.ResultReceiver;
+import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import static ls.augment.com.step.StepRuntime.*;
@@ -1092,12 +1093,18 @@ final class NativeWorkspaceGuard {
         if (!active || ending) return !active;
         WorkspaceIme.cancel();
         afterRestore=null;
-        synchronized(Wm.lock){rememberMain();exitMain=mainAtExit(reason);}
+        final TaskIdentity bookmark;
+        synchronized(Wm.lock){
+            rememberMain();
+            bookmark=mainAtExit(reason);
+            // Home exits to the launcher. Keep the previous app only for an explicit re-entry.
+            exitMain="桌面暂挂".equals(reason)?sessionHome:bookmark;
+        }
         if(("工作区暂挂".equals(reason) || "桌面暂挂".equals(reason) || "息屏暂挂".equals(reason) || "配置暂挂".equals(reason)) && flip==null && pendingCommit==null){
             afterRestore=new ParkedWorkspace();
             synchronized(Wm.lock){
                 afterRestore.principal=principal;afterRestore.left=sideLeft;afterRestore.page=hostPage;afterRestore.topFace=hostTopFace || NativeTopTask.upper!=null && !NativeTopTask.hidden;
-                afterRestore.main=exitMain;
+                afterRestore.main=bookmark;
                 TaskIdentity main=afterRestore.main;
                 afterRestore.manualMain=main!=null && (main==lastStandard && lastStandardManual ||
                         LocalLandscape.manualApp!=null && call(LocalLandscape.manualApp,"getTask")==liveTask(main.id,main.token));
@@ -1152,7 +1159,11 @@ final class NativeWorkspaceGuard {
                 // Some ROMs move a former always-on-top task forward while applying mode changes.
                 TaskIdentity target=exitTarget();
                 Object task=eligibleMain(target);
-                if(task!=null && task!=call(Wm.display,"getFocusedRootTask")){
+                Object focused=call(Wm.display,"getFocusedRootTask");
+                // Only undo an OEM reorder of a task we just restored. The user may already
+                // have chosen Home or another application while the transaction was applying.
+                SavedTask displaced=focused==null?null:saved.get((Integer)field(focused,"mTaskId"));
+                if(task!=null && task!=focused && displaced!=null && displaced.dirty && displaced.task==focused){
                     Object front=transaction();call(front,"reorder",target.token,true);apply(front);
                 }
             }
@@ -1170,8 +1181,12 @@ final class NativeWorkspaceGuard {
                 NativeTransitionPose.retire(expected);
                 active=false;ending=false;completedRecoveries++;recoveredAt=android.os.SystemClock.elapsedRealtime();
                 traceExit(exitedSession,"restoration_committed",targetAtExit);
+                final Object returnedDisplay=Wm.display;
                 for(long delay:new long[]{250,1500,4000})Wm.handler.postDelayed(()->{
-                    if(!active && !ending)traceExit(exitedSession,"after_"+delay+"ms",targetAtExit);
+                    if(!active && !ending && Wm.display==returnedDisplay && exitedSession.equals(session)) {
+                        traceExit(exitedSession,"after_"+delay+"ms",targetAtExit);
+                        refreshExitPresentation(returnedDisplay,exitedSession);
+                    }
                 },delay);
                 if(flip!=null){flip.close();flip=null;}
                 completedOwner=owner;completedSession=session;
@@ -1180,9 +1195,37 @@ final class NativeWorkspaceGuard {
                 if(afterRestore!=null)parked=afterRestore;else if("手动退出".equals(reason))parked=new ParkedWorkspace();
                 lastMainTask=null;sessionHome=null;exitMain=null;afterRestore=null;readmitting=new ParkedWorkspace();
                 retire(session);saved.clear();NativeTopTask.reset();owner=null;
+                Wm.attachPendingDisplay();
             }),()->retryRecovery("恢复图层提交超时"));
         } catch (Throwable error) {
             retryRecovery("恢复尚未完成: "+error);
+        }
+    }
+    static void refreshExitPresentation(Object display,String exitedSession) {
+        try {
+            synchronized (Wm.lock) {
+                if (active || ending || Wm.active || Wm.display!=display || !exitedSession.equals(session)
+                        || !interactive(Wm.context) || WorkspaceUsers.foreground()!=principal) return;
+                Object focused=call(display,"getFocusedRootTask");
+                if (focused==null || (Integer)call(focused,"getWindowingMode")!=1
+                        || call(focused,"getDisplayContent")!=display) return;
+                Object activity=call(focused,"topRunningActivity");
+                if (activity==null) return;
+                Object window=call(activity,"findMainWindow");
+                boolean visible=Boolean.TRUE.equals(field(call(focused,"getTaskInfo"),"isVisible"));
+                if (visible && window!=null && Boolean.TRUE.equals(call(window,"isDrawn"))
+                        && Boolean.TRUE.equals(call(activity,"isReportedDrawn"))) return;
+                // Reconcile whatever is actually focused, including Home. WM retains control
+                // over visibility, lifecycle and drawing; never bring back a stale task here.
+                Object root=field(Wm.service,"mRoot");
+                Method ensure=LocalLandscape.exact(root.getClass(),"ensureActivitiesVisible",void.class);
+                Method traversal=LocalLandscape.exact(Wm.service.getClass(),"requestTraversal",void.class);
+                ensure.invoke(root);
+                traversal.invoke(Wm.service);
+                diagnostic("EXIT_REDRAW","requested;focus="+field(focused,"mTaskId"));
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            diagnostic("EXIT_REDRAW","native_fallback;reason="+unavailable);
         }
     }
     static void normalizeExit(IBinder expected,Runnable complete){

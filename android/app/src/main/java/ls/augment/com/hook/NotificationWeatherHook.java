@@ -199,7 +199,7 @@ final class NotificationWeatherHook {
     private static int dp(View view, int value) {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
-    private static Data read(Context context, String path, CancellationSignal signal) {
+    static Data read(Context context, String path, CancellationSignal signal) {
         try (Cursor cursor = context.getContentResolver().query(Uri.parse(AUTHORITY + path), COLUMNS,
                 null, null, null, signal)) {
             if (cursor == null || !cursor.moveToFirst()) return null;
@@ -211,7 +211,7 @@ final class NotificationWeatherHook {
             return NotificationWeatherText.temperature(values[2]).isEmpty() ? null : new Data(values);
         }
     }
-    private static final class Data {
+    static final class Data {
         final String[] values;
         Data(String[] values) { this.values = values; }
         String inline() {

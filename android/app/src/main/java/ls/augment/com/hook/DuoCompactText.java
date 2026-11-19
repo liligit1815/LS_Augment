@@ -59,20 +59,25 @@ final class DuoCompactText {
                 }
             }
         } catch(RuntimeException malformed){ /* Partial messaging extras may still have a normal title. */ }
-        String title=line(n.extras.getCharSequence(Notification.EXTRA_TITLE));
+        String title=line(IslandNotificationText.read("",n).title);
         return title.isEmpty()?app:title;
     }
-    static String messageSummary(Notification n,String app) {
-        String sender=senderOrTitle(n,app),body="";
+    static String messageBody(Notification n) {
+        String body="";
         try {
             Parcelable[] raw=n.extras.getParcelableArray(Notification.EXTRA_MESSAGES);
             if(raw!=null){
                 List<Notification.MessagingStyle.Message> messages=Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw);
-                if(!messages.isEmpty())body=line(messages.get(messages.size()-1).getText());
+                if(!messages.isEmpty()){ CharSequence text=messages.get(messages.size()-1).getText(); if(text!=null)body=text.toString(); }
             }
         }catch(RuntimeException malformed){/* Use the notification's normal text below. */}
+        return body.length()>16384?body.substring(0,16384):body;
+    }
+    static String messageSummary(Notification n,String app) {
+        String sender=senderOrTitle(n,app),body=line(messageBody(n));
         if(body.isEmpty())body=line(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if(body.isEmpty())body=line(n.extras.getCharSequence(Notification.EXTRA_TEXT));
+        if(body.isEmpty())body=line(IslandNotificationText.read("",n).compact());
         return body.isEmpty()||body.equals(sender)?sender:sender+"  ·  "+body;
     }
     private static String line(CharSequence text) {

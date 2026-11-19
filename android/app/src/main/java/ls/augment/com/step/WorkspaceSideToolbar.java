@@ -73,11 +73,11 @@ final class WorkspaceSideToolbar implements AutoCloseable {
         leftHeader=header(left,false);rightHeader=header(right,true);
         leftContent=column(left,false);rightContent=column(right,true);
         toolRows=new LinearLayout(context);toolRows.setOrientation(LinearLayout.VERTICAL);
-        ScrollView toolScroll=new ScrollView(context);toolScroll.setFillViewport(true);toolScroll.setVerticalScrollBarEnabled(false);toolScroll.addView(toolRows);
+        ScrollView toolScroll=new ToolbarScroll(toolRows);toolScroll.setFillViewport(true);
         toolScroll.setContentDescription("工作栏全部功能，上下滑动浏览");
         leftContent.addView(toolScroll,new LinearLayout.LayoutParams(-1,0,1));
         apps=new LinearLayout(context);apps.setOrientation(LinearLayout.VERTICAL);
-        ScrollView appScroll=new ScrollView(context);appScroll.setVerticalScrollBarEnabled(false);appScroll.addView(apps);
+        ScrollView appScroll=new ToolbarScroll(apps);
         rightContent.addView(appScroll,new LinearLayout.LayoutParams(-1,0,1));
         brightness=level(left,false);volume=level(right,true);
         layoutContent(owner.dp(4));
@@ -249,8 +249,47 @@ final class WorkspaceSideToolbar implements AutoCloseable {
             default -> fallback;
         };
     }
+    /** Keep a clipped row's name from becoming the fixed header icon's apparent label. */
+    final class ToolbarScroll extends ScrollView {
+        final LinearLayout grid;
+        final Rect iconBounds=new Rect();
+        ToolbarScroll(LinearLayout grid){
+            super(context);this.grid=grid;setVerticalScrollBarEnabled(false);addView(grid);
+        }
+        @Override protected void onLayout(boolean changed,int l,int t,int r,int b){
+            super.onLayout(changed,l,t,r,b);refreshItems();
+        }
+        @Override protected void onScrollChanged(int x,int y,int oldX,int oldY){
+            super.onScrollChanged(x,y,oldX,oldY);refreshItems();
+        }
+        void refreshItems(){
+            if(grid==null)return;
+            for(int r=0;r<grid.getChildCount();r++)if(grid.getChildAt(r) instanceof ViewGroup row)
+                for(int c=0;c<row.getChildCount();c++)if(row.getChildAt(c) instanceof ToolbarItem item){
+                    item.viewport=this;item.refreshCaption();
+                }
+        }
+        boolean iconVisible(ToolbarItem item){
+            View symbol=item.symbol;
+            if(symbol.getWidth()<=0 || symbol.getHeight()<=0)return false;
+            ViewParent parent=item.getParent();
+            while(parent!=null && parent!=this)parent=parent.getParent();
+            if(parent!=this)return false;
+            // Android supplies the descendant layout and nested scroll offsets.
+            // Compare in this ScrollView's content coordinates, independently of
+            // the wing's screen translation during opening/closing animations.
+            iconBounds.set(0,0,symbol.getWidth(),symbol.getHeight());
+            offsetDescendantRectToMyCoords(symbol,iconBounds);
+            return iconBounds.left>=getScrollX()+getPaddingLeft()
+                    && iconBounds.right<=getScrollX()+getWidth()-getPaddingRight()
+                    && iconBounds.top>=getScrollY()+getPaddingTop()
+                    && iconBounds.bottom<=getScrollY()+getHeight()-getPaddingBottom();
+        }
+    }
     final class ToolbarItem extends FrameLayout {
         final View symbol;final TextView caption;
+        boolean header;
+        ToolbarScroll viewport;
         ToolbarItem(View symbol,String text,String description){
             super(context);this.symbol=symbol;setBackground(tileBackground());
             setContentDescription(description);setTooltipText(description);setFocusable(true);
@@ -270,11 +309,38 @@ final class WorkspaceSideToolbar implements AutoCloseable {
             return caption.getMeasuredHeight();
         }
         void size(boolean header,int captionHeight){
+            this.header=header;if(header)viewport=null;
             FrameLayout.LayoutParams image=new FrameLayout.LayoutParams(iconSize,iconSize,Gravity.TOP|Gravity.CENTER_HORIZONTAL);
             image.topMargin=(cellSize-iconSize)/2;symbol.setLayoutParams(image);
             caption.setVisibility(header?View.GONE:View.VISIBLE);
             FrameLayout.LayoutParams text=new FrameLayout.LayoutParams(-1,captionHeight,Gravity.TOP);
             text.topMargin=(cellSize+iconSize)/2+owner.dp(2);caption.setLayoutParams(text);
+        }
+        boolean actionVisible(){return header || viewport!=null && viewport.iconVisible(this);}
+        void refreshCaption(){
+            int visibility=header?View.GONE:actionVisible()?View.VISIBLE:View.INVISIBLE;
+            if(caption.getVisibility()!=visibility)caption.setVisibility(visibility);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event){
+            if(event.getActionMasked()==MotionEvent.ACTION_DOWN && !actionVisible())return false;
+            return super.onTouchEvent(event);
+        }
+        @Override public boolean performClick(){return isEnabled() && actionVisible() && super.performClick();}
+        @Override public boolean performLongClick(){return isEnabled() && actionVisible() && super.performLongClick();}
+        @Override public boolean performLongClick(float x,float y){return isEnabled() && actionVisible() && super.performLongClick(x,y);}
+        @Override public boolean performAccessibilityAction(int action,android.os.Bundle args){
+            if((action==android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK
+                    || action==android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK)
+                    && (!isEnabled() || !actionVisible()))return false;
+            return super.performAccessibilityAction(action,args);
+        }
+        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
+            super.onInitializeAccessibilityNodeInfo(info);
+            if(!actionVisible()){
+                info.setClickable(false);info.setLongClickable(false);
+                info.removeAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+                info.removeAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_LONG_CLICK);
+            }
         }
     }
     void addCell(LinearLayout grid,View cell,int index){

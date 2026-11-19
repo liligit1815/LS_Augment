@@ -34,6 +34,14 @@ public final class SongLines {
         }
         if(lines.isEmpty() && !text.trim().startsWith("[") && !text.trim().startsWith("{"))plain=text.trim();
     }
+    /** A translation may annotate an existing timestamp, but cannot create a new lyric cue. */
+    public void addTranslations(SongLines translated){
+        if(translated==null||translated==this)return;
+        for(Map.Entry<Long,String> row:translated.lines.entrySet()){
+            String original=lines.get(row.getKey());
+            if(original!=null&&!Arrays.asList(original.split("\n")).contains(row.getValue()))lines.put(row.getKey(),original+"\n"+row.getValue());
+        }
+    }
     public boolean empty(){return lines.isEmpty() && plain.isEmpty();}
     public boolean timeline(){return lines.size()>1;}
     public static final class Display {

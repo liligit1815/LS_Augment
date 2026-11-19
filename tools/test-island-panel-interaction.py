@@ -18,6 +18,7 @@ def member(source, marker):
     return source[start:end]
 
 FILES = {
+'ls/augment/com/hook/IslandMessageControls.java':'package ls.augment.com.hook;class IslandMessageControls{static boolean inside(android.view.View v){return false;}}',
 'android/content/Context.java': 'package android.content;public class Context {}',
 'android/os/Looper.java': 'package android.os;public class Looper{public static Looper getMainLooper(){return new Looper();}}',
 'android/os/SystemClock.java': 'package android.os;public class SystemClock{public static long now;public static long elapsedRealtime(){return now;}}',
@@ -48,7 +49,7 @@ public boolean isAlive(){return true;}public void draw(){for(var l:new ArrayList
 ''',
 'android/view/View.java': '''package android.view;import java.util.*;public class View{
 public static final int VISIBLE=0;public boolean attached=true,shown=true,clickable,longClickable;public int visibility,left,top,width=100,height=100,scrollX,scrollY;
-public Object delegate;public android.graphics.Matrix matrix=new android.graphics.Matrix();final ViewTreeObserver observer=new ViewTreeObserver();
+public Object delegate;public boolean scrollable;public boolean canScrollVertically(int d){return scrollable;}public boolean canScrollHorizontally(int d){return false;}public android.graphics.Matrix matrix=new android.graphics.Matrix();final ViewTreeObserver observer=new ViewTreeObserver();
 public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View v);void onViewDetachedFromWindow(View v);}
 List<OnAttachStateChangeListener> listeners=new ArrayList<>();public android.content.Context getContext(){return new android.content.Context();}
 public boolean isShown(){return shown;}public boolean isAttachedToWindow(){return attached;}public int getVisibility(){return visibility;}
@@ -79,6 +80,11 @@ boolean send(ViewGroup v,MotionEvent e)throws Throwable{Interceptor h=hooks.get(
 for widget in ('AbsSeekBar', 'EditText'):
     FILES[f'android/widget/{widget}.java'] = f'package android.widget;public class {widget} extends android.view.View{{}}'
 FILES['android/webkit/WebView.java'] = 'package android.webkit;public class WebView extends android.view.View{}'
+FILES['ls/augment/com/hook/IslandGestureActions.java'] = '''package ls.augment.com.hook;class IslandGestureActions{
+static boolean holds(Object owner){return false;}
+static class Target{}static class Capture{}static Capture capture(Target t,boolean e){return null;}
+static void completeWhen(Capture c,java.util.function.BooleanSupplier d,java.util.function.BooleanSupplier r){}
+static void release(Object o){}static void configure(Object c){}static boolean hidden(Object c,Object s){return false;}}'''
 for name in ('IslandPanelInteraction', 'NativeIslandSceneContract'):
     FILES[f'ls/augment/com/hook/{name}.java'] = (SRC / 'hook' / (name + '.java')).read_text('utf-8')
 FILES['ls/augment/com/IslandActivityPolicy.java'] = (SRC / 'IslandActivityPolicy.java').read_text('utf-8')
@@ -110,20 +116,23 @@ static class MediaController{Object getSessionToken(){return this;}}
 static class Power{boolean isInteractive(){return true;}}
 static class IslandDownloadPolicy{static class Entry<T>{String key;StatusBarNotification source=new StatusBarNotification();}}
 static class StatusBarNotification{String getPackageName(){return "test";}}
-static class Downloads{Activities activities=new Activities();void clear(){}}static class Activities{IslandDownloadPolicy.Entry<StatusBarNotification> choose(String k){return null;}}
+static class IslandEnvironmentRules{static final int OFF=1,COMPACT=2;}
+static class Downloads{Activities activities=new Activities();void clear(){}}static class Activities{IslandDownloadPolicy.Entry<StatusBarNotification> choose(String k,java.util.function.Predicate<IslandDownloadPolicy.Entry<StatusBarNotification>> allowed){return null;}}
 static class Host{final Fixture f;Host(Fixture f){this.f=f;}boolean holdsActivity(){return IslandPanelInteraction.holds(f.owner);}
 boolean managesNativeScenes(){return true;}boolean showDownload(Object n,Object icon,String app,java.util.function.BiConsumer<Object,Object> action){return true;}
 boolean showNotice(StatusBarNotification n,String a,String b,String c,Object i,java.util.function.BiConsumer<Object,Object> action){return true;}
 boolean show(Object...a){return true;}}
 static class State{
+Object context=new Object();
 boolean enabled=true,screenOff,holdingArtwork,charging,playing;int ownerUser=0,activity=IslandActivityPolicy.NOTICE,battery;long noticeUntil=6000,artworkMissingSince=-1;
 StatusBarNotification notice=new StatusBarNotification();MediaController media;IslandDownloadPolicy.Entry<StatusBarNotification> download;Downloads downloads=new Downloads();Host nativeHost;Power power=new Power();
 IslandActivityPolicy.ChargingActivity chargeActivity=new IslandActivityPolicy.ChargingActivity();Map<Object,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();
 String title="",subtitle="";Object icon;Handler MAIN=new Handler(Looper.getMainLooper());Runnable tick=()->{};int hides;
 State(Fixture f){nativeHost=new Host(f);}boolean locked(){return false;}int currentUser(){return 0;}boolean option(String k){return true;}
 MediaController selectMedia(){return null;}boolean sameSession(MediaController a,MediaController b){return a==b;}boolean hostVisible(){return true;}
-void clearNotice(){notice=null;}void hide(){hides++;}void dismiss(){}void updateContent(){}void diagnostic(String s){}String appLabel(String p){return p;}
+final java.util.Map<String,Object> waitingMessages=new java.util.HashMap<>();void drainMessages(){}long chargeUntil(){return chargeActivity.expiresAt();}void clearNotice(){notice=null;}void hide(){hides++;}void dismiss(){}void updateContent(){}void diagnostic(String s){}String appLabel(String p){return p;}
 void downloadAction(Object a,Object b){}void noticeAction(Object a,Object b){}
+int noticeMode(StatusBarNotification n){return IslandEnvironmentRules.COMPACT;}int downloadMode(StatusBarNotification n){return IslandEnvironmentRules.COMPACT;}
 long earlier(long a,long b){return a==0?b:Math.min(a,b);}
 // REFRESH
 }
@@ -144,6 +153,19 @@ check(f.manager.mDynamicAnimation.closes==0,"idle timer restarts on release");Ha
 
 f=new Fixture();f.bind(true);f.tap(150,100);check(f.manager.mDynamicAnimation.closes==1&&f.panel.cancels==1&&f.panel.ups==0,"blank tap cancels recipient then uses OEM close");
 Handler.advance(9000);check(f.manager.mDynamicAnimation.closes==1,"blank tap leaves no second timer close");f.end();
+for(int dx:new int[]{-100,100}){
+ f=new Fixture();f.bind(true);f.event(0,150,100);Handler.advance(120);f.event(2,150+dx/2,105);f.event(1,150+dx,110);
+ check(f.manager.mDynamicAnimation.closes==1&&f.panel.cancels==1&&f.panel.ups==0,"horizontal card swipe collapses in either direction");f.end();
+}
+for(int scenario=0;scenario<6;scenario++){
+ f=new Fixture();if(scenario==0)f.button();if(scenario==1)f.panel.scrollable=true;
+ if(scenario==2){View child=f.button();child.clickable=false;child.scrollable=true;}
+ f.bind(true);f.event(0,40,40);
+ if(scenario==3)Handler.advance(650);
+ if(scenario==4){MotionEvent multi=new MotionEvent(5,40,40,SystemClock.now);multi.pointers=2;module.send(f.panel,multi);}
+ f.event(1,160,scenario==5?140:50);
+ check(f.manager.mDynamicAnimation.closes==0&&f.panel.ups==1,"control, scroll, hold, multitouch or diagonal belongs to native view: "+scenario);f.end();
+}
 for(int scenario=0;scenario<4;scenario++){
  f=new Fixture();f.bind(true);f.event(0,150,100);
  if(scenario==0)f.event(2,190,100);
@@ -162,6 +184,12 @@ f=new Fixture();f.bind(false);Handler.advance(20000);check(f.manager.mDynamicAni
 check(f.manager.mDynamicAnimation.closes==1,"original scene blank tap uses same native close");f.end();
 f=new Fixture();f.manager=new Fullscreen();f.bind(true);f.tap(150,100);
 check(((Fullscreen)f.manager).hides==1&&f.manager.mDynamicAnimation.closes==0,"fullscreen uses hidePanelIsland, not ordinary animation");f.end();
+f=new Fixture();f.manager=new Fullscreen();Object secondary=f.manager.current;f.manager.mDynamicPanelShowing=false;f.panel.shown=false;f.bind(true);Handler.advance(9000);
+check(((Fullscreen)f.manager).hides==0&&!IslandPanelInteraction.holds(f.owner),"pre-registered compact source must not start an idle close");
+f.manager.current=new Object();f.manager.mTempIsland=secondary;f.manager.mDynamicPanelShowing=true;f.panel.shown=true;f.panel.getViewTreeObserver().draw();
+check(IslandPanelInteraction.holds(f.owner),"cold secondary opens through exact temporary panel identity");Handler.advance(7999);
+check(((Fullscreen)f.manager).hides==0,"secondary idle deadline starts at actual panel visibility");Handler.advance(1);
+check(((Fullscreen)f.manager).hides==1,"cold secondary receives shared idle close without primary click");f.end();
 f=new Fixture();f.bind(true);f.manager.current=new Object();Handler.advance(8000);
 check(f.manager.mDynamicAnimation.closes==0&&!IslandPanelInteraction.holds(f.owner),"stale timer cannot close another selected scene");f.end();
 f=new Fixture();f.bind(true);Handler.advance(7000);f.bind(true);Handler.advance(1000);
@@ -195,9 +223,9 @@ with tempfile.TemporaryDirectory(prefix='duo-panel-interaction-') as folder:
     subprocess.run(compile_cmd, check=True)
     subprocess.run(run_cmd, check=True)
     for name, old, new, expected in [
-        ('PanelInteractionTest', 'if(now>=noticeUntil&&!noticePanel)', 'if(now>=noticeUntil)', 'six-second notification cannot withdraw'),
+        ('PanelInteractionTest', 'if(notice!=null&&now>=noticeUntil&&!noticePanel)', 'if(notice!=null&&now>=noticeUntil)', 'six-second notification cannot withdraw'),
         ('IslandPanelInteraction', 'touching=true;MAIN.removeCallbacks(timeout);', 'touching=false;', 'holding a button suspends both expiry paths'),
-        ('IslandPanelInteraction', 'binding.dismiss();', '', 'blank tap cancels recipient then uses OEM close'),
+        ('IslandPanelInteraction', 'if(binding.dismiss())binding.completeSwipe(swipe);', '', 'blank tap cancels recipient then uses OEM close'),
     ]:
         path = folder / f'ls/augment/com/hook/{name}.java'
         original = path.read_text('utf-8')

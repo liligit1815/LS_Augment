@@ -129,7 +129,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
             editor.setRelatedFeatures(this instanceof StatusBarWorkspaceActivity?NativeFeatureGroups.forGroup("statusbar"):ModuleHierarchy.statusBarFeatures(),this::feature);
             editors.put(editor.route,editor);
             editor.onCreate(editorStates==null?null:editorStates.getBundle(editor.route));
-        }else {render(state==null?0:state.getInt("scrollY"));ui.restoreState(state);if(liftArcEditor!=null)liftArcEditor.restoreState(state,()->body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,state.getInt("scrollY"));}));}
+        }else {render(state==null?0:state.getInt("scrollY"));if(islandEditor!=null)islandEditor.restoreState(state);ui.restoreState(state);if(liftArcEditor!=null)liftArcEditor.restoreState(state,()->body.post(()->{ScrollView scroll=scrollView();if(scroll!=null)scroll.scrollTo(0,state.getInt("scrollY"));}));}
         if(!sectionStates.isEmpty()){sectionPreferences=getSharedPreferences(AppConfig.PREFS,MODE_PRIVATE);sectionPreferences.registerOnSharedPreferenceChangeListener(sectionListener);refreshSectionCounts();}
         if(!pending.isEmpty())main.post(autoSave);
         if("group/notifications/island".equals(ModuleNavigation.route(this))){
@@ -491,9 +491,27 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     private IslandSettingsEditor islandEditor;
     private void islandControls(LinearLayout content){
         content.setPadding(0,0,0,0);
-        islandEditor=new IslandSettingsEditor(this,ui,this::value,(key,next)->change(key,next,controls.get(key)),
+        islandEditor=new IslandSettingsEditor(this,ui,this::value,this::changeIslandSetting,
                 this::islandSceneUnavailable,this::islandSceneHelp,controls);
         content.addView(islandEditor.view(key->input(options.get(key))),ui.wrap());
+    }
+    private static final int ISLAND_CALENDAR_PERMISSION=5821;
+    private void changeIslandSetting(String key,String next){
+        if(IslandSceneRegistry.key("next_calendar").equals(key)&&"1".equals(next)
+                &&getPackageManager().checkPermission(android.Manifest.permission.READ_CALENDAR,"com.android.systemui")!=android.content.pm.PackageManager.PERMISSION_GRANTED
+                &&checkSelfPermission(android.Manifest.permission.READ_CALENDAR)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            if(islandEditor!=null)islandEditor.refresh();
+            requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR},ISLAND_CALENDAR_PERMISSION);return;
+        }
+        change(key,next,controls.get(key));
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(code,permissions,results);
+        if(code!=ISLAND_CALENDAR_PERMISSION)return;
+        if(results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED){
+            String key=IslandSceneRegistry.key("next_calendar");change(key,"1",controls.get(key));
+        }else toast("日程需要日历读取权限");
+        if(islandEditor!=null)islandEditor.refresh();
     }
     private String islandSceneHelp(String id){
         String help=FeatureHelp.forOption(options.get(IslandSceneRegistry.key(id)));
@@ -504,7 +522,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
         if("notifications".equals(id)||"downloads".equals(id))return magicHostUnavailable();
         String capability=getSharedPreferences(AppConfig.DIAGNOSTICS,0).getString(NativeIslandSceneOptions.key(id)+"_capability","");
         if(("ready:"+BuildConfig.VERSION_CODE).equals(capability))return "";
-        if("navigation".equals(id)||"screen_record".equals(id)||"hotspot".equals(id))
+        if("published_activity".equals(id)||"daily_weather".equals(id)||"next_calendar".equals(id)||"navigation".equals(id)||"screen_record".equals(id)||"hotspot".equals(id)||"ongoing".equals(id)||"notification_count".equals(id)||"toast".equals(id))
             return capability.startsWith("unavailable:")?"当前设备缺少此场景所需能力，保留原厂提醒":"等待系统界面检测场景能力";
         return nativeSceneUnavailable(NativeIslandSceneOptions.key(id));
     }
@@ -1123,7 +1141,7 @@ public class EnhancementSettingsActivity extends Activity implements NativeEdito
     }
     @Override protected void onResume(){super.onResume();if(ModuleHierarchy.isRestricted(ModuleNavigation.route(this))&&!HiddenEntrySession.isUnlocked()){finish();return;}if(resumedDirectory&&(isApplicationDirectory()||"group/audio/volume_position".equals(ModuleNavigation.route(this)))){ScrollView scroll=scrollView();render(scroll==null?0:scroll.getScrollY());}resumedDirectory=true;refreshIslandMaster();if(extraDimTile!=null)extraDimTile.refresh();refreshUpdateLinks();startRecentsRadiusRange();refreshMemoryPosition();if(liftArcEditor!=null)liftArcEditor.onResume();for(NativeEditorController editor:editors.values())editor.onResume();}
     @Override protected void onPause(){stopRecentsRadiusRange();if(liftArcEditor!=null)liftArcEditor.onPause();for(NativeEditorController editor:editors.values())editor.onPause();flush();super.onPause();}
-    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);ui.saveState(state);if(islandEditor!=null)islandEditor.saveState(state);state.putString("fontKey",fontKey);state.putString("pendingEditor",pendingEditor);
         if(cleanupIconEditor!=null)state.putBundle("cleanupIcon",cleanupIconEditor.state());
         state.putBundle("batteryHealth",inputSession.batteryHealth.save());
         // A pending picker can return to the recreated page; an old Activity import is not resumed.

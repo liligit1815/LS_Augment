@@ -13,6 +13,7 @@ public final class HookTargetRegistry {
                     "cn.zte.chargeseparation",
                     "com.zte.powersavemode",
                     "com.android.systemui",
+                    "com.android.providers.downloads",
                     "zte.com.cn.alarmclock",
                     "cn.zte.recorder",
                     "com.zte.nebulatranslation",

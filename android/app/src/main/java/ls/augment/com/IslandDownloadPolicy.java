@@ -11,11 +11,11 @@ public final class IslandDownloadPolicy<T> {
         public final String key,channel;
         public final int uid,percent;
         public final long postedAt,revision;
-        public final boolean indeterminate;
+        public final boolean indeterminate,paused;
         public final T source;
-        Entry(String key,String channel,int uid,long postedAt,long revision,int percent,boolean indeterminate,T source){
+        Entry(String key,String channel,int uid,long postedAt,long revision,int percent,boolean indeterminate,T source,boolean paused){
             this.key=key;this.channel=channel;this.uid=uid;this.postedAt=postedAt;this.revision=revision;
-            this.percent=percent;this.indeterminate=indeterminate;this.source=source;
+            this.percent=percent;this.indeterminate=indeterminate;this.source=source;this.paused=paused;
         }
     }
     private final Map<String,Entry<T>> entries=new LinkedHashMap<>();
@@ -30,16 +30,20 @@ public final class IslandDownloadPolicy<T> {
     }
     public boolean update(String key,String channel,int uid,long postedAt,boolean ongoing,
             boolean indeterminate,int progress,int maximum,T source){
+        return update(key,channel,uid,postedAt,ongoing,indeterminate,progress,maximum,source,false);
+    }
+    public boolean update(String key,String channel,int uid,long postedAt,boolean ongoing,
+            boolean indeterminate,int progress,int maximum,T source,boolean paused){
         Entry<T> previous=entries.get(key);Stamp last=history.get(key);
         if(last!=null&&(uid!=last.uid||postedAt<last.time||postedAt==last.time&&last.ended))return false;
-        if(!ongoing||!progress(indeterminate,progress,maximum)||!indeterminate&&progress==maximum){
+        if(!ongoing||!progress(indeterminate,progress,maximum)||!paused&&!indeterminate&&progress==maximum){
             remember(key,new Stamp(uid,postedAt,true));
             return entries.remove(key)!=null;
         }
         if(previous==null&&entries.size()>=MAX_ACTIVE)return false;
         remember(key,new Stamp(uid,postedAt,false));
         int percent=indeterminate?-1:(int)((long)progress*100/maximum);
-        entries.put(key,new Entry<>(key,channel,uid,postedAt,++revision,percent,indeterminate,source));return true;
+        entries.put(key,new Entry<>(key,channel,uid,postedAt,++revision,percent,indeterminate,source,paused));return true;
     }
     public boolean remove(String key,int uid,long postedAt){
         Entry<T> entry=entries.get(key);
@@ -50,8 +54,11 @@ public final class IslandDownloadPolicy<T> {
     public void retainKeys(Set<String> keys){entries.keySet().retainAll(keys);}
     public Entry<T> get(String key){return entries.get(key);}
     public Entry<T> choose(String current){
-        Entry<T> entry=entries.get(current);if(entry!=null)return entry;
-        for(Entry<T> candidate:entries.values())if(entry==null||candidate.revision>entry.revision)entry=candidate;
+        return choose(current,entry->true);
+    }
+    public Entry<T> choose(String current,java.util.function.Predicate<Entry<T>> permitted){
+        Entry<T> entry=entries.get(current);if(entry!=null&&permitted.test(entry))return entry;entry=null;
+        for(Entry<T> candidate:entries.values())if(permitted.test(candidate)&&(entry==null||candidate.revision>entry.revision))entry=candidate;
         return entry;
     }
     public int size(){return entries.size();}

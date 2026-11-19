@@ -350,6 +350,11 @@ public final class AugmentModule extends RootEarlyModule {
             NativeIslandClockSource.install(this, param.getClassLoader());
             return;
         }
+        if ("com.android.providers.downloads".equals(readyPackageName)) {
+            FeatureSettings.awaitBootSnapshot();
+            NativeDownloadControlHook.install(this, param.getClassLoader());
+            return;
+        }
         if ("cn.zte.recorder".equals(readyPackageName)) {
             FeatureSettings.awaitBootSnapshot();
             MagicIslandAppCards.install(this, param.getClassLoader(), readyPackageName);
@@ -553,6 +558,7 @@ public final class AugmentModule extends RootEarlyModule {
         installSystemUiStage("audio", () -> AudioGainUiHook.install(this, classLoader));
         installSystemUiStage("redmagic", () -> RedMagicSystemUiHook.install(this, classLoader));
         installSystemUiStage("back_gesture", () -> BackGestureIconHook.install(this, classLoader));
+        installSystemUiStage("app_island_request", () -> AppIslandRequestGuard.install(this, classLoader));
         installSystemUiStage("dynamic_island", () -> DynamicIslandHook.install(this, classLoader));
         installSystemUiStage("notification_media", () -> NotificationMediaCardHook.install(this, classLoader));
         installSystemUiStage("glass", () -> LiquidGlassControlCenterHook.install(this, classLoader));

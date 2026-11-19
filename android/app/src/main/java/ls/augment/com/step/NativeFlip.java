@@ -168,10 +168,9 @@ final class NativeFlip {
         committed=true;
         String message="工作区转场末帧已提交；路径="+(outgoing<0?"副区展开":"主副交换")
                 +"；回调帧数="+frames+"；最大回调间隔ms="+(maxFrameGapNanos/1_000_000f)+"；非屏幕呈现帧率";
-        if(targetLeft==sideLeft){
-            // Fixed placement needs no host relayout. Land the original tasks now,
-            // while their final animation pose is still owned, without waiting for
-            // SystemUI's render queue to round-trip another roles request.
+        if(targetLeft==sideLeft && !(outgoing>=0 && promoted<0)){
+            // Occupied cells can land directly. Empty-cell admission must retain
+            // this final pose until SystemUI commits a frame without its old plus.
             report(null,0,message,-1);
             try{roles(new Intent(request).putExtra("flipLanded",true),reply);}
             catch(Exception|LinkageError failure){

@@ -58,6 +58,8 @@ final class NativeIslandHost {
     private View root,container,current,music,notice,charge,chargingView,noticePanel,chargePanel;
     private View download,downloadPanel;
     private DuoDownloadPanel downloadContent,noticeContent;
+    private final IslandMediaLyrics lyrics=new IslandMediaLyrics();
+    private final IslandLegacyMediaProgress legacyProgress=new IslandLegacyMediaProgress();
     private DuoCompactText downloadLabel;
     private boolean acquired,originalFeature,originalEnabled,flagsOverridden;
     private int width,height,offsetX,offsetY;
@@ -74,6 +76,8 @@ final class NativeIslandHost {
     private IslandLiveScenes liveScenes;
     private DuoIslandCompatibility duoCompatibility;
     private DuoIslandLegacyCards legacyCards;
+    private IslandGestureActions.Target gesture;
+    private Object gestureRevision;
     private boolean nativeRequested;
     private View waitingNativeRoot;
     private View.OnAttachStateChangeListener nativeAttach;
@@ -239,7 +243,8 @@ final class NativeIslandHost {
         count+=hookNamed(module,loader,"native_island",N+"PermanentIslandManager","onDynamicIslandSettingsChanged",1,null,(o,a,r)->{
             NativeIslandHost h=active;if(h!=null&&o==h.permanent){h.originalEnabled=(Boolean)a[0];set(o,"mIsDynamicIslandEnable",true);}return PASS;
         });
-        return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader)+IslandNativeSurface.install(module,loader);
+        return count+NativeIslandScenes.install(module,loader)+DuoNotificationCards.install(module,loader)+IslandNativeSurface.install(module,loader)
+                +NativeIslandMediaAdmission.install(module,loader)+NativeIslandCharging.install(module,loader)+IslandFaceFeedback.install(module,loader);
     }
 
     private boolean dormantNativeScene(Object owner,Object island,boolean persistent){
@@ -507,11 +512,13 @@ final class NativeIslandHost {
     private Object sceneField(Object owner,String name){
         return legacyCards!=null&&legacyCards.owns(owner)?legacyCards.member(owner,name):field(owner,name);
     }
-    boolean show(int kind,String title,String subtitle,String compact,Drawable icon,boolean playing,int battery,MediaController controller){
+    boolean show(int kind,String title,String subtitle,String compact,Drawable icon,boolean playing,int battery,MediaController controller,int ownerUser){
         if(managesNativeScenes())return notificationCards!=null&&notificationCards.show(title,subtitle,compact,icon);
         if(!acquire())return false;
+        gesture=null;gestureRevision=null;
         try{
             geometry();View next;
+            if(kind!=IslandActivityPolicy.MUSIC){lyrics.clear();legacyProgress.clear();}
             if(kind==IslandActivityPolicy.MUSIC){
                 if(music==null)music=inflate("media_island_layout");
                 call(music,"updateMediaData",null,playing,controller.getPackageName());
@@ -526,6 +533,7 @@ final class NativeIslandHost {
                     ((TextView)heading).setEllipsize(android.text.TextUtils.TruncateAt.END);
                 }
                 set(panel,"mMediaController",controller);
+                lyrics.bind(permanent,music,panel,controller,ownerUser);
                 Object playPause=field(panel,"mPanelPlayPause");
                 if(playPause instanceof ImageView){((ImageView)playPause).setImageResource(playing?android.R.drawable.ic_media_pause:android.R.drawable.ic_media_play);
                     ((ImageView)playPause).setImageTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE));}
@@ -534,9 +542,7 @@ final class NativeIslandHost {
                 button(panel,"mPanelNext","下一首",(actions&PlaybackState.ACTION_SKIP_TO_NEXT)!=0,()->controller.getTransportControls().skipToNext());
                 button(panel,"mPanelPlayPause",playing?"暂停":"播放",(actions&(PlaybackState.ACTION_PLAY_PAUSE|(playing?PlaybackState.ACTION_PAUSE:PlaybackState.ACTION_PLAY)))!=0,
                         ()->{if(playing)controller.getTransportControls().pause();else controller.getTransportControls().play();});
-                // The ROM's seek observer requires MediaData. Hide it until a native
-                // session model is available; the previous Duo panel had no seek bar.
-                for(String f:new String[]{"mMediaProgress","mElapsedTime","mTotalTime"}){Object v=field(panel,f);if(v instanceof View)((View)v).setVisibility(View.GONE);}
+                legacyProgress.bind(panel,controller);
                 next=music;
             }else if(kind==IslandActivityPolicy.CHARGING){
                 if(charge==null){
@@ -546,6 +552,7 @@ final class NativeIslandHost {
                     chargePanel=appPanel();setAppPanel(charge,chargePanel);
                 }
                 call(chargingView,"updateViewVisibility",true,false);text(chargingView,"mDisplayTitle","充电中");text(chargingView,"mDisplayText",battery+"%");
+                NativeIslandCharging.nativeContent(chargingView);
                 Object chargingIcon=field(chargingView,"mDisplayImage");
                 panel(chargePanel,title,subtitle,chargingIcon instanceof ImageView?((ImageView)chargingIcon).getDrawable():icon);next=charge;
             }else{
@@ -554,7 +561,7 @@ final class NativeIslandHost {
                 image(notice,"mDisplayIcon",icon);if(noticeContent==null)panel(noticePanel,title,subtitle,icon);next=notice;
             }
             set(next,"mKeyguardIsland",false);set(next,"mIslandWidth",width);
-            next.setContentDescription("灵动岛："+compact+"。轻点打开，长按展开");
+            next.setContentDescription("灵动岛："+compact+"。轻点展开，长按打开来源");
             next.setOnClickListener(v->click.run());next.setOnLongClickListener(v->{longClick.run();return true;});
             if(current!=next){hide();next.setAlpha(1f);if(noticePanel!=null)noticePanel.setAlpha(1f);current=next;MAIN.removeCallbacks(publish);MAIN.post(publish);}
             else if(next.getParent()==null&&!MAIN.hasCallbacks(publish))MAIN.post(publish);
@@ -576,27 +583,28 @@ final class NativeIslandHost {
                 downloadLabel=label instanceof TextView?new DuoCompactText((TextView)label):null;
                 setAppPanel(compact,panel);download=compact;downloadPanel=panel;downloadContent=content;
             }
-            String compact=entry.indeterminate?"下载中":entry.percent+"%";
+            String compact=entry.paused?"已暂停":entry.indeterminate?"下载中":entry.percent+"%";
             if(downloadLabel!=null)downloadLabel.bind(DuoCompactText.fileName(entry.source.getNotification()),compact);
             else if(duoCompatibility.legacyCards)text(download,"mDisplayText",compact);else call(download,"setDisplayText",compact);
-            image(download,"mDisplayIcon",icon);downloadContent.bind(entry,icon,app,action);
+            image(download,"mDisplayIcon",IslandNotificationArtwork.resolve(context,entry.source,"downloads",false,icon));downloadContent.bind(entry,icon,app,action);
             set(download,"mKeyguardIsland",false);set(download,"mIslandWidth",width);
-            download.setContentDescription(app+"，下载"+compact+"。轻点打开，长按展开");
+            download.setContentDescription(app+"，下载"+compact+"。轻点展开，长按打开来源");
             download.setOnClickListener(v->click.run());download.setOnLongClickListener(v->{longClick.run();return true;});
             if(current!=download){hide();current=download;MAIN.removeCallbacks(publish);MAIN.post(publish);}
             else if(download.getParent()==null&&!MAIN.hasCallbacks(publish))MAIN.post(publish);
-            applyAppearance();return true;
+            gestureSource(entry.source,"downloads");applyAppearance();return true;
         }catch(Exception unavailable){hide();report("download_unavailable:"+cause(unavailable));return false;}
     }
     boolean showNotice(android.service.notification.StatusBarNotification source,String title,String subtitle,String app,Drawable icon,
             java.util.function.BiConsumer<android.service.notification.StatusBarNotification,android.app.PendingIntent> action){
         if(managesNativeScenes())return notificationCards!=null&&notificationCards.showNotice(source,icon,app,action);
-        if(!show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),icon,false,0,null))return false;
+        if(!show(IslandActivityPolicy.NOTICE,title,subtitle,DuoCompactText.senderOrTitle(source.getNotification(),app),IslandNotificationArtwork.resolve(context,source,"notifications",false,icon),false,0,null,source.getUserId()))return false;
         try{
             if(noticeContent==null)noticeContent=new DuoDownloadPanel(noticePanel);
             noticeContent.bindNotice(source,icon,app,action);
             applyAppearance();
         }catch(Exception unavailable){report("notice_controls_unavailable:"+cause(unavailable));}
+        gestureSource(source,"notifications");
         return true;
     }
     private void panel(View view,String title,String subtitle,Drawable icon)throws Exception{
@@ -737,6 +745,29 @@ final class NativeIslandHost {
         catch(Exception e){report("publish_failed:"+cause(e));}
     }
     private boolean ownsSelected(Object owner){if(owner!=permanent||current==null)return false;try{return call(permanent,"getPermanentIsland")==current;}catch(Exception e){return false;}}
+    static IslandGestureActions.Target gestureTarget(Object manager){
+        NativeIslandHost host=active;
+        return host!=null&&!host.managesNativeScenes()&&host.acquired&&host.ownsSelected(manager)?host.gesture:null;
+    }
+    static boolean ownsGestureSurface(Object manager,Object view){
+        NativeIslandHost host=active;
+        return host!=null&&!host.managesNativeScenes()&&host.acquired&&host.permanent==manager&&host.current==view&&view!=null;
+    }
+    private void gestureSource(android.service.notification.StatusBarNotification source,String scene){
+        gestureRevision=IslandGestureActions.stamp(source);
+        if(source==null){gesture=null;IslandGestureActions.release(this);return;}
+        final boolean legacy;
+        try{legacy="permanent_visibility".equals(NativeIslandWake.contract(manager,permanent));}
+        catch(ReflectiveOperationException unavailable){gesture=null;IslandGestureActions.release(this);report("gesture_lifecycle_unavailable:"+unavailable.getMessage());return;}
+        Object revision=gestureRevision;View expected=current;
+        gesture=new IslandGestureActions.Target(this,context,source,scene,()->acquired&&active==this&&!managesNativeScenes()
+                &&current==expected&&java.util.Objects.equals(gestureRevision,revision)&&ownsSelected(permanent)
+                &&phone.isAttachedToWindow()&&phone.isShown()&&root!=null&&root.isAttachedToWindow()
+                &&IslandGestureHostState.allowed(context,permanent,legacy),()->{hide();if(panelChanged!=null)panelChanged.run();});
+        try{IslandPanelInteraction.bind(this,permanent,current,call(current,"getPanelIsland"),true,
+                ()->{if(panelChanged!=null)panelChanged.run();},()->gesture);}
+        catch(Exception unavailable){report("gesture_panel_unavailable:"+cause(unavailable));}
+    }
     private boolean ownsView(Object view){return view!=null&&(view==music||view==notice||view==charge||view==download);}
     void expand(){
         if(notificationCards!=null){notificationCards.expand();return;}
@@ -751,7 +782,7 @@ final class NativeIslandHost {
             NativeIslandHost h=owner.get();if(h!=null){MAIN.post(h::applyAppearance);MAIN.post(h.observe);}
         })){reportPanel("panel_capability_missing:animation_callback_bridge");return;}
         Object panel=call(current,"getPanelIsland");
-        IslandPanelInteraction.bind(this,permanent,current,panel,true,()->{if(panelChanged!=null)panelChanged.run();});
+        IslandPanelInteraction.bind(this,permanent,current,panel,true,()->{if(panelChanged!=null)panelChanged.run();},()->gesture);
         FeatureSettings.diagnostic(context,"ls_augment_native_island_panel","request;panel="+(panel==null?"null":panel.getClass().getSimpleName())+";anim="+field(permanent,"mAnimProcessing")+";priority="+field(permanent,"mPriorityProcessing"));
         call(permanent,"showPermanentPanelIsland");MAIN.postDelayed(observe,500);
     }catch(Exception e){report("expand_failed:"+cause(e));}}
@@ -768,8 +799,9 @@ final class NativeIslandHost {
         hide();
     }
     void hide(){
-        frames.clear();
+        legacyProgress.clear();lyrics.clear();frames.clear();
         if(notificationCards!=null){notificationCards.hide();return;}
+        gestureSource(null,null);
         IslandPanelInteraction.release(this);
         MAIN.removeCallbacks(publish);dismiss();
         // end() dispatches the owned close callback while the manager, panel and getter hooks are still alive.

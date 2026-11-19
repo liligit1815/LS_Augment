@@ -247,12 +247,10 @@ final class RedMagicSystemUiHook {
             if (!forced && SystemClock.uptimeMillis() - checked < 200 && (pair==null||!pair.needsRefresh())) return;
             checked = SystemClock.uptimeMillis();
             try {
-                String rootType=view.getClass().getSimpleName();
-                boolean bar=rootType.equals("PhoneStatusBarView")||rootType.equals("KeyguardStatusBarView")
-                        ||rootType.equals("CCHeaderView")||rootType.equals("NoRemeasureMotionLayout");
                 boolean grid = StatusBarGridHook.configuredIconLayout(view);
                 boolean circle = StatusBarGridHook.ownsConnectivityReplacement(view);
                 // Dual SIM is an explicit icon option, including with the native preset.
+                boolean bar = BAR_ROOT.get(view.getClass());
                 boolean stack = bar && !circle && FeatureSettings.enabled(view.getContext(), SystemUiOptions.SIGNAL_DUAL);
                 if(stack&&signalSource==null)signalSource=new ConnectivityIconSource(view.getContext(),()->{
                     ViewGroup current=root.get();if(current!=null)current.post(()->{refresh(true);current.invalidate();});
@@ -307,6 +305,27 @@ final class RedMagicSystemUiHook {
         }
     }
 
+    private static final ClassValue<Boolean> BAR_ROOT = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            for (Class<?> at = type; at != null && ViewGroup.class.isAssignableFrom(at); at = at.getSuperclass()) {
+                switch (at.getName()) {
+                    case "com.android.systemui.statusbar.phone.PhoneStatusBarView",
+                            "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
+                            "com.zte.controlcenter.widget.CCHeaderView",
+                            "com.android.systemui.util.NoRemeasureMotionLayout": return true;
+                }
+            }
+            return false;
+        }
+    };
+    private static final ClassValue<Boolean> MOBILE_VIEW = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            for (Class<?> at = type; at != null && View.class.isAssignableFrom(at); at = at.getSuperclass())
+                if (at.getName().endsWith("ModernStatusBarMobileView")) return true;
+            return false;
+        }
+    };
+
     private static void scan(View view, ArrayList<View> mobiles, int depth) {
         if (depth > 18) return;
         String type = view.getClass().getName();
@@ -314,7 +333,7 @@ final class RedMagicSystemUiHook {
         RedMagicLegacyUiHook.applyView(view);
         RedMagicAdvancedUiHook.applyStatusBarFont(view);
         RedMagicAdvancedUiHook.applyNativeNotificationIcon(view);
-        if (type.endsWith("ModernStatusBarMobileView")) mobiles.add(view);
+        if (MOBILE_VIEW.get(view.getClass())) mobiles.add(view);
         if (type.endsWith("OngoingPrivacyChip") || id.equals("privacy_dot")) rememberPrivacy(view);
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;

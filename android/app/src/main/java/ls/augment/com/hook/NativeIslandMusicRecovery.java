@@ -20,9 +20,13 @@ import ls.augment.com.SystemUiOptions;
 /** Reconnects existing sessions to the fullscreen OEM music island; never renders a replacement. */
 final class NativeIslandMusicRecovery {
     private final Context context;
+    private final IslandMediaLyrics lyrics=new IslandMediaLyrics();
     private final Object manager,permanent;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final MediaSessionManager sessions;
+    private final NativeIslandMediaAdmission admission;
+    private MediaController observed;
+    private MediaController.Callback sourceChanges;
     private final Method accept,refresh,foreground,supported,allowed;
     private final Field controller,currentPackage,playing,foregroundPackage,cards;
     private final Runnable reconcile=this::reconcile;
@@ -48,6 +52,7 @@ final class NativeIslandMusicRecovery {
         Object service=MagicIslandScenes.typed(type,"mMediaSessionManager",MediaSessionManager.class).get(manager);
         if(!(service instanceof MediaSessionManager))throw new IllegalStateException("media_service_missing");
         sessions=(MediaSessionManager)service;
+        admission=NativeIslandMediaAdmission.attach(context,manager,permanent,sessions);
     }
 
     void start(){
@@ -87,31 +92,37 @@ final class NativeIslandMusicRecovery {
     }
 
     private void reconcile(){
-        if(closed||!FeatureSettings.enabled(context,SystemUiOptions.ISLAND)||!IslandSceneSelection.enabled(context,"media"))return;
+        if(closed)return;
+        if(!FeatureSettings.enabled(context,SystemUiOptions.ISLAND)||!IslandSceneSelection.enabled(context,"media")){
+            if(admission!=null)admission.synchronizeSelection();observe(null);return;
+        }
         try{
             int user=(Integer)Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null);
             // These public APIs are scoped to the caller's user. Do not replay another user's session.
-            if(user!=android.os.Process.myUid()/100000){report("native_fallback:user_scope");return;}
+            if(user!=android.os.Process.myUid()/100000){observe(null);report("native_fallback:user_scope");return;}
             Object top=foregroundPackage.get(manager);
             // The OEM refresh entry can add a playing card. Its foreground exclusion must be ready first.
-            if(!(top instanceof String)||((String)top).isEmpty()){report("native_fallback:foreground_not_ready");return;}
+            if(!(top instanceof String)||((String)top).isEmpty()){observe(null);report("native_fallback:foreground_not_ready");return;}
             String pkg=sessions.getMediaKeyEventSessionPackageName();
-            if(pkg==null||pkg.isEmpty()||!Boolean.TRUE.equals(supported.invoke(manager,pkg))
-                    ||!Boolean.TRUE.equals(allowed.invoke(manager,pkg))){report("native_fallback:no_eligible_media_key_session");return;}
+            if(pkg==null||pkg.isEmpty()){observe(null);report("native_fallback:no_eligible_media_key_session");return;}
             MediaSession.Token token=sessions.getMediaKeyEventSession();
             List<MediaController> values=sessions.getActiveSessions(null);
             MediaController selected=null;
             for(MediaController value:values){
                 if(!pkg.equals(value.getPackageName())||(token!=null&&!token.equals(value.getSessionToken())))continue;
-                if(selected!=null){report("native_fallback:ambiguous_session");return;}
+                if(selected!=null){observe(null);report("native_fallback:ambiguous_session");return;}
                 selected=value;
             }
-            if(selected==null){report("native_fallback:session_not_ready");return;}
+            if(selected==null){observe(null);report("native_fallback:session_not_ready");return;}
             // A source can change while its list is queried. Retry only on the next real event.
             if(!pkg.equals(sessions.getMediaKeyEventSessionPackageName())
                     ||!Objects.equals(token,sessions.getMediaKeyEventSession())
                     ||user!=(Integer)Class.forName("android.app.ActivityManager").getMethod("getCurrentUser").invoke(null)){
-                report("native_fallback:source_changed");return;
+                observe(null);report("native_fallback:source_changed");return;
+            }
+            observe(selected);
+            if(!Boolean.TRUE.equals(supported.invoke(manager,pkg))||!Boolean.TRUE.equals(allowed.invoke(manager,pkg))){
+                report("native_fallback:source_filtered_or_missing_metadata");return;
             }
             MediaController before=(MediaController)controller.get(manager);
             boolean rebound=before==null||!selected.getSessionToken().equals(before.getSessionToken())
@@ -130,15 +141,38 @@ final class NativeIslandMusicRecovery {
                 foreground.invoke(manager,top);
             }
             Object after=cards.get(permanent);
+            if(admission!=null)admission.syncPanel(null);
+            Object card=after instanceof Map?((Map<?,?>)after).get("media_island"):null;
+            IslandMediaLyrics.bindFullscreen(lyrics,manager,card,selected,user);
             report("session;rebound="+rebound+";playing="+isPlaying+";foregroundKnown="+(top instanceof String)
                     +";card="+(after instanceof Map&&((Map<?,?>)after).containsKey("media_island")));
-        }catch(Exception|LinkageError failure){report("native_fallback:"+FeatureRuntimeLog.failure(failure));}
+        }catch(Exception|LinkageError failure){observe(null);report("native_fallback:"+FeatureRuntimeLog.failure(failure));}
+    }
+
+    private void observe(MediaController next){
+        if(next==null||observed!=null&&!observed.getSessionToken().equals(next.getSessionToken()))lyrics.clear();
+        if(observed!=null&&next!=null&&Objects.equals(observed.getSessionToken(),next.getSessionToken())){
+            if(admission!=null)admission.select(next);return;
+        }
+        if(admission!=null)admission.select(null);
+        if(observed!=null)try{observed.unregisterCallback(sourceChanges);}catch(RuntimeException ignored){}
+        observed=null;sourceChanges=null;
+        if(next!=null)try{
+            MediaController.Callback callback=new MediaController.Callback(){
+                @Override public void onPlaybackStateChanged(PlaybackState state){if(observed==next)request();}
+                @Override public void onMetadataChanged(android.media.MediaMetadata metadata){if(observed==next)request();}
+                @Override public void onSessionDestroyed(){if(observed==next){observe(null);request();}}
+            };
+            next.registerCallback(callback,main);sourceChanges=callback;observed=next;if(admission!=null)admission.select(next);
+        }
+        catch(RuntimeException failure){report("source_listener_unavailable:"+FeatureRuntimeLog.failure(failure));}
     }
 
     private static void report(String state){FeatureRuntimeLog.state("ISLAND_MUSIC_RECOVERY",state,state);}
 
     void close(){
         closed=true;main.removeCallbacks(reconcile);FeatureSettings.removeSnapshotListener(changed);
+        observe(null);if(admission!=null)admission.close();
         if(listening)try{sessions.removeOnActiveSessionsChangedListener(active);}catch(RuntimeException ignored){}
         listening=false;
         if(keyListener!=null&&removeKeyListener!=null)try{removeKeyListener.invoke(sessions,keyListener);}catch(Exception ignored){}

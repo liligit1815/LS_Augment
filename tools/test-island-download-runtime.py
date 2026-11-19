@@ -8,13 +8,14 @@ ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'android/app/src/main/java/ls/augment/com'
 JDK=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 FILES={
+'ls/augment/com/hook/IslandPublishedActivity.java':'package ls.augment.com.hook;class IslandPublishedActivity{static boolean selected(android.content.Context c,android.service.notification.StatusBarNotification n){return false;}}',
 'android/content/Context.java':'package android.content;public class Context{}',
 'android/os/Bundle.java':'''package android.os;import java.util.*;public class Bundle extends HashMap<String,Object>{
 public int getInt(String k,int d){Object v=get(k);return v instanceof Integer?(int)v:d;}
 public boolean getBoolean(String k,boolean d){Object v=get(k);return v instanceof Boolean?(boolean)v:d;}}''',
 'android/app/PendingIntent.java':'package android.app;public class PendingIntent{}',
 'android/app/NotificationChannel.java':'package android.app;public class NotificationChannel{public CharSequence getName(){return "下载";}}',
-'android/app/NotificationManager.java':'''package android.app;public class NotificationManager{public static final int IMPORTANCE_LOW=2;
+'android/app/NotificationManager.java':'''package android.app;public class NotificationManager{public static final int IMPORTANCE_MIN=1,IMPORTANCE_LOW=2;
 public static class Policy{public static final int SUPPRESSED_EFFECT_STATUS_BAR=1,SUPPRESSED_EFFECT_PEEK=2,SUPPRESSED_EFFECT_NOTIFICATION_LIST=4;}}''',
 'android/app/Notification.java':'''package android.app;public class Notification{
 public static final int FLAG_ONGOING_EVENT=2,FLAG_GROUP_SUMMARY=512,VISIBILITY_SECRET=-1;
@@ -96,6 +97,12 @@ FeatureSettings.values.put(IslandDownloadConfig.ENABLED,"1");
 source.posted(first,ranking);check(source.activities.size()==0,"enabled with no channels remains empty");
 FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,key);check(source.posted(first,ranking),"selected structured download consumed");
 check(source.activities.get("download").percent==20,"LOW importance progress notification supported by explicit selection");
+ranking.rank.importance=1;source.posted(first,ranking);
+check(source.activities.get("download").percent==20,"MIN progress channel supported only by exact selection");
+FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,"");source.configure();source.posted(first,ranking);
+check(source.activities.size()==0,"silent source never enters without selected channel");
+FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,key);source.posted(first,ranking);
+check(source.canPrepareHeadsUp(first,ranking.rank),"MIN channel can use independent quiet card");ranking.rank.importance=2;
 check(source.canPrepareHeadsUp(first,ranking.rank),"selected independent progress can prepare a handoff");
 FeatureSettings.values.put("ls_augment_rm_island_notice_blacklist","0|com.example.downloader");
 FeatureSettings.values.put("ls_augment_rm_island_notifications","0");
@@ -111,11 +118,19 @@ StatusBarNotification complete=note("download",12,100);check(source.posted(compl
 check(!source.canPrepareHeadsUp(complete,ranking.rank),"completed download cannot suppress its native alert");
 check(source.activities.size()==0,"100 percent withdraws even if source remains ongoing");source.posted(first,ranking);
 check(source.activities.size()==0,"source layer does not resurrect stale completion");
+StatusBarNotification recovery=note("recovery",30,100);recovery.pkg=IslandDownloadConfig.PROVIDER_PACKAGE;
+recovery.notification.extras.put(IslandDownloadConfig.PAUSED_RECOVERY,true);
+FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,IslandDownloadConfig.channel(0,recovery.pkg,"downloads"));
+source.posted(recovery,ranking);check(source.activities.get("recovery").paused&&source.activities.get("recovery").percent==100,"provider recovery stays actionable when all bytes arrived before pause");
+check(source.canPrepareHeadsUp(recovery,ranking.rank),"paused full-byte task remains eligible for native surface");
+recovery.notification.contentIntent=new PendingIntent();check(source.allowsAction(recovery,ranking,source.activities.get("recovery"),recovery.notification.contentIntent),"recovery original action valid at full byte progress");
+source.clear();recovery.pkg="com.example.downloader";FeatureSettings.values.put(IslandDownloadConfig.CHANNELS,key);source.posted(recovery,ranking);
+check(source.activities.size()==0,"third-party marker cannot impersonate provider recovery state");
 for(int guard=0;guard<10;guard++){
  source.clear();StatusBarNotification n=note("g",20,10);ranking=new NotificationListenerService.RankingMap();
  if(guard==0)n.user=10;if(guard==1)n.uid=1012345;if(guard==2)n.notification.visibility=-1;if(guard==3)n.notification.flags|=512;
  if(guard==4)n.notification.extras.put("media","session");if(guard==5)ranking.found=false;if(guard==6)ranking.rank.suspended=true;
- if(guard==7)ranking.rank.importance=1;if(guard==8)ranking.rank.interruption=false;if(guard==9)ranking.rank.effects=2;
+ if(guard==7)ranking.rank.importance=0;if(guard==8)ranking.rank.interruption=false;if(guard==9)ranking.rank.effects=2;
  source.posted(n,ranking);check(source.activities.size()==0,"privacy/ranking guard "+guard);
 }
 ranking=new NotificationListenerService.RankingMap();source.clear();source.posted(first,ranking);
@@ -154,6 +169,8 @@ def main():
             files['ls/augment/com/'+name+'.java']=(SRC/(name+'.java')).read_text(encoding='utf-8')
         files['ls/augment/com/hook/IslandDownloadSource.java']=(SRC/'hook/IslandDownloadSource.java').read_text(encoding='utf-8')
         files['ls/augment/com/hook/DownloadRuntimeTest.java']=HARNESS
+        from island_notification_template_test_support import add_templates
+        add_templates(files)
         for name,content in files.items():
             path=folder/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8')
         subprocess.run([str(JDK/'javac'),'-encoding','UTF-8','-d',str(folder),*map(str,folder.rglob('*.java'))],check=True)

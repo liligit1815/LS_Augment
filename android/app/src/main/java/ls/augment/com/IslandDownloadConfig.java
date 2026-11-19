@@ -7,6 +7,8 @@ import java.util.Set;
 
 /** User-scoped, exact notification channels. An empty selection never means all apps. */
 public final class IslandDownloadConfig {
+    public static final String PROVIDER_PACKAGE="com.android.providers.downloads";
+    public static final String PAUSED_RECOVERY="ls.augment.download.paused";
     public static final String ENABLED="ls_augment_rm_island_downloads";
     public static final String CHANNELS="ls_augment_rm_island_download_channels";
     public static final String DISCOVERED="ls_augment_island_download_channels";

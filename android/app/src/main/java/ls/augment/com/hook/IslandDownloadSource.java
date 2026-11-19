@@ -12,7 +12,7 @@ import org.json.JSONObject;
 import ls.augment.com.IslandDownloadConfig;
 import ls.augment.com.IslandDownloadPolicy;
 
-/** Reads existing source notifications only. No synthetic notifications, downloads or task controls. */
+/** Reads actual source notifications, including recovery notices owned by the download provider. */
 final class IslandDownloadSource {
     final IslandDownloadPolicy<StatusBarNotification> activities=new IslandDownloadPolicy<>();
     private final Context context;
@@ -23,19 +23,28 @@ final class IslandDownloadSource {
     void clear(){activities.clear();}
     boolean enabled(){return FeatureSettings.enabled(context,IslandDownloadConfig.ENABLED);}
     Set<String> selected(){return IslandDownloadConfig.selected(FeatureSettings.text(context,IslandDownloadConfig.CHANNELS,""));}
-    void configure(){if(!enabled())clear();else activities.retainChannels(selected());}
+    private boolean selected(StatusBarNotification source){return IslandNotificationTemplates.selected(context,source,"downloads",
+            selected().contains(IslandDownloadConfig.channel(source.getUserId(),source.getPackageName(),source.getNotification().getChannelId())));}
+    void configure(){
+        if(!enabled()){clear();return;}
+        Set<String> keep=new HashSet<>();for(String key:activities.keys())if(selected(activities.get(key).source))keep.add(key);
+        activities.retainKeys(keep);
+    }
     private boolean permitted(StatusBarNotification sbn,NotificationListenerService.RankingMap map,boolean discovery){
         NotificationListenerService.Ranking rank=new NotificationListenerService.Ranking();
         return map!=null&&map.getRanking(sbn.getKey(),rank)&&permitted(sbn,rank,discovery);
     }
     private boolean permitted(StatusBarNotification sbn,NotificationListenerService.Ranking rank,boolean discovery){
         Notification n=sbn.getNotification();
+        if(IslandPublishedActivity.selected(context,sbn))return false;
         if(user<0||sbn.getUserId()!=user||sbn.getUid()/100000!=user||n==null||n.extras==null
                 ||n.visibility==Notification.VISIBILITY_SECRET||(n.flags&Notification.FLAG_GROUP_SUMMARY)!=0
                 ||n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION))return false;
         if(rank==null||rank.isSuspended())return false;
-        // Progress channels commonly use LOW importance: selection explicitly opts into their island.
-        return rank.getImportance()>=NotificationManager.IMPORTANCE_LOW&&(discovery||IslandHeadsUpBridge.downloadMayShow(sbn,rank)&&rank.matchesInterruptionFilter()
+        // RedMagic's actual DownloadProvider creates its active channel at MIN. An exact
+        // user-selected progress channel may show quietly; NONE remains blocked and we
+        // never change the channel's importance or the native alert policy.
+        return rank.getImportance()>=NotificationManager.IMPORTANCE_MIN&&(discovery||IslandHeadsUpBridge.downloadMayShow(sbn,rank)&&rank.matchesInterruptionFilter()
                 &&(rank.getSuppressedVisualEffects()&(NotificationManager.Policy.SUPPRESSED_EFFECT_STATUS_BAR
                 |NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK|NotificationManager.Policy.SUPPRESSED_EFFECT_NOTIFICATION_LIST))==0);
     }
@@ -44,9 +53,9 @@ final class IslandDownloadSource {
                 n.extras.getInt(Notification.EXTRA_PROGRESS,-1),n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0));}
     boolean canPrepareHeadsUp(StatusBarNotification sbn,NotificationListenerService.Ranking ranking){
         Notification n=sbn.getNotification();
-        return enabled()&&selected().contains(IslandDownloadConfig.channel(sbn.getUserId(),sbn.getPackageName(),n.getChannelId()))
+        return enabled()&&selected(sbn)
                 &&permitted(sbn,ranking,false)&&(n.flags&Notification.FLAG_ONGOING_EVENT)!=0&&hasProgress(n)
-                &&(n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false)
+                &&(paused(sbn)||n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false)
                     ||n.extras.getInt(Notification.EXTRA_PROGRESS,-1)<n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0));
     }
     boolean posted(StatusBarNotification sbn,NotificationListenerService.RankingMap map){
@@ -58,14 +67,14 @@ final class IslandDownloadSource {
             String label=name==null?n.getChannelId():name.toString();if(label.length()>64)label=label.substring(0,64);
             if(!label.equals(discovered.get(key))){discovered.remove(key);discovered.put(key,label);publishChannels();}
         }
-        boolean selected=enabled()&&selected().contains(key);
+        boolean selected=enabled()&&selected(sbn);
         boolean tracked=activities.get(sbn.getKey())!=null;
         if(!selected||!permitted(sbn,map,false)){
             activities.remove(sbn.getKey(),sbn.getUid(),sbn.getPostTime());return tracked;
         }
         activities.update(sbn.getKey(),key,sbn.getUid(),sbn.getPostTime(),ongoing,
                 n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false),
-                n.extras.getInt(Notification.EXTRA_PROGRESS,-1),n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0),sbn);
+                n.extras.getInt(Notification.EXTRA_PROGRESS,-1),n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0),sbn,paused(sbn));
         // Completion updates in a selected download channel must not re-enter the transient notice path.
         return tracked||progress;
     }
@@ -91,11 +100,15 @@ final class IslandDownloadSource {
                 ||current.getPostTime()!=entry.postedAt||!permitted(current,map,false))return false;
         Notification n=current.getNotification();
         if((n.flags&Notification.FLAG_ONGOING_EVENT)==0||!hasProgress(n)
-                ||!n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false)
+                ||!paused(current)&&!n.extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false)
                 &&n.extras.getInt(Notification.EXTRA_PROGRESS,-1)==n.extras.getInt(Notification.EXTRA_PROGRESS_MAX,0))return false;
         if(intent.equals(n.contentIntent))return true;
         for(Notification.Action action:actions(n))if(intent.equals(action.actionIntent))return true;
         return false;
+    }
+    private static boolean paused(StatusBarNotification source){
+        return IslandDownloadConfig.PROVIDER_PACKAGE.equals(source.getPackageName())&&source.getNotification().extras!=null
+                &&source.getNotification().extras.getBoolean(IslandDownloadConfig.PAUSED_RECOVERY,false);
     }
     static List<Notification.Action> actions(Notification n){
         List<Notification.Action> result=new ArrayList<>();
@@ -108,7 +121,7 @@ final class IslandDownloadSource {
         return result;
     }
     boolean current(IslandDownloadPolicy.Entry<StatusBarNotification> entry,PendingIntent intent){
-        if(entry==null||!enabled()||!selected().contains(entry.channel)||activities.get(entry.key)!=entry)return false;
+        if(entry==null||!enabled()||!selected(entry.source)||activities.get(entry.key)!=entry)return false;
         Notification n=entry.source.getNotification();
         if(intent==null)return false;
         if(intent.equals(n.contentIntent))return true;

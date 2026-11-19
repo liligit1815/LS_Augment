@@ -20,6 +20,12 @@ def body(marker):
 
 
 FILES = dict(base['FILES'])
+FILES['android/os/Bundle.java']=FILES['android/os/Bundle.java'].replace('public int getInt', '''public CharSequence getCharSequence(String k){return (CharSequence)get(k);}
+public CharSequence[] getCharSequenceArray(String k){return (CharSequence[])get(k);}
+public String getString(String k,String d){return containsKey(k)?(String)get(k):d;}
+public int getInt''')
+FILES['android/app/Notification.java']=FILES['android/app/Notification.java'].replace('public int flags=', '''public static final String EXTRA_TITLE="title",EXTRA_TITLE_BIG="bigTitle",EXTRA_TEXT="text",EXTRA_SUB_TEXT="sub",EXTRA_BIG_TEXT="big",EXTRA_INFO_TEXT="info",EXTRA_TEXT_LINES="lines",EXTRA_TEMPLATE="template";
+public int flags=''')
 FILES['android/os/SystemClock.java']='package android.os;public class SystemClock{ public static long elapsedRealtime(){return 100;} }'
 FILES['ls/augment/com/SystemUiOptions.java']='package ls.augment.com;public class SystemUiOptions{public static final String ISLAND_FIRST_EXPAND="first_expand";}'
 FILES['android/service/notification/NotificationListenerService.java'] = FILES[
@@ -40,10 +46,14 @@ Builder registered;String diagnostic="";Builder prepareFeatureHook(java.lang.ref
 void registerFeatureHook(Builder b){registered=b;}void logFeatureInfo(String value){diagnostic=value;}
 }
 '''
-for name in ('IslandDownloadConfig', 'IslandDownloadPolicy', 'IslandActivityPolicy', 'IslandNoticeRules', 'IslandNoticeBlacklist', 'AppPackageSet'):
+for name in ('IslandDownloadConfig', 'IslandDownloadPolicy', 'IslandActivityPolicy', 'IslandNoticeRules', 'IslandEnvironmentRules', 'IslandNoticeBlacklist', 'AppPackageSet'):
     FILES['ls/augment/com/' + name + '.java'] = (SRC / (name + '.java')).read_text(encoding='utf-8')
 FILES['ls/augment/com/hook/IslandDownloadSource.java'] = (SRC / 'hook/IslandDownloadSource.java').read_text(encoding='utf-8')
+FILES['ls/augment/com/hook/IslandNotificationText.java'] = (SRC/'hook/IslandNotificationText.java').read_text(encoding='utf-8')
+FILES['ls/augment/com/IslandNotificationContent.java'] = (SRC/'IslandNotificationContent.java').read_text(encoding='utf-8')
+FILES['ls/augment/com/IslandNotificationProgress.java'] = (SRC/'IslandNotificationProgress.java').read_text(encoding='utf-8')
 FILES['ls/augment/com/TestIslandNoticeRules.java'] = (ROOT/'tools/TestIslandNoticeRules.java').read_text(encoding='utf-8')
+FILES['ls/augment/com/hook/IslandPresentation.java']='package ls.augment.com.hook;class IslandPresentation{static int configured;static int mode(Object context,Object host,int user,String scene,String pkg,String channel,int source){return source!=0?source:configured;}}'
 HARNESS = '''package ls.augment.com.hook;
 import java.util.*;import android.app.*;import android.service.notification.*;import ls.augment.com.*;
 public class DownloadLifecycleTest {
@@ -59,11 +69,14 @@ static class Power {boolean interactive=true;boolean isInteractive(){return inte
 static class Host {int expansions;boolean retained;void panelActivity(){}boolean holdsActivity(){return retained;}boolean readyForFirstExpansion(){return visible;}void expand(){expansions++;}boolean visible=true,expanded=true;boolean visible(){return visible;}boolean expanded(){return expanded;}}
 static class State {
 final android.content.Context context=new android.content.Context();final IslandDownloadSource downloads=new IslandDownloadSource(context);
+final Object host=new Object();
 boolean closed,enabled=true,screenOff,lock;int user,activity=IslandActivityPolicy.DOWNLOAD,refreshes,notices,withdrawals,opens;
 StatusBarNotification notice;boolean rankingAllowed=true;boolean option(String name){return true;}
 IslandNoticeBlacklist noticeBlacklist=IslandNoticeBlacklist.parse("");long noticeUntil=1000;IslandNoticeRules noticeRules=IslandNoticeRules.parse("");int noticeMode(StatusBarNotification source) NOTICE_MODE
+int noticeSourceMode(StatusBarNotification source) SOURCE_MODE
+int downloadMode(StatusBarNotification source) DOWNLOAD_MODE
 boolean allowedRanking(String key,NotificationListenerService.RankingMap ranking){return rankingAllowed;}
-final Runnable firstExpansion=this::expandFirst;String firstKey;int firstKind,ownerUser,entryWaits;final Set<String> announcedDownloads=new HashSet<>();void firstDiagnostic(String v){}IslandDownloadPolicy.Entry<StatusBarNotification> download;
+final Runnable firstExpansion=this::expandFirst;String firstKey;int firstKind,ownerUser,entryWaits;final Map<String,Object> announcedDownloads=new HashMap<>();void firstDiagnostic(String v){}IslandDownloadPolicy.Entry<StatusBarNotification> download;
 boolean hostVisible(){return nativeHost.visible();}void cancelFirst() CANCEL_FIRST
 void scheduleFirst(String key,int kind) SCHEDULE_FIRST
 void expandFirst() EXPAND_FIRST
@@ -73,6 +86,7 @@ void clearNotice(){notice=null;}
 void openDiagnostic(String value){diagnostic=value;}void requestRefresh(){refreshes++;}void notice(StatusBarNotification s,NotificationListenerService.RankingMap r){notices++;}
 void withdrawNotice(String key){withdrawals++;}boolean openNotice(PendingIntent intent){opens++;return true;}
 void restoreDownloadSnapshot() RESTORE
+Object downloadPresentation(IslandDownloadPolicy.Entry<StatusBarNotification> entry) DOWNLOAD_PRESENTATION
 void downloadSnapshot() SNAPSHOT
 void posted(StatusBarNotification sbn,NotificationListenerService.RankingMap rankings) POSTED
 void downloadAction(IslandDownloadPolicy.Entry<StatusBarNotification> entry,PendingIntent intent) ACTION
@@ -110,6 +124,17 @@ FeatureSettings.values.put(SystemUiOptions.ISLAND_FIRST_EXPAND,"1");state.downlo
 state.nativeHost.expanded=false;state.posted(n,listener.ranking);MAIN.drain();check(state.nativeHost.expansions==1,"first post expands once despite interleaved update");
 state.posted(n,listener.ranking);MAIN.drain();check(state.nativeHost.expansions==1,"progress update reopened collapsed card");
 state.scheduleFirst(n.key,IslandActivityPolicy.DOWNLOAD);state.lock=true;MAIN.drain();check(state.nativeHost.expansions==1,"locked first alert opened");state.lock=false;
+IslandPresentation.configured=3;
+state.posted(n,listener.ranking);MAIN.drain();check(state.nativeHost.expansions==1,"enabling update expansion must not replay unchanged content");
+n.notification.extras.put("progress",21);state.posted(n,listener.ranking);state.download=state.downloads.activities.get(n.key);MAIN.drain();
+check(state.nativeHost.expansions==2,"a real changed percentage requests expansion");
+state.posted(n,listener.ranking);MAIN.drain();check(state.nativeHost.expansions==2,"duplicate callbacks cannot reopen a manually collapsed panel");
+n.notification.extras.put("title","Renamed task");state.posted(n,listener.ranking);state.download=state.downloads.activities.get(n.key);MAIN.drain();
+check(state.nativeHost.expansions==3,"changed source text with same progress requests expansion");
+state.restoreDownloadSnapshot();state.posted(n,listener.ranking);MAIN.drain();check(state.nativeHost.expansions==3,"snapshot restoration is not a new notification");
+n.notification.extras.put("progress",22);state.posted(n,listener.ranking);state.download=state.downloads.activities.get(n.key);IslandPresentation.configured=2;MAIN.drain();
+check(state.nativeHost.expansions==3,"compact rule cancels an already queued expansion");
+IslandPresentation.configured=0;
 state.nativeHost.expanded=true;
 StatusBarNotification ordinary=new StatusBarNotification("ordinary",11,20);ordinary.notification.channel="messages";
 state.posted(ordinary,listener.ranking);check(state.notices==1,"ordinary notice keeps old path");
@@ -164,9 +189,9 @@ System.out.println("PASS download listener/snapshot/routing/dispatch: "+checks+"
 for token, marker in [('HOOK', 'private static int hookListenerLifecycle('),
                       ('CONNECTED', 'hookListenerLifecycle(module,loader,"onListenerConnected",owner->'),
                       ('DISCONNECTED', 'hookListenerLifecycle(module,loader,"onListenerDisconnected",owner->'),
-                      ('CANCEL_FIRST','void cancelFirst()'),('SCHEDULE_FIRST','void scheduleFirst('),('EXPAND_FIRST','void expandFirst()'),('RESTORE','void restoreDownloadSnapshot()'),('SNAPSHOT', 'void downloadSnapshot()'), ('POSTED', 'void posted(StatusBarNotification'),
+                      ('CANCEL_FIRST','void cancelFirst()'),('SCHEDULE_FIRST','void scheduleFirst('),('EXPAND_FIRST','void expandFirst()'),('RESTORE','void restoreDownloadSnapshot()'),('DOWNLOAD_PRESENTATION','Object downloadPresentation('),('SNAPSHOT', 'void downloadSnapshot()'), ('POSTED', 'void posted(StatusBarNotification'),
                       ('ACTION', 'void downloadAction('), ('NOTICE_ACTION','boolean noticeAction('),
-                      ('NOTICE_MODE','int noticeMode('),('ACTIVE_NOTICE','StatusBarNotification activeNotice(')]:
+                      ('NOTICE_MODE','int noticeMode('),('SOURCE_MODE','int noticeSourceMode('),('DOWNLOAD_MODE','int downloadMode('),('ACTIVE_NOTICE','StatusBarNotification activeNotice(')]:
     HARNESS = HARNESS.replace(' ' + token + '\n', ' ' + body(marker) + '\n')
 FILES['ls/augment/com/hook/DownloadLifecycleTest.java'] = HARNESS
 for shape, declaration in {
@@ -175,12 +200,14 @@ for shape, declaration in {
     'wrong': 'public class NotificationListener {public void onListenerConnected(){}}',
     'abstract': 'public abstract class NotificationListener extends android.service.notification.NotificationListenerService {public abstract void onListenerConnected();}',
 }.items():
-    FILES['ls/augment/com/hook/IslandLiveScenes.java']='package ls.augment.com.hook;class IslandLiveScenes{static void notificationsChanged(){}}'
+    FILES['ls/augment/com/hook/IslandLiveScenes.java']='package ls.augment.com.hook;class IslandLiveScenes{static boolean countSelected(android.service.notification.StatusBarNotification s){return false;}static void notificationsChanged(){}static void notificationPosted(android.service.notification.StatusBarNotification s){}static void notificationRemoved(android.service.notification.StatusBarNotification s){}}'
     FILES['ls/augment/com/hook/IslandHeadsUpBridge.java']='package ls.augment.com.hook;import android.service.notification.*;class IslandHeadsUpBridge{static boolean permit=true;static void clear(){}static boolean downloadMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return permit;}static boolean listenerMayShow(StatusBarNotification s,NotificationListenerService.Ranking r){return true;}}'
     with tempfile.TemporaryDirectory(prefix='duo-download-listener-') as tmp:
             folder = Path(tmp)
             files = dict(FILES)
             files['com/android/systemui/statusbar/NotificationListener.java'] = 'package com.android.systemui.statusbar;' + declaration
+            from island_notification_template_test_support import add_templates
+            add_templates(files)
             for name, content in files.items():
                 path = folder / name
                 path.parent.mkdir(parents=True, exist_ok=True)

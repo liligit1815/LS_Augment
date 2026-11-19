@@ -37,6 +37,7 @@ public final class LSConfigProvider extends ContentProvider {
     public Bundle call(String method, String arg, Bundle extras) {
         Bundle result = new Bundle();
         if (getContext() == null) return result;
+        if(IslandNextCalendar.METHOD.equals(method))return IslandNextCalendar.forSystemUi(getContext(),getCallingPackage(),Binder.getCallingUid());
         if (NativeIslandCardProtocol.METHOD.equals(method)) {
             int uid=Binder.getCallingUid();String caller=getCallingPackage();String[] packages=getContext().getPackageManager().getPackagesForUid(uid);
             long identity=Binder.clearCallingIdentity();

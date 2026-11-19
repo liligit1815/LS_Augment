@@ -65,12 +65,22 @@ public class TestIslandReview {
  static class Notification{static final int VISIBILITY_SECRET=-1,FLAG_GROUP_SUMMARY=512,FLAG_ONGOING_EVENT=2,FLAG_ONLY_ALERT_ONCE=8;
   static final String EXTRA_MEDIA_SESSION="media",EXTRA_TEXT="text",EXTRA_TITLE="title";int visibility,flags;Extras extras=new Extras();}
  static class StatusBarNotification{String key;int user;Notification notification=new Notification();StatusBarNotification(String key,String text){this.key=key;notification.extras.put(Notification.EXTRA_TITLE,"Heading");notification.extras.put(Notification.EXTRA_TEXT,text);}
-  long getPostTime(){return 1;}int getUserId(){return user;}String getKey(){return key;}Notification getNotification(){return notification;}}
+  String getPackageName(){return "com.example.chat";}long getPostTime(){return 1;}int getUserId(){return user;}String getKey(){return key;}Notification getNotification(){return notification;}}
  static class NotificationListenerService{static class Ranking{int importance=3,effects;boolean suspended,interruption=true;int getImportance(){return importance;}boolean isSuspended(){return suspended;}boolean matchesInterruptionFilter(){return interruption;}int getSuppressedVisualEffects(){return effects;}}
   static class RankingMap{Ranking value=new Ranking();boolean found=true;boolean getRanking(String key,Ranking result){result.importance=value.importance;result.effects=value.effects;result.suspended=value.suspended;result.interruption=value.interruption;return found;}}}
  static class NativeHost{boolean fade;boolean ownsStatusBarFade(){return fade;}}
+ static class IslandNotificationText{
+  static boolean media(Notification n){return n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION);}
+  static ls.augment.com.IslandNotificationContent read(String pkg,Notification n){return new ls.augment.com.IslandNotificationContent(pkg,"",n.extras.get("title"),n.extras.get("text"),null,null,null,null);}
+  static ls.augment.com.IslandNotificationProgress progress(Notification n){return ls.augment.com.IslandNotificationProgress.NONE;}
+ }
+ static class IslandNotificationTemplates{static boolean notice(Object c,StatusBarNotification n){return true;}}
+ static class IslandLiveScenes{static boolean countSelected(StatusBarNotification n){return false;}}
+ static class IslandMessageControls{static boolean holds(StatusBarNotification n){return false;}}
+ static class DuoCompactText{static String messageSummary(Notification n,String fallback){return Objects.toString(n.extras.get("text"),fallback);}}
  static class IslandNoticeRules{static final int OFF=1;}
  static class State{NativeHost nativeHost=new NativeHost();Object context=new Object();Pill pill=new Pill();Host host=new Host();PowerManager power=new PowerManager();MotionEvent downEvent;boolean enabled=true,closed,screenOff,replaying,touching,isLocked,longPressed;int activity=1,ownerUser=0,user=0;float downX,downY;List<MediaController> controllers=new ArrayList<>();MediaController media;final Map<MediaSession.Token,IslandActivityPolicy.MediaActivity> mediaActivities=new HashMap<>();final Runnable longPress=()->{};
+  final Map<String,StatusBarNotification> waitingMessages=new LinkedHashMap<>();boolean noticeUpdateExpand(StatusBarNotification source){return false;}
   int noticeMode(StatusBarNotification source){return ruleMode;}int ruleMode;void scheduleFirst(String key,int kind){} StatusBarNotification notice;long noticeUntil;final Map<String,Integer> noticeHistory=new LinkedHashMap<>();boolean observedHostVisible,playing,circularAppStyle;int refreshRequests,battery;Object icon;float density=1;int dp(int value){return Math.round(value*density);}
   String foreground="launcher";String foregroundPackage(){return foreground;}
   State(){host.state=this;}boolean locked(){return isLocked;}int currentUser(){return user;}boolean option(String key){return true;}void refresh(){}void dismiss(){}void requestRefresh(){refreshRequests++;}
@@ -160,7 +170,7 @@ harness=harness.replace('// METHODS','\n'.join(method(m) for m in ['boolean host
 # Uses the caller's configured JDK, like the other host regression scripts.
 with tempfile.TemporaryDirectory(prefix='island-review-') as tmp:
  path=Path(tmp)/'TestIslandReview.java';path.write_text(harness,encoding='utf-8')
- subprocess.run(['javac','-encoding','UTF-8','-d',tmp,str(path),str(root/'android/app/src/main/java/ls/augment/com/IslandActivityPolicy.java'),str(root/'tools/TestIslandActivityPolicy.java')],check=True)
+ subprocess.run(['javac','-encoding','UTF-8','-d',tmp,str(path),str(root/'android/app/src/main/java/ls/augment/com/IslandActivityPolicy.java'),str(root/'android/app/src/main/java/ls/augment/com/IslandNotificationContent.java'),str(root/'android/app/src/main/java/ls/augment/com/IslandNotificationProgress.java'),str(root/'tools/TestIslandActivityPolicy.java')],check=True)
  subprocess.run(['java','-cp',tmp,'TestIslandReview'],check=True)
  subprocess.run(['java','-cp',tmp,'ls.augment.com.TestIslandActivityPolicy'],check=True)
  # Plain send() omitted this option and is silently blocked for a background

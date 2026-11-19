@@ -29,7 +29,10 @@ final class AppSelectionDialog {
         return show(activity, ui, title, initial, false, false, onSave);
     }
     static AlertDialog pick(Activity activity, UiKit ui, String knownPackages, Consumer<String> onPick) {
-        return show(activity, ui, "选择通知应用", knownPackages, true, true, onPick);
+        return pick(activity,ui,"选择通知应用",knownPackages,onPick);
+    }
+    static AlertDialog pick(Activity activity,UiKit ui,String title,String knownPackages,Consumer<String> onPick) {
+        return show(activity,ui,title,knownPackages,true,true,onPick);
     }
     static AlertDialog notifications(Activity activity,UiKit ui,String title,String initial,Consumer<String> onSave) {
         return show(activity,ui,title,initial,false,true,onSave);
@@ -45,7 +48,7 @@ final class AppSelectionDialog {
         EditText search = new EditText(activity);
         ui.styleInput(search);
         search.setSingleLine(true);
-        search.setHint("搜索应用名称或包名");
+        search.setHint("搜索应用名称或完整包名");
         body.addView(search, new LinearLayout.LayoutParams(-1, -2));
         ListView list = new ListView(activity);
         list.setChoiceMode(single ? ListView.CHOICE_MODE_NONE : ListView.CHOICE_MODE_MULTIPLE);
@@ -67,11 +70,6 @@ final class AppSelectionDialog {
                 list.setItemChecked(i, selected.contains(visible.get(i).pkg));
             }
         };
-        search.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
-            @Override public void afterTextChanged(Editable value) { }
-        });
         AlertDialog.Builder builder = AppDialogs.builder(activity).setTitle(title).setView(body)
                 .setNegativeButton("取消", null);
         if (!single) builder.setNeutralButton("清空选择", null)
@@ -85,6 +83,37 @@ final class AppSelectionDialog {
         if (!single) dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
                 .setOnClickListener(view -> { selected.clear(); render.run(); }));
         dialog.show();
+        // Some ROMs grant QUERY_ALL_PACKAGES but filter getInstalledApplications.
+        // An explicit full-package search still uses the ordinary PackageManager
+        // visibility checks; it never invents an app or changes a permission.
+        int[] searchGeneration={0};Runnable[] pendingLookup={null};
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
+            @Override public void afterTextChanged(Editable value) { }
+            @Override public void onTextChanged(CharSequence s,int start,int before,int count) {
+                render.run();int generation=++searchGeneration[0];
+                if(pendingLookup[0]!=null)search.removeCallbacks(pendingLookup[0]);
+                String pkg=s.toString().trim();
+                if(!allInstalled||IslandNoticeRules.app(android.os.Process.myUid()/100000,pkg).isEmpty()
+                        ||items.stream().anyMatch(item->item.pkg.equals(pkg)))return;
+                pendingLookup[0]=()->{
+                    if(activity.isFinishing()||!dialog.isShowing()||generation!=searchGeneration[0])return;
+                    new Thread(()->{
+                        try{
+                            PackageManager pm=activity.getPackageManager();ApplicationInfo info=pm.getApplicationInfo(pkg,0);
+                            if(!pkg.equals(info.packageName)||!info.enabled||(info.flags&ApplicationInfo.FLAG_INSTALLED)==0)return;
+                            Item found=new Item(pkg,String.valueOf(pm.getApplicationLabel(info)));
+                            activity.runOnUiThread(()->{
+                                if(activity.isFinishing()||!dialog.isShowing()||generation!=searchGeneration[0]
+                                        ||items.stream().anyMatch(item->item.pkg.equals(pkg)))return;
+                                items.add(found);sort(items);render.run();
+                            });
+                        }catch(PackageManager.NameNotFoundException|RuntimeException unavailable){/* Preserve system visibility restrictions. */}
+                    },"LSA-ExactPackageSearch").start();
+                };
+                search.postDelayed(pendingLookup[0],250);
+            }
+        });
         new Thread(() -> {
             ArrayList<Item> discovered = new ArrayList<>();
             try {
@@ -119,11 +148,11 @@ final class AppSelectionDialog {
                             && !(allInstalled && initialSelection.contains(info.packageName))) continue;
                     discovered.add(new Item(info.packageName, String.valueOf(pm.getApplicationLabel(info))));
                 }
-                discovered.sort(Comparator.comparing((Item item) -> item.label,
-                        String.CASE_INSENSITIVE_ORDER).thenComparing(item -> item.pkg));
+                sort(discovered);
                 activity.runOnUiThread(() -> {
                     if (activity.isFinishing() || !dialog.isShowing()) return;
-                    items.addAll(discovered);
+                    for(Item item:discovered)if(items.stream().noneMatch(known->known.pkg.equals(item.pkg)))items.add(item);
+                    sort(items);
                     render.run();
                 });
             } catch (RuntimeException error) {
@@ -132,6 +161,9 @@ final class AppSelectionDialog {
             }
         }, "LSA-AppSelection").start();
         return dialog;
+    }
+    private static void sort(ArrayList<Item> items){
+        items.sort(Comparator.comparing((Item item)->item.label,String.CASE_INSENSITIVE_ORDER).thenComparing(item->item.pkg));
     }
     private static final class Item {
         final String pkg, label;

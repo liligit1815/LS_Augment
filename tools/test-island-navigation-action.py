@@ -15,6 +15,7 @@ public class TestNavigationAction {
  static class DuoNotificationCards {void dismiss(){order.add("native-close");}}
  static class IslandSceneSelection {static boolean enabled=true;static boolean enabled(Object c,String s){return enabled;}}
  static class FeatureRuntimeLog {static void event(String s,String d){order.add("error");}}
+ static class IslandEnvironmentRules{static final int OFF=1;}int displayMode;int presentation(IslandEvent e){return displayMode;}
  Object context=new Object();int user,current;boolean allowed=true;
  Map<String,IslandEvent> events=new HashMap<>();Map<String,DuoNotificationCards> cards=new HashMap<>();
  boolean allowed(){return allowed;}int currentUser(){return current;}
@@ -24,6 +25,7 @@ public class TestNavigationAction {
   var action=new IslandEvent.Action(()->order.add("launch"));owner.dispatch(event,action);
   check(order.equals(List.of("native-close","launch")),"native close occurs before opening navigation source");
   order.clear();owner.dispatch(new IslandEvent(),action);check(order.isEmpty(),"stale instance cannot close a current card or launch");
+  owner.displayMode=IslandEnvironmentRules.OFF;owner.dispatch(event,action);check(order.isEmpty(),"environment policy blocks dispatch");owner.displayMode=0;
   owner.allowed=false;owner.dispatch(event,action);check(order.isEmpty(),"privacy gate rejects action");owner.allowed=true;
   owner.current=10;owner.dispatch(event,action);check(order.isEmpty(),"another user cannot invoke action");owner.current=0;
   IslandSceneSelection.enabled=false;owner.dispatch(event,action);check(order.isEmpty(),"disabled scene rejects action");IslandSceneSelection.enabled=true;

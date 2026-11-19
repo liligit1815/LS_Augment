@@ -17,7 +17,7 @@ public final class TestIslandRebuildCore {
    check(ids.add(scene.id)&&keys.add(scene.key),"each scene has one unique key");
    check(ConfigSchema.defaults().containsKey(scene.key),"scene participates in config validation and backup");
   }
-  check(ids.size()==32,"27 existing scenes, notifications, transfers and three new sources");
+  check(ids.size()==38&&ids.containsAll(Set.of("ongoing","notification_count","toast","daily_weather","next_calendar","published_activity")),"existing sources retained with continuous status, post-count and text Toast scenes");
   for(boolean fullscreen:new boolean[]{false,true})for(boolean completion:new boolean[]{false,true})for(boolean child:new boolean[]{false,true}){
    Map<String,String> old=new HashMap<>();old.put(NativeIslandSceneOptions.ENABLED,completion?"1":"0");
    old.put(IslandSceneRegistry.key("media"),"0");old.put(IslandSceneRegistry.key("charging"),"0");
@@ -31,7 +31,7 @@ public final class TestIslandRebuildCore {
    }
    check(IslandSceneRegistry.migrate(next,!fullscreen).isEmpty(),"migration is idempotent across backend changes");
    next.put(IslandSceneRegistry.key("record"),"0");check(IslandSceneRegistry.migrate(next,fullscreen).isEmpty(),"new explicit scene OFF is never re-enabled");
-   for(String scene:new String[]{"navigation","screen_record","hotspot"})check("0".equals(ConfigSchema.defaults().get(IslandSceneRegistry.key(scene))),"new scenes default OFF");
+   for(String scene:new String[]{"navigation","screen_record","hotspot","ongoing","notification_count","daily_weather","next_calendar","published_activity"})check("0".equals(ConfigSchema.defaults().get(IslandSceneRegistry.key(scene))),"new scenes default OFF");
   }
   Map<String,String> defaults=new HashMap<>(ConfigSchema.defaults());
   for(String retired:new String[]{"ls_augment_island_custom_appearance","ls_augment_rm_island_width","ls_augment_rm_island_height","ls_augment_rm_island_offset_x","ls_augment_rm_island_offset_y","ls_augment_rm_island_transparent","ls_augment_rm_island_app_style",NativeIslandSceneOptions.key("media"),NativeIslandSceneOptions.key("charging")}) {

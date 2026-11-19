@@ -72,6 +72,10 @@ public interface TextWatcher {
 import android.content.Context; import android.text.*; import java.util.*;
 public class EditText extends android.view.View {
  public static EditText last; private String value="";
+ private final List<Runnable> delayed=new ArrayList<>();
+ public void postDelayed(Runnable r,long delay){if(delay!=250)throw new AssertionError("search debounce");delayed.add(r);}
+ public void removeCallbacks(Runnable r){delayed.remove(r);}
+ public void fireSearch(){List<Runnable> copy=new ArrayList<>(delayed);delayed.clear();for(Runnable r:copy)r.run();}
  private final List<TextWatcher> watchers=new ArrayList<>();
  public EditText(Context c){last=this;} public void setSingleLine(boolean b){} public void setHint(String h){}
  public Editable getText(){final String current=value;return new Editable(){
@@ -113,11 +117,12 @@ public class Toast {public static final int LENGTH_SHORT=0;public static int sho
 import android.content.Context; import android.content.pm.PackageManager; import java.util.concurrent.*;
 public class Activity extends Context {
  public boolean finishing;public PackageManager pm;
- private final ConcurrentLinkedQueue<Runnable> queue=new ConcurrentLinkedQueue<>();
+ private final LinkedBlockingQueue<Runnable> queue=new LinkedBlockingQueue<>();
  private final CountDownLatch posted=new CountDownLatch(1);
  public PackageManager getPackageManager(){return pm;}
  public void runOnUiThread(Runnable r){queue.add(r);posted.countDown();}
  public boolean isFinishing(){return finishing;}
+ public void next()throws Exception{Runnable r=queue.poll(5,TimeUnit.SECONDS);if(r==null)throw new AssertionError("search callback absent");r.run();}
  public void drain() throws Exception {if(!posted.await(5,TimeUnit.SECONDS))throw new AssertionError("worker did not post");
   for(Runnable r;(r=queue.poll())!=null;)r.run();}
 }''',
@@ -143,7 +148,7 @@ public class AlertDialog implements DialogInterface {
 }''',
     'android/R.java': '''package android; public class R {public static class layout {
  public static final int simple_list_item_1=2,simple_list_item_multiple_choice=1;}}''',
-    'ls/augment/com/UiKit.java': 'package ls.augment.com; public class UiKit {public int dp(int value){return value;}}',
+    'ls/augment/com/UiKit.java': 'package ls.augment.com; public class UiKit {public int dp(int value){return value;}public void styleInput(android.widget.EditText view){}}',
     'ls/augment/com/AppSelectionTest.java': r'''package ls.augment.com;
 import android.app.*;import android.content.*;import android.content.pm.*;import android.widget.*;
 import java.util.*;import java.util.concurrent.*;
@@ -155,10 +160,10 @@ public class AppSelectionTest {
  static class FakePm extends PackageManager {
   final Thread owner=Thread.currentThread();final Map<String,List<ResolveInfo>> resolvers=new HashMap<>();
   final Map<String,ApplicationInfo> known=new HashMap<>();final List<String> queried=new ArrayList<>(),lookedUp=new ArrayList<>();
-  CountDownLatch gate;boolean fail,allowInventory;
+  CountDownLatch gate;boolean fail,allowInventory,filteredInventory;
   public List<ApplicationInfo> getInstalledApplications(int flags){
    check(allowInventory && Thread.currentThread()!=owner,"unexpected full inventory or UI-thread query");
-   return new ArrayList<>(known.values());
+   return filteredInventory?List.of(known.get("app.alpha")):new ArrayList<>(known.values());
   }
   public List<ResolveInfo> queryIntentActivities(Intent intent,int flags){
    check(Thread.currentThread()!=owner,"package query moved onto UI thread");
@@ -233,7 +238,23 @@ public class AppSelectionTest {
   check(packages().containsAll(List.of("app.headless","app.missing")) && !packages().contains("app.disabled"),"notification picker lost headless/saved packages or showed a disabled source");
   ListView.last.clickItem(packages().indexOf("app.headless"));
   check(saved.equals(List.of("app.headless"))&&!AlertDialog.last.isShowing(),"one notification source must be returned immediately");
+  saved.clear();pm=fixture();pm.allowInventory=true;pm.filteredInventory=true;a=new Activity();a.pm=pm;
+  AppSelectionDialog.pick(a,new UiKit(),"",saved::add);a.drain();
+  check(!packages().contains("app.headless"),"filtered ROM fixture unexpectedly exposed background app");
+  EditText.last.setText("app.headless");check(!packages().contains("app.headless"),"search performed synchronous discovery");
+  EditText.last.fireSearch();a.next();check(packages().equals(List.of("app.headless")),"exact package query did not recover an installed background source");
+  ListView.last.clickItem(0);check(saved.equals(List.of("app.headless")),"exact source cannot be selected");
+  saved.clear();pm=fixture();pm.allowInventory=true;pm.filteredInventory=true;a=new Activity();a.pm=pm;
+  AppSelectionDialog.pick(a,new UiKit(),"",saved::add);a.drain();
+  EditText.last.setText("app.headless");EditText.last.fireSearch();EditText.last.setText("app.beta");a.next();
+  EditText.last.setText("");check(!packages().contains("app.headless"),"stale exact-query result leaked after search changed");
+  EditText.last.setText("app.headless");EditText.last.fireSearch();ListView oldList=ListView.last;int publications=oldList.publications;
+  AlertDialog.last.dismiss();a.next();check(oldList.publications==publications&&saved.isEmpty(),"dismissed exact search published or saved a result");
+  pm=fixture();pm.allowInventory=true;pm.filteredInventory=true;a=new Activity();a.pm=pm;
+  AppSelectionDialog.pick(a,new UiKit(),"",saved::add);a.drain();EditText.last.setText("app.headless");
+  int lookups=pm.lookedUp.size();EditText.last.setText(" ");EditText.last.fireSearch();check(pm.lookedUp.size()==lookups,"cleared search still queried the package");
   System.out.println("AppSelection: passed multi-select resolver, search and lifecycle cases plus single-source notification inventory and selection");
+  System.out.println("PASS filtered ROM exact-package discovery, background source selection, changed/dismissed search and debounce cancellation");
  }
 }''',
 }

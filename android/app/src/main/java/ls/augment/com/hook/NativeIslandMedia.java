@@ -35,6 +35,7 @@ final class NativeIslandMedia implements AutoCloseable {
     private static WeakReference<NativeIslandMedia> selected = new WeakReference<>(null);
     private static Class<?> capturedDataType;
     private final Object manager, permanent, island;
+    private final IslandMediaLyrics lyrics=new IslandMediaLyrics();
     private final View panel;
     private final Handler main;
     private final BooleanSupplier enabled;
@@ -338,6 +339,7 @@ final class NativeIslandMedia implements AutoCloseable {
     private void bindPanel() {
         if (!ready()) return;
         set(panel, "mMediaController", controller);
+        lyrics.bind(manager,island,panel,controller,boundUser);
         updateContrast();
         // Respect an already supplied OEM view model. On devices without one, use the same
         // native progress widgets with the actual session's duration, actions and seek command.
@@ -427,7 +429,7 @@ final class NativeIslandMedia implements AutoCloseable {
             contrastOwned = false;
         }
         if (field(panel, "mMediaController") == controller) set(panel, "mMediaController", null);
-        controller = null; lastData = null; lastPlaying = null; lastPackage = null;
+        lyrics.clear();controller = null; lastData = null; lastPlaying = null; lastPackage = null;
         if (selected.get() == this) selected = new WeakReference<>(null);
     }
 

@@ -22,13 +22,18 @@ final class IslandNoticeRuleEditor {
     private final int user = Process.myUid() / 100000;
     private final Map<String,String> channels = new TreeMap<>();
     private String pkg = "", status = "";
+    private final boolean updates,withChannels;
     private int request;
 
     IslandNoticeRuleEditor(Activity activity, UiKit ui, Supplier<String> value, Consumer<String> change) {
+        this(activity,ui,value,change,false,true);
+    }
+    IslandNoticeRuleEditor(Activity activity, UiKit ui, Supplier<String> value, Consumer<String> change,boolean updates,boolean withChannels) {
         this.activity = activity;
         this.ui = ui;
         this.value = value;
         this.change = change;
+        this.updates=updates;this.withChannels=withChannels;
         content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         render();
@@ -39,6 +44,7 @@ final class IslandNoticeRuleEditor {
     private void load(String selected) {
         pkg = selected;
         channels.clear();
+        if(!withChannels){status="";render();return;}
         status = "正在读取应用已创建的通知渠道…";
         int generation = ++request;
         render();
@@ -78,8 +84,9 @@ final class IslandNoticeRuleEditor {
                 if (channel != null) visible.putIfAbsent(channel[2], channel[2]);
             }
         }
-        Button pick = ui.textButton(pkg.isEmpty() ? "选择通知应用" : "更换通知应用");
-        pick.setOnClickListener(v -> AppSelectionDialog.pick(activity, ui, String.join(";", known), this::load));
+        String pickTitle=updates?"选择来源应用":"选择通知应用";
+        Button pick = ui.textButton(pkg.isEmpty() ? pickTitle : updates?"更换来源应用":"更换通知应用");
+        pick.setOnClickListener(v -> AppSelectionDialog.pick(activity, ui, pickTitle, String.join(";", known), this::load));
         content.addView(pick, ui.wrap());
         if (pkg.isEmpty()) return;
         String label = pkg;
@@ -97,7 +104,7 @@ final class IslandNoticeRuleEditor {
     }
 
     private void addRule(String title, String key, boolean channel, IslandNoticeRules rules) {
-        String[] labels = {channel ? "跟随应用" : "跟随全局", "关闭上岛", "仅紧凑显示", "首次自动展开"};
+        String[] labels = {channel ? "跟随应用" : "跟随全局", "关闭上岛", "不自动展开", updates?"首次及更新自动展开":"首次自动展开"};
         Button button = ui.textButton(title + " · " + labels[rules.mode(key)]);
         button.setTag("notice-rule:" + key);
         button.setOnClickListener(v -> ui.choiceDialog(title, labels, null, choice -> {

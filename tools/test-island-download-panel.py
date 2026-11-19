@@ -9,7 +9,10 @@ ROOT=Path(__file__).resolve().parents[1]
 base=runpy.run_path(str(ROOT/'tools/test-island-download-runtime.py'))
 FILES=dict(base['FILES'])
 FILES.update({
-'android/content/Context.java':'package android.content;public class Context{public int getColor(int id){return id;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}}',
+'ls/augment/com/hook/IslandMessageAvatar.java':'package ls.augment.com.hook;class IslandMessageAvatar{static android.graphics.drawable.Drawable load(android.content.Context c,android.service.notification.StatusBarNotification s){return null;}}',
+'ls/augment/com/hook/IslandMessageControls.java':'package ls.augment.com.hook;class IslandMessageControls{IslandMessageControls(android.widget.LinearLayout body,android.view.View text,android.view.View actions){}void bind(android.service.notification.StatusBarNotification s){}}',
+'android/content/Context.java':'package android.content;public class Context{public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}public int getColor(int id){return id;}public android.content.res.Resources getResources(){return new android.content.res.Resources();}}',
+'android/content/pm/PackageManager.java':'package android.content.pm;public class PackageManager{public static android.graphics.drawable.Drawable icon;public android.graphics.drawable.Drawable getApplicationIcon(String p){return icon;}}',
 'android/content/res/Resources.java':'package android.content.res;public class Resources{public static java.util.Map<String,Integer> colors=new java.util.HashMap<>();public int getIdentifier(String n,String t,String p){return colors.getOrDefault(n,0);}public android.content.res.Configuration getConfiguration(){return new android.content.res.Configuration();}public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}',
 'android/content/res/Configuration.java':'package android.content.res;public class Configuration{public float fontScale=1;}',
 'android/util/TypedValue.java':'package android.util;public class TypedValue{public static final int COMPLEX_UNIT_PX=0;}',
@@ -17,6 +20,7 @@ FILES.update({
 'android/content/res/ColorStateList.java':'package android.content.res;public class ColorStateList{public int color;public static ColorStateList valueOf(int c){ColorStateList v=new ColorStateList();v.color=c;return v;}}',
 'android/graphics/Color.java':'package android.graphics;public class Color{public static final int WHITE=-1;}',
 'android/graphics/drawable/Drawable.java':'package android.graphics.drawable;public class Drawable{}',
+'android/graphics/drawable/Icon.java':'package android.graphics.drawable;public class Icon{public Drawable value=new Drawable();public boolean fail;public Drawable loadDrawable(android.content.Context c){if(fail)throw new SecurityException();return value;}}',
 'android/text/TextPaint.java':'package android.text;public class TextPaint{public float measureText(String t){return 9*t.length();}}',
 'android/text/TextUtils.java':'package android.text;public class TextUtils{public enum TruncateAt{END}public static boolean isEmpty(CharSequence s){return s==null||s.length()==0;}}',
 'android/view/Gravity.java':'package android.view;public class Gravity{public static final int CENTER_VERTICAL=16,END=8388613;}',
@@ -26,7 +30,7 @@ FILES.update({
 public static final int VISIBLE=0,GONE=8;public Object parent;public Object getParent(){return parent;}public int visibility,padding,minHeight;public Object params;public Context context;
 public interface OnClickListener{void onClick(View v);}public OnClickListener click;public boolean clickable;public void setClickable(boolean value){clickable=value;}public View(Context c){context=c;}
 public static class MeasureSpec{public static final int UNSPECIFIED=0,EXACTLY=1;public static int makeMeasureSpec(int size,int mode){return size;}public static int getSize(int n){return n;}}
-public void measure(int w,int h){}public int getMeasuredWidth(){return 40;}public int getMeasuredHeight(){return 60;}public int getVisibility(){return visibility;}
+public void requestLayout(){}public void measure(int w,int h){}public int getMeasuredWidth(){return 40;}public int getMeasuredHeight(){return 60;}public int getVisibility(){return visibility;}
 public int getPaddingLeft(){return 8;}public int getPaddingTop(){return 8;}public int getPaddingRight(){return 8;}public int getPaddingBottom(){return 8;}public Context getContext(){return context;}public void setOnClickListener(OnClickListener l){click=l;}public void click(){if(click!=null)click.onClick(this);}
 public void setVisibility(int v){visibility=v;}public void setPadding(int a,int b,int c,int d){padding=a+b+c+d;}public void setLayoutParams(Object p){params=p;}
 public void setMinimumWidth(int w){}public void setMinWidth(int w){}public ViewGroup.LayoutParams getLayoutParams(){return (ViewGroup.LayoutParams)params;}public void setMinHeight(int h){minHeight=h;}public void setMinimumHeight(int h){minHeight=h;}}''',
@@ -38,17 +42,17 @@ public void addView(View v,int index,Object p){v.parent=this;v.setLayoutParams(p
 public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public void setMarginEnd(int margin){}public LayoutParams(int w,int h){super(w,h);}}}''',
 'android/widget/LinearLayout.java':'''package android.widget;public class LinearLayout extends android.view.ViewGroup{public static final int VERTICAL=1;
 public static final int HORIZONTAL=0;public LinearLayout(android.content.Context c){super(c);}public int orientation;public void setOrientation(int v){orientation=v;}public int getOrientation(){return orientation;}@Override public void measure(int w,int h){onMeasure(w,h);}public void setGravity(int v){}protected void onMeasure(int w,int h){}
-public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public int topMargin,start;public float weight;public LayoutParams(int w,int h){super(w,h);}public LayoutParams(int w,int h,float weight){super(w,h);this.weight=weight;}public void setMarginStart(int v){start=v;}public int getMarginStart(){return start;}}}''',
+public static class LayoutParams extends android.view.ViewGroup.LayoutParams{public int topMargin,start,end;public float weight;public LayoutParams(int w,int h){super(w,h);}public LayoutParams(int w,int h,float weight){super(w,h);this.weight=weight;}public void setMarginStart(int v){start=v;}public void setMarginEnd(int v){end=v;}public int getMarginStart(){return start;}}}''',
 'android/widget/ScrollView.java':'''package android.widget;public class ScrollView extends FrameLayout{public ScrollView(android.content.Context c){super(c);}public void setFillViewport(boolean v){}}''',
 'android/widget/TextView.java':'''package android.widget;public class TextView extends android.view.View{public CharSequence text;public int color=0xff222222,maxLines;public float size=16,spacing;public boolean include=true;public android.graphics.Typeface typeface=new android.graphics.Typeface();
 public TextView(android.content.Context c){super(c);}public void setText(CharSequence t){text=t;}public CharSequence getText(){return text;}public float getTextSize(){return size;}public void setTextSize(int v){size=v;}public void setTextSize(int u,float v){size=v;}public android.content.res.ColorStateList getTextColors(){return android.content.res.ColorStateList.valueOf(color);}public int getCurrentTextColor(){return color;}public void setTextColor(android.content.res.ColorStateList v){color=v.color;}public float getLetterSpacing(){return spacing;}public void setLetterSpacing(float v){spacing=v;}public boolean getIncludeFontPadding(){return include;}public void setIncludeFontPadding(boolean v){include=v;}public android.graphics.Typeface getTypeface(){return typeface;}public void setTextColor(int c){color=c;}
 public android.text.TextPaint getPaint(){return new android.text.TextPaint();}public void setGravity(int g){}public void setSingleLine(boolean single){}public void setMaxWidth(int max){}public void setTypeface(android.graphics.Typeface f){typeface=f;}
 public void setMaxLines(int n){maxLines=n;}public void setEllipsize(android.text.TextUtils.TruncateAt t){}}''',
-'android/widget/ImageView.java':'''package android.widget;public class ImageView extends android.view.View{public enum ScaleType{CENTER_CROP}public android.graphics.drawable.Drawable drawable;
-public ImageView(android.content.Context c){super(c);}public void setScaleType(ScaleType t){}public void setImageDrawable(android.graphics.drawable.Drawable d){drawable=d;}}''',
+'android/widget/ImageView.java':'''package android.widget;public class ImageView extends android.view.View{public enum ScaleType{CENTER_CROP,FIT_CENTER}public android.graphics.drawable.Drawable drawable;public ScaleType scaleType;
+public ImageView(android.content.Context c){super(c);}public void setScaleType(ScaleType t){scaleType=t;}public android.graphics.drawable.Drawable getDrawable(){return drawable;}public void setImageDrawable(android.graphics.drawable.Drawable d){drawable=d;}}''',
 'android/widget/ProgressBar.java':'''package android.widget;public class ProgressBar extends android.view.View{public int progress;public boolean indeterminate;
 public ProgressBar(android.content.Context c,Object a,int s){super(c);}public void setMax(int m){}public void setProgress(int p){progress=p;}public void setIndeterminate(boolean b){indeterminate=b;}
-public void setProgressTintList(android.content.res.ColorStateList c){}public void setIndeterminateTintList(android.content.res.ColorStateList c){}}''',
+public void setProgressBackgroundTintList(android.content.res.ColorStateList c){}public void setProgressTintList(android.content.res.ColorStateList c){}public void setIndeterminateTintList(android.content.res.ColorStateList c){}}''',
 'android/widget/Button.java':'''package android.widget;public class Button extends TextView{public Button(android.content.Context c){super(c);}public void setAllCaps(boolean b){}public void setBackgroundTintList(android.content.res.ColorStateList c){}}''',
 'ls/augment/com/hook/NativeIslandHost.java':'package ls.augment.com.hook;class NativeIslandHost{static void applyIconShape(android.widget.ImageView v,boolean circle,float radius){}}',
 'ls/augment/com/SystemUiOptions.java':'package ls.augment.com;public class SystemUiOptions{public static final String ISLAND_APP_STYLE="style";}',
@@ -56,8 +60,9 @@ public void setProgressTintList(android.content.res.ColorStateList c){}public vo
 for(Class<?> t=o.getClass();t!=null;t=t.getSuperclass())try{var f=t.getDeclaredField(name);f.setAccessible(true);return f.get(o);}catch(ReflectiveOperationException missing){}return null;}}''',
 })
 FILES['ls/augment/com/hook/FeatureSettings.java']=FILES['ls/augment/com/hook/FeatureSettings.java'].replace('static Map<','static int integer(Context c,String k,int d,int min,int max){return d;}static Map<')
-FILES['android/app/Notification.java']=FILES['android/app/Notification.java'].replace('EXTRA_MEDIA_SESSION="media"','EXTRA_TITLE="title",EXTRA_TEXT="text",EXTRA_MEDIA_SESSION="media"')
-FILES['android/os/Bundle.java']=FILES['android/os/Bundle.java'].replace('public int getInt','public CharSequence getCharSequence(String k){return (CharSequence)get(k);}public int getInt')
+FILES['android/app/Notification.java']=FILES['android/app/Notification.java'].replace('EXTRA_MEDIA_SESSION="media"','EXTRA_CONVERSATION_TITLE="android.conversationTitle",EXTRA_TITLE="title",EXTRA_TITLE_BIG="titleBig",EXTRA_TEXT="text",EXTRA_BIG_TEXT="bigText",EXTRA_SUB_TEXT="subText",EXTRA_INFO_TEXT="info",EXTRA_TEXT_LINES="lines",EXTRA_TEMPLATE="template",EXTRA_MEDIA_SESSION="media"')
+FILES['android/app/Notification.java']=FILES['android/app/Notification.java'].replace('public int flags=','public android.graphics.drawable.Icon largeIcon,smallIcon;public android.graphics.drawable.Icon getLargeIcon(){return largeIcon;}public android.graphics.drawable.Icon getSmallIcon(){return smallIcon;}public int flags=')
+FILES['android/os/Bundle.java']=FILES['android/os/Bundle.java'].replace('public int getInt','public CharSequence getCharSequence(String k){return (CharSequence)get(k);}public CharSequence[] getCharSequenceArray(String k){return (CharSequence[])get(k);}public String getString(String k,String fallback){return (String)getOrDefault(k,fallback);}public int getInt')
 HARNESS=r'''package ls.augment.com.hook;
 import java.util.*;import android.view.*;import android.widget.*;import android.app.*;import android.content.*;import android.service.notification.*;import ls.augment.com.*;
 public class DownloadPanelTest{
@@ -79,7 +84,7 @@ boolean failed=false;try{new DuoDownloadPanel(invalid);}catch(IllegalStateExcept
 check(failed&&invalid.getChildCount()==1,"missing or malformed OEM contract fails before child mutation");}
 for(Panel panel:new Panel[]{new Panel(),new Child()}){
 DuoDownloadPanel content=new DuoDownloadPanel(panel);
-check(((TextView)field(content,"title")).color==panel.mDisplayText.color&&((TextView)field(content,"detail")).color==panel.mDisplaySecondText.color,"OEM light glass text roles retained");
+check(((TextView)field(content,"title")).color==IslandVisualSpec.PRIMARY&&((TextView)field(content,"detail")).color==IslandVisualSpec.SECONDARY,"opaque panel has distinct readable text roles");
 check(((TextView)field(content,"title")).size==19&&((TextView)field(content,"title")).typeface==panel.mDisplayText.typeface,"OEM title font and size retained");
 check(panel.getChildCount()==1&&panel.mViewList.size()==1&&panel.mViewList.get(0)==panel.getChildAt(0),"native animation tracks current download content");
 check(panel.getChildAt(0) instanceof ScrollView&&panel.padding==32,"scrollable content retains the single native outer padding");
@@ -92,6 +97,16 @@ policy.update("task","channel",1,1,true,false,12,100,n);var first=policy.get("ta
 List<PendingIntent> commands=new ArrayList<>();List<Long> revisions=new ArrayList<>();
 java.util.function.BiConsumer<IslandDownloadPolicy.Entry<StatusBarNotification>,PendingIntent> dispatch=(e,p)->{commands.add(p);revisions.add(e.revision);};
 content.bind(first,new android.graphics.drawable.Drawable(),"Downloader",dispatch);
+n.notification.extras.put("lines",new CharSequence[]{"First real task.zip","Second real task.zip"});n.notification.extras.put("subText","Waiting information");
+content.bind(first,new android.graphics.drawable.Drawable(),"Downloader",dispatch);
+String downloadDetails=((TextView)field(content,"detail")).getText().toString();
+check(downloadDetails.contains("source text")&&downloadDetails.contains("Second real task.zip")&&downloadDetails.contains("Waiting information"),"multi-task download details retain actual separate source fields");
+check(((TextView)field(content,"detail")).maxLines==Integer.MAX_VALUE,"download task list is scrollable without permanent two-line clipping");
+IslandDownloadPolicy<StatusBarNotification> recoveryPolicy=new IslandDownloadPolicy<>();
+recoveryPolicy.update("recovery","channel",1,1,true,true,-1,0,n,true);content.bind(recoveryPolicy.get("recovery"),null,"Downloader",dispatch);
+check(((TextView)field(content,"status")).getText().toString().equals("已暂停"),"unknown-length pause uses real paused status");
+check(!((ProgressBar)field(content,"progress")).indeterminate&&((ProgressBar)field(content,"progress")).visibility==8,"paused unknown progress does not animate a fake transfer");
+content.bind(first,new android.graphics.drawable.Drawable(),"Downloader",dispatch);
 Button[] buttons=(Button[])field(content,"actionButtons");Button original=buttons[0];ProgressBar progress=(ProgressBar)field(content,"progress");
 check(original.visibility==0&&original.minHeight>=48&&original.text.equals("鏆傚仠"),"source button label and touch height preserved");
 check(buttons[1].visibility==8&&buttons[2].visibility==8,"no fabricated buttons");
@@ -101,14 +116,20 @@ check(original.getParent()==field(content,"buttons"),"download actions do not sq
 policy.update("task","channel",1,2,true,false,34,100,n);var second=policy.get("task");content.bind(second,null,"Downloader",dispatch);
 check(buttons[0]==original&&progress.progress==34,"progress update reuses control instead of canceling touch");
 original.click();check(revisions.get(2)==second.revision,"reused button targets latest source revision");
-content.foreground(0xff101010);check(original.color==0xff101010&&((TextView)field(content,"title")).color==0xff101010,"glass foreground propagates to text and controls");
+content.foreground(0xff101010);check(original.color==IslandVisualSpec.PRIMARY&&((TextView)field(content,"title")).color==IslandVisualSpec.PRIMARY,"legacy dark foreground cannot make black panel unreadable");
 policy.update("task","channel",1,3,true,true,-1,0,n);content.bind(policy.get("task"),null,"Downloader",dispatch);check(progress.indeterminate,"indeterminate source supported");
 List<PendingIntent> notices=new ArrayList<>();
 n.notification.flags=0;
+n.notification.extras.remove(Notification.EXTRA_PROGRESS);n.notification.extras.remove(Notification.EXTRA_PROGRESS_MAX);n.notification.extras.remove(Notification.EXTRA_PROGRESS_INDETERMINATE);
 content.bindNotice(n,null,"App",(source,intent)->{check(source==n,"notice source identity lost");notices.add(intent);});
 check(visibleButtons(panel)==1,"ordinary notice shows only its original action");
 check(original.getParent()==field(content,"buttons"),"message action leaves the full heading width");check(progress.visibility==8&&!progress.indeterminate,"ordinary notice fabricated progress");original.click();
 check(notices.size()==1&&notices.get(0)==pause,"notice button did not preserve PendingIntent");
+n.notification.extras.put("bigText","Expanded source text\nSecond line\nThird line");n.notification.extras.put("subText","Source subtitle");n.notification.extras.put("lines",new CharSequence[]{"Inbox line A","Inbox line B"});
+content.bindNotice(n,null,"App",(item,intent)->{});
+check(((TextView)field(content,"detail")).getText().toString().contains("Third line")&&((TextView)field(content,"detail")).getText().toString().contains("Inbox line B")&&((TextView)field(content,"detail")).getText().toString().contains("Source subtitle"),"expanded ordinary notice retains all standard text fields");
+check(((TextView)field(content,"detail")).maxLines==Integer.MAX_VALUE,"ordinary content scrolls in its bounded viewport without a permanent two-line cutoff");
+n.notification.extras.remove("bigText");n.notification.extras.remove("subText");n.notification.extras.remove("lines");
 n.notification.actions=new Notification.Action[]{new Notification.Action("A",pause),new Notification.Action("B",open)};content.bindNotice(n,null,"App",(item,intent)->{});
 check(original.getParent()==field(content,"buttons")&&buttons[1].visibility==0,"multiple actions use separate row in source order");
 LinearLayout row=(LinearLayout)field(content,"buttons");row.measure(90,0);
@@ -129,11 +150,11 @@ check(visibleButtons(panel)==0,"reused download panel cannot retain a notificati
 android.content.res.Resources.colors.put("dynamic_island_panel_text_color",0xe6000000);
 android.content.res.Resources.colors.put("dynamic_island_text_color",0xa6000000);
 content.bind(policy.get("task"),null,"Downloader",dispatch);
-check(((TextView)field(content,"title")).color==0xe6000000&&((TextView)field(content,"detail")).color==0xa6000000,"light glass retains native primary and secondary contrast");
+check(((TextView)field(content,"title")).color==IslandVisualSpec.PRIMARY&&((TextView)field(content,"detail")).color==IslandVisualSpec.SECONDARY,"light system resources cannot override black panel contrast");
 android.content.res.Resources.colors.put("dynamic_island_panel_text_color",0xffffffff);
 android.content.res.Resources.colors.put("dynamic_island_text_color",0xffffffff);
 content.bindNotice(n,null,"App",(item,intent)->{});
-check(((TextView)field(content,"title")).color==0xffffffff&&((TextView)field(content,"detail")).color==0xffffffff,"dark glass follows the current native palette");
+check(((TextView)field(content,"title")).color==IslandVisualSpec.PRIMARY&&((TextView)field(content,"detail")).color==IslandVisualSpec.SECONDARY,"dark theme keeps the same primary and secondary roles");
 android.content.res.Resources.colors.clear();
 List<IslandEvent.Action> liveActions=new ArrayList<>();
 IslandEvent.Action stop=new IslandEvent.Action("Stop",()->{}),resume=new IslandEvent.Action("Resume",()->{});
@@ -150,17 +171,72 @@ check(progress.visibility==0&&progress.indeterminate,"download can reuse an even
 content.clear();int count=commands.size();original.click();((ImageView)field(content,"icon")).click();
 check(commands.size()==count&&original.click==null,"retired panel releases actions");
 check(!progress.indeterminate&&progress.progress==0&&((TextView)field(content,"title")).text.length()==0,"hidden panel stops progress and clears notification content");
+n.notification.actions=new Notification.Action[]{new Notification.Action("A",pause),new Notification.Action("B",open)};
+n.notification.extras.put(Notification.EXTRA_PROGRESS,37);n.notification.extras.put(Notification.EXTRA_PROGRESS_MAX,100);
+n.notification.largeIcon=new android.graphics.drawable.Icon();
+String layoutKey=IslandContentRules.key(n.getUserId(),"notifications",n.getPackageName(),n.notification.getChannelId());
+for(String mode:IslandContentRules.LAYOUTS){
+ FeatureSettings.values.put(IslandContentRules.KEY,IslandContentRules.parse("").updated(layoutKey,IslandContentRules.LAYOUT,mode));
+ content.bindNotice(n,new android.graphics.drawable.Drawable(),"App",(item,intent)->notices.add(intent));
+ boolean full=mode.equals("auto")||mode.equals("cover_buttons")||mode.equals("text_progress");
+ check(((View)field(content,"detail")).getParent()==field(content,full?"body":"labels"),"body width follows functional layout "+mode);
+ check(visibleButtons(panel)==2&&buttons[0]==original,"all source actions retained across layout "+mode);
+ check(((ImageView)field(content,"icon")).drawable==n.notification.largeIcon.value,"actual source artwork takes priority over application fallback "+mode);
+ check(((ImageView)field(content,"icon")).scaleType==ImageView.ScaleType.FIT_CENTER,"rectangular source cover is never cropped "+mode);
+ original.click();check(notices.get(notices.size()-1)==pause,"layout preserves original callback "+mode);
+ boolean bar=mode.equals("auto")||mode.equals("image_progress")||mode.equals("text_progress");
+ check((progress.visibility==0)==bar&&progress.progress==37&&!progress.indeterminate,"real progress visibility "+mode);
+ check(((TextView)field(content,"status")).text.equals("37%"),"progress value retained even in button layout "+mode);
+ row.measure(1000,0);check((row.getOrientation()==LinearLayout.VERTICAL)==mode.equals("primary_action"),"explicit stacked source actions "+mode);
+ LinearLayout heading=(LinearLayout)field(content,"headingRow");
+ check(heading.getChildAt(mode.equals("text_progress")?heading.getChildCount()-1:0)==field(content,"icon"),"source icon side "+mode);
+}
+FeatureSettings.values.put(IslandContentRules.KEY,"");
+n.notification.smallIcon=new android.graphics.drawable.Icon();
+android.content.pm.PackageManager.icon=new android.graphics.drawable.Drawable();
+String artworkKey=IslandContentRules.key(0,"notifications",n.pkg,n.notification.channel);
+FeatureSettings.values.put(IslandContentRules.KEY,IslandContentRules.parse("").updated(artworkKey,IslandContentRules.PANEL_ICON,"app_icon"));
+content.bindNotice(n,null,"App",(item,intent)->{});
+check(((ImageView)field(content,"icon")).drawable==android.content.pm.PackageManager.icon,"expanded surface independently uses actual source application artwork");
+FeatureSettings.values.put(IslandContentRules.KEY,IslandContentRules.parse("").updated(artworkKey,IslandContentRules.COMPACT_ICON,"app_icon"));
+content.bindNotice(n,null,"App",(item,intent)->{});
+check(((ImageView)field(content,"icon")).drawable==n.notification.largeIcon.value,"compact icon choice does not replace panel cover");
+FeatureSettings.values.put(IslandContentRules.KEY,"");android.content.pm.PackageManager.icon=null;n.notification.smallIcon=null;
+n.notification.largeIcon.fail=true;var fallbackArt=new android.graphics.drawable.Drawable();content.bindNotice(n,fallbackArt,"App",(item,intent)->{});
+check(((ImageView)field(content,"icon")).drawable==fallbackArt,"unreadable source artwork retains available fallback without losing content");n.notification.largeIcon=null;
+n.notification.extras.put(Notification.EXTRA_PROGRESS_INDETERMINATE,true);content.bindNotice(n,null,"App",(item,intent)->{});
+check(progress.visibility==0&&progress.indeterminate&&((TextView)field(content,"status")).text.equals("进行中"),"source indeterminate state does not invent a percentage");
+n.notification.extras.put(Notification.EXTRA_PROGRESS_INDETERMINATE,false);n.notification.extras.put(Notification.EXTRA_PROGRESS,-1);
+content.bindNotice(n,null,"App",(item,intent)->{});check(progress.visibility==8&&!progress.indeterminate&&((TextView)field(content,"status")).visibility==8,"invalid replacement removes prior progress and metric");
+IslandEvent progressEvent=new IslandEvent("status","ongoing",0,12345,new Object(),1,"Task","Body","Task",null,null,List.of(resume,stop),64).source("test.app","status")
+ .progress(IslandNotificationProgress.of(3,4,false));content.bindEvent(progressEvent,liveActions::add);
+check(progress.visibility==0&&progress.progress==75,"ongoing notification carries source progress into actual panel");
+var panelArt=new android.graphics.drawable.Drawable();content.bindEvent(progressEvent.expandedIcon(panelArt),liveActions::add);
+check(((ImageView)field(content,"icon")).drawable==panelArt,"event panel keeps separately selected artwork");
+Object beforePresentation=progressEvent.presentation;var nextProgress=progressEvent.progress(IslandNotificationProgress.of(4,4,false));
+check(progressEvent.instance==nextProgress.instance&&progressEvent.revision==nextProgress.revision&&nextProgress.actions.get(0)==resume&&!beforePresentation.equals(nextProgress.presentation),"progress refresh preserves identity and actions but changes visible data");
+content.bindEvent(new IslandEvent("empty","ongoing",0,12345,new Object(),2,"No progress","Body","",null,null,List.of()),liveActions::add);
+check(progress.visibility==8&&progress.progress==0&&!progress.indeterminate&&buttons[0].click==null,"source replacement clears previous progress and actions");
 }
 System.out.println("PASS download panel contracts/render/actions: "+checks+" checks (framework doubles, not device UI acceptance)");
 }}
 '''
 with tempfile.TemporaryDirectory(prefix='duo-download-panel-') as tmp:
     folder=Path(tmp);files=dict(FILES)
-    for name in ('IslandDownloadConfig','IslandDownloadPolicy'):
+    for name in ('IslandDownloadConfig','IslandDownloadPolicy','IslandVisualSpec','IslandNotificationContent','IslandContentRules','IslandTextExpression','IslandNotificationProgress'):
         files['ls/augment/com/'+name+'.java']=(base['SRC']/(name+'.java')).read_text(encoding='utf-8')
-    for name in ('DuoDownloadPanel','IslandDownloadSource','IslandEvent'):
+    for name in ('DuoDownloadPanel','IslandDownloadSource','IslandEvent','IslandNotificationText','IslandContentPresentation','IslandNotificationArtwork'):
         files['ls/augment/com/hook/'+name+'.java']=(base['SRC']/'hook'/(name+'.java')).read_text(encoding='utf-8')
-    # Presentation is verified in the device/native-resource suite; keep the legacy custom layout here.
+    # Run the same source field extractors as the compact card without its marquee view.
+    src=(base['SRC']/'hook/DuoCompactText.java').read_text('utf-8')
+    files['ls/augment/com/hook/DuoCompactText.java']=src[:src.index('    private final TextView label;')]+src[src.index('    static String fileName'):]
+    files['android/os/Parcelable.java']='package android.os;public interface Parcelable{}'
+    files['android/os/Bundle.java']=files['android/os/Bundle.java'].replace('public CharSequence getCharSequence(', 'public android.os.Parcelable[] getParcelableArray(String k){return (android.os.Parcelable[])get(k);}public CharSequence getCharSequence(',1)
+    files['android/app/Person.java']='package android.app;public class Person{public CharSequence getName(){return "Sender";}}'
+    files['android/app/Notification.java']=files['android/app/Notification.java'].replace('public static class Action','public static final String EXTRA_MESSAGES="messages";public static class MessagingStyle{public static class Message{public Person getSenderPerson(){return new Person();}public CharSequence getText(){return "Message body";}public static java.util.List<Message> getMessagesFromBundleArray(android.os.Parcelable[] p){return java.util.List.of(new Message());}}}public static class Action')
+    from island_notification_template_test_support import add_templates
+    add_templates(files)
+    # Framework doubles verify content/actions; they do not establish device UI acceptance.
     files['ls/augment/com/hook/Native12IslandStyle.java']='package ls.augment.com.hook;import android.content.Context;import android.widget.TextView;class Native12IslandStyle{static final int PANEL_ICON=48,TEXT_GAP=12,TITLE=17,DETAIL=13,COMPACT_TEXT=14;static boolean night(Context c){return false;}static void action(android.widget.Button b){}static void panel(android.view.View v){}static void text(TextView v,int s,boolean p){}}'
     files['ls/augment/com/hook/DownloadPanelTest.java']=HARNESS
     for name,content in files.items():

@@ -22,8 +22,8 @@ public class SlotFrameCases {
     static class Bundle {}
     static class Input {int releases;void release(Runnable r){releases++;r.run();}}
     final Queue main=new Queue();final Panel panel=new Panel();final Geometry geometry=new Geometry();final Input input=new Input();final OperationFence fence=new OperationFence();
-    boolean closing,closed;long slotFrameGeneration;int pendingNativeSlot=0,previewWidth=280,slotsShown,completions,stagesClosed,resumes,logs;String failure;Consumer<Bundle> reply;
-    void showSlots(){slotsShown++;}void fail(String s){failure=s;closing=true;fence.close();}void clearDrag(){}void closeFlipStage(){stagesClosed++;}void log(String s){logs++;}void resumeNext(){resumes++;}
+    boolean closing,closed;long slotFrameGeneration;int pendingNativeSlot=0,landingSlot=-1,previewWidth=280,slotsShown,completions,stagesClosed,resumes,logs;String failure;Consumer<Bundle> reply;
+    void showSlots(){slotsShown++;}void fail(String s){failure=s;closing=true;fence.close();}void clearDrag(){}void closeFlipStage(){stagesClosed++;landingSlot=-1;}void log(String s){logs++;}void resumeNext(){resumes++;}
     void releaseStepInput(Runnable done){input.release(done);}
     void rpc(String action,Bundle args,Consumer<Bundle> done){check(action.equals("replay"),"shared final native replay");reply=done;}
     METHODS
@@ -47,10 +47,17 @@ public class SlotFrameCases {
             h=new SlotFrameCases();if(kind==0)h.panel.attached=false;else h.panel.hardware=false;
             h.commitSlotFrame(()->{});h.main.drain();check(h.failure!=null && h.panel.frames.isEmpty(),"missing drawing capability recovers "+kind);
         }
+        h=new SlotFrameCases();final SlotFrameCases admission=h;long admit=h.fence.begin();
+        h.prepareSlotLanding(admit,2,7,()->admission.completions++);h.main.drain();
+        check(h.landingSlot==2 && h.slotsShown==1 && h.completions==0,"prepare incoming cell without prematurely changing native task roles");
+        h.painted();check(h.completions==1,"landing allowed only after old plus buffer is replaced");
+        h=new SlotFrameCases();final SlotFrameCases cancelled=h;long cancelledTicket=h.fence.begin();
+        h.prepareSlotLanding(cancelledTicket,1,9,()->cancelled.completions++);h.main.drain();h.fence.close();h.painted();
+        check(h.completions==0,"cancelled admission cannot land after a late host frame");
         System.out.println("PASS "+checks+" production slot frame and handoff checks");
     }
 }
-'''.replace('METHODS',method('finishHandoff')+'\n'+method('commitSlotFrame'))
+'''.replace('METHODS',method('finishHandoff')+'\n'+method('commitSlotFrame')+'\n'+method('prepareSlotLanding'))
 java=Path(os.environ.get('JAVA_HOME','C:/Program Files/Android/openjdk/jdk-21.0.8'))/'bin'
 with tempfile.TemporaryDirectory(prefix='step-slots-') as tmp:
     d=Path(tmp);p=d/'SlotFrameCases.java';p.write_text(harness,encoding='utf8')

@@ -27,6 +27,15 @@ public class TgkHelper {
     public static int loads;
     public static void loadingTgkCases(android.content.ContentResolver c,cn.nubia.tgk.data.TgkGameInfo info) {loads++;}
 }''',
+    'cn/nubia/tgk/util/TgkUtils.java': '''package cn.nubia.tgk.util;
+public class TgkUtils {
+    public static boolean isSgameApp(String pkg) {
+        return "com.tencent.tmgp.sgame".equals(pkg) || "com.tencent.tmgp.sgamece".equals(pkg);
+    }
+    public static boolean isSupportModeInPackageName(int mode,String pkg,int key) {
+        return mode==9 || mode==10 && key==137 || mode==11 && key==138;
+    }
+}''',
     'cn/nubia/tgk/data/TgkData.java': '''package cn.nubia.tgk.data;
 import android.content.Context;
 import android.graphics.Rect;
@@ -131,7 +140,21 @@ public class TestModeCompat {
     public static void main(String[] args)throws Throwable {
         module=new AugmentModule();
         check(ShoulderModeCompatibilityHook.install(module,TestModeCompat.class.getClassLoader(),
-                p->master&&shoulder&&eligible)==3,"install all three hooks");
+                p->master&&shoulder&&eligible)==4,"install the three ordinary-panel hooks and shortcut mode gate");
+        Class<?> utils=cn.nubia.tgk.util.TgkUtils.class;
+        Method support=utils.getDeclaredMethod("isSupportModeInPackageName",int.class,String.class,int.class);
+        for(boolean enabled:new boolean[]{false,true}) for(boolean panel:new boolean[]{false,true}) {
+            shoulder=enabled;TgkHelper.IS_SUPPORT_TGK_SHORTCUT_FUNCTION=panel;
+            for(String pkg:new String[]{GAME,"com.tencent.tmgp.sgamece","other.game",null})
+                for(int mode=-1;mode<=18;mode++) for(int key:new int[]{135,136,137,138,139}) {
+                    boolean nativeResult=cn.nubia.tgk.util.TgkUtils.isSupportModeInPackageName(mode,pkg,key);
+                    boolean expected=nativeResult || enabled && panel && cn.nubia.tgk.util.TgkUtils.isSgameApp(pkg)
+                            && ((mode>=0 && mode<=6 && (key==137 || key==138)) || ((mode==7 || mode==8) && key==136));
+                    check(module.call(support,null,mode,pkg,key).equals(expected),"shortcut mode eligibility");
+                }
+        }
+        eligible=false;check(Boolean.FALSE.equals(module.call(support,null,0,GAME,137)),"target exclusion");
+        eligible=true;TgkHelper.IS_SUPPORT_TGK_SHORTCUT_FUNCTION=false;
         customize=TgkData.class.getDeclaredMethod("setCustomizedTgkData",Context.class,int.class);
         selected=TgkGameInfo.class.getDeclaredMethod("getSelectedCaseData");
         for(String pkg:new String[]{GAME,"com.tencent.tmgp.sgamece"}) {
@@ -232,6 +255,9 @@ def check_apk(path, legacy):
     else:
         for field in [flag, 'TGK_CONTROL_SGAME_MAP_VIEW:I', 'TGK_CONTROL_SGAME_SCORE_VIEW:I', 'TGK_OFF_OPT:I', 'TGK_SINGLE_OPT:I']:
             assert helper['fields'][field] & 8, field
+        utils = classes['Lcn/nubia/tgk/util/TgkUtils;']
+        for method in ['isSupportModeInPackageName(ILjava/lang/String;I)Z', 'isSgameApp(Ljava/lang/String;)Z']:
+            assert utils['methods'][method] & 8, method
         data = classes['Lcn/nubia/tgk/data/TgkData;']
         for field in ['packageName:Ljava/lang/String;', 'optionArray:[I', 'pointsArray:[[Landroid/graphics/Rect;',
                       'setLinkFlagArray:[I', 'isLandscape:I']:

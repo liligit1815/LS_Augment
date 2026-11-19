@@ -108,6 +108,8 @@ public final class StepRuntime {
         static Context context;
         static volatile boolean registered;
         static volatile boolean active;
+        static volatile WorkspaceDisplayState sessionDisplay;
+        static volatile Object pendingPrimary;
         static int sideTask = -1;
         static Object ownedSpec;
         static Object applyingSpec;
@@ -157,9 +159,20 @@ public final class StepRuntime {
                         if (p.hasThrowable()) return;
                         try {
                             if (!Integer.valueOf(0).equals(call(p.thisObject, "getDisplayId"))) return;
-                            if (active && handler != null){
-                                android.os.IBinder expected=NativeWorkspaceGuard.owner;
-                                handler.post(()->{if(active && expected==NativeWorkspaceGuard.owner)stop("配置暂挂");});
+                            if (display != null && display != p.thisObject && (active || NativeWorkspaceGuard.active)) {
+                                pendingPrimary = p.thisObject;
+                                WorkspaceDisplayState expected = sessionDisplay;
+                                handler.post(() -> {
+                                    if (active && sessionDisplay == expected && pendingPrimary != null) stop("配置暂挂");
+                                });
+                                return;
+                            }
+                            if (active && handler != null) {
+                                WorkspaceDisplayState expected = sessionDisplay;
+                                Object primary = p.thisObject;
+                                handler.post(() -> {
+                                    if (active && sessionDisplay == expected) checkDisplay(expected, primary);
+                                });
                             }
                             attachDisplay(p.thisObject);
                         } catch (Throwable error) { report(null, -1, "WMS捕获失败: " + error, -1); }
@@ -179,6 +192,14 @@ public final class StepRuntime {
             if(owner==null || host==null || global==null)return;
             service=manager;lock=global;handler=owner;context=host;display=primary;
             if(!registered)owner.postDelayed(Wm::registerCommands,1000);
+        }
+        static void attachPendingDisplay() {
+            synchronized (lock) {
+                if (pendingPrimary == null || active || NativeWorkspaceGuard.active) return;
+                Object replacement = pendingPrimary;
+                pendingPrimary = null;
+                attachDisplay(replacement);
+            }
         }
         static void findExistingDisplay(int attempt) {
             if(registered)return;
@@ -220,8 +241,9 @@ public final class StepRuntime {
                         if("android.intent.action.USER_SWITCHED".equals(i.getAction())){
                             NativeWorkspaceGuard.parked=new ParkedWorkspace();NativeWorkspaceGuard.afterRestore=null;
                         }
-                        if(active)stop(Intent.ACTION_SCREEN_OFF.equals(i.getAction())?"息屏暂挂":
-                                Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction())?"配置暂挂":"用户变化恢复");
+                        if (!active) return;
+                        if (Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction())) checkDisplay(sessionDisplay, display);
+                        else stop(Intent.ACTION_SCREEN_OFF.equals(i.getAction())?"息屏暂挂":"用户变化恢复");
                     }
                 }, lifecycle, null, handler, Context.RECEIVER_NOT_EXPORTED);
                 registered = true;
@@ -239,11 +261,18 @@ public final class StepRuntime {
             StepMembers.setFloatField(spec, "offsetY", y);
             return spec;
         }
+        static void checkDisplay(WorkspaceDisplayState expected, Object primary) {
+            if (primary == display && expected != null && expected.equals(WorkspaceDisplayState.read(context))) return;
+            diagnostic("DISPLAY_CHANGE", "primary geometry or UI resources changed");
+            stop("配置暂挂");
+        }
         static void start() {
             if(active)throw new IllegalStateException("已有工作台运行");
             reply=null;
             try {
                 if (!interactive(context)) throw new IllegalStateException("屏幕已锁定或息屏，无法进入工作台");
+                sessionDisplay = WorkspaceDisplayState.read(context);
+                if (sessionDisplay == null) throw new IllegalStateException("主屏布局参数不可用");
                 synchronized (lock) {
                     if (field(display, "mMagnificationSpec") != null) throw new IllegalStateException("已有系统缩放占用，保持原状");
                     StepMembers.findMethodExact(field(display,"mInputMonitor").getClass(),"updateInputWindowsLw",boolean.class);
@@ -300,6 +329,7 @@ public final class StepRuntime {
                     }
                     ownedSpec = null; sideTask = -1;
                 }
+                attachPendingDisplay();
                 report(reply, 3, reason + "：本次主屏缩放已结束", -1);
             } catch (Throwable error) {
                 active = true;
@@ -448,8 +478,10 @@ public final class StepRuntime {
                             return;
                         }
                         WorkspaceClipboard.systemEvent(i.getAction());
-                        if(Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction()) && LiveWorkspace.current!=null
-                                && LiveWorkspace.current.preparingPortrait)return;
+                        if (Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction())) {
+                            LiveWorkspace host = LiveWorkspace.current;
+                            if (host == null || host.preparingPortrait || !host.displayChanged()) return;
+                        }
                         LiveWorkspace.stop(Intent.ACTION_SCREEN_OFF.equals(i.getAction())?"息屏暂挂":
                                 Intent.ACTION_CONFIGURATION_CHANGED.equals(i.getAction())?"配置暂挂":"用户变化退出");
 

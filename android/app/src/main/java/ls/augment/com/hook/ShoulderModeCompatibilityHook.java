@@ -27,6 +27,7 @@ final class ShoulderModeCompatibilityHook {
                 module.logFeatureInfo("SHOULDER_MODE_COMPAT legacy_skip");
                 return 0;
             }
+            installed += installShortcutModes(module, helper, loader, enabled);
             Contract contract = new Contract(helper, loader, enabled);
             // Normalize every loaded preset/import before any consumer can read it,
             // including compiled callers that may have inlined the selection getter.
@@ -84,6 +85,46 @@ final class ShoulderModeCompatibilityHook {
         return installed;
     }
 
+    private static int installShortcutModes(AugmentModule module, Class<?> helper, ClassLoader loader,
+            Predicate<String> enabled) {
+        try {
+            Class<?> utils = Class.forName("cn.nubia.tgk.util.TgkUtils", false, loader);
+            Field shortcut = field(helper, "IS_SUPPORT_TGK_SHORTCUT_FUNCTION", boolean.class, true);
+            constant(helper, "TGK_SINGLE_OPT", 0);
+            constant(helper, "TGK_OFF_OPT", 9);
+            Method supports = ShoulderHookTargets.named(utils, true, boolean.class, "isSupportModeInPackageName",
+                    int.class, String.class, int.class);
+            Method sgame = ShoulderHookTargets.named(utils, true, boolean.class, "isSgameApp", String.class);
+            if (supports == null || sgame == null) throw new NoSuchMethodException("TgkUtils shortcut mode contract");
+            module.registerFeatureHook(module.prepareFeatureHook(supports, "shoulder.shortcut.ordinary_modes", false)
+                    .intercept(chain -> {
+                        Object original = chain.proceed();
+                        if (Boolean.TRUE.equals(original)) return original;
+                        int mode = (Integer) chain.getArg(0), key = (Integer) chain.getArg(2);
+                        String pkg = (String) chain.getArg(1);
+                        // The OEM menu maps contact modes to L/R and slide modes to the slide control.
+                        // Apply the same physical pairing when it validates a stored or imported scheme.
+                        boolean ordinaryKey = mode >= 0 && mode <= 6 && (key == 137 || key == 138);
+                        boolean slideKey = (mode == 7 || mode == 8) && key == 136;
+                        if (!(ordinaryKey || slideKey) || !wangzhe(pkg)) return original;
+                        try {
+                            return shortcut.getBoolean(null) && enabled.test(pkg)
+                                    && Boolean.TRUE.equals(sgame.invoke(null, pkg));
+                        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                            return original;
+                        }
+                    }));
+            return 1;
+        } catch (ReflectiveOperationException | LinkageError unavailable) {
+            module.logFeatureInfo("SHOULDER_SHORTCUT_MODES unavailable=" + unavailable);
+            return 0;
+        }
+    }
+
+    private static boolean wangzhe(String pkg) {
+        return "com.tencent.tmgp.sgame".equals(pkg) || "com.tencent.tmgp.sgamece".equals(pkg);
+    }
+
     private static final class Contract {
         final Field shortcut, packageName, options, points, links, orientation, presets, imports;
         final Method selected, customize, updatePoints, load;
@@ -124,8 +165,7 @@ final class ShoulderModeCompatibilityHook {
         boolean eligible(Object data) throws IllegalAccessException {
             if (data == null || shortcut.getBoolean(null)) return false;
             String pkg = (String) packageName.get(data);
-            return ("com.tencent.tmgp.sgame".equals(pkg)
-                    || "com.tencent.tmgp.sgamece".equals(pkg)) && enabled.test(pkg);
+            return wangzhe(pkg) && enabled.test(pkg);
         }
 
         void normalize(AugmentModule module, Object data, int[] previous, String source) throws Exception {

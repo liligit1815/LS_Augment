@@ -4,6 +4,7 @@ import os,subprocess,tempfile
 ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'android/app/src/main/java/ls/augment/com/hook'
 files={
+'ls/augment/com/hook/IslandMediaLyrics.java':'package ls.augment.com.hook;class IslandMediaLyrics{void clear(){}void bind(Object m,Object i,Object p,android.media.session.MediaController c,int u){} static void bindFullscreen(IslandMediaLyrics l,Object m,Object i,android.media.session.MediaController c,int u){}}',
 'android/content/Context.java':'package android.content;public class Context{}',
 'android/os/Looper.java':'package android.os;public class Looper{public static Looper getMainLooper(){return new Looper();}}',
 'android/os/Process.java':'package android.os;public class Process{public static int myUid(){return 1000;}}',
@@ -14,8 +15,11 @@ files={
  public static void drain(){int n=0;while(!tasks.isEmpty()){if(++n>40)throw new AssertionError("unbounded polling");tasks.remove(0).run();}}}''',
 'android/media/session/PlaybackState.java':'package android.media.session;public class PlaybackState{public static final int STATE_PLAYING=3;public int state;public PlaybackState(int s){state=s;}public int getState(){return state;}}',
 'android/media/session/MediaSession.java':'package android.media.session;public class MediaSession{public record Token(int id){}}',
+'android/media/MediaMetadata.java':'package android.media;public class MediaMetadata{}',
 'android/media/session/MediaController.java':'''package android.media.session;public class MediaController{
  public String pkg;public MediaSession.Token token;public PlaybackState state=new PlaybackState(3);
+ public Callback callback;public static class Callback{public void onPlaybackStateChanged(PlaybackState s){}public void onMetadataChanged(android.media.MediaMetadata m){}public void onSessionDestroyed(){}}
+ public void registerCallback(Callback c,android.os.Handler h){callback=c;}public void registerCallback(Callback c){}public void unregisterCallback(Callback c){if(callback==c)callback=null;}
  public MediaController(String p,int id){pkg=p;token=new MediaSession.Token(id);}public String getPackageName(){return pkg;}
  public MediaSession.Token getSessionToken(){return token;}public PlaybackState getPlaybackState(){return state;}}''',
 'android/media/session/MediaSessionManager.java':'''package android.media.session;import java.util.*;import java.util.concurrent.*;import android.os.Handler;
@@ -36,6 +40,9 @@ files={
  static boolean on=true;static Runnable changed;static boolean enabled(Context c,String k){return on;}
  static void addSnapshotListener(Context c,Runnable r){changed=r;}static void removeSnapshotListener(Runnable r){if(changed==r)changed=null;}}''',
 'ls/augment/com/hook/IslandSceneSelection.java':'package ls.augment.com.hook;class IslandSceneSelection{static boolean on=true;static boolean enabled(Object c,String id){return on;}}',
+'ls/augment/com/hook/NativeIslandMediaAdmission.java':'''package ls.augment.com.hook;class NativeIslandMediaAdmission{
+ static NativeIslandMediaAdmission attach(android.content.Context c,Object m,Object p,android.media.session.MediaSessionManager s){return null;}
+ void select(android.media.session.MediaController c){}void syncPanel(Object p){}void synchronizeSelection(){}void close(){}}''',
 'ls/augment/com/hook/FeatureRuntimeLog.java':'''package ls.augment.com.hook;class FeatureRuntimeLog{static String last;
  static void state(String stage,String key,String value){last=value;}static String failure(Throwable t){return t.getClass().getName();}}''',
 }
@@ -97,6 +104,12 @@ public class TestMusicRecovery{
   m=new Manager();add(m,28);m.mPkgName=null;r=start(m);check(m.binds==0,"unknown foreground cannot bypass native foreground exclusion");
   m.mPkgName="music";r.request();Handler.drain();check(m.binds==1&&m.p.mAppIslandList.isEmpty(),"foreground readiness binds without exposing card over source");
   m.mPkgName="launcher";r.request();Handler.drain();check(m.p.mAppIslandList.size()==1,"background event completes deferred bootstrap");r.close();
+  m=new Manager();c=add(m,29);m.allow=false;r=start(m);check(c.callback!=null&&m.binds==0,"filtered source is observed for late metadata readiness");
+  m.allow=true;c.callback.onMetadataChanged(new android.media.MediaMetadata());Handler.drain();check(m.binds==1,"real metadata event retries admission without polling");
+  var oldCallback=c.callback;var replacement=add(m,30);r.request();Handler.drain();
+  check(c.callback==null&&replacement.callback!=null,"session switch releases former source callback");
+  oldCallback.onSessionDestroyed();Handler.drain();check(replacement.callback!=null,"late destruction of old source cannot clear replacement");
+  FeatureSettings.on=false;r.request();Handler.drain();check(replacement.callback==null,"disable releases source observation");r.close();reset();
   System.out.println("Native music recovery: "+checks+" checks passed");
  }
 }'''

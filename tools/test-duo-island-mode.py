@@ -33,6 +33,7 @@ static class SystemUiOptions{static String ISLAND="duo";}
 static class FeatureSettings{static Map<String,String> values=new HashMap<>();static boolean enabled(Object c,String k){return "1".equals(values.get(k));}static String text(Object c,String k,String d){return values.getOrDefault(k,d);}}
 static class Host{boolean nativeOn;List<String> events=new ArrayList<>();void selectNative(boolean value){nativeOn=value;events.add("owner="+value);}void release(){events.add("release");}}
 static class Activity{void clear(){}void configure(){}}
+static class IslandNotificationTemplates{static boolean notice(Object c,Object source){return true;}}
 static class State{boolean closed,enabled;Object context=new Object();Host nativeHost=new Host();Activity chargeActivity=new Activity(),downloads=new Activity();void downloadSnapshot(){}Map<String,String> mediaActivities=new HashMap<>();boolean option(String suffix){return true;}void listen(){}void stopListening(){}void clearNotice(){}void dismiss(){}void refresh(){}
 Object notice;IslandNoticeBlacklist noticeBlacklist;IslandNoticeRules noticeRules;int noticeMode(Object n){return IslandNoticeRules.OFF;}void restoreDownloadSnapshot(){}void cancelFirst(){}
 // CONFIGURE

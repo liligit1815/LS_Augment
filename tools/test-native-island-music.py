@@ -7,6 +7,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'android/app/src/main/java/ls/augment/com/hook'
 FILES = {
+'ls/augment/com/hook/IslandMediaLyrics.java':'package ls.augment.com.hook;class IslandMediaLyrics{void clear(){}void bind(Object m,Object i,Object p,android.media.session.MediaController c,int u){} static void bindFullscreen(IslandMediaLyrics l,Object m,Object i,android.media.session.MediaController c,int u){}}',
  'android/os/Handler.java': '''package android.os;import java.util.*;public class Handler {
  public List<Runnable> queue=new ArrayList<>(),later=new ArrayList<>();public void post(Runnable r){queue.add(r);}
  public void postDelayed(Runnable r,long ms){later.add(r);}public void removeCallbacks(Runnable r){queue.removeIf(x->x==r);later.removeIf(x->x==r);}

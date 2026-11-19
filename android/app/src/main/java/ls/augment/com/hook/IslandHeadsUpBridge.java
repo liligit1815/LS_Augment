@@ -68,7 +68,8 @@ final class IslandHeadsUpBridge {
                 if(Boolean.TRUE.equals(chain.getArg(1))||currentProvider==null||!completeActions(source.getNotification())
                         ||Boolean.TRUE.equals(already.invoke(chain.getThisObject(),source.getKey()))
                         ||!DynamicIslandHook.canPrepareHeadsUp(source,ranking)) {
-                    markNative(source);return chain.proceed();
+                    markNative(source);Object nativeResult=chain.proceed();
+                    IslandReplyHandoff.shown(source,chain.getThisObject(),already);return nativeResult;
                 }
                 Pending old=pending.get(source.getKey());
                 if(old!=null){
@@ -190,7 +191,7 @@ final class IslandHeadsUpBridge {
         Pending request=pending.get(source.getKey());if(request!=null&&source.getPostTime()>=request.source.getPostTime())cancel(request);
         if(revision(source).equals(nativeAlerts.get(source.getKey())))nativeAlerts.remove(source.getKey());
     }
-    static void clear(){for(Pending request:pending.values().toArray(new Pending[0]))finish(request,false,"host_released");nativeAlerts.clear();}
+    static void clear(){IslandReplyHandoff.clear();for(Pending request:pending.values().toArray(new Pending[0]))finish(request,false,"host_released");nativeAlerts.clear();}
     private static void event(String state,String reason){FeatureRuntimeLog.event("ISLAND_HEADSUP",state+":"+reason);}
     private IslandHeadsUpBridge(){ }
 }

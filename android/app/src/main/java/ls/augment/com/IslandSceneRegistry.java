@@ -20,6 +20,9 @@ public final class IslandSceneRegistry {
     static {
         ArrayList<Scene> scenes = new ArrayList<>();
         scenes.add(new Scene("notifications", "普通通知", "通知与传输"));
+        scenes.add(new Scene("ongoing", "持续状态通知", "通知与传输"));
+        scenes.add(new Scene("notification_count", "通知发布计数", "通知与传输"));
+        scenes.add(new Scene("toast", "文字提示（Toast）", "通知与传输"));
         scenes.add(new Scene("downloads", "上传与下载", "通知与传输"));
         for (int i=0;i<NativeIslandSceneOptions.IDS.length;i++) {
             String id=NativeIslandSceneOptions.IDS[i];
@@ -28,6 +31,9 @@ public final class IslandSceneRegistry {
                     :"record".equals(id)||"call".equals(id)||"meeting".equals(id)||id.startsWith("ai")?"通话录音与AI":"系统活动";
             scenes.add(new Scene(id,NativeIslandSceneOptions.LABELS[i],group));
         }
+        scenes.add(new Scene("daily_weather","常驻天气","出行与生活服务"));
+        scenes.add(new Scene("next_calendar","下一项日程","出行与生活服务"));
+        scenes.add(new Scene("published_activity","应用实时活动","通知与传输"));
         scenes.add(new Scene("navigation", "地图导航", "出行与生活服务"));
         scenes.add(new Scene("screen_record", "屏幕录制", "系统活动"));
         scenes.add(new Scene("hotspot", "个人热点", "系统活动"));
@@ -52,6 +58,9 @@ public final class IslandSceneRegistry {
                     "navigation".equals(scene.id)?"读取地图导航的持续通知，内容与操作来自原通知。仅在来源和显示条件满足时上岛，关闭或无法显示时保留原厂提醒；不会自行开始导航。"
                     :"screen_record".equals(scene.id)?"读取系统录屏的真实状态，展开后沿用原厂录屏操作。关闭后恢复原厂提醒；开启本项不会开始录屏。"
                     :"热点已开启时显示实际连接设备数，可进入系统热点管理。关闭或无法接管时保留原厂提醒；开启本项不会打开热点。"));
+        options.add(EnhancementOption.toggle(key("daily_weather"),"systemui","常驻天气","显示本机天气的城市、温度和更新时间。天气应用发布当前城市预警时优先显示预警。"));
+        options.add(EnhancementOption.toggle(key("next_calendar"),"systemui","下一项日程","读取当前用户可见日历的下一项日程和开始时间。与常驻天气一起开启时合并显示。"));
+        options.add(EnhancementOption.toggle(key("published_activity"),"systemui","应用实时活动","显示应用经持续通知发布的行程、配送和阶段进度。按钮回到发布应用，结束通知后退岛。"));
         return options;
     }
     /** Old completion toggles did not disable existing native scenes. Preserve that behavior. */
@@ -72,7 +81,7 @@ public final class IslandSceneRegistry {
     public static String[] parameterKeys() {
         ArrayList<String> keys=new ArrayList<>();
         for(Scene scene:SCENES)keys.add(scene.key);
-        Collections.addAll(keys,SystemUiOptions.ISLAND_FIRST_EXPAND,IslandNoticeRules.KEY,IslandNoticeBlacklist.KEY,IslandDownloadConfig.CHANNELS,
+        Collections.addAll(keys,SystemUiOptions.PREFIX+"island_face_theme",SystemUiOptions.PREFIX+"island_lyrics_source",IslandChargeConfig.LEFT,IslandChargeConfig.RIGHT,IslandChargeConfig.DURATION,IslandChargeConfig.SECONDS,SystemUiOptions.ISLAND_FIRST_EXPAND,IslandNoticeRules.KEY,IslandEnvironmentRules.KEY,IslandNoticeBlacklist.KEY,IslandDownloadConfig.CHANNELS,IslandOngoingConfig.CHANNELS,IslandCountConfig.CHANNELS,IslandToastRules.KEY,
                 SystemUiOptions.PREFIX+"island_notice_seconds");
         return keys.toArray(new String[0]);
     }

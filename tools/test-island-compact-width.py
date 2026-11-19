@@ -9,6 +9,7 @@ def member(marker):
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[start:end]
 files={
+'ls/augment/com/hook/FeatureRuntimeLog.java':'package ls.augment.com.hook;class FeatureRuntimeLog{static void state(String tag,String phase,String reason){}}',
 'android/content/Context.java':'package android.content;public class Context{public android.content.res.Resources getResources(){return new android.content.res.Resources();}}',
 'android/content/res/Resources.java':'package android.content.res;public class Resources{public android.util.DisplayMetrics getDisplayMetrics(){return new android.util.DisplayMetrics();}}',
 'android/util/DisplayMetrics.java':'package android.util;public class DisplayMetrics{public float density=3.25f;public int widthPixels=1216;}',

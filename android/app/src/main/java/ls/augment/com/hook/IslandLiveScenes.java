@@ -27,6 +27,9 @@ final class IslandLiveScenes {
     private static boolean screenContract;
     private static WeakReference<Object> capturedHotspot=new WeakReference<>(null);
     private IslandBuiltinEvents builtin;
+    private IslandOngoingNotifications ongoing;
+    private IslandNotificationActivities counts;
+    private IslandToastEvents toasts;
     private String hotspotFailure="hotspot_controller";
     private static Screen screen;
     private static final class Screen {
@@ -38,16 +41,19 @@ final class IslandLiveScenes {
     private final Object manager;
     private final View root,statusBar;
     private final boolean fullscreen;
+    private IslandAmbientInfo ambient;
     private final Map<String,IslandEvent> events=new LinkedHashMap<>();
     private final Map<String,DuoNotificationCards> cards=new LinkedHashMap<>();
     private final IslandOwnershipRegistry ownership=new IslandOwnershipRegistry();
     private final IslandFrameProof nativeFrames=new IslandFrameProof();
+    private final IslandExpansionRequests expansionRequests=new IslandExpansionRequests();
     private final Runnable changed=this::refresh;
     private final Runnable guidanceExpired=this::refresh;
     private final Runnable expiry=this::updateOwnership;
     private Object hotspot,hotspotCallback;
     private Method hotspotEnabled,hotspotCount,hotspotRemove;
-    private boolean closed,permitted,zteScreenContract;
+    private boolean closed,permitted,zteScreenContract,ambientBusy;
+    private String contentRevision="";
     private final android.database.ContentObserver screenState=new android.database.ContentObserver(MAIN){
         @Override public void onChange(boolean self){schedule();}
     };
@@ -59,7 +65,7 @@ final class IslandLiveScenes {
         @Override public void onReceive(Context ignored,Intent intent){schedule();}
     };
     static int install(AugmentModule module,ClassLoader loader){
-        int hooks=installHotspotCapture(module,loader)+IslandBuiltinEvents.install(module,loader);
+        int hooks=installHotspotCapture(module,loader)+IslandBuiltinEvents.install(module,loader)+IslandToastEvents.install(module,loader);
         // An empty island window may stop drawing while QS covers it. Wake from the
         // actual native environment callback, not from a frame that may never run.
         for(String name:new String[]{"setControlPanelExpanded","setQsPanelExpanded","onKeyguardStateChanged"})try{
@@ -128,12 +134,14 @@ final class IslandLiveScenes {
     }
     void start(){
         active=this;
+        toasts=new IslandToastEvents(context,root,this::schedule,this::allowed,this::currentUser);toasts.start();
         if(fullscreen){builtin=new IslandBuiltinEvents(context,loader,this::schedule,this::currentUser);builtin.start();}
         root.getViewTreeObserver().addOnPreDrawListener(layout);
         if(statusBar.getViewTreeObserver()!=root.getViewTreeObserver())statusBar.getViewTreeObserver().addOnPreDrawListener(layout);
         FeatureSettings.addSnapshotListener(context,changed);
         IntentFilter filter=new IntentFilter();for(String action:new String[]{Intent.ACTION_SCREEN_OFF,Intent.ACTION_SCREEN_ON,
-                Intent.ACTION_USER_PRESENT,Intent.ACTION_CONFIGURATION_CHANGED,"android.intent.action.USER_SWITCHED"})filter.addAction(action);
+                Intent.ACTION_USER_PRESENT,Intent.ACTION_CONFIGURATION_CHANGED,"android.intent.action.USER_SWITCHED",
+                android.app.NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED})filter.addAction(action);
         context.registerReceiver(environment,filter,Context.RECEIVER_NOT_EXPORTED);
         zteScreenContract=NativeScreenRecordingNotice.capable(context);
         if(zteScreenContract)context.getContentResolver().registerContentObserver(android.provider.Settings.Global.getUriFor(NativeScreenRecordingNotice.STATE),false,screenState);
@@ -162,6 +170,15 @@ final class IslandLiveScenes {
             capability("hotspot",false,hotspotFailure);FeatureRuntimeLog.event("ISLAND_LIVE_SOURCE",hotspotFailure);}
     }
     static void notificationsChanged(){IslandLiveScenes value=active;if(value!=null)value.schedule();}
+    static void notificationPosted(StatusBarNotification source){
+        IslandLiveScenes value=active;if(value!=null){if(value.ongoing!=null)value.ongoing.posted(source);if(value.counts!=null)value.counts.posted(source);value.schedule();}
+    }
+    static void notificationRemoved(StatusBarNotification source){
+        IslandLiveScenes value=active;if(value!=null){if(value.ongoing!=null)value.ongoing.removed(source);if(value.counts!=null)value.counts.removed(source);value.schedule();}
+    }
+    static boolean countSelected(StatusBarNotification source){
+        IslandLiveScenes value=active;return value!=null&&!value.closed&&value.counts!=null&&value.counts.selected(source);
+    }
     static boolean owns(String scene){IslandLiveScenes value=active;return value!=null&&!value.closed
             &&IslandSceneSelection.enabled(value.context,scene)&&value.ownership.owns(scene,SystemClock.elapsedRealtime());}
     private void schedule(){if(!closed){MAIN.removeCallbacks(changed);MAIN.post(changed);}}
@@ -171,20 +188,42 @@ final class IslandLiveScenes {
                 &&Boolean.TRUE.equals(field(manager,"mInteractive"))&&!Boolean.TRUE.equals(field(manager,"mOnKeyguard"))
                 &&!Boolean.TRUE.equals(field(manager,"mAODVisibility"))&&!Boolean.TRUE.equals(field(manager,"mQsPanelExpanded"))
                 &&!Boolean.TRUE.equals(field(manager,"mControlPanelExpanded"))&&statusBar.isShown()
-                &&context.getResources().getConfiguration().orientation!=android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+                &&landscapeHostReady();
+    }
+    private boolean landscapeHostReady(){
+        if(context.getResources().getConfiguration().orientation!=android.content.res.Configuration.ORIENTATION_LANDSCAPE)return true;
+        if(!fullscreen||!Boolean.FALSE.equals(field(manager,"mGameMode"))||!root.isShown())return false;
+        android.view.WindowInsets insets=statusBar.getRootWindowInsets();
+        return insets!=null&&insets.isVisible(android.view.WindowInsets.Type.statusBars())&&root.getWidth()>0&&statusBar.getWidth()>0
+                &&field(manager,"mDynamicIslandTouchHelper") instanceof android.view.ViewGroup&&field(manager,"mPanelParams") instanceof android.view.WindowManager.LayoutParams;
     }
     private void observe(){
         if(closed)return;
         if(permitted!=allowed()){schedule();return;}
+        if(permitted&&ambient!=null&&ambient.enabled()&&ambientBusy!=otherPrimary()){schedule();return;}
         if(screen!=null&&events.containsKey("screen_record")&&(screen.source.get()==null||!screen.source.get().isAttachedToWindow())){schedule();return;}
         updateOwnership();
     }
     private void refresh(){
         MAIN.removeCallbacks(changed);MAIN.removeCallbacks(guidanceExpired);if(closed)return;
+        IslandGestureActions.configure(context);
+        String contentRules=IslandContentPresentation.revision(context);
+        boolean contentChanged=!contentRevision.equals(contentRules);contentRevision=contentRules;
         int nextUser=currentUser();boolean next=allowed()&&nextUser>=0;
-        if(user!=nextUser){release();if(user>=0)screen=null;user=nextUser;hotspotInstance=null;}
+        if(user!=nextUser){release();expansionRequests.clear();if(user>=0)screen=null;user=nextUser;hotspotInstance=null;}
         permitted=next;
         NotificationListenerService listener=DynamicIslandHook.notificationSource();
+        if(ongoing==null)ongoing=new IslandOngoingNotifications(context);
+        if(counts==null)counts=new IslandNotificationActivities(context,true);
+        Map<String,IslandEvent> continuous=ongoing.snapshot(listener,user,next);
+        Map<String,IslandEvent> counted=counts.snapshot(listener,user,next);
+        Map<String,IslandEvent> transientToasts=toasts==null?Collections.emptyMap():toasts.snapshot(user,next);
+        capability("daily_weather",context.getPackageManager().resolveContentProvider("com.zte.mifavor.weather.api",0)!=null,"weather_provider_missing");
+        capability("next_calendar",context.getPackageManager().resolveContentProvider(android.provider.CalendarContract.AUTHORITY,0)!=null,"calendar_provider_missing");
+        capability("published_activity",listener!=null,"notification_listener");
+        capability("toast",toasts!=null&&toasts.capable(),"standard_text_toast");
+        capability("ongoing",listener!=null,"notification_listener");
+        capability("notification_count",listener!=null,"notification_listener");
         capability("navigation",listener!=null,"notification_listener");
         capability("screen_record",screenContract||zteScreenContract&&listener!=null,"recording_source");
         capability("hotspot",hotspot!=null,hotspotFailure);
@@ -222,9 +261,25 @@ final class IslandLiveScenes {
                         "个人热点",count+" 台设备已连接",count+" 台设备",icon("com.android.settings"),open,List.of(new IslandEvent.Action("管理热点",open))));
             }else hotspotInstance=null;
         }catch(Exception missing){capability("hotspot",false,"snapshot:"+missing.getClass().getSimpleName());}
+        if(ambient==null)ambient=new IslandAmbientInfo(context,this::schedule);
+        IslandEvent idle=ambient.snapshot(user,listener);
+        ambientBusy=ambient.enabled()&&otherPrimary();
+        IslandPublishedActivity.collect(context,listener,user,nextEvents);
+        nextEvents.putAll(continuous);
+        nextEvents.putAll(counted);
+        nextEvents.putAll(transientToasts);
+        if(idle!=null&&!ambientBusy&&nextEvents.isEmpty())nextEvents.put(idle.key,idle);
+        Set<String> sourceKeys=new HashSet<>(nextEvents.keySet());
+        for(Iterator<Map.Entry<String,IslandEvent>> it=nextEvents.entrySet().iterator();it.hasNext();){
+            IslandEvent event=it.next().getValue();int mode=presentation(event);
+            if(!"toast".equals(event.scene))expansionRequests.observe(event.key,event.instance,event.presentation,mode);
+            if(mode==IslandEnvironmentRules.OFF||IslandGestureActions.hidden(context,event.notification))it.remove();
+        }
+        expansionRequests.retain(sourceKeys);
         for(Map.Entry<String,IslandEvent> entry:nextEvents.entrySet()){
             IslandEvent old=events.get(entry.getKey()),value=entry.getValue();
-            if(old!=null&&Objects.equals(old.instance,value.instance)&&Objects.equals(old.revision,value.revision))entry.setValue(old);
+            // Content rules can select different source artwork without changing the business revision.
+            if(!contentChanged&&old!=null&&Objects.equals(old.instance,value.instance)&&Objects.equals(old.revision,value.revision))entry.setValue(old);
         }
         for(String key:new ArrayList<>(cards.keySet()))if(!nextEvents.containsKey(key)){cards.remove(key).close();}
         Map<String,IslandEvent> previous=new HashMap<>(events);events.clear();events.putAll(nextEvents);
@@ -234,15 +289,26 @@ final class IslandLiveScenes {
             try{
                 DuoNotificationCards card=cards.get(event.key);
                 if(card==null){
+                    if(IslandMessageControls.editing())continue;
                     card=new DuoNotificationCards(context,loader,manager,fullscreen,()->open(event.key),statusBar,"ls.augment.com_duo_live_"+event.key);
+                    card.panelChanged=this::schedule;
                     cards.put(event.key,card);
                 }
                 IslandEvent old=previous.get(event.key);
-                if(old==null||!Objects.equals(old.instance,event.instance)||!Objects.equals(old.revision,event.revision)||!card.visible())
+                if(contentChanged||old==null||!Objects.equals(old.instance,event.instance)||!Objects.equals(old.revision,event.revision)||!card.visible())
                     if(!card.showEvent(event,action->dispatch(event,action)))cards.remove(event.key).close();
             }catch(Exception missing){capability(event.scene,false,"host:"+missing.getClass().getSimpleName());}
         }
         updateOwnership();
+    }
+    private boolean otherPrimary(){
+        try{
+            DuoNotificationCards own=cards.get("ambient");
+            Object primary=call(manager,"getPermanentIsland");
+            if(!(primary instanceof View))return false;
+            Object secondary=call(manager,"getSmallIsland");
+            return own==null||!own.selected()||secondary instanceof View&&secondary!=primary;
+        }catch(Exception unsupported){return false;}
     }
     private View nativeCard(String scene){
         if(!"hotspot".equals(scene))return null;
@@ -262,7 +328,14 @@ final class IslandLiveScenes {
                 }}catch(Exception ignored){}
             }
             else if(card!=null)drawn=card.confirmedFrame(event.revision,this::updateOwnership);
-            if(drawn)visible.put(event.scene,event.instance);
+            if(drawn){visible.put(event.scene,event.instance);
+                if(card!=null){
+                    boolean free=!IslandMessageControls.editing()&&!Boolean.TRUE.equals(field(manager,"mDynamicPanelShowing"))&&card.readyForFirstExpansion();
+                    if(toasts!=null&&"toast".equals(event.scene))toasts.presented(event,free,card::expand);
+                    else if(card.expanded())expansionRequests.take(event.key,event.instance,event.presentation);
+                    else if(free&&expansionRequests.take(event.key,event.instance,event.presentation))card.expand();
+                }
+            }
             else if(card!=null&&card.selected()&&(Boolean.TRUE.equals(field(manager,"mAnimProcessing"))
                     ||Boolean.TRUE.equals(field(manager,"mDynamicPanelClosing"))))transitions.put(event.scene,event.instance);
         }
@@ -322,19 +395,29 @@ final class IslandLiveScenes {
         }catch(Exception missing){FeatureRuntimeLog.event("ISLAND_LIVE_ACTION",missing.getClass().getSimpleName());}
     }
     private void open(String key){IslandEvent event=events.get(key);if(event==null)return;
-        if(event.open!=null)dispatch(event,new IslandEvent.Action("open",event.open));else{DuoNotificationCards card=cards.get(key);if(card!=null)card.expand();}}
+        if(presentation(event)==IslandEnvironmentRules.OFF)return;
+        expansionRequests.take(event.key,event.instance,event.presentation);
+        if(event.open!=null)dispatch(event,new IslandEvent.Action("open",()->{
+            if("ongoing".equals(event.scene)||"notification_count".equals(event.scene)){DuoNotificationCards card=cards.get(key);if(card!=null)card.dismiss();}
+            event.open.run();
+        }));else{DuoNotificationCards card=cards.get(key);if(card!=null)card.expand();}}
     private void dispatch(IslandEvent event,IslandEvent.Action action){
-        if(!allowed()||user!=currentUser()||events.get(event.key)!=event||!IslandSceneSelection.enabled(context,event.scene))return;
+        if(!allowed()||user!=currentUser()||events.get(event.key)!=event||!IslandSceneSelection.enabled(context,event.scene)
+                ||presentation(event)==IslandEnvironmentRules.OFF)return;
         // Returning to the navigation source must not leave this panel above the destination app.
         // dismiss() verifies this card owns the expanded panel and uses the OEM close animation.
         if("navigation".equals(event.scene)){DuoNotificationCards card=cards.get(event.key);if(card!=null)card.dismiss();}
         try{action.run.run();}catch(RuntimeException missing){FeatureRuntimeLog.event("ISLAND_LIVE_ACTION",missing.getClass().getSimpleName());}
     }
     private Drawable icon(String pkg){try{return context.getPackageManager().getApplicationIcon(pkg);}catch(Exception missing){return null;}}
+    private int presentation(IslandEvent event){return event.sourcePackage.isEmpty()?IslandEnvironmentRules.INHERIT:
+            IslandPresentation.mode(context,root,user,event.scene,event.sourcePackage,event.sourceChannel,IslandEnvironmentRules.INHERIT);}
     private void capability(String scene,boolean ready,String reason){
         FeatureSettings.diagnostic(context,IslandSceneRegistry.key(scene)+"_capability",ready?"ready:"+BuildConfig.VERSION_CODE:"unavailable:"+reason);
     }
     private void release(){
+        if(ambient!=null){ambient.close();ambient=null;}
+        expansionRequests.cancel();
         MAIN.removeCallbacks(guidanceExpired);
         MAIN.removeCallbacks(expiry);
         for(DuoNotificationCards card:cards.values())card.close();cards.clear();events.clear();nativeFrames.clear();ownership.clear();
@@ -346,6 +429,6 @@ final class IslandLiveScenes {
         context.getContentResolver().unregisterContentObserver(screenState);
         try{context.unregisterReceiver(environment);}catch(RuntimeException ignored){}
         if(hotspot!=null&&hotspotRemove!=null&&hotspotCallback!=null)try{hotspotRemove.invoke(hotspot,hotspotCallback);}catch(Exception ignored){}
-        if(builtin!=null)builtin.close();release();if(active==this)active=null;
+        if(builtin!=null)builtin.close();if(ongoing!=null)ongoing.close();if(counts!=null)counts.close();if(toasts!=null)toasts.close();release();if(active==this)active=null;
     }
 }

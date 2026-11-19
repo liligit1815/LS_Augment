@@ -168,6 +168,7 @@ public class TestPackageReadyDispatch {
         check(!mapRemote.calls.contains("AtomicWorkbenchAmapHook"), "Amap secondary process installed main-process hook");
 
         for (String[] route : new String[][] {
+                {"com.android.providers.downloads", "NativeDownloadControlHook"},
                 {"zte.com.cn.alarmclock", "NativeIslandClockCards", "NativeIslandClockSource"},
                 {"cn.zte.recorder", "NativeIslandRecorderCards", "NativeIslandRecorderSource", "MagicIslandAppCards:cn.zte.recorder"},
                 {"com.zte.nebulatranslation", "NativeIslandTranslationCards", "MagicIslandAppCards:com.zte.nebulatranslation"},
@@ -214,7 +215,7 @@ def main():
     for name in ('OemAppExtrasHook', 'ConnectionExtrasHook', 'GameExtrasHook', 'BypassChargingHook',
                  'CollabUnlockHook', 'CollabRenderHook', 'EntryVisibilityHook', 'MagicIslandAppCards'):
         stubs.append(f'static final class {name} {{ static void install(TestPackageReadyDispatch m, ClassLoader l, String p) {{ m.feature("{name}:" + p, l); }} }}')
-    for name in ('SearchWallpaperHook', 'NativeIslandLauncherCapsule', 'StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
+    for name in ('NativeDownloadControlHook', 'LauncherDockRebindHook', 'RecentsPrivacyTransition', 'SearchWallpaperHook', 'NativeIslandLauncherCapsule', 'StoreDownloadHook', 'ShoulderQuickSwitchHook', 'MiHealthHook', 'AtomicWorkbenchAmapHook', 'LauncherCustomizationHook',
                  'LauncherPagesHook', 'LauncherPageIndicatorHook', 'LauncherRecentsMemoryHook', 'FullBrightnessHook',
                  'ShoulderMacroSwitchHook', 'AtomicWorkbenchQuickstepHook', 'LauncherGridHook',
                  'LauncherWidgetResizeHook', 'LauncherDockCapacityHook', 'LauncherNewAppsLastPageHook',
@@ -236,7 +237,9 @@ def main():
         harness.write_text(java, encoding='utf-8')
         gate=Path(directory)/'WorkspaceGestureGate.java'
         gate.write_text('package ls.augment.com.step;public class WorkspaceGestureGate { public static void installLauncher(ls.augment.com.hook.TestPackageReadyDispatch m,ClassLoader l){m.feature("WorkspaceGestureGate",l);} }',encoding='utf-8')
-        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, str(REGISTRY), str(harness), str(gate)], check=True)
+        game=Path(directory)/'GameGestureGate.java'
+        game.write_text('package ls.augment.com.step;public class GameGestureGate { public static void install(ls.augment.com.hook.TestPackageReadyDispatch m,ClassLoader l){m.feature("GameGestureGate",l);} }',encoding='utf-8')
+        subprocess.run(['javac', '-encoding', 'UTF-8', '-d', directory, str(REGISTRY), str(harness), str(gate), str(game)], check=True)
         subprocess.run(['java', '-cp', directory, 'ls.augment.com.hook.TestPackageReadyDispatch'], check=True)
 
 

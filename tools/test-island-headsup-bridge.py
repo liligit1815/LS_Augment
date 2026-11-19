@@ -8,7 +8,7 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[1]
 tree=ast.parse((ROOT/'tools/test-native-island-takeover.py').read_text(encoding='utf-8'))
 base=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='files' for t in n.targets))
-files={'ls/augment/com/hook/AugmentModule.java':base['ls/augment/com/hook/AugmentModule.java']}
+files={'ls/augment/com/hook/IslandReplyHandoff.java':'package ls.augment.com.hook;class IslandReplyHandoff{static void shown(android.service.notification.StatusBarNotification n,Object m,java.lang.reflect.Method method){}static void clear(){}}','ls/augment/com/hook/AugmentModule.java':base['ls/augment/com/hook/AugmentModule.java']}
 files.update({
 'android/os/Looper.java':'''package android.os;public class Looper{static final Looper MAIN=new Looper();public static Looper current=MAIN;public static Looper getMainLooper(){return MAIN;}public static Looper myLooper(){return current;}}''',
 'android/os/SystemClock.java':'package android.os;public class SystemClock{public static long now;public static long uptimeMillis(){return now;}}',
